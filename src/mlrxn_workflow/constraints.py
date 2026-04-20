@@ -49,7 +49,9 @@ def build_constraints(
     if freeze_indices:
         constraints.append(FixAtoms(indices=sorted(set(freeze_indices))))
     if fixed_bonds:
-        constraints.append(FixBondLengths(fixed_bonds))
+        bond_constraint = FixBondLengths(fixed_bonds)
+        bond_constraint.maxiter = 5000
+        constraints.append(bond_constraint)
     if angles or dihedrals:
         constraints.append(
             FixInternals(

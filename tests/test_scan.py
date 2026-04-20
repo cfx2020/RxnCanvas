@@ -11,9 +11,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ase import Atoms
+from ase.constraints import FixAtoms, FixBondLengths
 from ase.io import write
 
 from mlrxn_workflow.cli import main
+from mlrxn_workflow.constraints import build_constraints
+from mlrxn_workflow.model import ConstraintSpec, ScanCoordinate
 
 
 def write_yaml(tmpdir: Path, content: str) -> Path:
@@ -33,6 +36,18 @@ class ScanExecutionTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tmpdir_ctx.cleanup()
+
+    def test_distance_constraints_raise_fix_bond_lengths_iteration_budget(self) -> None:
+        constraints = build_constraints(
+            coordinate=ScanCoordinate(type="distance", atoms=[1, 2], start=1.1, stop=1.1, steps=2),
+            auxiliary_constraints=[ConstraintSpec(type="freeze_atoms", atoms=[1], value=None)],
+        )
+
+        self.assertEqual(len(constraints), 2)
+        self.assertIsInstance(constraints[0], FixAtoms)
+        self.assertIsInstance(constraints[1], FixBondLengths)
+        self.assertEqual(constraints[1].pairs.tolist(), [[0, 1]])
+        self.assertEqual(constraints[1].maxiter, 5000)
 
     def test_scan_writes_trajectory_energy_table_and_ts_like_candidate(self) -> None:
         config_path = write_yaml(
