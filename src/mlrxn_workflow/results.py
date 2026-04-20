@@ -61,6 +61,15 @@ def write_energy_table(path: Path, energies: list[float]) -> None:
             writer.writerow([index, f"{energy:.16f}"])
 
 
+def write_scan_energy_table(path: Path, coordinates: list[float], energies: list[float]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["step", "coordinate_value", "energy"])
+        for index, (coordinate_value, energy) in enumerate(zip(coordinates, energies, strict=True)):
+            writer.writerow([index, f"{coordinate_value:.16f}", f"{energy:.16f}"])
+
+
 def write_metadata(path: Path, metadata: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:

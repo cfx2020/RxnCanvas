@@ -6,11 +6,14 @@ from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
 
+import numpy as np
+from ase.calculators.singlepoint import SinglePointCalculator
 from ase.io import read
 from ase.optimize import LBFGS
 
 from .calculators.base import merge_task_settings
 from .calculators.factory import build_calculator
+from .constraints import apply_internal_value, build_constraints
 from .errors import WorkflowConfigError
 from .model import StructureNode, TaskConfig, WorkflowConfig
 from .paths import task_dir
@@ -21,6 +24,7 @@ from .results import (
     write_atoms,
     write_energy_table,
     write_metadata,
+    write_scan_energy_table,
     write_trajectory_xyz,
 )
 
@@ -62,6 +66,9 @@ def task_dependencies(task: TaskConfig, task_ids: set[str]) -> list[str]:
 def dispatch_task(config: WorkflowConfig, task: TaskConfig) -> None:
     if task.type == "geomopt":
         run_geomopt(config, task)
+        return
+    if task.type == "scan":
+        run_scan(config, task)
         return
     raise NotImplementedError(f"Task type '{task.type}' is not implemented yet.")
 
@@ -133,6 +140,111 @@ def run_geomopt(config: WorkflowConfig, task: TaskConfig) -> None:
             "summary": {
                 "steps": len(energies),
                 "final_energy": energies[-1],
+            },
+        },
+    )
+
+
+def run_scan(config: WorkflowConfig, task: TaskConfig) -> None:
+    atoms, explicit_node = load_task_input_atoms(config, task.input)
+    if explicit_node is None:
+        explicit_node = StructureNode(
+            id=task.input,
+            path=str(task_dir(config, task.input) / "result.xyz"),
+            charge=int(atoms.info["charge"]),
+            multiplicity=int(atoms.info["multiplicity"]),
+        )
+    settings = merge_task_settings(config.defaults, task, explicit_node)
+
+    coordinate = task.coordinate
+    assert coordinate is not None
+    coordinate_values = np.linspace(coordinate.start, coordinate.stop, coordinate.steps).tolist()
+
+    output_dir = task_dir(config, task.id)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    scanned_frames = []
+    energies = []
+    current_atoms = atoms.copy()
+    current_atoms.info["charge"] = settings.charge
+    current_atoms.info["multiplicity"] = settings.multiplicity
+
+    for value in coordinate_values:
+        working_atoms = current_atoms.copy()
+        apply_internal_value(working_atoms, coordinate.type, coordinate.atoms, value)
+        for constraint in task.constraints:
+            if constraint.type != "freeze_atoms":
+                apply_internal_value(working_atoms, constraint.type, constraint.atoms, constraint.value)
+        working_atoms.set_constraint(
+            build_constraints(
+                coordinate=type(coordinate)(
+                    type=coordinate.type,
+                    atoms=coordinate.atoms,
+                    start=value,
+                    stop=value,
+                    steps=coordinate.steps,
+                ),
+                auxiliary_constraints=task.constraints,
+            )
+        )
+        working_atoms.calc = build_calculator(config, task, explicit_node)
+        optimizer = LBFGS(working_atoms, logfile=None)
+        optimizer.run(fmax=settings.fmax, steps=settings.max_steps)
+        energy = working_atoms.get_potential_energy()
+        forces = working_atoms.get_forces()
+        snapshot = working_atoms.copy()
+        snapshot.calc = SinglePointCalculator(snapshot, energy=energy, forces=forces)
+        scanned_frames.append(snapshot)
+        energies.append(energy)
+        current_atoms = snapshot.copy()
+
+    peak_index = max(range(len(energies)), key=energies.__getitem__)
+    final_atoms = scanned_frames[-1]
+    ts_like_atoms = scanned_frames[peak_index]
+
+    result_structure = output_dir / "result.xyz"
+    trajectory_xyz = output_dir / "trajectory.xyz"
+    energy_table = output_dir / "energies.csv"
+    metadata_path = output_dir / "metadata.json"
+    ts_like_path = output_dir / "ts_like.xyz"
+
+    write_atoms(result_structure, final_atoms)
+    write_trajectory_xyz(trajectory_xyz, scanned_frames)
+    write_scan_energy_table(energy_table, coordinate_values, energies)
+    write_atoms(ts_like_path, ts_like_atoms)
+    write_metadata(
+        metadata_path,
+        {
+            "task": {"id": task.id, "type": task.type, "input": task.input},
+            "settings": asdict(settings),
+            "scan": {
+                "coordinate": {
+                    "type": coordinate.type,
+                    "atoms": coordinate.atoms,
+                    "start": coordinate.start,
+                    "stop": coordinate.stop,
+                    "steps": coordinate.steps,
+                },
+                "constraints": [
+                    {"type": item.type, "atoms": item.atoms, "value": item.value}
+                    for item in task.constraints
+                ],
+            },
+            "source": {
+                "input_id": task.input,
+                "input_path": str(resolve_structure_path(config, explicit_node)),
+            },
+            "artifacts": {
+                "result_structure": str(result_structure),
+                "trajectory": str(trajectory_xyz),
+                "energy_table": str(energy_table),
+                "ts_like_structure": str(ts_like_path),
+            },
+            "summary": {
+                "steps": len(energies),
+                "final_energy": energies[-1],
+                "peak_index": peak_index,
+                "peak_energy": energies[peak_index],
+                "peak_coordinate": coordinate_values[peak_index],
             },
         },
     )
