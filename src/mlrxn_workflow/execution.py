@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 from ase.calculators.singlepoint import SinglePointCalculator
 from ase.io import read
+from ase.mep import NEB
 from ase.optimize import LBFGS
 
 from .calculators.base import merge_task_settings
@@ -24,6 +25,7 @@ from .results import (
     write_atoms,
     write_energy_table,
     write_metadata,
+    write_path_energy_table,
     write_scan_energy_table,
     write_trajectory_xyz,
 )
@@ -69,6 +71,9 @@ def dispatch_task(config: WorkflowConfig, task: TaskConfig) -> None:
         return
     if task.type == "scan":
         run_scan(config, task)
+        return
+    if task.type == "neb":
+        run_neb(config, task)
         return
     raise NotImplementedError(f"Task type '{task.type}' is not implemented yet.")
 
@@ -250,6 +255,98 @@ def run_scan(config: WorkflowConfig, task: TaskConfig) -> None:
     )
 
 
+def run_neb(config: WorkflowConfig, task: TaskConfig) -> None:
+    initial_atoms, initial_node = load_task_input_atoms(config, task.initial)
+    final_atoms, _ = load_task_input_atoms(config, task.final)
+    if initial_node is None:
+        initial_node = StructureNode(
+            id=task.initial,
+            path=str(task_dir(config, task.initial) / "result.xyz"),
+            charge=int(initial_atoms.info["charge"]),
+            multiplicity=int(initial_atoms.info["multiplicity"]),
+        )
+    settings = merge_task_settings(config.defaults, task, initial_node)
+
+    images = [initial_atoms.copy()]
+    for _ in range(task.images):
+        image = initial_atoms.copy()
+        image.info["charge"] = settings.charge
+        image.info["multiplicity"] = settings.multiplicity
+        images.append(image)
+    final_copy = final_atoms.copy()
+    final_copy.info["charge"] = settings.charge
+    final_copy.info["multiplicity"] = settings.multiplicity
+    images.append(final_copy)
+
+    for image in images:
+        image.calc = build_calculator(config, task, initial_node)
+
+    band = NEB(images, method="improvedtangent")
+    band.interpolate()
+
+    optimizer = LBFGS(band, logfile=None)
+    optimizer.run(fmax=settings.fmax, steps=settings.max_steps)
+
+    snapped_images = []
+    energies = []
+    for image in images:
+        energy = image.get_potential_energy()
+        forces = image.get_forces()
+        snapshot = image.copy()
+        snapshot.calc = SinglePointCalculator(snapshot, energy=energy, forces=forces)
+        snapped_images.append(snapshot)
+        energies.append(energy)
+
+    path_positions = cumulative_path_positions(snapped_images)
+    peak_index = max(range(len(energies)), key=energies.__getitem__)
+    ts_like_atoms = snapped_images[peak_index]
+
+    output_dir = task_dir(config, task.id)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    result_structure = output_dir / "result.xyz"
+    trajectory_xyz = output_dir / "trajectory.xyz"
+    energy_table = output_dir / "energies.csv"
+    metadata_path = output_dir / "metadata.json"
+    ts_like_path = output_dir / "ts_like.xyz"
+
+    write_atoms(result_structure, ts_like_atoms)
+    write_trajectory_xyz(trajectory_xyz, snapped_images)
+    write_path_energy_table(energy_table, path_positions, energies)
+    write_atoms(ts_like_path, ts_like_atoms)
+    write_metadata(
+        metadata_path,
+        {
+            "task": {
+                "id": task.id,
+                "type": task.type,
+                "initial": task.initial,
+                "final": task.final,
+            },
+            "settings": asdict(settings),
+            "neb": {
+                "images": task.images,
+            },
+            "source": {
+                "initial_id": task.initial,
+                "final_id": task.final,
+                "initial_path": str(resolve_structure_path(config, initial_node)),
+            },
+            "artifacts": {
+                "result_structure": str(result_structure),
+                "trajectory": str(trajectory_xyz),
+                "energy_table": str(energy_table),
+                "ts_like_structure": str(ts_like_path),
+            },
+            "summary": {
+                "images": len(energies),
+                "peak_index": peak_index,
+                "peak_energy": energies[peak_index],
+                "peak_path_position": path_positions[peak_index],
+            },
+        },
+    )
+
+
 def _ordered_unique(values: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     ordered: list[str] = []
@@ -258,3 +355,11 @@ def _ordered_unique(values: Iterable[str]) -> list[str]:
             ordered.append(value)
             seen.add(value)
     return ordered
+
+
+def cumulative_path_positions(images) -> list[float]:
+    positions = [0.0]
+    for previous, current in zip(images, images[1:], strict=False):
+        delta = current.get_positions() - previous.get_positions()
+        positions.append(positions[-1] + float(np.linalg.norm(delta)))
+    return positions
