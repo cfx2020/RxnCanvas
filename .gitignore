@@ -2,5 +2,6 @@
 __pycache__/
 .pytest_cache/
 *.pyc
+*.egg-info/
 runs/
 reports/

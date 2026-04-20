@@ -8,6 +8,7 @@ from dataclasses import asdict
 
 from .config import load_workflow_config
 from .errors import WorkflowConfigError
+from .execution import run_workflow
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,7 +45,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run":
-        raise NotImplementedError("Workflow execution is not implemented yet.")
+        completed = run_workflow(config, selected_task_ids=args.tasks)
+        print(json.dumps({"completed_tasks": completed}, indent=2))
+        return 0
 
     if args.command == "report":
         raise NotImplementedError("Report generation is not implemented yet.")

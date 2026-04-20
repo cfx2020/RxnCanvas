@@ -84,10 +84,10 @@ class CalculatorTests(unittest.TestCase):
             )
         )
         calculator = build_calculator(config, config.tasks[0], config.nodes[0])
-        self.assertEqual(calculator.backend, "fake")
-        self.assertEqual(calculator.model, "uma-s-1p1")
-        self.assertEqual(calculator.charge, 0)
-        self.assertEqual(calculator.multiplicity, 1)
+        self.assertEqual(calculator.settings.backend, "fake")
+        self.assertEqual(calculator.settings.model, "uma-s-1p1")
+        self.assertEqual(calculator.settings.charge, 0)
+        self.assertEqual(calculator.settings.multiplicity, 1)
 
 
 if __name__ == "__main__":
