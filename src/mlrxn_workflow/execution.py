@@ -19,6 +19,7 @@ from .errors import WorkflowConfigError
 from .model import StructureNode, TaskConfig, WorkflowConfig
 from .paths import task_dir
 from .results import (
+    apply_charge_multiplicity,
     load_atoms_from_node,
     load_atoms_from_task_result,
     resolve_structure_path,
@@ -104,8 +105,7 @@ def run_geomopt(config: WorkflowConfig, task: TaskConfig) -> None:
             multiplicity=int(atoms.info["multiplicity"]),
         )
     settings = merge_task_settings(config.defaults, task, explicit_node)
-    atoms.info["charge"] = settings.charge
-    atoms.info["multiplicity"] = settings.multiplicity
+    apply_charge_multiplicity(atoms, settings.charge, settings.multiplicity)
     atoms.calc = build_calculator(config, task, explicit_node)
 
     output_dir = task_dir(config, task.id)
@@ -171,8 +171,7 @@ def run_scan(config: WorkflowConfig, task: TaskConfig) -> None:
     scanned_frames = []
     energies = []
     current_atoms = atoms.copy()
-    current_atoms.info["charge"] = settings.charge
-    current_atoms.info["multiplicity"] = settings.multiplicity
+    apply_charge_multiplicity(current_atoms, settings.charge, settings.multiplicity)
 
     for value in coordinate_values:
         working_atoms = current_atoms.copy()
@@ -271,12 +270,10 @@ def run_neb(config: WorkflowConfig, task: TaskConfig) -> None:
     images = [initial_atoms.copy()]
     for _ in range(task.images):
         image = initial_atoms.copy()
-        image.info["charge"] = settings.charge
-        image.info["multiplicity"] = settings.multiplicity
+        apply_charge_multiplicity(image, settings.charge, settings.multiplicity)
         images.append(image)
     final_copy = final_atoms.copy()
-    final_copy.info["charge"] = settings.charge
-    final_copy.info["multiplicity"] = settings.multiplicity
+    apply_charge_multiplicity(final_copy, settings.charge, settings.multiplicity)
     images.append(final_copy)
 
     for image in images:

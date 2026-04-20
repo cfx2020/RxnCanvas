@@ -21,20 +21,27 @@ def resolve_structure_path(config: WorkflowConfig, node: StructureNode) -> Path:
     return path
 
 
+def apply_charge_multiplicity(atoms: Atoms, charge: int, multiplicity: int) -> Atoms:
+    atoms.info["charge"] = int(charge)
+    atoms.info["multiplicity"] = int(multiplicity)
+    atoms.info["spin"] = int(multiplicity)
+    return atoms
+
+
 def load_atoms_from_node(config: WorkflowConfig, node: StructureNode) -> Atoms:
     atoms = read(resolve_structure_path(config, node))
-    atoms.info["charge"] = node.charge
-    atoms.info["multiplicity"] = node.multiplicity
-    return atoms
+    return apply_charge_multiplicity(atoms, node.charge, node.multiplicity)
 
 
 def load_atoms_from_task_result(config: WorkflowConfig, task_id: str) -> Atoms:
     metadata = load_task_metadata(config, task_id)
     result_path = Path(metadata["artifacts"]["result_structure"])
     atoms = read(result_path)
-    atoms.info["charge"] = metadata["settings"]["charge"]
-    atoms.info["multiplicity"] = metadata["settings"]["multiplicity"]
-    return atoms
+    return apply_charge_multiplicity(
+        atoms,
+        metadata["settings"]["charge"],
+        metadata["settings"]["multiplicity"],
+    )
 
 
 def load_task_metadata(config: WorkflowConfig, task_id: str) -> dict:
