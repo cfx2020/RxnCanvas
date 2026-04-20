@@ -15,7 +15,15 @@ def workflow_root(config: WorkflowConfig) -> Path:
 
 
 def runs_root(config: WorkflowConfig) -> Path:
-    return workflow_root(config) / "runs" / "tasks"
+    return workflow_root(config) / "runs"
+
+
+def tasks_root(config: WorkflowConfig) -> Path:
+    return runs_root(config) / "tasks"
+
+
+def inputs_root(config: WorkflowConfig) -> Path:
+    return runs_root(config) / "inputs"
 
 
 def reports_root(config: WorkflowConfig) -> Path:
@@ -23,4 +31,4 @@ def reports_root(config: WorkflowConfig) -> Path:
 
 
 def task_dir(config: WorkflowConfig, task_id: str) -> Path:
-    return runs_root(config) / task_id
+    return tasks_root(config) / task_id

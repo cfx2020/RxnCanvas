@@ -9,6 +9,7 @@ from dataclasses import asdict
 from .config import load_workflow_config
 from .errors import WorkflowConfigError
 from .execution import run_workflow
+from .reporting import generate_report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,7 +51,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "report":
-        raise NotImplementedError("Report generation is not implemented yet.")
+        report_dir = generate_report(config, reference_override=args.reference)
+        print(json.dumps({"report_dir": str(report_dir)}, indent=2))
+        return 0
 
     parser.error(f"Unknown command: {args.command}")
     return 2

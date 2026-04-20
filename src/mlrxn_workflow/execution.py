@@ -32,6 +32,7 @@ from .results import (
 
 
 def run_workflow(config: WorkflowConfig, selected_task_ids: list[str] | None = None) -> list[str]:
+    cache_declared_inputs(config)
     tasks = tasks_to_run(config, selected_task_ids)
     completed: list[str] = []
     for task in tasks:
@@ -363,3 +364,36 @@ def cumulative_path_positions(images) -> list[float]:
         delta = current.get_positions() - previous.get_positions()
         positions.append(positions[-1] + float(np.linalg.norm(delta)))
     return positions
+
+
+def cache_declared_inputs(config: WorkflowConfig) -> None:
+    from .calculators.base import CalculatorSettings
+    from .calculators.factory import get_backend
+    from .paths import inputs_root
+
+    for node in config.references + config.nodes:
+        output_dir = inputs_root(config) / node.id
+        metadata_path = output_dir / "metadata.json"
+        if metadata_path.exists():
+            continue
+        atoms = load_atoms_from_node(config, node)
+        settings = CalculatorSettings(
+            backend=config.defaults.backend,
+            model=config.defaults.model,
+            device=config.defaults.device,
+            task_name=config.defaults.task_name,
+            charge=node.charge,
+            multiplicity=node.multiplicity,
+        )
+        atoms.calc = get_backend(settings.backend).build(settings)
+        energy = atoms.get_potential_energy()
+        write_metadata(
+            metadata_path,
+            {
+                "id": node.id,
+                "kind": "declared_input",
+                "source_path": str(resolve_structure_path(config, node)),
+                "settings": asdict(settings),
+                "summary": {"energy": energy},
+            },
+        )
