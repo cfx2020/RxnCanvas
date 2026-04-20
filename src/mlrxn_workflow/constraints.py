@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ase import Atoms
-from ase.constraints import FixAtoms, FixBondLengths, FixInternals
+from ase.constraints import FixAtoms, FixInternals
 
 from .model import ConstraintSpec, ScanCoordinate
 
@@ -48,13 +48,10 @@ def build_constraints(
     constraints = []
     if freeze_indices:
         constraints.append(FixAtoms(indices=sorted(set(freeze_indices))))
-    if fixed_bonds:
-        bond_constraint = FixBondLengths(fixed_bonds)
-        bond_constraint.maxiter = 5000
-        constraints.append(bond_constraint)
-    if angles or dihedrals:
+    if fixed_bonds or angles or dihedrals:
         constraints.append(
             FixInternals(
+                bonds=fixed_bonds or None,
                 angles_deg=angles or None,
                 dihedrals_deg=dihedrals or None,
             )
@@ -79,7 +76,7 @@ def apply_internal_value(atoms: Atoms, kind: str, atom_indices: list[int], value
 def _append_internal_constraint(kind, indices, value, fixed_bonds, angles, dihedrals) -> None:
     entry = [float(value), indices]
     if kind == "distance":
-        fixed_bonds.append(indices)
+        fixed_bonds.append(entry)
         return
     if kind == "angle":
         angles.append(entry)

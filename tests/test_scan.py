@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ase import Atoms
-from ase.constraints import FixAtoms, FixBondLengths
+from ase.constraints import FixAtoms, FixInternals
 from ase.io import write
 
 from mlrxn_workflow.cli import main
@@ -31,13 +31,20 @@ class ScanExecutionTests(unittest.TestCase):
         self.tmpdir = Path(self.tmpdir_ctx.name)
         structures = self.tmpdir / "structures"
         structures.mkdir()
-        atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+        atoms = Atoms(
+            "H3",
+            positions=[
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+        )
         write(structures / "im1.xyz", atoms)
 
     def tearDown(self) -> None:
         self.tmpdir_ctx.cleanup()
 
-    def test_distance_constraints_raise_fix_bond_lengths_iteration_budget(self) -> None:
+    def test_distance_constraints_use_fix_internals(self) -> None:
         constraints = build_constraints(
             coordinate=ScanCoordinate(type="distance", atoms=[1, 2], start=1.1, stop=1.1, steps=2),
             auxiliary_constraints=[ConstraintSpec(type="freeze_atoms", atoms=[1], value=None)],
@@ -45,9 +52,8 @@ class ScanExecutionTests(unittest.TestCase):
 
         self.assertEqual(len(constraints), 2)
         self.assertIsInstance(constraints[0], FixAtoms)
-        self.assertIsInstance(constraints[1], FixBondLengths)
-        self.assertEqual(constraints[1].pairs.tolist(), [[0, 1]])
-        self.assertEqual(constraints[1].maxiter, 5000)
+        self.assertIsInstance(constraints[1], FixInternals)
+        self.assertEqual(constraints[1].bonds, [[1.1, [0, 1]]])
 
     def test_scan_writes_trajectory_energy_table_and_ts_like_candidate(self) -> None:
         config_path = write_yaml(

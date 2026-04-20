@@ -28,9 +28,12 @@ class ReportingTests(unittest.TestCase):
         self.tmpdir = Path(self.tmpdir_ctx.name)
         structures = self.tmpdir / "structures"
         structures.mkdir()
-        write(structures / "ref0.xyz", Atoms("H2", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]))
-        write(structures / "ref_alt.xyz", Atoms("H2", positions=[[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]))
-        write(structures / "initial.xyz", Atoms("H2", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]))
+        ref0 = Atoms("H3", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        ref_alt = Atoms("H3", positions=[[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        initial = Atoms("H3", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        write(structures / "ref0.xyz", ref0)
+        write(structures / "ref_alt.xyz", ref_alt)
+        write(structures / "initial.xyz", initial)
 
     def tearDown(self) -> None:
         self.tmpdir_ctx.cleanup()
