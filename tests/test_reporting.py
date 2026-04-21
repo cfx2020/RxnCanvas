@@ -125,6 +125,83 @@ class ReportingTests(unittest.TestCase):
         metadata_mtime_after = task_metadata.stat().st_mtime
         self.assertEqual(metadata_mtime_before, metadata_mtime_after)
 
+    def test_report_populates_new_reference_cache_on_demand(self) -> None:
+        run_config_path = write_yaml(
+            self.tmpdir,
+            """
+            defaults:
+              backend: fake
+              model: fake-distance-barrier
+              device: cpu
+              fmax: 0.001
+              max_steps: 25
+              output_root: .
+            references:
+              - id: ref0
+                path: ./structures/ref0.xyz
+                charge: 0
+                multiplicity: 1
+            nodes:
+              - id: initial
+                path: ./structures/initial.xyz
+                charge: 0
+                multiplicity: 1
+            tasks:
+              - id: opt_shared
+                type: geomopt
+                input: initial
+            report:
+              id: cache_fill_report
+              reference: ref0
+              branches:
+                - id: branch_a
+                  tasks: [opt_shared]
+            """,
+        )
+
+        self.assertEqual(main(["run", str(run_config_path)]), 0)
+        self.assertFalse((self.tmpdir / "runs" / "inputs" / "ref_new" / "metadata.json").exists())
+
+        report_config_path = self.tmpdir / "report-workflow.yaml"
+        report_config_path.write_text(
+            textwrap.dedent(
+                """
+                defaults:
+                  backend: fake
+                  model: fake-distance-barrier
+                  device: cpu
+                  fmax: 0.001
+                  max_steps: 25
+                  output_root: .
+                references:
+                  - id: ref_new
+                    path: ./structures/ref_alt.xyz
+                    charge: 0
+                    multiplicity: 1
+                nodes:
+                  - id: initial
+                    path: ./structures/initial.xyz
+                    charge: 0
+                    multiplicity: 1
+                tasks:
+                  - id: opt_shared
+                    type: geomopt
+                    input: initial
+                report:
+                  id: cache_fill_report
+                  reference: ref_new
+                  branches:
+                    - id: branch_a
+                      tasks: [opt_shared]
+                """
+            ),
+            encoding="utf-8",
+        )
+
+        self.assertEqual(main(["report", str(report_config_path)]), 0)
+        self.assertTrue((self.tmpdir / "runs" / "inputs" / "ref_new" / "metadata.json").exists())
+        self.assertTrue((self.tmpdir / "reports" / "cache_fill_report" / "summary.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

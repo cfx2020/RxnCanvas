@@ -11,6 +11,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from .execution import cache_declared_inputs
 from .errors import WorkflowConfigError
 from .model import BranchSpec, WorkflowConfig
 from .paths import reports_root
@@ -18,6 +19,7 @@ from .results import copy_structure, load_input_metadata, load_task_metadata, wr
 
 
 def generate_report(config: WorkflowConfig, reference_override: str | None = None) -> Path:
+    cache_declared_inputs(config)
     report_id = config.report.id
     output_dir = reports_root(config) / report_id
     output_dir.mkdir(parents=True, exist_ok=True)
