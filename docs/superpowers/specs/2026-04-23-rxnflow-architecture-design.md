@@ -1,18 +1,18 @@
-# ML Reaction Workflow Architecture Design
+# RxnFlow Architecture Design
 
 Date: 2026-04-23
 Status: Approved for planning
-Scope: Backend/service layer plus task-index-report data model. Frontend UI is intentionally out of scope for v1 implementation.
+Scope: Backend/service layer plus task-database-report data model. Frontend UI is intentionally out of scope for v1 implementation.
 
 ## Summary
 
-This design reshapes `mlrxn-workflow` into a workflow-first chemistry system with three fixed project areas:
+This design defines `RxnFlow` as a workflow-first chemistry system with three fixed project areas:
 
 - `task/`: one self-contained task work directory per job
 - `report/`: user-authored mechanism/network composition plus rendered PES artifacts
-- `index/`: SQLite-backed source of truth for registered geometries, calculations, provenance, and report bindings
+- `database/`: SQLite-backed source of truth for registered geometries, calculations, provenance, and report bindings
 
-The v1 system does not treat task outputs as automatically reportable chemistry objects. Tasks only generate task-local raw working files. A separate `register-result` action parses either task outputs or external files such as Gaussian/ORCA results, normalizes the selected result, freezes a copy under `index/`, and writes `node + calculation + result_record` into `index/project.sqlite`.
+The v1 system does not treat task outputs as automatically reportable chemistry objects. Tasks only generate task-local raw working files. A separate `register-result` action parses either task outputs or external files such as Gaussian/ORCA results, normalizes the selected result, freezes a copy under `database/`, and writes `node + calculation + result_record` into `database/project.sqlite`.
 
 ## Goals
 
@@ -29,7 +29,7 @@ The v1 system does not treat task outputs as automatically reportable chemistry 
 - No v1 frontend implementation.
 - No v1 automatic mechanism discovery or agent-like task planning.
 - No v1 automatic geometry matching against existing nodes.
-- No v1 automatic registration of task outputs into the index.
+- No v1 automatic registration of task outputs into the database.
 - No v1 task bundles as a first-class storage model.
 - No v1 task-status or rerun lifecycle manager.
 - No v1 raw task files used directly by report rendering.
@@ -39,17 +39,17 @@ The v1 system does not treat task outputs as automatically reportable chemistry 
 This design uses a moderate refactor rather than a full rewrite.
 
 - Keep the repository and reusable execution logic for `geomopt`, `scan`, `neb`, and related tests.
-- Replace the current direct `task artifact -> report` flow with `task -> register-result -> index -> report`.
+- Replace the current direct `task artifact -> report` flow with `task -> register-result -> database -> report`.
 - Replace the current in-process UMA default with a service-client abstraction.
 - Keep the CLI workflow-first and explicit.
 
 ## Core Principles
 
 1. Tasks are working directories, not report objects.
-2. Registered results are the only chemistry objects that enter the index.
+2. Registered results are the only chemistry objects that enter the database.
 3. Geometry and calculation remain separate concepts.
 4. Reports compose registered calculations into user-defined mechanism networks.
-5. Raw files remain in task directories; normalized frozen copies live under `index/`.
+5. Raw files remain in task directories; normalized frozen copies live under `database/`.
 6. All joins that could be chemically ambiguous are explicit, not guessed.
 
 ## Architecture Diagram
@@ -59,12 +59,12 @@ flowchart LR
     subgraph TaskProject["Project Workspace"]
         TaskDir["task/<task-id>/\ntask.yaml\ninput.xyz\nraw run files"]
         ReportDir["report/<report-id>/\nreport.yaml\nnetwork.json\npes.png\npes.cdxml"]
-        IndexDir["index/\nproject.sqlite\nstore/"]
+        DatabaseDir["database/\nproject.sqlite\nobjects/"]
     end
 
     RunTask["run-task\nexecute one independent task"]
     Register["register-result\nparse selected task result\nor external program output"]
-    Render["render-report\nrender network from indexed calculations"]
+    Render["render-report\nrender network from registered calculations"]
 
     TaskEngine["Task Engine\ngeomopt / scan / neb / ts"]
     Client["UMA Service Client"]
@@ -79,21 +79,21 @@ flowchart LR
 
     TaskDir --> Register
     External --> Register
-    Register --> IndexDir
+    Register --> DatabaseDir
 
     ReportDir --> Render
-    IndexDir --> Render
+    DatabaseDir --> Render
 
-    IndexDir -. stores .-> NodeCalc["node + calculation + result_record"]
+    DatabaseDir -. stores .-> NodeCalc["node + calculation + result_record"]
     NodeCalc -. binds into .-> ReportModel["report_site + report_edge + report_point_binding"]
     ReportModel -. materialized in .-> ReportDir
 ```
 
 Diagram notes:
 
-- `run-task` only produces task-local files and does not automatically write chemistry objects into the index.
-- `register-result` is the only entry point for turning task outputs or external program outputs into indexed chemistry objects.
-- `report/` reads indexed results only and never depends directly on raw task files.
+- `run-task` only produces task-local files and does not automatically write chemistry objects into the database.
+- `register-result` is the only entry point for turning task outputs or external program outputs into registered chemistry objects in the database.
+- `report/` reads database-backed registered results only and never depends directly on raw task files.
 - The UMA execution path defaults to a machine-level shared service but can switch to a project-local isolated service when explicitly requested.
 
 ## Project Layout
@@ -118,9 +118,9 @@ project/
       network.json
       pes.cdxml
       pes.png
-  index/
+  database/
     project.sqlite
-    store/
+    objects/
       results/
         rr_0001/
           node.xyz
@@ -132,7 +132,7 @@ Design notes:
 - Each task directory is flat by default.
 - Subdirectories inside a task directory are allowed only when a task naturally produces grouped outputs such as NEB images.
 - The task directory holds user input and raw runtime outputs together.
-- `index/store/` holds frozen normalized copies created only at registration time.
+- `database/objects/` holds frozen normalized copies created only at registration time.
 - `report/` holds user-authored report definitions plus rendered output artifacts.
 
 ## Service Layer
@@ -196,7 +196,7 @@ Minimum task inputs:
 
 ### Task Outputs
 
-`run-task` writes only task-local runtime files. It does not create report-ready normalized outputs in the index.
+`run-task` writes only task-local runtime files. It does not create report-ready normalized outputs in the database.
 
 Typical task files may include:
 
@@ -229,7 +229,7 @@ The expected user flow is to manually create a task directory, place `input.xyz`
 
 ### Why Registration Is Separate
 
-Task outputs and external files should be treated the same way from the index's perspective: both are just sources of chemistry results that must be normalized before entering the source of truth.
+Task outputs and external files should be treated the same way from the database's perspective: both are just sources of chemistry results that must be normalized before entering the source of truth.
 
 ### Single Registration Command
 
@@ -252,7 +252,7 @@ It accepts different source adapters:
 2. Parse task-specific or program-specific raw outputs.
 3. Select one explicit candidate result.
 4. Normalize the chosen structure and chemistry metadata.
-5. Freeze a copy under `index/store/results/<result-record-id>/`.
+5. Freeze a copy under `database/objects/results/<result-record-id>/`.
 6. Insert `result_record`, `node`, and `calculation` rows into `project.sqlite`.
 
 ### Registration Granularity
@@ -263,7 +263,7 @@ Default registration unit:
 
 - `node + calculation`
 
-This means v1 does not support inserting a geometry-only node into the index.
+This means v1 does not support inserting a geometry-only node into the database.
 
 ### Candidate Selection
 
@@ -275,7 +275,7 @@ Examples of valid explicit candidates:
 - `peak`
 - `image_07`
 
-This keeps the index clean and avoids filling it with intermediate search artifacts that were never intended for PES comparison.
+This keeps the database clean and avoids filling it with intermediate search artifacts that were never intended for PES comparison.
 
 ## Node and Calculation Model
 
@@ -288,7 +288,7 @@ Properties:
 - one actual structure snapshot
 - charge and multiplicity metadata
 - origin kind such as task-derived or external import
-- frozen structure path under `index/store/`
+- frozen structure path under `database/objects/`
 
 Rule:
 
@@ -329,11 +329,11 @@ Use cases:
 - final structure from optimization: usually `--new-node`
 - single-point or frequency on an already known geometry: usually `--attach-node`
 
-## Index Schema
+## Database Schema
 
 ### Source of Truth
 
-`index/project.sqlite` is the only source of truth for registered chemistry objects and report bindings.
+`database/project.sqlite` is the only source of truth for registered chemistry objects and report bindings.
 
 ### Core Tables
 
@@ -403,13 +403,13 @@ Representative fields:
 
 ### Frozen Store
 
-At registration time, the workflow creates immutable normalized artifacts under `index/store/`.
+At registration time, the workflow creates immutable normalized artifacts under `database/objects/`.
 
 Reasons:
 
 - reports and report bindings do not depend on later edits to task directories
 - external source files can move without invalidating previously registered results
-- deletion and replacement become clean index operations
+- deletion and replacement become clean database operations
 
 SQLite stores:
 
@@ -477,7 +477,7 @@ This keeps the stored model expressive without forcing one rigid visualization m
 - `pes.png`
 - `pes.cdxml`
 
-The report renderer never reads raw task files directly; it resolves everything through the index.
+The report renderer never reads raw task files directly; it resolves everything through the database.
 
 ## CLI Surface
 
@@ -587,7 +587,7 @@ The core object model is still the risky part. A premature UI would hard-code un
 
 The v1 backend should be shaped so a future report composer UI can:
 
-- browse nodes and calculations from the index
+- browse nodes and calculations from the database
 - inspect frozen structures and energy summaries
 - create and edit report sites
 - create and edit report edges
@@ -598,7 +598,7 @@ The v1 backend should be shaped so a future report composer UI can:
 
 When the data model stabilizes, the first useful UI should focus on report composition:
 
-- browse index objects
+- browse database objects
 - drag or select report sites
 - connect branch edges
 - switch site bindings
@@ -612,21 +612,21 @@ Implementation should proceed in the following order:
 
 1. introduce the UMA service-client boundary
 2. refactor task execution to stop treating task outputs as report-ready
-3. add SQLite index plus frozen store
+3. add SQLite database plus frozen objects store
 4. implement unified `register-result`
-5. refactor report generation to consume index records only
+5. refactor report generation to consume database records only
 6. add validation and deletion flows
 7. expose frontend-ready query/mutation contracts without building the UI yet
 
 ## Accepted Decisions From Design Review
 
-- scope is backend/service plus task-index-report model; frontend deferred
+- scope is backend/service plus task-database-report model; frontend deferred
 - shared machine-level UMA service is the default, project-local isolation is optional
 - tasks are one-folder-per-job with `task.yaml` plus `input.xyz`
 - no bundle-first workflow in v1
 - task outputs stay task-local and raw
-- `register-result` is the only path into the index for chemistry objects
-- registration freezes normalized copies under `index/`
+- `register-result` is the only path into the database for chemistry objects
+- registration freezes normalized copies under `database/`
 - geometry and calculation remain separate concepts
 - reports are branching networks with optional provenance on edges
 - scan/neb results are not auto-registered
