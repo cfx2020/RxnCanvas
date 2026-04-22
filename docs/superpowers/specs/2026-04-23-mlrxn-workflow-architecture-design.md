@@ -52,6 +52,50 @@ This design uses a moderate refactor rather than a full rewrite.
 5. Raw files remain in task directories; normalized frozen copies live under `index/`.
 6. All joins that could be chemically ambiguous are explicit, not guessed.
 
+## Architecture Diagram
+
+```mermaid
+flowchart LR
+    subgraph TaskProject["Project Workspace"]
+        TaskDir["task/<task-id>/\ntask.yaml\ninput.xyz\nraw run files"]
+        ReportDir["report/<report-id>/\nreport.yaml\nnetwork.json\npes.png\npes.cdxml"]
+        IndexDir["index/\nproject.sqlite\nstore/"]
+    end
+
+    RunTask["run-task\nexecute one independent task"]
+    Register["register-result\nparse selected task result\nor external program output"]
+    Render["render-report\nrender network from indexed calculations"]
+
+    TaskEngine["Task Engine\ngeomopt / scan / neb / ts"]
+    Client["UMA Service Client"]
+    SharedUMA["Shared UMA Service\nDefault: machine-level\nOptional: project-local isolated service"]
+
+    External["External Results\nGaussian / ORCA / other parsers"]
+
+    TaskDir --> RunTask
+    RunTask --> TaskEngine
+    TaskEngine --> Client
+    Client --> SharedUMA
+
+    TaskDir --> Register
+    External --> Register
+    Register --> IndexDir
+
+    ReportDir --> Render
+    IndexDir --> Render
+
+    IndexDir -. stores .-> NodeCalc["node + calculation + result_record"]
+    NodeCalc -. binds into .-> ReportModel["report_site + report_edge + report_point_binding"]
+    ReportModel -. materialized in .-> ReportDir
+```
+
+Diagram notes:
+
+- `run-task` only produces task-local files and does not automatically write chemistry objects into the index.
+- `register-result` is the only entry point for turning task outputs or external program outputs into indexed chemistry objects.
+- `report/` reads indexed results only and never depends directly on raw task files.
+- The UMA execution path defaults to a machine-level shared service but can switch to a project-local isolated service when explicitly requested.
+
 ## Project Layout
 
 ```text
