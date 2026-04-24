@@ -9,7 +9,7 @@ from dataclasses import asdict
 from .config import load_workflow_config
 from .errors import WorkflowConfigError
 from .execution import run_task_directory, run_workflow
-from .reporting import generate_report
+from .reporting import create_report, generate_report, rebind_report_site, render_report, validate_report
 from .registration import register_from_file, register_from_task
 from .task_config import load_task_directory
 
@@ -45,6 +45,20 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser = subparsers.add_parser("report", help="Regenerate reports from existing task artifacts")
     report_parser.add_argument("config", help="Path to workflow YAML")
     report_parser.add_argument("--reference", help="Override report zero-point reference id")
+
+    create_report_parser = subparsers.add_parser("create-report", help="Create one report directory")
+    create_report_parser.add_argument("report_dir")
+
+    validate_report_parser = subparsers.add_parser("validate-report", help="Validate one report directory")
+    validate_report_parser.add_argument("report_dir")
+
+    rebind_report_parser = subparsers.add_parser("rebind-report", help="Bind a report site to a calculation")
+    rebind_report_parser.add_argument("report_dir")
+    rebind_report_parser.add_argument("--site", required=True)
+    rebind_report_parser.add_argument("--calculation", required=True)
+
+    render_report_parser = subparsers.add_parser("render-report", help="Render one report directory")
+    render_report_parser.add_argument("report_dir")
     return parser
 
 
@@ -91,6 +105,38 @@ def main(argv: list[str] | None = None) -> int:
         except WorkflowConfigError as exc:
             parser.exit(2, f"Registration error: {exc}\n")
         print(json.dumps(asdict(registration), indent=2))
+        return 0
+
+    if args.command == "create-report":
+        try:
+            report_dir = create_report(args.report_dir)
+        except WorkflowConfigError as exc:
+            parser.exit(2, f"Report error: {exc}\n")
+        print(json.dumps({"report_dir": str(report_dir)}, indent=2))
+        return 0
+
+    if args.command == "rebind-report":
+        try:
+            rebind_report_site(args.report_dir, args.site, args.calculation)
+        except WorkflowConfigError as exc:
+            parser.exit(2, f"Report error: {exc}\n")
+        print(json.dumps({"report_dir": args.report_dir, "site": args.site, "calculation": args.calculation}, indent=2))
+        return 0
+
+    if args.command == "validate-report":
+        try:
+            report_config = validate_report(args.report_dir)
+        except WorkflowConfigError as exc:
+            parser.exit(2, f"Report error: {exc}\n")
+        print(json.dumps({"report_id": report_config.id, "report_dir": str(report_config.directory), "valid": True}, indent=2))
+        return 0
+
+    if args.command == "render-report":
+        try:
+            report_dir = render_report(args.report_dir)
+        except WorkflowConfigError as exc:
+            parser.exit(2, f"Report error: {exc}\n")
+        print(json.dumps({"report_dir": str(report_dir)}, indent=2))
         return 0
 
     try:
