@@ -75,7 +75,7 @@ SCHEMA_STATEMENTS = [
         binding_id text primary key,
         report_id text not null references report(report_id),
         site_id text not null references report_site(site_id),
-        calculation_id text not null references calculation(calculation_id),
+        calculation_id text not null,
         active integer not null check (active in (0, 1))
     )
     """,
@@ -116,3 +116,20 @@ def connect_project_database(db_path: str | Path) -> Iterator[sqlite3.Connection
         conn.commit()
     finally:
         conn.close()
+
+
+def delete_result(db_path: str | Path, result_record_id: str) -> None:
+    with connect_project_database(db_path) as conn:
+        rows = conn.execute(
+            "select calculation_id, node_id from calculation where result_record_id = ?",
+            (result_record_id,),
+        ).fetchall()
+        for calculation_id, node_id in rows:
+            conn.execute("delete from calculation where calculation_id = ?", (calculation_id,))
+            remaining = conn.execute(
+                "select count(*) from calculation where node_id = ?",
+                (node_id,),
+            ).fetchone()[0]
+            if remaining == 0:
+                conn.execute("delete from node where node_id = ?", (node_id,))
+        conn.execute("delete from result_record where result_record_id = ?", (result_record_id,))

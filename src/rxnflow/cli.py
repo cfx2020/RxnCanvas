@@ -5,10 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import asdict
+from pathlib import Path
 
 from .config import load_workflow_config
+from .database import delete_result
 from .errors import WorkflowConfigError
 from .execution import run_task_directory, run_workflow
+from .paths import database_path
 from .reporting import create_report, generate_report, rebind_report_site, render_report, validate_report
 from .registration import register_from_file, register_from_task
 from .task_config import load_task_directory
@@ -59,6 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     render_report_parser = subparsers.add_parser("render-report", help="Render one report directory")
     render_report_parser.add_argument("report_dir")
+
+    delete_parser = subparsers.add_parser("delete-result", help="Delete one registered result")
+    delete_parser.add_argument("project_root")
+    delete_parser.add_argument("result_record_id")
     return parser
 
 
@@ -137,6 +144,11 @@ def main(argv: list[str] | None = None) -> int:
         except WorkflowConfigError as exc:
             parser.exit(2, f"Report error: {exc}\n")
         print(json.dumps({"report_dir": str(report_dir)}, indent=2))
+        return 0
+
+    if args.command == "delete-result":
+        delete_result(database_path(Path(args.project_root)), args.result_record_id)
+        print(json.dumps({"deleted": args.result_record_id}, indent=2))
         return 0
 
     try:
