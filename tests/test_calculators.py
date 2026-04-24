@@ -8,9 +8,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from mlrxn_workflow.calculators.factory import build_calculator, get_backend, resolve_task_settings
-from mlrxn_workflow.config import load_workflow_config
-from mlrxn_workflow.errors import WorkflowConfigError
+from rxnflow.calculators.factory import build_calculator, get_backend, resolve_task_settings
+from rxnflow.config import load_workflow_config
+from rxnflow.errors import WorkflowConfigError
 
 
 def write_yaml(tmpdir: Path, content: str) -> Path:

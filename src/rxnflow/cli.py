@@ -13,7 +13,7 @@ from .reporting import generate_report
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="mlrxn", description="ML reaction workflow CLI")
+    parser = argparse.ArgumentParser(prog="rxnflow", description="RxnFlow workflow CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     validate_parser = subparsers.add_parser("validate", help="Validate a workflow YAML file")

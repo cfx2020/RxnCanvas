@@ -14,9 +14,9 @@ from ase import Atoms
 from ase.constraints import FixAtoms, FixInternals
 from ase.io import write
 
-from mlrxn_workflow.cli import main
-from mlrxn_workflow.constraints import build_constraints
-from mlrxn_workflow.model import ConstraintSpec, ScanCoordinate
+from rxnflow.cli import main
+from rxnflow.constraints import build_constraints
+from rxnflow.model import ConstraintSpec, ScanCoordinate
 
 
 def write_yaml(tmpdir: Path, content: str) -> Path:

@@ -4,7 +4,7 @@
 
 **Goal:** Implement the approved RxnFlow backend architecture: task-local raw execution, shared UMA service boundary, SQLite registration, frozen database objects, database-backed reports, validation, and deletion.
 
-**Architecture:** The implementation proceeds in thin vertical slices. First align project identity and file layout, then introduce the service-client boundary without changing chemistry behavior, then make task execution raw-only, then add the database and registration boundary, then move reports onto registered calculations only.
+**Architecture:** The implementation proceeds in thin vertical slices. First align project identity and file layout, then rebuild the core modules around the approved boundaries: service-client execution, raw-only task directories, database registration, and database-backed reports.
 
 **Tech Stack:** Python 3.11+, ASE, PyYAML, sqlite3 from the standard library, unittest, matplotlib, git, and the remote `win11local` Windows host with the `chem` conda environment.
 
@@ -29,7 +29,7 @@ Current local repository: `/Users/linsay/Desktop/code/win11local/rxnflow`
 
 Current remote repository: `D:\Code\rxnflow` on `win11local`
 
-Important current mismatches to fix:
+Important current mismatches to fix. The existing implementation is disposable where it conflicts with the approved architecture:
 
 - Python package is still `src/mlrxn_workflow`.
 - CLI command is still `mlrxn`.

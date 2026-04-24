@@ -10,8 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ase import Atoms
 from ase.io import write
 
-from mlrxn_workflow.model import StructureNode, WorkflowConfig, Defaults, ReportConfig
-from mlrxn_workflow.results import apply_charge_multiplicity, load_atoms_from_node
+from rxnflow.model import StructureNode, WorkflowConfig, Defaults, ReportConfig
+from rxnflow.results import apply_charge_multiplicity, load_atoms_from_node
 
 
 class ResultMetadataTests(unittest.TestCase):

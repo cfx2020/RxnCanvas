@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ase import Atoms
 from ase.io import write
 
-from mlrxn_workflow.cli import main
+from rxnflow.cli import main
 
 
 def write_yaml(tmpdir: Path, content: str) -> Path:

@@ -1,3 +1,3 @@
-# mlrxn-workflow
+# RxnFlow
 
-CLI + YAML workflow for ML-assisted local reaction-path screening.
+Workflow-first chemistry system for ML-assisted reaction-path screening.
