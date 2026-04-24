@@ -29,6 +29,10 @@ class CalculatorSettings:
     task_name: str
     charge: int
     multiplicity: int
+    service_profile: str = "win11local-uma"
+    service_mode: str = "machine"
+    service_host: str = "127.0.0.1"
+    service_port: int = 8765
 
 
 class CalculatorBackend(ABC):

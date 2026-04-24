@@ -9,6 +9,14 @@ class UmaBackend(CalculatorBackend):
     name = "uma"
 
     def build(self, settings: CalculatorSettings):
+        if settings.service_mode == "machine":
+            return self._build_service_calculator(settings)
+        return self._build_in_process_calculator(settings)
+
+    def _build_service_calculator(self, settings: CalculatorSettings):
+        return self._build_in_process_calculator(settings)
+
+    def _build_in_process_calculator(self, settings: CalculatorSettings):
         try:
             from fairchem.core import FAIRChemCalculator, pretrained_mlip
         except ImportError as exc:
