@@ -95,11 +95,14 @@ SCHEMA_STATEMENTS = [
 def initialize_database(db_path: str | Path) -> None:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
+    conn = sqlite3.connect(path)
+    try:
         conn.execute("pragma foreign_keys = on")
         for statement in SCHEMA_STATEMENTS:
             conn.execute(statement)
         conn.commit()
+    finally:
+        conn.close()
 
 
 @contextmanager

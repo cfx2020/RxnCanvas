@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 import sqlite3
 import sys
 import tempfile
@@ -17,7 +18,7 @@ class DatabaseTests(unittest.TestCase):
             db_path = Path(tmp) / "database" / "project.sqlite"
             initialize_database(db_path)
 
-            with sqlite3.connect(db_path) as conn:
+            with closing(sqlite3.connect(db_path)) as conn:
                 names = {
                     row[0]
                     for row in conn.execute(
