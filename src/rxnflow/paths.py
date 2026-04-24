@@ -7,6 +7,33 @@ from pathlib import Path
 from .model import WorkflowConfig
 
 
+def project_root_from_task_dir(task_dir: Path) -> Path:
+    task_dir = Path(task_dir).absolute()
+    if task_dir.parent.name == "task":
+        return task_dir.parent.parent
+    return task_dir.parent
+
+
+def task_root(project_root: Path) -> Path:
+    return Path(project_root) / "task"
+
+
+def report_root(project_root: Path) -> Path:
+    return Path(project_root) / "report"
+
+
+def database_root(project_root: Path) -> Path:
+    return Path(project_root) / "database"
+
+
+def database_path(project_root: Path) -> Path:
+    return database_root(project_root) / "project.sqlite"
+
+
+def objects_root(project_root: Path) -> Path:
+    return database_root(project_root) / "objects"
+
+
 def workflow_root(config: WorkflowConfig) -> Path:
     root = Path(config.defaults.output_root)
     if not root.is_absolute():

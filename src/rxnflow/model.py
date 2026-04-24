@@ -175,3 +175,25 @@ class WorkflowConfig:
     nodes: list[StructureNode]
     tasks: list[TaskConfig]
     report: ReportConfig
+
+
+@dataclass(slots=True)
+class TaskDirectoryConfig:
+    id: str
+    directory: Path
+    input_path: Path
+    type: str
+    charge: int
+    multiplicity: int
+    backend: str = "uma"
+    model: str = "uma-s-1p1"
+    device: str = "cuda"
+    task_name: str = "omol"
+    optimizer: str = "lbfgs"
+    fmax: float = 0.05
+    max_steps: int = 200
+    coordinate: ScanCoordinate | None = None
+    constraints: list[ConstraintSpec] = field(default_factory=list)
+    initial_path: Path | None = None
+    final_path: Path | None = None
+    images: int | None = None
