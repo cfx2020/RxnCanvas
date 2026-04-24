@@ -12,11 +12,11 @@ from ase.io import read
 from ase.mep import NEB
 from ase.optimize import LBFGS
 
-from .calculators.base import merge_task_settings
-from .calculators.factory import build_calculator
+from .calculators.base import CalculatorSettings, merge_task_settings
+from .calculators.factory import build_calculator, build_calculator_from_settings
 from .constraints import apply_internal_value, build_constraints
 from .errors import WorkflowConfigError
-from .model import StructureNode, TaskConfig, WorkflowConfig
+from .model import StructureNode, TaskConfig, TaskDirectoryConfig, WorkflowConfig
 from .paths import task_dir
 from .results import (
     apply_charge_multiplicity,
@@ -40,6 +40,281 @@ def run_workflow(config: WorkflowConfig, selected_task_ids: list[str] | None = N
         dispatch_task(config, task)
         completed.append(task.id)
     return completed
+
+
+def run_task_directory(task: TaskDirectoryConfig) -> None:
+    if task.type == "geomopt":
+        run_geomopt_directory(task)
+        return
+    if task.type == "scan":
+        run_scan_directory(task)
+        return
+    if task.type == "neb":
+        run_neb_directory(task)
+        return
+    raise WorkflowConfigError(f"Task '{task.id}' has unsupported type '{task.type}'.")
+
+
+def run_geomopt_directory(task: TaskDirectoryConfig) -> None:
+    atoms = read(task.input_path)
+    settings = task_directory_calculator_settings(task)
+    apply_charge_multiplicity(atoms, settings.charge, settings.multiplicity)
+    atoms.calc = build_calculator_from_settings(settings)
+
+    output_dir = task.directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+    trajectory_path = output_dir / "trajectory.traj"
+
+    optimizer = LBFGS(atoms, trajectory=str(trajectory_path), logfile=None)
+    optimizer.run(fmax=task.fmax, steps=task.max_steps)
+
+    frames = read_trajectory_frames_or_current(trajectory_path, atoms)
+    energies = [frame.get_potential_energy() for frame in frames]
+    final_atoms = frames[-1]
+
+    result_structure = output_dir / "result.xyz"
+    trajectory_xyz = output_dir / "trajectory.xyz"
+    energy_table = output_dir / "energies.csv"
+    metadata_path = output_dir / "metadata.json"
+
+    write_atoms(result_structure, final_atoms)
+    write_trajectory_xyz(trajectory_xyz, frames)
+    write_energy_table(energy_table, energies)
+    write_metadata(
+        metadata_path,
+        {
+            "task": {"id": task.id, "type": task.type, "input": "input.xyz"},
+            "settings": task_directory_settings_payload(task, settings),
+            "source": {"input_path": "input.xyz"},
+            "artifacts": {
+                "result_structure": "result.xyz",
+                "trajectory": "trajectory.xyz",
+                "energy_table": "energies.csv",
+            },
+            "summary": {
+                "steps": len(energies),
+                "final_energy": energies[-1],
+            },
+        },
+    )
+
+
+def run_scan_directory(task: TaskDirectoryConfig) -> None:
+    if task.coordinate is None:
+        raise WorkflowConfigError(f"Task '{task.id}' must declare one main scan coordinate.")
+    atoms = read(task.input_path)
+    settings = task_directory_calculator_settings(task)
+    coordinate = task.coordinate
+    coordinate_values = np.linspace(coordinate.start, coordinate.stop, coordinate.steps).tolist()
+
+    output_dir = task.directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+    scanned_frames = []
+    energies = []
+    current_atoms = atoms.copy()
+    apply_charge_multiplicity(current_atoms, settings.charge, settings.multiplicity)
+
+    for value in coordinate_values:
+        working_atoms = current_atoms.copy()
+        apply_internal_value(working_atoms, coordinate.type, coordinate.atoms, value)
+        for constraint in task.constraints:
+            if constraint.type != "freeze_atoms":
+                apply_internal_value(working_atoms, constraint.type, constraint.atoms, constraint.value)
+        working_atoms.set_constraint(
+            build_constraints(
+                coordinate=type(coordinate)(
+                    type=coordinate.type,
+                    atoms=coordinate.atoms,
+                    start=value,
+                    stop=value,
+                    steps=coordinate.steps,
+                ),
+                auxiliary_constraints=task.constraints,
+            )
+        )
+        working_atoms.calc = build_calculator_from_settings(settings)
+        optimizer = LBFGS(working_atoms, logfile=None)
+        optimizer.run(fmax=task.fmax, steps=task.max_steps)
+        energy = working_atoms.get_potential_energy()
+        forces = working_atoms.get_forces()
+        snapshot = working_atoms.copy()
+        snapshot.calc = SinglePointCalculator(snapshot, energy=energy, forces=forces)
+        scanned_frames.append(snapshot)
+        energies.append(energy)
+        current_atoms = snapshot.copy()
+
+    peak_index = max(range(len(energies)), key=energies.__getitem__)
+    final_atoms = scanned_frames[-1]
+    ts_like_atoms = scanned_frames[peak_index]
+
+    result_structure = output_dir / "result.xyz"
+    trajectory_xyz = output_dir / "trajectory.xyz"
+    energy_table = output_dir / "energies.csv"
+    metadata_path = output_dir / "metadata.json"
+    ts_like_path = output_dir / "ts_like.xyz"
+
+    write_atoms(result_structure, final_atoms)
+    write_trajectory_xyz(trajectory_xyz, scanned_frames)
+    write_scan_energy_table(energy_table, coordinate_values, energies)
+    write_atoms(ts_like_path, ts_like_atoms)
+    write_metadata(
+        metadata_path,
+        {
+            "task": {"id": task.id, "type": task.type, "input": "input.xyz"},
+            "settings": task_directory_settings_payload(task, settings),
+            "scan": {
+                "coordinate": {
+                    "type": coordinate.type,
+                    "atoms": coordinate.atoms,
+                    "start": coordinate.start,
+                    "stop": coordinate.stop,
+                    "steps": coordinate.steps,
+                },
+                "constraints": [
+                    {"type": item.type, "atoms": item.atoms, "value": item.value}
+                    for item in task.constraints
+                ],
+            },
+            "source": {"input_path": "input.xyz"},
+            "artifacts": {
+                "result_structure": "result.xyz",
+                "trajectory": "trajectory.xyz",
+                "energy_table": "energies.csv",
+                "ts_like_structure": "ts_like.xyz",
+            },
+            "summary": {
+                "steps": len(energies),
+                "final_energy": energies[-1],
+                "peak_index": peak_index,
+                "peak_energy": energies[peak_index],
+                "peak_coordinate": coordinate_values[peak_index],
+            },
+        },
+    )
+
+
+def run_neb_directory(task: TaskDirectoryConfig) -> None:
+    if task.initial_path is None or task.final_path is None:
+        raise WorkflowConfigError(f"Task '{task.id}' must declare initial and final structures.")
+    if task.images is None or task.images < 1:
+        raise WorkflowConfigError(f"Task '{task.id}' must declare a positive images count.")
+
+    initial_atoms = read(task.initial_path)
+    final_atoms = read(task.final_path)
+    settings = task_directory_calculator_settings(task)
+
+    apply_charge_multiplicity(initial_atoms, settings.charge, settings.multiplicity)
+    apply_charge_multiplicity(final_atoms, settings.charge, settings.multiplicity)
+    images = [initial_atoms.copy()]
+    for _ in range(task.images):
+        image = initial_atoms.copy()
+        apply_charge_multiplicity(image, settings.charge, settings.multiplicity)
+        images.append(image)
+    final_copy = final_atoms.copy()
+    apply_charge_multiplicity(final_copy, settings.charge, settings.multiplicity)
+    images.append(final_copy)
+
+    for image in images:
+        image.calc = build_calculator_from_settings(settings)
+
+    band = NEB(images, method="improvedtangent")
+    band.interpolate()
+
+    optimizer = LBFGS(band, logfile=None)
+    optimizer.run(fmax=task.fmax, steps=task.max_steps)
+
+    snapped_images = []
+    energies = []
+    for image in images:
+        energy = image.get_potential_energy()
+        forces = image.get_forces()
+        snapshot = image.copy()
+        snapshot.calc = SinglePointCalculator(snapshot, energy=energy, forces=forces)
+        snapped_images.append(snapshot)
+        energies.append(energy)
+
+    path_positions = cumulative_path_positions(snapped_images)
+    peak_index = max(range(len(energies)), key=energies.__getitem__)
+    ts_like_atoms = snapped_images[peak_index]
+
+    output_dir = task.directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+    result_structure = output_dir / "result.xyz"
+    trajectory_xyz = output_dir / "trajectory.xyz"
+    energy_table = output_dir / "energies.csv"
+    metadata_path = output_dir / "metadata.json"
+    ts_like_path = output_dir / "ts_like.xyz"
+
+    write_atoms(result_structure, ts_like_atoms)
+    write_trajectory_xyz(trajectory_xyz, snapped_images)
+    write_path_energy_table(energy_table, path_positions, energies)
+    write_atoms(ts_like_path, ts_like_atoms)
+    write_metadata(
+        metadata_path,
+        {
+            "task": {
+                "id": task.id,
+                "type": task.type,
+                "initial": task.initial_path.name,
+                "final": task.final_path.name,
+            },
+            "settings": task_directory_settings_payload(task, settings),
+            "neb": {"images": task.images},
+            "source": {
+                "initial_path": task.initial_path.name,
+                "final_path": task.final_path.name,
+            },
+            "artifacts": {
+                "result_structure": "result.xyz",
+                "trajectory": "trajectory.xyz",
+                "energy_table": "energies.csv",
+                "ts_like_structure": "ts_like.xyz",
+            },
+            "summary": {
+                "images": len(energies),
+                "peak_index": peak_index,
+                "peak_energy": energies[peak_index],
+                "peak_path_position": path_positions[peak_index],
+            },
+        },
+    )
+
+
+def task_directory_calculator_settings(task: TaskDirectoryConfig) -> CalculatorSettings:
+    return CalculatorSettings(
+        backend=task.backend,
+        model=task.model,
+        device=task.device,
+        task_name=task.task_name,
+        charge=task.charge,
+        multiplicity=task.multiplicity,
+    )
+
+
+def task_directory_settings_payload(task: TaskDirectoryConfig, settings: CalculatorSettings) -> dict:
+    return {
+        "backend": settings.backend,
+        "model": settings.model,
+        "device": settings.device,
+        "task_name": settings.task_name,
+        "optimizer": task.optimizer,
+        "fmax": task.fmax,
+        "max_steps": task.max_steps,
+        "charge": settings.charge,
+        "multiplicity": settings.multiplicity,
+    }
+
+
+def read_trajectory_frames_or_current(trajectory_path: Path, atoms):
+    if trajectory_path.exists():
+        frames = list(read(trajectory_path, index=":"))
+        if frames:
+            return frames
+    energy = atoms.get_potential_energy()
+    forces = atoms.get_forces()
+    snapshot = atoms.copy()
+    snapshot.calc = SinglePointCalculator(snapshot, energy=energy, forces=forces)
+    return [snapshot]
 
 
 def tasks_to_run(config: WorkflowConfig, selected_task_ids: list[str] | None = None) -> list[TaskConfig]:

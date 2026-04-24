@@ -35,5 +35,9 @@ def resolve_task_settings(config: WorkflowConfig, task: TaskConfig, input_node: 
 
 def build_calculator(config: WorkflowConfig, task: TaskConfig, input_node: StructureNode):
     settings = resolve_task_settings(config, task, input_node)
+    return build_calculator_from_settings(settings)
+
+
+def build_calculator_from_settings(settings: CalculatorSettings):
     backend = get_backend(settings.backend)
     return backend.build(settings)
