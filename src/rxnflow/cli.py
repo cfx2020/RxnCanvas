@@ -10,6 +10,7 @@ from .config import load_workflow_config
 from .errors import WorkflowConfigError
 from .execution import run_task_directory, run_workflow
 from .reporting import generate_report
+from .registration import register_from_file, register_from_task
 from .task_config import load_task_directory
 
 
@@ -30,6 +31,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_task_parser = subparsers.add_parser("run-task", help="Run one task directory")
     run_task_parser.add_argument("task_dir", help="Path to task/<task-id>")
+
+    register_parser = subparsers.add_parser("register-result", help="Register one task or external result")
+    source_group = register_parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--from-task", dest="from_task", help="Path to task/<task-id> with raw artifacts")
+    source_group.add_argument("--from-file", dest="from_file", help="Path to an external Gaussian/ORCA output file")
+    register_parser.add_argument("--parser", choices=["gaussian", "orca"], help="Parser for --from-file")
+    register_parser.add_argument("--candidate", required=True, help="Candidate label, such as final or peak")
+    node_group = register_parser.add_mutually_exclusive_group(required=True)
+    node_group.add_argument("--new-node", action="store_true", help="Create a new registered node")
+    node_group.add_argument("--attach-node", help="Attach the calculation to an existing node id")
 
     report_parser = subparsers.add_parser("report", help="Regenerate reports from existing task artifacts")
     report_parser.add_argument("config", help="Path to workflow YAML")
@@ -56,6 +67,30 @@ def main(argv: list[str] | None = None) -> int:
         except WorkflowConfigError as exc:
             parser.exit(2, f"Task execution error: {exc}\n")
         print(json.dumps({"task_id": task_config.id, "task_dir": str(task_config.directory)}, indent=2))
+        return 0
+
+    if args.command == "register-result":
+        try:
+            if args.from_task:
+                registration = register_from_task(
+                    args.from_task,
+                    args.candidate,
+                    new_node=args.new_node,
+                    attach_node=args.attach_node,
+                )
+            else:
+                if args.parser is None:
+                    raise WorkflowConfigError("--from-file requires --parser.")
+                registration = register_from_file(
+                    args.from_file,
+                    args.parser,
+                    args.candidate,
+                    new_node=args.new_node,
+                    attach_node=args.attach_node,
+                )
+        except WorkflowConfigError as exc:
+            parser.exit(2, f"Registration error: {exc}\n")
+        print(json.dumps(asdict(registration), indent=2))
         return 0
 
     try:
