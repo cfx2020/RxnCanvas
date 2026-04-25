@@ -12,7 +12,7 @@ from .database import delete_result
 from .errors import WorkflowConfigError
 from .execution import run_task_directory, run_workflow
 from .paths import database_path
-from .reporting import create_report, generate_report, rebind_report_site, render_report, validate_report
+from .reporting import create_report, rebind_report_site, render_report, validate_report
 from .registration import register_from_file, register_from_task
 from .task_config import load_task_directory
 
@@ -50,10 +50,6 @@ def build_parser() -> argparse.ArgumentParser:
     node_group = register_parser.add_mutually_exclusive_group(required=True)
     node_group.add_argument("--new-node", action="store_true", help="Create a new registered node")
     node_group.add_argument("--attach-node", help="Attach the calculation to an existing node id")
-
-    report_parser = subparsers.add_parser("report", help="Regenerate reports from existing task artifacts")
-    report_parser.add_argument("config", help="Path to workflow YAML")
-    report_parser.add_argument("--reference", help="Override report zero-point reference id")
 
     create_report_parser = subparsers.add_parser("create-report", help="Create one report directory")
     create_report_parser.add_argument("report_dir")
@@ -178,11 +174,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         completed = run_workflow(config, selected_task_ids=args.tasks)
         print(json.dumps({"completed_tasks": completed}, indent=2))
-        return 0
-
-    if args.command == "report":
-        report_dir = generate_report(config, reference_override=args.reference)
-        print(json.dumps({"report_dir": str(report_dir)}, indent=2))
         return 0
 
     parser.error(f"Unknown command: {args.command}")

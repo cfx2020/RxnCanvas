@@ -75,7 +75,7 @@ def _validate_unique_ids(config: WorkflowConfig) -> None:
 def _validate_task_shape(task: TaskConfig) -> None:
     if task.type not in VALID_TASK_TYPES:
         raise WorkflowConfigError(f"Task '{task.id}' has unsupported type '{task.type}'.")
-    if task.type in {"optimize", "geomopt"}:
+    if task.type == "optimize":
         if not task.input:
             raise WorkflowConfigError(f"Task '{task.id}' must declare 'input'.")
         return
@@ -96,7 +96,7 @@ def _validate_task_shape(task: TaskConfig) -> None:
 
 def _validate_task_references(task: TaskConfig, available_inputs: set[str], completed_tasks: set[str]) -> None:
     allowed = available_inputs | completed_tasks
-    if task.type in {"optimize", "geomopt", "scan"} and task.input not in allowed:
+    if task.type in {"optimize", "scan"} and task.input not in allowed:
         raise WorkflowConfigError(f"Task '{task.id}' input '{task.input}' is unknown or not yet available.")
     if task.type == "neb":
         if task.initial not in allowed:

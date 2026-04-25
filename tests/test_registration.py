@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from contextlib import closing
-import json
 import os
 import sqlite3
 import sys
 import tempfile
-import textwrap
 import unittest
 from pathlib import Path
 
@@ -27,21 +25,7 @@ class RegistrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             task_dir = root / "task" / "opt_im1"
-            task_dir.mkdir(parents=True)
-            (task_dir / "result.xyz").write_text("1\n\nH 0 0 0\n", encoding="utf-8")
-            (task_dir / "metadata.json").write_text(
-                textwrap.dedent(
-                    """
-                    {
-                      "task": {"id": "opt_im1", "type": "optimize"},
-                      "settings": {"backend": "fake", "model": "fake-base", "charge": 0, "multiplicity": 1},
-                      "artifacts": {"result_structure": "result.xyz"},
-                      "summary": {"final_energy": -1.25}
-                    }
-                    """
-                ),
-                encoding="utf-8",
-            )
+            write_raw_optimize_task(task_dir, energy=-1.25)
 
             self.assertEqual(
                 main(["register-result", "--from-task", str(task_dir), "--candidate", "final", "--new-node"]),
@@ -56,32 +40,11 @@ class RegistrationTests(unittest.TestCase):
             self.assertTrue((root / rows["frozen_structure_path"]).exists())
             self.assertTrue((root / rows["frozen_payload_path"]).exists())
 
-    def test_register_task_prefers_ase_raw_trajectory(self) -> None:
+    def test_register_task_reads_ase_raw_trajectory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             task_dir = root / "task" / "opt_raw"
-            task_dir.mkdir(parents=True)
-            atoms = Atoms("H", positions=[[1.0, 0.0, 0.0]])
-            atoms.calc = SinglePointCalculator(atoms, energy=-2.5, forces=[[0.0, 0.0, 0.0]])
-            trajectory = Trajectory(str(task_dir / "optimize.traj"), "w", atoms)
-            try:
-                trajectory.write()
-            finally:
-                trajectory.close()
-            (task_dir / "result.xyz").write_text("1\n\nH 0 0 0\n", encoding="utf-8")
-            (task_dir / "metadata.json").write_text(
-                textwrap.dedent(
-                    """
-                    {
-                      "task": {"id": "opt_raw", "type": "optimize"},
-                      "settings": {"backend": "fake", "model": "fake-base", "charge": 0, "multiplicity": 1},
-                      "artifacts": {"result_structure": "result.xyz", "ase_trajectory": "optimize.traj"},
-                      "summary": {"final_energy": -1.25}
-                    }
-                    """
-                ),
-                encoding="utf-8",
-            )
+            write_raw_optimize_task(task_dir, energy=-2.5)
 
             self.assertEqual(
                 main(["register-result", "--from-task", str(task_dir), "--candidate", "final", "--new-node"]),
@@ -226,6 +189,35 @@ def read_registration_rows(root: Path) -> dict:
             "frozen_payload_path": row[2],
             "frozen_structure_path": row[3],
         }
+
+
+def write_raw_optimize_task(task_dir: Path, energy: float) -> None:
+    task_dir.mkdir(parents=True)
+    (task_dir / "input.xyz").write_text("1\n\nH 0 0 0\n", encoding="utf-8")
+    (task_dir / "task.yaml").write_text(
+        "\n".join(
+            [
+                "type: optimize",
+                "charge: 0",
+                "multiplicity: 1",
+                "backend: fake",
+                "model: fake-base",
+                "device: cpu",
+                "steps: 1",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    ase_dir = task_dir / "ase"
+    ase_dir.mkdir()
+    atoms = Atoms("H", positions=[[1.0, 0.0, 0.0]])
+    atoms.calc = SinglePointCalculator(atoms, energy=energy, forces=[[0.0, 0.0, 0.0]])
+    trajectory = Trajectory(str(ase_dir / "optimize.traj"), "w", atoms)
+    try:
+        trajectory.write()
+    finally:
+        trajectory.close()
 
 
 if __name__ == "__main__":

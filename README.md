@@ -39,17 +39,22 @@ final: final.xyz
 images: 5
 ```
 
-NEB task output includes `neb.traj`, `neb.log`, `ase/image_XX.traj`,
-`initial_band.xyz`, `band.xyz`, `images/image_XX.xyz`, `energies.csv`,
-`ts_like.xyz`, and `metadata.json`. If ASE writes an optimizer restart file,
-RxnFlow records it too, for example `neb.json`.
+Task output has two folders:
+
+- `ase/` contains raw ASE files used by registration, such as `optimize.traj`,
+  `scan_step_000.traj`, `neb.traj`, `neb.log`, and `image_XX.traj`.
+- `inspect/` contains derived inspection exports, such as `final.xyz`,
+  `peak.xyz`, `trajectory.xyz`, `band.xyz`, `images/image_XX.xyz`, and
+  `energies.csv`.
+
+RxnFlow tasks no longer write `metadata.json`; registration reads raw output.
 
 Registration is the only path into the database:
 
 ```bash
 rxnflow register-result --from-task task/opt_im1 --candidate final --new-node
 rxnflow register-result --from-file gaussian.log --parser gaussian --candidate final --new-node
-rxnflow register-result --from-file neb.traj --parser ase --candidate peak --images 7 \
+rxnflow register-result --from-file ase/neb.traj --parser ase --candidate peak --images 7 \
   --charge 0 --multiplicity 1 --method-label uma-s-1p1 --backend-label uma --new-node
 ```
 

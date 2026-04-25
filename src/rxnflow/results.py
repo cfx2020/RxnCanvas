@@ -5,13 +5,11 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-import shutil
 
 from ase import Atoms
 from ase.io import read, write
 
 from .model import StructureNode, WorkflowConfig
-from .paths import inputs_root, task_dir
 
 
 def resolve_structure_path(config: WorkflowConfig, node: StructureNode) -> Path:
@@ -31,29 +29,6 @@ def apply_charge_multiplicity(atoms: Atoms, charge: int, multiplicity: int) -> A
 def load_atoms_from_node(config: WorkflowConfig, node: StructureNode) -> Atoms:
     atoms = read(resolve_structure_path(config, node))
     return apply_charge_multiplicity(atoms, node.charge, node.multiplicity)
-
-
-def load_atoms_from_task_result(config: WorkflowConfig, task_id: str) -> Atoms:
-    metadata = load_task_metadata(config, task_id)
-    result_path = Path(metadata["artifacts"]["result_structure"])
-    atoms = read(result_path)
-    return apply_charge_multiplicity(
-        atoms,
-        metadata["settings"]["charge"],
-        metadata["settings"]["multiplicity"],
-    )
-
-
-def load_task_metadata(config: WorkflowConfig, task_id: str) -> dict:
-    metadata_path = task_dir(config, task_id) / "metadata.json"
-    with metadata_path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-def load_input_metadata(config: WorkflowConfig, node_id: str) -> dict:
-    metadata_path = inputs_root(config) / node_id / "metadata.json"
-    with metadata_path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
 
 
 def write_atoms(path: Path, atoms: Atoms) -> None:
@@ -97,8 +72,3 @@ def write_metadata(path: Path, metadata: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         json.dump(metadata, handle, indent=2, sort_keys=True)
-
-
-def copy_structure(src: str | Path, dst: Path) -> None:
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst)

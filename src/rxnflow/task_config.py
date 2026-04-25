@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 
 from .errors import WorkflowConfigError
-from .model import ConstraintSpec, ScanCoordinate, TaskDirectoryConfig
+from .model import VALID_TASK_TYPES, ConstraintSpec, ScanCoordinate, TaskDirectoryConfig
 
 
 def load_task_directory(task_dir: str | Path) -> TaskDirectoryConfig:
@@ -18,6 +18,8 @@ def load_task_directory(task_dir: str | Path) -> TaskDirectoryConfig:
         raise WorkflowConfigError(f"Task directory '{directory}' is missing task.yaml.")
     data = _read_task_yaml(task_yaml)
     task_type = str(data["type"])
+    if task_type not in VALID_TASK_TYPES:
+        raise WorkflowConfigError(f"Task directory '{directory}' has unsupported type '{task_type}'.")
     input_path = _resolve_required_input(directory, task_type)
     initial_path = None if data.get("initial") is None else (directory / str(data["initial"])).resolve()
     final_path = None if data.get("final") is None else (directory / str(data["final"])).resolve()
@@ -50,7 +52,7 @@ def load_task_directory(task_dir: str | Path) -> TaskDirectoryConfig:
         task_name=str(data.get("task_name", "omol")),
         optimizer=str(data.get("optimizer", "BFGS" if task_type == "neb" else "LBFGS")),
         fmax=float(data.get("fmax", 0.05)),
-        max_steps=int(data.get("steps", data.get("max_steps", 200))),
+        steps=int(data.get("steps", 200)),
         coordinate=coordinate,
         constraints=constraints,
         initial_path=initial_path,

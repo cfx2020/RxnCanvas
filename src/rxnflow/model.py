@@ -9,7 +9,7 @@ from typing import Any
 
 VALID_SCAN_COORDINATE_TYPES = {"distance", "angle", "dihedral"}
 VALID_CONSTRAINT_TYPES = {"freeze_atoms", "distance", "angle", "dihedral"}
-VALID_TASK_TYPES = {"optimize", "geomopt", "scan", "neb"}
+VALID_TASK_TYPES = {"optimize", "scan", "neb"}
 
 
 @dataclass(slots=True)
@@ -20,7 +20,7 @@ class Defaults:
     task_name: str = "omol"
     optimizer: str = "LBFGS"
     fmax: float = 0.05
-    max_steps: int = 200
+    steps: int = 200
     output_root: str = "."
 
     @classmethod
@@ -33,7 +33,7 @@ class Defaults:
             task_name=data.get("task_name", "omol"),
             optimizer=data.get("optimizer", "LBFGS"),
             fmax=float(data.get("fmax", 0.05)),
-            max_steps=int(data.get("steps", data.get("max_steps", 200))),
+            steps=int(data.get("steps", 200)),
             output_root=data.get("output_root", "."),
         )
 
@@ -109,7 +109,7 @@ class TaskConfig:
     task_name: str | None = None
     optimizer: str | None = None
     fmax: float | None = None
-    max_steps: int | None = None
+    steps: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TaskConfig":
@@ -134,7 +134,7 @@ class TaskConfig:
             task_name=data.get("task_name"),
             optimizer=data.get("optimizer"),
             fmax=None if "fmax" not in data else float(data["fmax"]),
-            max_steps=None if "steps" not in data and "max_steps" not in data else int(data.get("steps", data.get("max_steps"))),
+            steps=None if "steps" not in data else int(data["steps"]),
         )
 
 
@@ -191,7 +191,7 @@ class TaskDirectoryConfig:
     task_name: str = "omol"
     optimizer: str = "LBFGS"
     fmax: float = 0.05
-    max_steps: int = 200
+    steps: int = 200
     coordinate: ScanCoordinate | None = None
     constraints: list[ConstraintSpec] = field(default_factory=list)
     initial_path: Path | None = None

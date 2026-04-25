@@ -16,7 +16,7 @@ class ResolvedTaskSettings:
     task_name: str
     optimizer: str
     fmax: float
-    max_steps: int
+    steps: int
     charge: int
     multiplicity: int
 
@@ -53,7 +53,7 @@ def merge_task_settings(defaults: Defaults, task: TaskConfig, input_node: Struct
         task_name=task.task_name or defaults.task_name,
         optimizer=task.optimizer or defaults.optimizer,
         fmax=task.fmax if task.fmax is not None else defaults.fmax,
-        max_steps=task.max_steps if task.max_steps is not None else defaults.max_steps,
+        steps=task.steps if task.steps is not None else defaults.steps,
         charge=task.charge if task.charge is not None else input_node.charge,
         multiplicity=task.multiplicity if task.multiplicity is not None else input_node.multiplicity,
     )

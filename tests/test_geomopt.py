@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import json
 import tempfile
 import textwrap
 import unittest
@@ -22,7 +21,7 @@ def write_yaml(tmpdir: Path, content: str) -> Path:
     return path
 
 
-class GeomoptExecutionTests(unittest.TestCase):
+class OptimizeExecutionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmpdir_ctx = tempfile.TemporaryDirectory()
         self.tmpdir = Path(self.tmpdir_ctx.name)
@@ -34,7 +33,7 @@ class GeomoptExecutionTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmpdir_ctx.cleanup()
 
-    def test_geomopt_writes_expected_artifacts(self) -> None:
+    def test_optimize_writes_raw_and_inspection_artifacts(self) -> None:
         config_path = write_yaml(
             self.tmpdir,
             """
@@ -59,22 +58,16 @@ class GeomoptExecutionTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
 
         task_dir = self.tmpdir / "runs" / "tasks" / "opt_im1"
-        self.assertTrue((task_dir / "result.xyz").exists())
-        self.assertTrue((task_dir / "trajectory.xyz").exists())
-        self.assertTrue((task_dir / "optimize.traj").exists())
-        self.assertTrue((task_dir / "optimize.log").exists())
-        self.assertTrue((task_dir / "energies.csv").exists())
-        self.assertTrue((task_dir / "metadata.json").exists())
+        self.assertTrue((task_dir / "task.yaml").exists())
+        self.assertTrue((task_dir / "input.xyz").exists())
+        self.assertTrue((task_dir / "ase" / "optimize.traj").exists())
+        self.assertTrue((task_dir / "ase" / "optimize.log").exists())
+        self.assertTrue((task_dir / "inspect" / "final.xyz").exists())
+        self.assertTrue((task_dir / "inspect" / "trajectory.xyz").exists())
+        self.assertTrue((task_dir / "inspect" / "energies.csv").exists())
+        self.assertFalse((task_dir / "metadata.json").exists())
 
-        with (task_dir / "metadata.json").open("r", encoding="utf-8") as handle:
-            metadata = json.load(handle)
-        self.assertEqual(metadata["task"]["id"], "opt_im1")
-        self.assertEqual(metadata["settings"]["backend"], "fake")
-        self.assertEqual(metadata["source"]["input_id"], "im1")
-        self.assertEqual(Path(metadata["artifacts"]["ase_trajectory"]).name, "optimize.traj")
-        self.assertEqual(Path(metadata["artifacts"]["ase_log"]).name, "optimize.log")
-
-        with (task_dir / "energies.csv").open("r", encoding="utf-8") as handle:
+        with (task_dir / "inspect" / "energies.csv").open("r", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
         self.assertGreaterEqual(len(rows), 1)
         last_energy = float(rows[-1]["energy"])

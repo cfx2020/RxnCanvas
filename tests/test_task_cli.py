@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import csv
 import sys
 import tempfile
@@ -57,20 +56,13 @@ class TaskCliTests(unittest.TestCase):
             )
 
             self.assertEqual(main(["run-task", str(task_dir)]), 0)
-            self.assertTrue((task_dir / "result.xyz").exists())
-            self.assertTrue((task_dir / "trajectory.xyz").exists())
-            self.assertTrue((task_dir / "optimize.traj").exists())
-            self.assertTrue((task_dir / "optimize.log").exists())
-            self.assertTrue((task_dir / "energies.csv").exists())
-            self.assertTrue((task_dir / "metadata.json").exists())
+            self.assertTrue((task_dir / "ase" / "optimize.traj").exists())
+            self.assertTrue((task_dir / "ase" / "optimize.log").exists())
+            self.assertTrue((task_dir / "inspect" / "final.xyz").exists())
+            self.assertTrue((task_dir / "inspect" / "trajectory.xyz").exists())
+            self.assertTrue((task_dir / "inspect" / "energies.csv").exists())
+            self.assertFalse((task_dir / "metadata.json").exists())
             self.assertFalse((Path(tmp) / "database").exists())
-
-            metadata = json.loads((task_dir / "metadata.json").read_text(encoding="utf-8"))
-            self.assertEqual(metadata["task"]["id"], "opt_h")
-            self.assertEqual(metadata["task"]["type"], "optimize")
-            self.assertEqual(metadata["artifacts"]["result_structure"], "result.xyz")
-            self.assertEqual(metadata["artifacts"]["ase_trajectory"], "optimize.traj")
-            self.assertEqual(metadata["artifacts"]["ase_log"], "optimize.log")
 
     def test_run_scan_task_writes_task_local_candidate_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,23 +95,18 @@ class TaskCliTests(unittest.TestCase):
             )
 
             self.assertEqual(main(["run-task", str(task_dir)]), 0)
-            self.assertTrue((task_dir / "result.xyz").exists())
-            self.assertTrue((task_dir / "trajectory.xyz").exists())
             self.assertTrue((task_dir / "ase" / "scan_step_000.traj").exists())
             self.assertTrue((task_dir / "ase" / "scan_step_000.log").exists())
-            self.assertTrue((task_dir / "energies.csv").exists())
-            self.assertTrue((task_dir / "ts_like.xyz").exists())
+            self.assertTrue((task_dir / "inspect" / "final.xyz").exists())
+            self.assertTrue((task_dir / "inspect" / "trajectory.xyz").exists())
+            self.assertTrue((task_dir / "inspect" / "energies.csv").exists())
+            self.assertTrue((task_dir / "inspect" / "peak.xyz").exists())
+            self.assertFalse((task_dir / "metadata.json").exists())
             self.assertFalse((Path(tmp) / "database").exists())
 
-            with (task_dir / "energies.csv").open("r", encoding="utf-8") as handle:
+            with (task_dir / "inspect" / "energies.csv").open("r", encoding="utf-8") as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual(len(rows), 5)
-
-            metadata = json.loads((task_dir / "metadata.json").read_text(encoding="utf-8"))
-            self.assertEqual(metadata["summary"]["peak_index"], 2)
-            self.assertEqual(metadata["artifacts"]["ts_like_structure"], "ts_like.xyz")
-            self.assertEqual(len(metadata["artifacts"]["ase_step_trajectories"]), 5)
-            self.assertEqual(len(metadata["artifacts"]["ase_step_logs"]), 5)
 
     def test_run_neb_task_writes_task_local_band_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -149,31 +136,24 @@ class TaskCliTests(unittest.TestCase):
             )
 
             self.assertEqual(main(["run-task", str(task_dir)]), 0)
-            self.assertTrue((task_dir / "neb.traj").exists())
-            self.assertTrue((task_dir / "neb.log").exists())
-            self.assertTrue((task_dir / "band.xyz").exists())
-            self.assertTrue((task_dir / "images" / "image_00.xyz").exists())
+            self.assertTrue((task_dir / "ase" / "neb.traj").exists())
+            self.assertTrue((task_dir / "ase" / "neb.log").exists())
             self.assertTrue((task_dir / "ase" / "image_01.traj").exists())
-            self.assertTrue((task_dir / "energies.csv").exists())
-            self.assertTrue((task_dir / "ts_like.xyz").exists())
+            self.assertTrue((task_dir / "inspect" / "initial_band.xyz").exists())
+            self.assertTrue((task_dir / "inspect" / "band.xyz").exists())
+            self.assertTrue((task_dir / "inspect" / "images" / "image_00.xyz").exists())
+            self.assertTrue((task_dir / "inspect" / "energies.csv").exists())
+            self.assertTrue((task_dir / "inspect" / "peak.xyz").exists())
+            self.assertFalse((task_dir / "metadata.json").exists())
             self.assertFalse((Path(tmp) / "database").exists())
 
-            neb_frames = read(task_dir / "neb.traj", index=":")
+            neb_frames = read(task_dir / "ase" / "neb.traj", index=":")
             self.assertGreaterEqual(len(neb_frames), 5)
             self.assertEqual(len(neb_frames) % 5, 0)
 
-            with (task_dir / "energies.csv").open("r", encoding="utf-8") as handle:
+            with (task_dir / "inspect" / "energies.csv").open("r", encoding="utf-8") as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual(len(rows), 5)
-
-            metadata = json.loads((task_dir / "metadata.json").read_text(encoding="utf-8"))
-            self.assertEqual(metadata["summary"]["peak_index"], 2)
-            self.assertEqual(metadata["summary"]["images"], 5)
-            self.assertEqual(metadata["artifacts"]["ase_neb_trajectory"], "neb.traj")
-            self.assertEqual(metadata["artifacts"]["ase_neb_log"], "neb.log")
-            self.assertEqual(metadata["artifacts"]["band_structure"], "band.xyz")
-            self.assertEqual(len(metadata["artifacts"]["image_structures"]), 5)
-            self.assertEqual(len(metadata["artifacts"]["ase_image_trajectories"]), 5)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import json
 import tempfile
 import textwrap
 import unittest
@@ -34,7 +33,7 @@ class NebExecutionTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmpdir_ctx.cleanup()
 
-    def test_neb_writes_band_energy_table_and_ts_like_candidate(self) -> None:
+    def test_neb_writes_raw_and_inspection_artifacts(self) -> None:
         config_path = write_yaml(
             self.tmpdir,
             """
@@ -66,32 +65,29 @@ class NebExecutionTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
 
         task_dir = self.tmpdir / "runs" / "tasks" / "neb_path"
-        self.assertTrue((task_dir / "neb.traj").exists())
-        self.assertTrue((task_dir / "neb.log").exists())
-        self.assertTrue((task_dir / "band.xyz").exists())
-        self.assertTrue((task_dir / "images" / "image_02.xyz").exists())
+        self.assertTrue((task_dir / "task.yaml").exists())
+        self.assertTrue((task_dir / "initial.xyz").exists())
+        self.assertTrue((task_dir / "final.xyz").exists())
+        self.assertTrue((task_dir / "ase" / "neb.traj").exists())
+        self.assertTrue((task_dir / "ase" / "neb.log").exists())
         self.assertTrue((task_dir / "ase" / "image_02.traj").exists())
-        self.assertTrue((task_dir / "energies.csv").exists())
-        self.assertTrue((task_dir / "ts_like.xyz").exists())
+        self.assertTrue((task_dir / "inspect" / "initial_band.xyz").exists())
+        self.assertTrue((task_dir / "inspect" / "band.xyz").exists())
+        self.assertTrue((task_dir / "inspect" / "images" / "image_02.xyz").exists())
+        self.assertTrue((task_dir / "inspect" / "energies.csv").exists())
+        self.assertTrue((task_dir / "inspect" / "peak.xyz").exists())
+        self.assertFalse((task_dir / "metadata.json").exists())
 
-        neb_frames = read(task_dir / "neb.traj", index=":")
+        neb_frames = read(task_dir / "ase" / "neb.traj", index=":")
         self.assertGreaterEqual(len(neb_frames), 5)
         self.assertEqual(len(neb_frames) % 5, 0)
 
-        with (task_dir / "energies.csv").open("r", encoding="utf-8") as handle:
+        with (task_dir / "inspect" / "energies.csv").open("r", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
         self.assertEqual(len(rows), 5)
         energies = [float(row["energy"]) for row in rows]
         peak_index = max(range(len(energies)), key=energies.__getitem__)
         self.assertEqual(peak_index, 2)
-
-        with (task_dir / "metadata.json").open("r", encoding="utf-8") as handle:
-            metadata = json.load(handle)
-        self.assertEqual(metadata["summary"]["peak_index"], 2)
-        self.assertEqual(metadata["summary"]["images"], 5)
-        self.assertEqual(Path(metadata["artifacts"]["ase_neb_trajectory"]).name, "neb.traj")
-        self.assertEqual(Path(metadata["artifacts"]["band_structure"]).name, "band.xyz")
-        self.assertEqual(len(metadata["artifacts"]["image_structures"]), 5)
 
 
 if __name__ == "__main__":
