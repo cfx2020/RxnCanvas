@@ -10,6 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ase.io import read
+
 from rxnflow.cli import main
 
 
@@ -22,12 +24,12 @@ class TaskCliTests(unittest.TestCase):
             (task_dir / "task.yaml").write_text(
                 textwrap.dedent(
                     """
-                    type: geomopt
+                    type: optimize
                     charge: 0
                     multiplicity: 1
                     backend: fake
                     device: cpu
-                    max_steps: 2
+                    steps: 2
                     """
                 ),
                 encoding="utf-8",
@@ -43,12 +45,12 @@ class TaskCliTests(unittest.TestCase):
             (task_dir / "task.yaml").write_text(
                 textwrap.dedent(
                     """
-                    type: geomopt
+                    type: optimize
                     charge: 0
                     multiplicity: 1
                     backend: fake
                     device: cpu
-                    max_steps: 2
+                    steps: 2
                     """
                 ),
                 encoding="utf-8",
@@ -57,14 +59,18 @@ class TaskCliTests(unittest.TestCase):
             self.assertEqual(main(["run-task", str(task_dir)]), 0)
             self.assertTrue((task_dir / "result.xyz").exists())
             self.assertTrue((task_dir / "trajectory.xyz").exists())
+            self.assertTrue((task_dir / "optimize.traj").exists())
+            self.assertTrue((task_dir / "optimize.log").exists())
             self.assertTrue((task_dir / "energies.csv").exists())
             self.assertTrue((task_dir / "metadata.json").exists())
             self.assertFalse((Path(tmp) / "database").exists())
 
             metadata = json.loads((task_dir / "metadata.json").read_text(encoding="utf-8"))
             self.assertEqual(metadata["task"]["id"], "opt_h")
-            self.assertEqual(metadata["task"]["type"], "geomopt")
+            self.assertEqual(metadata["task"]["type"], "optimize")
             self.assertEqual(metadata["artifacts"]["result_structure"], "result.xyz")
+            self.assertEqual(metadata["artifacts"]["ase_trajectory"], "optimize.traj")
+            self.assertEqual(metadata["artifacts"]["ase_log"], "optimize.log")
 
     def test_run_scan_task_writes_task_local_candidate_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -84,7 +90,7 @@ class TaskCliTests(unittest.TestCase):
                     model: fake-distance-barrier
                     device: cpu
                     fmax: 0.001
-                    max_steps: 25
+                    steps: 25
                     coordinate:
                       type: distance
                       atoms: [1, 2]
@@ -99,6 +105,8 @@ class TaskCliTests(unittest.TestCase):
             self.assertEqual(main(["run-task", str(task_dir)]), 0)
             self.assertTrue((task_dir / "result.xyz").exists())
             self.assertTrue((task_dir / "trajectory.xyz").exists())
+            self.assertTrue((task_dir / "ase" / "scan_step_000.traj").exists())
+            self.assertTrue((task_dir / "ase" / "scan_step_000.log").exists())
             self.assertTrue((task_dir / "energies.csv").exists())
             self.assertTrue((task_dir / "ts_like.xyz").exists())
             self.assertFalse((Path(tmp) / "database").exists())
@@ -110,6 +118,8 @@ class TaskCliTests(unittest.TestCase):
             metadata = json.loads((task_dir / "metadata.json").read_text(encoding="utf-8"))
             self.assertEqual(metadata["summary"]["peak_index"], 2)
             self.assertEqual(metadata["artifacts"]["ts_like_structure"], "ts_like.xyz")
+            self.assertEqual(len(metadata["artifacts"]["ase_step_trajectories"]), 5)
+            self.assertEqual(len(metadata["artifacts"]["ase_step_logs"]), 5)
 
     def test_run_neb_task_writes_task_local_band_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -117,7 +127,6 @@ class TaskCliTests(unittest.TestCase):
             task_dir.mkdir(parents=True)
             initial_xyz = "2\n\nH 0 0 0\nH 1 0 0\n"
             final_xyz = "2\n\nH 0 0 0\nH 3 0 0\n"
-            (task_dir / "input.xyz").write_text(initial_xyz, encoding="utf-8")
             (task_dir / "initial.xyz").write_text(initial_xyz, encoding="utf-8")
             (task_dir / "final.xyz").write_text(final_xyz, encoding="utf-8")
             (task_dir / "task.yaml").write_text(
@@ -130,7 +139,7 @@ class TaskCliTests(unittest.TestCase):
                     model: fake-distance-barrier
                     device: cpu
                     fmax: 0.001
-                    max_steps: 25
+                    steps: 25
                     initial: initial.xyz
                     final: final.xyz
                     images: 3
@@ -140,11 +149,18 @@ class TaskCliTests(unittest.TestCase):
             )
 
             self.assertEqual(main(["run-task", str(task_dir)]), 0)
-            self.assertTrue((task_dir / "result.xyz").exists())
-            self.assertTrue((task_dir / "trajectory.xyz").exists())
+            self.assertTrue((task_dir / "neb.traj").exists())
+            self.assertTrue((task_dir / "neb.log").exists())
+            self.assertTrue((task_dir / "band.xyz").exists())
+            self.assertTrue((task_dir / "images" / "image_00.xyz").exists())
+            self.assertTrue((task_dir / "ase" / "image_01.traj").exists())
             self.assertTrue((task_dir / "energies.csv").exists())
             self.assertTrue((task_dir / "ts_like.xyz").exists())
             self.assertFalse((Path(tmp) / "database").exists())
+
+            neb_frames = read(task_dir / "neb.traj", index=":")
+            self.assertGreaterEqual(len(neb_frames), 5)
+            self.assertEqual(len(neb_frames) % 5, 0)
 
             with (task_dir / "energies.csv").open("r", encoding="utf-8") as handle:
                 rows = list(csv.DictReader(handle))
@@ -153,6 +169,11 @@ class TaskCliTests(unittest.TestCase):
             metadata = json.loads((task_dir / "metadata.json").read_text(encoding="utf-8"))
             self.assertEqual(metadata["summary"]["peak_index"], 2)
             self.assertEqual(metadata["summary"]["images"], 5)
+            self.assertEqual(metadata["artifacts"]["ase_neb_trajectory"], "neb.traj")
+            self.assertEqual(metadata["artifacts"]["ase_neb_log"], "neb.log")
+            self.assertEqual(metadata["artifacts"]["band_structure"], "band.xyz")
+            self.assertEqual(len(metadata["artifacts"]["image_structures"]), 5)
+            self.assertEqual(len(metadata["artifacts"]["ase_image_trajectories"]), 5)
 
 
 if __name__ == "__main__":

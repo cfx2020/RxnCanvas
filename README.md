@@ -11,11 +11,46 @@ rxnflow validate-task task/opt_im1
 rxnflow run-task task/opt_im1
 ```
 
+Use ASE names in `task.yaml` where possible. `type: optimize` is ASE structure
+optimization:
+
+```yaml
+type: optimize
+charge: 0
+multiplicity: 1
+backend: uma
+optimizer: LBFGS
+fmax: 0.05
+steps: 200
+```
+
+For NEB, RxnFlow keeps the ASE raw outputs for inspection:
+
+```yaml
+type: neb
+charge: 0
+multiplicity: 1
+backend: uma
+optimizer: BFGS
+fmax: 0.05
+steps: 200
+initial: initial.xyz
+final: final.xyz
+images: 5
+```
+
+NEB task output includes `neb.traj`, `neb.log`, `ase/image_XX.traj`,
+`initial_band.xyz`, `band.xyz`, `images/image_XX.xyz`, `energies.csv`,
+`ts_like.xyz`, and `metadata.json`. If ASE writes an optimizer restart file,
+RxnFlow records it too, for example `neb.json`.
+
 Registration is the only path into the database:
 
 ```bash
 rxnflow register-result --from-task task/opt_im1 --candidate final --new-node
 rxnflow register-result --from-file gaussian.log --parser gaussian --candidate final --new-node
+rxnflow register-result --from-file neb.traj --parser ase --candidate peak --images 7 \
+  --charge 0 --multiplicity 1 --method-label uma-s-1p1 --backend-label uma --new-node
 ```
 
 Reports read registered calculations only:

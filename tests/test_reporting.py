@@ -47,7 +47,7 @@ class ReportingTests(unittest.TestCase):
               model: fake-distance-barrier
               device: cpu
               fmax: 0.001
-              max_steps: 25
+              steps: 25
               output_root: .
             references:
               - id: ref0
@@ -65,7 +65,7 @@ class ReportingTests(unittest.TestCase):
                 multiplicity: 1
             tasks:
               - id: opt_shared
-                type: geomopt
+                type: optimize
                 input: initial
               - id: scan_a
                 type: scan
@@ -134,7 +134,7 @@ class ReportingTests(unittest.TestCase):
               model: fake-distance-barrier
               device: cpu
               fmax: 0.001
-              max_steps: 25
+              steps: 25
               output_root: .
             references:
               - id: ref0
@@ -148,7 +148,7 @@ class ReportingTests(unittest.TestCase):
                 multiplicity: 1
             tasks:
               - id: opt_shared
-                type: geomopt
+                type: optimize
                 input: initial
             report:
               id: cache_fill_report
@@ -171,7 +171,7 @@ class ReportingTests(unittest.TestCase):
                   model: fake-distance-barrier
                   device: cpu
                   fmax: 0.001
-                  max_steps: 25
+                  steps: 25
                   output_root: .
                 references:
                   - id: ref_new
@@ -185,7 +185,7 @@ class ReportingTests(unittest.TestCase):
                     multiplicity: 1
                 tasks:
                   - id: opt_shared
-                    type: geomopt
+                    type: optimize
                     input: initial
                 report:
                   id: cache_fill_report

@@ -38,9 +38,15 @@ def build_parser() -> argparse.ArgumentParser:
     register_parser = subparsers.add_parser("register-result", help="Register one task or external result")
     source_group = register_parser.add_mutually_exclusive_group(required=True)
     source_group.add_argument("--from-task", dest="from_task", help="Path to task/<task-id> with raw artifacts")
-    source_group.add_argument("--from-file", dest="from_file", help="Path to an external Gaussian/ORCA output file")
-    register_parser.add_argument("--parser", choices=["gaussian", "orca"], help="Parser for --from-file")
+    source_group.add_argument("--from-file", dest="from_file", help="Path to an external Gaussian/ORCA/ASE output file")
+    register_parser.add_argument("--parser", choices=["ase", "gaussian", "orca"], help="Parser for --from-file")
     register_parser.add_argument("--candidate", required=True, help="Candidate label, such as final or peak")
+    register_parser.add_argument("--charge", type=int, help="Charge for --parser ase when the raw file has no metadata")
+    register_parser.add_argument("--multiplicity", type=int, help="Multiplicity for --parser ase when the raw file has no metadata")
+    register_parser.add_argument("--method-label", help="Method label for --parser ase")
+    register_parser.add_argument("--backend-label", help="Backend label for --parser ase")
+    register_parser.add_argument("--images", type=int, help="Number of images in the last ASE NEB band for --candidate peak")
+    register_parser.add_argument("--project-root", help="Project root for --from-file registration; default is cwd")
     node_group = register_parser.add_mutually_exclusive_group(required=True)
     node_group.add_argument("--new-node", action="store_true", help="Create a new registered node")
     node_group.add_argument("--attach-node", help="Attach the calculation to an existing node id")
@@ -108,6 +114,12 @@ def main(argv: list[str] | None = None) -> int:
                     args.candidate,
                     new_node=args.new_node,
                     attach_node=args.attach_node,
+                    project_root=args.project_root,
+                    charge=args.charge,
+                    multiplicity=args.multiplicity,
+                    method_label=args.method_label,
+                    backend_label=args.backend_label,
+                    images=args.images,
                 )
         except WorkflowConfigError as exc:
             parser.exit(2, f"Registration error: {exc}\n")

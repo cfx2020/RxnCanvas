@@ -245,7 +245,7 @@ def branch_points_from_tasks(
     for task_id in branch.tasks:
         metadata = load_task_metadata(config, task_id)
         task_type = metadata["task"]["type"]
-        if task_type == "geomopt":
+        if task_type in {"optimize", "geomopt"}:
             points.append(
                 make_point(
                     branch.id,

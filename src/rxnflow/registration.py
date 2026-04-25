@@ -10,6 +10,7 @@ import uuid
 
 from .database import connect_project_database
 from .errors import WorkflowConfigError
+from .parsers.ase import parse_ase_result
 from .parsers.gaussian import parse_gaussian_result
 from .parsers.orca import parse_orca_result
 from .parsers.task import ParsedResult, parse_task_candidate
@@ -42,12 +43,33 @@ def register_from_task(task_dir: str | Path, candidate: str, new_node: bool, att
     )
 
 
-def register_from_file(source_path: str | Path, parser_name: str, candidate: str, new_node: bool, attach_node: str | None = None, project_root: str | Path | None = None) -> RegistrationResult:
+def register_from_file(
+    source_path: str | Path,
+    parser_name: str,
+    candidate: str,
+    new_node: bool,
+    attach_node: str | None = None,
+    project_root: str | Path | None = None,
+    charge: int | None = None,
+    multiplicity: int | None = None,
+    method_label: str | None = None,
+    backend_label: str | None = None,
+    images: int | None = None,
+) -> RegistrationResult:
     if not new_node and attach_node is None:
         raise WorkflowConfigError("register-result requires --new-node or --attach-node.")
     source = Path(source_path).expanduser().absolute()
     root = Path.cwd() if project_root is None else Path(project_root).expanduser().absolute()
-    parsed = parse_external_result(source, parser_name, candidate)
+    parsed = parse_external_result(
+        source,
+        parser_name,
+        candidate,
+        charge=charge,
+        multiplicity=multiplicity,
+        method_label=method_label,
+        backend_label=backend_label,
+        images=images,
+    )
     return _insert_registration(
         project_root=root,
         source_kind="import",
@@ -61,7 +83,27 @@ def register_from_file(source_path: str | Path, parser_name: str, candidate: str
     )
 
 
-def parse_external_result(source_path: Path, parser_name: str, candidate: str) -> ParsedResult:
+def parse_external_result(
+    source_path: Path,
+    parser_name: str,
+    candidate: str,
+    *,
+    charge: int | None = None,
+    multiplicity: int | None = None,
+    method_label: str | None = None,
+    backend_label: str | None = None,
+    images: int | None = None,
+) -> ParsedResult:
+    if parser_name == "ase":
+        return parse_ase_result(
+            source_path,
+            candidate,
+            charge=charge,
+            multiplicity=multiplicity,
+            method_label=method_label,
+            backend_label=backend_label,
+            images=images,
+        )
     if parser_name == "gaussian":
         return parse_gaussian_result(source_path, candidate)
     if parser_name == "orca":

@@ -64,7 +64,7 @@ class ScanExecutionTests(unittest.TestCase):
               model: fake-distance-barrier
               device: cpu
               fmax: 0.001
-              max_steps: 25
+              steps: 25
               output_root: .
             nodes:
               - id: im1
@@ -89,6 +89,8 @@ class ScanExecutionTests(unittest.TestCase):
         task_dir = self.tmpdir / "runs" / "tasks" / "scan_path"
         self.assertTrue((task_dir / "result.xyz").exists())
         self.assertTrue((task_dir / "trajectory.xyz").exists())
+        self.assertTrue((task_dir / "ase" / "scan_step_000.traj").exists())
+        self.assertTrue((task_dir / "ase" / "scan_step_000.log").exists())
         self.assertTrue((task_dir / "energies.csv").exists())
         self.assertTrue((task_dir / "ts_like.xyz").exists())
 
@@ -103,6 +105,8 @@ class ScanExecutionTests(unittest.TestCase):
             metadata = json.load(handle)
         self.assertEqual(metadata["summary"]["peak_index"], 2)
         self.assertEqual(metadata["summary"]["peak_coordinate"], 2.0)
+        self.assertEqual(len(metadata["artifacts"]["ase_step_trajectories"]), 5)
+        self.assertEqual(len(metadata["artifacts"]["ase_step_logs"]), 5)
 
 
 if __name__ == "__main__":

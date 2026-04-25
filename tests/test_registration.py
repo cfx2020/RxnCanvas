@@ -12,6 +12,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ase import Atoms
+from ase.calculators.singlepoint import SinglePointCalculator
+from ase.io.trajectory import Trajectory
+
 from rxnflow.cli import main
 
 
@@ -29,7 +33,7 @@ class RegistrationTests(unittest.TestCase):
                 textwrap.dedent(
                     """
                     {
-                      "task": {"id": "opt_im1", "type": "geomopt"},
+                      "task": {"id": "opt_im1", "type": "optimize"},
                       "settings": {"backend": "fake", "model": "fake-base", "charge": 0, "multiplicity": 1},
                       "artifacts": {"result_structure": "result.xyz"},
                       "summary": {"final_energy": -1.25}
@@ -51,6 +55,41 @@ class RegistrationTests(unittest.TestCase):
             self.assertEqual(rows["backend_label"], "fake")
             self.assertTrue((root / rows["frozen_structure_path"]).exists())
             self.assertTrue((root / rows["frozen_payload_path"]).exists())
+
+    def test_register_task_prefers_ase_raw_trajectory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            task_dir = root / "task" / "opt_raw"
+            task_dir.mkdir(parents=True)
+            atoms = Atoms("H", positions=[[1.0, 0.0, 0.0]])
+            atoms.calc = SinglePointCalculator(atoms, energy=-2.5, forces=[[0.0, 0.0, 0.0]])
+            trajectory = Trajectory(str(task_dir / "optimize.traj"), "w", atoms)
+            try:
+                trajectory.write()
+            finally:
+                trajectory.close()
+            (task_dir / "result.xyz").write_text("1\n\nH 0 0 0\n", encoding="utf-8")
+            (task_dir / "metadata.json").write_text(
+                textwrap.dedent(
+                    """
+                    {
+                      "task": {"id": "opt_raw", "type": "optimize"},
+                      "settings": {"backend": "fake", "model": "fake-base", "charge": 0, "multiplicity": 1},
+                      "artifacts": {"result_structure": "result.xyz", "ase_trajectory": "optimize.traj"},
+                      "summary": {"final_energy": -1.25}
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                main(["register-result", "--from-task", str(task_dir), "--candidate", "final", "--new-node"]),
+                0,
+            )
+
+            rows = read_registration_rows(root)
+            self.assertEqual(rows["energy"], -2.5)
 
     def test_register_gaussian_file_creates_import_record_and_calculation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -105,6 +144,50 @@ class RegistrationTests(unittest.TestCase):
             self.assertEqual(rows["calculation_count"], 1)
             self.assertEqual(rows["energy"], -40.223456)
             self.assertEqual(rows["backend_label"], "orca")
+
+    def test_register_ase_file_creates_import_record_and_calculation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            atoms = Atoms("H", positions=[[0.0, 0.0, 0.0]])
+            atoms.calc = SinglePointCalculator(atoms, energy=-0.75, forces=[[0.0, 0.0, 0.0]])
+            trajectory = Trajectory(str(root / "optimize.traj"), "w", atoms)
+            try:
+                trajectory.write()
+            finally:
+                trajectory.close()
+
+            self.assertEqual(
+                main(
+                    [
+                        "register-result",
+                        "--from-file",
+                        str(root / "optimize.traj"),
+                        "--parser",
+                        "ase",
+                        "--candidate",
+                        "final",
+                        "--new-node",
+                        "--project-root",
+                        str(root),
+                        "--charge",
+                        "0",
+                        "--multiplicity",
+                        "1",
+                        "--method-label",
+                        "fake-base",
+                        "--backend-label",
+                        "fake",
+                    ]
+                ),
+                0,
+            )
+
+            rows = read_registration_rows(root)
+            self.assertEqual(rows["import_count"], 1)
+            self.assertEqual(rows["node_count"], 1)
+            self.assertEqual(rows["calculation_count"], 1)
+            self.assertEqual(rows["energy"], -0.75)
+            self.assertEqual(rows["backend_label"], "fake")
 
 
 class changed_cwd:

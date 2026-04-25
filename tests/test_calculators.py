@@ -48,7 +48,7 @@ class CalculatorTests(unittest.TestCase):
                     multiplicity: 2
                 tasks:
                   - id: opt_im1
-                    type: geomopt
+                    type: optimize
                     input: im1
                     model: fake-override
                     multiplicity: 4
@@ -78,7 +78,7 @@ class CalculatorTests(unittest.TestCase):
                     multiplicity: 1
                 tasks:
                   - id: opt_im1
-                    type: geomopt
+                    type: optimize
                     input: im1
                 """,
             )

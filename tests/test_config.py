@@ -44,7 +44,7 @@ class WorkflowConfigTests(unittest.TestCase):
                 multiplicity: 1
             tasks:
               - id: opt_im1
-                type: geomopt
+                type: optimize
                 input: im1
               - id: scan_main
                 type: scan
@@ -102,7 +102,7 @@ class WorkflowConfigTests(unittest.TestCase):
             nodes: []
             tasks:
               - id: missing_input
-                type: geomopt
+                type: optimize
                 input: does_not_exist
             """,
         )
@@ -191,7 +191,7 @@ class WorkflowConfigTests(unittest.TestCase):
                 multiplicity: 1
             tasks:
               - id: opt_im1
-                type: geomopt
+                type: optimize
                 input: im1
             report:
               branches:

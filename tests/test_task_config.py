@@ -22,7 +22,7 @@ class TaskDirectoryConfigTests(unittest.TestCase):
             (task_dir / "task.yaml").write_text(
                 textwrap.dedent(
                     """
-                    type: geomopt
+                    type: optimize
                     charge: 0
                     multiplicity: 1
                     backend: fake
@@ -30,7 +30,7 @@ class TaskDirectoryConfigTests(unittest.TestCase):
                     device: cpu
                     task_name: omol
                     fmax: 0.01
-                    max_steps: 5
+                    steps: 5
                     """
                 ),
                 encoding="utf-8",
@@ -39,7 +39,7 @@ class TaskDirectoryConfigTests(unittest.TestCase):
             config = load_task_directory(task_dir)
 
             self.assertEqual(config.id, "opt_im1")
-            self.assertEqual(config.type, "geomopt")
+            self.assertEqual(config.type, "optimize")
             self.assertEqual(config.input_path, task_dir / "input.xyz")
             self.assertEqual(config.charge, 0)
             self.assertEqual(config.multiplicity, 1)
@@ -48,10 +48,39 @@ class TaskDirectoryConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             task_dir = Path(tmp) / "task" / "bad"
             task_dir.mkdir(parents=True)
-            (task_dir / "task.yaml").write_text("type: geomopt\ncharge: 0\nmultiplicity: 1\n", encoding="utf-8")
+            (task_dir / "task.yaml").write_text("type: optimize\ncharge: 0\nmultiplicity: 1\n", encoding="utf-8")
 
             with self.assertRaisesRegex(WorkflowConfigError, "input.xyz"):
                 load_task_directory(task_dir)
+
+    def test_neb_loads_endpoints_without_input_xyz(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task_dir = Path(tmp) / "task" / "neb_h2"
+            task_dir.mkdir(parents=True)
+            (task_dir / "initial.xyz").write_text("2\n\nH 0 0 0\nH 1 0 0\n", encoding="utf-8")
+            (task_dir / "final.xyz").write_text("2\n\nH 0 0 0\nH 3 0 0\n", encoding="utf-8")
+            (task_dir / "task.yaml").write_text(
+                textwrap.dedent(
+                    """
+                    type: neb
+                    charge: 0
+                    multiplicity: 1
+                    backend: fake
+                    model: fake-distance-barrier
+                    initial: initial.xyz
+                    final: final.xyz
+                    images: 3
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_task_directory(task_dir)
+
+            self.assertIsNone(config.input_path)
+            self.assertEqual(config.initial_path, (task_dir / "initial.xyz").resolve())
+            self.assertEqual(config.final_path, (task_dir / "final.xyz").resolve())
+            self.assertEqual(config.images, 3)
 
     def test_project_layout_paths(self) -> None:
         root = Path("/project")

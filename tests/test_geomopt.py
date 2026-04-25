@@ -42,7 +42,7 @@ class GeomoptExecutionTests(unittest.TestCase):
               backend: fake
               device: cpu
               fmax: 0.001
-              max_steps: 50
+              steps: 50
               output_root: .
             nodes:
               - id: im1
@@ -51,7 +51,7 @@ class GeomoptExecutionTests(unittest.TestCase):
                 multiplicity: 1
             tasks:
               - id: opt_im1
-                type: geomopt
+                type: optimize
                 input: im1
             """,
         )
@@ -61,6 +61,8 @@ class GeomoptExecutionTests(unittest.TestCase):
         task_dir = self.tmpdir / "runs" / "tasks" / "opt_im1"
         self.assertTrue((task_dir / "result.xyz").exists())
         self.assertTrue((task_dir / "trajectory.xyz").exists())
+        self.assertTrue((task_dir / "optimize.traj").exists())
+        self.assertTrue((task_dir / "optimize.log").exists())
         self.assertTrue((task_dir / "energies.csv").exists())
         self.assertTrue((task_dir / "metadata.json").exists())
 
@@ -69,6 +71,8 @@ class GeomoptExecutionTests(unittest.TestCase):
         self.assertEqual(metadata["task"]["id"], "opt_im1")
         self.assertEqual(metadata["settings"]["backend"], "fake")
         self.assertEqual(metadata["source"]["input_id"], "im1")
+        self.assertEqual(Path(metadata["artifacts"]["ase_trajectory"]).name, "optimize.traj")
+        self.assertEqual(Path(metadata["artifacts"]["ase_log"]).name, "optimize.log")
 
         with (task_dir / "energies.csv").open("r", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))

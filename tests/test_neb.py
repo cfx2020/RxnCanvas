@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ase import Atoms
-from ase.io import write
+from ase.io import read, write
 
 from rxnflow.cli import main
 
@@ -43,7 +43,7 @@ class NebExecutionTests(unittest.TestCase):
               model: fake-distance-barrier
               device: cpu
               fmax: 0.001
-              max_steps: 25
+              steps: 25
               output_root: .
             nodes:
               - id: initial
@@ -66,10 +66,17 @@ class NebExecutionTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
 
         task_dir = self.tmpdir / "runs" / "tasks" / "neb_path"
-        self.assertTrue((task_dir / "result.xyz").exists())
-        self.assertTrue((task_dir / "trajectory.xyz").exists())
+        self.assertTrue((task_dir / "neb.traj").exists())
+        self.assertTrue((task_dir / "neb.log").exists())
+        self.assertTrue((task_dir / "band.xyz").exists())
+        self.assertTrue((task_dir / "images" / "image_02.xyz").exists())
+        self.assertTrue((task_dir / "ase" / "image_02.traj").exists())
         self.assertTrue((task_dir / "energies.csv").exists())
         self.assertTrue((task_dir / "ts_like.xyz").exists())
+
+        neb_frames = read(task_dir / "neb.traj", index=":")
+        self.assertGreaterEqual(len(neb_frames), 5)
+        self.assertEqual(len(neb_frames) % 5, 0)
 
         with (task_dir / "energies.csv").open("r", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
@@ -82,6 +89,9 @@ class NebExecutionTests(unittest.TestCase):
             metadata = json.load(handle)
         self.assertEqual(metadata["summary"]["peak_index"], 2)
         self.assertEqual(metadata["summary"]["images"], 5)
+        self.assertEqual(Path(metadata["artifacts"]["ase_neb_trajectory"]).name, "neb.traj")
+        self.assertEqual(Path(metadata["artifacts"]["band_structure"]).name, "band.xyz")
+        self.assertEqual(len(metadata["artifacts"]["image_structures"]), 5)
 
 
 if __name__ == "__main__":
