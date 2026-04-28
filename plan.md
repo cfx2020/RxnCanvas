@@ -1,62 +1,39 @@
-# RxnFlow Rewrite Plan
+# RxnFlow Plan
 
-## Core Direction
+## Product Direction
 
-RxnFlow should be rewritten as a reaction-path registration, graph assembly, and
-visual reporting application. It should not remain an ASE task runner.
+RxnFlow is a reaction-path registration, graph assembly, and visual reporting
+application for computational chemistry results.
 
-The ASE/UMA calculation runner should become a separate project. A working name
-for that project is `aseflow`. It owns task execution and raw ASE artifacts.
-RxnFlow owns parsing already-produced calculation outputs, registering reusable
-chemistry objects, assembling reaction networks, and exporting visual reports.
+The project starts from raw calculation outputs produced elsewhere. Users bring
+files such as Gaussian logs, ORCA outputs, ASE `extxyz` trajectories, and later
+other program outputs. RxnFlow parses those files, registers reusable chemistry
+objects, lets users assemble reaction networks, computes selected energy
+profiles, and exports visual reports.
 
-This split is intentional:
+The core product should feel like a chemistry-focused graph editor:
 
-- `aseflow`: run `task.yaml` with ASE/UMA and produce raw files.
-- `rxnflow`: consume ASE/Gaussian/ORCA outputs and build reaction-path reports.
+1. Import raw output files.
+2. Parse structures, energies, thermochemistry, and metadata.
+3. Register reusable calculations and species.
+4. Compose states, corrections, and reaction edges.
+5. Render resolved reports as JSON, PNG, and ChemDraw/CDXML.
 
-The current codebase is exploratory and not released. Backward compatibility is
-not required. Remove old compatibility commands and legacy layers when they get
-in the way.
-
-## Non-Goals For RxnFlow
-
-RxnFlow should not:
-
-- run ASE optimizations, scans, or NEB jobs;
-- own UMA calculator setup or device/model execution;
-- keep `validate-task` or `run-task`;
-- keep `rebind-report`;
-- require users to manually bind individual `calc_*` ids after registration;
-- treat `network.json` as editable input;
-- preserve old workflow-YAML behavior.
-
-## Product Goal
-
-RxnFlow should feel like a chemistry-focused graph/report application:
-
-1. Users provide raw outputs from ASE, Gaussian, ORCA, and later other tools.
-2. RxnFlow parses those files and registers structures, energies, and metadata.
-3. Users define or visually arrange species, states, corrections, and edges.
-4. RxnFlow resolves the graph and computes reaction-profile values.
-5. RxnFlow exports machine-readable JSON and visual outputs such as PNG and
-   ChemDraw/CDXML.
-
-The future frontend should be able to generate the same declarative report YAML
-that a power user can write by hand. The mental model is similar to ComfyUI:
-files and calculations are input nodes; species, corrections, states, and edges
-are graph nodes; rendering produces report artifacts.
+The future frontend should generate the same declarative YAML that the CLI can
+consume. The visual workflow should be close to a node graph: input files feed
+species, species feed states, states connect through reaction edges, and render
+nodes export the final report.
 
 ## Project Layout
 
-A typical RxnFlow project should look like:
+A typical project should look like:
 
 ```text
 rxnflow-project/
   inputs/
-    ase/
     gaussian/
     orca/
+    ase/
   database/
     project.sqlite
     objects/
@@ -68,47 +45,48 @@ rxnflow-project/
       pes.cdxml
 ```
 
-`inputs/` contains user-supplied raw calculation outputs. `database/` contains
-registered normalized objects and indexed metadata. `report/` contains report
-definitions and generated views.
+`inputs/` contains user-supplied raw calculation outputs.
 
-Task-output directories produced by `aseflow` can also be used as inputs, but
-they are not part of RxnFlow's execution responsibility.
+`database/` contains registered normalized objects, indexed metadata, and frozen
+copies of important structures or parser payloads.
+
+`report/` contains declarative report definitions and generated views.
 
 ## Source Of Truth
 
-`report.yaml` should become the complete source of truth for a report.
+`report.yaml` should be the complete authoring source for a report.
 
 It should define:
 
 - imported raw output files;
-- parser hints only when inference is not enough;
-- species and their energy channels;
+- parser hints when file inference is not enough;
+- species and their available energy channels;
 - graph states made from one or more species;
+- corrections and derived energy channels;
 - edges between states;
-- the profile energy to plot;
-- reference state and export options.
+- the energy channel to plot;
+- reference state;
+- export options.
 
-`network.json` is only a resolved render artifact. It is generated from
-`report.yaml` plus registered/parsed data. Users should not need to edit
-`network.json` directly.
+`network.json` is a generated artifact, not the authoring format. It should be
+safe to delete and regenerate from `report.yaml` plus registered data.
 
 ## Target CLI
 
-The primary CLI should be:
+The initial CLI should focus on registration, inspection, and rendering:
 
 ```bash
-rxnflow register path/to/output.log
+rxnflow register inputs/gaussian/im1.log
 rxnflow list-results
 rxnflow render-report report/main/report.yaml
 ```
 
-`render-report` should be able to auto-register files declared in `report.yaml`
-when they are missing from the database. This means render is allowed to update
-`database/project.sqlite`.
+`render-report` should be able to auto-register files declared in
+`report.yaml` when they are missing from the database. Rendering is therefore
+allowed to update `database/project.sqlite`.
 
-Manual `rebind-report` should be removed. A report should not depend on hidden
-binding state in the database.
+The user should not need to manually bind individual `calc_*` ids into a report.
+Report membership and graph wiring should live in `report.yaml`.
 
 ## Declarative Report YAML
 
@@ -186,13 +164,14 @@ exports:
   cdxml: true
 ```
 
-The frontend can later generate this YAML directly from a visual graph editor.
+This YAML should be suitable for both hand editing and frontend generation.
 
 ## Energy Model
 
 RxnFlow must support multiple energy channels for the same species.
 
-The important near-term use case is solvation correction from two Gaussian logs:
+The important near-term use case is solvation correction from two Gaussian
+outputs:
 
 - gas-phase optimization/frequency output gives gas electronic energy and gas
   Gibbs free energy;
@@ -215,6 +194,10 @@ States may contain one species or multiple components. Multi-component states
 are sums of component energies. This is required for substrate association,
 product release, separated reactants, and separated products.
 
+Energy expressions should start conservative. The first implementation can
+support named channels, simple arithmetic, and explicit corrections. General
+formula evaluation can be expanded later once the data model is stable.
+
 ## Registration Model
 
 Registration should normalize raw outputs into reusable database objects.
@@ -226,28 +209,27 @@ At minimum, registered data should include:
 - candidate label;
 - structure geometry;
 - charge and multiplicity;
-- method/backend label;
+- method label;
 - electronic energy;
-- thermal/Gibbs data when available;
+- thermal and Gibbs data when available;
 - raw parser payload for later debugging;
 - frozen normalized structure under `database/objects/`.
 
-Registration should be idempotent by content or by stable source selector where
-possible. Re-rendering a report should not create duplicate records for the same
-unchanged file.
+Registration should be idempotent by content hash or stable source selector
+where possible. Re-rendering a report should not create duplicate records for
+the same unchanged file.
 
 ## Parser Scope
 
 Initial parser priorities:
 
-1. ASE `extxyz` outputs from `aseflow` or external ASE runs.
-2. Gaussian optimization/frequency logs.
-3. Gaussian single-point logs.
-4. ORCA outputs with comparable energy and structure fields.
+1. Gaussian optimization/frequency logs.
+2. Gaussian single-point logs.
+3. ORCA outputs with comparable energy and structure fields.
+4. ASE `extxyz` files containing structures, energies, and metadata.
 
-ASE `opt.log` style files are not good structure sources by themselves because
-they do not reliably contain full coordinates. Prefer `extxyz`, Gaussian logs,
-or ORCA outputs for registration.
+Plain optimizer log files that do not reliably contain full coordinates should
+not be treated as structure sources by default.
 
 ## Report Outputs
 
@@ -266,8 +248,8 @@ for the frontend and for debugging, but it is not the authoring format.
 `pes.png` should be a quick visual reaction profile.
 
 `pes.cdxml` should be suitable for opening or further editing in ChemDraw. The
-first implementation can be minimal, but the format should remain part of the
-core product direction.
+first implementation can be minimal, but CDXML export should remain a core
+product direction.
 
 ## Frontend Direction
 
@@ -286,14 +268,18 @@ and consume the same declarative `report.yaml` used by the CLI.
 
 ## Rewrite Milestones
 
-1. Split ASE runner into a new `aseflow` project.
-2. Remove task execution code from `rxnflow`.
-3. Remove `rebind-report` and old hidden report bindings.
-4. Keep or rebuild registration around raw ASE/Gaussian/ORCA files.
-5. Add `list-results`.
-6. Redesign `report.yaml` as the complete graph/report definition.
-7. Implement `render-report report.yaml` with auto-register and graph resolve.
-8. Add energy channels and the solvation correction model.
-9. Generate `network.json`, `pes.png`, and `pes.cdxml` from the resolved graph.
-10. Build the future frontend on top of the same YAML and resolved graph model.
+1. Create a clean Python package and CLI for RxnFlow.
+2. Implement parser interfaces and normalized result models.
+3. Implement Gaussian optimization/frequency parsing.
+4. Implement Gaussian single-point parsing.
+5. Implement ORCA parsing for comparable fields.
+6. Implement ASE `extxyz` parsing.
+7. Implement database registration and idempotent imports.
+8. Add `list-results`.
+9. Implement declarative `report.yaml` loading.
+10. Resolve imports, species, states, edges, and energy channels.
+11. Implement solvation correction channels.
+12. Implement `render-report report.yaml`.
+13. Generate `network.json`, `pes.png`, and `pes.cdxml`.
+14. Build the future frontend on top of the same YAML and resolved graph model.
 
