@@ -1,13 +1,11 @@
 """Calculator abstractions and backend registry."""
 
-from .base import CalculatorBackend, CalculatorSettings, ResolvedTaskSettings
-from .factory import build_calculator, get_backend, resolve_task_settings
+from .base import CalculatorBackend, CalculatorSettings
+from .factory import build_calculator_from_settings, get_backend
 
 __all__ = [
     "CalculatorBackend",
     "CalculatorSettings",
-    "ResolvedTaskSettings",
-    "build_calculator",
+    "build_calculator_from_settings",
     "get_backend",
-    "resolve_task_settings",
 ]

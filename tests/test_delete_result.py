@@ -26,9 +26,12 @@ class DeleteResultTests(unittest.TestCase):
             db_path = root / "database" / "project.sqlite"
             with connect_project_database(db_path) as conn:
                 conn.execute(
-                    "insert into result_record values ('rr_1', 'task', null, null, 'final', '2026-04-24T00:00:00+00:00')"
+                    "insert into import_record values ('import_1', 'ase', 'raw.extxyz', 'ase', '2026-04-24T00:00:00+00:00')"
                 )
-                conn.execute("insert into node values ('node_1', 0, 1, 'task', 'database/objects/results/rr_1/node.xyz')")
+                conn.execute(
+                    "insert into result_record values ('rr_1', 'import', 'import_1', 'final', '2026-04-24T00:00:00+00:00')"
+                )
+                conn.execute("insert into node values ('node_1', 0, 1, 'import', 'database/objects/results/rr_1/node.xyz')")
                 conn.execute(
                     "insert into calculation values ('calc_1', 'node_1', 'rr_1', 'fake-base', 'fake', -10.0, '{}', 'database/objects/results/rr_1/calculation.json')"
                 )
@@ -41,8 +44,10 @@ class DeleteResultTests(unittest.TestCase):
             with closing(sqlite3.connect(db_path)) as conn:
                 calc_count = conn.execute("select count(*) from calculation").fetchone()[0]
                 node_count = conn.execute("select count(*) from node").fetchone()[0]
+                import_count = conn.execute("select count(*) from import_record").fetchone()[0]
             self.assertEqual(calc_count, 0)
             self.assertEqual(node_count, 0)
+            self.assertEqual(import_count, 0)
             with self.assertRaises(SystemExit) as exit_context:
                 main(["validate-report", str(report_dir)])
             self.assertEqual(exit_context.exception.code, 2)

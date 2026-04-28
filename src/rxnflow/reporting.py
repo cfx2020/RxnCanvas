@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import uuid
 
@@ -11,10 +12,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from .database import connect_project_database
-from .errors import WorkflowConfigError
-from .paths import database_path
+from .errors import RxnFlowError
+from .paths import database_path, infer_project_root
 from .report_config import ReportDirectoryConfig, load_report_directory
-from .results import write_metadata
 
 
 def create_report(report_dir: str | Path) -> Path:
@@ -29,7 +29,7 @@ def create_report(report_dir: str | Path) -> Path:
 def rebind_report_site(report_dir: str | Path, site_id: str, calculation_id: str) -> None:
     config = load_report_directory(report_dir)
     if site_id not in {site.id for site in config.sites}:
-        raise WorkflowConfigError(f"Report '{config.id}' has no site '{site_id}'.")
+        raise RxnFlowError(f"Report '{config.id}' has no site '{site_id}'.")
     project_root = _project_root_from_report_dir(config.directory)
     with connect_project_database(database_path(project_root)) as conn:
         row = conn.execute(
@@ -37,7 +37,7 @@ def rebind_report_site(report_dir: str | Path, site_id: str, calculation_id: str
             (calculation_id,),
         ).fetchone()
         if row is None:
-            raise WorkflowConfigError(f"Unknown calculation '{calculation_id}'.")
+            raise RxnFlowError(f"Unknown calculation '{calculation_id}'.")
         _sync_report_config(conn, config)
         conn.execute(
             "update report_point_binding set active = 0 where report_id = ? and site_id = ?",
@@ -65,7 +65,7 @@ def validate_report(report_dir: str | Path) -> ReportDirectoryConfig:
         ).fetchall()
         if missing_rows:
             labels = ", ".join(row[0] for row in missing_rows)
-            raise WorkflowConfigError(f"Report '{config.id}' has missing calculations: {labels}")
+            raise RxnFlowError(f"Report '{config.id}' has missing calculations: {labels}")
         configured_sites = {site.id for site in config.sites}
         dangling_site_rows = conn.execute(
             "select site_id from report_point_binding where report_id = ? and active = 1",
@@ -74,7 +74,7 @@ def validate_report(report_dir: str | Path) -> ReportDirectoryConfig:
         dangling_sites = sorted(row[0] for row in dangling_site_rows if row[0] not in configured_sites)
         if dangling_sites:
             labels = ", ".join(dangling_sites)
-            raise WorkflowConfigError(f"Report '{config.id}' has bindings for unknown sites: {labels}")
+            raise RxnFlowError(f"Report '{config.id}' has bindings for unknown sites: {labels}")
     return config
 
 
@@ -123,7 +123,7 @@ def render_report(report_dir: str | Path) -> Path:
         for edge in config.edges
     ]
     network_path = config.directory / "network.json"
-    write_metadata(
+    _write_json(
         network_path,
         {
             "report_id": config.id,
@@ -141,10 +141,7 @@ def render_report(report_dir: str | Path) -> Path:
 
 
 def _project_root_from_report_dir(report_dir: Path) -> Path:
-    directory = Path(report_dir).absolute()
-    if directory.parent.name == "report":
-        return directory.parent.parent
-    return directory.parent
+    return infer_project_root(report_dir)
 
 
 def _sync_report_config(conn, config: ReportDirectoryConfig) -> None:
@@ -189,3 +186,7 @@ def _plot_database_report(path: Path, sites_payload: list[dict]) -> None:
     plt.savefig(path, dpi=200)
     plt.close()
 
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

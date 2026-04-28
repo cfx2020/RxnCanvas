@@ -8,8 +8,8 @@ from pathlib import Path
 from ase import Atoms
 from ase.io import read, write
 
-from ..errors import WorkflowConfigError
-from .task import ParsedResult
+from ..errors import RxnFlowError
+from .common import ParsedResult
 
 
 def parse_ase_result(
@@ -33,7 +33,6 @@ def parse_ase_result(
         multiplicity=_metadata_int(atoms, "multiplicity", multiplicity, 1),
         method_label=method_label or str(atoms.info.get("model", "ase-raw")),
         backend_label=backend_label or str(atoms.info.get("backend", "ase")),
-        source_task_type="ase",
     )
 
 
@@ -41,9 +40,9 @@ def _read_frames(source: Path) -> list[Atoms]:
     try:
         frames = list(read(source, index=":"))
     except Exception as exc:
-        raise WorkflowConfigError(f"Unable to read ASE artifact '{source}': {exc}") from exc
+        raise RxnFlowError(f"Unable to read ASE artifact '{source}': {exc}") from exc
     if not frames:
-        raise WorkflowConfigError(f"ASE artifact '{source}' contains no frames.")
+        raise RxnFlowError(f"ASE artifact '{source}' contains no frames.")
     return frames
 
 
@@ -54,21 +53,21 @@ def _select_candidate(frames: list[Atoms], candidate: str, images: int | None) -
         candidates = frames
         if images is not None:
             if images < 1:
-                raise WorkflowConfigError("--images must be a positive count.")
+                raise RxnFlowError("--images must be a positive count.")
             if len(frames) < images:
-                raise WorkflowConfigError(
+                raise RxnFlowError(
                     f"ASE artifact contains {len(frames)} frames, fewer than --images {images}."
                 )
             candidates = frames[-images:]
         return max(candidates, key=lambda atoms: _potential_energy(atoms, Path("<ase-artifact>")))
-    raise WorkflowConfigError(f"ASE candidate '{candidate}' is not available.")
+    raise RxnFlowError(f"ASE candidate '{candidate}' is not available.")
 
 
 def _potential_energy(atoms: Atoms, source: Path) -> float:
     try:
         return float(atoms.get_potential_energy())
     except Exception as exc:
-        raise WorkflowConfigError(
+        raise RxnFlowError(
             f"ASE artifact '{source}' is missing potential energy for the requested candidate."
         ) from exc
 

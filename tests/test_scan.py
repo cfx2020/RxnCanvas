@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import tempfile
-import textwrap
 import unittest
 from pathlib import Path
 import sys
@@ -18,18 +17,12 @@ from rxnflow.constraints import build_constraints
 from rxnflow.model import ConstraintSpec, ScanCoordinate
 
 
-def write_yaml(tmpdir: Path, content: str) -> Path:
-    path = tmpdir / "workflow.yaml"
-    path.write_text(textwrap.dedent(content), encoding="utf-8")
-    return path
-
-
 class ScanExecutionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmpdir_ctx = tempfile.TemporaryDirectory()
         self.tmpdir = Path(self.tmpdir_ctx.name)
-        structures = self.tmpdir / "structures"
-        structures.mkdir()
+        self.task_dir = self.tmpdir / "task" / "scan_path"
+        self.task_dir.mkdir(parents=True)
         atoms = Atoms(
             "H3",
             positions=[
@@ -38,7 +31,29 @@ class ScanExecutionTests(unittest.TestCase):
                 [0.0, 1.0, 0.0],
             ],
         )
-        write(structures / "im1.xyz", atoms)
+        write(self.task_dir / "input.xyz", atoms)
+        (self.task_dir / "task.yaml").write_text(
+            "\n".join(
+                [
+                    "type: scan",
+                    "charge: 0",
+                    "multiplicity: 1",
+                    "backend: fake",
+                    "model: fake-distance-barrier",
+                    "device: cpu",
+                    "fmax: 0.001",
+                    "steps: 25",
+                    "coordinate:",
+                    "  type: distance",
+                    "  atoms: [1, 2]",
+                    "  start: 1.0",
+                    "  stop: 3.0",
+                    "  steps: 5",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
 
     def tearDown(self) -> None:
         self.tmpdir_ctx.cleanup()
@@ -55,51 +70,26 @@ class ScanExecutionTests(unittest.TestCase):
         self.assertEqual(constraints[1].bonds, [[1.1, [0, 1]]])
 
     def test_scan_writes_raw_and_inspection_artifacts(self) -> None:
-        config_path = write_yaml(
-            self.tmpdir,
-            """
-            defaults:
-              backend: fake
-              model: fake-distance-barrier
-              device: cpu
-              fmax: 0.001
-              steps: 25
-              output_root: .
-            nodes:
-              - id: im1
-                path: ./structures/im1.xyz
-                charge: 0
-                multiplicity: 1
-            tasks:
-              - id: scan_path
-                type: scan
-                input: im1
-                coordinate:
-                  type: distance
-                  atoms: [1, 2]
-                  start: 1.0
-                  stop: 3.0
-                  steps: 5
-            """,
-        )
-        exit_code = main(["run", str(config_path)])
+        exit_code = main(["run-task", str(self.task_dir)])
         self.assertEqual(exit_code, 0)
 
-        task_dir = self.tmpdir / "runs" / "tasks" / "scan_path"
+        task_dir = self.task_dir
         self.assertTrue((task_dir / "task.yaml").exists())
         self.assertTrue((task_dir / "input.xyz").exists())
-        self.assertTrue((task_dir / "ase" / "scan_step_000.traj").exists())
-        self.assertTrue((task_dir / "ase" / "scan_step_000.log").exists())
-        self.assertTrue((task_dir / "inspect" / "final.xyz").exists())
-        self.assertTrue((task_dir / "inspect" / "trajectory.xyz").exists())
-        self.assertTrue((task_dir / "inspect" / "energies.csv").exists())
-        self.assertTrue((task_dir / "inspect" / "peak.xyz").exists())
+        self.assertTrue((task_dir / "scan_step_000.traj").exists())
+        self.assertTrue((task_dir / "scan_step_000.log").exists())
+        self.assertTrue((task_dir / "final.xyz").exists())
+        self.assertTrue((task_dir / "scan_traj.xyz").exists())
+        self.assertTrue((task_dir / "scan_traj.extxyz").exists())
+        self.assertTrue((task_dir / "scan_energies.csv").exists())
+        self.assertTrue((task_dir / "scan_energy_profile.png").exists())
+        self.assertTrue((task_dir / "peak.xyz").exists())
         self.assertFalse((task_dir / "metadata.json").exists())
 
-        with (task_dir / "inspect" / "energies.csv").open("r", encoding="utf-8") as handle:
+        with (task_dir / "scan_energies.csv").open("r", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
         self.assertEqual(len(rows), 5)
-        energies = [float(row["energy"]) for row in rows]
+        energies = [float(row["energy_eV"]) for row in rows]
         peak_index = max(range(len(energies)), key=energies.__getitem__)
         self.assertEqual(peak_index, 2)
 

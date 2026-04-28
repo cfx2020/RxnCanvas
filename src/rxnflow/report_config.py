@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from .errors import WorkflowConfigError
+from .errors import RxnFlowError
 
 
 @dataclass(slots=True)
@@ -55,9 +55,9 @@ def load_report_directory(report_dir: str | Path) -> ReportDirectoryConfig:
     try:
         raw = yaml.safe_load(report_yaml.read_text(encoding="utf-8")) or {}
     except OSError as exc:
-        raise WorkflowConfigError(f"Unable to read report config '{report_yaml}': {exc}") from exc
+        raise RxnFlowError(f"Unable to read report config '{report_yaml}': {exc}") from exc
     if not isinstance(raw, dict):
-        raise WorkflowConfigError("Report YAML must contain a top-level mapping.")
+        raise RxnFlowError("Report YAML must contain a top-level mapping.")
 
     sites = [ReportSiteConfig.from_dict(item) for item in raw.get("sites", [])]
     edges = [ReportEdgeConfig.from_dict(item) for item in raw.get("edges", [])]
@@ -69,12 +69,12 @@ def _validate_report_directory(directory: Path, sites: list[ReportSiteConfig], e
     site_ids: set[str] = set()
     for site in sites:
         if site.id in site_ids:
-            raise WorkflowConfigError(f"Report '{directory.name}' has duplicate site id '{site.id}'.")
+            raise RxnFlowError(f"Report '{directory.name}' has duplicate site id '{site.id}'.")
         site_ids.add(site.id)
     edge_ids: set[str] = set()
     for edge in edges:
         if edge.id in edge_ids:
-            raise WorkflowConfigError(f"Report '{directory.name}' has duplicate edge id '{edge.id}'.")
+            raise RxnFlowError(f"Report '{directory.name}' has duplicate edge id '{edge.id}'.")
         edge_ids.add(edge.id)
         if edge.from_site not in site_ids or edge.to_site not in site_ids:
-            raise WorkflowConfigError(f"Report edge '{edge.id}' references an unknown site.")
+            raise RxnFlowError(f"Report edge '{edge.id}' references an unknown site.")

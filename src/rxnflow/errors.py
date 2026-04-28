@@ -1,5 +1,5 @@
 """Package-specific exceptions."""
 
 
-class WorkflowConfigError(ValueError):
-    """Raised when a workflow YAML file is invalid."""
+class RxnFlowError(ValueError):
+    """Raised when RxnFlow input or raw result parsing fails."""

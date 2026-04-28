@@ -28,7 +28,6 @@ class DatabaseTests(unittest.TestCase):
 
             self.assertEqual(
                 {
-                    "task_run",
                     "import_record",
                     "result_record",
                     "node",

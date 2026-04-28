@@ -10,14 +10,6 @@ from typing import Iterator
 
 SCHEMA_STATEMENTS = [
     """
-    create table if not exists task_run (
-        task_run_id text primary key,
-        task_dir text not null,
-        task_type text not null,
-        source_task_yaml_path text not null
-    )
-    """,
-    """
     create table if not exists import_record (
         import_record_id text primary key,
         source_program text not null,
@@ -29,8 +21,7 @@ SCHEMA_STATEMENTS = [
     """
     create table if not exists result_record (
         result_record_id text primary key,
-        source_kind text not null check (source_kind in ('task', 'import')),
-        task_run_id text references task_run(task_run_id),
+        source_kind text not null check (source_kind = 'import'),
         import_record_id text references import_record(import_record_id),
         candidate_label text not null,
         registered_at text not null
@@ -85,7 +76,6 @@ SCHEMA_STATEMENTS = [
         report_id text not null references report(report_id),
         from_site_id text not null references report_site(site_id),
         to_site_id text not null references report_site(site_id),
-        provenance_task_run_id text references task_run(task_run_id),
         note text not null default ''
     )
     """,
@@ -120,6 +110,10 @@ def connect_project_database(db_path: str | Path) -> Iterator[sqlite3.Connection
 
 def delete_result(db_path: str | Path, result_record_id: str) -> None:
     with connect_project_database(db_path) as conn:
+        result_row = conn.execute(
+            "select import_record_id from result_record where result_record_id = ?",
+            (result_record_id,),
+        ).fetchone()
         rows = conn.execute(
             "select calculation_id, node_id from calculation where result_record_id = ?",
             (result_record_id,),
@@ -133,3 +127,10 @@ def delete_result(db_path: str | Path, result_record_id: str) -> None:
             if remaining == 0:
                 conn.execute("delete from node where node_id = ?", (node_id,))
         conn.execute("delete from result_record where result_record_id = ?", (result_record_id,))
+        if result_row is not None and result_row[0] is not None:
+            remaining_import_refs = conn.execute(
+                "select count(*) from result_record where import_record_id = ?",
+                (result_row[0],),
+            ).fetchone()[0]
+            if remaining_import_refs == 0:
+                conn.execute("delete from import_record where import_record_id = ?", (result_row[0],))

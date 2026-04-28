@@ -2,43 +2,30 @@
 
 from __future__ import annotations
 
-from io import StringIO
 from pathlib import Path
 
 import numpy as np
-import yaml
 from ase.calculators.singlepoint import SinglePointCalculator
 from ase.io import read
 from ase.io.trajectory import Trajectory
 from ase.mep import NEB
 from ase.optimize import BFGS, LBFGS
 
-from .calculators.base import CalculatorSettings, merge_task_settings
+from .calculators.base import CalculatorSettings
 from .calculators.factory import build_calculator_from_settings
 from .constraints import apply_internal_value, build_constraints
-from .errors import WorkflowConfigError
-from .model import StructureNode, TaskConfig, TaskDirectoryConfig, WorkflowConfig
-from .paths import task_dir
-from .parsers.task import parse_task_candidate
+from .errors import RxnFlowError
+from .model import DEFAULT_TASK_FMAX, DEFAULT_TASK_OPTIMIZER, DEFAULT_TASK_STEPS, TaskDirectoryConfig
 from .results import (
     apply_charge_multiplicity,
-    load_atoms_from_node,
     write_atoms,
     write_energy_table,
+    write_energy_profile,
     write_path_energy_table,
     write_scan_energy_table,
+    write_trajectory_extxyz,
     write_trajectory_xyz,
 )
-from .task_config import load_task_directory
-
-
-def run_workflow(config: WorkflowConfig, selected_task_ids: list[str] | None = None) -> list[str]:
-    tasks = tasks_to_run(config, selected_task_ids)
-    completed: list[str] = []
-    for task in tasks:
-        dispatch_task(config, task)
-        completed.append(task.id)
-    return completed
 
 
 def run_task_directory(task: TaskDirectoryConfig) -> None:
@@ -51,65 +38,55 @@ def run_task_directory(task: TaskDirectoryConfig) -> None:
     if task.type == "neb":
         run_neb_directory(task)
         return
-    raise WorkflowConfigError(f"Task '{task.id}' has unsupported type '{task.type}'.")
+    raise RxnFlowError(f"Task '{task.id}' has unsupported type '{task.type}'.")
 
 
 def run_optimize_directory(task: TaskDirectoryConfig) -> None:
-    atoms = read(task.input_path)
+    atoms = read_task_structure(task.input_path)
     settings = task_directory_calculator_settings(task)
-    apply_charge_multiplicity(atoms, settings.charge, settings.multiplicity)
-    atoms.calc = build_calculator_from_settings(settings)
+    apply_calculator_metadata(atoms, settings)
 
     output_dir = task.directory
     output_dir.mkdir(parents=True, exist_ok=True)
-    ase_dir = output_dir / "ase"
-    inspect_dir = output_dir / "inspect"
-    ase_dir.mkdir(parents=True, exist_ok=True)
-    inspect_dir.mkdir(parents=True, exist_ok=True)
-    trajectory_path = ase_dir / "optimize.traj"
-    log_path = ase_dir / "optimize.log"
-    restart_path = ase_dir / "optimize.pckl"
-
-    optimizer = build_ase_optimizer(
-        task.optimizer,
+    frames = optimize_atoms(
         atoms,
-        trajectory=str(trajectory_path),
-        logfile=str(log_path),
-        restart=str(restart_path),
+        settings=settings,
+        optimizer_name=task.optimizer,
+        fmax=task.fmax,
+        steps=task.steps,
+        trajectory_path=output_dir / "opt.traj",
+        log_path=output_dir / "opt.log",
+        restart_path=output_dir / "opt.pckl",
     )
-    optimizer.run(fmax=task.fmax, steps=task.steps)
 
-    frames = read_trajectory_frames_or_current(trajectory_path, atoms)
     energies = [frame.get_potential_energy() for frame in frames]
     final_atoms = frames[-1]
 
-    final_structure = inspect_dir / "final.xyz"
-    trajectory_xyz = inspect_dir / "trajectory.xyz"
-    energy_table = inspect_dir / "energies.csv"
+    final_structure = output_dir / "final.xyz"
+    trajectory_xyz = output_dir / "opt_traj.xyz"
+    trajectory_extxyz = output_dir / "opt_traj.extxyz"
+    energy_table = output_dir / "opt_energies.csv"
 
     write_atoms(final_structure, final_atoms)
     write_trajectory_xyz(trajectory_xyz, frames)
+    write_trajectory_extxyz(trajectory_extxyz, frames)
     write_energy_table(energy_table, energies)
 
 
 def run_scan_directory(task: TaskDirectoryConfig) -> None:
     if task.coordinate is None:
-        raise WorkflowConfigError(f"Task '{task.id}' must declare one main scan coordinate.")
-    atoms = read(task.input_path)
+        raise RxnFlowError(f"Task '{task.id}' must declare one main scan coordinate.")
+    atoms = read_task_structure(task.input_path)
     settings = task_directory_calculator_settings(task)
     coordinate = task.coordinate
     coordinate_values = np.linspace(coordinate.start, coordinate.stop, coordinate.steps).tolist()
 
     output_dir = task.directory
     output_dir.mkdir(parents=True, exist_ok=True)
-    ase_dir = output_dir / "ase"
-    inspect_dir = output_dir / "inspect"
-    ase_dir.mkdir(parents=True, exist_ok=True)
-    inspect_dir.mkdir(parents=True, exist_ok=True)
     scanned_frames = []
     energies = []
     current_atoms = atoms.copy()
-    apply_charge_multiplicity(current_atoms, settings.charge, settings.multiplicity)
+    apply_calculator_metadata(current_atoms, settings)
 
     for step_index, value in enumerate(coordinate_values):
         working_atoms = current_atoms.copy()
@@ -130,9 +107,9 @@ def run_scan_directory(task: TaskDirectoryConfig) -> None:
             )
         )
         working_atoms.calc = build_calculator_from_settings(settings)
-        step_trajectory = ase_dir / f"scan_step_{step_index:03d}.traj"
-        step_log = ase_dir / f"scan_step_{step_index:03d}.log"
-        step_restart = ase_dir / f"scan_step_{step_index:03d}.pckl"
+        step_trajectory = output_dir / f"scan_step_{step_index:03d}.traj"
+        step_log = output_dir / f"scan_step_{step_index:03d}.log"
+        step_restart = output_dir / f"scan_step_{step_index:03d}.pckl"
         optimizer = build_ase_optimizer(
             task.optimizer,
             working_atoms,
@@ -153,57 +130,66 @@ def run_scan_directory(task: TaskDirectoryConfig) -> None:
     final_atoms = scanned_frames[-1]
     ts_like_atoms = scanned_frames[peak_index]
 
-    final_structure = inspect_dir / "final.xyz"
-    trajectory_xyz = inspect_dir / "trajectory.xyz"
-    energy_table = inspect_dir / "energies.csv"
-    peak_path = inspect_dir / "peak.xyz"
+    final_structure = output_dir / "final.xyz"
+    trajectory_xyz = output_dir / "scan_traj.xyz"
+    trajectory_extxyz = output_dir / "scan_traj.extxyz"
+    energy_table = output_dir / "scan_energies.csv"
+    profile_path = output_dir / "scan_energy_profile.png"
+    peak_path = output_dir / "peak.xyz"
 
     write_atoms(final_structure, final_atoms)
     write_trajectory_xyz(trajectory_xyz, scanned_frames)
+    write_trajectory_extxyz(trajectory_extxyz, scanned_frames)
     write_scan_energy_table(energy_table, coordinate_values, energies)
+    write_energy_profile(
+        profile_path,
+        coordinate_values,
+        energies,
+        xlabel=f"{coordinate.type} coordinate",
+        title="Scan Energy Profile",
+    )
     write_atoms(peak_path, ts_like_atoms)
 
 
 def run_neb_directory(task: TaskDirectoryConfig) -> None:
     if task.initial_path is None or task.final_path is None:
-        raise WorkflowConfigError(f"Task '{task.id}' must declare initial and final structures.")
-    if task.images is None or task.images < 1:
-        raise WorkflowConfigError(f"Task '{task.id}' must declare a positive images count.")
+        raise RxnFlowError(f"Task '{task.id}' must declare initial and final structures.")
+    if task.intermediate_images is None or task.intermediate_images < 1:
+        raise RxnFlowError(f"Task '{task.id}' must declare a positive intermediate_images count.")
 
-    initial_atoms = read(task.initial_path)
-    final_atoms = read(task.final_path)
+    initial_atoms = read_task_structure(task.initial_path)
+    final_atoms = read_task_structure(task.final_path)
     settings = task_directory_calculator_settings(task)
     output_dir = task.directory
     output_dir.mkdir(parents=True, exist_ok=True)
-    ase_dir = output_dir / "ase"
-    inspect_dir = output_dir / "inspect"
-    image_dir = inspect_dir / "images"
-    ase_dir.mkdir(parents=True, exist_ok=True)
-    inspect_dir.mkdir(parents=True, exist_ok=True)
+    image_dir = output_dir / "image"
     image_dir.mkdir(parents=True, exist_ok=True)
 
-    apply_charge_multiplicity(initial_atoms, settings.charge, settings.multiplicity)
-    apply_charge_multiplicity(final_atoms, settings.charge, settings.multiplicity)
-    images = [initial_atoms.copy()]
-    for _ in range(task.images):
-        image = initial_atoms.copy()
-        apply_charge_multiplicity(image, settings.charge, settings.multiplicity)
+    apply_calculator_metadata(initial_atoms, settings)
+    apply_calculator_metadata(final_atoms, settings)
+    initial_optimized = optimize_endpoint_for_neb("initial", initial_atoms, output_dir, settings)
+    final_optimized = optimize_endpoint_for_neb("final", final_atoms, output_dir, settings)
+
+    images = [initial_optimized.copy()]
+    for _ in range(task.intermediate_images):
+        image = initial_optimized.copy()
+        apply_calculator_metadata(image, settings)
         images.append(image)
-    final_copy = final_atoms.copy()
-    apply_charge_multiplicity(final_copy, settings.charge, settings.multiplicity)
+    final_copy = final_optimized.copy()
+    apply_calculator_metadata(final_copy, settings)
     images.append(final_copy)
 
     for image in images:
         image.calc = build_calculator_from_settings(settings)
 
-    band = NEB(images, method="improvedtangent")
+    band = NEB(images, method="improvedtangent", climb=task.climb)
     band.interpolate()
-    initial_band_structure = inspect_dir / "initial_band.xyz"
+    initial_band_structure = output_dir / "neb_initial_path.xyz"
     write_trajectory_xyz(initial_band_structure, images)
 
-    neb_trajectory = ase_dir / "neb.traj"
-    neb_log = ase_dir / "neb.log"
-    neb_restart = ase_dir / "neb.json"
+    neb_trajectory = output_dir / "neb.traj"
+    neb_log = output_dir / "neb.log"
+    neb_restart = output_dir / "neb.json"
     open_trajectories = []
     optimizer = build_ase_optimizer(
         task.optimizer,
@@ -214,7 +200,7 @@ def run_neb_directory(task: TaskDirectoryConfig) -> None:
     )
     try:
         for image_index, image in enumerate(images):
-            image_trajectory = ase_dir / f"image_{image_index:02d}.traj"
+            image_trajectory = image_dir / f"image_{image_index:02d}.traj"
             trajectory = Trajectory(str(image_trajectory), "w", image)
             optimizer.attach(trajectory.write)
             open_trajectories.append(trajectory)
@@ -237,12 +223,27 @@ def run_neb_directory(task: TaskDirectoryConfig) -> None:
     peak_index = max(range(len(energies)), key=energies.__getitem__)
     ts_like_atoms = snapped_images[peak_index]
 
-    band_structure = inspect_dir / "band.xyz"
-    energy_table = inspect_dir / "energies.csv"
-    peak_path = inspect_dir / "peak.xyz"
+    neb_frames = read_trajectory_frames(neb_trajectory)
+    trajectory_xyz = output_dir / "neb_traj.xyz"
+    trajectory_extxyz = output_dir / "neb_traj.extxyz"
+    band_structure = output_dir / "neb_final_path.xyz"
+    band_extxyz = output_dir / "neb_final_path.extxyz"
+    energy_table = output_dir / "neb_energies.csv"
+    profile_path = output_dir / "neb_energy_profile.png"
+    peak_path = output_dir / "peak.xyz"
 
+    write_trajectory_xyz(trajectory_xyz, neb_frames)
+    write_trajectory_extxyz(trajectory_extxyz, neb_frames)
     write_trajectory_xyz(band_structure, snapped_images)
+    write_trajectory_extxyz(band_extxyz, snapped_images)
     write_path_energy_table(energy_table, path_positions, energies)
+    write_energy_profile(
+        profile_path,
+        path_positions,
+        energies,
+        xlabel="Distance along Reaction Path (A)",
+        title="NEB Energy Profile",
+    )
     write_atoms(peak_path, ts_like_atoms)
     for image_index, image in enumerate(snapped_images):
         image_structure = image_dir / f"image_{image_index:02d}.xyz"
@@ -260,20 +261,78 @@ def task_directory_calculator_settings(task: TaskDirectoryConfig) -> CalculatorS
     )
 
 
+def read_task_structure(path: Path):
+    atoms = read(path)
+    atoms.info.clear()
+    return atoms
+
+
+def apply_calculator_metadata(atoms, settings: CalculatorSettings):
+    apply_charge_multiplicity(atoms, settings.charge, settings.multiplicity)
+    atoms.info["backend"] = settings.backend
+    atoms.info["model"] = settings.model
+    atoms.info["task_name"] = settings.task_name
+    if settings.backend == "uma":
+        atoms.info["spin"] = int(settings.multiplicity)
+    return atoms
+
+
+def optimize_endpoint_for_neb(prefix: str, atoms, output_dir: Path, settings: CalculatorSettings):
+    frames = optimize_atoms(
+        atoms,
+        settings=settings,
+        optimizer_name=DEFAULT_TASK_OPTIMIZER["optimize"],
+        fmax=DEFAULT_TASK_FMAX["optimize"],
+        steps=DEFAULT_TASK_STEPS["optimize"],
+        trajectory_path=output_dir / f"{prefix}_opt.traj",
+        log_path=output_dir / f"{prefix}_opt.log",
+        restart_path=output_dir / f"{prefix}_opt.pckl",
+    )
+    energies = [frame.get_potential_energy() for frame in frames]
+    final_atoms = frames[-1]
+    write_atoms(output_dir / f"{prefix}_opt.xyz", final_atoms)
+    write_trajectory_xyz(output_dir / f"{prefix}_opt_traj.xyz", frames)
+    write_trajectory_extxyz(output_dir / f"{prefix}_opt_traj.extxyz", frames)
+    write_energy_table(output_dir / f"{prefix}_opt_energies.csv", energies)
+    return final_atoms
+
+
+def optimize_atoms(
+    atoms,
+    *,
+    settings: CalculatorSettings,
+    optimizer_name: str,
+    fmax: float,
+    steps: int,
+    trajectory_path: Path,
+    log_path: Path,
+    restart_path: Path,
+):
+    atoms.calc = build_calculator_from_settings(settings)
+    optimizer = build_ase_optimizer(
+        optimizer_name,
+        atoms,
+        trajectory=str(trajectory_path),
+        logfile=str(log_path),
+        restart=str(restart_path),
+    )
+    optimizer.run(fmax=fmax, steps=steps)
+    return read_trajectory_frames_or_current(trajectory_path, atoms)
+
+
 def build_ase_optimizer(name: str, atoms, **kwargs):
     optimizer_name = name.lower().replace("_", "")
     if optimizer_name == "bfgs":
         return BFGS(atoms, **kwargs)
     if optimizer_name == "lbfgs":
         return LBFGS(atoms, **kwargs)
-    raise WorkflowConfigError(f"Unsupported ASE optimizer '{name}'. Supported optimizers: BFGS, LBFGS.")
+    raise RxnFlowError(f"Unsupported ASE optimizer '{name}'. Supported optimizers: BFGS, LBFGS.")
 
 
 def read_trajectory_frames_or_current(trajectory_path: Path, atoms):
-    if trajectory_path.exists():
-        frames = list(read(trajectory_path, index=":"))
-        if frames:
-            return frames
+    frames = read_trajectory_frames(trajectory_path)
+    if frames:
+        return frames
     energy = atoms.get_potential_energy()
     forces = atoms.get_forces()
     snapshot = atoms.copy()
@@ -281,147 +340,12 @@ def read_trajectory_frames_or_current(trajectory_path: Path, atoms):
     return [snapshot]
 
 
-def tasks_to_run(config: WorkflowConfig, selected_task_ids: list[str] | None = None) -> list[TaskConfig]:
-    if not selected_task_ids:
-        return list(config.tasks)
-    task_by_id = {task.id: task for task in config.tasks}
-    missing = [task_id for task_id in selected_task_ids if task_id not in task_by_id]
-    if missing:
-        raise WorkflowConfigError(f"Unknown selected task ids: {', '.join(missing)}")
-    needed: set[str] = set()
-    stack = list(selected_task_ids)
-    while stack:
-        task_id = stack.pop()
-        if task_id in needed:
-            continue
-        needed.add(task_id)
-        task = task_by_id[task_id]
-        for dependency in task_dependencies(task, set(task_by_id)):
-            stack.append(dependency)
-    return [task for task in config.tasks if task.id in needed]
-
-
-def task_dependencies(task: TaskConfig, task_ids: set[str]) -> list[str]:
-    candidates = [task.input, task.initial, task.final]
-    return [candidate for candidate in candidates if candidate in task_ids]
-
-
-def dispatch_task(config: WorkflowConfig, task: TaskConfig) -> None:
-    if task.type == "optimize":
-        run_optimize(config, task)
-        return
-    if task.type == "scan":
-        run_scan(config, task)
-        return
-    if task.type == "neb":
-        run_neb(config, task)
-        return
-    raise NotImplementedError(f"Task type '{task.type}' is not implemented yet.")
-
-
-def resolve_input_node(config: WorkflowConfig, input_id: str) -> StructureNode | None:
-    for node in config.references + config.nodes:
-        if node.id == input_id:
-            return node
-    return None
-
-
-def load_task_input_atoms(config: WorkflowConfig, input_id: str):
-    node = resolve_input_node(config, input_id)
-    if node is not None:
-        return load_atoms_from_node(config, node), node
-    parsed = parse_task_candidate(task_dir(config, input_id), "final")
-    atoms = read(StringIO(parsed.structure_xyz), format="xyz")
-    apply_charge_multiplicity(atoms, parsed.charge, parsed.multiplicity)
-    return atoms, StructureNode(
-        id=input_id,
-        path="",
-        charge=parsed.charge,
-        multiplicity=parsed.multiplicity,
-    )
-
-
-def run_optimize(config: WorkflowConfig, task: TaskConfig) -> None:
-    atoms, input_node = load_task_input_atoms(config, task.input)
-    settings = merge_task_settings(config.defaults, task, input_node)
-    output_dir = task_dir(config, task.id)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    write_atoms(output_dir / "input.xyz", atoms)
-    write_task_yaml(
-        output_dir,
-        {
-            **task_settings_yaml(settings),
-            "type": "optimize",
-        },
-    )
-    run_task_directory(load_task_directory(output_dir))
-
-
-def run_scan(config: WorkflowConfig, task: TaskConfig) -> None:
-    atoms, input_node = load_task_input_atoms(config, task.input)
-    settings = merge_task_settings(config.defaults, task, input_node)
-    output_dir = task_dir(config, task.id)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    write_atoms(output_dir / "input.xyz", atoms)
-    assert task.coordinate is not None
-    write_task_yaml(
-        output_dir,
-        {
-            **task_settings_yaml(settings),
-            "type": "scan",
-            "coordinate": {
-                "type": task.coordinate.type,
-                "atoms": task.coordinate.atoms,
-                "start": task.coordinate.start,
-                "stop": task.coordinate.stop,
-                "steps": task.coordinate.steps,
-            },
-            "constraints": [
-                {"type": item.type, "atoms": item.atoms, "value": item.value}
-                for item in task.constraints
-            ],
-        },
-    )
-    run_task_directory(load_task_directory(output_dir))
-
-
-def run_neb(config: WorkflowConfig, task: TaskConfig) -> None:
-    initial_atoms, initial_node = load_task_input_atoms(config, task.initial)
-    final_atoms, _ = load_task_input_atoms(config, task.final)
-    settings = merge_task_settings(config.defaults, task, initial_node)
-    output_dir = task_dir(config, task.id)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    write_atoms(output_dir / "initial.xyz", initial_atoms)
-    write_atoms(output_dir / "final.xyz", final_atoms)
-    write_task_yaml(
-        output_dir,
-        {
-            **task_settings_yaml(settings),
-            "type": "neb",
-            "initial": "initial.xyz",
-            "final": "final.xyz",
-            "images": task.images,
-        },
-    )
-    run_task_directory(load_task_directory(output_dir))
-
-
-def task_settings_yaml(settings) -> dict:
-    return {
-        "charge": settings.charge,
-        "multiplicity": settings.multiplicity,
-        "backend": settings.backend,
-        "model": settings.model,
-        "device": settings.device,
-        "task_name": settings.task_name,
-        "optimizer": settings.optimizer,
-        "fmax": settings.fmax,
-        "steps": settings.steps,
-    }
-
-
-def write_task_yaml(directory: Path, payload: dict) -> None:
-    (directory / "task.yaml").write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+def read_trajectory_frames(trajectory_path: Path):
+    if trajectory_path.exists():
+        frames = list(read(trajectory_path, index=":"))
+        if frames:
+            return frames
+    return []
 
 
 def cumulative_path_positions(images) -> list[float]:
