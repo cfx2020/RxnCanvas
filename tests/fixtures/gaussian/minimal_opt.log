@@ -1,8 +1,0 @@
-Gaussian minimal fixture
-Charge = 0 Multiplicity = 1
-SCF Done:  E(RB3LYP) =  -40.123456     A.U. after 1 cycles
-Final XYZ:
-2
-gaussian final geometry
-H 0.000000 0.000000 0.000000
-H 0.000000 0.000000 0.740000
