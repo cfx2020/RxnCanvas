@@ -46,6 +46,11 @@
 - 画布、表格、曲线和导出预览必须检查桌面与窄屏布局，避免文字和控件重叠。
 - 图谱编辑器类界面优先服务高频编辑和信息扫描，不做营销式落地页布局。
 
+## 常用验证命令
+
+- 运行当前 Python 单元测试：`python3 -m unittest discover`
+- 校验 CodeStable YAML：`python3 codestable/tools/validate-yaml.py --file <path> --yaml-only`
+
 ## 已知待决策
 
 - 主技术栈与包管理方式。

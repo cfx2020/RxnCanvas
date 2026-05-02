@@ -1,7 +1,8 @@
 # RxnFlow 架构总入口
 
-> 状态：骨架（待填充）
+> 状态：当前
 > 创建日期：2026-05-01
+> 最近更新：2026-05-02
 
 ## 1. 项目简介
 
@@ -29,8 +30,16 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Export / Report：PNG、CDXML、Excel 等报告与数据导出。
 - Platform Shells：Web、macOS、Windows、Linux CLI 等端侧包装与分发层。
 
+当前已落地模块：
+
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路，覆盖项目 manifest、化学对象登记、两节点反应图和相对能量 profile。
+
 ## 4. 关键架构决定
 
+- 核心领域模型先以 UI/平台无关的 Python dataclass 落地；后续端侧壳层不得复制核心业务逻辑。
+- 最小核心链路采用 `Result<T>` 风格返回成功/错误，跨模块错误不得静默吞掉。
+- 内置 fixture 只表达核心数据流，不代表真实化学体系，也不替代 Gaussian/ORCA/XYZ 解析器。
+- 相对能量计算必须记录基线和单位；缺失能量不得默认为 0。
 - 待补：多端共享核心与端侧适配边界。
 - 待补：解析器插件接口与数据模型稳定层。
 - 待补：图谱编辑状态、持久化格式与 agent 操作接口。

@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-core-platform
 status: active
 created: 2026-05-01
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-02
 tags: [rxnflow, core, platform, reaction-graph, computational-chemistry]
 related_requirements: []
 related_architecture: [ARCHITECTURE]
@@ -454,8 +454,8 @@ interface ExportService {
 1. **core-fixture-vertical-slice** — 用内置 fixture 跑通项目创建、对象登记、两节点反应图、相对能量表的最小闭环
    - 所属模块：Domain Model / Project Store / Chemical Registry / Reaction Graph / Energy Engine
    - 依赖：无
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-02-core-fixture-vertical-slice
    - 备注：建立共享模型和服务边界，允许内部实现先保持最小
 
 2. **project-storage-model** — 定义项目目录/持久化格式、资源索引和加载保存 API

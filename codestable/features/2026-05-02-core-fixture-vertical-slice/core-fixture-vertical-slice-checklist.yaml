@@ -1,0 +1,96 @@
+feature: 2026-05-02-core-fixture-vertical-slice
+created: 2026-05-02
+
+steps:
+  - action: "名词骨架：建立最小领域模型和 Result 错误协议"
+    exit_signal: "可以构造 Project、ChemicalObject、ReactionGraph、EnergyProfile 的 fixture 对象"
+    status: done
+
+  - action: "编排骨架：实现 runCoreFixtureVerticalSlice 的线性 workflow，节点先返回 stub"
+    exit_signal: "入口能从 fixture 输入走到聚合输出"
+    status: done
+
+  - action: "登记与图谱节点：填充对象登记、graph patch、path 校验逻辑"
+    exit_signal: "两个对象、两个节点、一条边、一条 path 的结果可检查"
+    status: done
+
+  - action: "能量计算节点：实现 hartree 到 kcal/mol 相对能量计算和 missing energy 错误"
+    exit_signal: "A 点相对能量为 0，B 点相对能量为 12.55018948 kcal/mol"
+    status: done
+
+  - action: "验证覆盖：补齐正常、图无效、缺失能量、明确不做反向核对"
+    exit_signal: "所有验收场景都有可重复验证证据"
+    status: done
+
+checks:
+  - item: "FixtureScenario 和 CoreFixtureResult 遵守 design 第 2.1 节的接口示例"
+    source: 名词契约
+    status: passed
+
+  - item: "runCoreFixtureVerticalSlice 按 create project -> register objects -> build graph -> compute profile 顺序执行"
+    source: 编排骨架
+    status: passed
+
+  - item: "跨模块错误使用 Result 协议，graph_invalid 和 missing_energy 不被静默吞掉"
+    source: 跨层纪律
+    status: passed
+
+  - item: "同一 fixture 输入重复运行时关键 id、路径顺序和能量点顺序稳定"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Core fixture scenario 作为内置开发/测试场景存在"
+    source: 挂载点
+    status: passed
+
+  - item: "Core workflow entry runCoreFixtureVerticalSlice 可由测试或后续入口调用"
+    source: 挂载点
+    status: passed
+
+  - item: "hartree_to_kcal_mol 转换常量或等价命名条目被显式定义"
+    source: 挂载点
+    status: passed
+
+  - item: "不解析 Gaussian、ORCA、XYZ 或任何真实计算输出文件"
+    source: 范围守护
+    status: passed
+
+  - item: "不实现持久化项目目录、SQLite、数据库或文件保存格式"
+    source: 范围守护
+    status: passed
+
+  - item: "不实现 Web UI、画布、CLI 产品命令或报告导出"
+    source: 范围守护
+    status: passed
+
+  - item: "不处理多组分态、过渡态、分叉路径、校正项计算、热化学表达式或溶剂化公式"
+    source: 范围守护
+    status: passed
+
+  - item: "Fixture 数据不被描述为真实化学体系或推荐示例反应"
+    source: 范围守护
+    status: passed
+
+  - item: "默认 fixture 返回一个 ProjectManifest、两个 ChemicalObject、一个 ReactionGraph、一个 EnergyProfile"
+    source: 验收场景
+    status: passed
+
+  - item: "默认 fixture 的第一个能量点 relativeEnergy.value 为 0 kcal_mol"
+    source: 验收场景
+    status: passed
+
+  - item: "默认 fixture 的第二个能量点 relativeEnergy.value 为 12.55018948 kcal_mol"
+    source: 验收场景
+    status: passed
+
+  - item: "path 引用不存在 node 时返回 graph_invalid，且不继续计算 EnergyProfile"
+    source: 验收场景
+    status: passed
+
+  - item: "请求缺失 energyKey 时返回 missing_energy，且不得把缺失值当作 0"
+    source: 验收场景
+    status: passed
+
+  - item: "重复运行同一 fixture scenario 时输出关键 id、路径顺序和能量点顺序稳定"
+    source: 验收场景
+    status: passed

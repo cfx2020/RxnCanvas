@@ -5,8 +5,8 @@ items:
   - slug: core-fixture-vertical-slice
     description: 用内置 fixture 跑通项目创建、对象登记、两节点反应图、相对能量表的最小闭环
     depends_on: []
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-02-core-fixture-vertical-slice
     minimal_loop: true
     notes: 建立共享模型和服务边界，允许内部实现先保持最小
 
