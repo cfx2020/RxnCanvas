@@ -13,7 +13,10 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 ## 2. 核心概念 / 术语表
 
 - Project：用户创建的工作空间，用于组织导入文件、化学对象、反应图谱与导出报告。
+- Project Directory：一个可落盘 RxnFlow 项目的根目录，当前固定包含 `.rxnflow/manifest.json` 和 `inputs/raw/`。
+- Project Manifest：项目级结构化元数据，当前 schema version 为 `project-v1`，记录 project id/name/schemaVersion/resources。
 - Raw Output：外部计算程序产生的原始输出文件，例如 Gaussian log、ORCA output、MAPLE/ASE XYZ。
+- Raw File Resource：复制进 Project Directory 的原始输入文件索引项，manifest 只记录项目相对 path、sha256 checksum 和 metadata。
 - Chemical Object：从原始输出解析并登记的可复用对象，包含结构、电荷自旋、方法、能量与热化学参数等信息。
 - Correction：用户为化学对象补充的校正项，例如谐振校正、溶剂化校正。
 - Reaction Graph：用户在画布上搭建的节点图谱，用于表达底物、催化剂、过渡态、中间体、产物及分叉反应路径。
@@ -32,17 +35,22 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路，覆盖项目 manifest、化学对象登记、两节点反应图和相对能量 profile。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路，以及可落盘的 Project Store 项目目录协议。
 
 ## 4. 关键架构决定
 
 - 核心领域模型先以 UI/平台无关的 Python dataclass 落地；后续端侧壳层不得复制核心业务逻辑。
 - 最小核心链路采用 `Result<T>` 风格返回成功/错误，跨模块错误不得静默吞掉。
+- Project Store 当前使用 `.rxnflow/manifest.json` 保存 `project-v1` manifest，raw file 副本放在 `inputs/raw/`。
+- Project Manifest 中的 resource path 必须是项目相对 POSIX 路径，不保存用户源文件绝对路径。
+- raw file resource 以 sha256 checksum 去重；重复添加同一内容应返回已有 resource。
+- `project-v1` 之外的 manifest schema 不做 silent migration，当前返回 `invalid_input`。
 - 内置 fixture 只表达核心数据流，不代表真实化学体系，也不替代 Gaussian/ORCA/XYZ 解析器。
 - 相对能量计算必须记录基线和单位；缺失能量不得默认为 0。
 - 待补：多端共享核心与端侧适配边界。
 - 待补：解析器插件接口与数据模型稳定层。
-- 待补：图谱编辑状态、持久化格式与 agent 操作接口。
+- 待补：ChemicalObject、ReactionGraph、EnergyProfile 的内容持久化格式。
+- 待补：图谱编辑状态与 agent 操作接口。
 - 待补：报告导出格式的能力边界与第三方工具依赖策略。
 
 ## 5. 已知约束 / 硬边界

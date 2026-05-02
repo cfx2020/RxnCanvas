@@ -13,8 +13,8 @@ items:
   - slug: project-storage-model
     description: 定义项目目录/持久化格式、资源索引和加载保存 API
     depends_on: [core-fixture-vertical-slice]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-02-project-storage-model
     minimal_loop: false
     notes: null
 

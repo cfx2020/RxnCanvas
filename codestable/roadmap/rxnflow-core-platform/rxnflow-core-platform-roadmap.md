@@ -461,8 +461,8 @@ interface ExportService {
 2. **project-storage-model** — 定义项目目录/持久化格式、资源索引和加载保存 API
    - 所属模块：Project Store
    - 依赖：`core-fixture-vertical-slice`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-02-project-storage-model
 
 3. **parser-plugin-baseline** — 建立解析器插件协议，并实现 Gaussian log、ORCA output、XYZ fixture 的首批解析
    - 所属模块：Parser Plugins
