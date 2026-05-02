@@ -1,0 +1,136 @@
+feature: 2026-05-02-parser-plugin-baseline
+created: 2026-05-02
+
+steps:
+  - action: "Parser contract 骨架：落地 RawFile、ParserFormat、ParserCapability、ParseOptions、ParseResult、ParserPlugin，并保持 Result warnings 协议"
+    exit_signal: "可以用 fake plugin round-trip 一个 ParseResult"
+    status: done
+
+  - action: "Parser Registry 编排：实现插件注册、capability 排序、unsupported/ambiguous 分支"
+    exit_signal: "无候选、单候选、多候选冲突都有可观察 Result"
+    status: done
+
+  - action: "XYZ / extxyz plugin：实现标准 XYZ geometry 解析，并通过 ASE 支持 extxyz metadata"
+    exit_signal: "标准 XYZ 输出 geometry；extxyz 可读取能量/cell/pbc 等可用 metadata，坐标单位为 angstrom"
+    status: done
+
+  - action: "cclib Gaussian/ORCA adapter：安装/声明 cclib，隔离 backend wrapper，并映射基础字段"
+    exit_signal: "Gaussian/ORCA fixture 各输出至少一个 ChemicalObjectDraft，包含 provenance 和显式能量单位"
+    status: done
+
+  - action: "MAPLE plugin：解析 MAPLE .out 基础字段和 MAPLE 多帧 .xyz 的 frame/image energy 注释"
+    exit_signal: "MAPLE sp .out 和 MAPLE MEP/trajectory .xyz fixture 均输出 ChemicalObjectDraft"
+    status: done
+
+  - action: "错误路径与范围守护：补齐 unsupported format、file missing、parse failed、partial parse warning，以及不写 Project Store/Registry 的反向测试"
+    exit_signal: "parser 测试和既有 Project Store / fixture 测试全部通过"
+    status: done
+
+checks:
+  - item: "RawFile、ParserFormat、ParserCapability、ParseOptions、ParseResult、ParserPlugin 作为 parser contract 存在"
+    source: 名词契约
+    status: passed
+
+  - item: "ParseResult 返回 ChemicalObjectDraft[] 和 provenance，warnings 走 Result 容器"
+    source: 名词契约
+    status: passed
+
+  - item: "ParserFormat 包含 gaussian-log、orca-output、xyz、extxyz、maple-output、maple-xyz、unknown"
+    source: 名词契约
+    status: passed
+
+  - item: "Parser Registry 支持插件注册、capability 排序和 parse(raw_file) 统一入口"
+    source: 编排骨架
+    status: passed
+
+  - item: "无候选插件时返回 unsupported_format"
+    source: 编排骨架
+    status: passed
+
+  - item: "多个高置信候选冲突时不随机选择，并返回 ambiguous warning 或 unsupported_format"
+    source: 编排骨架
+    status: passed
+
+  - item: "标准 XYZ RawFile content 可解析为 ChemicalObjectDraft.geometry，坐标单位为 angstrom"
+    source: 验收场景
+    status: passed
+
+  - item: "ASE extxyz RawFile 可读取 geometry 和可用 metadata"
+    source: 验收场景
+    status: passed
+
+  - item: "XYZ atom count 与坐标行不一致时返回 parse_failed，不输出半截对象"
+    source: 验收场景
+    status: passed
+
+  - item: "Gaussian fixture 经 cclib adapter 返回 ok=True、provenance 和基础字段子集"
+    source: 验收场景
+    status: passed
+
+  - item: "ORCA fixture 经 cclib adapter 返回 ok=True、provenance 和基础字段子集"
+    source: 验收场景
+    status: passed
+
+  - item: "cclib scfenergies 等 eV 字段进入 EnergyValue 前转换为 hartree"
+    source: 单位纪律
+    status: passed
+
+  - item: "MAPLE sp .out fixture 可解析 task/model、geometry 和 Hartree energy"
+    source: 验收场景
+    status: passed
+
+  - item: "MAPLE 多帧 .xyz fixture 可为每个 Image/Frame 输出 ChemicalObjectDraft"
+    source: 验收场景
+    status: passed
+
+  - item: "MAPLE 多帧 .xyz 的 energy 以 hartree 进入 EnergyValue，label 保留 Image N 或 Frame N"
+    source: 验收场景
+    status: passed
+
+  - item: "RawFile path 不存在且没有 content 时返回 invalid_input"
+    source: 错误语义
+    status: passed
+
+  - item: "cclib/ASE/MAPLE adapter 抛出解析错误时返回 parse_failed，不抛 backend exception"
+    source: 错误语义
+    status: passed
+
+  - item: "parse 成功但缺失可选字段时返回 ok=True，并产生 missing_section 或 unit_assumed warning"
+    source: warning 纪律
+    status: passed
+
+  - item: "每次 ParseResult 都包含 parser_id、parser_version、source_file_id、parsed_at"
+    source: provenance 纪律
+    status: passed
+
+  - item: "Parser Plugin 不调用 ProjectStore.save_project 或写 .rxnflow/manifest.json"
+    source: 范围守护
+    status: passed
+
+  - item: "Parser Plugin 不调用 Chemical Registry 或生成 ChemicalObject id"
+    source: 范围守护
+    status: passed
+
+  - item: "Parser Plugin 不生成 ReactionGraph、EnergyProfile 或 Report Export"
+    source: 范围守护
+    status: passed
+
+  - item: "代码中不新增 UI、CLI、Web route、桌面文件选择器或批量导入 workflow"
+    source: 范围守护
+    status: passed
+
+  - item: "代码中不出现外部量化计算任务提交、队列或远程作业逻辑"
+    source: 范围守护
+    status: passed
+
+  - item: "缺失数值字段不被填成 0"
+    source: 范围守护
+    status: passed
+
+  - item: "MAPLE parser 不运行 MAPLE、PyTorch、ML potential 或外部计算，只解析已有文件"
+    source: 范围守护
+    status: passed
+
+  - item: "既有 Project Store 和 core fixture 测试仍通过"
+    source: 回归守护
+    status: passed

@@ -19,10 +19,10 @@ items:
     notes: null
 
   - slug: parser-plugin-baseline
-    description: 建立解析器插件协议，并实现 Gaussian log、ORCA output、XYZ fixture 的首批解析
+    description: 建立解析器插件协议，并实现 Gaussian log、ORCA output、XYZ/extxyz、MAPLE fixture 的首批解析
     depends_on: [project-storage-model]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-02-parser-plugin-baseline
     minimal_loop: false
     notes: null
 

@@ -23,7 +23,7 @@ RxnFlow 要先建立一条从"计算输出文件"到"化学对象登记、反应
 
 - Project、Raw Output、Chemical Object、Reaction Graph、Energy Profile、Export Artifact 等核心领域模型。
 - 项目创建、加载、保存、资源索引和最小持久化格式。
-- 解析器插件协议，以及 Gaussian log、ORCA output、XYZ fixture 的首批解析入口。
+- 解析器插件协议，以及 Gaussian log、ORCA output、XYZ/extxyz、MAPLE fixture 的首批解析入口。
 - 化学对象登记、来源追踪、校正项记录和基础去重。
 - 反应图节点、边、路径、分叉和 GraphPatch 协议。
 - 相对能量表与能量曲线数据计算。
@@ -45,7 +45,7 @@ RxnFlow 要先建立一条从"计算输出文件"到"化学对象登记、反应
 RxnFlow Core Platform
 ├── Domain Model：Project / ChemicalObject / Graph / EnergyProfile 共享模型
 ├── Project Store：项目创建、加载、保存和资源索引
-├── Parser Plugins：Gaussian / ORCA / XYZ 等解析插件入口
+├── Parser Plugins：Gaussian / ORCA / XYZ / MAPLE 等解析插件入口
 ├── Chemical Registry：对象登记、校正项、去重和引用
 ├── Reaction Graph：节点、连线、路径、分叉和 patch 协议
 ├── Energy Engine：相对能量表和能量曲线数据
@@ -67,7 +67,7 @@ RxnFlow Core Platform
 
 ### Parser Plugins · 计算输出解析插件
 
-- **职责**：提供统一解析器接口，并把 Gaussian、ORCA、XYZ 等格式实现隔离在插件中。它输出 ChemicalObjectDraft 和解析警告，不直接登记进项目。
+- **职责**：提供统一解析器接口，并把 Gaussian、ORCA、XYZ/extxyz、MAPLE 等格式实现隔离在插件中。它输出 ChemicalObjectDraft 和解析警告，不直接登记进项目。
 - **承载的子 feature**：`parser-plugin-baseline`
 - **触碰的现有代码 / 模块**：全新
 
@@ -201,7 +201,7 @@ type RawFile = {
 
 type ParserCapability = {
   supported: boolean
-  format?: "gaussian-log" | "orca-output" | "xyz" | "unknown"
+  format?: "gaussian-log" | "orca-output" | "xyz" | "extxyz" | "maple-output" | "maple-xyz" | "unknown"
   confidence: number
   reason?: string
 }
@@ -464,11 +464,11 @@ interface ExportService {
    - 状态：done
    - 对应 feature：2026-05-02-project-storage-model
 
-3. **parser-plugin-baseline** — 建立解析器插件协议，并实现 Gaussian log、ORCA output、XYZ fixture 的首批解析
+3. **parser-plugin-baseline** — 建立解析器插件协议，并实现 Gaussian log、ORCA output、XYZ/extxyz、MAPLE fixture 的首批解析
    - 所属模块：Parser Plugins
    - 依赖：`project-storage-model`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-02-parser-plugin-baseline
 
 4. **chemical-registry-corrections** — 实现化学对象登记、校正项记录、来源追踪和基础去重
    - 所属模块：Chemical Registry
@@ -525,7 +525,7 @@ interface ExportService {
 ## 7. 观察项
 
 - 需要另起 `cs-decide` 或 roadmap update 拍板主技术栈、包管理方式、运行时语言和多端共享核心边界。
-- 需要用户提供或确认可作为 fixture 的 Gaussian、ORCA、XYZ 样例文件，以及期望提取的字段优先级。
+- 需要用户提供或确认可作为 fixture 的 Gaussian、ORCA、XYZ/extxyz、MAPLE 样例文件，以及期望提取的字段优先级。
 - CDXML 导出的兼容目标需要进一步确认：面向 ChemDraw 打开、面向出版图编辑，还是仅作为交换格式。
 - `codestable/requirements/` 目前为空；后续开始实现前建议补一份核心产品需求，记录为什么要有这些能力和用户边界。
 - 计算化学领域细节需要用户持续把关，特别是能量单位、热化学项、校正项语义、过渡态/中间体表示和多构象/多自旋态处理。
