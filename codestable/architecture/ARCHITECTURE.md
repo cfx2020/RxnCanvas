@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 创建日期：2026-05-01
-> 最近更新：2026-05-02
+> 最近更新：2026-05-04
 
 ## 1. 项目简介
 
@@ -19,8 +19,9 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Raw File Resource：复制进 Project Directory 的原始输入文件索引项，manifest 只记录项目相对 path、sha256 checksum 和 metadata。
 - Parser Plugin：核心层格式解析插件，声明 can_parse 能力并把单个 Raw File 解析为 ChemicalObjectDraft。
 - Parse Result：单次解析产物，包含 ChemicalObjectDraft 列表、provenance 和 warnings。
-- Chemical Object：从原始输出解析并登记的可复用对象，包含结构、电荷自旋、方法、能量与热化学参数等信息。
-- Correction：用户为化学对象补充的校正项，例如谐振校正、溶剂化校正。
+- Chemical Object：从原始输出解析并登记的可复用对象，包含结构、电荷自旋、方法、能量、热化学参数、来源与校正项等信息。
+- Chemical Registry：核心层对象登记服务，负责把 Parse Result 固化为项目内 Chemical Object，并维护来源追踪、基础去重和校正项追加。
+- Correction：用户为化学对象补充的 append-only 能量校正项，例如谐振校正、溶剂化校正或手动校正。
 - Reaction Graph：用户在画布上搭建的节点图谱，用于表达底物、催化剂、过渡态、中间体、产物及分叉反应路径。
 - Energy Profile：从选定反应路径计算得到的相对能量数据表与交互式能量曲线。
 - Report Export：面向发布或复用的标准化导出结果，初期目标包括 PNG、ChemDraw/CDXML 与 Excel 能量表格。
@@ -37,7 +38,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议，以及首批 Parser Plugins。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins，以及 Chemical Registry 登记与校正项服务。
 
 ## 4. 关键架构决定
 
@@ -48,6 +49,9 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - raw file resource 以 sha256 checksum 去重；重复添加同一内容应返回已有 resource。
 - `project-v1` 之外的 manifest schema 不做 silent migration，当前返回 `invalid_input`。
 - Parser Plugins 当前输出 ChemicalObjectDraft + provenance + warnings，不写 Project Store，不登记 ChemicalObject，不生成 ReactionGraph/EnergyProfile。
+- Chemical Registry 当前接收 ParseResult 并登记 ChemicalObject；它不解析文件、不写 Project Store、不生成 ReactionGraph/EnergyProfile。
+- ChemicalObject 校正项是 append-only 的 Correction 记录，不改写 parser 原始 energy channel；是否计入能量由后续 Energy Engine 显式控制。
+- 基础对象去重当前只保证同项目内同来源、同 draft fingerprint 的重复登记幂等，不基于分子式、标签、能量接近或几何相似度自动合并。
 - Gaussian/ORCA 解析通过 cclib adapter 隔离；XYZ/extxyz 解析通过标准 XYZ 解析器和 ASE extxyz adapter；MAPLE parser 只读已有 `.out` / `.xyz` 输出文件。
 - cclib/ASE 提供的 eV energy 必须转换为 hartree 后进入 `EnergyValue`；MAPLE 明确标注 Hartree 的 energy 直接进入 hartree。
 - 内置 fixture 只表达核心数据流，不代表真实化学体系，也不替代真实 Parser Plugin fixture corpus。

@@ -29,8 +29,8 @@ items:
   - slug: chemical-registry-corrections
     description: 实现化学对象登记、校正项记录、来源追踪和基础去重
     depends_on: [parser-plugin-baseline]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-02-chemical-registry-corrections
     minimal_loop: false
     notes: null
 

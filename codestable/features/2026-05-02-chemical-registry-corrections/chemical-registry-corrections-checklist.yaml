@@ -1,0 +1,116 @@
+feature: 2026-05-02-chemical-registry-corrections
+created: 2026-05-02
+
+steps:
+  - action: "Registry 服务骨架：定义 project-scoped registry 入口和对象存储边界"
+    exit_signal: "可以创建 registry，登记一个 ParseResult 后通过 object id 取回对象"
+    status: done
+
+  - action: "ParseResult 登记节点：把 drafts 固化为 ChemicalObject，复制 provenance/source_file_id 并生成稳定 id"
+    exit_signal: "parser result 中多个 draft 可按顺序登记为多个对象"
+    status: done
+
+  - action: "基础去重节点：实现 draft fingerprint 和重复 register 幂等返回"
+    exit_signal: "同一 project 重复 register 不增加对象；不同 project 互不影响"
+    status: done
+
+  - action: "Correction 节点：实现 correction 追加、同 id 幂等和冲突检测"
+    exit_signal: "新增 correction 被 append；同 id 不同 payload 返回 invalid_input"
+    status: done
+
+  - action: "边界守护与测试覆盖：覆盖错误路径、fixture 兼容和跨模块边界"
+    exit_signal: "registry tests、parser tests、core fixture tests 全部通过；registry 不调用 parser/project/graph/energy"
+    status: done
+
+checks:
+  - item: "ChemicalRegistry 或等价服务 API 存在，并按 project id 管理对象"
+    source: 名词契约
+    status: passed
+
+  - item: "register(project_id, parse_result) 接收 ParseResult 并返回 ChemicalObject[]"
+    source: 名词契约
+    status: passed
+
+  - item: "get_object(project_id, object_id) 返回已登记对象或 invalid_input"
+    source: 名词契约
+    status: passed
+
+  - item: "apply_correction(project_id, object_id, correction) 追加 correction 并返回更新对象"
+    source: 名词契约
+    status: passed
+
+  - item: "Registry workflow 从 ParseResult.drafts 生成 ChemicalObject，不让 parser 生成 object id"
+    source: 编排骨架
+    status: passed
+
+  - item: "登记对象保留 draft 字段、source_file_id 和 provenance"
+    source: provenance 纪律
+    status: passed
+
+  - item: "输入含一个 draft 的 ParseResult 时返回一个 ChemicalObject"
+    source: 验收场景
+    status: passed
+
+  - item: "输入含多个 draft 的 ParseResult 时返回多个 ChemicalObject，id 不冲突且顺序稳定"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 project 重复登记同一 ParseResult 时返回既有对象，registry 中对象数量不增加"
+    source: 验收场景
+    status: passed
+
+  - item: "不同 project 登记同一 ParseResult 时生成各自对象，互不共享 state"
+    source: 验收场景
+    status: passed
+
+  - item: "formula 相同但 source/provenance 或 draft fingerprint 不同的对象不会自动合并"
+    source: 验收场景
+    status: passed
+
+  - item: "get_object 查询已登记对象返回 ChemicalObject；查询不存在对象返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "apply_correction 可追加 solvation、resonance、manual correction"
+    source: 验收场景
+    status: passed
+
+  - item: "追加 correction 不改写原始 energies"
+    source: 验收场景
+    status: passed
+
+  - item: "重复提交同 id 且 payload 相同的 correction 幂等返回，不追加重复 correction"
+    source: 验收场景
+    status: passed
+
+  - item: "重复提交同 id 但 payload 不同的 correction 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "输入空 ParseResult.objects 返回 invalid_input，且不创建 project state"
+    source: 错误语义
+    status: passed
+
+  - item: "现有 run_core_fixture_vertical_slice 行为不变"
+    source: 回归守护
+    status: passed
+
+  - item: "registry 源码不导入 Gaussian/ORCA/XYZ/MAPLE plugin 实现"
+    source: 范围守护
+    status: passed
+
+  - item: "registry 源码不调用 ProjectStore、save_project 或写 .rxnflow/manifest.json"
+    source: 范围守护
+    status: passed
+
+  - item: "registry 不生成 ReactionGraph、EnergyProfile 或 export artifact"
+    source: 范围守护
+    status: passed
+
+  - item: "registry 不基于 formula、label、energy 接近或 geometry 相似度自动合并对象"
+    source: 范围守护
+    status: passed
+
+  - item: "apply_correction 不直接改写 ChemicalObject.energies 或计算 corrected total energy"
+    source: 范围守护
+    status: passed

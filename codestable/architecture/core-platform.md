@@ -3,7 +3,7 @@ doc_type: architecture
 slug: core-platform
 status: current
 created: 2026-05-02
-last_reviewed: 2026-05-02
+last_reviewed: 2026-05-04
 tags: [core, fixture, domain-model, energy-profile]
 ---
 
@@ -11,7 +11,7 @@ tags: [core, fixture, domain-model, energy-profile]
 
 ## 1. 当前能力
 
-RxnFlow 当前已经落地三类核心能力。
+RxnFlow 当前已经落地四类核心能力。
 
 第一类是内置 fixture 的最小核心链路：
 
@@ -36,7 +36,15 @@ RxnFlow 当前已经落地三类核心能力。
 4. 支持标准 XYZ 和 ASE extxyz 的结构与可用 metadata 解析。
 5. 支持 MAPLE `.out` 基础字段和 MAPLE 风格多帧 `.xyz` energy 注释解析。
 
-这些能力不提供 UI/CLI 产品入口，也不导出 PNG、CDXML 或 Excel。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft，不登记 ChemicalObject。
+第四类是 Chemical Registry 基线：
+
+1. 接收 `ParseResult(ChemicalObjectDraft[], provenance)` 并登记为项目内 ChemicalObject。
+2. 按 project id 隔离 ChemicalObject 状态，并提供 object id 查询。
+3. 使用 registry fingerprint 保证同项目内同来源、同 draft 内容的重复登记幂等。
+4. 支持追加 resonance、solvation、manual 三类 append-only Correction。
+5. 对 correction id 做幂等和冲突检测。
+
+这些能力不提供 UI/CLI 产品入口，也不导出 PNG、CDXML 或 Excel。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记对象和追加校正项，不持久化对象内容。
 
 ## 2. 模块与职责
 
@@ -58,6 +66,11 @@ ParserRegistry
 ├── select plugin by confidence
 ├── plugin.parse(RawFile)
 └── ParseResult(ChemicalObjectDraft[], provenance)
+
+ChemicalRegistry
+├── register(project_id, ParseResult)
+├── get_object(project_id, object_id)
+└── apply_correction(project_id, object_id, Correction)
 ```
 
 - `rxnflow.models`：核心值对象，包括 ProjectManifest、ChemicalObject、ReactionGraph、EnergyProfile、Result 相关承载类型。
@@ -68,7 +81,7 @@ ParserRegistry
 - `rxnflow.parsers.cclib_adapter`：Gaussian/ORCA 的 cclib adapter，把 cclib data 映射为 ChemicalObjectDraft。
 - `rxnflow.parsers.xyz`：标准 XYZ 解析和 ASE extxyz adapter。
 - `rxnflow.parsers.maple`：MAPLE `.out` 基础字段和 MAPLE 多帧 `.xyz` 解析。
-- `rxnflow.registry`：fixture object draft 到 ChemicalObject 的登记和 provenance 附加。
+- `rxnflow.registry`：fixture object draft 到 ChemicalObject 的登记和 provenance 附加；通用 ChemicalRegistry 的项目内对象登记、查询、fingerprint 幂等去重和 correction 追加。
 - `rxnflow.graph`：fixture graph 构造，以及 node/object/edge/path 引用校验。
 - `rxnflow.energy`：fixture energy profile 计算，支持 hartree 到 kcal/mol 的相对能量转换。
 - `rxnflow.fixture`：默认 fixture scenario 和垂直切片编排入口。
@@ -125,6 +138,15 @@ Parser Plugins 使用以下稳定协议：
 - extxyz：通过 ASE 读取 geometry 和可用 metadata；energy 按 ASE eV 语义转 hartree。
 - MAPLE：解析 `.out` 中 task/model、坐标、Hartree energy；解析 MAPLE 风格 `.xyz` 中 `Image N` / `Frame N` 和 energy 注释。
 
+Chemical Registry 当前使用以下稳定协议：
+
+- ChemicalRegistry 入口：`register(project_id, parse_result)`、`get_object(project_id, object_id)`、`apply_correction(project_id, object_id, correction)`
+- 登记输入：Parser Plugins 输出的 `ParseResult`
+- 登记输出：带 registry 生成 id、source_file_id、provenance、corrections 的 `ChemicalObject`
+- Registry fingerprint：`source_file_id`、`parser_id`、`parser_version`、draft index 和 draft 内容的哈希
+- Correction kind：`resonance`、`solvation`、`manual`
+- Correction 行为：append-only，不改写 ChemicalObject 原始 `energies` / `thermochemistry`
+
 ## 4. 错误语义
 
 核心模块使用 `Result<T>` 边界协议。正常结果返回 `ok=True` 和 `value`；错误返回 `ok=False` 和 `RxnFlowError`。
@@ -134,6 +156,7 @@ Parser Plugins 使用以下稳定协议：
 - `invalid_input`：fixture 缺少对象、对象缺少能量通道、请求 correction 或 unsupported fixture unit。
 - `invalid_input`：Project Store 中 manifest 缺失、manifest JSON 损坏、schema 不兼容、source_path 不存在或不是普通文件、resource path 不安全。
 - `invalid_input`：Parser Registry 中 RawFile 同时缺少 content 和有效 path。
+- `invalid_input`：Chemical Registry 中 project id 缺失、ParseResult.objects 为空、ChemicalObject 不存在、Correction id 缺失或同 id correction 内容冲突。
 - `unsupported_format`：没有插件支持、置信度不足或插件选择歧义。
 - `parse_failed`：XYZ/MAPLE/cclib/ASE adapter 无法解析输入或字段映射失败。
 - `internal_error`：Project Store 中 manifest 读写、raw file 复制或 source stat 的 I/O 失败。
@@ -145,12 +168,17 @@ Parser Plugins 使用以下稳定协议：
 
 Project Store 不兼容 schema 不做 silent migration；当前只支持 `project-v1`。Manifest resource path 不允许绝对路径、空路径、`.` 或包含 `..`。
 
+Chemical Registry 重复登记同一 ParseResult 时返回既有对象，不追加重复 ChemicalObject。重复提交同 id 且内容相同的 Correction 时幂等返回；同 id 不同内容返回 `invalid_input`。
+
 ## 5. 约束与边界
 
 - 内置 fixture 不代表真实化学体系，不作为推荐反应示例。
 - Project Store 不保存用户源文件的绝对路径；manifest 只保存项目相对路径。
 - `add_raw_file` 只复制文件和登记 resource，不解析 Gaussian、ORCA、XYZ 或任何计算输出内容。
 - Parser Plugins 不写 `.rxnflow/manifest.json`，不调用 ProjectStore.save_project，不登记 ChemicalObject，不生成 ReactionGraph/EnergyProfile。
+- Chemical Registry 不调用 Parser Plugin 实现，不读取 raw file，不写 `.rxnflow/manifest.json`，不生成 ReactionGraph、EnergyProfile 或 export artifact。
+- Chemical Registry 不基于 formula、label、energy 接近或 geometry 相似度自动合并对象。
+- Correction 是 additive energy correction 的记录；正负号由用户输入值表达，是否参与能量计算由后续 Energy Engine 显式控制。
 - MAPLE parser 不运行 MAPLE、PyTorch、ML potential 或外部计算，只解析已有输出文件。
 - cclib 和 ASE 是 Parser Plugins 当前依赖边界；依赖锁定方式仍待后续包管理决策。
 - 同一项目内重复添加相同 checksum 的 raw file 返回已有 resource，不追加重复条目。

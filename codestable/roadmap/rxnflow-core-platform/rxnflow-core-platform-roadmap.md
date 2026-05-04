@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-core-platform
 status: active
 created: 2026-05-01
-last_reviewed: 2026-05-02
+last_reviewed: 2026-05-04
 tags: [rxnflow, core, platform, reaction-graph, computational-chemistry]
 related_requirements: []
 related_architecture: [ARCHITECTURE]
@@ -473,8 +473,8 @@ interface ExportService {
 4. **chemical-registry-corrections** — 实现化学对象登记、校正项记录、来源追踪和基础去重
    - 所属模块：Chemical Registry
    - 依赖：`parser-plugin-baseline`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-02-chemical-registry-corrections
 
 5. **reaction-graph-protocol** — 实现反应图节点/边/路径/分叉数据结构和 GraphPatch 协议
    - 所属模块：Reaction Graph
