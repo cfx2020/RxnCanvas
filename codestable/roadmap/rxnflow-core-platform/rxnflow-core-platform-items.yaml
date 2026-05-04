@@ -45,8 +45,8 @@ items:
   - slug: energy-profile-engine
     description: 基于反应路径计算相对能量表和能量曲线数据
     depends_on: [reaction-graph-protocol]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-04-energy-profile-engine
     minimal_loop: false
     notes: null
 

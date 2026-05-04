@@ -1,0 +1,124 @@
+feature: 2026-05-04-energy-profile-engine
+created: 2026-05-04
+
+steps:
+  - action: "Engine 编排骨架：新增通用 compute profile 入口，完成 project/graph/path/baseline 的结构校验"
+    exit_signal: "指定 path 可返回含正确 graph id/path id/options 的初步 profile"
+    status: done
+
+  - action: "单位换算与节点总能量：实现 hartree/kcal_mol/kj_mol 转换，以及单对象/多对象节点求和"
+    exit_signal: "两节点 hartree 输入能得到和 fixture 一致的 kcal/mol relative energy，并支持 kj/mol 输出"
+    status: done
+
+  - action: "校正项计入：按 include_corrections 控制 Correction.energy 是否加入节点总能量"
+    exit_signal: "同一对象在开关 corrections 时得到不同且可预期的 relative energy"
+    status: done
+
+  - action: "缺失诊断与错误边界：实现 baseline 缺失失败、非 baseline 缺失点、annotation/group 节点诊断、缺失 object/path/node 错误"
+    exit_signal: "错误 code 和 point missing_reason 可被测试精确断言"
+    status: done
+
+  - action: "fixture 回归与范围守护：保留现有 fixture 可观察结果，并覆盖 core service 不触碰 parser/store/export/UI"
+    exit_signal: "energy tests、fixture tests、graph tests、registry tests、parser tests 全部通过"
+    status: done
+
+checks:
+  - item: "Energy Engine 通用入口存在，提供 compute_profile(project_id, graph, path_id, objects, options)"
+    source: 名词契约
+    status: passed
+
+  - item: "compute_profile 返回 Result[EnergyProfile]，profile 保留 graph id、path id、options 和按 path 顺序排列的 points"
+    source: 名词契约
+    status: passed
+
+  - item: "单位转换支持 hartree、kcal_mol、kj_mol 输入到 kcal_mol / kj_mol 输出"
+    source: 名词契约
+    status: passed
+
+  - item: "节点总能量支持多个 ChemicalObject 按隐含系数 1 求和"
+    source: 名词契约
+    status: passed
+
+  - item: "include_corrections=False 时忽略所有 Correction，且不改写原始 energy channel"
+    source: 验收场景
+    status: passed
+
+  - item: "include_corrections=True 时所有 Correction.energy 加入节点总能量，并按目标输出单位换算"
+    source: 验收场景
+    status: passed
+
+  - item: "两节点 hartree 输入输出 kcal/mol 时，相对能量和现有 fixture 的 12.55018948 kcal_mol 一致"
+    source: 验收场景
+    status: passed
+
+  - item: "请求 output_unit=kj_mol 时，absolute 和 relative 都以 kj_mol 输出"
+    source: 验收场景
+    status: passed
+
+  - item: "baseline_node_id 为空时，path 第一个 node 的 relative energy 为 0"
+    source: 验收场景
+    status: passed
+
+  - item: "baseline_node_id 指向 path 中间节点时，该节点 relative energy 为 0，前后节点按该节点偏移"
+    source: 验收场景
+    status: passed
+
+  - item: "baseline_node_id 不属于 selected path 时返回 graph_invalid"
+    source: 验收场景
+    status: passed
+
+  - item: "selected path id 不存在时返回 graph_invalid"
+    source: 验收场景
+    status: passed
+
+  - item: "path 引用缺失 node 或 node 引用缺失 ChemicalObject 时返回 graph_invalid"
+    source: 验收场景
+    status: passed
+
+  - item: "baseline node 缺少 options.energy_key 时返回 missing_energy"
+    source: 验收场景
+    status: passed
+
+  - item: "非 baseline node 缺少 options.energy_key 时 profile ok，该点 missing_reason=missing_energy，并带 warning"
+    source: 验收场景
+    status: passed
+
+  - item: "annotation/group node 非 baseline 时生成缺失点，作为 baseline 时返回 missing_energy"
+    source: 验收场景
+    status: passed
+
+  - item: "unsupported energy unit 或 output unit 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 run_core_fixture_vertical_slice profile id、points 和 relative energy 行为不变"
+    source: 回归守护
+    status: passed
+
+  - item: "不新增 UI、CLI、Web route、画布交互、图表绘制或报告预览代码"
+    source: 范围守护
+    status: passed
+
+  - item: "Energy Engine 不写 Project Store，不新增 manifest resource，不持久化 EnergyProfile"
+    source: 范围守护
+    status: passed
+
+  - item: "Energy Engine 不调用 ParserRegistry 或具体 Parser Plugins"
+    source: 范围守护
+    status: passed
+
+  - item: "Energy Engine 不调用 ChemicalRegistry.apply_correction，不修改 ChemicalObject"
+    source: 范围守护
+    status: passed
+
+  - item: "Energy Engine 不调用 ReactionGraphService.apply_patch，不修改 ReactionGraph"
+    source: 范围守护
+    status: passed
+
+  - item: "Energy Engine 不生成 ExportArtifact、PNG、CDXML 或 Excel"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增热化学表达式、计量系数字段、反应配平、速率模型或自动路径搜索"
+    source: 范围守护
+    status: passed

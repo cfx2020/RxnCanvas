@@ -485,8 +485,8 @@ interface ExportService {
 6. **energy-profile-engine** — 基于反应路径计算相对能量表和能量曲线数据
    - 所属模块：Energy Engine
    - 依赖：`reaction-graph-protocol`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-04-energy-profile-engine
 
 7. **import-registry-workflow** — 实现项目侧边栏、单文件/批量导入、解析结果确认和登记流程
    - 所属模块：Chemical Registry / Platform Shells

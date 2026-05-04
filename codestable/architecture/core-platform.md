@@ -11,7 +11,7 @@ tags: [core, fixture, domain-model, energy-profile]
 
 ## 1. 当前能力
 
-RxnFlow 当前已经落地五类核心能力。
+RxnFlow 当前已经落地六类核心能力。
 
 第一类是内置 fixture 的最小核心链路：
 
@@ -52,7 +52,15 @@ RxnFlow 当前已经落地五类核心能力。
 4. 支持同一 graph 保存多条 ReactionPath，用多路径表达分叉。
 5. 校验 node/object/edge/path 引用，patch 批次失败时不写回 graph state。
 
-这些能力不提供 UI/CLI 产品入口，也不导出 PNG、CDXML 或 Excel。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记对象和追加校正项；Reaction Graph 只维护节点、边、路径和 patch 操作，不持久化对象内容或计算能量。
+第六类是 Energy Engine：
+
+1. 通过 EnergyProfileEngine 从指定 ReactionGraph / ReactionPath 和 ChemicalObject 集合计算 EnergyProfile。
+2. 支持 `hartree`、`kcal_mol`、`kj_mol` 输入，并统一输出为 `kcal_mol` 或 `kj_mol`。
+3. 支持多对象节点按隐含系数 1 求和。
+4. 通过 `include_corrections` 显式控制是否叠加 ChemicalObject 上的 Correction.energy。
+5. baseline 缺失能量时返回 `missing_energy`；非 baseline 缺失点保留为带 `missing_reason` 的 EnergyPoint 和 warning。
+
+这些能力不提供 UI/CLI 产品入口，也不导出 PNG、CDXML 或 Excel。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记对象和追加校正项；Reaction Graph 只维护节点、边、路径和 patch 操作，不持久化对象内容或计算能量；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态。
 
 ## 2. 模块与职责
 
@@ -84,6 +92,9 @@ ReactionGraphService
 ├── create_graph(project_id, label?)
 ├── apply_patch(project_id, graph_id, GraphPatch[], object_ids?)
 └── list_paths(project_id, graph_id)
+
+EnergyProfileEngine
+└── compute_profile(project_id, graph, path_id, objects, options)
 ```
 
 - `rxnflow.models`：核心值对象，包括 ProjectManifest、ChemicalObject、ReactionGraph、EnergyProfile、Result 相关承载类型。
@@ -96,7 +107,7 @@ ReactionGraphService
 - `rxnflow.parsers.maple`：MAPLE `.out` 基础字段和 MAPLE 多帧 `.xyz` 解析。
 - `rxnflow.registry`：fixture object draft 到 ChemicalObject 的登记和 provenance 附加；通用 ChemicalRegistry 的项目内对象登记、查询、fingerprint 幂等去重和 correction 追加。
 - `rxnflow.graph`：fixture graph 构造；通用 ReactionGraphService 的项目内图谱创建、GraphPatch 应用、路径列表和 node/object/edge/path 引用校验。
-- `rxnflow.energy`：fixture energy profile 计算，支持 hartree 到 kcal/mol 的相对能量转换。
+- `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、单位转换、correction inclusion 和缺失点诊断。
 - `rxnflow.fixture`：默认 fixture scenario 和垂直切片编排入口。
 
 ## 3. 数据与状态
@@ -170,6 +181,16 @@ Reaction Graph 当前使用以下稳定协议：
 - 分叉路径表达：同一 ReactionGraph 的多条 ReactionPath
 - remove node 行为：删除节点，并级联删除相关 edge 和包含该 node 的 path
 
+Energy Engine 当前使用以下稳定协议：
+
+- EnergyProfileEngine 入口：`compute_profile(project_id, graph, path_id, objects, options)`
+- 计算输入：已加载的 ReactionGraph、selected ReactionPath id、ChemicalObject 集合和 EnergyOptions
+- baseline 规则：`baseline_node_id` 为空时使用 selected path 第一个 node；非空时必须属于 selected path
+- node total energy：对 node 引用的所有 ChemicalObject 取 `options.energy_key` 并按隐含系数 1 求和
+- correction inclusion：`include_corrections=True` 时叠加每个对象上的所有 Correction.energy；`False` 时忽略 corrections 且不改写原始 energy channel
+- unit conversion：输入 `hartree`、`kcal_mol`、`kj_mol`，输出 `kcal_mol` 或 `kj_mol`
+- missing point：baseline 缺失直接失败；非 baseline 缺失返回带 `missing_reason="missing_energy"` 的 EnergyPoint 和 warning
+
 ## 4. 错误语义
 
 核心模块使用 `Result<T>` 边界协议。正常结果返回 `ok=True` 和 `value`；错误返回 `ok=False` 和 `RxnFlowError`。
@@ -181,20 +202,24 @@ Reaction Graph 当前使用以下稳定协议：
 - `invalid_input`：Parser Registry 中 RawFile 同时缺少 content 和有效 path。
 - `invalid_input`：Chemical Registry 中 project id 缺失、ParseResult.objects 为空、ChemicalObject 不存在、Correction id 缺失或同 id correction 内容冲突。
 - `invalid_input`：ReactionGraphService 中 project id 为空、graph id 不存在、GraphPatch 缺少必须 payload 或 patch 字段不支持。
+- `invalid_input`：EnergyProfileEngine 中 project id 为空、energy key 为空、output unit 不支持或 EnergyValue unit 不支持。
 - `unsupported_format`：没有插件支持、置信度不足或插件选择歧义。
 - `parse_failed`：XYZ/MAPLE/cclib/ASE adapter 无法解析输入或字段映射失败。
 - `internal_error`：Project Store 中 manifest 读写、raw file 复制或 source stat 的 I/O 失败。
 - `internal_error`：extxyz 解析缺少 ASE 依赖。
 - `graph_invalid`：node、edge、path 或 object 引用不存在，graph patch 重复 id，或 species / transition_state 节点缺少 ChemicalObject 引用。
+- `graph_invalid`：EnergyProfileEngine 中 selected path 不存在、baseline 不在 path 中、path 引用缺失 node 或 node 引用缺失 ChemicalObject。
 - `missing_energy`：请求的 energy key 在对应 ChemicalObject 中不存在。
 
-缺失能量不得默认为 0；图谱引用错误不得继续计算 EnergyProfile。
+缺失能量不得默认为 0；图谱引用错误不得继续计算 EnergyProfile。EnergyProfileEngine 中 baseline 缺失能量返回 `missing_energy`；非 baseline 节点缺失能量时允许返回包含缺失点和 warning 的 profile。
 
 Project Store 不兼容 schema 不做 silent migration；当前只支持 `project-v1`。Manifest resource path 不允许绝对路径、空路径、`.` 或包含 `..`。
 
 Chemical Registry 重复登记同一 ParseResult 时返回既有对象，不追加重复 ChemicalObject。重复提交同 id 且内容相同的 Correction 时幂等返回；同 id 不同内容返回 `invalid_input`。
 
 ReactionGraphService 按顺序应用 patch；同一批 patches 中途失败时不写回 graph state。重复 set 同一 path id 会覆盖旧 path，add node/edge 遇到重复 id 返回 `graph_invalid`。
+
+EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返回的 EnergyProfile.options 会记录实际 baseline node、energy key、output unit 和 correction inclusion。
 
 ## 5. 约束与边界
 
@@ -206,6 +231,8 @@ ReactionGraphService 按顺序应用 patch；同一批 patches 中途失败时�
 - Chemical Registry 不基于 formula、label、energy 接近或 geometry 相似度自动合并对象。
 - Correction 是 additive energy correction 的记录；正负号由用户输入值表达，是否参与能量计算由后续 Energy Engine 显式控制。
 - ReactionGraphService 不调用 Chemical Registry、Parser Plugin、Project Store、Energy Engine 或 Export Service；它只接收 object id 集合作为引用校验输入。
+- EnergyProfileEngine 不调用 Project Store、Parser Registry、Parser Plugins、ChemicalRegistry.apply_correction、ReactionGraphService.apply_patch 或 Export Service。
+- EnergyProfileEngine 只读取传入的 ReactionGraph 和 ChemicalObject 集合，不登记对象、不修改 graph、不追加 correction、不写 `.rxnflow/manifest.json`。
 - GraphPatch 不包含 UI 状态，不负责自动布局、拖拽、缩放或选中态。
 - transition_state 节点只表达用户/上游对象语义，不判断虚频或结构特征。
 - 多对象节点当前只表达同一状态包含多个对象，各对象隐含计量系数为 1；复杂化学计量留待后续 feature。
@@ -213,8 +240,9 @@ ReactionGraphService 按顺序应用 patch；同一批 patches 中途失败时�
 - cclib 和 ASE 是 Parser Plugins 当前依赖边界；依赖锁定方式仍待后续包管理决策。
 - 同一项目内重复添加相同 checksum 的 raw file 返回已有 resource，不追加重复条目。
 - 当前只持久化 manifest 和 raw file resource，不持久化 ChemicalObject、ReactionGraph、EnergyProfile 的完整内容。
-- 当前只计算单对象 species 节点的单一 `electronic` energy key。
-- 当前只输出 `kcal_mol` 相对能量。
+- fixture helper 仍只计算单对象 species 节点并输出 `kcal_mol`，用于保持最小垂直切片兼容。
+- 通用 EnergyProfileEngine 可计算多对象节点，energy key 由 EnergyOptions 指定，输出支持 `kcal_mol` 和 `kj_mol`。
 - `HARTREE_TO_KCAL_MOL = 627.509474` 是当前显式使用的转换常量。
-- 多组分能量表达式、过渡态化学判定、校正项计算、热化学表达式和溶剂化公式尚未实现。
+- `KCAL_MOL_TO_KJ_MOL = 4.184` 是当前 kcal/mol 与 kJ/mol 的转换常量。
+- 化学计量系数、多组分能量表达式、过渡态化学判定、热化学表达式、溶剂化公式和曲线绘图尚未实现。
 - Gaussian/ORCA 真实 fixture corpus、MAPLE `.sum`/AutoNEB tree/MD thermo/IRC path 语义建模尚未实现。

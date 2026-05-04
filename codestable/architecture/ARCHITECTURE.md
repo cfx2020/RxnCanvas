@@ -24,7 +24,8 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Correction：用户为化学对象补充的 append-only 能量校正项，例如谐振校正、溶剂化校正或手动校正。
 - Reaction Graph：用户在画布上搭建的节点图谱，用于表达底物、催化剂、过渡态、中间体、产物及分叉反应路径。
 - GraphPatch：UI 和 agent 共用的结构化图谱修改协议，当前支持添加/更新/删除节点与边，以及设置反应路径。
-- Energy Profile：从选定反应路径计算得到的相对能量数据表与交互式能量曲线。
+- Energy Engine：核心层能量 profile 计算服务，根据选定 ReactionPath 和 ChemicalObject 计算曲线可用的 EnergyProfile。
+- Energy Profile：从选定反应路径计算得到的相对能量数据表与交互式能量曲线数据。
 - Report Export：面向发布或复用的标准化导出结果，初期目标包括 PNG、ChemDraw/CDXML 与 Excel 能量表格。
 
 ## 3. 子系统 / 模块索引
@@ -39,7 +40,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins、Chemical Registry 登记与校正项服务，以及 Reaction Graph patch 协议。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Reaction Graph patch 协议，以及 Energy Engine 相对能量 profile 计算。
 
 ## 4. 关键架构决定
 
@@ -60,6 +61,11 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - cclib/ASE 提供的 eV energy 必须转换为 hartree 后进入 `EnergyValue`；MAPLE 明确标注 Hartree 的 energy 直接进入 hartree。
 - 内置 fixture 只表达核心数据流，不代表真实化学体系，也不替代真实 Parser Plugin fixture corpus。
 - 相对能量计算必须记录基线和单位；缺失能量不得默认为 0。
+- Energy Engine 当前只读取传入的 ReactionGraph 和 ChemicalObject 集合，不解析、不登记、不持久化、不导出，也不修改 graph/object 状态。
+- Energy Engine 的多对象节点能量当前按所有 ChemicalObject 的指定 energy key 以隐含系数 1 求和；更复杂的计量系数和热化学表达式尚未实现。
+- Energy Engine 的校正项计入由 `EnergyOptions.include_corrections` 显式控制；启用时所有 Correction.energy 作为加性项叠加，正负号由 correction value 表达。
+- Energy Engine 输出单位当前支持 `kcal_mol` 和 `kj_mol`；参与相减前必须统一转换到输出单位。
+- Energy Engine 的 baseline 节点缺失能量时返回 `missing_energy`；非 baseline 点缺失能量时可返回带 `missingReason` 的 EnergyPoint 和 warning。
 - 待补：多端共享核心与端侧适配边界。
 - 待补：真实 Gaussian/ORCA/MAPLE fixture corpus 与支持版本边界。
 - 待补：ChemicalObject、ReactionGraph、EnergyProfile 的内容持久化格式。
