@@ -479,8 +479,8 @@ interface ExportService {
 5. **reaction-graph-protocol** — 实现反应图节点/边/路径/分叉数据结构和 GraphPatch 协议
    - 所属模块：Reaction Graph
    - 依赖：`chemical-registry-corrections`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-04-reaction-graph-protocol
 
 6. **energy-profile-engine** — 基于反应路径计算相对能量表和能量曲线数据
    - 所属模块：Energy Engine

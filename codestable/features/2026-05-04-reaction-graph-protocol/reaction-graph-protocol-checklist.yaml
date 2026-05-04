@@ -1,0 +1,120 @@
+feature: 2026-05-04-reaction-graph-protocol
+created: 2026-05-04
+
+steps:
+  - action: "GraphPatch 名词骨架：定义 patch 操作载体和 graph service 入口"
+    exit_signal: "可以构造 GraphPatch(\"add_node\", node=...) 并由 service 接收"
+    status: done
+
+  - action: "Graph 创建与状态骨架：实现 project-scoped create_graph、graph lookup 和 list_paths"
+    exit_signal: "创建空 graph 后可列出空 paths，不影响 fixture graph"
+    status: done
+
+  - action: "Patch 应用节点：实现 add/update node、add/update edge、set_path"
+    exit_signal: "一批 patches 可生成包含 nodes、edges、paths 的 graph"
+    status: done
+
+  - action: "删除与 invariant 校验：实现 remove、重复 id、缺失引用、object id 校验、失败不写回"
+    exit_signal: "无效 patch 返回 Result 错误，原 graph state 保持不变"
+    status: done
+
+  - action: "测试与范围守护：覆盖正常、分叉、错误、回归和跨模块边界"
+    exit_signal: "graph tests、registry tests、parser tests、fixture tests 全部通过"
+    status: done
+
+checks:
+  - item: "GraphPatch 类型存在，支持 add_node、update_node、add_edge、update_edge、remove、set_path"
+    source: 名词契约
+    status: passed
+
+  - item: "ReactionGraphService 存在，提供 create_graph、apply_patch、list_paths"
+    source: 名词契约
+    status: passed
+
+  - item: "ReactionGraphService 按 project id / graph id 管理内存 graph state"
+    source: 名词契约
+    status: passed
+
+  - item: "create_graph(project_id) 返回空 ReactionGraph，project_id 正确，id 非空"
+    source: 验收场景
+    status: passed
+
+  - item: "创建 graph 后 list_paths 返回空 tuple"
+    source: 验收场景
+    status: passed
+
+  - item: "add_node patch 增加节点并保留 kind、label、object ids、position、metadata"
+    source: 验收场景
+    status: passed
+
+  - item: "add_edge patch 在引用已存在 nodes 时成功"
+    source: 验收场景
+    status: passed
+
+  - item: "set_path patch 在引用已存在 nodes 时成功，list_paths 可返回该 path"
+    source: 验收场景
+    status: passed
+
+  - item: "多条 set_path patch 可保存多条 path 表达分叉路径"
+    source: 验收场景
+    status: passed
+
+  - item: "update_node / update_edge patch 只更新指定字段，未指定字段保留"
+    source: 验收场景
+    status: passed
+
+  - item: "remove node 删除该 node，并级联删除相关 edge 和包含该 node 的 path"
+    source: 验收场景
+    status: passed
+
+  - item: "add_node 重复 id、add_edge 缺失 node、set_path 缺失 node 返回 graph_invalid"
+    source: 验收场景
+    status: passed
+
+  - item: "species / transition_state node 的 object id 不在 object_ids 集合中时返回 graph_invalid"
+    source: 验收场景
+    status: passed
+
+  - item: "annotation / group node 可不引用 ChemicalObject"
+    source: 验收场景
+    status: passed
+
+  - item: "patch 批次中途失败时原 graph state 不被写回"
+    source: 验收场景
+    status: passed
+
+  - item: "未知 graph id 或空 project id 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 run_core_fixture_vertical_slice 行为不变"
+    source: 回归守护
+    status: passed
+
+  - item: "不新增 UI、CLI、Web route、画布交互或自动布局代码"
+    source: 范围守护
+    status: passed
+
+  - item: "ReactionGraphService 不调用 ProjectStore 或写 .rxnflow/manifest.json"
+    source: 范围守护
+    status: passed
+
+  - item: "ReactionGraphService 不调用 ChemicalRegistry，只接收 object id 集合校验引用"
+    source: 范围守护
+    status: passed
+
+  - item: "ReactionGraphService 不调用 Parser Plugins，不解析原始输出文件"
+    source: 范围守护
+    status: passed
+
+  - item: "ReactionGraphService 不调用 Energy Engine，不计算能量或校正项"
+    source: 范围守护
+    status: passed
+
+  - item: "ReactionGraphService 不生成 ExportArtifact、PNG、CDXML 或 Excel"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 stoichiometric coefficient 字段或自动反应路径搜索"
+    source: 范围守护
+    status: passed

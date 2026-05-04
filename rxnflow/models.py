@@ -18,6 +18,14 @@ ResourceKind = Literal[
     "export_artifact",
 ]
 ReactionNodeKind = Literal["species", "transition_state", "group", "annotation"]
+GraphPatchOp = Literal[
+    "add_node",
+    "update_node",
+    "add_edge",
+    "update_edge",
+    "remove",
+    "set_path",
+]
 
 
 @dataclass(frozen=True)
@@ -125,6 +133,16 @@ class ReactionGraph:
     nodes: tuple[ReactionNode, ...] = ()
     edges: tuple[ReactionEdge, ...] = ()
     paths: tuple[ReactionPath, ...] = ()
+
+
+@dataclass(frozen=True)
+class GraphPatch:
+    op: GraphPatchOp
+    node: ReactionNode | None = None
+    edge: ReactionEdge | None = None
+    path: ReactionPath | None = None
+    id: ID | None = None
+    patch: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

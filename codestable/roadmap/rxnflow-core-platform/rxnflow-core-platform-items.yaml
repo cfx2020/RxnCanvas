@@ -37,8 +37,8 @@ items:
   - slug: reaction-graph-protocol
     description: 实现反应图节点/边/路径/分叉数据结构和 GraphPatch 协议
     depends_on: [chemical-registry-corrections]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-04-reaction-graph-protocol
     minimal_loop: false
     notes: null
 

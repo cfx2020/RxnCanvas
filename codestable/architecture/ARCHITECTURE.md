@@ -23,6 +23,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Chemical Registry：核心层对象登记服务，负责把 Parse Result 固化为项目内 Chemical Object，并维护来源追踪、基础去重和校正项追加。
 - Correction：用户为化学对象补充的 append-only 能量校正项，例如谐振校正、溶剂化校正或手动校正。
 - Reaction Graph：用户在画布上搭建的节点图谱，用于表达底物、催化剂、过渡态、中间体、产物及分叉反应路径。
+- GraphPatch：UI 和 agent 共用的结构化图谱修改协议，当前支持添加/更新/删除节点与边，以及设置反应路径。
 - Energy Profile：从选定反应路径计算得到的相对能量数据表与交互式能量曲线。
 - Report Export：面向发布或复用的标准化导出结果，初期目标包括 PNG、ChemDraw/CDXML 与 Excel 能量表格。
 
@@ -38,7 +39,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins，以及 Chemical Registry 登记与校正项服务。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins、Chemical Registry 登记与校正项服务，以及 Reaction Graph patch 协议。
 
 ## 4. 关键架构决定
 
@@ -52,6 +53,9 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Chemical Registry 当前接收 ParseResult 并登记 ChemicalObject；它不解析文件、不写 Project Store、不生成 ReactionGraph/EnergyProfile。
 - ChemicalObject 校正项是 append-only 的 Correction 记录，不改写 parser 原始 energy channel；是否计入能量由后续 Energy Engine 显式控制。
 - 基础对象去重当前只保证同项目内同来源、同 draft fingerprint 的重复登记幂等，不基于分子式、标签、能量接近或几何相似度自动合并。
+- Reaction Graph 当前通过 GraphPatch 修改；GraphPatch 是核心领域协议，不包含 selection、hover、viewport 等 UI 状态。
+- Reaction Graph 只引用 ChemicalObject id，不复制 ChemicalObject、能量或 correction；object id 有效性由调用方提供集合进行校验。
+- 分叉反应路径当前用多条 ReactionPath 表达，不新增 branch node 或 branch edge 类型。
 - Gaussian/ORCA 解析通过 cclib adapter 隔离；XYZ/extxyz 解析通过标准 XYZ 解析器和 ASE extxyz adapter；MAPLE parser 只读已有 `.out` / `.xyz` 输出文件。
 - cclib/ASE 提供的 eV energy 必须转换为 hartree 后进入 `EnergyValue`；MAPLE 明确标注 Hartree 的 energy 直接进入 hartree。
 - 内置 fixture 只表达核心数据流，不代表真实化学体系，也不替代真实 Parser Plugin fixture corpus。
@@ -59,7 +63,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - 待补：多端共享核心与端侧适配边界。
 - 待补：真实 Gaussian/ORCA/MAPLE fixture corpus 与支持版本边界。
 - 待补：ChemicalObject、ReactionGraph、EnergyProfile 的内容持久化格式。
-- 待补：图谱编辑状态与 agent 操作接口。
+- 待补：图谱编辑 UI 状态、画布布局与端侧交互协议。
 - 待补：报告导出格式的能力边界与第三方工具依赖策略。
 
 ## 5. 已知约束 / 硬边界
