@@ -1,0 +1,184 @@
+feature: 2026-05-05-report-export-baseline
+created: 2026-05-05
+
+steps:
+  - action: "导出名词骨架：落地 ExportFormat、ExportArtifact、ExportRequest、EnergyTableRow 和 service 空壳"
+    exit_signal: "可构造 request，空 formats / 缺 project id 返回 invalid_input"
+    status: done
+
+  - action: "Service 编排与 artifact sink：实现格式分派、artifact id、bytes-only 返回和 destination_dir 写盘"
+    exit_signal: "伪 writer 可返回 bytes artifact，写盘路径安全校验生效"
+    status: done
+
+  - action: "Energy table 派生：从 ChemicalObject、EnergyProfile 和可选 table_rows 生成 structure-first 行式数据和 warnings 数据"
+    exit_signal: "第一列为结构名称；Egas/Ggas/Esol/Gsol 等缺失字段留空而不是编造；missing point 保留 missing_reason"
+    status: done
+
+  - action: "XLSX workbook writer：输出 Energy Table sheet、optional Energy Profile sheet 和 optional Warnings sheet"
+    exit_signal: "生成 .xlsx zip，可读到 Energy Table worksheet、结构名称、能量列和 warnings 内容"
+    status: done
+
+  - action: "Energy diagram route 派生：从 EnergyProfile 生成 PNG/CDXML 共享的 state path"
+    exit_signal: "有效 points 保留 label/relative energy；missing points 保留断点和 warning"
+    status: done
+
+  - action: "PNG energy plot writer：输出 EnergyProfile 静态曲线 PNG"
+    exit_signal: "PNG header、尺寸、非空像素和 missing point 标记可验证"
+    status: done
+
+  - action: "CDXML energy diagram writer：输出 state-line / connector / label / axis 级 CDXML"
+    exit_signal: "XML well-formed，包含 CDXML/page/colortable/fonttable、state labels、relative energy text、connectors 和 y-axis metadata"
+    status: done
+
+  - action: "范围守护与回归测试：覆盖不触碰 parser/import/registry/graph patch/energy compute/UI，并保留现有 92 个测试"
+    exit_signal: "export tests、fixture/graph/workspace/energy/import/parser 回归全部通过"
+    status: done
+
+checks:
+  - item: "ExportFormat 存在且只支持 png、cdxml、xlsx"
+    source: 名词契约
+    status: passed
+
+  - item: "ExportArtifact 包含 id、format、path、bytes、created_at 和 metadata"
+    source: 名词契约
+    status: passed
+
+  - item: "ExportRequest 包含 formats、graph、profile、objects、table_rows、destination_dir、basename、title 和 options"
+    source: 名词契约
+    status: passed
+
+  - item: "EnergyTableColumn 和 EnergyTableRow 存在，EnergyTableRow 第一列语义为 structure_name"
+    source: 名词契约
+    status: passed
+
+  - item: "EnergyDiagramState、EnergyDiagramRoute 和 CdxmlDiagramOptions 存在"
+    source: 名词契约
+    status: passed
+
+  - item: "ReportExportService 公开 export(project_id, request) -> Result[tuple[ExportArtifact, ...]] 入口"
+    source: 名词契约
+    status: passed
+
+  - item: "export workflow 按 validate -> resolve basename/output mode -> dispatch writer -> build artifact -> optional write file -> return artifacts 编排"
+    source: 编排骨架
+    status: passed
+
+  - item: "一个 request 内 formats 按传入顺序处理，返回 artifact 顺序与 request.formats 一致"
+    source: 编排骨架
+    status: passed
+
+  - item: "任一 writer 失败时整个 request 返回 error，不返回半成功 Result"
+    source: 编排骨架
+    status: passed
+
+  - item: "destination_dir 只接收目录；basename 不能包含路径分隔符或 .."
+    source: 编排骨架
+    status: passed
+
+  - item: "artifact metadata 记录 source graph id / profile id、path id、object count、format、bytes length、writer id 和 title"
+    source: 编排骨架
+    status: passed
+
+  - item: "Pillow / XlsxWriter 在 writer adapter 内延迟 import，service module import 不要求依赖存在"
+    source: 依赖边界
+    status: passed
+
+  - item: "输入空 project id 时 export 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "输入空 formats 时 export 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "请求 png 但不提供 EnergyProfile 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "请求 xlsx 但不提供 EnergyProfile、ChemicalObject 或 table_rows 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "请求 cdxml 但不提供 EnergyProfile 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "EnergyProfile 含两个有效 points 时 PNG artifact bytes 以 PNG signature 开头，metadata 记录 profile id"
+    source: 验收场景
+    status: passed
+
+  - item: "EnergyProfile 含 missing point 时 PNG 仍成功，metadata/warnings 保留 missing point 语义"
+    source: 验收场景
+    status: passed
+
+  - item: "ChemicalObject 或 table_rows 含两个结构时 XLSX artifact 为 zip，含 Energy Table sheet，第一列为结构名称"
+    source: 验收场景
+    status: passed
+
+  - item: "EnergyProfile 含两个有效 points 时 XLSX 可附加 Energy Profile sheet 或 profile columns，保留 node label / relative energy 数据"
+    source: 验收场景
+    status: passed
+
+  - item: "EnergyProfile 含 warnings 时 XLSX 含 Warnings sheet 或等价结构化 warning 输出"
+    source: 验收场景
+    status: passed
+
+  - item: "EnergyProfile 含两个有效 points 时 CDXML artifact 为 XML，包含 CDXML root、page、colortable、fonttable、state labels、relative energy text 和 connectors"
+    source: 验收场景
+    status: passed
+
+  - item: "EnergyProfile 含 missing point 时 CDXML 仍成功，missing point 不生成伪 state line，并在 warnings/metadata 中保留"
+    source: 验收场景
+    status: passed
+
+  - item: "提供 destination_dir + basename 时文件写入指定目录，artifact.path 非空，artifact.bytes 行为稳定"
+    source: 验收场景
+    status: passed
+
+  - item: "basename 包含路径分隔符或 .. 时返回 invalid_input，且不写文件"
+    source: 验收场景
+    status: passed
+
+  - item: "destination_dir 不存在或不可写时返回 export_failed，错误 target 指向 destination"
+    source: 验收场景
+    status: passed
+
+  - item: "缺少 Pillow / XlsxWriter 依赖时对应 writer 返回 export_failed，service import 本身不失败"
+    source: 验收场景
+    status: passed
+
+  - item: "请求 cdx 或 csv 时当前返回 unsupported/invalid format，除非先更新 roadmap contract"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 run_core_fixture_vertical_slice、EnergyProfileEngine、GraphEditorWorkspaceService、ReactionGraphService、ImportRegistryWorkflow 行为不变"
+    source: 回归守护
+    status: passed
+
+  - item: "不新增 Web route、CLI 命令、桌面保存面板或真实报告预览 UI"
+    source: 范围守护
+    status: passed
+
+  - item: "不写 .rxnflow/manifest.json，不新增 ProjectResource，不持久化 graph/profile/export index"
+    source: 范围守护
+    status: passed
+
+  - item: "不调用 ParserRegistry、ProjectStore.add_raw_file、ImportRegistryWorkflow、ChemicalRegistry 或 GraphPatch"
+    source: 范围守护
+    status: passed
+
+  - item: "不调用 EnergyProfileEngine 重新计算能量"
+    source: 范围守护
+    status: passed
+
+  - item: "不导出 graph canvas screenshot、组合报告整页、交互图表、Excel chart、公式、宏或模板"
+    source: 范围守护
+    status: passed
+
+  - item: "不从 3D geometry 自动推断 bonds，不生成 molecule-level CDXML，不生成 generic reaction scheme CDXML"
+    source: 范围守护
+    status: passed
+
+  - item: "不生成 CDX；不实现 PDF、PPTX、SVG、CSV、JSON、SDF、MOL 或批量目录导出"
+    source: 范围守护
+    status: passed

@@ -503,14 +503,14 @@ interface ExportService {
 9. **report-export-baseline** — 实现 PNG、CDXML 和 Excel 能量表格的基础导出
    - 所属模块：Export Service
    - 依赖：`energy-profile-engine`、`graph-editor-workspace`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-05-report-export-baseline
 
 10. **platform-shell-baseline** — 建立 Web/CLI 优先的薄壳层适配方式，为后续 macOS/Windows/Linux 分发留接口
     - 所属模块：Platform Shells
     - 依赖：`report-export-baseline`
-    - 状态：planned
-    - 对应 feature：未启动
+    - 状态：done
+    - 对应 feature：2026-05-05-platform-shell-baseline
 
 **最小闭环**：第 1 条 `core-fixture-vertical-slice` 做完后，系统能在没有真实 UI 和真实解析器的前提下，用内置 fixture 创建项目、登记两个化学对象、组成一条简单反应路径，并输出相对能量表。这是后续解析器、UI 和导出功能的共同骨架。
 
@@ -527,5 +527,5 @@ interface ExportService {
 - 需要另起 `cs-decide` 或 roadmap update 拍板主技术栈、包管理方式、运行时语言和多端共享核心边界。
 - 需要用户提供或确认可作为 fixture 的 Gaussian、ORCA、XYZ/extxyz、MAPLE 样例文件，以及期望提取的字段优先级。
 - CDXML 导出的兼容目标需要进一步确认：面向 ChemDraw 打开、面向出版图编辑，还是仅作为交换格式。
-- `codestable/requirements/` 目前为空；后续开始实现前建议补一份核心产品需求，记录为什么要有这些能力和用户边界。
+- `codestable/requirements/platform-shell-entry.md` 已补第一份现状需求；后续每个用户可感能力验收时继续 backfill 或 update 对应 requirement。
 - 计算化学领域细节需要用户持续把关，特别是能量单位、热化学项、校正项语义、过渡态/中间体表示和多构象/多自旋态处理。

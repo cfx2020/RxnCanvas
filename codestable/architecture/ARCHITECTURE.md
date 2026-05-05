@@ -37,6 +37,17 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Energy Engine：核心层能量 profile 计算服务，根据选定 ReactionPath 和 ChemicalObject 计算曲线可用的 EnergyProfile。
 - Energy Profile：从选定反应路径计算得到的相对能量数据表与交互式能量曲线数据。
 - Report Export：面向发布或复用的标准化导出结果，初期目标包括 PNG、ChemDraw/CDXML 与 Excel 能量表格。
+- Report Export Service：核心层报告导出编排服务，消费已加载 graph/profile/object/table_rows，返回 ExportArtifact bytes 或写入指定目录。
+- Energy Table：以结构名称为第一列的结构能量表，供 XLSX workbook 使用。
+- Energy Diagram Route：从 EnergyProfile 派生的导出中间结构，供 PNG energy plot 和 CDXML energy diagram 共用。
+- Platform Shell：端侧薄适配层，面向 CLI、Web adapter、桌面 bridge 或 agent，把输入参数转成核心服务调用并返回 JSON-safe 结果。
+- App Kernel：进程内服务装配层，集中创建 ProjectStore、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
+- Platform Session：Platform Shell 的进程内运行态，记录当前 project、workspace、graph、profile、objects 和 artifacts 的可观察摘要。
+- Shell Command：Platform Shell 接收的结构化命令，包含 command name 和 JSON-safe args。
+- Shell Response：Platform Shell 返回的统一 DTO，包含 ok、data、error、warnings 和 artifacts，必须可 JSON 序列化。
+- Shell Artifact：面向端侧的导出 artifact 投影，默认只包含 format、path 和 metadata；显式 include bytes 时使用 base64。
+- CLI Entry：当前标准库入口为 `python3 -m rxnflow.cli`，用于运行 fixture、project 和 import preview 等最小命令。
+- Web Payload Adapter：当前为纯 Python dict adapter，把未来 Web/desktop bridge payload 转成 Shell Command，不创建真实 Web route。
 
 ## 3. 子系统 / 模块索引
 
@@ -50,7 +61,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow、Reaction Graph patch 协议、Graph Editor Workspace headless 编辑会话，以及 Energy Engine 相对能量 profile 计算。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow、Reaction Graph patch 协议、Graph Editor Workspace headless 编辑会话、Energy Engine 相对能量 profile 计算、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
 
 ## 4. 关键架构决定
 
@@ -86,11 +97,24 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Energy Engine 的校正项计入由 `EnergyOptions.include_corrections` 显式控制；启用时所有 Correction.energy 作为加性项叠加，正负号由 correction value 表达。
 - Energy Engine 输出单位当前支持 `kcal_mol` 和 `kj_mol`；参与相减前必须统一转换到输出单位。
 - Energy Engine 的 baseline 节点缺失能量时返回 `missing_energy`；非 baseline 点缺失能量时可返回带 `missingReason` 的 EnergyPoint 和 warning。
-- 待补：多端共享核心与端侧适配边界。
+- Report Export Service 当前只消费调用方传入的已加载对象，不从 Project Store 读取 graph/profile，也不写 manifest 或登记 ProjectResource。
+- Report Export Service 当前支持 `png`、`cdxml` 和 `xlsx` 三种 ExportFormat；其他格式返回 `invalid_input`。
+- XLSX 导出当前生成 structure-first 的 `Energy Table`，并可附加 `Energy Profile` 和 `Warnings` sheet；模型中没有的 basis function、Shermo/Whitesides 校正等字段留空或由调用方 table_rows 提供。
+- PNG 和 CDXML 导出共用 Energy Diagram Route；missing point 保留断点和 warning，不编造相对能量。
+- CDXML 当前只生成可编辑能量图对象，包括 state line、connector、label、relative value、axis、fonttable 和 colortable；不生成分子结构级 CDXML、generic reaction scheme 或 CDX。
+- PNG/XLSX writer 依赖 Pillow / XlsxWriter，但依赖在 adapter 内延迟 import，缺失时返回 `export_failed`。
+- Platform Shell 当前通过 `rxnflow.platform` 提供 ShellCommand、ShellResponse、ShellArtifact、PlatformSession、AppKernel、PlatformShellService 和 handle_platform_payload。
+- AppKernel 只做核心服务装配，不复制 parser、registry、graph、energy 或 export 的业务逻辑。
+- PlatformShellService 当前支持 `fixture.run`、`project.create`、`project.load`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile` 命令。
+- ShellResponse 是端侧 JSON 投影边界；dataclass、Path、tuple 和 bytes 不直接穿过该边界。
+- ShellArtifact 默认不内联二进制；显式 `include_bytes=True` 时使用 base64 并在 metadata 中记录 encoding。
+- Platform Session 只在进程内有效；当前不承诺跨进程恢复 ImportBatch、ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 内容。
+- CLI 当前通过 `python3 -m rxnflow.cli` 暴露标准库 argparse 入口，错误命令返回非 0 exit code。
+- Web Payload Adapter 当前只接收/返回 dict，不引入 Web framework、route、server、worker、桌面窗口或打包入口。
 - 待补：真实 Gaussian/ORCA/MAPLE fixture corpus 与支持版本边界。
 - 待补：ChemicalObject、ReactionGraph、EnergyProfile 的内容持久化格式。
 - 待补：真实图谱编辑 UI 渲染、画布布局持久化与端侧交互协议。
-- 待补：报告导出格式的能力边界与第三方工具依赖策略。
+- 待补：组合报告、报告预览、图谱画布截图、CDX、PDF/PPTX/SVG/CSV 等导出能力边界。
 
 ## 5. 已知约束 / 硬边界
 

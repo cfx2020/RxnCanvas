@@ -1,0 +1,184 @@
+feature: 2026-05-05-platform-shell-baseline
+created: 2026-05-05
+
+steps:
+  - action: "Shell DTO 骨架：落地 ShellCommand、ShellResponse、ShellArtifact、PlatformSession 和 JSON-safe 投影 helper"
+    exit_signal: "未知 command / 空 command 返回 invalid_input；response 可 json.dumps"
+    status: done
+
+  - action: "App Kernel 装配：集中装配 ProjectStore、默认 ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine、ReportExportService"
+    exit_signal: "同一 kernel 内可创建 session，并能运行 fixture command 返回 project/profile summary"
+    status: done
+
+  - action: "Project / fixture commands：实现 project.create、project.load、fixture.run，fixture 可选导出 artifact"
+    exit_signal: "project create 写 manifest；fixture.run 返回 object/graph/profile/artifact 摘要"
+    status: done
+
+  - action: "Import / workspace / energy commands：实现 session-scoped import preview/register_all、workspace open/add/connect/set_path、energy compute"
+    exit_signal: "单进程 session 可从 import objects 打开 workspace、设置 path，并计算 EnergyProfile"
+    status: done
+
+  - action: "CLI entry：实现 python3 -m rxnflow.cli 的 argparse 映射、JSON stdout、非 0 错误 exit code 和 export-dir 文件输出"
+    exit_signal: "subprocess 调用 fixture/project/import preview 命令可验证输出与 exit code"
+    status: done
+
+  - action: "Web payload adapter 与范围守护：实现 handle_platform_payload(dict) -> dict，补齐无 Web framework/desktop packaging 的反向测试和全量回归"
+    exit_signal: "payload adapter 与 CLI 共用 command handler；现有核心 101 个测试继续通过"
+    status: done
+
+checks:
+  - item: "ShellCommand 存在，包含 command name 和 JSON-safe args"
+    source: 名词契约
+    status: passed
+
+  - item: "ShellResponse 存在，包含 ok、data、error、warnings、artifacts，并可 json.dumps"
+    source: 名词契约
+    status: passed
+
+  - item: "ShellArtifact 存在，包含 id、format、path、bytes_base64 和 metadata；默认不内联二进制 bytes"
+    source: 名词契约
+    status: passed
+
+  - item: "PlatformSession 存在，显式记录 project_path、project_id、workspace_id、graph_id、profile_id、object_ids、artifact_ids"
+    source: 名词契约
+    status: passed
+
+  - item: "AppKernel 或等价 factory 统一装配 ProjectStore、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine、ReportExportService"
+    source: 名词契约
+    status: passed
+
+  - item: "PlatformShellService 公开 run(command) -> ShellResponse"
+    source: 名词契约
+    status: passed
+
+  - item: "handle_platform_payload(payload: dict) -> dict 存在，作为 Web/desktop bridge 的纯 Python adapter"
+    source: 名词契约
+    status: passed
+
+  - item: "rxnflow.cli 提供 main(argv=None) -> int，并支持 python3 -m rxnflow.cli"
+    source: 名词契约
+    status: passed
+
+  - item: "command dispatch 按 command name 校验 args、调用核心服务、投影 ShellResponse"
+    source: 编排骨架
+    status: passed
+
+  - item: "AppKernel 只做装配，不复制 parser、registry、graph、energy、export 业务逻辑"
+    source: 编排骨架
+    status: passed
+
+  - item: "ShellResponse data 记录 command、session_id、project_id、workspace_id、graph_id、profile_id、object_count、artifact_count 等可观测信息"
+    source: 编排骨架
+    status: passed
+
+  - item: "Artifact 默认不内联 bytes；include_bytes=True 时使用 base64 字符串并记录 encoding"
+    source: 编排骨架
+    status: passed
+
+  - item: "单个 command 内按固定顺序执行；任一步失败返回错误，不继续后续核心调用"
+    source: 编排骨架
+    status: passed
+
+  - item: "ShellCommand 为空时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "未知 command 返回 invalid_input，target 指向 command"
+    source: 验收场景
+    status: passed
+
+  - item: "fixture.run 返回 project id、object_count、graph id、profile id 和 profile point count"
+    source: 验收场景
+    status: passed
+
+  - item: "fixture.run + export formats png/xlsx 返回两个 ShellArtifact，顺序与 formats 一致，metadata 保留 profile id"
+    source: 验收场景
+    status: passed
+
+  - item: "project.create + name/location 写入 .rxnflow/manifest.json，response data 含 project id/name/schema_version"
+    source: 验收场景
+    status: passed
+
+  - item: "project.load + project path 返回 manifest summary，不解析 raw file"
+    source: 验收场景
+    status: passed
+
+  - item: "import.preview + source file 返回 batch/item/preview，失败 item 保留 error，成功 item 保留 parser id/object_count/warnings"
+    source: 验收场景
+    status: passed
+
+  - item: "import.register_all 在同一 session 中确认 preview，response data 含 registered object ids；重复确认幂等"
+    source: 验收场景
+    status: passed
+
+  - item: "workspace.open 在 session 中使用已登记 objects，返回 palette 和 preview 的 JSON 投影"
+    source: 验收场景
+    status: passed
+
+  - item: "workspace.add_node / workspace.connect / workspace.set_path 返回更新后的 snapshot，graph patch 错误仍按 graph_invalid 投影"
+    source: 验收场景
+    status: passed
+
+  - item: "energy.compute 在 session 中使用 active path 和 objects 返回 EnergyProfile summary；缺少 graph/path/object 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "export.profile 在 session 中导出 png/cdxml/xlsx 返回 ShellArtifact，默认不内联 bytes"
+    source: 验收场景
+    status: passed
+
+  - item: "export.profile + include_bytes=True 时 artifact 使用 base64 bytes 和 encoding metadata"
+    source: 验收场景
+    status: passed
+
+  - item: "handle_platform_payload({'command': 'fixture.run', 'args': {}}) 返回 JSON-safe dict，不依赖 Web framework"
+    source: 验收场景
+    status: passed
+
+  - item: "CLI python3 -m rxnflow.cli fixture --json exit code 0，stdout 是 JSON，含 profile id"
+    source: 验收场景
+    status: passed
+
+  - item: "CLI python3 -m rxnflow.cli fixture --json --export-format png --export-dir <dir> 写出 PNG 文件，stdout artifact path 非空"
+    source: 验收场景
+    status: passed
+
+  - item: "CLI 缺少必填参数或未知命令时 exit code 非 0，输出可读错误"
+    source: 验收场景
+    status: passed
+
+  - item: "JSON 投影不包含 Python dataclass、Path、bytes 或 tuple 对象；json.dumps(response_dict) 成功"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 ProjectStore、ParserRegistry、ChemicalRegistry、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine、ReportExportService 行为不变"
+    source: 回归守护
+    status: passed
+
+  - item: "不新增 Next.js、React、Vercel Functions、FastAPI、Flask、Django 或任何真实 Web route/server"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 macOS app、Windows exe、Linux packaging、Electron/Tauri/SwiftUI/Qt 入口或安装包"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 UI 组件、桌面窗口、文件选择器、浏览器 canvas、拖拽、真实报告预览"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增数据库、账号、权限、云同步、后台队列或异步任务系统"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 ProjectResource 持久化 ChemicalObject / ReactionGraph / EnergyProfile / ExportArtifact 内容"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 parser/import/registry/graph/energy/export 的核心业务语义"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增导出格式，不实现 CDX/CSV/PDF/PPTX/SVG"
+    source: 范围守护
+    status: passed

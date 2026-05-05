@@ -69,15 +69,15 @@ items:
   - slug: report-export-baseline
     description: 实现 PNG、CDXML 和 Excel 能量表格的基础导出
     depends_on: [energy-profile-engine, graph-editor-workspace]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-05-report-export-baseline
     minimal_loop: false
     notes: null
 
   - slug: platform-shell-baseline
     description: 建立 Web/CLI 优先的薄壳层适配方式，为后续 macOS/Windows/Linux 分发留接口
     depends_on: [report-export-baseline]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-05-platform-shell-baseline
     minimal_loop: false
     notes: null

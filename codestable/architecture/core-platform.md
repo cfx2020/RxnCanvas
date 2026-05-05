@@ -4,14 +4,14 @@ slug: core-platform
 status: current
 created: 2026-05-02
 last_reviewed: 2026-05-05
-tags: [core, fixture, domain-model, energy-profile, import-workflow, graph-editor-workspace]
+tags: [core, fixture, domain-model, energy-profile, import-workflow, graph-editor-workspace, report-export, platform-shell, cli]
 ---
 
 # Core Platform
 
 ## 1. 当前能力
 
-RxnFlow 当前已经落地八类核心能力。
+RxnFlow 当前已经落地十类核心能力。
 
 第一类是内置 fixture 的最小核心链路：
 
@@ -76,7 +76,23 @@ RxnFlow 当前已经落地八类核心能力。
 4. 通过 `include_corrections` 显式控制是否叠加 ChemicalObject 上的 Correction.energy。
 5. baseline 缺失能量时返回 `missing_energy`；非 baseline 缺失点保留为带 `missing_reason` 的 EnergyPoint 和 warning。
 
-这些能力不提供 UI/CLI 产品入口，也不导出 PNG、CDXML 或 Excel。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和内存 batch 状态；Reaction Graph 只维护节点、边、路径和 patch 操作，不持久化对象内容或计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态和网络预览协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态。
+第九类是 Report Export：
+
+1. 通过 ReportExportService 把已加载的 ReactionGraph / EnergyProfile / ChemicalObject / table_rows 导出为 ExportArtifact。
+2. 支持 `png` energy plot、`cdxml` ChemDraw 可编辑能量图和 `xlsx` 结构能量 workbook。
+3. 使用 structure-first 的 Energy Table，第一列固定为结构名称；缺失字段留空或保留 missing reason。
+4. PNG 和 CDXML 共用 Energy Diagram Route；missing point 形成断点和 warning，不编造相对能量。
+5. 支持 bytes-only 返回，也支持写入已有 destination_dir 并返回 artifact.path。
+
+第十类是 Platform Shell：
+
+1. 通过 ShellCommand、ShellResponse、ShellArtifact 和 PlatformSession 定义端侧 JSON-safe 命令协议。
+2. 通过 AppKernel 集中装配 ProjectStore、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
+3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile`。
+4. 通过 `python3 -m rxnflow.cli` 提供标准库 CLI 入口，支持 fixture、project create/load 和 import preview 的 JSON 输出与错误 exit code。
+5. 通过 handle_platform_payload 提供纯 Python dict adapter，供未来 Web route 或 desktop bridge 复用。
+
+这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和内存 batch 状态；Reaction Graph 只维护节点、边、路径和 patch 操作，不持久化对象内容或计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态和网络预览协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑。
 
 ## 2. 模块与职责
 
@@ -127,6 +143,21 @@ GraphEditorWorkspaceService
 
 EnergyProfileEngine
 └── compute_profile(project_id, graph, path_id, objects, options)
+
+ReportExportService
+├── export(project_id, ExportRequest)
+├── build_energy_table_rows(objects, profile, table_rows)
+├── build_energy_diagram_route(profile, options?)
+├── PNG energy plot writer
+├── CDXML energy diagram writer
+└── XLSX energy workbook writer
+
+PlatformShellService
+├── run(ShellCommand)
+├── fixture/project/import/workspace/energy/export command handlers
+├── ShellResponse JSON-safe projection
+├── handle_platform_payload(dict)
+└── rxnflow.cli argparse entry
 ```
 
 - `rxnflow.models`：核心值对象，包括 ProjectManifest、ChemicalObject、ReactionGraph、EnergyProfile、Result 相关承载类型。
@@ -142,6 +173,9 @@ EnergyProfileEngine
 - `rxnflow.graph`：fixture graph 构造；通用 ReactionGraphService 的项目内图谱创建、GraphPatch 应用、路径列表和 node/object/edge/path 引用校验。
 - `rxnflow.workspace`：GraphEditorWorkspaceService 和 CanvasViewport / WorkspaceSelection / ObjectPaletteItem / NetworkPreview / WorkspaceSnapshot / NodePlacement 协议，串联 graph patch、对象面板、workspace-only 状态和网络预览。
 - `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、单位转换、correction inclusion 和缺失点诊断。
+- `rxnflow.export`：ExportRequest / ExportArtifact / EnergyTableRow / EnergyDiagramRoute 协议，以及 ReportExportService 的 PNG、CDXML、XLSX bytes-first 导出编排。
+- `rxnflow.platform`：ShellCommand / ShellResponse / ShellArtifact / PlatformSession / AppKernel / PlatformShellService / handle_platform_payload，提供端侧薄壳层命令协议和 JSON 投影。
+- `rxnflow.cli`：标准库 argparse CLI 入口，把 argv 映射为 ShellCommand，向 stdout 写 JSON，并用 exit code 表达错误。
 - `rxnflow.fixture`：默认 fixture scenario 和垂直切片编排入口。
 
 ## 3. 数据与状态
@@ -250,6 +284,31 @@ Energy Engine 当前使用以下稳定协议：
 - unit conversion：输入 `hartree`、`kcal_mol`、`kj_mol`，输出 `kcal_mol` 或 `kj_mol`
 - missing point：baseline 缺失直接失败；非 baseline 缺失返回带 `missing_reason="missing_energy"` 的 EnergyPoint 和 warning
 
+Report Export 当前使用以下稳定协议：
+
+- ExportFormat：`png`、`cdxml`、`xlsx`
+- ReportExportService 入口：`export(project_id, request)`
+- ExportRequest：`formats`、`graph`、`profile`、`objects`、`table_rows`、`destination_dir`、`basename`、`title`、`options`
+- ExportArtifact：`id`、`format`、`path`、`bytes`、`created_at`、`metadata`
+- Energy Table：第一列语义为 `structure_name`，默认列覆盖 Egas、Ggas、Ggas+1M、Ggas(shermo)、Ggas(shermo+1M)、Esol、Gsol、basis function 占位、relative energy 和 missing reason
+- Energy Diagram Route：从 EnergyProfile.points 派生 state label、relative value、unit 和 missing reason，供 PNG/CDXML 共用
+- XLSX workbook：写 `Energy Table` sheet，可选 `Energy Profile` sheet 和 `Warnings` sheet
+- CDXML energy diagram：写 CDXML root、page、colortable、fonttable、state lines、connectors、labels、relative values 和 y-axis 文本
+- 文件输出：默认 bytes-only；提供 destination_dir 和 basename 时写入 `<basename>.<format>`，basename 不允许路径分隔符或 `..`
+
+Platform Shell 当前使用以下稳定协议：
+
+- ShellCommand：`name` 和 JSON-safe `args`
+- ShellResponse：`ok`、`data`、`error`、`warnings`、`artifacts`
+- ShellArtifact：`id`、`format`、`path`、`bytes_base64`、`metadata`
+- PlatformSession：`id`、`project_path`、`project_id`、`workspace_id`、`graph_id`、`profile_id`、`object_ids`、`artifact_ids`
+- AppKernel：集中持有 ProjectStore、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService
+- PlatformShellService 入口：`run(command)`
+- Web/desktop bridge 入口：`handle_platform_payload(payload: dict) -> dict`
+- CLI 入口：`python3 -m rxnflow.cli`
+- artifact bytes 策略：默认不内联 bytes；`include_bytes=True` 时 ShellArtifact 使用 base64 字符串并记录 `metadata.encoding = "base64"`
+- JSON 投影边界：response dict 不包含 dataclass、Path、tuple 或 bytes
+
 ## 4. 错误语义
 
 核心模块使用 `Result<T>` 边界协议。正常结果返回 `ok=True` 和 `value`；错误返回 `ok=False` 和 `RxnFlowError`。
@@ -264,8 +323,11 @@ Energy Engine 当前使用以下稳定协议：
 - `invalid_input`：ReactionGraphService 中 project id 为空、graph id 不存在、GraphPatch 缺少必须 payload 或 patch 字段不支持。
 - `invalid_input`：GraphEditorWorkspaceService 中 project id 为空、workspace id 不存在、workspace/project 不匹配或绑定 graph 失败。
 - `invalid_input`：EnergyProfileEngine 中 project id 为空、energy key 为空、output unit 不支持或 EnergyValue unit 不支持。
+- `invalid_input`：ReportExportService 中 project id 为空、formats 为空、请求格式不支持、PNG/CDXML 缺少 EnergyProfile、XLSX 缺少 profile/object/table rows，或 basename 不是安全文件名。
+- `invalid_input`：PlatformShellService 中 command name 为空、未知 command、缺少必填 args，或 session 缺少对应 graph/path/object/profile 前置状态。
 - `unsupported_format`：没有插件支持、置信度不足或插件选择歧义。
 - `parse_failed`：XYZ/MAPLE/cclib/ASE adapter 无法解析输入或字段映射失败。
+- `export_failed`：ReportExportService 中 writer 依赖缺失、destination_dir 不存在/不是目录，或 artifact 写入失败。
 - `internal_error`：Project Store 中 manifest 读写、raw file 复制或 source stat 的 I/O 失败。
 - `internal_error`：extxyz 解析缺少 ASE 依赖。
 - `graph_invalid`：node、edge、path 或 object 引用不存在，graph patch 重复 id，或 species / transition_state 节点缺少 ChemicalObject 引用。
@@ -287,6 +349,8 @@ GraphEditorWorkspaceService 的 graph edit 操作失败时不更新 workspace gr
 
 EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返回的 EnergyProfile.options 会记录实际 baseline node、energy key、output unit 和 correction inclusion。
 
+PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空命令、未知命令和 shell 层参数缺失统一返回 `invalid_input`。CLI 对 `ok=False` 返回非 0 exit code。
+
 ## 5. 约束与边界
 
 - 内置 fixture 不代表真实化学体系，不作为推荐反应示例。
@@ -306,6 +370,17 @@ EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返
 - GraphEditorWorkspaceService 不持久化 WorkspaceSnapshot、CanvasViewport、WorkspaceSelection、ReactionGraph、ChemicalObject、EnergyProfile 或 export artifact。
 - EnergyProfileEngine 不调用 Project Store、Parser Registry、Parser Plugins、ChemicalRegistry.apply_correction、ReactionGraphService.apply_patch 或 Export Service。
 - EnergyProfileEngine 只读取传入的 ReactionGraph 和 ChemicalObject 集合，不登记对象、不修改 graph、不追加 correction、不写 `.rxnflow/manifest.json`。
+- ReportExportService 不调用 Project Store、Parser Registry、Parser Plugins、ImportRegistryWorkflow、ChemicalRegistry、ReactionGraphService.apply_patch 或 EnergyProfileEngine。
+- ReportExportService 只消费调用方传入的已加载对象，不读取 raw file、不解析、不登记对象、不计算 EnergyProfile、不修改 graph/object/profile 状态、不写 `.rxnflow/manifest.json`。
+- ReportExportService 当前不新增 UI 组件、Web route、CLI 命令、桌面保存面板、真实报告预览、graph canvas screenshot、Excel chart、公式、宏或模板。
+- ReportExportService 当前不从 3D geometry 自动推断 bonds，不生成 molecule-level CDXML，不生成 generic reaction scheme CDXML，不生成 CDX。
+- ReportExportService 当前不实现 PDF、PPTX、SVG、CSV、JSON、SDF、MOL 或批量目录导出。
+- PlatformShellService 可以调用 ProjectStore、ImportRegistryWorkflow、ChemicalRegistry、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService；它不复制 parser 字段映射、registry fingerprint、GraphPatch 语义、energy 计算规则或 export writer 能力。
+- AppKernel 只做进程内装配，不是数据库、全局单例或跨进程持久化层。
+- PlatformSession 只保存进程内可观察状态，不写 `.rxnflow/manifest.json`，也不新增 ProjectResource 来持久化 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 内容。
+- `rxnflow.cli` 当前不新增 packaging console script、Windows exe、Linux packaging、macOS app 或桌面启动入口。
+- handle_platform_payload 当前不新增 Next.js、React、Vercel Functions、FastAPI、Flask、Django、真实 Web route、server 或 worker。
+- Platform Shell 当前不新增 UI 组件、文件选择器、拖拽、canvas、窗口管理、报告预览、账号权限、云同步或后台任务队列。
 - GraphPatch 不包含 UI 状态，不负责自动布局、拖拽、缩放或选中态。
 - transition_state 节点只表达用户/上游对象语义，不判断虚频或结构特征。
 - 多对象节点当前只表达同一状态包含多个对象，各对象隐含计量系数为 1；复杂化学计量留待后续 feature。
@@ -317,5 +392,5 @@ EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返
 - 通用 EnergyProfileEngine 可计算多对象节点，energy key 由 EnergyOptions 指定，输出支持 `kcal_mol` 和 `kj_mol`。
 - `HARTREE_TO_KCAL_MOL = 627.509474` 是当前显式使用的转换常量。
 - `KCAL_MOL_TO_KJ_MOL = 4.184` 是当前 kcal/mol 与 kJ/mol 的转换常量。
-- 化学计量系数、多组分能量表达式、过渡态化学判定、热化学表达式、溶剂化公式和曲线绘图尚未实现。
+- 化学计量系数、多组分能量表达式、过渡态化学判定、热化学表达式、溶剂化公式和交互式曲线绘图尚未实现。
 - Gaussian/ORCA 真实 fixture corpus、MAPLE `.sum`/AutoNEB tree/MD thermo/IRC path 语义建模尚未实现。
