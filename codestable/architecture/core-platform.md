@@ -3,15 +3,15 @@ doc_type: architecture
 slug: core-platform
 status: current
 created: 2026-05-02
-last_reviewed: 2026-05-04
-tags: [core, fixture, domain-model, energy-profile]
+last_reviewed: 2026-05-05
+tags: [core, fixture, domain-model, energy-profile, import-workflow]
 ---
 
 # Core Platform
 
 ## 1. 当前能力
 
-RxnFlow 当前已经落地六类核心能力。
+RxnFlow 当前已经落地七类核心能力。
 
 第一类是内置 fixture 的最小核心链路：
 
@@ -44,7 +44,15 @@ RxnFlow 当前已经落地六类核心能力。
 4. 支持追加 resonance、solvation、manual 三类 append-only Correction。
 5. 对 correction id 做幂等和冲突检测。
 
-第五类是 Reaction Graph 协议：
+第五类是 Import Registry Workflow：
+
+1. 通过 ImportRegistryWorkflow 编排 ProjectStore、ParserRegistry 和 ChemicalRegistry。
+2. `import_files` 接收单文件或批量 ImportFileRequest，把 source file 复制为项目内 raw file resource。
+3. raw resource 会被转换为 ParserRegistry 可读的 RawFile，并形成等待确认的 ParsePreview。
+4. `confirm_import` 按 ImportSelection 登记全部或指定 object indices 的 ChemicalObject。
+5. ImportBatch / ImportItem 保留 source_path、raw_resource、preview、warnings、error 和 registered_object_ids，供后续 sidebar 或 agent 读取。
+
+第六类是 Reaction Graph 协议：
 
 1. 使用 GraphPatch 定义 UI 和 agent 共用的图谱修改操作。
 2. 通过 ReactionGraphService 创建项目内空 ReactionGraph。
@@ -52,7 +60,7 @@ RxnFlow 当前已经落地六类核心能力。
 4. 支持同一 graph 保存多条 ReactionPath，用多路径表达分叉。
 5. 校验 node/object/edge/path 引用，patch 批次失败时不写回 graph state。
 
-第六类是 Energy Engine：
+第七类是 Energy Engine：
 
 1. 通过 EnergyProfileEngine 从指定 ReactionGraph / ReactionPath 和 ChemicalObject 集合计算 EnergyProfile。
 2. 支持 `hartree`、`kcal_mol`、`kj_mol` 输入，并统一输出为 `kcal_mol` 或 `kj_mol`。
@@ -60,7 +68,7 @@ RxnFlow 当前已经落地六类核心能力。
 4. 通过 `include_corrections` 显式控制是否叠加 ChemicalObject 上的 Correction.energy。
 5. baseline 缺失能量时返回 `missing_energy`；非 baseline 缺失点保留为带 `missing_reason` 的 EnergyPoint 和 warning。
 
-这些能力不提供 UI/CLI 产品入口，也不导出 PNG、CDXML 或 Excel。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记对象和追加校正项；Reaction Graph 只维护节点、边、路径和 patch 操作，不持久化对象内容或计算能量；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态。
+这些能力不提供 UI/CLI 产品入口，也不导出 PNG、CDXML 或 Excel。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和内存 batch 状态；Reaction Graph 只维护节点、边、路径和 patch 操作，不持久化对象内容或计算能量；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态。
 
 ## 2. 模块与职责
 
@@ -88,6 +96,12 @@ ChemicalRegistry
 ├── get_object(project_id, object_id)
 └── apply_correction(project_id, object_id, Correction)
 
+ImportRegistryWorkflow
+├── import_files(project_path, ImportFileRequest[])
+├── confirm_import(project_id, batch_id, ImportSelection[])
+├── get_batch(project_id, batch_id)
+└── list_batches(project_id)
+
 ReactionGraphService
 ├── create_graph(project_id, label?)
 ├── apply_patch(project_id, graph_id, GraphPatch[], object_ids?)
@@ -106,6 +120,7 @@ EnergyProfileEngine
 - `rxnflow.parsers.xyz`：标准 XYZ 解析和 ASE extxyz adapter。
 - `rxnflow.parsers.maple`：MAPLE `.out` 基础字段和 MAPLE 多帧 `.xyz` 解析。
 - `rxnflow.registry`：fixture object draft 到 ChemicalObject 的登记和 provenance 附加；通用 ChemicalRegistry 的项目内对象登记、查询、fingerprint 幂等去重和 correction 追加。
+- `rxnflow.import_workflow`：ImportRegistryWorkflow 和 ImportBatch / ImportItem / ParsePreview / ImportSelection 状态协议，串联 raw file resource、解析预览和确认登记。
 - `rxnflow.graph`：fixture graph 构造；通用 ReactionGraphService 的项目内图谱创建、GraphPatch 应用、路径列表和 node/object/edge/path 引用校验。
 - `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、单位转换、correction inclusion 和缺失点诊断。
 - `rxnflow.fixture`：默认 fixture scenario 和垂直切片编排入口。
@@ -171,6 +186,18 @@ Chemical Registry 当前使用以下稳定协议：
 - Correction kind：`resonance`、`solvation`、`manual`
 - Correction 行为：append-only，不改写 ChemicalObject 原始 `energies` / `thermochemistry`
 
+Import Registry Workflow 当前使用以下稳定协议：
+
+- ImportRegistryWorkflow 入口：`import_files(project_path, requests)`、`confirm_import(project_id, batch_id, selections)`、`get_batch(project_id, batch_id)`、`list_batches(project_id)`
+- ImportFileRequest：`source_path` 和可选 `ParseOptions`
+- ImportItemStatus：`raw_added`、`parsed`、`needs_confirmation`、`registered`、`failed`
+- ImportItem：`id`、`source_path`、`status`、`raw_resource`、`preview`、`registered_object_ids`、`error`、`warnings`
+- ParsePreview：`raw_resource_id`、`parser_id`、`parser_version`、`object_count`、`warnings`、`parse_result`
+- ImportSelection：`item_id` 和可选 `object_indices`；`None` 表示确认该 item 的全部 objects
+- 两阶段语义：`import_files` 只产生 raw resource 和 parse preview；`confirm_import` 才调用 ChemicalRegistry.register
+- 批量语义：单个 source file 的 add/parse/register 失败记录在 ImportItem，batch 可继续返回部分成功结果
+- 持久化边界：ProjectStore 中的 raw file resource 落盘；ImportBatch、ParsePreview 和 ChemicalObject 内容当前不落盘
+
 Reaction Graph 当前使用以下稳定协议：
 
 - GraphPatch op：`add_node`、`update_node`、`add_edge`、`update_edge`、`remove`、`set_path`
@@ -201,6 +228,7 @@ Energy Engine 当前使用以下稳定协议：
 - `invalid_input`：Project Store 中 manifest 缺失、manifest JSON 损坏、schema 不兼容、source_path 不存在或不是普通文件、resource path 不安全。
 - `invalid_input`：Parser Registry 中 RawFile 同时缺少 content 和有效 path。
 - `invalid_input`：Chemical Registry 中 project id 缺失、ParseResult.objects 为空、ChemicalObject 不存在、Correction id 缺失或同 id correction 内容冲突。
+- `invalid_input`：ImportRegistryWorkflow 中 requests/selections 为空、project_path 无效、batch/item 不存在、item 没有 parse preview、object index 为空/越界/重复或 raw file resource 无法转换为 RawFile。
 - `invalid_input`：ReactionGraphService 中 project id 为空、graph id 不存在、GraphPatch 缺少必须 payload 或 patch 字段不支持。
 - `invalid_input`：EnergyProfileEngine 中 project id 为空、energy key 为空、output unit 不支持或 EnergyValue unit 不支持。
 - `unsupported_format`：没有插件支持、置信度不足或插件选择歧义。
@@ -217,6 +245,8 @@ Project Store 不兼容 schema 不做 silent migration；当前只支持 `projec
 
 Chemical Registry 重复登记同一 ParseResult 时返回既有对象，不追加重复 ChemicalObject。重复提交同 id 且内容相同的 Correction 时幂等返回；同 id 不同内容返回 `invalid_input`。
 
+ImportRegistryWorkflow 中 project-level 错误返回 `Result` error；单文件导入或解析失败写入 ImportItem.error，且已复制进 Project Directory 的 raw file resource 不自动删除。重复确认已 registered 的 item 直接返回既有 registered_object_ids，不重复登记对象。
+
 ReactionGraphService 按顺序应用 patch；同一批 patches 中途失败时不写回 graph state。重复 set 同一 path id 会覆盖旧 path，add node/edge 遇到重复 id 返回 `graph_invalid`。
 
 EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返回的 EnergyProfile.options 会记录实际 baseline node、energy key、output unit 和 correction inclusion。
@@ -229,6 +259,10 @@ EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返
 - Parser Plugins 不写 `.rxnflow/manifest.json`，不调用 ProjectStore.save_project，不登记 ChemicalObject，不生成 ReactionGraph/EnergyProfile。
 - Chemical Registry 不调用 Parser Plugin 实现，不读取 raw file，不写 `.rxnflow/manifest.json`，不生成 ReactionGraph、EnergyProfile 或 export artifact。
 - Chemical Registry 不基于 formula、label、energy 接近或 geometry 相似度自动合并对象。
+- ImportRegistryWorkflow 可以调用 ProjectStore、ParserRegistry 和 ChemicalRegistry；它不调用 ReactionGraphService、EnergyProfileEngine 或 Export Service。
+- ImportRegistryWorkflow 不新增 UI 组件、Web route、CLI 命令、桌面文件选择器或真实侧边栏；只输出 sidebar-ready 的结构化状态。
+- ImportRegistryWorkflow 不新增或修改 parser plugin 解析逻辑，不修改 ChemicalRegistry fingerprint、correction 或自动合并策略。
+- ImportRegistryWorkflow 不删除用户源文件，也不自动删除已进入项目的 raw file resource。
 - Correction 是 additive energy correction 的记录；正负号由用户输入值表达，是否参与能量计算由后续 Energy Engine 显式控制。
 - ReactionGraphService 不调用 Chemical Registry、Parser Plugin、Project Store、Energy Engine 或 Export Service；它只接收 object id 集合作为引用校验输入。
 - EnergyProfileEngine 不调用 Project Store、Parser Registry、Parser Plugins、ChemicalRegistry.apply_correction、ReactionGraphService.apply_patch 或 Export Service。
@@ -239,7 +273,7 @@ EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返
 - MAPLE parser 不运行 MAPLE、PyTorch、ML potential 或外部计算，只解析已有输出文件。
 - cclib 和 ASE 是 Parser Plugins 当前依赖边界；依赖锁定方式仍待后续包管理决策。
 - 同一项目内重复添加相同 checksum 的 raw file 返回已有 resource，不追加重复条目。
-- 当前只持久化 manifest 和 raw file resource，不持久化 ChemicalObject、ReactionGraph、EnergyProfile 的完整内容。
+- 当前只持久化 manifest 和 raw file resource，不持久化 ImportBatch、ParsePreview、ChemicalObject、ReactionGraph、EnergyProfile 的完整内容。
 - fixture helper 仍只计算单对象 species 节点并输出 `kcal_mol`，用于保持最小垂直切片兼容。
 - 通用 EnergyProfileEngine 可计算多对象节点，energy key 由 EnergyOptions 指定，输出支持 `kcal_mol` 和 `kj_mol`。
 - `HARTREE_TO_KCAL_MOL = 627.509474` 是当前显式使用的转换常量。

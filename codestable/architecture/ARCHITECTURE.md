@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 创建日期：2026-05-01
-> 最近更新：2026-05-04
+> 最近更新：2026-05-05
 
 ## 1. 项目简介
 
@@ -19,6 +19,9 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Raw File Resource：复制进 Project Directory 的原始输入文件索引项，manifest 只记录项目相对 path、sha256 checksum 和 metadata。
 - Parser Plugin：核心层格式解析插件，声明 can_parse 能力并把单个 Raw File 解析为 ChemicalObjectDraft。
 - Parse Result：单次解析产物，包含 ChemicalObjectDraft 列表、provenance 和 warnings。
+- Import Registry Workflow：核心层导入编排服务，串联 Project Store、Parser Registry 和 Chemical Registry，把 source file 变成等待确认或已登记的结构化导入状态。
+- Import Batch / Import Item：单文件或批量导入的内存状态快照，逐项记录 source_path、raw resource、parse preview、warnings、error 和 registered object ids。
+- Parse Preview：等待用户或 agent 确认的解析预览，记录 parser provenance、object_count、warnings 和原始 ParseResult；确认前不登记 ChemicalObject。
 - Chemical Object：从原始输出解析并登记的可复用对象，包含结构、电荷自旋、方法、能量、热化学参数、来源与校正项等信息。
 - Chemical Registry：核心层对象登记服务，负责把 Parse Result 固化为项目内 Chemical Object，并维护来源追踪、基础去重和校正项追加。
 - Correction：用户为化学对象补充的 append-only 能量校正项，例如谐振校正、溶剂化校正或手动校正。
@@ -31,7 +34,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 ## 3. 子系统 / 模块索引
 
 - Project 管理：项目创建、侧边栏组织、项目级状态与资源索引。
-- Import / Parser：批量导入原始计算输出，并解析结构、方法、能量、热化学参数等领域数据。
+- Import / Parser：批量导入原始计算输出，生成解析预览，并在确认后登记可复用化学对象。
 - Chemical Registry：登记、去重、版本化和复用化学对象及校正项。
 - Graph Editor：节点画布、连线、分叉路径、反应网络编辑与实时预览。
 - Energy Engine：路径选择、相对能量计算、数据表生成与曲线绘图。
@@ -40,7 +43,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Reaction Graph patch 协议，以及 Energy Engine 相对能量 profile 计算。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow、Reaction Graph patch 协议，以及 Energy Engine 相对能量 profile 计算。
 
 ## 4. 关键架构决定
 
@@ -52,6 +55,10 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - `project-v1` 之外的 manifest schema 不做 silent migration，当前返回 `invalid_input`。
 - Parser Plugins 当前输出 ChemicalObjectDraft + provenance + warnings，不写 Project Store，不登记 ChemicalObject，不生成 ReactionGraph/EnergyProfile。
 - Chemical Registry 当前接收 ParseResult 并登记 ChemicalObject；它不解析文件、不写 Project Store、不生成 ReactionGraph/EnergyProfile。
+- Import Registry Workflow 当前是 ProjectStore、ParserRegistry 和 ChemicalRegistry 之间的核心编排层；它负责 raw file resource 登记、RawFile adapter、parse preview、用户/agent 确认和 batch/item 状态读取。
+- Import Registry Workflow 的导入分两阶段：`import_files` 只复制 raw file 并生成 ParsePreview，`confirm_import` 才把选中的 ParseResult objects 登记进 ChemicalRegistry。
+- 批量导入允许单文件失败；parse/add/register 错误记录在 ImportItem，project-level 错误才使整个 workflow 返回 Result error。
+- 解析失败或格式不支持时 raw file resource 仍保留在 Project Directory 中；ImportBatch 和 ParsePreview 当前只保存在内存里。
 - ChemicalObject 校正项是 append-only 的 Correction 记录，不改写 parser 原始 energy channel；是否计入能量由后续 Energy Engine 显式控制。
 - 基础对象去重当前只保证同项目内同来源、同 draft fingerprint 的重复登记幂等，不基于分子式、标签、能量接近或几何相似度自动合并。
 - Reaction Graph 当前通过 GraphPatch 修改；GraphPatch 是核心领域协议，不包含 selection、hover、viewport 等 UI 状态。

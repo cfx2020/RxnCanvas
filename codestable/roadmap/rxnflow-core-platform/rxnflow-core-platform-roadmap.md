@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-core-platform
 status: active
 created: 2026-05-01
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-05
 tags: [rxnflow, core, platform, reaction-graph, computational-chemistry]
 related_requirements: []
 related_architecture: [ARCHITECTURE]
@@ -489,10 +489,10 @@ interface ExportService {
    - 对应 feature：2026-05-04-energy-profile-engine
 
 7. **import-registry-workflow** — 实现项目侧边栏、单文件/批量导入、解析结果确认和登记流程
-   - 所属模块：Chemical Registry / Platform Shells
+   - 所属模块：Project Store / Parser Plugins / Chemical Registry
    - 依赖：`chemical-registry-corrections`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-04-import-registry-workflow
 
 8. **graph-editor-workspace** — 实现可编辑反应图画布、节点连接、路径选择和实时网络预览
    - 所属模块：Reaction Graph / Platform Shells

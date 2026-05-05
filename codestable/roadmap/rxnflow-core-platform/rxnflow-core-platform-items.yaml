@@ -53,8 +53,8 @@ items:
   - slug: import-registry-workflow
     description: 实现项目侧边栏、单文件/批量导入、解析结果确认和登记流程
     depends_on: [chemical-registry-corrections]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-04-import-registry-workflow
     minimal_loop: false
     notes: null
 

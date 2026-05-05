@@ -1,0 +1,120 @@
+feature: 2026-05-04-import-registry-workflow
+created: 2026-05-04
+
+steps:
+  - action: "Import 状态名词骨架：定义 request、batch、item、preview、selection 和 item status"
+    exit_signal: "可构造一个包含 failed/needs_confirmation/registered item 的 ImportBatch"
+    status: done
+
+  - action: "Raw file 导入与 RawFile adapter：串接 ProjectStore.add_raw_file，并把 ProjectResource 转为 ParserRegistry 可解析的 RawFile"
+    exit_signal: "导入单个 xyz source 后 batch item 包含 raw_resource 和 RawFile 可读路径"
+    status: done
+
+  - action: "Parse preview workflow：调用 ParserRegistry.parse，把 ParseResult/warnings 转成 needs_confirmation item；失败转成 failed item"
+    exit_signal: "支持单文件正常解析、unsupported format 和批量部分失败"
+    status: done
+
+  - action: "Confirmation workflow：按 selection 调用 ChemicalRegistry.register，记录 registered object ids，并处理重复确认"
+    exit_signal: "确认后 item 变成 registered，ChemicalRegistry 可读取对象；重复确认不重复登记"
+    status: done
+
+  - action: "范围守护与回归测试：覆盖不触碰 graph/energy/export、不新增 UI、fixture 兼容和既有 parser/registry/project 测试"
+    exit_signal: "import workflow tests、project/parser/registry/fixture tests 全部通过"
+    status: done
+
+checks:
+  - item: "ImportRegistryWorkflow 公开入口存在，提供 import_files、confirm_import 和 batch 状态读取能力"
+    source: 名词契约
+    status: passed
+
+  - item: "ImportFileRequest、ImportBatch、ImportItem、ParsePreview、ImportSelection 和 ImportItemStatus 存在"
+    source: 名词契约
+    status: passed
+
+  - item: "ImportBatch / ImportItem 状态包含 source_path、raw_resource、preview、registered_object_ids、error 和 warnings"
+    source: 名词契约
+    status: passed
+
+  - item: "raw resource 可被转换为 ParserRegistry 可解析的 RawFile，path 指向项目内 raw file 副本"
+    source: 名词契约
+    status: passed
+
+  - item: "输入单个支持格式 source file 时 import_files 返回 ImportBatch，item status 为 needs_confirmation"
+    source: 验收场景
+    status: passed
+
+  - item: "needs_confirmation item 调用 confirm_import 后变为 registered，记录 registered object ids"
+    source: 验收场景
+    status: passed
+
+  - item: "ChemicalRegistry 可通过 confirm_import 返回的 object id 读取对象"
+    source: 验收场景
+    status: passed
+
+  - item: "批量导入一个可解析文件和一个不支持文件时，batch ok 且分别得到 needs_confirmation / failed item"
+    source: 验收场景
+    status: passed
+
+  - item: "不支持文件 item 的 error code 为 unsupported_format"
+    source: 验收场景
+    status: passed
+
+  - item: "source_path 不存在时对应 item 为 failed，error code 为 invalid_input，其它 item 继续处理"
+    source: 验收场景
+    status: passed
+
+  - item: "project_path 不是有效项目时 import_files 返回 invalid_input，不创建 batch"
+    source: 验收场景
+    status: passed
+
+  - item: "同一内容 raw file 重复导入时返回同一 raw_resource，manifest 不追加重复 resource"
+    source: 验收场景
+    status: passed
+
+  - item: "confirm_import 指定 object_indices 时只登记 ParseResult 中对应 objects"
+    source: 验收场景
+    status: passed
+
+  - item: "重复 confirm 同一 item 返回已登记状态，不重复登记对象"
+    source: 验收场景
+    status: passed
+
+  - item: "confirm 不存在 batch/item 或未解析成功 item 时返回 invalid_input 或将 selection 标记为 failed"
+    source: 验收场景
+    status: passed
+
+  - item: "parse warnings 保存在 ImportItem / ParsePreview，供 sidebar/agent 展示"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 ProjectStore、ParserRegistry、ChemicalRegistry、EnergyProfileEngine 和 run_core_fixture_vertical_slice 行为不变"
+    source: 回归守护
+    status: passed
+
+  - item: "不新增 UI 组件、Web route、CLI 命令、桌面文件选择器或真实侧边栏"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增或修改 Gaussian/ORCA/XYZ/MAPLE parser plugin 解析逻辑"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 ChemicalRegistry 的 fingerprint、correction 或自动合并策略"
+    source: 范围守护
+    status: passed
+
+  - item: "ImportRegistryWorkflow 不调用 ReactionGraphService、EnergyProfileEngine 或 Export Service"
+    source: 范围守护
+    status: passed
+
+  - item: "不生成 ReactionGraph、EnergyProfile、ExportArtifact、PNG、CDXML 或 Excel"
+    source: 范围守护
+    status: passed
+
+  - item: "不持久化 ImportBatch、ParsePreview 或 ChemicalObject 内容"
+    source: 范围守护
+    status: passed
+
+  - item: "不删除用户源文件，也不自动删除已进入项目的 raw file resource"
+    source: 范围守护
+    status: passed
