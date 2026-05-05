@@ -61,8 +61,8 @@ items:
   - slug: graph-editor-workspace
     description: 实现可编辑反应图画布、节点连接、路径选择和实时网络预览
     depends_on: [reaction-graph-protocol, import-registry-workflow]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-05-graph-editor-workspace
     minimal_loop: false
     notes: null
 

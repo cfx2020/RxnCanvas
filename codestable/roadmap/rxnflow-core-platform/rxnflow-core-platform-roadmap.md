@@ -497,8 +497,8 @@ interface ExportService {
 8. **graph-editor-workspace** — 实现可编辑反应图画布、节点连接、路径选择和实时网络预览
    - 所属模块：Reaction Graph / Platform Shells
    - 依赖：`reaction-graph-protocol`、`import-registry-workflow`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-05-graph-editor-workspace
 
 9. **report-export-baseline** — 实现 PNG、CDXML 和 Excel 能量表格的基础导出
    - 所属模块：Export Service

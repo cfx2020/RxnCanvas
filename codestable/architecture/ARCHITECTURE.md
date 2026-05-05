@@ -27,6 +27,13 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Correction：用户为化学对象补充的 append-only 能量校正项，例如谐振校正、溶剂化校正或手动校正。
 - Reaction Graph：用户在画布上搭建的节点图谱，用于表达底物、催化剂、过渡态、中间体、产物及分叉反应路径。
 - GraphPatch：UI 和 agent 共用的结构化图谱修改协议，当前支持添加/更新/删除节点与边，以及设置反应路径。
+- Graph Editor Workspace：围绕一个 ReactionGraph 的 headless 编辑会话层，负责对象面板、selection、viewport、active path 和 preview，不替代 ReactionGraphService。
+- Workspace Snapshot：平台壳层和 agent 可读取的 workspace 快照，包含 graph、Object Palette、Workspace Selection、Canvas Viewport、active path 和 Network Preview。
+- Object Palette：可拖入或放入 graph 的已登记 ChemicalObject 引用列表，当前来自调用方传入对象或 confirmed import items。
+- Canvas Viewport：画布平移和缩放状态；属于 workspace-only state，不写入 GraphPatch。
+- Workspace Selection：当前选中的 node、edge、path id 集合；属于 workspace-only state，不写入 ReactionGraph。
+- Network Preview：从 ReactionGraph 派生的结构化预览数据，包含 nodes、edges、paths、active path 和 disconnected node diagnostics，不是渲染图或能量曲线。
+- Active Path：当前 workspace 选中的 ReactionPath；path 数据仍由 ReactionGraph.paths 承载。
 - Energy Engine：核心层能量 profile 计算服务，根据选定 ReactionPath 和 ChemicalObject 计算曲线可用的 EnergyProfile。
 - Energy Profile：从选定反应路径计算得到的相对能量数据表与交互式能量曲线数据。
 - Report Export：面向发布或复用的标准化导出结果，初期目标包括 PNG、ChemDraw/CDXML 与 Excel 能量表格。
@@ -43,7 +50,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow、Reaction Graph patch 协议，以及 Energy Engine 相对能量 profile 计算。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow、Reaction Graph patch 协议、Graph Editor Workspace headless 编辑会话，以及 Energy Engine 相对能量 profile 计算。
 
 ## 4. 关键架构决定
 
@@ -64,6 +71,12 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Reaction Graph 当前通过 GraphPatch 修改；GraphPatch 是核心领域协议，不包含 selection、hover、viewport 等 UI 状态。
 - Reaction Graph 只引用 ChemicalObject id，不复制 ChemicalObject、能量或 correction；object id 有效性由调用方提供集合进行校验。
 - 分叉反应路径当前用多条 ReactionPath 表达，不新增 branch node 或 branch edge 类型。
+- Graph Editor Workspace 是 GraphPatch 的 headless 壳层；所有 graph 结构变化最终经由 ReactionGraphService.apply_patch。
+- Graph Editor Workspace 中 selection、viewport 和 active_path_id 属于 workspace-only state，不写入 ReactionGraph 或 Project Manifest。
+- Object Palette 当前只暴露已登记 ChemicalObject 引用；pending/failed import items 不可直接创建 graph node。
+- Network Preview 当前只表达结构预览和 disconnected node diagnostics，不包含真实 canvas 渲染、自动布局或能量曲线。
+- Graph Editor Workspace 不调用 EnergyProfileEngine；能量曲线和 path-energy 联动留给后续 feature。
+- Graph Editor Workspace 当前只保存在内存中，跨进程恢复和 graph/workspace 持久化格式尚未实现。
 - Gaussian/ORCA 解析通过 cclib adapter 隔离；XYZ/extxyz 解析通过标准 XYZ 解析器和 ASE extxyz adapter；MAPLE parser 只读已有 `.out` / `.xyz` 输出文件。
 - cclib/ASE 提供的 eV energy 必须转换为 hartree 后进入 `EnergyValue`；MAPLE 明确标注 Hartree 的 energy 直接进入 hartree。
 - 内置 fixture 只表达核心数据流，不代表真实化学体系，也不替代真实 Parser Plugin fixture corpus。
@@ -76,7 +89,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - 待补：多端共享核心与端侧适配边界。
 - 待补：真实 Gaussian/ORCA/MAPLE fixture corpus 与支持版本边界。
 - 待补：ChemicalObject、ReactionGraph、EnergyProfile 的内容持久化格式。
-- 待补：图谱编辑 UI 状态、画布布局与端侧交互协议。
+- 待补：真实图谱编辑 UI 渲染、画布布局持久化与端侧交互协议。
 - 待补：报告导出格式的能力边界与第三方工具依赖策略。
 
 ## 5. 已知约束 / 硬边界
