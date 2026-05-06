@@ -159,7 +159,7 @@ def compute_fixture_profile(
             EnergyPoint(
                 node_id=node.id,
                 label=node.label,
-                absolute_energy=_node_absolute_energy(node.id, node_by_id, object_by_id, options),
+                absolute_energy=EnergyValue(round(energy.value, 8), "kcal_mol"),
                 relative_energy=EnergyValue(relative, "kcal_mol"),
             )
         )
@@ -219,17 +219,6 @@ def _node_energy_kcal(
             )
         )
     return _to_kcal_mol(energy, node_id)
-
-
-def _node_absolute_energy(
-    node_id: str,
-    node_by_id: dict[str, ReactionNode],
-    object_by_id: dict[str, ChemicalObject],
-    options: EnergyOptions,
-) -> EnergyValue:
-    node = node_by_id[node_id]
-    obj = object_by_id[node.chemical_object_ids[0]]
-    return obj.energies[options.energy_key]
 
 
 def _validate_profile_inputs(

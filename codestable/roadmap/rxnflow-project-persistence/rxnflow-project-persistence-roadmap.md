@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-project-persistence
 status: active
 created: 2026-05-05
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-07
 tags: [rxnflow, persistence, project-store, browser-storage, project-bundle]
 related_requirements: [platform-shell-entry, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform]
@@ -443,8 +443,8 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 5. **energy-profile-persistence** — 持久化 EnergyProfile、EnergyOptions、EnergyPoint、missing reason 和 warnings
    - 所属模块：Domain Repositories
    - 依赖：`project-content-store-v1`、`reaction-graph-workspace-persistence`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-06-energy-profile-persistence
 
 6. **export-artifact-index-persistence** — 建立 export artifact index，登记导出文件项目相对路径、格式、checksum 和 metadata
    - 所属模块：Domain Repositories

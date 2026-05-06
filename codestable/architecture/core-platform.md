@@ -3,8 +3,8 @@ doc_type: architecture
 slug: core-platform
 status: current
 created: 2026-05-02
-last_reviewed: 2026-05-06
-tags: [core, fixture, domain-model, energy-profile, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence]
+last_reviewed: 2026-05-07
+tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence]
 ---
 
 # Core Platform
@@ -106,9 +106,9 @@ RxnFlow 当前已经落地十一类核心能力。
 6. 通过 `reaction-graphs-v1` codec 保存和加载真实 ReactionGraph、ReactionNode、ReactionEdge 和 ReactionPath，并校验 object/node/edge/path 引用。
 7. 通过 `workspaces-v1` codec 保存和加载 workspace-only 状态，workspace 的 Object Palette 和 NetworkPreview 在加载后从 ChemicalObject / ReactionGraph 派生。
 8. 通过 `import-ledger-v1` codec 保存和加载 ImportBatch、ImportItem、ParsePreview、registered ids、warnings 和 errors。
-9. 当前 EnergyProfile 仍沿用 project-content-v1 的基础 snapshot 往返。
+9. 通过 `energy-profiles-v1` codec 保存和加载已计算 EnergyProfile、EnergyOptions、EnergyPoint、missing reason 和 warnings，并校验 profile 与 loaded ReactionGraph / ReactionPath 的引用一致性。
 
-这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace 和 Import Ledger sections 提供长期持久化 codec，不替代 Project Store 或完整项目数据库；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑。
+这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger 和 EnergyProfile sections 提供长期持久化 codec，不替代 Project Store 或完整项目数据库；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑。
 
 ## 2. 模块与职责
 
@@ -190,6 +190,7 @@ ProjectContentStore
 ├── reaction-graphs-v1 codec
 ├── workspaces-v1 codec
 ├── import-ledger-v1 codec
+├── energy-profiles-v1 codec
 ├── LocalProjectStorageBackend read/write/exists/list/delete
 └── project_content_snapshot_from_fixture(CoreFixtureResult)
 ```
@@ -210,6 +211,7 @@ ProjectContentStore
 - `rxnflow.workspace`：GraphEditorWorkspaceService 和 CanvasViewport / WorkspaceSelection / ObjectPaletteItem / NetworkPreview / WorkspaceSnapshot / NodePlacement 协议，串联 graph patch、对象面板、workspace-only 状态、网络预览和 workspace snapshot/restore。
 - `rxnflow.graph_workspace_codec`：`reaction-graphs-v1` 和 `workspaces-v1` sections 的 ReactionGraph / WorkspaceSnapshot 序列化、反序列化、引用校验和 derived palette/preview 构造边界。
 - `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、单位转换、correction inclusion 和缺失点诊断。
+- `rxnflow.energy_profile_codec`：`energy-profiles-v1` section 的 EnergyProfile / EnergyOptions / EnergyPoint / RxnFlowWarning 序列化、反序列化、字段校验和 graph/path/node sequence 引用校验。
 - `rxnflow.export`：ExportRequest / ExportArtifact / EnergyTableRow / EnergyDiagramRoute 协议，以及 ReportExportService 的 PNG、CDXML、XLSX bytes-first 导出编排。
 - `rxnflow.platform`：ShellCommand / ShellResponse / ShellArtifact / PlatformSession / AppKernel / PlatformShellService / handle_platform_payload，提供端侧薄壳层命令协议和 JSON 投影。
 - `rxnflow.content_store`：ProjectContentIndex / ProjectContentFile / ProjectContentSnapshot / ProjectStorageBackend / LocalProjectStorageBackend / ProjectContentStore，以及 fixture snapshot 的 `.rxnflow/state/` 保存/加载闭环。
@@ -292,6 +294,12 @@ Project Content Store 使用以下稳定目录与 index 协议：
 - `workspaces.json` 当前 schema version：`workspaces-v1`
 - `workspaces-v1` 保存 Stored Workspace 的 `workspace_id`、`project_id`、`graph_id`、`selection`、`viewport`、`active_path_id` 和 `updated_at`
 - Workspace section 不保存 ObjectPaletteItem、NetworkPreview、nodes、edges 或 paths；加载后 palette 从 ChemicalObject 派生，preview 从 ReactionGraph 派生
+- `energy-profiles.json` 当前 schema version：`energy-profiles-v1`
+- `energy-profiles-v1` 保存 Stored EnergyProfile 的 `id`、`graph_id`、`path_id`、`options`、`points` 和 `warnings`
+- Stored EnergyOptions 保存 `output_unit`、`include_corrections`、`energy_key` 和可空 `baseline_node_id`
+- Stored EnergyPoint 保存 `node_id`、`label`、`absolute_energy`、`relative_energy` 和 `missing_reason`
+- EnergyPoint 的 absolute/relative energy 必须显式保存 `{value, unit, reference}`，unit 必须等于 options.output_unit；missing point 必须只有 missing_reason，不能混入 absolute/relative energy
+- Energy profile load/save 基于已加载 ReactionGraph 校验 graph_id、path_id、point node 顺序和 baseline_node_id；不重新调用 EnergyProfileEngine，不根据当前 ChemicalObject energy/corrections 自动刷新 profile
 
 Parser Plugins 使用以下稳定协议：
 

@@ -37,8 +37,8 @@ items:
   - slug: energy-profile-persistence
     description: 持久化 EnergyProfile、EnergyOptions、EnergyPoint、missing reason 和 warnings
     depends_on: [project-content-store-v1, reaction-graph-workspace-persistence]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-06-energy-profile-persistence
     minimal_loop: false
     notes: null
 

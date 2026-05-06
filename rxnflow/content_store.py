@@ -13,7 +13,11 @@ from .chemical_object_codec import (
     chemical_objects_section_from_dict,
     chemical_objects_section_to_dict,
 )
-from .errors import RxnFlowError, RxnFlowWarning
+from .energy_profile_codec import (
+    energy_profiles_section_from_dict,
+    energy_profiles_section_to_dict,
+)
+from .errors import RxnFlowError
 from .graph_workspace_codec import (
     reaction_graphs_section_from_dict,
     reaction_graphs_section_to_dict,
@@ -29,10 +33,7 @@ from .import_workflow import ImportBatch
 from .models import (
     ChemicalObject,
     CoreFixtureResult,
-    EnergyOptions,
-    EnergyPoint,
     EnergyProfile,
-    EnergyValue,
     ReactionGraph,
 )
 from .result import Result, err, ok
@@ -470,6 +471,15 @@ def _snapshot_sections(
         assert workspaces_result.error is not None
         return err(workspaces_result.error)
 
+    energy_profiles_result = energy_profiles_section_to_dict(
+        snapshot.project_id,
+        snapshot.energy_profiles,
+        graphs=snapshot.reaction_graphs,
+    )
+    if not energy_profiles_result.ok or energy_profiles_result.value is None:
+        assert energy_profiles_result.error is not None
+        return err(energy_profiles_result.error)
+
     return ok(
         (
             (
@@ -490,11 +500,7 @@ def _snapshot_sections(
             (
                 "energy_profiles",
                 SECTION_PATHS["energy_profiles"],
-                {
-                    "schema_version": "energy-profiles-v1",
-                    "project_id": snapshot.project_id,
-                    "profiles": [_energy_profile_to_dict(profile) for profile in snapshot.energy_profiles],
-                },
+                energy_profiles_result.value,
             ),
             (
                 "import_ledger",
@@ -533,7 +539,11 @@ def _snapshot_from_sections(
         assert graphs_result.error is not None
         return err(graphs_result.error)
 
-    profiles_result = _energy_profiles_from_section(project_id, sections.get("energy_profiles"))
+    profiles_result = energy_profiles_section_from_dict(
+        project_id,
+        sections.get("energy_profiles"),
+        graphs=graphs_result.value,
+    )
     if not profiles_result.ok or profiles_result.value is None:
         assert profiles_result.error is not None
         return err(profiles_result.error)
@@ -635,109 +645,3 @@ def _chemical_objects_from_section(
     data: dict[str, Any] | None,
 ) -> Result[tuple[ChemicalObject, ...]]:
     return chemical_objects_section_from_dict(project_id, data)
-
-
-def _energy_profiles_from_section(
-    project_id: str,
-    data: dict[str, Any] | None,
-) -> Result[tuple[EnergyProfile, ...]]:
-    if data is None:
-        return ok(())
-    schema_error = _section_schema_error(data, "energy-profiles-v1", project_id, "energy_profiles")
-    if schema_error is not None:
-        return err(schema_error)
-    return ok(tuple(_energy_profile_from_dict(profile) for profile in data.get("profiles", [])))
-
-
-def _section_schema_error(
-    data: dict[str, Any],
-    expected_schema: str,
-    project_id: str,
-    target: str,
-) -> RxnFlowError | None:
-    if data.get("schema_version") != expected_schema:
-        return RxnFlowError(
-            "invalid_input",
-            f"Unsupported section schema_version '{data.get('schema_version')}'.",
-            target=target,
-        )
-    if data.get("project_id") != project_id:
-        return RxnFlowError(
-            "invalid_input",
-            "Project content section project_id does not match index.",
-            target=target,
-        )
-    return None
-
-
-def _energy_value_to_dict(value: EnergyValue) -> dict[str, Any]:
-    return {"value": value.value, "unit": value.unit, "reference": value.reference}
-
-
-def _energy_value_from_dict(data: dict[str, Any]) -> EnergyValue:
-    return EnergyValue(
-        value=float(data["value"]),
-        unit=data["unit"],
-        reference=data.get("reference"),
-    )
-
-
-def _energy_profile_to_dict(profile: EnergyProfile) -> dict[str, Any]:
-    return {
-        "id": profile.id,
-        "graph_id": profile.graph_id,
-        "path_id": profile.path_id,
-        "options": {
-            "output_unit": profile.options.output_unit,
-            "include_corrections": profile.options.include_corrections,
-            "energy_key": profile.options.energy_key,
-            "baseline_node_id": profile.options.baseline_node_id,
-        },
-        "points": [_energy_point_to_dict(point) for point in profile.points],
-        "warnings": [_warning_to_dict(warning) for warning in profile.warnings if isinstance(warning, RxnFlowWarning)],
-    }
-
-
-def _energy_profile_from_dict(data: dict[str, Any]) -> EnergyProfile:
-    options = data["options"]
-    return EnergyProfile(
-        id=str(data["id"]),
-        graph_id=str(data["graph_id"]),
-        path_id=str(data["path_id"]),
-        options=EnergyOptions(
-            output_unit=options["output_unit"],
-            include_corrections=bool(options["include_corrections"]),
-            energy_key=str(options["energy_key"]),
-            baseline_node_id=options.get("baseline_node_id"),
-        ),
-        points=tuple(_energy_point_from_dict(point) for point in data.get("points", [])),
-        warnings=tuple(_warning_from_dict(warning) for warning in data.get("warnings", [])),
-    )
-
-
-def _energy_point_to_dict(point: EnergyPoint) -> dict[str, Any]:
-    return {
-        "node_id": point.node_id,
-        "label": point.label,
-        "absolute_energy": _energy_value_to_dict(point.absolute_energy) if point.absolute_energy else None,
-        "relative_energy": _energy_value_to_dict(point.relative_energy) if point.relative_energy else None,
-        "missing_reason": point.missing_reason,
-    }
-
-
-def _energy_point_from_dict(data: dict[str, Any]) -> EnergyPoint:
-    return EnergyPoint(
-        node_id=str(data["node_id"]),
-        label=str(data["label"]),
-        absolute_energy=_energy_value_from_dict(data["absolute_energy"]) if data.get("absolute_energy") else None,
-        relative_energy=_energy_value_from_dict(data["relative_energy"]) if data.get("relative_energy") else None,
-        missing_reason=data.get("missing_reason"),
-    )
-
-
-def _warning_to_dict(warning: RxnFlowWarning) -> dict[str, Any]:
-    return {"code": warning.code, "message": warning.message, "target": warning.target}
-
-
-def _warning_from_dict(data: dict[str, Any]) -> RxnFlowWarning:
-    return RxnFlowWarning(code=str(data["code"]), message=str(data["message"]), target=data.get("target"))
