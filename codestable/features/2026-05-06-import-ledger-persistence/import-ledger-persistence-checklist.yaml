@@ -1,0 +1,204 @@
+feature: 2026-05-06-import-ledger-persistence
+created: 2026-05-06
+
+steps:
+  - action: "Import ledger codec 骨架：实现 ImportBatch / ImportItem / warnings / errors 的 import-ledger-v1 往返"
+    exit_signal: "batch id/project_id、item id/status/raw_resource_id/source display/warnings/error 往返一致"
+    status: done
+
+  - action: "ParsePreview draft/provenance 往返：实现 ChemicalObjectDraft、Provenance 和 ParseResult 的 preview 持久化"
+    exit_signal: "needs_confirmation item 加载后仍有 ParsePreview.parse_result，可用于 confirm_import"
+    status: done
+
+  - action: "ProjectContentStore 接入：增加 import-ledger section path，允许保存/加载 import_batches，并保持 index/checksum 行为稳定"
+    exit_signal: "ProjectContentStore.save_snapshot/load_snapshot 能恢复 import_batches，且 chemical object / graph / workspace sections 不回退"
+    status: done
+
+  - action: "Import workflow restore API：新增 restore_batches，恢复 _batches 并校验 project/batch/item/registered ids"
+    exit_signal: "新 ImportRegistryWorkflow restore 后 list_batches/get_batch 成功，pending preview 可继续 confirm_import"
+    status: done
+
+  - action: "错误与范围守护：覆盖坏 schema、project id mismatch、重复 id、非法 status、坏 preview、registered ids 缺失对象、warnings/error shape，以及不碰 parser/graph/energy/export 的边界"
+    exit_signal: "新增 import ledger persistence tests 和现有全量 unittest 均通过"
+    status: done
+
+checks:
+  - item: "ProjectContentSnapshot.import_batches 收紧为 tuple[ImportBatch, ...]"
+    source: 名词契约
+    status: passed
+
+  - item: "SECTION_PATHS 增加 import_ledger -> .rxnflow/state/import-ledger.json"
+    source: 名词契约
+    status: passed
+
+  - item: "Import Ledger section codec 提供 import-ledger-v1 的 serialize/deserialize/validate 边界"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectContentStore 保存/加载 import ledger section，保存 import_batches 不再被 project-content-v1 拒绝"
+    source: 名词契约
+    status: passed
+
+  - item: "ImportRegistryWorkflow 公开 restore_batches(project_id, batches, object_ids=None, replace=False)"
+    source: 名词契约
+    status: passed
+
+  - item: "save workflow 从 ImportRegistryWorkflow.list_batches 或调用方 snapshot 获取 ImportBatch tuple 并写入 import-ledger.json"
+    source: 编排骨架
+    status: passed
+
+  - item: "load workflow 先加载 ChemicalObject ids，再校验 import ledger registered ids 和 preview fields"
+    source: 编排骨架
+    status: passed
+
+  - item: "restore workflow 直接恢复 _batches，不调用 import_files 或 confirm_import"
+    source: 编排骨架
+    status: passed
+
+  - item: "schema 错误、project id 不一致、重复 batch/item id、非法 status、preview shape 错误、object_count 不一致、provenance/parser 信息不一致、registered ids 缺失对象返回 invalid_input"
+    source: 跨层纪律
+    status: passed
+
+  - item: "同一 import ledger snapshot 重复保存得到稳定 JSON/checksum"
+    source: 跨层纪律
+    status: passed
+
+  - item: "同一 batch 集合重复 restore 不追加重复 batch"
+    source: 跨层纪律
+    status: passed
+
+  - item: "source_path_display 不参与恢复，raw_resource_id 是项目内 raw file 引用"
+    source: 跨层纪律
+    status: passed
+
+  - item: "load/restore 不调用 ParserRegistry，不因 parser version 变化自动 reparse"
+    source: 跨层纪律
+    status: passed
+
+  - item: "restore_batches 不调用 ChemicalRegistry.register；confirm_import 保持原有登记语义"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Import Ledger section codec 作为独立挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: ".rxnflow/state/import-ledger.json 使用 import-ledger-v1 codec"
+    source: 挂载点
+    status: passed
+
+  - item: "ProjectContentSnapshot.import_batches 作为导入状态持久化挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: "ImportRegistryWorkflow.restore_batches 作为 public API 挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: "ParsePreview draft/provenance codec 保存 ChemicalObjectDraft、Provenance、warnings/error 的持久化表达"
+    source: 挂载点
+    status: passed
+
+  - item: "ImportRegistryWorkflow.import_files 产生 needs_confirmation item 后 ProjectContentStore.save_snapshot 写入 import-ledger.json 并保留 batch/item/status/raw_resource_id/source_path_display/warnings/preview summary"
+    source: 验收场景
+    status: passed
+
+  - item: "load_snapshot 后 ProjectContentSnapshot.import_batches 恢复 ImportBatch / ImportItem / ParsePreview"
+    source: 验收场景
+    status: passed
+
+  - item: "加载后的 ParsePreview.parse_result 保留 ChemicalObjectDraft tuple 和 Provenance，object_count 与 draft 数量一致"
+    source: 验收场景
+    status: passed
+
+  - item: "新 ImportRegistryWorkflow.restore_batches 恢复 pending batch 后 list_batches 和 get_batch 可读取该 batch"
+    source: 验收场景
+    status: passed
+
+  - item: "restore 后调用 confirm_import 选择 pending item 可成功登记 ChemicalObject，且 registered_object_ids 写回 batch"
+    source: 验收场景
+    status: passed
+
+  - item: "failed ImportItem 保存/加载后保留 status、error code/message/target/details 和 warnings，不要求 preview"
+    source: 验收场景
+    status: passed
+
+  - item: "registered ImportItem 保存/加载后保留 registered_object_ids，并校验这些 ids 存在于 loaded ChemicalObject ids"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 import ledger snapshot 重复保存时 import-ledger section checksum 稳定，index path/kind 不变"
+    source: 验收场景
+    status: passed
+
+  - item: "import-ledger.json schema_version 不是 import-ledger-v1 时 load_snapshot 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "section project_id 与 ProjectContentIndex.project_id 不一致时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 section 内重复 batch id 或同一 batch 内重复 item id 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "item status 不属于 ImportItemStatus 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "preview object_count 与 object_drafts 数量不一致时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "preview parser_id/parser_version 与 parse_result.provenance 不一致时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "registered_object_ids 引用缺失 ChemicalObject id 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "warning/error entry 字段缺失或 shape 错误时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "save/load 不修改 .rxnflow/manifest.json，不新增 ProjectResource，不读取或解析 inputs/raw"
+    source: 验收场景
+    status: passed
+
+  - item: "不调用 ParserRegistry.parse、ProjectStore.add_raw_file、ChemicalRegistry.register、ReactionGraphService、EnergyProfileEngine 或 ReportExportService"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 ProjectContentStore、ChemicalRegistry、Import Workflow、Graph Workspace、Energy Engine、Report Export 和 Platform Shell 测试继续通过"
+    source: 验收场景
+    status: passed
+
+  - item: "不保存用户源文件绝对路径作为恢复依据"
+    source: 范围守护
+    status: passed
+
+  - item: "不保存 raw file bytes 或把 raw resource path/checksum 的权威副本塞进 import ledger"
+    source: 范围守护
+    status: passed
+
+  - item: "不重新 parse raw files，不根据 parser version 自动刷新 preview"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 stale preview migration、reparse command、CLI/Web/desktop command 或 UI"
+    source: 范围守护
+    status: passed
+
+  - item: "不调用 ChemicalRegistry.register 进行 restore"
+    source: 范围守护
+    status: passed
+
+  - item: "不持久化 graph/workspace/profile/export 的新 schema"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 browser storage、cloud adapter、project bundle、migration、增量保存、并发锁或冲突合并"
+    source: 范围守护
+    status: passed

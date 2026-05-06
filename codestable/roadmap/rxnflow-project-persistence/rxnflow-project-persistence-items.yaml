@@ -29,8 +29,8 @@ items:
   - slug: import-ledger-persistence
     description: 持久化 ImportBatch、ImportItem、ParsePreview、registered ids、warnings 和 errors
     depends_on: [project-content-store-v1, chemical-object-persistence]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-06-import-ledger-persistence
     minimal_loop: false
     notes: null
 

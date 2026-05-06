@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 import hashlib
 import os
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Iterable, Literal, TypeVar
 
 from .errors import RxnFlowError, RxnFlowWarning
 from .models import ID, ProjectResource
@@ -173,6 +173,34 @@ class ImportRegistryWorkflow:
             return _invalid_input("Project id is required.", "project_id")
         return ok(tuple(self._batches.get(project_id, {}).values()))
 
+    def restore_batches(
+        self,
+        project_id: ID,
+        batches: tuple[ImportBatch, ...],
+        object_ids: Iterable[ID] | None = None,
+        replace: bool = False,
+    ) -> Result[tuple[ImportBatch, ...]]:
+        if not project_id:
+            return _invalid_input("Project id is required.", "project_id")
+
+        object_id_set = set(object_ids) if object_ids is not None else None
+        restored = {} if replace else dict(self._batches.get(project_id, {}))
+        seen_batches: set[ID] = set()
+        for batch in batches:
+            batch_error = _restore_batch_error(batch, project_id, object_id_set, seen_batches)
+            if batch_error is not None:
+                return err(batch_error)
+            existing = restored.get(batch.id)
+            if existing is not None and existing != batch:
+                return _invalid_input(
+                    f"Import batch '{batch.id}' already exists with different content.",
+                    batch.id,
+                )
+            restored[batch.id] = batch
+
+        self._batches[project_id] = restored
+        return ok(tuple(restored.values()))
+
     def _import_single_file(
         self,
         project_path: str | os.PathLike[str],
@@ -288,6 +316,100 @@ def _find_item_index(items: list[ImportItem], item_id: ID) -> int | None:
     for index, item in enumerate(items):
         if item.id == item_id:
             return index
+    return None
+
+
+def _restore_batch_error(
+    batch: ImportBatch,
+    project_id: ID,
+    object_ids: set[ID] | None,
+    seen_batches: set[ID],
+) -> RxnFlowError | None:
+    if not batch.id:
+        return RxnFlowError("invalid_input", "Import batch id is required.", target="batch.id")
+    if batch.id in seen_batches:
+        return RxnFlowError("invalid_input", "Import batch id is duplicated.", target=batch.id)
+    if batch.project_id != project_id:
+        return RxnFlowError(
+            "invalid_input",
+            "Import batch project_id does not match restore project.",
+            target="batch.project_id",
+        )
+    seen_batches.add(batch.id)
+
+    seen_items: set[ID] = set()
+    for item in batch.items:
+        item_error = _restore_item_error(item, object_ids, seen_items)
+        if item_error is not None:
+            return item_error
+    return None
+
+
+def _restore_item_error(
+    item: ImportItem,
+    object_ids: set[ID] | None,
+    seen_items: set[ID],
+) -> RxnFlowError | None:
+    if not item.id:
+        return RxnFlowError("invalid_input", "Import item id is required.", target="item.id")
+    if item.id in seen_items:
+        return RxnFlowError("invalid_input", "Import item id is duplicated.", target=item.id)
+    if item.status not in ("raw_added", "parsed", "needs_confirmation", "registered", "failed"):
+        return RxnFlowError("invalid_input", "Import item status is unsupported.", target=f"{item.id}.status")
+    seen_items.add(item.id)
+
+    if item.status == "needs_confirmation" and item.preview is None:
+        return RxnFlowError("invalid_input", "needs_confirmation import item requires preview.", target=item.id)
+    if item.status == "registered" and not item.registered_object_ids:
+        return RxnFlowError("invalid_input", "registered import item requires object ids.", target=item.id)
+    if item.status == "failed" and item.error is None:
+        return RxnFlowError("invalid_input", "failed import item requires an error.", target=item.id)
+
+    if item.preview is not None:
+        preview_error = _restore_preview_error(item)
+        if preview_error is not None:
+            return preview_error
+
+    if object_ids is not None:
+        for object_id in item.registered_object_ids:
+            if object_id not in object_ids:
+                return RxnFlowError(
+                    "invalid_input",
+                    "Registered object id is missing from loaded ChemicalObject ids.",
+                    target=item.id,
+                    details={"object_id": object_id},
+                )
+    return None
+
+
+def _restore_preview_error(item: ImportItem) -> RxnFlowError | None:
+    assert item.preview is not None
+    preview = item.preview
+    provenance = preview.parse_result.provenance
+    if preview.object_count != len(preview.parse_result.objects):
+        return RxnFlowError(
+            "invalid_input",
+            "Parse preview object_count does not match parse_result objects.",
+            target=f"{item.id}.preview",
+        )
+    if preview.parser_id != provenance.parser_id or preview.parser_version != provenance.parser_version:
+        return RxnFlowError(
+            "invalid_input",
+            "Parse preview parser metadata does not match provenance.",
+            target=f"{item.id}.preview",
+        )
+    if preview.raw_resource_id != provenance.source_file_id:
+        return RxnFlowError(
+            "invalid_input",
+            "Parse preview raw_resource_id does not match provenance.",
+            target=f"{item.id}.preview",
+        )
+    if item.raw_resource is not None and item.raw_resource.id != preview.raw_resource_id:
+        return RxnFlowError(
+            "invalid_input",
+            "Import item raw_resource_id does not match preview.",
+            target=f"{item.id}.raw_resource",
+        )
     return None
 
 

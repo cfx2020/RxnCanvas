@@ -15,7 +15,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Project：用户创建的工作空间，用于组织导入文件、化学对象、反应图谱与导出报告。
 - Project Directory：一个可落盘 RxnFlow 项目的根目录，当前固定包含 `.rxnflow/manifest.json` 和 `inputs/raw/`。
 - Project Manifest：项目级结构化元数据，当前 schema version 为 `project-v1`，记录 project id/name/schemaVersion/resources。
-- Project Content：`.rxnflow/state/` 下保存的项目领域内容，当前覆盖真实 ChemicalObject、ReactionGraph、WorkspaceSnapshot 和基础 EnergyProfile snapshot。
+- Project Content：`.rxnflow/state/` 下保存的项目领域内容，当前覆盖真实 ChemicalObject、ReactionGraph、WorkspaceSnapshot、ImportBatch/ParsePreview 和基础 EnergyProfile snapshot。
 - Project Content Index：`.rxnflow/state/project-content.json`，记录 state section 文件 kind、path、checksum 和 updated_at。
 - Project Content Snapshot：一次保存/加载的项目内容快照，当前用于把对象、图谱、workspace 和 profile 数据跨进程恢复为核心 dataclass。
 - Project Storage Backend：按项目相对 POSIX path 读写 bytes 的存储后端协议，当前落地本地文件系统 backend。
@@ -27,6 +27,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Import Registry Workflow：核心层导入编排服务，串联 Project Store、Parser Registry 和 Chemical Registry，把 source file 变成等待确认或已登记的结构化导入状态。
 - Import Batch / Import Item：单文件或批量导入的内存状态快照，逐项记录 source_path、raw resource、parse preview、warnings、error 和 registered object ids。
 - Parse Preview：等待用户或 agent 确认的解析预览，记录 parser provenance、object_count、warnings 和原始 ParseResult；确认前不登记 ChemicalObject。
+- Import Ledger：Project Content 中的 `import-ledger-v1` section，保存 ImportBatch、ImportItem、ParsePreview、registered ids、warnings 和 errors。
 - Chemical Object：从原始输出解析并登记的可复用对象，包含结构、电荷自旋、方法、能量、热化学参数、来源、registry fingerprint 与校正项等信息。
 - Chemical Registry：核心层对象登记服务，负责把 Parse Result 固化为项目内 Chemical Object，并维护来源追踪、基础去重、校正项追加和已持久化对象恢复。
 - Correction：用户为化学对象补充的 append-only 能量校正项，例如谐振校正、溶剂化校正或手动校正。
@@ -66,7 +67,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
 
 ## 4. 关键架构决定
 
@@ -83,7 +84,8 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Import Registry Workflow 当前是 ProjectStore、ParserRegistry 和 ChemicalRegistry 之间的核心编排层；它负责 raw file resource 登记、RawFile adapter、parse preview、用户/agent 确认和 batch/item 状态读取。
 - Import Registry Workflow 的导入分两阶段：`import_files` 只复制 raw file 并生成 ParsePreview，`confirm_import` 才把选中的 ParseResult objects 登记进 ChemicalRegistry。
 - 批量导入允许单文件失败；parse/add/register 错误记录在 ImportItem，project-level 错误才使整个 workflow 返回 Result error。
-- 解析失败或格式不支持时 raw file resource 仍保留在 Project Directory 中；ImportBatch 和 ParsePreview 当前只保存在内存里。
+- 解析失败或格式不支持时 raw file resource 仍保留在 Project Directory 中；ImportBatch 和 ParsePreview 可通过 `import-ledger-v1` 保存到 Project Content。
+- Import Registry Workflow 当前提供 `restore_batches`，用于把已持久化 ImportBatch 恢复为 project-scoped batch state；restore 不调用 `import_files`、ParserRegistry 或 ChemicalRegistry.register。
 - ChemicalObject 校正项是 append-only 的 Correction 记录，不改写 parser 原始 energy channel；是否计入能量由后续 Energy Engine 显式控制。
 - 基础对象去重当前只保证同项目内同来源、同 draft fingerprint 的重复登记幂等，不基于分子式、标签、能量接近或几何相似度自动合并。
 - Reaction Graph 当前通过 GraphPatch 修改；GraphPatch 是核心领域协议，不包含 selection、hover、viewport 等 UI 状态。
@@ -116,16 +118,16 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - PlatformShellService 当前支持 `fixture.run`、`project.create`、`project.load`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile` 命令。
 - ShellResponse 是端侧 JSON 投影边界；dataclass、Path、tuple 和 bytes 不直接穿过该边界。
 - ShellArtifact 默认不内联二进制；显式 `include_bytes=True` 时使用 base64 并在 metadata 中记录 encoding。
-- Platform Session 只在进程内有效；当前不承诺跨进程恢复 ImportBatch、ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 内容。
+- Platform Session 只在进程内有效；跨进程内容恢复依赖 ProjectContentStore 和各核心服务 restore API，不由 PlatformSession 自身持久化。
 - CLI 当前通过 `python3 -m rxnflow.cli` 暴露标准库 argparse 入口，错误命令返回非 0 exit code。
 - Web Payload Adapter 当前只接收/返回 dict，不引入 Web framework、route、server、worker、桌面窗口或打包入口。
 - Project Content Store 当前通过 `rxnflow.content_store` 提供 ProjectContentIndex、ProjectContentFile、ProjectContentSnapshot、ProjectStorageBackend、LocalProjectStorageBackend 和 ProjectContentStore。
-- Project Content Store 当前写入 `.rxnflow/state/project-content.json`、`chemical-objects.json`、`reaction-graphs.json`、`workspaces.json` 和 `energy-profiles.json`；其中 `chemical-objects.json` 使用 `chemical-objects-v1` 长期 codec 保存真实 ChemicalObject、provenance、registry fingerprint 和 append-only corrections，`reaction-graphs.json` 使用 `reaction-graphs-v1` 长期 codec 保存真实 ReactionGraph/ReactionPath，`workspaces.json` 使用 `workspaces-v1` 长期 codec 保存 workspace-only 状态。
+- Project Content Store 当前写入 `.rxnflow/state/project-content.json`、`chemical-objects.json`、`reaction-graphs.json`、`workspaces.json`、`energy-profiles.json` 和 `import-ledger.json`；其中 `chemical-objects.json` 使用 `chemical-objects-v1` 长期 codec 保存真实 ChemicalObject、provenance、registry fingerprint 和 append-only corrections，`reaction-graphs.json` 使用 `reaction-graphs-v1` 长期 codec 保存真实 ReactionGraph/ReactionPath，`workspaces.json` 使用 `workspaces-v1` 长期 codec 保存 workspace-only 状态，`import-ledger.json` 使用 `import-ledger-v1` 保存 ImportBatch/ImportItem/ParsePreview 状态。
 - Project Content Store 不修改 `.rxnflow/manifest.json` schema，不登记 ProjectResource，不读取或解析 `inputs/raw/`。
 - LocalProjectStorageBackend 只处理项目相对 POSIX path 和 bytes；不理解 ChemicalObject、ReactionGraph、WorkspaceSnapshot 或 EnergyProfile 领域语义。
 - `project-content-v1`、`chemical-objects-v1`、`reaction-graphs-v1` 和 `workspaces-v1` 不做 silent fallback；index 缺失、schema 不兼容、坏 JSON、不安全 path、裸 energy、unsupported unit、重复 object/graph/workspace/node/edge/path id、缺失 object/node/edge/path/workspace 引用、非法 viewport 等返回结构化错误。
 - 待补：真实 Gaussian/ORCA/MAPLE fixture corpus 与支持版本边界。
-- 待补：真实 ImportBatch、ParsePreview、ExportArtifact index 和 EnergyProfile 长期仓储格式。
+- 待补：ExportArtifact index 和 EnergyProfile 长期仓储格式。
 - 待补：真实图谱编辑 UI 渲染、画布布局持久化与端侧交互协议。
 - 待补：组合报告、报告预览、图谱画布截图、CDX、PDF/PPTX/SVG/CSV 等导出能力边界。
 

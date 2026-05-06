@@ -21,6 +21,11 @@ from .graph_workspace_codec import (
     workspaces_section_from_dict,
     workspaces_section_to_dict,
 )
+from .import_ledger_codec import (
+    import_ledger_section_from_dict,
+    import_ledger_section_to_dict,
+)
+from .import_workflow import ImportBatch
 from .models import (
     ChemicalObject,
     CoreFixtureResult,
@@ -42,12 +47,14 @@ CHEMICAL_OBJECTS_PATH = f"{PROJECT_CONTENT_DIR}/chemical-objects.json"
 REACTION_GRAPHS_PATH = f"{PROJECT_CONTENT_DIR}/reaction-graphs.json"
 WORKSPACES_PATH = f"{PROJECT_CONTENT_DIR}/workspaces.json"
 ENERGY_PROFILES_PATH = f"{PROJECT_CONTENT_DIR}/energy-profiles.json"
+IMPORT_LEDGER_PATH = f"{PROJECT_CONTENT_DIR}/import-ledger.json"
 
 SECTION_PATHS: dict[str, str] = {
     "chemical_objects": CHEMICAL_OBJECTS_PATH,
     "reaction_graphs": REACTION_GRAPHS_PATH,
     "workspaces": WORKSPACES_PATH,
     "energy_profiles": ENERGY_PROFILES_PATH,
+    "import_ledger": IMPORT_LEDGER_PATH,
 }
 
 
@@ -99,7 +106,7 @@ class ProjectContentSnapshot:
     reaction_graphs: tuple[ReactionGraph, ...] = ()
     workspaces: tuple[WorkspaceSnapshot, ...] = ()
     energy_profiles: tuple[EnergyProfile, ...] = ()
-    import_batches: tuple[Any, ...] = ()
+    import_batches: tuple[ImportBatch, ...] = ()
     export_artifacts: tuple[Any, ...] = ()
 
 
@@ -414,10 +421,10 @@ def _json_from_bytes(payload: bytes, target: str) -> Result[dict[str, Any]]:
 def _validate_snapshot_for_v1(snapshot: ProjectContentSnapshot) -> RxnFlowError | None:
     if not snapshot.project_id:
         return RxnFlowError("invalid_input", "Project content snapshot requires project_id.", target="project_id")
-    if snapshot.import_batches or snapshot.export_artifacts:
+    if snapshot.export_artifacts:
         return RxnFlowError(
             "invalid_input",
-            "project-content-v1 does not persist import batches or export artifact indexes yet.",
+            "project-content-v1 does not persist export artifact indexes yet.",
             target="snapshot",
         )
     return None
@@ -435,6 +442,15 @@ def _snapshot_sections(
         return err(chemical_objects_result.error)
 
     object_ids = {obj.id for obj in snapshot.chemical_objects}
+    import_ledger_result = import_ledger_section_to_dict(
+        snapshot.project_id,
+        snapshot.import_batches,
+        object_ids=object_ids,
+    )
+    if not import_ledger_result.ok or import_ledger_result.value is None:
+        assert import_ledger_result.error is not None
+        return err(import_ledger_result.error)
+
     graphs_result = reaction_graphs_section_to_dict(
         snapshot.project_id,
         snapshot.reaction_graphs,
@@ -480,6 +496,11 @@ def _snapshot_sections(
                     "profiles": [_energy_profile_to_dict(profile) for profile in snapshot.energy_profiles],
                 },
             ),
+            (
+                "import_ledger",
+                SECTION_PATHS["import_ledger"],
+                import_ledger_result.value,
+            ),
         )
     )
 
@@ -494,6 +515,15 @@ def _snapshot_from_sections(
         return err(chemical_objects_result.error)
 
     object_ids = {obj.id for obj in chemical_objects_result.value}
+    import_batches_result = import_ledger_section_from_dict(
+        project_id,
+        sections.get("import_ledger"),
+        object_ids=object_ids,
+    )
+    if not import_batches_result.ok or import_batches_result.value is None:
+        assert import_batches_result.error is not None
+        return err(import_batches_result.error)
+
     graphs_result = reaction_graphs_section_from_dict(
         project_id,
         sections.get("reaction_graphs"),
@@ -525,6 +555,7 @@ def _snapshot_from_sections(
             reaction_graphs=graphs_result.value,
             workspaces=workspaces_result.value,
             energy_profiles=profiles_result.value,
+            import_batches=import_batches_result.value,
         )
     )
 

@@ -5,7 +5,7 @@ status: active
 created: 2026-05-05
 last_reviewed: 2026-05-06
 tags: [rxnflow, persistence, project-store, browser-storage, project-bundle]
-related_requirements: [platform-shell-entry]
+related_requirements: [platform-shell-entry, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform]
 ---
 
@@ -323,7 +323,8 @@ type StoredParsePreview = {
   parserId: string
   parserVersion: string
   objectCount: number
-  objectDrafts?: ChemicalObjectDraft[]
+  objectDrafts: ChemicalObjectDraft[]
+  provenance: Provenance
   warnings: RxnFlowWarning[]
 }
 ```
@@ -332,6 +333,7 @@ type StoredParsePreview = {
 
 - 不保存用户源文件绝对路径；`sourcePathDisplay` 只用于 UI 提示，不作为恢复依据。
 - raw file 恢复必须依赖 manifest resource path 和 checksum。
+- 持久化 preview 必须保存完整 object drafts 和 provenance，保证加载后仍可确认导入，不依赖重新 parse。
 - 允许 persisted preview 在 parser version 变化后标记 stale；是否重新 parse 是后续 feature，不在 load 时自动发生。
 
 ### 4.7 Energy Profile / Export Index 持久化协议
@@ -435,8 +437,8 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 4. **import-ledger-persistence** — 持久化 ImportBatch、ImportItem、ParsePreview、registered ids、warnings 和 errors
    - 所属模块：Domain Repositories
    - 依赖：`project-content-store-v1`、`chemical-object-persistence`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-06-import-ledger-persistence
 
 5. **energy-profile-persistence** — 持久化 EnergyProfile、EnergyOptions、EnergyPoint、missing reason 和 warnings
    - 所属模块：Domain Repositories
