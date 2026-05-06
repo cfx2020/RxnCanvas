@@ -23,6 +23,7 @@ class ChemicalRegistryCorrectionsTest(unittest.TestCase):
         self.assertEqual(obj.source_file_id, "raw-a")
         self.assertEqual(obj.provenance, parse_result.provenance)
         self.assertEqual(obj.corrections, ())
+        self.assertIsNotNone(obj.registry_fingerprint)
 
         lookup = registry.get_object("project-a", obj.id)
         self.assertTrue(lookup.ok, lookup.error)
@@ -99,6 +100,50 @@ class ChemicalRegistryCorrectionsTest(unittest.TestCase):
         assert result.error is not None
         self.assertEqual(result.error.code, "invalid_input")
         self.assertEqual(result.error.target, "object-missing")
+
+    def test_list_and_restore_objects_rebuilds_registry_state(self) -> None:
+        registry = ChemicalRegistry()
+        parse_result = _parse_result(_draft())
+        obj = registry.register("project-a", parse_result).value[0]  # type: ignore[index, union-attr]
+
+        listed = registry.list_objects("project-a")
+        self.assertTrue(listed.ok, listed.error)
+        self.assertEqual(listed.value, (obj,))
+        self.assertEqual(ChemicalRegistry().list_objects("project-a").value, ())  # type: ignore[union-attr]
+
+        restored_registry = ChemicalRegistry()
+        restored = restored_registry.restore_objects("project-a", listed.value)  # type: ignore[arg-type]
+        self.assertTrue(restored.ok, restored.error)
+        self.assertEqual(restored_registry.get_object("project-a", obj.id).value, obj)  # type: ignore[union-attr]
+
+        repeated_restore = restored_registry.restore_objects("project-a", listed.value)  # type: ignore[arg-type]
+        self.assertTrue(repeated_restore.ok, repeated_restore.error)
+        self.assertEqual(len(restored_registry.list_objects("project-a").value), 1)  # type: ignore[arg-type]
+
+        repeated_register = restored_registry.register("project-a", parse_result)
+        self.assertTrue(repeated_register.ok, repeated_register.error)
+        self.assertEqual(repeated_register.value, (obj,))
+        self.assertEqual(len(restored_registry.list_objects("project-a").value), 1)  # type: ignore[arg-type]
+
+    def test_restore_objects_rejects_duplicate_ids_and_fingerprint_conflicts(self) -> None:
+        registry = ChemicalRegistry()
+        parse_result = _parse_result(_draft(label="a"), _draft(label="b"))
+        objects = registry.register("project-a", parse_result).value  # type: ignore[assignment, union-attr]
+
+        duplicate_id = ChemicalRegistry().restore_objects("project-a", (objects[0], objects[0]))
+        self.assertFalse(duplicate_id.ok)
+        self.assertEqual(duplicate_id.error.code, "invalid_input")  # type: ignore[union-attr]
+
+        conflict = ChemicalRegistry().restore_objects(
+            "project-a",
+            (
+                objects[0],
+                ChemicalObjectForTest.with_fingerprint(objects[1], objects[0].registry_fingerprint),
+            ),
+        )
+        self.assertFalse(conflict.ok)
+        self.assertEqual(conflict.error.code, "invalid_input")  # type: ignore[union-attr]
+        self.assertEqual(conflict.error.target, "registry_fingerprint")  # type: ignore[union-attr]
 
     def test_apply_all_correction_kinds_appends_without_rewriting_energy(self) -> None:
         registry = ChemicalRegistry()
@@ -230,6 +275,14 @@ def _correction(
         created_at="2026-05-02T00:00:00Z",
         note="test correction",
     )
+
+
+class ChemicalObjectForTest:
+    @staticmethod
+    def with_fingerprint(obj, registry_fingerprint):
+        from dataclasses import replace
+
+        return replace(obj, registry_fingerprint=registry_fingerprint)
 
 
 if __name__ == "__main__":

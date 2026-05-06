@@ -67,6 +67,7 @@ class ChemicalRegistry:
                 source_file_id=parse_result.provenance.source_file_id,
                 corrections=(),
                 provenance=parse_result.provenance,
+                registry_fingerprint=fingerprint,
             )
             state.objects[object_id] = chemical_object
             state.fingerprint_to_object_id[fingerprint] = object_id
@@ -84,6 +85,81 @@ class ChemicalRegistry:
                 )
             )
         return ok(state.objects[object_id])
+
+    def list_objects(self, project_id: ID) -> Result[tuple[ChemicalObject, ...]]:
+        if not project_id:
+            return err(
+                RxnFlowError(
+                    code="invalid_input",
+                    message="Project id is required to list chemical objects.",
+                    target="project_id",
+                )
+            )
+        state = self._projects.get(project_id)
+        if state is None:
+            return ok(())
+        return ok(tuple(state.objects.values()))
+
+    def restore_objects(
+        self,
+        project_id: ID,
+        objects: tuple[ChemicalObject, ...],
+        *,
+        replace: bool = False,
+    ) -> Result[tuple[ChemicalObject, ...]]:
+        if not project_id:
+            return err(
+                RxnFlowError(
+                    code="invalid_input",
+                    message="Project id is required to restore chemical objects.",
+                    target="project_id",
+                )
+            )
+
+        validation = _validate_restore_objects(objects)
+        if validation is not None:
+            return err(validation)
+
+        state = _RegistryState() if replace else self._projects.setdefault(project_id, _RegistryState())
+        restored_objects = dict(state.objects)
+        restored_fingerprints = dict(state.fingerprint_to_object_id)
+
+        for obj in objects:
+            existing = restored_objects.get(obj.id)
+            if existing is not None:
+                if existing != obj:
+                    return err(
+                        RxnFlowError(
+                            code="invalid_input",
+                            message="Chemical object id already exists with different content.",
+                            target=obj.id,
+                        )
+                    )
+                continue
+
+            if obj.registry_fingerprint:
+                existing_id = restored_fingerprints.get(obj.registry_fingerprint)
+                if existing_id is not None and existing_id != obj.id:
+                    return err(
+                        RxnFlowError(
+                            code="invalid_input",
+                            message="Registry fingerprint already points to a different chemical object.",
+                            target="registry_fingerprint",
+                            details={
+                                "registry_fingerprint": obj.registry_fingerprint,
+                                "existing_object_id": existing_id,
+                                "object_id": obj.id,
+                            },
+                        )
+                    )
+                restored_fingerprints[obj.registry_fingerprint] = obj.id
+
+            restored_objects[obj.id] = obj
+
+        state.objects = restored_objects
+        state.fingerprint_to_object_id = restored_fingerprints
+        self._projects[project_id] = state
+        return ok(tuple(objects))
 
     def apply_correction(
         self,
@@ -182,6 +258,47 @@ class _RegistryState:
     def __init__(self) -> None:
         self.objects: dict[ID, ChemicalObject] = {}
         self.fingerprint_to_object_id: dict[str, ID] = {}
+
+
+def _validate_restore_objects(objects: tuple[ChemicalObject, ...]) -> RxnFlowError | None:
+    object_ids: set[ID] = set()
+    fingerprint_to_object_id: dict[str, ID] = {}
+    for index, obj in enumerate(objects):
+        if not obj.id:
+            return RxnFlowError(
+                code="invalid_input",
+                message="Restored chemical object id is required.",
+                target=f"objects[{index}].id",
+            )
+        if not obj.source_file_id:
+            return RxnFlowError(
+                code="invalid_input",
+                message="Restored chemical object source_file_id is required.",
+                target=f"objects[{index}].source_file_id",
+            )
+        if obj.id in object_ids:
+            return RxnFlowError(
+                code="invalid_input",
+                message="Chemical object id is duplicated in restore payload.",
+                target=obj.id,
+            )
+        object_ids.add(obj.id)
+        if not obj.registry_fingerprint:
+            continue
+        existing_id = fingerprint_to_object_id.get(obj.registry_fingerprint)
+        if existing_id is not None and existing_id != obj.id:
+            return RxnFlowError(
+                code="invalid_input",
+                message="Registry fingerprint is duplicated for different chemical objects.",
+                target="registry_fingerprint",
+                details={
+                    "registry_fingerprint": obj.registry_fingerprint,
+                    "existing_object_id": existing_id,
+                    "object_id": obj.id,
+                },
+            )
+        fingerprint_to_object_id[obj.registry_fingerprint] = obj.id
+    return None
 
 
 def _registry_fingerprint(

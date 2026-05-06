@@ -1,0 +1,248 @@
+feature: 2026-05-06-reaction-graph-workspace-persistence
+created: 2026-05-06
+
+steps:
+  - action: "Graph section codec：实现 reaction-graphs-v1 往返和 graph-level validation"
+    exit_signal: "graph id/project_id、nodes、edges、paths、node positions、metadata 和 object refs 往返一致；坏 graph 返回 Result error"
+    status: done
+
+  - action: "Workspace section codec：实现 workspaces-v1 往返，保存 workspace-only 状态并派生 palette/preview"
+    exit_signal: "workspace_id、graph_id、selection、viewport、active_path_id 和 updated_at 往返一致；palette/preview 不写入 JSON 但加载后可观察"
+    status: done
+
+  - action: "ProjectContentStore 接入：将 reaction_graphs/workspaces section 改用长期 codec，保持 index/path/checksum 行为不变"
+    exit_signal: "save_snapshot/load_snapshot 可恢复真实 graph/workspace，且 chemical object section 仍按既有 codec 工作"
+    status: done
+
+  - action: "Graph service restore API：新增 list/restore graph 入口，直接恢复 graph map 并保留 id"
+    exit_signal: "新 ReactionGraphService restore 后可 list_paths/apply_patch 继续编辑已恢复 graph"
+    status: done
+
+  - action: "Workspace service restore API：新增 list/restore workspace 入口，恢复 selection/viewport/active_path 并重新派生 snapshot"
+    exit_signal: "新 GraphEditorWorkspaceService restore 后 snapshot、select、set_viewport 和 graph edit 继续可用"
+    status: done
+
+  - action: "错误与范围守护：覆盖坏 schema、project id mismatch、重复 id、缺失 object/node/edge/path/workspace 引用、非法 viewport，以及不碰 parser/import/energy/export 的边界"
+    exit_signal: "新增 graph/workspace persistence tests 和现有全量 unittest 均通过"
+    status: done
+
+checks:
+  - item: "Graph / Workspace section codec 提供 reaction-graphs-v1 与 workspaces-v1 的 serialize/deserialize/validate 边界"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectContentStore 的 reaction_graphs section 使用长期 graph codec"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectContentStore 的 workspaces section 使用长期 workspace codec"
+    source: 名词契约
+    status: passed
+
+  - item: "ReactionGraphService 公开 list_graphs(project_id)"
+    source: 名词契约
+    status: passed
+
+  - item: "ReactionGraphService 公开 restore_graphs(project_id, graphs, object_ids=None, replace=False)"
+    source: 名词契约
+    status: passed
+
+  - item: "GraphEditorWorkspaceService 公开 list_workspaces(project_id)"
+    source: 名词契约
+    status: passed
+
+  - item: "GraphEditorWorkspaceService 公开 restore_workspaces(project_id, workspaces, objects=(), replace=False)"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectContentSnapshot.reaction_graphs/workspaces 字段语义收紧为长期持久化数据"
+    source: 名词契约
+    status: passed
+
+  - item: "save workflow 从 graph service/workspace service 获取 tuple，并通过 codec 校验后写入 section"
+    source: 编排骨架
+    status: passed
+
+  - item: "load workflow 先加载 ChemicalObject，再校验 ReactionGraph，最后校验 Workspace"
+    source: 编排骨架
+    status: passed
+
+  - item: "graph restore workflow 直接恢复 graph map，不调用 create_graph 或 apply_patch"
+    source: 编排骨架
+    status: passed
+
+  - item: "workspace restore workflow 基于已恢复 graph service 和 loaded objects 重建 workspace state"
+    source: 编排骨架
+    status: passed
+
+  - item: "reaction-graphs-v1 保存 materialized graph state，不保存 GraphPatch history"
+    source: 跨层纪律
+    status: passed
+
+  - item: "workspaces-v1 只保存 workspace-only 状态，不复制 nodes、edges 或 paths"
+    source: 跨层纪律
+    status: passed
+
+  - item: "workspace load/restore 后 palette 从 loaded ChemicalObject 派生"
+    source: 跨层纪律
+    status: passed
+
+  - item: "workspace load/restore 后 preview 从 loaded ReactionGraph 派生"
+    source: 跨层纪律
+    status: passed
+
+  - item: "graph node 只保存 chemical_object_ids，不复制 ChemicalObject 内容"
+    source: 跨层纪律
+    status: passed
+
+  - item: "load 时缺失 ChemicalObject id、node id、edge id、path id 或 graph id 引用返回 structured error"
+    source: 跨层纪律
+    status: passed
+
+  - item: "同一 graph/workspace snapshot 重复保存得到稳定 JSON/checksum"
+    source: 跨层纪律
+    status: passed
+
+  - item: "同一 graph/workspace 集合重复 restore 不追加重复状态"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Graph / Workspace section codec 作为独立挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: ".rxnflow/state/reaction-graphs.json 使用长期 graph codec"
+    source: 挂载点
+    status: passed
+
+  - item: ".rxnflow/state/workspaces.json 使用长期 workspace codec"
+    source: 挂载点
+    status: passed
+
+  - item: "ReactionGraphService.list_graphs / restore_graphs 作为 public API 挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: "GraphEditorWorkspaceService.list_workspaces / restore_workspaces 作为 public API 挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: "Workspace derived snapshot builder 可从 graph + ChemicalObject 派生 palette 和 preview"
+    source: 挂载点
+    status: passed
+
+  - item: "save_snapshot 保存含多个 nodes/edges/paths 的 ReactionGraph 后 reaction-graphs.json 保留关键 graph 字段"
+    source: 验收场景
+    status: passed
+
+  - item: "load_snapshot 加载上述 snapshot 后 ProjectContentSnapshot.reaction_graphs 与保存前关键字段一致"
+    source: 验收场景
+    status: passed
+
+  - item: "graph node 引用已加载 ChemicalObject id 时 load_snapshot 成功"
+    source: 验收场景
+    status: passed
+
+  - item: "graph node 引用缺失 ChemicalObject id 时返回 structured error"
+    source: 验收场景
+    status: passed
+
+  - item: "species / transition_state node 缺少 chemical_object_ids 时返回 graph_invalid 或等价 structured error"
+    source: 验收场景
+    status: passed
+
+  - item: "edge 引用缺失 from_node 或 to_node 时返回 structured error"
+    source: 验收场景
+    status: passed
+
+  - item: "path 为空或引用缺失 node 时返回 structured error"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 graph section 内重复 graph id / node id / edge id / path id 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "workspaces.json 只保存 workspace_id、project_id、graph_id、selection、viewport、active_path_id、updated_at"
+    source: 验收场景
+    status: passed
+
+  - item: "load_snapshot 加载 workspace section 后 WorkspaceSnapshot 的 palette 和 preview 可观察且为派生数据"
+    source: 验收场景
+    status: passed
+
+  - item: "workspace graph_id 引用缺失 graph 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "workspace selection 引用缺失 node/edge/path 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "workspace active_path_id 引用缺失 path 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "viewport zoom 小于等于 0 或不可转为 number 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 workspace section 内重复 workspace_id 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "ReactionGraphService.list_graphs(project_id) 返回该项目已创建/恢复 graph；未知项目返回空 tuple"
+    source: 验收场景
+    status: passed
+
+  - item: "ReactionGraphService.restore_graphs 后新 service 可 list_paths 并继续 apply_patch"
+    source: 验收场景
+    status: passed
+
+  - item: "GraphEditorWorkspaceService.list_workspaces(project_id) 返回该项目 workspace snapshots；未知项目返回空 tuple"
+    source: 验收场景
+    status: passed
+
+  - item: "GraphEditorWorkspaceService.restore_workspaces 后新 service 可 snapshot，且 selection、viewport、active_path_id 保留"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 graph/workspace snapshot 重复 save 时 reaction-graphs/workspaces section checksum 稳定，index path/kind 不变"
+    source: 验收场景
+    status: passed
+
+  - item: "save/load 不修改 .rxnflow/manifest.json，不新增 ProjectResource，不读取或解析 inputs/raw"
+    source: 验收场景
+    status: passed
+
+  - item: "不调用 ParserRegistry、ImportRegistryWorkflow.confirm_import、EnergyProfileEngine 或 ReportExportService"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 ProjectContentStore、ChemicalRegistry、Graph Workspace、Energy Engine、Report Export 和 Platform Shell 测试继续通过"
+    source: 验收场景
+    status: passed
+
+  - item: "不出现 GraphPatch history、undo/redo、operation log、CRDT 或协同编辑 schema"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 ChemicalObject 内容复制进 reaction-graphs.json"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 ObjectPaletteItem 或 NetworkPreview 写入 workspaces.json"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 stoichiometry、reaction side、auto layout、auto path search 或化学合理性判断字段"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 CLI/Web/desktop command、browser storage adapter、cloud adapter、project bundle 或 migration"
+    source: 范围守护
+    status: passed
+
+  - item: "不改变 EnergyProfileEngine 的 profile 计算规则，也不持久化 EnergyProfile 新 schema"
+    source: 范围守护
+    status: passed

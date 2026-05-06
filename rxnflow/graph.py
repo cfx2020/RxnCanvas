@@ -69,6 +69,53 @@ class ReactionGraphService:
             return err(graph_result.error)
         return ok(graph_result.value.paths)
 
+    def list_graphs(self, project_id: ID) -> Result[tuple[ReactionGraph, ...]]:
+        if not project_id:
+            return err(
+                RxnFlowError(
+                    code="invalid_input",
+                    message="Project id is required.",
+                    target="project_id",
+                )
+            )
+        return ok(tuple(self._projects.get(project_id, {}).values()))
+
+    def restore_graphs(
+        self,
+        project_id: ID,
+        graphs: tuple[ReactionGraph, ...],
+        object_ids: set[ID] | frozenset[ID] | None = None,
+        replace: bool = False,
+    ) -> Result[tuple[ReactionGraph, ...]]:
+        if not project_id:
+            return err(
+                RxnFlowError(
+                    code="invalid_input",
+                    message="Project id is required.",
+                    target="project_id",
+                )
+            )
+
+        target_graphs = {} if replace else dict(self._projects.get(project_id, {}))
+        seen_graph_ids: set[ID] = set()
+        for graph in graphs:
+            validation_error = _validate_restore_graph(project_id, graph, object_ids, seen_graph_ids)
+            if validation_error is not None:
+                return err(validation_error)
+            existing = target_graphs.get(graph.id)
+            if existing is not None and existing != graph:
+                return err(
+                    RxnFlowError(
+                        code="invalid_input",
+                        message="Reaction graph id conflicts with existing graph.",
+                        target=graph.id,
+                    )
+                )
+            target_graphs[graph.id] = graph
+
+        self._projects[project_id] = target_graphs
+        return ok(tuple(target_graphs.values()))
+
     def _get_graph(self, project_id: ID, graph_id: ID) -> Result[ReactionGraph]:
         if not project_id:
             return err(
@@ -310,6 +357,57 @@ def _validate_node(
                     node.id,
                 )
     return ok(None)
+
+
+def _validate_restore_graph(
+    project_id: ID,
+    graph: ReactionGraph,
+    object_ids: set[ID] | frozenset[ID] | None,
+    seen_graph_ids: set[ID],
+) -> RxnFlowError | None:
+    if not graph.id:
+        return RxnFlowError("invalid_input", "Reaction graph id is required.", target="graph_id")
+    if graph.id in seen_graph_ids:
+        return RxnFlowError("invalid_input", "Reaction graph id is duplicated.", target=graph.id)
+    seen_graph_ids.add(graph.id)
+    if graph.project_id != project_id:
+        return RxnFlowError(
+            "invalid_input",
+            "Reaction graph project_id does not match restore project_id.",
+            target="project_id",
+        )
+
+    node_ids: set[ID] = set()
+    for node in graph.nodes:
+        if node.id in node_ids:
+            return RxnFlowError("invalid_input", "Reaction node id is duplicated.", target=node.id)
+        node_result = _validate_node(node, object_ids)
+        if not node_result.ok:
+            assert node_result.error is not None
+            return node_result.error
+        node_ids.add(node.id)
+
+    edge_ids: set[ID] = set()
+    for edge in graph.edges:
+        if edge.id in edge_ids:
+            return RxnFlowError("invalid_input", "Reaction edge id is duplicated.", target=edge.id)
+        edge_result = _validate_edge(edge, node_ids)
+        if not edge_result.ok:
+            assert edge_result.error is not None
+            return edge_result.error
+        edge_ids.add(edge.id)
+
+    path_ids: set[ID] = set()
+    for path in graph.paths:
+        if path.id in path_ids:
+            return RxnFlowError("invalid_input", "Reaction path id is duplicated.", target=path.id)
+        path_result = _validate_path(path, node_ids)
+        if not path_result.ok:
+            assert path_result.error is not None
+            return path_result.error
+        path_ids.add(path.id)
+
+    return None
 
 
 def _validate_edge(edge: ReactionEdge, node_ids: set[ID]) -> Result[None]:

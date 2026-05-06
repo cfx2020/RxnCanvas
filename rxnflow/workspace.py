@@ -13,6 +13,7 @@ from .models import (
     ChemicalObject,
     GraphPatch,
     ID,
+    ISODateTime,
     ReactionEdge,
     ReactionGraph,
     ReactionNode,
@@ -73,6 +74,7 @@ class WorkspaceSnapshot:
     viewport: CanvasViewport
     active_path_id: ID | None
     preview: NetworkPreview
+    updated_at: ISODateTime | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,7 @@ class _WorkspaceState:
     selection: WorkspaceSelection = WorkspaceSelection()
     viewport: CanvasViewport = CanvasViewport()
     active_path_id: ID | None = None
+    updated_at: ISODateTime | None = None
 
 
 class GraphEditorWorkspaceService:
@@ -140,6 +143,62 @@ class GraphEditorWorkspaceService:
             assert state_result.error is not None
             return err(state_result.error)
         return ok(self._snapshot_from_state(state_result.value))
+
+    def list_workspaces(self, project_id: ID) -> Result[tuple[WorkspaceSnapshot, ...]]:
+        if not project_id:
+            return _invalid_input("Project id is required.", "project_id")
+        return ok(
+            tuple(
+                self._snapshot_from_state(state)
+                for state in self._workspaces.get(project_id, {}).values()
+            )
+        )
+
+    def restore_workspaces(
+        self,
+        project_id: ID,
+        workspaces: tuple[WorkspaceSnapshot, ...],
+        objects: tuple[ChemicalObject, ...] = (),
+        replace: bool = False,
+    ) -> Result[tuple[WorkspaceSnapshot, ...]]:
+        if not project_id:
+            return _invalid_input("Project id is required.", "project_id")
+
+        target_workspaces = {} if replace else dict(self._workspaces.get(project_id, {}))
+        seen_workspace_ids: set[ID] = set()
+        for workspace in workspaces:
+            graph_result = self._graph_service.list_graphs(project_id)
+            if not graph_result.ok or graph_result.value is None:
+                assert graph_result.error is not None
+                return err(graph_result.error)
+            graph = next((item for item in graph_result.value if item.id == workspace.graph.id), None)
+            if graph is None:
+                return _invalid_input("Reaction graph is not registered in this project.", workspace.graph.id)
+            validation_error = _validate_restore_workspace(
+                project_id,
+                workspace,
+                graph,
+                seen_workspace_ids,
+            )
+            if validation_error is not None:
+                return err(validation_error)
+            state = _WorkspaceState(
+                workspace_id=workspace.workspace_id,
+                project_id=project_id,
+                graph=graph,
+                objects=objects,
+                selection=workspace.selection,
+                viewport=workspace.viewport,
+                active_path_id=workspace.active_path_id,
+                updated_at=workspace.updated_at,
+            )
+            existing = target_workspaces.get(state.workspace_id)
+            if existing is not None and existing != state:
+                return _invalid_input("Workspace id conflicts with existing workspace.", state.workspace_id)
+            target_workspaces[state.workspace_id] = state
+
+        self._workspaces[project_id] = target_workspaces
+        return ok(tuple(self._snapshot_from_state(state) for state in target_workspaces.values()))
 
     def add_node(
         self,
@@ -268,6 +327,7 @@ class GraphEditorWorkspaceService:
             viewport=state.viewport,
             active_path_id=state.active_path_id,
             preview=preview,
+            updated_at=state.updated_at,
         )
 
     def _available_objects(self, state: _WorkspaceState) -> tuple[ChemicalObject, ...]:
@@ -395,6 +455,57 @@ def _network_preview(graph: ReactionGraph, active_path_id: ID | None) -> Network
         disconnected_node_ids=disconnected_node_ids,
         warnings=warnings,
     )
+
+
+def _validate_restore_workspace(
+    project_id: ID,
+    workspace: WorkspaceSnapshot,
+    graph: ReactionGraph,
+    seen_workspace_ids: set[ID],
+) -> RxnFlowError | None:
+    if not workspace.workspace_id:
+        return RxnFlowError("invalid_input", "Workspace id is required.", target="workspace_id")
+    if workspace.workspace_id in seen_workspace_ids:
+        return RxnFlowError("invalid_input", "Workspace id is duplicated.", target=workspace.workspace_id)
+    seen_workspace_ids.add(workspace.workspace_id)
+    if workspace.project_id != project_id:
+        return RxnFlowError(
+            "invalid_input",
+            "Workspace project_id does not match restore project_id.",
+            target="project_id",
+        )
+    if workspace.graph.id != graph.id:
+        return RxnFlowError(
+            "invalid_input",
+            "Workspace graph does not match restored graph.",
+            target="graph_id",
+        )
+    if workspace.viewport.zoom <= 0:
+        return RxnFlowError(
+            "invalid_input",
+            "Workspace viewport zoom must be positive.",
+            target="viewport.zoom",
+        )
+
+    node_ids = {node.id for node in graph.nodes}
+    edge_ids = {edge.id for edge in graph.edges}
+    path_ids = {path.id for path in graph.paths}
+    for node_id in workspace.selection.node_ids:
+        if node_id not in node_ids:
+            return RxnFlowError("invalid_input", "Workspace selection references a missing node.", target=node_id)
+    for edge_id in workspace.selection.edge_ids:
+        if edge_id not in edge_ids:
+            return RxnFlowError("invalid_input", "Workspace selection references a missing edge.", target=edge_id)
+    for path_id in workspace.selection.path_ids:
+        if path_id not in path_ids:
+            return RxnFlowError("invalid_input", "Workspace selection references a missing path.", target=path_id)
+    if workspace.active_path_id is not None and workspace.active_path_id not in path_ids:
+        return RxnFlowError(
+            "invalid_input",
+            "Workspace active_path_id references a missing path.",
+            target=workspace.active_path_id,
+        )
+    return None
 
 
 def _invalid_input(message: str, target: str) -> Result[T]:

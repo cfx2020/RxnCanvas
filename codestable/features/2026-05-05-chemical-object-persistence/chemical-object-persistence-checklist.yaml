@@ -1,0 +1,204 @@
+feature: 2026-05-05-chemical-object-persistence
+created: 2026-05-05
+
+steps:
+  - action: "模型与 registry 元数据：给 Registered ChemicalObject 增加 registry_fingerprint，并在 register 时写入"
+    exit_signal: "新登记对象可观察到非空 registry_fingerprint；现有 fixture 构造保持兼容"
+    status: done
+
+  - action: "Registry snapshot/restore API：新增 list_objects 和 restore_objects，重建 objects map 与 fingerprint index"
+    exit_signal: "保存前 registry 中对象可列出；新 registry restore 后 get_object 成功，重复 restore 幂等"
+    status: done
+
+  - action: "ChemicalObject section codec：实现带 validation 的 chemical-objects-v1 serialize/deserialize"
+    exit_signal: "对象、geometry、energies、thermochemistry、provenance、corrections、registry_fingerprint 往返一致"
+    status: done
+
+  - action: "ProjectContentStore 接入：将 chemical_objects section 改用长期 codec，并保持 project-content-v1 index 行为不变"
+    exit_signal: "save_snapshot/load_snapshot 保留 registry_fingerprint 和 corrections，section checksum 重复保存稳定"
+    status: done
+
+  - action: "错误与范围守护：覆盖坏 schema、裸 energy、unsupported unit、重复 object/fingerprint/correction、project id mismatch，以及不碰 parser/import/graph/energy/export 的边界"
+    exit_signal: "新增 persistence tests 和现有全量 unittest 通过"
+    status: done
+
+checks:
+  - item: "ChemicalObject 新增可选 registry_fingerprint 字段，且不进入 ChemicalObjectDraft"
+    source: 名词契约
+    status: passed
+
+  - item: "ChemicalRegistry.register 创建对象时写入 registry_fingerprint"
+    source: 名词契约
+    status: passed
+
+  - item: "ChemicalRegistry 公开 list_objects(project_id)"
+    source: 名词契约
+    status: passed
+
+  - item: "ChemicalRegistry 公开 restore_objects(project_id, objects, replace=False)"
+    source: 名词契约
+    status: passed
+
+  - item: "ChemicalObject section codec 提供 chemical-objects-v1 的 serialize/deserialize/validate 边界"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectContentStore 的 chemical_objects section 使用长期 codec"
+    source: 名词契约
+    status: passed
+
+  - item: "register workflow 生成 fingerprint 后同时写入 object field 和 fingerprint index"
+    source: 编排骨架
+    status: passed
+
+  - item: "save workflow 从 registry list_objects 或调用方 snapshot 取得 ChemicalObject 并写入 chemical-objects-v1"
+    source: 编排骨架
+    status: passed
+
+  - item: "load workflow 读取 chemical-objects-v1 后返回带 registry_fingerprint 的 ChemicalObject"
+    source: 编排骨架
+    status: passed
+
+  - item: "restore workflow 直接加载 ChemicalObject，按 object id 和 registry_fingerprint 重建状态，不调用 register"
+    source: 编排骨架
+    status: passed
+
+  - item: "section schema 错误、project id 不一致、object id/source_file_id 缺失返回 invalid_input"
+    source: 跨层纪律
+    status: passed
+
+  - item: "energy 缺 value/unit、裸 float energy、unsupported unit 返回 invalid_input"
+    source: 跨层纪律
+    status: passed
+
+  - item: "duplicate object id、duplicate fingerprint 冲突、duplicate correction id 冲突返回 invalid_input"
+    source: 跨层纪律
+    status: passed
+
+  - item: "同一 registry snapshot 重复保存得到稳定 JSON/checksum"
+    source: 跨层纪律
+    status: passed
+
+  - item: "同一对象集合重复 restore 不追加重复对象"
+    source: 跨层纪律
+    status: passed
+
+  - item: "provenance 原样保存 parser_id、parser_version、source_file_id 和 parsed_at"
+    source: 跨层纪律
+    status: passed
+
+  - item: "corrections append-only，保存/加载保留顺序"
+    source: 跨层纪律
+    status: passed
+
+  - item: "ChemicalObject.registry_fingerprint 作为 public field 挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: "ChemicalRegistry.list_objects / restore_objects 作为 public API 挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: "chemical-objects-v1 codec 作为 section codec 挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: ".rxnflow/state/chemical-objects.json 使用长期 codec"
+    source: 挂载点
+    status: passed
+
+  - item: "ChemicalRegistry.register 登记 ParseResult 后返回的 ChemicalObject 带非空 registry_fingerprint"
+    source: 验收场景
+    status: passed
+
+  - item: "ChemicalRegistry.list_objects(project_id) 返回该项目已登记对象；未知项目不抛异常"
+    source: 验收场景
+    status: passed
+
+  - item: "ChemicalRegistry.restore_objects 后新 registry 可通过 get_object 读取对象"
+    source: 验收场景
+    status: passed
+
+  - item: "restore 后再次 register 同一 ParseResult 返回已恢复对象，不创建重复 ChemicalObject"
+    source: 验收场景
+    status: passed
+
+  - item: "save_snapshot 保存含 corrections 的 ChemicalObject 时 chemical-objects.json 保留 corrections 顺序、energy unit、provenance 和 registry_fingerprint"
+    source: 验收场景
+    status: passed
+
+  - item: "load_snapshot 加载上述 snapshot 后 ChemicalObject 字段、EnergyValue、Correction、Provenance 和 registry_fingerprint 全部往返一致"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 ChemicalObject snapshot 重复保存时 chemical-objects section checksum 稳定，index path/kind 不变"
+    source: 验收场景
+    status: passed
+
+  - item: "chemical-objects.json schema_version 不是 chemical-objects-v1 时 load_snapshot 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "section project_id 与 ProjectContentIndex.project_id 不一致时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "object 缺 id 或 source_file_id 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "energy / thermochemistry / correction energy 使用裸 float 或缺 unit 时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "unsupported energy unit 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 section 内重复 object id 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 section 内相同 registry_fingerprint 指向不同 object id 返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "同一对象内重复 correction id 且 payload 不同时返回 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "save/load 不修改 .rxnflow/manifest.json，不新增 ProjectResource，不读取或解析 inputs/raw"
+    source: 验收场景
+    status: passed
+
+  - item: "不调用 ParserRegistry、ImportRegistryWorkflow、ReactionGraphService、EnergyProfileEngine 或 ReportExportService"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 ProjectContentStore、ChemicalRegistry、Import Workflow、Graph Workspace、Energy Engine、Report Export 和 Platform Shell 测试继续通过"
+    source: 验收场景
+    status: passed
+
+  - item: "不新增 .rxnflow/manifest.json schema 字段或 ProjectResource kind"
+    source: 范围守护
+    status: passed
+
+  - item: "不保存 ReactionGraph、WorkspaceSnapshot、ImportBatch、ParsePreview、EnergyProfile 或 ExportArtifact index 的完整新 schema"
+    source: 范围守护
+    status: passed
+
+  - item: "不重新 parse raw files，不根据 parser version 自动刷新 ChemicalObject"
+    source: 范围守护
+    status: passed
+
+  - item: "不实现 formula/geometry/energy 相似对象自动合并"
+    source: 范围守护
+    status: passed
+
+  - item: "不计算 corrected total energy，不改写 ChemicalObject.energies / thermochemistry"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 CLI/Web/desktop command、browser storage adapter、cloud adapter、project bundle 或 migration"
+    source: 范围守护
+    status: passed

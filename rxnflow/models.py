@@ -79,6 +79,7 @@ class ChemicalObject(ChemicalObjectDraft):
     source_file_id: ID = "fixture-source"
     corrections: tuple[Correction, ...] = ()
     provenance: Provenance | None = None
+    registry_fingerprint: str | None = None
 
 
 @dataclass(frozen=True)
