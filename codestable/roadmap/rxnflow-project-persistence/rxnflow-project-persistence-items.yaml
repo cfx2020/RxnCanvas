@@ -45,8 +45,8 @@ items:
   - slug: export-artifact-index-persistence
     description: 建立 export artifact index，登记导出文件项目相对路径、格式、checksum 和 metadata
     depends_on: [project-content-store-v1, energy-profile-persistence]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-07-export-artifact-index-persistence
     minimal_loop: false
     notes: null
 

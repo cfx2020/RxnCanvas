@@ -18,6 +18,11 @@ from .energy_profile_codec import (
     energy_profiles_section_to_dict,
 )
 from .errors import RxnFlowError
+from .export import ExportArtifactRecord
+from .export_artifact_codec import (
+    export_artifacts_section_from_dict,
+    export_artifacts_section_to_dict,
+)
 from .graph_workspace_codec import (
     reaction_graphs_section_from_dict,
     reaction_graphs_section_to_dict,
@@ -49,6 +54,7 @@ REACTION_GRAPHS_PATH = f"{PROJECT_CONTENT_DIR}/reaction-graphs.json"
 WORKSPACES_PATH = f"{PROJECT_CONTENT_DIR}/workspaces.json"
 ENERGY_PROFILES_PATH = f"{PROJECT_CONTENT_DIR}/energy-profiles.json"
 IMPORT_LEDGER_PATH = f"{PROJECT_CONTENT_DIR}/import-ledger.json"
+EXPORT_ARTIFACTS_PATH = f"{PROJECT_CONTENT_DIR}/export-artifacts.json"
 
 SECTION_PATHS: dict[str, str] = {
     "chemical_objects": CHEMICAL_OBJECTS_PATH,
@@ -56,6 +62,7 @@ SECTION_PATHS: dict[str, str] = {
     "workspaces": WORKSPACES_PATH,
     "energy_profiles": ENERGY_PROFILES_PATH,
     "import_ledger": IMPORT_LEDGER_PATH,
+    "export_artifacts": EXPORT_ARTIFACTS_PATH,
 }
 
 
@@ -108,7 +115,7 @@ class ProjectContentSnapshot:
     workspaces: tuple[WorkspaceSnapshot, ...] = ()
     energy_profiles: tuple[EnergyProfile, ...] = ()
     import_batches: tuple[ImportBatch, ...] = ()
-    export_artifacts: tuple[Any, ...] = ()
+    export_artifacts: tuple[ExportArtifactRecord, ...] = ()
 
 
 class ProjectStorageBackend(Protocol):
@@ -422,12 +429,6 @@ def _json_from_bytes(payload: bytes, target: str) -> Result[dict[str, Any]]:
 def _validate_snapshot_for_v1(snapshot: ProjectContentSnapshot) -> RxnFlowError | None:
     if not snapshot.project_id:
         return RxnFlowError("invalid_input", "Project content snapshot requires project_id.", target="project_id")
-    if snapshot.export_artifacts:
-        return RxnFlowError(
-            "invalid_input",
-            "project-content-v1 does not persist export artifact indexes yet.",
-            target="snapshot",
-        )
     return None
 
 
@@ -480,6 +481,14 @@ def _snapshot_sections(
         assert energy_profiles_result.error is not None
         return err(energy_profiles_result.error)
 
+    export_artifacts_result = export_artifacts_section_to_dict(
+        snapshot.project_id,
+        snapshot.export_artifacts,
+    )
+    if not export_artifacts_result.ok or export_artifacts_result.value is None:
+        assert export_artifacts_result.error is not None
+        return err(export_artifacts_result.error)
+
     return ok(
         (
             (
@@ -506,6 +515,11 @@ def _snapshot_sections(
                 "import_ledger",
                 SECTION_PATHS["import_ledger"],
                 import_ledger_result.value,
+            ),
+            (
+                "export_artifacts",
+                SECTION_PATHS["export_artifacts"],
+                export_artifacts_result.value,
             ),
         )
     )
@@ -548,6 +562,14 @@ def _snapshot_from_sections(
         assert profiles_result.error is not None
         return err(profiles_result.error)
 
+    export_artifacts_result = export_artifacts_section_from_dict(
+        project_id,
+        sections.get("export_artifacts"),
+    )
+    if not export_artifacts_result.ok or export_artifacts_result.value is None:
+        assert export_artifacts_result.error is not None
+        return err(export_artifacts_result.error)
+
     workspaces_result = workspaces_section_from_dict(
         project_id,
         sections.get("workspaces"),
@@ -566,6 +588,7 @@ def _snapshot_from_sections(
             workspaces=workspaces_result.value,
             energy_profiles=profiles_result.value,
             import_batches=import_batches_result.value,
+            export_artifacts=export_artifacts_result.value,
         )
     )
 

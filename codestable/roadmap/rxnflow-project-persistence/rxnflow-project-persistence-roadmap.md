@@ -13,7 +13,7 @@ related_architecture: [ARCHITECTURE, core-platform]
 
 ## 1. 背景
 
-RxnFlow 已经跑通从导入、登记、图谱编辑、能量计算到报告导出的核心链路，但大部分领域内容仍只保存在进程内。用户一旦关闭 CLI、刷新网页或重启桌面 app，ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile、ImportBatch 和 ExportArtifact index 都无法恢复。
+本 roadmap 启动时，RxnFlow 已经跑通从导入、登记、图谱编辑、能量计算到报告导出的核心链路，但大部分领域内容仍只保存在进程内。用户一旦关闭 CLI、刷新网页或重启桌面 app，ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile、ImportBatch 和 ExportArtifact index 都无法恢复。
 
 本 roadmap 的目标是建立跨端共享的项目内容持久化协议：本地 CLI / 桌面 app 可以写文件系统；早期网页可以写浏览器本地 IndexedDB / OPFS，并通过 project bundle 导入导出；云端保存则作为后续可选 adapter，不作为早期 MVP 的前置成本。
 
@@ -77,7 +77,7 @@ RxnFlow Project Persistence
 
 - **职责**：为 ChemicalObject、ReactionGraph、WorkspaceSnapshot、ImportLedger、EnergyProfile 和 ExportArtifactIndex 提供各自的序列化、反序列化、保存和加载边界。它们只做结构持久化，不改变领域规则。
 - **承载的子 feature**：`chemical-object-persistence`、`reaction-graph-workspace-persistence`、`import-ledger-persistence`、`energy-profile-persistence`、`export-artifact-index-persistence`
-- **触碰的现有代码 / 模块**：`rxnflow.registry`、`rxnflow.graph`、`rxnflow.workspace`、`rxnflow.import_workflow`、`rxnflow.energy`、`rxnflow.export`
+- **触碰的现有代码 / 模块**：`rxnflow.registry`、`rxnflow.graph`、`rxnflow.workspace`、`rxnflow.import_workflow`、`rxnflow.energy`、`rxnflow.export`、`rxnflow.export_artifact_codec`
 
 ### Validation / Migration · 校验与迁移
 
@@ -360,7 +360,7 @@ type ExportArtifactRecord = {
   id: ID
   format: "png" | "cdxml" | "xlsx"
   path: string
-  checksum?: string
+  checksum: string
   metadata: Record<string, unknown>
   createdAt: ISODateTime
 }
@@ -369,7 +369,8 @@ type ExportArtifactRecord = {
 **约束**：
 
 - EnergyProfile 保存 options、points 和 warnings；加载时不重新计算。
-- ExportArtifactRecord.path 必须是项目相对路径，通常位于 `exports/`。
+- ExportArtifactRecord.path 必须是项目相对 POSIX 路径；第一版必须位于 `exports/`。
+- ExportArtifactRecord.checksum 必须是 `sha256:<64 hex>`；当前保存/加载只校验 shape，文件存在性和 bytes 复算留给 validation/migration。
 - Export index 不保存 artifact bytes；bytes 由 storage backend 的 object path 管理。
 
 ### 4.8 Project Bundle 协议
@@ -449,8 +450,8 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 6. **export-artifact-index-persistence** — 建立 export artifact index，登记导出文件项目相对路径、格式、checksum 和 metadata
    - 所属模块：Domain Repositories
    - 依赖：`project-content-store-v1`、`energy-profile-persistence`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-07-export-artifact-index-persistence
 
 7. **project-content-validation-migration** — 校验 schema、checksum、安全路径和跨对象引用，并预留显式 migration 入口
    - 所属模块：Validation / Migration

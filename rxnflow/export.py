@@ -39,6 +39,16 @@ class ExportArtifact:
 
 
 @dataclass(frozen=True)
+class ExportArtifactRecord:
+    id: str
+    format: ExportFormat
+    path: str
+    checksum: str
+    created_at: str = EXPORT_CREATED_AT
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class EnergyTableColumn:
     key: str
     label: str

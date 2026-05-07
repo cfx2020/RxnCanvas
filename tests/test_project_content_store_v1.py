@@ -8,6 +8,7 @@ import unittest
 from rxnflow.content_store import (
     CHEMICAL_OBJECTS_PATH,
     ENERGY_PROFILES_PATH,
+    EXPORT_ARTIFACTS_PATH,
     IMPORT_LEDGER_PATH,
     PROJECT_CONTENT_INDEX_PATH,
     PROJECT_CONTENT_SCHEMA_VERSION,
@@ -108,7 +109,14 @@ class ProjectContentStoreV1Test(unittest.TestCase):
             self.assertEqual(index.project_id, snapshot.project_id)
             self.assertEqual(
                 {file.kind for file in index.files},
-                {"chemical_objects", "reaction_graphs", "workspaces", "energy_profiles", "import_ledger"},
+                {
+                    "chemical_objects",
+                    "reaction_graphs",
+                    "workspaces",
+                    "energy_profiles",
+                    "import_ledger",
+                    "export_artifacts",
+                },
             )
             self.assertEqual({file.path for file in index.files}, set(_state_paths()))
             for file in index.files:
@@ -248,6 +256,7 @@ def _state_paths() -> tuple[str, ...]:
         WORKSPACES_PATH,
         ENERGY_PROFILES_PATH,
         IMPORT_LEDGER_PATH,
+        EXPORT_ARTIFACTS_PATH,
     )
 
 
