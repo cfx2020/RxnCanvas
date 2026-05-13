@@ -3,8 +3,8 @@ doc_type: architecture
 slug: core-platform
 status: current
 created: 2026-05-02
-last_reviewed: 2026-05-07
-tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence]
+last_reviewed: 2026-05-14
+tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence]
 ---
 
 # Core Platform
@@ -108,8 +108,11 @@ RxnFlow 当前已经落地十一类核心能力。
 8. 通过 `import-ledger-v1` codec 保存和加载 ImportBatch、ImportItem、ParsePreview、registered ids、warnings 和 errors。
 9. 通过 `energy-profiles-v1` codec 保存和加载已计算 EnergyProfile、EnergyOptions、EnergyPoint、missing reason 和 warnings，并校验 profile 与 loaded ReactionGraph / ReactionPath 的引用一致性。
 10. 通过 `export-artifacts-v1` codec 保存和加载 ExportArtifactRecord 索引，记录导出文件的项目相对 path、format、checksum、metadata 和 created_at，不保存 artifact bytes。
+11. 通过 ProjectContentValidationIssue / ProjectContentValidationReport 聚合 `.rxnflow/state/` index、section bytes checksum、section codec、跨 section 引用和 export artifact file checksum 的只读验证结果。
+12. 通过 ProjectContentValidator 和 ProjectContentStore.validate_project 生成 validation report；内容不一致进入 report issues，backend internal I/O failure 仍返回 Result error。
+13. 通过 ProjectContentMigrationPlan 和 ProjectContentStore.migration_plan 提供显式 schema migration plan；当前 `project-content-v1 -> project-content-v1` 为 no-op，未知 source/target 返回 unsupported issue，load_snapshot 不做 silent migration。
 
-这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec，不替代 Project Store 或完整项目数据库；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑。
+这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑。
 
 ## 2. 模块与职责
 
@@ -187,6 +190,9 @@ ProjectContentStore
 ├── save_snapshot(project_ref, ProjectContentSnapshot)
 ├── load_snapshot(project_ref)
 ├── load_index(project_ref)
+├── validate_project(project_ref)
+├── migration_plan(project_ref, target_schema_version="project-content-v1")
+├── ProjectContentValidator
 ├── chemical-objects-v1 codec
 ├── reaction-graphs-v1 codec
 ├── workspaces-v1 codec
@@ -217,7 +223,7 @@ ProjectContentStore
 - `rxnflow.export`：ExportRequest / ExportArtifact / ExportArtifactRecord / EnergyTableRow / EnergyDiagramRoute 协议，以及 ReportExportService 的 PNG、CDXML、XLSX bytes-first 导出编排。
 - `rxnflow.export_artifact_codec`：`export-artifacts-v1` section 的 ExportArtifactRecord 序列化、反序列化、format/path/checksum/metadata 校验和重复 id/path 检查。
 - `rxnflow.platform`：ShellCommand / ShellResponse / ShellArtifact / PlatformSession / AppKernel / PlatformShellService / handle_platform_payload，提供端侧薄壳层命令协议和 JSON 投影。
-- `rxnflow.content_store`：ProjectContentIndex / ProjectContentFile / ProjectContentSnapshot / ProjectStorageBackend / LocalProjectStorageBackend / ProjectContentStore，以及 fixture snapshot 的 `.rxnflow/state/` 保存/加载闭环。
+- `rxnflow.content_store`：ProjectContentIndex / ProjectContentFile / ProjectContentSnapshot / ProjectContentValidationIssue / ProjectContentValidationReport / ProjectContentMigrationPlan / ProjectStorageBackend / LocalProjectStorageBackend / ProjectContentValidator / ProjectContentStore，以及 fixture snapshot 的 `.rxnflow/state/` 保存、加载、只读验证和 migration plan 闭环。
 - `rxnflow.cli`：标准库 argparse CLI 入口，把 argv 映射为 ShellCommand，向 stdout 写 JSON，并用 exit code 表达错误。
 - `rxnflow.fixture`：默认 fixture scenario 和垂直切片编排入口。
 
@@ -290,9 +296,9 @@ Project Content Store 使用以下稳定目录与 index 协议：
 - `export-artifacts-v1` 保存 ExportArtifactRecord 的 `id`、`format`、`path`、`checksum`、`metadata` 和 `created_at`
 - ExportArtifactRecord.format 当前只支持 `png`、`cdxml`、`xlsx`
 - ExportArtifactRecord.path 必须是 `exports/...` 项目相对 POSIX path，不接受绝对路径、反斜杠、空路径、`.` 或 `..`
-- ExportArtifactRecord.checksum 必须是 `sha256:<64 hex>`；当前只校验字符串形状，不读取 artifact file 复算
+- ExportArtifactRecord.checksum 必须是 `sha256:<64 hex>`；section codec 只校验字符串形状，Project Content Validation 会读取 `exports/...` artifact file bytes 复算
 - ExportArtifactRecord.metadata 必须是 JSON-safe object，不接受 bytes、Path、dataclass、tuple 或非有限数字
-- ExportArtifactRecord 不保存 ExportArtifact.bytes；ProjectContentStore 不生成、复制、移动、删除或校验 artifact 文件本身
+- ExportArtifactRecord 不保存 ExportArtifact.bytes；ProjectContentStore 不生成、复制、移动或删除 artifact 文件本身，validation 只读校验 artifact 文件存在性和 checksum
 - `chemical-objects.json` 当前 schema version：`chemical-objects-v1`
 - `chemical-objects-v1` 保存 Stored ChemicalObject 的 `id`、`label`、`formula`、`charge`、`spin_multiplicity`、`method`、`geometry`、`energies`、`thermochemistry`、`source_file_id`、`provenance`、`corrections` 和 `registry_fingerprint`
 - `chemical-objects-v1` energy/correction energy 必须是 `{value, unit, reference}` 对象，unit 当前支持 `hartree`、`kcal_mol`、`kj_mol`，不接受裸 float
@@ -418,12 +424,17 @@ Project Content Store 当前使用以下稳定协议：
 - StorageObjectInfo：`path`、`checksum`、`byte_size`、`backend_id`
 - WriteReceipt：`path`、`checksum`、`byte_size`、`updated_at`、`backend_id`
 - ProjectContentSnapshot：`project_id`、`chemical_objects`、`reaction_graphs`、`workspaces`、`energy_profiles`、`import_batches`、`export_artifacts`
+- ProjectContentValidationIssue：`severity`、`code`、`message`、`target`、`details`
+- ProjectContentValidationReport：`project_id`、`schema_version`、`issues`、`checked_at`、`summary`，其中 `ok` 由是否存在 error issue 派生
+- ProjectContentMigrationPlan：`current_schema_version`、`target_schema_version`、`needed`、`steps`、`issues`
 - ProjectStorageBackend 入口：`read_object(project_ref, path)`、`write_object(project_ref, obj)`、`exists(project_ref, path)`、`list_objects(project_ref, prefix)`、`delete_object(project_ref, path)`
 - LocalProjectStorageBackend：`backend_id = "local-filesystem-v1"`，把 project_ref 解释为本地项目目录
-- ProjectContentStore 入口：`save_snapshot(project_ref, snapshot)`、`load_index(project_ref)`、`load_snapshot(project_ref)`
+- ProjectContentStore 入口：`save_snapshot(project_ref, snapshot)`、`load_index(project_ref)`、`load_snapshot(project_ref)`、`validate_project(project_ref)`、`migration_plan(project_ref, target_schema_version="project-content-v1")`
 - Fixture snapshot helper：`project_content_snapshot_from_fixture(CoreFixtureResult)`
 - 当前 save workflow：校验 snapshot，通过 chemical object / graph / workspace / import ledger / energy profile / export artifact codec 序列化 JSON，先写 section files，汇总 checksum，再写 `project-content.json`
 - 当前 load workflow：先读 index，校验 `project-content-v1` 和 file path，再读 ChemicalObject section、校验 Import Ledger section、校验 ReactionGraph section、校验 EnergyProfile section、校验 ExportArtifact section、校验 Workspace section，并反序列化为 ProjectContentSnapshot
+- 当前 validate workflow：先读 index bytes，再校验 schema/project_id/files shape、section kind/path/checksum 和 canonical path，随后读取 section bytes 复算 checksum，复用现有 codecs 解码，读取 manifest raw resources 作为 source/raw_resource 锚点，最后读取 `exports/...` artifact bytes 并与 ExportArtifactRecord.checksum 比对
+- 当前 migration plan workflow：读取 index schema 后判断 target；`project-content-v1 -> project-content-v1` 返回 `needed=False` 和空 steps，未知 source/target 返回 error issue，不写任何项目文件
 
 ## 4. 错误语义
 
@@ -444,6 +455,7 @@ Project Content Store 当前使用以下稳定协议：
 - `invalid_input`：ReportExportService 中 project id 为空、formats 为空、请求格式不支持、PNG/CDXML 缺少 EnergyProfile、XLSX 缺少 profile/object/table rows，或 basename 不是安全文件名。
 - `invalid_input`：PlatformShellService 中 command name 为空、未知 command、缺少必填 args，或 session 缺少对应 graph/path/object/profile 前置状态。
 - `invalid_input`：Project Content Store 中 project_ref 为空、不安全 logical path、index 缺失、project content JSON 损坏或 schema 不兼容。
+- Validation Report issue：Project Content Validation 中 index schema/project_id/files shape 错误、unsafe path、duplicate kind/path、canonical path mismatch、section 缺失、section checksum mismatch、bad section JSON、section codec 错误、missing source/raw resource、missing export artifact、artifact checksum mismatch 或 export metadata ref 缺失会进入 ValidationIssue；error issue 使 report.ok 为 false，warning 不阻止 report 生成。
 - `invalid_input`：ChemicalObject section codec 中 `chemical-objects-v1` schema 不兼容、project id 不匹配、object id/source_file_id 缺失、energy 缺 value/unit、unit 不支持、重复 object id、重复 registry_fingerprint 冲突、重复 correction id 冲突。
 - `invalid_input`：Graph / Workspace section codec 中 `reaction-graphs-v1` 或 `workspaces-v1` schema 不兼容、project id 不匹配、字段 shape 错误、重复 graph/workspace/node/edge/path id、workspace selection/active_path 引用缺失或 viewport 非法。
 - `invalid_input`：Import Ledger section codec 中 `import-ledger-v1` schema 不兼容、project id 不匹配、重复 batch/item id、非法 status、preview object_count 不一致、preview/provenance parser 信息不一致、registered_object_ids 引用缺失 ChemicalObject、warnings/error shape 错误。
@@ -464,11 +476,11 @@ Project Content Store 当前使用以下稳定协议：
 
 Project Store 不兼容 schema 不做 silent migration；当前只支持 `project-v1`。Manifest resource path 不允许绝对路径、空路径、`.` 或包含 `..`。
 
-Project Content Store 不兼容 schema 不做 silent migration；当前只支持 `project-content-v1`。Project content path 不允许绝对路径、空路径、`.`、包含 `..` 或反斜杠。保存时先写 section files，再写 index；load 时 index 缺失、section 缺失、坏 JSON 或 schema 不兼容均返回结构化错误，不自动生成空 snapshot。
+Project Content Store 不兼容 schema 不做 silent migration；当前只支持 `project-content-v1`。Project content path 不允许绝对路径、空路径、`.`、包含 `..` 或反斜杠。保存时先写 section files，再写 index；load 时 index 缺失、section 缺失、坏 JSON 或 schema 不兼容均返回结构化错误，不自动生成空 snapshot。validation 是只读聚合报告，不自动修复 checksum/path/project_id/ref 错误；migration_plan 当前只做 no-op/unsupported 判断，不写文件。
 
 Chemical Registry 重复登记同一 ParseResult 时返回既有对象，不追加重复 ChemicalObject。重复提交同 id 且内容相同的 Correction 时幂等返回；同 id 不同内容返回 `invalid_input`。
 
-Chemical Registry restore 不重新 parse raw file、不调用 register 重新计算 fingerprint、不深校验 source_file_id 是否存在于 manifest/import ledger。source_file_id 跨文件引用完整性留给后续 validation/migration。
+Chemical Registry restore 不重新 parse raw file、不调用 register 重新计算 fingerprint、不深校验 source_file_id 是否存在于 manifest/import ledger。source_file_id 跨文件引用完整性由 Project Content Validation 以 warning 形式报告。
 
 ImportRegistryWorkflow 中 project-level 错误返回 `Result` error；单文件导入或解析失败写入 ImportItem.error，且已复制进 Project Directory 的 raw file resource 不自动删除。重复确认已 registered 的 item 直接返回既有 registered_object_ids，不重复登记对象。
 
@@ -512,7 +524,8 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - PlatformSession 只保存进程内可观察状态，不写 `.rxnflow/manifest.json`，也不新增 ProjectResource 来持久化 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 内容。
 - Project Content Store 不修改 `.rxnflow/manifest.json`，不新增 ProjectResource，不读取、复制、删除或解析 `inputs/raw/` 文件。
 - Project Content Store 不调用 ParserRegistry、ImportRegistryWorkflow、ChemicalRegistry.register、ReactionGraphService.apply_patch、EnergyProfileEngine 或 ReportExportService。
-- Project Content Store 当前不实现浏览器 IndexedDB/OPFS backend、云存储、数据库、CLI/Web/desktop command、migration、增量保存、并发锁、冲突合并或 project bundle。
+- Project Content Store 当前不实现浏览器 IndexedDB/OPFS backend、云存储、数据库、CLI/Web/desktop command、真实 schema migration、增量保存、并发锁、冲突合并或 project bundle。
+- Project Content Validation 不自动修复或重写 project-content index、section JSON、manifest、raw files 或 export files，不删除 orphan files，不重新 parse raw files、不重新 register objects、不重新 compute profile、不重新 export reports。
 - Project Content Store 当前保存/加载 ChemicalObject、ReactionGraph、WorkspaceSnapshot、ImportBatch/ParsePreview、EnergyProfile 和 ExportArtifact index 长期 sections。
 - `rxnflow.cli` 当前不新增 packaging console script、Windows exe、Linux packaging、macOS app 或桌面启动入口。
 - handle_platform_payload 当前不新增 Next.js、React、Vercel Functions、FastAPI、Flask、Django、真实 Web route、server 或 worker。

@@ -370,7 +370,7 @@ type ExportArtifactRecord = {
 
 - EnergyProfile 保存 options、points 和 warnings；加载时不重新计算。
 - ExportArtifactRecord.path 必须是项目相对 POSIX 路径；第一版必须位于 `exports/`。
-- ExportArtifactRecord.checksum 必须是 `sha256:<64 hex>`；当前保存/加载只校验 shape，文件存在性和 bytes 复算留给 validation/migration。
+- ExportArtifactRecord.checksum 必须是 `sha256:<64 hex>`；保存/加载只校验 shape，Project Content Validation 读取文件存在性并复算 bytes checksum。
 - Export index 不保存 artifact bytes；bytes 由 storage backend 的 object path 管理。
 
 ### 4.8 Project Bundle 协议
@@ -456,8 +456,8 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 7. **project-content-validation-migration** — 校验 schema、checksum、安全路径和跨对象引用，并预留显式 migration 入口
    - 所属模块：Validation / Migration
    - 依赖：`chemical-object-persistence`、`reaction-graph-workspace-persistence`、`import-ledger-persistence`、`energy-profile-persistence`、`export-artifact-index-persistence`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-08-project-content-validation-migration
 
 8. **platform-shell-state-restore** — 让 CLI/agent 通过 project.open/save_content 恢复和保存持久化项目内容
    - 所属模块：Platform Restore

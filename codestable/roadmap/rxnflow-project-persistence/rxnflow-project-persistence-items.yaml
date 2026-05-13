@@ -53,8 +53,8 @@ items:
   - slug: project-content-validation-migration
     description: 校验 schema、checksum、安全路径和跨对象引用，并预留显式 migration 入口
     depends_on: [chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, energy-profile-persistence, export-artifact-index-persistence]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-08-project-content-validation-migration
     minimal_loop: false
     notes: null
 

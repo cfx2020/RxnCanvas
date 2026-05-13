@@ -1,0 +1,188 @@
+feature: 2026-05-08-project-content-validation-migration
+created: 2026-05-13
+
+steps:
+  - action: "Validation report 名词骨架：落地 ValidationIssue、ValidationReport 与 MigrationPlan 的 JSON-safe 数据结构"
+    exit_signal: "可构造 passed/failed report 和 no-op migration plan；report.ok 由 error issue 决定"
+    status: done
+
+  - action: "Index 与 section checksum 骨架：实现 validate_project 读取 index、校验 kind/path/checksum，并读取 section bytes 复算 checksum"
+    exit_signal: "正常项目 report.ok=true；missing section、bad path、duplicate kind/path、canonical path mismatch、checksum mismatch 进入 issues"
+    status: done
+
+  - action: "Section codec 复用与跨 section 校验：复用现有 codecs 解码 section，并汇总 graph/workspace/import/profile/export 的引用错误"
+    exit_signal: "坏 JSON、section schema/project mismatch、graph/workspace/import/profile/export 引用错误进入 report issues，正常 snapshot 不回退"
+    status: done
+
+  - action: "Manifest/resource 与 export artifact deep check：只读 manifest resources，校验 source_file_id/raw_resource_id warning，并读取 exports 文件复算 checksum"
+    exit_signal: "source_file_id 缺锚点为 warning；artifact 缺文件或 checksum mismatch 为 error；validation 不写任何 artifact 或 manifest"
+    status: done
+
+  - action: "Migration entry：实现 migration_plan/no-op/unsupported 语义，并保持 load_snapshot 不做 silent migration"
+    exit_signal: "project-content-v1 到 project-content-v1 返回 needed=false；未知 source/target 返回 structured error；不改写项目文件"
+    status: done
+
+  - action: "错误与范围守护：补齐 validation/migration tests，覆盖不写文件、不调用 parser/import/register/graph patch/energy/export/UI/CLI/cloud 边界"
+    exit_signal: "新增 validation/migration tests 和现有全量 unittest 均通过"
+    status: done
+
+checks:
+  - item: "ValidationIssue 包含 severity、code、message、target、details，且字段 JSON-safe"
+    source: 名词契约
+    status: passed
+
+  - item: "ValidationReport 包含 project_id、schema_version、ok、issues、checked_at、summary，且 ok 由 error issue 决定"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectContentMigrationPlan 包含 current_schema_version、target_schema_version、needed、steps、issues"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectContentValidator 作为独立编排边界存在，不把 validation 聚合逻辑塞进 section codecs"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectContentStore 暴露 validate_project(project_ref) 和 migration_plan(project_ref, target_schema_version='project-content-v1')"
+    source: 名词契约
+    status: passed
+
+  - item: "validate_project 主流程按 index -> sections -> cross refs -> artifacts 顺序收集 issues"
+    source: 编排骨架
+    status: passed
+
+  - item: "validation 内容不一致进入 ValidationReport.issues；不可恢复 backend internal I/O failure 仍保持 Result error"
+    source: 跨层纪律
+    status: passed
+
+  - item: "重复 validate 同一项目得到稳定 issue code、target 和顺序"
+    source: 跨层纪律
+    status: passed
+
+  - item: "validation 只读 .rxnflow/state、.rxnflow/manifest.json 和 exports/...，不写、不删、不修"
+    source: 跨层纪律
+    status: passed
+
+  - item: "unknown or non-canonical section kind/path 行为可测试，canonical RxnFlow section path mismatch 是 error"
+    source: 跨层纪律
+    status: passed
+
+  - item: "MigrationPlan 与 no-op/unsupported migration 语义作为独立挂载点存在"
+    source: 挂载点
+    status: passed
+
+  - item: "Export artifact deep checksum validation 读取 exports/... 文件并校验 checksum，保持只读边界"
+    source: 挂载点
+    status: passed
+
+  - item: "构造 ValidationIssue、ValidationReport、MigrationPlan 时字段 JSON-safe，report.ok 由 error issue 决定"
+    source: 验收场景
+    status: passed
+
+  - item: "ProjectContentStore.validate_project 验证正常 fixture/content snapshot 时返回 ok Result，report.ok=true，issues 为空或只有明确允许的 warning"
+    source: 验收场景
+    status: passed
+
+  - item: "ProjectContentIndex schema_version 非 project-content-v1 时 validation report 包含 schema error；migration_plan 对未知 source/target 返回 structured error"
+    source: 验收场景
+    status: passed
+
+  - item: "ProjectContentIndex.files 不是 list、file entry 不是 object、kind 为空、path unsafe、重复 kind/path 时 report 包含 error issue"
+    source: 验收场景
+    status: passed
+
+  - item: "canonical section kind 指向非 canonical path 时 report 包含 error issue"
+    source: 验收场景
+    status: passed
+
+  - item: "section file 缺失时 report 包含 missing_section error"
+    source: 验收场景
+    status: passed
+
+  - item: "section file bytes checksum 与 index checksum 不一致时 report 包含 checksum_mismatch error"
+    source: 验收场景
+    status: passed
+
+  - item: "section JSON 损坏或不是 object 时 report 包含 bad_json error"
+    source: 验收场景
+    status: passed
+
+  - item: "section schema_version 不匹配或 project_id mismatch 时 report 包含 section_schema/project_id error"
+    source: 验收场景
+    status: passed
+
+  - item: "ReactionGraph 引用缺失 ChemicalObject 时 report 包含 graph ref error"
+    source: 验收场景
+    status: passed
+
+  - item: "Workspace 引用缺失 graph/node/edge/path 或 viewport 非法时 report 包含 workspace ref error"
+    source: 验收场景
+    status: passed
+
+  - item: "ImportLedger registered_object_ids 引用缺失 ChemicalObject 时 report 包含 import ledger ref error"
+    source: 验收场景
+    status: passed
+
+  - item: "EnergyProfile 引用缺失 graph/path/node sequence mismatch 时 report 包含 energy profile ref error"
+    source: 验收场景
+    status: passed
+
+  - item: "ExportArtifact path 不在 exports/ 或 checksum shape 错误时 report 包含 export artifact error"
+    source: 验收场景
+    status: passed
+
+  - item: "ExportArtifact path 指向文件不存在时 report 包含 artifact_missing error"
+    source: 验收场景
+    status: passed
+
+  - item: "ExportArtifact file bytes checksum 与 record.checksum 不一致时 report 包含 artifact_checksum_mismatch error"
+    source: 验收场景
+    status: passed
+
+  - item: "ChemicalObject.source_file_id 找不到 manifest raw_file resource 或 import ledger raw_resource_id 时 report 包含 warning"
+    source: 验收场景
+    status: passed
+
+  - item: "Migration plan project-content-v1 到 project-content-v1 时 needed=false、steps 为空，不写任何文件"
+    source: 验收场景
+    status: passed
+
+  - item: "Migration target 非 project-content-v1 时返回 unsupported migration error，不写任何文件"
+    source: 验收场景
+    status: passed
+
+  - item: "validate_project 和 migration_plan 不修改 .rxnflow/manifest.json、state section、raw files 或 export files"
+    source: 验收场景
+    status: passed
+
+  - item: "本 feature 不调用 ParserRegistry、ImportRegistryWorkflow.import_files/confirm_import、ChemicalRegistry.register、ReactionGraphService.apply_patch、EnergyProfileEngine.compute_profile 或 ReportExportService"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 ProjectContentStore、ChemicalObject、Graph/Workspace、Import Ledger、Energy Profile、Export Artifact Index、Platform Shell 和 Report Export 测试继续通过"
+    source: 验收场景
+    status: passed
+
+  - item: "不做真实 project-content-v2 migration"
+    source: 范围守护
+    status: passed
+
+  - item: "不自动修复或重写任何 project 文件"
+    source: 范围守护
+    status: passed
+
+  - item: "不删除 orphan files"
+    source: 范围守护
+    status: passed
+
+  - item: "不重新 parse raw files、不重新 register objects、不重新 compute profile、不重新 export reports"
+    source: 范围守护
+    status: passed
+
+  - item: "不实现 UI/CLI/Web/desktop command、browser storage、cloud adapter、project bundle 或 report viewer"
+    source: 范围守护
+    status: passed
+
+  - item: "不做计算化学语义校验"
+    source: 范围守护
+    status: passed
