@@ -1,7 +1,7 @@
 ---
 doc_type: roadmap
 slug: rxnflow-project-persistence
-status: active
+status: completed
 created: 2026-05-05
 last_reviewed: 2026-05-14
 tags: [rxnflow, persistence, project-store, browser-storage, project-bundle]
@@ -476,8 +476,8 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 10. **browser-local-storage-adapter** — 规划并实现浏览器本地 IndexedDB / OPFS storage adapter 的核心协议测试替身，不引入云存储
     - 所属模块：Storage Backends
     - 依赖：`project-content-store-v1`、`project-bundle-import-export`
-    - 状态：planned
-    - 对应 feature：未启动
+    - 状态：done
+    - 对应 feature：2026-05-14-browser-local-storage-adapter
     - 备注：真实 Web UI 接入另起前端 roadmap；本条只保证 storage adapter contract 可用
 
 **最小闭环**：第 1 条 `project-content-store-v1` 做完后，系统能把一份包含 ChemicalObject、ReactionGraph、WorkspaceSnapshot 和 EnergyProfile 的 fixture snapshot 写入 `.rxnflow/state/`，关闭当前进程后再加载，并得到同样的对象、图谱和 profile 摘要。
@@ -493,5 +493,6 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 - `rxnflow-core-platform` 的所有 items 已 done，后续可在单独 roadmap update 中把该 roadmap 状态标为 `completed`。
 - 主技术栈、包管理方式和浏览器端具体框架仍未拍板；本 roadmap 只定义可映射的核心协议。
 - 浏览器本地存储不是云备份；产品文案和 UI 必须明确提醒用户导出 project bundle 备份。
+- 本 roadmap 的全部子 feature 已完成；真实 Web UI、真实 JavaScript IndexedDB / OPFS adapter 和浏览器持久存储权限交互需要另起前端 roadmap。
 - 如果未来要做云同步，需要另起包含账号、权限、quota、加密、备份和冲突处理的 roadmap。
 - 计算化学内容 schema 需要在后续 feature 中继续请用户把关，尤其是校正项、热化学字段、多构象、多自旋态和解析 preview 是否完整可恢复。

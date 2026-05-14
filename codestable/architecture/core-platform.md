@@ -4,14 +4,14 @@ slug: core-platform
 status: current
 created: 2026-05-02
 last_reviewed: 2026-05-14
-tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle]
+tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage]
 ---
 
 # Core Platform
 
 ## 1. 当前能力
 
-RxnFlow 当前已经落地十二类核心能力。
+RxnFlow 当前已经落地十三类核心能力。
 
 第一类是内置 fixture 的最小核心链路：
 
@@ -121,7 +121,16 @@ RxnFlow 当前已经落地十二类核心能力。
 5. 通过 ProjectBundleService.import_bundle 从 `.rxnflow.zip` 导入新的 Project Directory；导入前校验 zip entry 安全路径、唯一 Bundle Root 和 `<root>/.rxnflow/manifest.json`。
 6. 第一版 import 只支持 `fail_if_exists` conflict policy；目标项目目录已存在时失败，不覆盖、不合并、不自动改名。
 
-这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Project Bundle 只复制项目文件作为本地备份/手动同步包，不替代 live storage、不自动保存当前 session、不恢复运行态；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑，`project.open`/`project.save_content` 只是恢复和保存运行态服务状态的壳层编排，`project.export_bundle`/`project.import_bundle` 只是项目包传输编排。
+第十三类是 Browser Local Storage Backend：
+
+1. 通过 BrowserLocalProjectStorageBackend 提供面向 IndexedDB / OPFS 方向的 ProjectStorageBackend 核心协议测试替身。
+2. Browser backend 把 project_ref 解释为 opaque origin-local project key，不解释为本地文件系统路径，并按 project_ref 隔离对象。
+3. 支持 read_object、write_object、exists、list_objects 和 delete_object；object path 仍沿用项目相对 POSIX path 规则。
+4. write_object 返回 sha256 checksum、byte_size、updated_at 和 backend_id；read_object 返回 bytes、checksum 和 metadata。
+5. list_objects 支持 exact file 和 prefix subtree 语义，并按 POSIX path 稳定排序。
+6. 支持 quota_bytes 模拟浏览器本地空间不足；超限返回 storage_quota_exceeded，失败写入不部分覆盖已有对象。
+
+这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Project Bundle 只复制项目文件作为本地备份/手动同步包，不替代 live storage、不自动保存当前 session、不恢复运行态；Browser Local Storage Backend 是核心协议测试替身，不是真实 JavaScript IndexedDB / OPFS adapter、云同步或可靠备份；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑，`project.open`/`project.save_content` 只是恢复和保存运行态服务状态的壳层编排，`project.export_bundle`/`project.import_bundle` 只是项目包传输编排。
 
 ## 2. 模块与职责
 
@@ -214,6 +223,13 @@ ProjectContentStore
 ├── LocalProjectStorageBackend read/write/exists/list/delete
 └── project_content_snapshot_from_fixture(CoreFixtureResult)
 
+BrowserLocalProjectStorageBackend
+├── read_object/write_object/exists/list_objects/delete_object
+├── origin-local project_ref isolation
+├── metadata index and payload store test double
+├── sha256 checksum receipts
+└── quota_bytes failure modeling
+
 ProjectBundleService
 ├── export_bundle(project_path, destination_path)
 ├── import_bundle(bundle_path, destination_dir, conflict_policy="fail_if_exists")
@@ -244,6 +260,7 @@ ProjectBundleService
 - `rxnflow.platform`：ShellCommand / ShellResponse / ShellArtifact / PlatformSession / AppKernel / PlatformShellService / handle_platform_payload，提供端侧薄壳层命令协议和 JSON 投影。
 - `rxnflow.content_store`：ProjectContentIndex / ProjectContentFile / ProjectContentSnapshot / ProjectContentValidationIssue / ProjectContentValidationReport / ProjectContentMigrationPlan / ProjectStorageBackend / LocalProjectStorageBackend / ProjectContentValidator / ProjectContentStore，以及 fixture snapshot 的 `.rxnflow/state/` 保存、加载、只读验证和 migration plan 闭环。
 - `rxnflow.project_bundle`：ProjectBundleSummary / ProjectBundleService，提供 `.rxnflow.zip` 项目包导出、导入、zip entry 安全路径校验、manifest/content validation gate 和 non-overwrite import。
+- `rxnflow.browser_storage`：BrowserLocalProjectStorageBackend，提供浏览器本地 ProjectStorageBackend 核心协议测试替身、origin-local project_ref 隔离、checksum/metadata 记录、prefix list 和 quota_bytes 失败模型。
 - `rxnflow.cli`：标准库 argparse CLI 入口，把 argv 映射为 ShellCommand，向 stdout 写 JSON，并用 exit code 表达错误。
 - `rxnflow.fixture`：默认 fixture scenario 和垂直切片编排入口。
 
@@ -449,6 +466,8 @@ Project Content Store 当前使用以下稳定协议：
 - ProjectContentMigrationPlan：`current_schema_version`、`target_schema_version`、`needed`、`steps`、`issues`
 - ProjectStorageBackend 入口：`read_object(project_ref, path)`、`write_object(project_ref, obj)`、`exists(project_ref, path)`、`list_objects(project_ref, prefix)`、`delete_object(project_ref, path)`
 - LocalProjectStorageBackend：`backend_id = "local-filesystem-v1"`，把 project_ref 解释为本地项目目录
+- BrowserLocalProjectStorageBackend：`backend_id = "browser-local-indexeddb-opfs-test-v1"`，把 project_ref 解释为 origin-local project key，按 `(project_ref, path)` 存储对象；当前是 Python 内存测试替身，不是真实浏览器 API adapter
+- BrowserLocalProjectStorageBackend quota：可配置 `quota_bytes`；超限返回 `storage_quota_exceeded`，target=`quota`，details 含 `quota_bytes`、`requested_bytes` 和 `current_bytes`
 - ProjectContentStore 入口：`save_snapshot(project_ref, snapshot)`、`load_index(project_ref)`、`load_snapshot(project_ref)`、`validate_project(project_ref)`、`migration_plan(project_ref, target_schema_version="project-content-v1")`
 - Fixture snapshot helper：`project_content_snapshot_from_fixture(CoreFixtureResult)`
 - 当前 save workflow：校验 snapshot，通过 chemical object / graph / workspace / import ledger / energy profile / export artifact codec 序列化 JSON，先写 section files，汇总 checksum，再写 `project-content.json`
@@ -504,6 +523,7 @@ Project Bundle 使用以下稳定协议：
 - `invalid_input`：ReportExportService 中 project id 为空、formats 为空、请求格式不支持、PNG/CDXML 缺少 EnergyProfile、XLSX 缺少 profile/object/table rows，或 basename 不是安全文件名。
 - `invalid_input`：PlatformShellService 中 command name 为空、未知 command、缺少必填 args，或 session 缺少对应 graph/path/object/profile 前置状态。
 - `invalid_input`：Project Content Store 中 project_ref 为空、不安全 logical path、index 缺失、project content JSON 损坏或 schema 不兼容。
+- `storage_quota_exceeded`：BrowserLocalProjectStorageBackend 中写入或替换对象会超过 quota_bytes，失败写入不部分覆盖已有对象。
 - `invalid_input`：Project Bundle 中 bundle path 后缀不是 `.rxnflow.zip`、bundle 文件缺失、destination_dir 缺失/不是目录、目标项目已存在，或 conflict_policy 不是 `fail_if_exists`。
 - `invalid_bundle`：Project Bundle zip 损坏、entry path 不安全、包含多 root、缺少 `.rxnflow/manifest.json`、包含 `__MACOSX` 或包含 allowed roots 外文件。
 - Validation Report issue：Project Content Validation 中 index schema/project_id/files shape 错误、unsafe path、duplicate kind/path、canonical path mismatch、section 缺失、section checksum mismatch、bad section JSON、section codec 错误、missing source/raw resource、missing export artifact、artifact checksum mismatch 或 export metadata ref 缺失会进入 ValidationIssue；error issue 使 report.ok 为 false，warning 不阻止 report 生成。
@@ -575,9 +595,10 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - PlatformSession 只保存进程内可观察状态，不写 `.rxnflow/manifest.json`，也不新增 ProjectResource 来持久化 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 内容。
 - Project Content Store 不修改 `.rxnflow/manifest.json`，不新增 ProjectResource，不读取、复制、删除或解析 `inputs/raw/` 文件。
 - Project Content Store 不调用 ParserRegistry、ImportRegistryWorkflow、ChemicalRegistry.register、ReactionGraphService.apply_patch、EnergyProfileEngine 或 ReportExportService。
-- Project Content Store 当前不实现浏览器 IndexedDB/OPFS backend、云存储、数据库、CLI/Web/desktop command、真实 schema migration、增量保存、并发锁、冲突合并或 bundle zip 读写；project bundle 由 ProjectBundleService 编排。
+- Project Content Store 本身不实现浏览器 IndexedDB/OPFS API、云存储、数据库、CLI/Web/desktop command、真实 schema migration、增量保存、并发锁、冲突合并或 bundle zip 读写；浏览器本地核心协议替身由 BrowserLocalProjectStorageBackend 提供，project bundle 由 ProjectBundleService 编排。
 - Project Content Validation 不自动修复或重写 project-content index、section JSON、manifest、raw files 或 export files，不删除 orphan files，不重新 parse raw files、不重新 register objects、不重新 compute profile、不重新 export reports。
 - Project Content Store 当前保存/加载 ChemicalObject、ReactionGraph、WorkspaceSnapshot、ImportBatch/ParsePreview、EnergyProfile 和 ExportArtifact index 长期 sections。
+- BrowserLocalProjectStorageBackend 不保存到磁盘、不提供跨浏览器/跨设备同步、不新增 Platform Shell/CLI/Web route/桌面入口，也不调用 parser/import/registry/graph/energy/export/bundle 服务。
 - ProjectBundleService 只复制项目文件，不解析 raw file、不登记 ChemicalObject、不确认 import、不计算 EnergyProfile、不调用 ReportExportService、不保存当前 PlatformSession。
 - ProjectBundleService export 只打包 `.rxnflow/`、`inputs/raw/` 和 `exports/`，不打包项目根 notes、临时脚本或其他散落文件。
 - ProjectBundleService import 不覆盖、不自动改名、不 merge、不做冲突合并；第一版只支持 `fail_if_exists`。

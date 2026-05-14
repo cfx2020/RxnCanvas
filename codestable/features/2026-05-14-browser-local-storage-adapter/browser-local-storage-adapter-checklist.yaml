@@ -1,0 +1,96 @@
+feature: 2026-05-14-browser-local-storage-adapter
+created: 2026-05-14
+
+steps:
+  - action: "Backend contract skeleton：落地 browser local backend 的 project_ref/path validation、backend_id 和 Result error skeleton"
+    exit_signal: "所有 unsafe project_ref/path cases 可测，且 backend_id 明确标注 browser local test backend"
+    status: done
+
+  - action: "Object lifecycle semantics：补齐 write/read/exists/list/delete、project isolation、stable ordering 和 checksum"
+    exit_signal: "backend 不依赖文件系统即可完成 storage object round-trip、替换、删除和 prefix list"
+    status: done
+
+  - action: "ProjectContentStore integration：用 browser backend 保存/加载 fixture snapshot，并覆盖 manifest/export artifact validation 读取路径"
+    exit_signal: "ProjectContentStore 无需分支即可通过 save/load/validate 场景"
+    status: done
+
+  - action: "Browser-specific failure modeling：补 quota_bytes 超限、replace 后用量更新、delete 后释放用量"
+    exit_signal: "quota 错误结构稳定，且失败写入不会部分覆盖已有对象"
+    status: done
+
+  - action: "Scope guards and docs sync：补 no UI/cloud/runtime coupling 的范围守护，更新 CodeStable 文档"
+    exit_signal: "全量测试、YAML/frontmatter 校验和范围守护通过"
+    status: done
+
+checks:
+  - item: "BrowserLocalProjectStorageBackend 实现 ProjectStorageBackend 的 read_object/write_object/exists/list_objects/delete_object 入口"
+    source: "名词契约"
+    status: passed
+
+  - item: "backend_id 明确表达 browser local IndexedDB/OPFS test backend，不伪装成 cloud storage"
+    source: "名词契约"
+    status: passed
+
+  - item: "project_ref 作为 opaque origin-local key 使用，非空校验失败返回 invalid_input target=project_ref"
+    source: "名词契约"
+    status: passed
+
+  - item: "path 规则与 LocalProjectStorageBackend 对齐，拒绝绝对路径、空路径、.、.. 和反斜杠"
+    source: "名词契约"
+    status: passed
+
+  - item: "write_object 写入或替换单个 (project_ref, path) record，并返回 sha256 checksum、byte_size、updated_at 和 backend_id"
+    source: "编排骨架"
+    status: passed
+
+  - item: "read_object 能返回写入的 bytes、checksum 和 metadata；读取不存在 path 返回 invalid_input target=path"
+    source: "验收场景"
+    status: passed
+
+  - item: "exists 对存在对象返回 True，对不存在对象返回 False"
+    source: "验收场景"
+    status: passed
+
+  - item: "list_objects 支持 exact file 与 prefix subtree 语义，并按 POSIX path 稳定排序"
+    source: "编排骨架"
+    status: passed
+
+  - item: "delete_object 删除单个 record；删除不存在对象仍返回 ok"
+    source: "验收场景"
+    status: passed
+
+  - item: "同一 backend 中不同 project_ref 的相同 path 互相隔离"
+    source: "验收场景"
+    status: passed
+
+  - item: "重复写同一 (project_ref, path) 会替换 bytes 和 checksum，不生成重复 list entry"
+    source: "验收场景"
+    status: passed
+
+  - item: "ProjectContentStore(BrowserLocalProjectStorageBackend()).save_snapshot/load_snapshot 可恢复 fixture snapshot"
+    source: "验收场景"
+    status: passed
+
+  - item: "ProjectContent validation 可通过 browser backend 读取 manifest 和 exports artifact bytes 并校验 checksum"
+    source: "验收场景"
+    status: passed
+
+  - item: "quota_bytes 超限返回结构化错误，target=quota，details 至少含 quota_bytes 和 requested_bytes"
+    source: "验收场景"
+    status: passed
+
+  - item: "quota 失败写入不部分覆盖已有对象；replace/delete 后用量按当前 records 重新计算"
+    source: "跨层纪律"
+    status: passed
+
+  - item: "ProjectContentStore 不出现 IndexedDB、OPFS 或 browser quota 分支"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不引入 FastAPI、React、Next.js、Electron、Tauri、Supabase、S3、Vercel Blob、R2 或数据库 client"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不新增 CLI command、Platform Shell command、Web route 或桌面入口，也不调用 parser/import/registry/graph/energy/export/bundle 服务"
+    source: "范围守护"
+    status: passed

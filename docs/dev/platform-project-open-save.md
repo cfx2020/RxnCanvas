@@ -146,7 +146,7 @@ python3 -m rxnflow.cli project open --json --project-path /path/to/project --man
 - CLI 只提供 `project open`，不提供 `project save-content`。
 - `project.save_content` 只能保存当前进程内的 session。
 - restore 不会修复损坏的 Project Content。validation error 需要调用方展示给用户处理。
-- project bundle 已由独立 ProjectBundleService 和 `project.export_bundle` / `project.import_bundle` 命令承担；browser local storage adapter 和真实 UI 接入仍由后续 roadmap item 承担。
+- project bundle 已由独立 ProjectBundleService 和 `project.export_bundle` / `project.import_bundle` 命令承担；browser local storage backend 当前已有核心协议测试替身，真实 JS/TS adapter 和 UI 接入仍由后续前端 roadmap 承担。
 
 ## 相关文档
 
@@ -154,3 +154,4 @@ python3 -m rxnflow.cli project open --json --project-path /path/to/project --man
 - `codestable/requirements/project-content-persistence.md`
 - `codestable/features/2026-05-14-platform-shell-state-restore/platform-shell-state-restore-design.md`
 - `codestable/features/2026-05-14-platform-shell-state-restore/platform-shell-state-restore-acceptance.md`
+- `docs/dev/browser-local-storage-backend.md`

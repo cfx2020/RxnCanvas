@@ -77,7 +77,7 @@ items:
   - slug: browser-local-storage-adapter
     description: 规划并实现浏览器本地 IndexedDB / OPFS storage adapter 的核心协议测试替身，不引入云存储
     depends_on: [project-content-store-v1, project-bundle-import-export]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-14-browser-local-storage-adapter
     minimal_loop: false
     notes: 真实 Web UI 接入另起前端 roadmap；本条只保证 storage adapter contract 可用

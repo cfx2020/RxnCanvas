@@ -22,7 +22,8 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Validation Report：Project Content Validation 的结构化结果，包含 project id、schema version、ok、issues、checked_at 和 summary；warning 不阻止加载，error 使 report.ok 为 false。
 - Validation Issue：单条 validation warning/error，包含 severity、code、message、target 和 JSON-safe details。
 - Migration Plan：Project Content schema migration 的显式计划结果；当前只支持 `project-content-v1 -> project-content-v1` no-op，未知 source/target 返回 unsupported issue，不做 silent migration。
-- Project Storage Backend：按项目相对 POSIX path 读写 bytes 的存储后端协议，当前落地本地文件系统 backend。
+- Project Storage Backend：按项目相对 POSIX path 读写 bytes 的存储后端协议，当前落地本地文件系统 backend 和浏览器本地测试替身。
+- Browser Local Storage Backend：面向 IndexedDB / OPFS 方向的 `ProjectStorageBackend` 核心协议测试替身，使用 opaque origin-local project key 隔离项目，不提供云同步。
 - Project Bundle：`.rxnflow.zip` 项目包，内部只有一个 Bundle Root，用于本地备份和早期 Web 无云同步时的手动导入/导出。
 - Bundle Export：把本地 Project Directory 的 `.rxnflow/`、`inputs/raw/` 和 `exports/` 复制进 Project Bundle，不保存当前进程内 session。
 - Bundle Import：从 Project Bundle 安全解包成新的 Project Directory；第一版只支持 `fail_if_exists`，不覆盖、不合并、不自动改名。
@@ -82,7 +83,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、Project Bundle 导入/导出、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、Project Bundle 导入/导出、Browser Local Storage Backend 核心协议测试替身、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
 
 ## 4. 关键架构决定
 
@@ -153,6 +154,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Project Content Store 当前写入 `.rxnflow/state/project-content.json`、`chemical-objects.json`、`reaction-graphs.json`、`workspaces.json`、`energy-profiles.json`、`import-ledger.json` 和 `export-artifacts.json`；其中 `chemical-objects.json` 使用 `chemical-objects-v1` 长期 codec 保存真实 ChemicalObject、provenance、registry fingerprint 和 append-only corrections，`reaction-graphs.json` 使用 `reaction-graphs-v1` 长期 codec 保存真实 ReactionGraph/ReactionPath，`workspaces.json` 使用 `workspaces-v1` 长期 codec 保存 workspace-only 状态，`import-ledger.json` 使用 `import-ledger-v1` 保存 ImportBatch/ImportItem/ParsePreview 状态，`energy-profiles.json` 使用 `energy-profiles-v1` 保存已计算 EnergyProfile、EnergyOptions、EnergyPoint 和 warnings，`export-artifacts.json` 使用 `export-artifacts-v1` 保存 ExportArtifactRecord 索引。
 - Project Content Store 不修改 `.rxnflow/manifest.json` schema，不登记 ProjectResource，不读取或解析 `inputs/raw/`。
 - LocalProjectStorageBackend 只处理项目相对 POSIX path 和 bytes；不理解 ChemicalObject、ReactionGraph、WorkspaceSnapshot 或 EnergyProfile 领域语义。
+- BrowserLocalProjectStorageBackend 当前通过 `rxnflow.browser_storage` 提供浏览器本地存储协议测试替身；它实现 read/write/exists/list/delete、project_ref 隔离、checksum、metadata 和 quota 错误语义，但不是真实 JS IndexedDB / OPFS adapter。
 - ProjectContentValidator 只读 `.rxnflow/state/`、`.rxnflow/manifest.json` 和 `exports/...`，聚合 index/schema/path/checksum/codec/cross-ref/artifact issues；它不修复、不删除、不写回项目文件。
 - ProjectContentStore 当前暴露 `validate_project(project_ref)` 和 `migration_plan(project_ref, target_schema_version="project-content-v1")`；`load_snapshot` 不自动 migration。
 - `project-content-v1`、`chemical-objects-v1`、`reaction-graphs-v1`、`workspaces-v1`、`import-ledger-v1`、`energy-profiles-v1` 和 `export-artifacts-v1` 不做 silent fallback；index 缺失、schema 不兼容、坏 JSON、不安全 path、裸 energy、unsupported unit、重复 object/graph/workspace/profile/artifact/node/edge/path id、缺失 object/node/edge/path/workspace/profile 引用、非法 viewport、profile point energy/missing_reason 冲突、artifact path/checksum/metadata shape 错误和 warning shape 错误等返回结构化错误。
