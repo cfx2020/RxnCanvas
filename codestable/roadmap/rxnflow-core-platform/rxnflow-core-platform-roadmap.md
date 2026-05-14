@@ -1,9 +1,9 @@
 ---
 doc_type: roadmap
 slug: rxnflow-core-platform
-status: active
+status: completed
 created: 2026-05-01
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-15
 tags: [rxnflow, core, platform, reaction-graph, computational-chemistry]
 related_requirements: []
 related_architecture: [ARCHITECTURE]

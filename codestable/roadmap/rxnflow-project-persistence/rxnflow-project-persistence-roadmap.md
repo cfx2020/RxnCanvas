@@ -490,7 +490,7 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 
 ## 7. 观察项
 
-- `rxnflow-core-platform` 的所有 items 已 done，后续可在单独 roadmap update 中把该 roadmap 状态标为 `completed`。
+- `rxnflow-core-platform` 的所有 items 已 done，主文档已在 2026-05-15 标为 `completed`。
 - 主技术栈、包管理方式和浏览器端具体框架仍未拍板；本 roadmap 只定义可映射的核心协议。
 - 浏览器本地存储不是云备份；产品文案和 UI 必须明确提醒用户导出 project bundle 备份。
 - 本 roadmap 的全部子 feature 已完成；真实 Web UI、真实 JavaScript IndexedDB / OPFS adapter 和浏览器持久存储权限交互需要另起前端 roadmap。
