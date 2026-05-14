@@ -91,9 +91,9 @@ RxnFlow 当前已经落地十一类核心能力。
 第十类是 Platform Shell：
 
 1. 通过 ShellCommand、ShellResponse、ShellArtifact 和 PlatformSession 定义端侧 JSON-safe 命令协议。
-2. 通过 AppKernel 集中装配 ProjectStore、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
-3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile`。
-4. 通过 `python3 -m rxnflow.cli` 提供标准库 CLI 入口，支持 fixture、project create/load 和 import preview 的 JSON 输出与错误 exit code。
+2. 通过 AppKernel 集中装配 ProjectStore、ProjectContentStore、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
+3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile`。
+4. 通过 `python3 -m rxnflow.cli` 提供标准库 CLI 入口，支持 fixture、project create/load/open 和 import preview 的 JSON 输出与错误 exit code；CLI project open 支持默认恢复 content 和 `--manifest-only`。
 5. 通过 handle_platform_payload 提供纯 Python dict adapter，供未来 Web route 或 desktop bridge 复用。
 
 第十一类是 Project Content Store：
@@ -112,7 +112,7 @@ RxnFlow 当前已经落地十一类核心能力。
 12. 通过 ProjectContentValidator 和 ProjectContentStore.validate_project 生成 validation report；内容不一致进入 report issues，backend internal I/O failure 仍返回 Result error。
 13. 通过 ProjectContentMigrationPlan 和 ProjectContentStore.migration_plan 提供显式 schema migration plan；当前 `project-content-v1 -> project-content-v1` 为 no-op，未知 source/target 返回 unsupported issue，load_snapshot 不做 silent migration。
 
-这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑。
+这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑，`project.open`/`project.save_content` 只是恢复和保存运行态服务状态的壳层编排。
 
 ## 2. 模块与职责
 
@@ -182,6 +182,8 @@ ReportExportService
 PlatformShellService
 ├── run(ShellCommand)
 ├── fixture/project/import/workspace/energy/export command handlers
+├── project.open validation-gated restore
+├── project.save_content session snapshot save
 ├── ShellResponse JSON-safe projection
 ├── handle_platform_payload(dict)
 └── rxnflow.cli argparse entry
@@ -435,6 +437,12 @@ Project Content Store 当前使用以下稳定协议：
 - 当前 load workflow：先读 index，校验 `project-content-v1` 和 file path，再读 ChemicalObject section、校验 Import Ledger section、校验 ReactionGraph section、校验 EnergyProfile section、校验 ExportArtifact section、校验 Workspace section，并反序列化为 ProjectContentSnapshot
 - 当前 validate workflow：先读 index bytes，再校验 schema/project_id/files shape、section kind/path/checksum 和 canonical path，随后读取 section bytes 复算 checksum，复用现有 codecs 解码，读取 manifest raw resources 作为 source/raw_resource 锚点，最后读取 `exports/...` artifact bytes 并与 ExportArtifactRecord.checksum 比对
 - 当前 migration plan workflow：读取 index schema 后判断 target；`project-content-v1 -> project-content-v1` 返回 `needed=False` 和空 steps，未知 source/target 返回 error issue，不写任何项目文件
+- Platform Session content collections：`objects`、`import_batches`、`reaction_graphs`、`workspaces`、`energy_profiles`、`export_artifact_records` 和运行时 `artifacts`；同时保留 active `graph`、`workspace`、`profile` 供既有命令继续操作
+- Platform restore workflow：`project.open(load_content=True)` 先加载 manifest，再 `validate_project`；validation error 返回 `project_content_invalid`，validation 通过后 `load_snapshot`，并按 ChemicalRegistry.restore_objects → ImportRegistryWorkflow.restore_batches → ReactionGraphService.restore_graphs → GraphEditorWorkspaceService.restore_workspaces 顺序恢复，随后把 energy profiles/export artifact records 写入 session 并返回 restored summary
+- Platform manifest-only workflow：`project.load` 和 `project.open(load_content=False)` 只创建 manifest-only session，object/graph/workspace/profile/artifact counts 均为 0，不访问 Project Content
+- Platform save workflow：`project.save_content(session_id)` 从当前 session content collections 构造 ProjectContentSnapshot 并调用 ProjectContentStore.save_snapshot；session 缺失或没有 project_path 返回结构化 `invalid_input`
+- Platform artifact record workflow：`project.save_content` 会把运行时 ShellArtifact 中位于当前项目 `exports/...` 下的文件转为 ExportArtifactRecord，记录项目相对 path 和 sha256；bytes-only、项目外路径、缺文件或 checksum 读取失败只产生 warning，不阻断 save
+- CLI project open workflow：`python3 -m rxnflow.cli project open --json --project-path <path>` 默认恢复 content；`--manifest-only` 只打开 manifest；CLI 不提供 project save-content，因为 CLI 进程内 session 无法跨命令复用
 
 ## 4. 错误语义
 

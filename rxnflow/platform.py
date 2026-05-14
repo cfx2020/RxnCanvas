@@ -3,16 +3,31 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, is_dataclass
+from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 import base64
 
+from .content_store import (
+    ProjectContentIndex,
+    ProjectContentSnapshot,
+    ProjectContentStore,
+    ProjectContentValidationIssue,
+    ProjectContentValidationReport,
+)
 from .energy import EnergyProfileEngine
 from .errors import RxnFlowError, RxnFlowWarning
-from .export import ExportArtifact, ExportRequest, ReportExportService
+from .export import (
+    ALLOWED_EXPORT_FORMATS,
+    ExportArtifact,
+    ExportArtifactRecord,
+    ExportFormat,
+    ExportRequest,
+    ReportExportService,
+)
 from .fixture import run_core_fixture_vertical_slice
 from .graph import ReactionGraphService
-from .import_workflow import ImportFileRequest, ImportRegistryWorkflow, ImportSelection
+from .import_workflow import ImportBatch, ImportFileRequest, ImportRegistryWorkflow, ImportSelection
 from .models import (
     ChemicalObject,
     CoreFixtureResult,
@@ -85,6 +100,11 @@ class _PlatformSessionState:
     workspace: WorkspaceSnapshot | None = None
     artifacts: tuple[ShellArtifact, ...] = ()
     import_batch_ids: tuple[str, ...] = ()
+    import_batches: tuple[ImportBatch, ...] = ()
+    reaction_graphs: tuple[ReactionGraph, ...] = ()
+    workspaces: tuple[WorkspaceSnapshot, ...] = ()
+    energy_profiles: tuple[EnergyProfile, ...] = ()
+    export_artifact_records: tuple[ExportArtifactRecord, ...] = ()
 
 
 class AppKernel:
@@ -93,6 +113,7 @@ class AppKernel:
     def __init__(
         self,
         project_store: ProjectStore | None = None,
+        content_store: ProjectContentStore | None = None,
         parser_registry: ParserRegistry | None = None,
         chemical_registry: ChemicalRegistry | None = None,
         graph_service: ReactionGraphService | None = None,
@@ -100,6 +121,7 @@ class AppKernel:
         export_service: ReportExportService | None = None,
     ) -> None:
         self.project_store = project_store or ProjectStore()
+        self.content_store = content_store or ProjectContentStore()
         self.parser_registry = parser_registry or ParserRegistry.default()
         self.chemical_registry = chemical_registry or ChemicalRegistry()
         self.import_workflow = ImportRegistryWorkflow(
@@ -153,6 +175,10 @@ class PlatformShellService:
             return self._run_project_create(command)
         if command.name == "project.load":
             return self._run_project_load(command)
+        if command.name == "project.open":
+            return self._run_project_open(command)
+        if command.name == "project.save_content":
+            return self._run_project_save_content(command)
         if command.name == "import.preview":
             return self._run_import_preview(command)
         if command.name == "import.register_all":
@@ -194,11 +220,13 @@ class PlatformShellService:
             graph=value.graph,
             profile=value.profile,
             artifacts=artifacts,
+            reaction_graphs=(value.graph,),
+            energy_profiles=(value.profile,),
         )
         self._kernel.put_session_state(state)
         return ShellResponse(
             ok=True,
-            data=_fixture_data(command.name, state.session, value, artifacts),
+            data=_fixture_data(command.name, state.session, value, artifacts, state),
             warnings=artifacts_result.warnings,
             artifacts=artifacts,
         )
@@ -242,6 +270,201 @@ class PlatformShellService:
             ),
         )
 
+    def _run_project_open(self, command: ShellCommand) -> ShellResponse:
+        project_path = _required_str(command.args, "project_path")
+        if project_path is None:
+            return _invalid_input("Project path is required.", "project_path")
+        load_content = _bool_arg(command.args, "load_content", default=True)
+        if isinstance(load_content, ShellResponse):
+            return load_content
+
+        loaded = self._kernel.project_store.load_project(project_path)
+        if not loaded.ok or loaded.value is None:
+            return _result_error_response(loaded)
+        if load_content:
+            return self._open_project_with_content(command.name, project_path, loaded.value)
+        session = self._kernel.create_session(project_path=project_path, project_id=loaded.value.id)
+        return ShellResponse(
+            ok=True,
+            data=_response_data(
+                command.name,
+                session,
+                {"project": _project_summary(loaded.value), "load_content": False},
+            ),
+        )
+
+    def _open_project_with_content(
+        self,
+        command_name: str,
+        project_path: str,
+        project: ProjectManifest,
+    ) -> ShellResponse:
+        validation = self._kernel.content_store.validate_project(project_path)
+        if not validation.ok or validation.value is None:
+            return _result_error_response(validation)
+        validation_warnings = _validation_warnings(validation.value)
+        if not validation.value.ok:
+            return ShellResponse(
+                ok=False,
+                error=_error_to_dict(_validation_error(validation.value)),
+                warnings=validation_warnings,
+            )
+
+        snapshot_result = self._kernel.content_store.load_snapshot(project_path)
+        if not snapshot_result.ok or snapshot_result.value is None:
+            return _result_error_response(snapshot_result)
+        snapshot = snapshot_result.value
+        if snapshot.project_id != project.id:
+            return _invalid_input(
+                "Project content project_id does not match the project manifest.",
+                "project_id",
+            )
+
+        restored = self._restore_project_content(project.id, project_path, snapshot)
+        if isinstance(restored, ShellResponse):
+            return restored
+        state = restored
+        self._kernel.put_session_state(state)
+        return ShellResponse(
+            ok=True,
+            data=_response_data(
+                command_name,
+                state.session,
+                _restored_session_summary(project, snapshot, state),
+                state=state,
+            ),
+            warnings=validation_warnings,
+        )
+
+    def _restore_project_content(
+        self,
+        project_id: str,
+        project_path: str,
+        snapshot: ProjectContentSnapshot,
+    ) -> _PlatformSessionState | ShellResponse:
+        restored_objects = self._kernel.chemical_registry.restore_objects(
+            project_id,
+            snapshot.chemical_objects,
+            replace=True,
+        )
+        if not restored_objects.ok or restored_objects.value is None:
+            return _result_error_response(restored_objects)
+        objects = restored_objects.value
+        object_ids = frozenset(obj.id for obj in objects)
+
+        restored_batches = self._kernel.import_workflow.restore_batches(
+            project_id,
+            snapshot.import_batches,
+            object_ids=object_ids,
+            replace=True,
+        )
+        if not restored_batches.ok or restored_batches.value is None:
+            return _result_error_response(restored_batches)
+
+        restored_graphs = self._kernel.graph_service.restore_graphs(
+            project_id,
+            snapshot.reaction_graphs,
+            object_ids=object_ids,
+            replace=True,
+        )
+        if not restored_graphs.ok or restored_graphs.value is None:
+            return _result_error_response(restored_graphs)
+
+        restored_workspaces = self._kernel.workspace_service.restore_workspaces(
+            project_id,
+            snapshot.workspaces,
+            objects=objects,
+            replace=True,
+        )
+        if not restored_workspaces.ok or restored_workspaces.value is None:
+            return _result_error_response(restored_workspaces)
+
+        active_workspace = restored_workspaces.value[0] if restored_workspaces.value else None
+        active_graph = active_workspace.graph if active_workspace is not None else (
+            restored_graphs.value[0] if restored_graphs.value else None
+        )
+        active_profile = snapshot.energy_profiles[0] if snapshot.energy_profiles else None
+        session = self._kernel.create_session(project_path=project_path, project_id=project_id)
+        session = _session_with_core_state(
+            session,
+            project_path=project_path,
+            project_id=project_id,
+            workspace_id=active_workspace.workspace_id if active_workspace is not None else None,
+            graph_id=active_graph.id if active_graph is not None else None,
+            profile_id=active_profile.id if active_profile is not None else None,
+            object_ids=tuple(obj.id for obj in objects),
+            artifact_ids=tuple(artifact.id for artifact in snapshot.export_artifacts),
+        )
+        return _PlatformSessionState(
+            session=session,
+            objects=objects,
+            graph=active_graph,
+            profile=active_profile,
+            workspace=active_workspace,
+            artifacts=(),
+            import_batch_ids=tuple(batch.id for batch in restored_batches.value),
+            import_batches=restored_batches.value,
+            reaction_graphs=restored_graphs.value,
+            workspaces=restored_workspaces.value,
+            energy_profiles=snapshot.energy_profiles,
+            export_artifact_records=snapshot.export_artifacts,
+        )
+
+    def _run_project_save_content(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        if state.session.project_path is None:
+            return _invalid_input("Project path is required to save project content.", "project_path")
+        if state.session.project_id is None:
+            return _invalid_input("Project id is required to save project content.", "project_id")
+
+        artifact_records, runtime_artifacts, artifact_warnings = _collect_export_artifact_records(state)
+        saved_session = _session_with_core_state(
+            state.session,
+            artifact_ids=tuple(record.id for record in artifact_records)
+            + tuple(artifact.id for artifact in runtime_artifacts),
+        )
+        saved_state = _PlatformSessionState(
+            session=saved_session,
+            objects=state.objects,
+            graph=state.graph,
+            profile=state.profile,
+            workspace=state.workspace,
+            artifacts=runtime_artifacts,
+            import_batch_ids=state.import_batch_ids,
+            import_batches=state.import_batches,
+            reaction_graphs=state.reaction_graphs,
+            workspaces=state.workspaces,
+            energy_profiles=state.energy_profiles,
+            export_artifact_records=artifact_records,
+        )
+        snapshot = _snapshot_from_session_state(saved_state)
+        saved = self._kernel.content_store.save_snapshot(state.session.project_path, snapshot)
+        if not saved.ok or saved.value is None:
+            return _result_error_response(saved)
+        self._kernel.put_session_state(saved_state)
+        return ShellResponse(
+            ok=True,
+            data=_response_data(
+                command.name,
+                saved_state.session,
+                {
+                    "project_path": state.session.project_path,
+                    "saved": _content_index_summary(saved.value),
+                    "object_count": len(snapshot.chemical_objects),
+                    "graph_count": len(snapshot.reaction_graphs),
+                    "workspace_count": len(snapshot.workspaces),
+                    "profile_count": len(snapshot.energy_profiles),
+                    "artifact_count": len(snapshot.export_artifacts),
+                    "import_batch_count": len(snapshot.import_batches),
+                },
+                state=saved_state,
+            ),
+            warnings=artifact_warnings,
+        )
+
     def _run_import_preview(self, command: ShellCommand) -> ShellResponse:
         resolved = self._resolve_state(command.args, allow_project_path=True)
         if isinstance(resolved, ShellResponse):
@@ -269,6 +492,11 @@ class PlatformShellService:
             workspace=state.workspace,
             artifacts=state.artifacts,
             import_batch_ids=state.import_batch_ids + (imported.value.id,),
+            import_batches=state.import_batches + (imported.value,),
+            reaction_graphs=state.reaction_graphs,
+            workspaces=state.workspaces,
+            energy_profiles=state.energy_profiles,
+            export_artifact_records=state.export_artifact_records,
         )
         self._kernel.put_session_state(updated)
         return ShellResponse(
@@ -277,6 +505,7 @@ class PlatformShellService:
                 command.name,
                 updated.session,
                 {"batch": _import_batch_summary(imported.value)},
+                state=updated,
             ),
         )
 
@@ -337,6 +566,11 @@ class PlatformShellService:
             workspace=state.workspace,
             artifacts=state.artifacts,
             import_batch_ids=state.import_batch_ids,
+            import_batches=_upsert_import_batch(state.import_batches, confirmed.value),
+            reaction_graphs=state.reaction_graphs,
+            workspaces=state.workspaces,
+            energy_profiles=state.energy_profiles,
+            export_artifact_records=state.export_artifact_records,
         )
         self._kernel.put_session_state(updated)
         return ShellResponse(
@@ -348,6 +582,7 @@ class PlatformShellService:
                     "batch": _import_batch_summary(confirmed.value),
                     "registered_object_ids": object_ids,
                 },
+                state=updated,
             ),
         )
 
@@ -486,6 +721,11 @@ class PlatformShellService:
             workspace=state.workspace,
             artifacts=state.artifacts,
             import_batch_ids=state.import_batch_ids,
+            import_batches=state.import_batches,
+            reaction_graphs=state.reaction_graphs,
+            workspaces=state.workspaces,
+            energy_profiles=_upsert_energy_profile(state.energy_profiles, profile.value),
+            export_artifact_records=state.export_artifact_records,
         )
         self._kernel.put_session_state(updated)
         return ShellResponse(
@@ -494,6 +734,7 @@ class PlatformShellService:
                 command.name,
                 updated.session,
                 {"profile": _profile_summary(profile.value)},
+                state=updated,
             ),
             warnings=tuple(_warning_to_dict(warning) for warning in profile.warnings),
         )
@@ -536,11 +777,22 @@ class PlatformShellService:
             workspace=state.workspace,
             artifacts=state.artifacts + artifacts,
             import_batch_ids=state.import_batch_ids,
+            import_batches=state.import_batches,
+            reaction_graphs=state.reaction_graphs,
+            workspaces=state.workspaces,
+            energy_profiles=state.energy_profiles,
+            export_artifact_records=state.export_artifact_records,
         )
         self._kernel.put_session_state(updated)
         return ShellResponse(
             ok=True,
-            data=_response_data(command.name, updated.session, {"profile": _profile_summary(state.profile)}, artifacts),
+            data=_response_data(
+                command.name,
+                updated.session,
+                {"profile": _profile_summary(state.profile)},
+                artifacts,
+                state=updated,
+            ),
             warnings=tuple(_warning_to_dict(warning) for warning in export_result.warnings),
             artifacts=artifacts,
         )
@@ -564,6 +816,11 @@ class PlatformShellService:
             workspace=workspace,
             artifacts=state.artifacts,
             import_batch_ids=state.import_batch_ids,
+            import_batches=state.import_batches,
+            reaction_graphs=_upsert_reaction_graph(state.reaction_graphs, workspace.graph),
+            workspaces=_upsert_workspace(state.workspaces, workspace),
+            energy_profiles=state.energy_profiles,
+            export_artifact_records=state.export_artifact_records,
         )
         self._kernel.put_session_state(updated)
         return ShellResponse(
@@ -572,6 +829,7 @@ class PlatformShellService:
                 command_name,
                 updated.session,
                 {"workspace": _workspace_summary(workspace)},
+                state=updated,
             ),
             warnings=tuple(_warning_to_dict(warning) for warning in workspace.preview.warnings),
         )
@@ -662,6 +920,37 @@ def _result_error_response(result: Result[Any]) -> ShellResponse:
     )
 
 
+def _validation_error(report: ProjectContentValidationReport) -> RxnFlowError:
+    return RxnFlowError(
+        "project_content_invalid",
+        "Project content validation failed.",
+        target="project_content",
+        details={
+            "project_id": report.project_id,
+            "schema_version": report.schema_version,
+            "summary": report.summary,
+            "issues": [_validation_issue_to_dict(issue) for issue in report.issues],
+        },
+    )
+
+
+def _validation_warnings(report: ProjectContentValidationReport) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        _validation_issue_to_dict(issue)
+        for issue in report.issues
+        if issue.severity == "warning"
+    )
+
+
+def _validation_issue_to_dict(issue: ProjectContentValidationIssue) -> dict[str, Any]:
+    return {
+        "code": issue.code,
+        "message": issue.message,
+        "target": issue.target,
+        "details": _json_safe(issue.details),
+    }
+
+
 def _export_fixture_artifacts(
     kernel: AppKernel,
     command: ShellCommand,
@@ -737,6 +1026,178 @@ def _parse_options(args: dict[str, Any]) -> ParseOptions | None:
     )
 
 
+def _bool_arg(args: dict[str, Any], key: str, *, default: bool) -> bool | ShellResponse:
+    value = args.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    return _invalid_input(f"{key} must be a boolean.", key)
+
+
+def _upsert_import_batch(
+    batches: tuple[ImportBatch, ...],
+    batch: ImportBatch,
+) -> tuple[ImportBatch, ...]:
+    return tuple(item if item.id != batch.id else batch for item in batches) if any(
+        item.id == batch.id for item in batches
+    ) else batches + (batch,)
+
+
+def _upsert_reaction_graph(
+    graphs: tuple[ReactionGraph, ...],
+    graph: ReactionGraph,
+) -> tuple[ReactionGraph, ...]:
+    return tuple(item if item.id != graph.id else graph for item in graphs) if any(
+        item.id == graph.id for item in graphs
+    ) else graphs + (graph,)
+
+
+def _upsert_workspace(
+    workspaces: tuple[WorkspaceSnapshot, ...],
+    workspace: WorkspaceSnapshot,
+) -> tuple[WorkspaceSnapshot, ...]:
+    return tuple(item if item.workspace_id != workspace.workspace_id else workspace for item in workspaces) if any(
+        item.workspace_id == workspace.workspace_id for item in workspaces
+    ) else workspaces + (workspace,)
+
+
+def _upsert_energy_profile(
+    profiles: tuple[EnergyProfile, ...],
+    profile: EnergyProfile,
+) -> tuple[EnergyProfile, ...]:
+    return tuple(item if item.id != profile.id else profile for item in profiles) if any(
+        item.id == profile.id for item in profiles
+    ) else profiles + (profile,)
+
+
+def _collect_export_artifact_records(
+    state: _PlatformSessionState,
+) -> tuple[tuple[ExportArtifactRecord, ...], tuple[ShellArtifact, ...], tuple[dict[str, Any], ...]]:
+    records = state.export_artifact_records
+    runtime_artifacts: list[ShellArtifact] = []
+    warnings: list[dict[str, Any]] = []
+    project_path = state.session.project_path
+    assert project_path is not None
+
+    for artifact in state.artifacts:
+        converted = _project_artifact_record_candidate(project_path, artifact)
+        if isinstance(converted, ExportArtifactRecord):
+            records = _upsert_export_artifact_record(records, converted)
+            continue
+        runtime_artifacts.append(artifact)
+        warnings.append(converted)
+    return records, tuple(runtime_artifacts), tuple(warnings)
+
+
+def _project_artifact_record_candidate(
+    project_path: str,
+    artifact: ShellArtifact,
+) -> ExportArtifactRecord | dict[str, Any]:
+    if artifact.path is None:
+        return _artifact_record_warning(
+            artifact,
+            "artifact_not_persisted",
+            "Export artifact has no file path and was not added to the project artifact index.",
+            {"reason": "missing_path"},
+        )
+    if artifact.format not in ALLOWED_EXPORT_FORMATS:
+        return _artifact_record_warning(
+            artifact,
+            "artifact_not_persisted",
+            "Export artifact format is not supported by the project artifact index.",
+            {"reason": "unsupported_format", "format": artifact.format},
+        )
+
+    project_root = Path(project_path).resolve()
+    raw_path = Path(artifact.path)
+    artifact_path = (raw_path if raw_path.is_absolute() else project_root / raw_path).resolve()
+    try:
+        relative_path = artifact_path.relative_to(project_root)
+    except ValueError:
+        return _artifact_record_warning(
+            artifact,
+            "artifact_not_persisted",
+            "Export artifact path is outside the project and was not added to the project artifact index.",
+            {"reason": "outside_project", "path": str(artifact_path)},
+        )
+    if not relative_path.parts or relative_path.parts[0] != "exports":
+        return _artifact_record_warning(
+            artifact,
+            "artifact_not_persisted",
+            "Export artifact path is not under the project exports directory.",
+            {"reason": "outside_exports", "path": relative_path.as_posix()},
+        )
+    if not artifact_path.is_file():
+        return _artifact_record_warning(
+            artifact,
+            "artifact_not_persisted",
+            "Export artifact file does not exist and was not added to the project artifact index.",
+            {"reason": "missing_file", "path": relative_path.as_posix()},
+        )
+    try:
+        payload = artifact_path.read_bytes()
+    except OSError as exc:
+        return _artifact_record_warning(
+            artifact,
+            "artifact_not_persisted",
+            "Export artifact checksum could not be calculated.",
+            {"reason": "checksum_failed", "path": relative_path.as_posix(), "error": str(exc)},
+        )
+
+    metadata = _json_safe(dict(artifact.metadata))
+    assert isinstance(metadata, dict)
+    return ExportArtifactRecord(
+        id=artifact.id,
+        format=cast(ExportFormat, artifact.format),
+        path=relative_path.as_posix(),
+        checksum=f"sha256:{sha256(payload).hexdigest()}",
+        metadata=metadata,
+    )
+
+
+def _upsert_export_artifact_record(
+    records: tuple[ExportArtifactRecord, ...],
+    record: ExportArtifactRecord,
+) -> tuple[ExportArtifactRecord, ...]:
+    if not any(item.id == record.id or item.path == record.path for item in records):
+        return records + (record,)
+    return tuple(
+        record if item.id == record.id or item.path == record.path else item
+        for item in records
+    )
+
+
+def _artifact_record_warning(
+    artifact: ShellArtifact,
+    code: str,
+    message: str,
+    details: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "code": code,
+        "message": message,
+        "target": artifact.id,
+        "details": _json_safe(details),
+    }
+
+
+def _snapshot_from_session_state(state: _PlatformSessionState) -> ProjectContentSnapshot:
+    return ProjectContentSnapshot(
+        project_id=state.session.project_id or "",
+        chemical_objects=state.objects,
+        reaction_graphs=state.reaction_graphs,
+        workspaces=state.workspaces,
+        energy_profiles=state.energy_profiles,
+        import_batches=state.import_batches,
+        export_artifacts=state.export_artifact_records,
+    )
+
+
 def _tuple_of_str(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
@@ -783,6 +1244,7 @@ def _fixture_data(
     session: PlatformSession,
     value: CoreFixtureResult,
     artifacts: tuple[ShellArtifact, ...],
+    state: _PlatformSessionState,
 ) -> dict[str, Any]:
     return _response_data(
         command_name,
@@ -795,7 +1257,44 @@ def _fixture_data(
             "profile": _profile_summary(value.profile),
         },
         artifacts,
+        state=state,
     )
+
+
+def _restored_session_summary(
+    project: ProjectManifest,
+    snapshot: ProjectContentSnapshot,
+    state: _PlatformSessionState,
+) -> dict[str, Any]:
+    return {
+        "project": _project_summary(project),
+        "load_content": True,
+        "object_count": len(snapshot.chemical_objects),
+        "graph_count": len(snapshot.reaction_graphs),
+        "workspace_count": len(snapshot.workspaces),
+        "profile_count": len(snapshot.energy_profiles),
+        "artifact_count": len(snapshot.export_artifacts),
+        "import_batch_count": len(snapshot.import_batches),
+        "active_graph_id": state.session.graph_id,
+        "active_workspace_id": state.session.workspace_id,
+        "active_profile_id": state.session.profile_id,
+    }
+
+
+def _content_index_summary(index: ProjectContentIndex) -> dict[str, Any]:
+    return {
+        "schema_version": index.schema_version,
+        "project_id": index.project_id,
+        "file_count": len(index.files),
+        "files": [
+            {
+                "kind": file.kind,
+                "path": file.path,
+                "checksum": file.checksum,
+            }
+            for file in index.files
+        ],
+    }
 
 
 def _response_data(
@@ -803,7 +1302,10 @@ def _response_data(
     session: PlatformSession,
     payload: dict[str, Any],
     artifacts: tuple[ShellArtifact, ...] = (),
+    *,
+    state: _PlatformSessionState | None = None,
 ) -> dict[str, Any]:
+    content_counts = _session_content_counts(session, artifacts, state)
     data = {
         "command": command_name,
         "session_id": session.id,
@@ -811,11 +1313,36 @@ def _response_data(
         "workspace_id": session.workspace_id,
         "graph_id": session.graph_id,
         "profile_id": session.profile_id,
-        "object_count": len(session.object_ids),
-        "artifact_count": len(artifacts),
+        "object_count": content_counts["object_count"],
+        "graph_count": content_counts["graph_count"],
+        "workspace_count": content_counts["workspace_count"],
+        "profile_count": content_counts["profile_count"],
+        "artifact_count": content_counts["artifact_count"],
     }
     data.update(payload)
     return data
+
+
+def _session_content_counts(
+    session: PlatformSession,
+    artifacts: tuple[ShellArtifact, ...],
+    state: _PlatformSessionState | None,
+) -> dict[str, int]:
+    if state is None:
+        return {
+            "object_count": len(session.object_ids),
+            "graph_count": 1 if session.graph_id is not None else 0,
+            "workspace_count": 1 if session.workspace_id is not None else 0,
+            "profile_count": 1 if session.profile_id is not None else 0,
+            "artifact_count": len(artifacts) if artifacts else len(session.artifact_ids),
+        }
+    return {
+        "object_count": len(state.objects),
+        "graph_count": len(state.reaction_graphs),
+        "workspace_count": len(state.workspaces),
+        "profile_count": len(state.energy_profiles),
+        "artifact_count": len(state.export_artifact_records) + len(state.artifacts),
+    }
 
 
 def _project_summary(project: ProjectManifest) -> dict[str, Any]:

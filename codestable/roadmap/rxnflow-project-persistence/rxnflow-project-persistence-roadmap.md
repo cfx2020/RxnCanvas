@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-project-persistence
 status: active
 created: 2026-05-05
-last_reviewed: 2026-05-07
+last_reviewed: 2026-05-14
 tags: [rxnflow, persistence, project-store, browser-storage, project-bundle]
 related_requirements: [platform-shell-entry, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform]
@@ -403,7 +403,7 @@ type ExportArtifactRecord = {
 
 ```python
 ShellCommand("project.open", {"project_path": "...", "load_content": True})
-ShellCommand("project.save_content", {"project_path": "..."})
+ShellCommand("project.save_content", {"session_id": "..."})
 ShellCommand("project.export_bundle", {"project_path": "...", "destination_path": "..."})
 ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": "..."})
 ```
@@ -413,6 +413,8 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 - restore 只恢复已持久化内容，不重新 parse raw files，不重新计算 energy profile。
 - restore 后 ShellResponse 必须给出 object_count、graph_count、workspace_count、profile_count 和 artifact_count。
 - 缺失或损坏的 state 文件必须返回结构化 error/warnings，不得静默忽略。
+- save_content 基于进程内 session content collections 构造 ProjectContentSnapshot；CLI 当前不暴露 save-content。
+- runtime ShellArtifact 只有文件位于当前项目 `exports/` 下时才转成长期 ExportArtifactRecord；bytes-only 或项目外 artifact 只产生 warning。
 
 ## 5. 子 feature 清单
 
@@ -462,8 +464,8 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 8. **platform-shell-state-restore** — 让 CLI/agent 通过 project.open/save_content 恢复和保存持久化项目内容
    - 所属模块：Platform Restore
    - 依赖：`project-content-validation-migration`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-14-platform-shell-state-restore
 
 9. **project-bundle-import-export** — 支持 `.rxnflow.zip` 项目包导入/导出，用于本地备份和早期网页无云同步
    - 所属模块：Storage Backends

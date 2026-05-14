@@ -61,8 +61,8 @@ items:
   - slug: platform-shell-state-restore
     description: 让 CLI/agent 通过 project.open/save_content 恢复和保存持久化项目内容
     depends_on: [project-content-validation-migration]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-14-platform-shell-state-restore
     minimal_loop: false
     notes: null
 

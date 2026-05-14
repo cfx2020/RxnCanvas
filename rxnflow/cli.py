@@ -47,6 +47,14 @@ def _build_parser() -> argparse.ArgumentParser:
     project_load = project_subparsers.add_parser("load", help="Load a project manifest.")
     project_load.add_argument("--json", action="store_true", help="Emit JSON output.")
     project_load.add_argument("--project-path", required=True)
+    project_open = project_subparsers.add_parser("open", help="Open a project and restore saved content.")
+    project_open.add_argument("--json", action="store_true", help="Emit JSON output.")
+    project_open.add_argument("--project-path", required=True)
+    project_open.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="Open only the project manifest without loading saved project content.",
+    )
 
     import_command = subparsers.add_parser("import", help="Import commands.")
     import_subparsers = import_command.add_subparsers(dest="import_command")
@@ -78,6 +86,15 @@ def _command_from_args(args: argparse.Namespace) -> ShellCommand | None:
 
     if args.command == "project" and args.project_command == "load":
         return ShellCommand("project.load", {"project_path": args.project_path})
+
+    if args.command == "project" and args.project_command == "open":
+        return ShellCommand(
+            "project.open",
+            {
+                "project_path": args.project_path,
+                "load_content": not args.manifest_only,
+            },
+        )
 
     if args.command == "import" and args.import_command == "preview":
         command_args = {
