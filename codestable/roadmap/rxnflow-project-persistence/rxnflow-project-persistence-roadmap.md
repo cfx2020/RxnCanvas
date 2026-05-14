@@ -470,8 +470,8 @@ ShellCommand("project.import_bundle", {"bundle_path": "...", "destination_dir": 
 9. **project-bundle-import-export** — 支持 `.rxnflow.zip` 项目包导入/导出，用于本地备份和早期网页无云同步
    - 所属模块：Storage Backends
    - 依赖：`project-content-validation-migration`
-   - 状态：planned
-   - 对应 feature：未启动
+   - 状态：done
+   - 对应 feature：2026-05-14-project-bundle-import-export
 
 10. **browser-local-storage-adapter** — 规划并实现浏览器本地 IndexedDB / OPFS storage adapter 的核心协议测试替身，不引入云存储
     - 所属模块：Storage Backends

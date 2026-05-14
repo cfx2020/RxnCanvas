@@ -55,6 +55,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Open only the project manifest without loading saved project content.",
     )
+    project_export_bundle = project_subparsers.add_parser("export-bundle", help="Export a project .rxnflow.zip bundle.")
+    project_export_bundle.add_argument("--json", action="store_true", help="Emit JSON output.")
+    project_export_bundle.add_argument("--project-path", required=True)
+    project_export_bundle.add_argument("--destination-path", required=True)
+    project_import_bundle = project_subparsers.add_parser("import-bundle", help="Import a project .rxnflow.zip bundle.")
+    project_import_bundle.add_argument("--json", action="store_true", help="Emit JSON output.")
+    project_import_bundle.add_argument("--bundle-path", required=True)
+    project_import_bundle.add_argument("--destination-dir", required=True)
+    project_import_bundle.add_argument("--conflict-policy", default="fail-if-exists", choices=("fail-if-exists",))
 
     import_command = subparsers.add_parser("import", help="Import commands.")
     import_subparsers = import_command.add_subparsers(dest="import_command")
@@ -93,6 +102,25 @@ def _command_from_args(args: argparse.Namespace) -> ShellCommand | None:
             {
                 "project_path": args.project_path,
                 "load_content": not args.manifest_only,
+            },
+        )
+
+    if args.command == "project" and args.project_command == "export-bundle":
+        return ShellCommand(
+            "project.export_bundle",
+            {
+                "project_path": args.project_path,
+                "destination_path": args.destination_path,
+            },
+        )
+
+    if args.command == "project" and args.project_command == "import-bundle":
+        return ShellCommand(
+            "project.import_bundle",
+            {
+                "bundle_path": args.bundle_path,
+                "destination_dir": args.destination_dir,
+                "conflict_policy": args.conflict_policy.replace("-", "_"),
             },
         )
 

@@ -69,8 +69,8 @@ items:
   - slug: project-bundle-import-export
     description: 支持 .rxnflow.zip 项目包导入/导出，用于本地备份和早期网页无云同步
     depends_on: [project-content-validation-migration]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-14-project-bundle-import-export
     minimal_loop: false
     notes: null
 

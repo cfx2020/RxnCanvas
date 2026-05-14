@@ -38,6 +38,7 @@ from .models import (
 )
 from .parsers import ParseOptions, ParserRegistry
 from .project import ProjectStore
+from .project_bundle import ProjectBundleService, ProjectBundleSummary
 from .registry import ChemicalRegistry
 from .result import Result
 from .workspace import GraphEditorWorkspaceService, NodePlacement, WorkspaceSnapshot
@@ -119,9 +120,11 @@ class AppKernel:
         graph_service: ReactionGraphService | None = None,
         energy_engine: EnergyProfileEngine | None = None,
         export_service: ReportExportService | None = None,
+        bundle_service: ProjectBundleService | None = None,
     ) -> None:
         self.project_store = project_store or ProjectStore()
         self.content_store = content_store or ProjectContentStore()
+        self.bundle_service = bundle_service or ProjectBundleService(self.project_store, self.content_store)
         self.parser_registry = parser_registry or ParserRegistry.default()
         self.chemical_registry = chemical_registry or ChemicalRegistry()
         self.import_workflow = ImportRegistryWorkflow(
@@ -179,6 +182,10 @@ class PlatformShellService:
             return self._run_project_open(command)
         if command.name == "project.save_content":
             return self._run_project_save_content(command)
+        if command.name == "project.export_bundle":
+            return self._run_project_export_bundle(command)
+        if command.name == "project.import_bundle":
+            return self._run_project_import_bundle(command)
         if command.name == "import.preview":
             return self._run_import_preview(command)
         if command.name == "import.register_all":
@@ -463,6 +470,51 @@ class PlatformShellService:
                 state=saved_state,
             ),
             warnings=artifact_warnings,
+        )
+
+    def _run_project_export_bundle(self, command: ShellCommand) -> ShellResponse:
+        project_path = _required_str(command.args, "project_path")
+        if project_path is None:
+            return _invalid_input("Project path is required.", "project_path")
+        destination_path = _required_str(command.args, "destination_path")
+        if destination_path is None:
+            return _invalid_input("Bundle destination path is required.", "destination_path")
+
+        exported = self._kernel.bundle_service.export_bundle(project_path, destination_path)
+        if not exported.ok or exported.value is None:
+            return _result_error_response(exported)
+        return ShellResponse(
+            ok=True,
+            data={
+                "command": command.name,
+                "bundle": _bundle_summary(exported.value),
+            },
+            warnings=tuple(_warning_to_dict(warning) for warning in exported.warnings),
+        )
+
+    def _run_project_import_bundle(self, command: ShellCommand) -> ShellResponse:
+        bundle_path = _required_str(command.args, "bundle_path")
+        if bundle_path is None:
+            return _invalid_input("Bundle path is required.", "bundle_path")
+        destination_dir = _required_str(command.args, "destination_dir")
+        if destination_dir is None:
+            return _invalid_input("Bundle destination directory is required.", "destination_dir")
+        conflict_policy = str(command.args.get("conflict_policy") or "fail_if_exists")
+
+        imported = self._kernel.bundle_service.import_bundle(
+            bundle_path,
+            destination_dir,
+            conflict_policy=conflict_policy,
+        )
+        if not imported.ok or imported.value is None:
+            return _result_error_response(imported)
+        return ShellResponse(
+            ok=True,
+            data={
+                "command": command.name,
+                "bundle": _bundle_summary(imported.value),
+            },
+            warnings=tuple(_warning_to_dict(warning) for warning in imported.warnings),
         )
 
     def _run_import_preview(self, command: ShellCommand) -> ShellResponse:
@@ -1351,6 +1403,19 @@ def _project_summary(project: ProjectManifest) -> dict[str, Any]:
         "name": project.name,
         "schema_version": project.schema_version,
         "resource_count": len(project.resources),
+    }
+
+
+def _bundle_summary(bundle: ProjectBundleSummary) -> dict[str, Any]:
+    return {
+        "bundle_path": bundle.bundle_path,
+        "project_path": bundle.project_path,
+        "project_id": bundle.project_id,
+        "root_name": bundle.root_name,
+        "file_count": bundle.file_count,
+        "byte_size": bundle.byte_size,
+        "checksum": bundle.checksum,
+        "validation_summary": _json_safe(bundle.validation_summary),
     }
 
 

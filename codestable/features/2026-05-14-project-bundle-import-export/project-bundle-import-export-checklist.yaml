@@ -1,0 +1,124 @@
+feature: 2026-05-14-project-bundle-import-export
+created: 2026-05-14
+
+steps:
+  - action: "Bundle service noun layer：定义 ProjectBundleSummary、conflict policy、zip entry path validation 和 checksum summary"
+    exit_signal: "可独立 inspect 一个 zip，并对多 root、traversal、missing manifest 给出结构化错误"
+    status: done
+
+  - action: "Export orchestration：从 Project Directory 收集已知 roots，执行可选 content validation，写出 .rxnflow.zip"
+    exit_signal: "包含 manifest/state/raw/export 的项目能导出；无 content index 的 manifest-only 项目也能导出"
+    status: done
+
+  - action: "Import orchestration：验证 zip、临时解包、manifest/content validation、无覆盖落地"
+    exit_signal: "导出的 bundle 能导入到新目录，并能被 ProjectStore.load_project 和 ProjectContentStore.load_snapshot 读取"
+    status: done
+
+  - action: "Platform shell wiring：接入 AppKernel 和 shell commands"
+    exit_signal: "project.export_bundle / project.import_bundle 返回 JSON-safe summary 和 warnings"
+    status: done
+
+  - action: "CLI wiring and guards：增加 CLI 子命令，并补齐 scope guard"
+    exit_signal: "CLI 命令成功/失败 exit code 正确，且不引入 Web/cloud/desktop framework"
+    status: done
+
+checks:
+  - item: "ProjectBundleSummary 包含 bundle_path、project_path、project_id、root_name、file_count、byte_size、checksum 和 validation_summary"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectBundleService 暴露 export_bundle(project_path, destination_path) 和 import_bundle(bundle_path, destination_dir, conflict_policy)"
+    source: 名词契约
+    status: passed
+
+  - item: "conflict_policy 第一版只接受 fail_if_exists，其他值返回 invalid_input"
+    source: 名词契约
+    status: passed
+
+  - item: "Bundle 内部只有一个 top-level root，且要求 <root>/.rxnflow/manifest.json 存在"
+    source: 名词契约
+    status: passed
+
+  - item: "Bundle export 只包含 .rxnflow/、inputs/raw/、exports/ 三类已知项目内容"
+    source: 范围守护
+    status: passed
+
+  - item: "Bundle export 按项目相对 POSIX path 排序写入，并跳过 .DS_Store 等系统元数据"
+    source: 编排骨架
+    status: passed
+
+  - item: "Bundle export 先写临时 zip，再替换 destination_path"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Bundle export 返回最终 zip 的 sha256 checksum、file_count 和 byte_size"
+    source: 验收场景
+    status: passed
+
+  - item: "content index 存在时，export 在写最终 bundle 前调用 ProjectContentStore.validate_project"
+    source: 编排骨架
+    status: passed
+
+  - item: "content validation 有 error 时，export 返回 project_content_invalid，且不写出最终 bundle"
+    source: 验收场景
+    status: passed
+
+  - item: "manifest-only 项目可以导出和导入，响应中说明未执行深 content validation"
+    source: 验收场景
+    status: passed
+
+  - item: "Bundle import 先验证 zip entry path，再把 entry name 拼成本地路径"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Bundle import 拒绝 ../、绝对路径、反斜杠、空路径、多 top-level root、__MACOSX 和 root 外文件"
+    source: 验收场景
+    status: passed
+
+  - item: "Bundle import 缺少 <root>/.rxnflow/manifest.json 时返回 invalid_bundle"
+    source: 验收场景
+    status: passed
+
+  - item: "Bundle import 先解包到临时目录，通过 manifest/content validation 后再落到最终项目目录"
+    source: 编排骨架
+    status: passed
+
+  - item: "目标 <destination_dir>/<bundle-root> 已存在时，import 在 fail_if_exists 下失败且不覆盖"
+    source: 验收场景
+    status: passed
+
+  - item: "Bundle import 成功后不自动 open session，只返回 imported project summary"
+    source: 范围守护
+    status: passed
+
+  - item: "导出后再导入的项目可被 ProjectStore.load_project 读取"
+    source: 验收场景
+    status: passed
+
+  - item: "若原项目有 content index，导入项目可被 ProjectContentStore.load_snapshot 恢复项目内容"
+    source: 验收场景
+    status: passed
+
+  - item: "PlatformShellService 支持 project.export_bundle 和 project.import_bundle，响应可 JSON 序列化"
+    source: 编排骨架
+    status: passed
+
+  - item: "CLI project export-bundle / import-bundle 输出 JSON，成功 exit code 为 0，失败为非 0"
+    source: 验收场景
+    status: passed
+
+  - item: "Bundle export/import 不调用 parser、import confirm、energy compute 或 report export"
+    source: 跨层纪律
+    status: passed
+
+  - item: "本 feature 不新增 browser storage adapter、cloud adapter、auth、database、Web framework 或 desktop framework"
+    source: 范围守护
+    status: passed
+
+  - item: "本 feature 不实现 overwrite、rename、merge、diff、冲突合并或 CLI save-content"
+    source: 范围守护
+    status: passed
+
+  - item: "既有 Project Content、Platform Shell、CLI 和 Report Export 测试继续通过"
+    source: 验收场景
+    status: passed

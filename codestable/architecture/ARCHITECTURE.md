@@ -23,6 +23,10 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Validation Issue：单条 validation warning/error，包含 severity、code、message、target 和 JSON-safe details。
 - Migration Plan：Project Content schema migration 的显式计划结果；当前只支持 `project-content-v1 -> project-content-v1` no-op，未知 source/target 返回 unsupported issue，不做 silent migration。
 - Project Storage Backend：按项目相对 POSIX path 读写 bytes 的存储后端协议，当前落地本地文件系统 backend。
+- Project Bundle：`.rxnflow.zip` 项目包，内部只有一个 Bundle Root，用于本地备份和早期 Web 无云同步时的手动导入/导出。
+- Bundle Export：把本地 Project Directory 的 `.rxnflow/`、`inputs/raw/` 和 `exports/` 复制进 Project Bundle，不保存当前进程内 session。
+- Bundle Import：从 Project Bundle 安全解包成新的 Project Directory；第一版只支持 `fail_if_exists`，不覆盖、不合并、不自动改名。
+- Bundle Summary：bundle shell / CLI 返回的 JSON-safe 摘要，包含 bundle path、project path、project id、root name、file count、byte size、checksum 和 validation summary。
 - Graph / Workspace Section Codec：`reaction-graphs-v1` 和 `workspaces-v1` 的序列化、反序列化和引用校验边界。
 - Raw Output：外部计算程序产生的原始输出文件，例如 Gaussian log、ORCA output、MAPLE/ASE XYZ。
 - Raw File Resource：复制进 Project Directory 的原始输入文件索引项，manifest 只记录项目相对 path、sha256 checksum 和 metadata。
@@ -55,7 +59,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Energy Table：以结构名称为第一列的结构能量表，供 XLSX workbook 使用。
 - Energy Diagram Route：从 EnergyProfile 派生的导出中间结构，供 PNG energy plot 和 CDXML energy diagram 共用。
 - Platform Shell：端侧薄适配层，面向 CLI、Web adapter、桌面 bridge 或 agent，把输入参数转成核心服务调用并返回 JSON-safe 结果。
-- App Kernel：进程内服务装配层，集中创建 ProjectStore、ProjectContentStore、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
+- App Kernel：进程内服务装配层，集中创建 ProjectStore、ProjectContentStore、ProjectBundleService、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
 - Project Open：Platform Shell 命令 `project.open`；默认先校验 Project Content，再恢复 registry、import batches、reaction graphs、workspaces、energy profiles 和 export artifact records。`load_content=false` / CLI `--manifest-only` 只打开 manifest。
 - Save Content：Platform Shell 命令 `project.save_content`；把当前进程内 Platform Session 的 content collections 写回 ProjectContentStore，要求有效 `session_id` 和 session.project_path。
 - Restored Session Summary：`project.open` / `project.save_content` 返回给端侧的 JSON-safe 摘要，包含 object_count、graph_count、workspace_count、profile_count、artifact_count 和 active ids。
@@ -63,7 +67,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Shell Command：Platform Shell 接收的结构化命令，包含 command name 和 JSON-safe args。
 - Shell Response：Platform Shell 返回的统一 DTO，包含 ok、data、error、warnings 和 artifacts，必须可 JSON 序列化。
 - Shell Artifact：面向端侧的导出 artifact 投影，默认只包含 format、path 和 metadata；显式 include bytes 时使用 base64。
-- CLI Entry：当前标准库入口为 `python3 -m rxnflow.cli`，用于运行 fixture、project create/load/open 和 import preview 等最小命令。
+- CLI Entry：当前标准库入口为 `python3 -m rxnflow.cli`，用于运行 fixture、project create/load/open、project export-bundle/import-bundle 和 import preview 等最小命令。
 - Web Payload Adapter：当前为纯 Python dict adapter，把未来 Web/desktop bridge payload 转成 Shell Command，不创建真实 Web route。
 
 ## 3. 子系统 / 模块索引
@@ -78,7 +82,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、Project Bundle 导入/导出、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
 
 ## 4. 关键架构决定
 
@@ -129,17 +133,21 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - PNG/XLSX writer 依赖 Pillow / XlsxWriter，但依赖在 adapter 内延迟 import，缺失时返回 `export_failed`。
 - ExportArtifactRecord 与运行时 ExportArtifact 分离；长期索引只保存项目相对 path、format、checksum、metadata 和 created_at，不保存 ExportArtifact.bytes 或运行时绝对 path。
 - `export-artifacts-v1` 的 record.path 第一版必须位于 `exports/` 下；checksum 必须是 `sha256:<64 hex>`。section codec 只做 shape 校验；Project Content Validation 会读取 artifact file bytes 复算 checksum。
+- Project Bundle 当前通过 `rxnflow.project_bundle` 提供 ProjectBundleService 和 ProjectBundleSummary；它只复制项目文件，不解析 raw files、不恢复 session、不重新计算或导出报告。
+- Bundle export 只打包 `.rxnflow/`、`inputs/raw/` 和 `exports/`，跳过 `.DS_Store` 等系统元数据；如果 `.rxnflow/state/project-content.json` 存在，导出前必须通过 Project Content Validation。
+- Bundle import 先校验 zip entry 安全性和唯一 Bundle Root，再临时解包、加载 manifest、按需 validation，最后在目标目录中无覆盖落地。
 - Platform Shell 当前通过 `rxnflow.platform` 提供 ShellCommand、ShellResponse、ShellArtifact、PlatformSession、AppKernel、PlatformShellService 和 handle_platform_payload。
-- AppKernel 只做核心服务装配，不复制 parser、registry、graph、energy 或 export 的业务逻辑。
-- PlatformShellService 当前支持 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile` 命令。
+- AppKernel 只做核心服务装配，不复制 parser、registry、graph、energy、export 或 bundle 复制逻辑。
+- PlatformShellService 当前支持 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile` 命令。
 - ShellResponse 是端侧 JSON 投影边界；dataclass、Path、tuple 和 bytes 不直接穿过该边界。
 - ShellArtifact 默认不内联二进制；显式 `include_bytes=True` 时使用 base64 并在 metadata 中记录 encoding。
 - `project.open(load_content=True)` 先调用 ProjectContentStore.validate_project；validation error 返回 `project_content_invalid`，不做部分恢复；validation 通过后再 load_snapshot 并依次恢复 objects、import batches、reaction graphs 和 workspaces，energy profiles/export artifact records 存入 session。
 - `project.open(load_content=False)` 和 `project.load` 都保持 manifest-only session，不读取 Project Content。
 - `project.save_content` 基于当前进程内 session 构造 ProjectContentSnapshot 并写回 ProjectContentStore；CLI 当前不暴露 save-content，因为 CLI 是一次性进程，没有跨命令 session。
 - Platform Shell restore/save 不重新 parse raw files、不确认 import、不重新计算 energy profile、不重新导出 report；runtime ShellArtifact 只有路径位于当前项目 `exports/` 下时才转换为长期 ExportArtifactRecord，其余情况作为 warning 保留。
+- `project.export_bundle` / `project.import_bundle` 是项目包传输入口，不创建或复用 PlatformSession；import 成功后调用方需要显式 `project.open` 才能恢复运行态内容。
 - Platform Session 只在进程内有效；跨进程内容恢复依赖 ProjectContentStore 和各核心服务 restore API，不由 PlatformSession 自身持久化。
-- CLI 当前通过 `python3 -m rxnflow.cli` 暴露标准库 argparse 入口，错误命令返回非 0 exit code；CLI project open 支持默认恢复内容和 `--manifest-only`。
+- CLI 当前通过 `python3 -m rxnflow.cli` 暴露标准库 argparse 入口，错误命令返回非 0 exit code；CLI project open 支持默认恢复内容和 `--manifest-only`，CLI project export-bundle/import-bundle 支持 JSON 摘要。
 - Web Payload Adapter 当前只接收/返回 dict，不引入 Web framework、route、server、worker、桌面窗口或打包入口。
 - Project Content Store 当前通过 `rxnflow.content_store` 提供 ProjectContentIndex、ProjectContentFile、ProjectContentSnapshot、ProjectContentValidationIssue、ProjectContentValidationReport、ProjectContentMigrationPlan、ProjectStorageBackend、LocalProjectStorageBackend、ProjectContentValidator 和 ProjectContentStore。
 - Project Content Store 当前写入 `.rxnflow/state/project-content.json`、`chemical-objects.json`、`reaction-graphs.json`、`workspaces.json`、`energy-profiles.json`、`import-ledger.json` 和 `export-artifacts.json`；其中 `chemical-objects.json` 使用 `chemical-objects-v1` 长期 codec 保存真实 ChemicalObject、provenance、registry fingerprint 和 append-only corrections，`reaction-graphs.json` 使用 `reaction-graphs-v1` 长期 codec 保存真实 ReactionGraph/ReactionPath，`workspaces.json` 使用 `workspaces-v1` 长期 codec 保存 workspace-only 状态，`import-ledger.json` 使用 `import-ledger-v1` 保存 ImportBatch/ImportItem/ParsePreview 状态，`energy-profiles.json` 使用 `energy-profiles-v1` 保存已计算 EnergyProfile、EnergyOptions、EnergyPoint 和 warnings，`export-artifacts.json` 使用 `export-artifacts-v1` 保存 ExportArtifactRecord 索引。

@@ -726,8 +726,6 @@ class PlatformShellBaselineTest(unittest.TestCase):
         self.assertNotIn("ProjectResource(", sources)
         self.assertNotIn("GraphPatch", sources)
         self.assertNotIn("CSV", sources.upper())
-        self.assertNotIn("project.export_bundle", sources)
-        self.assertNotIn("project.import_bundle", sources)
         cli_source = Path("rxnflow/cli.py").read_text(encoding="utf-8").lower()
         self.assertNotIn("save-content", cli_source)
         self.assertNotIn("save_content", cli_source)
