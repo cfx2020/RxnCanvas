@@ -24,6 +24,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Migration Plan：Project Content schema migration 的显式计划结果；当前只支持 `project-content-v1 -> project-content-v1` no-op，未知 source/target 返回 unsupported issue，不做 silent migration。
 - Project Storage Backend：按项目相对 POSIX path 读写 bytes 的存储后端协议，当前落地本地文件系统 backend 和浏览器本地测试替身。
 - Browser Local Storage Backend：面向 IndexedDB / OPFS 方向的 `ProjectStorageBackend` 核心协议测试替身，使用 opaque origin-local project key 隔离项目，不提供云同步。
+- Browser Project Repository：未来 Web 端真实本地项目仓储，负责保存项目 refs、raw files、exports 和 bundle IO；当前只在 Web runtime boundary 文档中定义职责，不等同于 Python 测试替身。
 - Project Bundle：`.rxnflow.zip` 项目包，内部只有一个 Bundle Root，用于本地备份和早期 Web 无云同步时的手动导入/导出。
 - Bundle Export：把本地 Project Directory 的 `.rxnflow/`、`inputs/raw/` 和 `exports/` 复制进 Project Bundle，不保存当前进程内 session。
 - Bundle Import：从 Project Bundle 安全解包成新的 Project Directory；第一版只支持 `fail_if_exists`，不覆盖、不合并、不自动改名。
@@ -76,6 +77,12 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Shell Artifact：面向端侧的导出 artifact 投影，默认只包含 format、path 和 metadata；显式 include bytes 时使用 base64。
 - CLI Entry：当前标准库入口为 `python3 -m rxnflow.cli`，用于运行 fixture、project create/load/open、project export-bundle/import-bundle 和 import preview 等最小命令。
 - Web Payload Adapter：当前为纯 Python dict adapter，把未来 Web/desktop bridge payload 转成 Shell Command，不创建真实 Web route。
+- Web Runtime Boundary：已确认的 Web MVP 运行时分工，要求浏览器 UI 只经 Shell Client / Shell Payload 调用 Python core，项目内容第一版由 Browser Project Repository 和 `.rxnflow.zip` bundle 承担。
+- Web Workbench App Shell：当前位于 `web/` 的 React + TypeScript + Vite 浏览器工作台壳层，提供三栏工作台第一屏、local-only indicator、fixture command 和基础状态投影。
+- Frontend ShellClient：Web 前端统一命令客户端，接收 JSON-safe `ShellCommandPayload`，调用 `ShellTransport`，返回规范化 `ShellResponse`；当前只接 `in-process-test` fixture transport。
+- Shell Transport：Web Shell Client 到 core runtime 的可替换通道，规划为 `in-process-test`、`local-python-bridge`、`http-api`；当前前端代码只落地 `in-process-test`，未来 transport 仍需独立 feature。
+- WorkbenchShellState：Web app shell 从 `ShellResponse` 派生的最小 UI 可读投影，当前保存 command status、session/project/graph/profile summary、counts、warnings 和 error，不复制核心领域模型。
+- Stateless Python API：Vercel/http-api 方向的候选执行层，只能作为无状态 command executor，不作为长期项目存储、跨请求 session authority 或持久 filesystem。
 
 ## 3. 子系统 / 模块索引
 
@@ -89,11 +96,15 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、Project Bundle 导入/导出、Browser Local Storage Backend 核心协议测试替身、首批 Parser Plugins、parser fixture harness、parser support matrix diagnostics、parser corpus developer guide、import preview parser regression、MAPLE、Gaussian/ORCA cclib 与 XYZ/extxyz synthetic fixture coverage、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、Project Bundle 导入/导出、Browser Local Storage Backend 核心协议测试替身、首批 Parser Plugins、parser fixture harness、parser support matrix diagnostics、parser corpus developer guide、import preview parser regression、MAPLE、Gaussian/ORCA cclib 与 XYZ/extxyz synthetic fixture coverage、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX 基线导出、Platform Shell/App Kernel/CLI/payload adapter 基线，以及 Web runtime boundary developer guide / payload POC。
+- [Web Workbench](web-workbench.md)：`web/` React + TypeScript + Vite app shell、Frontend ShellClient、FixtureTransport、WorkbenchShellState、三栏工作台布局和浏览器验证边界。
 
 ## 4. 关键架构决定
 
 - 核心领域模型先以 UI/平台无关的 Python dataclass 落地；后续端侧壳层不得复制核心业务逻辑。
+- Web MVP 当前采用 local-first browser workbench 边界：浏览器本地项目仓储和 `.rxnflow.zip` bundle 是第一版项目内容 authority，Python core 只通过 Shell Command / Shell Response 边界暴露能力。
+- Vercel/http-api 只能作为无状态 command executor 候选；serverless filesystem、跨请求 session 或 HTTP API 不得被当成长期项目存储。
+- Web app shell 当前采用 client-heavy React + TypeScript + Vite + npm；若后续改用 Next.js 或其他框架，也不得让 App Router / Server Components 成为领域状态 authority。
 - 最小核心链路采用 `Result<T>` 风格返回成功/错误，跨模块错误不得静默吞掉。
 - Project Store 当前使用 `.rxnflow/manifest.json` 保存 `project-v1` manifest，raw file 副本放在 `inputs/raw/`。
 - Project Manifest 中的 resource path 必须是项目相对 POSIX 路径，不保存用户源文件绝对路径。
@@ -160,6 +171,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Platform Session 只在进程内有效；跨进程内容恢复依赖 ProjectContentStore 和各核心服务 restore API，不由 PlatformSession 自身持久化。
 - CLI 当前通过 `python3 -m rxnflow.cli` 暴露标准库 argparse 入口，错误命令返回非 0 exit code；CLI project open 支持默认恢复内容和 `--manifest-only`，CLI project export-bundle/import-bundle 支持 JSON 摘要。
 - Web Payload Adapter 当前只接收/返回 dict，不引入 Web framework、route、server、worker、桌面窗口或打包入口。
+- Web Runtime Boundary 当前通过 `docs/dev/web-runtime-boundary.md` 和 `tests/test_web_runtime_boundary.py` 落地；它确认 Shell Payload POC 可 JSON 序列化，并记录 local-first、browser project repository、stateless http-api 和 transport 边界。真实 Web app shell 由独立 Web Workbench 模块承载；HTTP route 和 Browser Project Repository adapter 仍未实现。
 - Project Content Store 当前通过 `rxnflow.content_store` 提供 ProjectContentIndex、ProjectContentFile、ProjectContentSnapshot、ProjectContentValidationIssue、ProjectContentValidationReport、ProjectContentMigrationPlan、ProjectStorageBackend、LocalProjectStorageBackend、ProjectContentValidator 和 ProjectContentStore。
 - Project Content Store 当前写入 `.rxnflow/state/project-content.json`、`chemical-objects.json`、`reaction-graphs.json`、`workspaces.json`、`energy-profiles.json`、`import-ledger.json` 和 `export-artifacts.json`；其中 `chemical-objects.json` 使用 `chemical-objects-v1` 长期 codec 保存真实 ChemicalObject、provenance、registry fingerprint 和 append-only corrections，`reaction-graphs.json` 使用 `reaction-graphs-v1` 长期 codec 保存真实 ReactionGraph/ReactionPath，`workspaces.json` 使用 `workspaces-v1` 长期 codec 保存 workspace-only 状态，`import-ledger.json` 使用 `import-ledger-v1` 保存 ImportBatch/ImportItem/ParsePreview 状态，`energy-profiles.json` 使用 `energy-profiles-v1` 保存已计算 EnergyProfile、EnergyOptions、EnergyPoint 和 warnings，`export-artifacts.json` 使用 `export-artifacts-v1` 保存 ExportArtifactRecord 索引。
 - Project Content Store 不修改 `.rxnflow/manifest.json` schema，不登记 ProjectResource，不读取或解析 `inputs/raw/`。
@@ -177,4 +189,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - 原始计算输出由外部程序生成，RxnFlow 不负责计算任务调度本身。
 - 初始导出格式优先支持 PNG、ChemDraw/CDXML 与能量 Excel 表格。
 - 设计上需要避免单一前端或单一桌面端绑定，核心领域逻辑应尽量和平台壳层解耦。
+- Web 端不得直接复制 parser、registry、reaction graph、energy 或 export 领域逻辑；必须通过 Shell Client / Shell Response 投影调用核心能力。
+- Web Workbench 当前三栏工作台结构用于承载后续 panel，但视觉风格、组件库、配色和密度尚未冻结。
+- Web MVP 第一版不购买或绑定云存储；账号、跨设备同步、冲突合并和多人协作不属于当前 Web Workbench MVP 边界。
 - 待补：支持的计算程序版本、解析容错策略、单位体系与能量基准约定。

@@ -1,0 +1,91 @@
+roadmap: rxnflow-web-workbench-mvp
+created: 2026-05-16
+
+items:
+  - slug: web-runtime-boundary-decision
+    description: 确认 Web MVP 的运行时边界，给出 local dev、Vercel/http-api、browser local storage 的职责分配，并跑一个 shell command POC
+    depends_on: []
+    status: done
+    feature: 2026-05-16-web-runtime-boundary-decision
+    minimal_loop: false
+    notes: 技术栈和 runtime 边界必须用户确认后再进入真实 UI scaffold
+
+  - slug: web-app-shell-client
+    description: 建立 Web app skeleton、ShellClient DTO、基础工作台布局和 fixture/mock command 调用闭环
+    depends_on: [web-runtime-boundary-decision]
+    status: done
+    feature: 2026-05-16-web-app-shell-client
+    minimal_loop: true
+    notes: 最小可演示闭环；第一屏是工作台，不做营销页
+
+  - slug: web-workbench-state-projections
+    description: 补 Web 工作台需要的 read-only state projection，必要时新增 workbench.snapshot shell command，前端不从 UI 反推领域状态
+    depends_on: [web-app-shell-client]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 优先补 projection，不让前端组件直接拼领域对象
+
+  - slug: web-local-project-repository
+    description: 实现真实浏览器本地项目仓储，映射 Project Content logical path、raw files、exports 和 project refs
+    depends_on: [web-app-shell-client]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: local-only，不承诺云同步；参考现有 BrowserLocalProjectStorageBackend 测试替身
+
+  - slug: web-project-sidebar
+    description: 实现项目侧边栏，新建、打开、保存、bundle import/export 和 local-only / validation 状态展示
+    depends_on: [web-workbench-state-projections, web-local-project-repository]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不引入账号或云存储
+
+  - slug: web-import-inbox
+    description: 实现导入面板，支持文件选择、批量 preview、warnings/errors 展示和确认登记
+    depends_on: [web-project-sidebar]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 浏览器 File bytes 到 parser preview 的桥接方式由 runtime boundary feature 决定
+
+  - slug: web-object-registry-panel
+    description: 实现对象面板，展示已登记 ChemicalObject、energy keys、provenance、warnings 和校正项入口
+    depends_on: [web-import-inbox]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 校正项写入继续走核心 registry/shell 边界
+
+  - slug: web-graph-canvas-mvp
+    description: 实现图谱画布 MVP，支持添加节点、连线、设置 active path、selection、viewport 和 network preview
+    depends_on: [web-object-registry-panel]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 必须浏览器验证桌面和窄屏；不把领域 graph 写死在组件内部
+
+  - slug: web-energy-profile-panel
+    description: 实现能量面板，调用 energy.compute 并显示相对能量表、missing reason、warnings 和基础曲线
+    depends_on: [web-graph-canvas-mvp]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不改 Energy Engine 算法
+
+  - slug: web-report-export-panel
+    description: 实现导出面板，调用 export.profile，处理 PNG/CDXML/XLSX artifacts、下载和 exports 索引展示
+    depends_on: [web-energy-profile-panel]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: Web 下载优先使用 bytes_base64 或 BrowserProjectRepository 中的 exports 对象
+
+  - slug: web-workbench-e2e-qa
+    description: 补 Playwright / browser QA，覆盖桌面/窄屏、导入、图谱编辑、能量计算、导出和视觉重叠检查
+    depends_on: [web-report-export-panel]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 画布、表格、曲线和导出预览必须实际浏览器验证

@@ -4,14 +4,14 @@ slug: core-platform
 status: current
 created: 2026-05-02
 last_reviewed: 2026-05-16
-tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, parser-fixture-harness, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
+tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
 ---
 
 # Core Platform
 
 ## 1. 当前能力
 
-RxnFlow 当前已经落地十三类核心能力。
+RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界上补充了 Web runtime boundary 开发者文档和 payload POC。
 
 第一类是内置 fixture 的最小核心链路：
 
@@ -98,6 +98,7 @@ RxnFlow 当前已经落地十三类核心能力。
 3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile`。
 4. 通过 `python3 -m rxnflow.cli` 提供标准库 CLI 入口，支持 fixture、project create/load/open、project export-bundle/import-bundle 和 import preview 的 JSON 输出与错误 exit code；CLI project open 支持默认恢复 content 和 `--manifest-only`。
 5. 通过 handle_platform_payload 提供纯 Python dict adapter，供未来 Web route 或 desktop bridge 复用。
+6. 通过 `docs/dev/web-runtime-boundary.md` 记录 Web MVP 的 local-first browser workbench、Shell Client、Browser Project Repository、local bridge 和 stateless http-api 职责边界，并通过 `tests/test_web_runtime_boundary.py` 验证 payload POC 的成功/错误 JSON-safe response。
 
 第十一类是 Project Content Store：
 
@@ -133,7 +134,7 @@ RxnFlow 当前已经落地十三类核心能力。
 5. list_objects 支持 exact file 和 prefix subtree 语义，并按 POSIX path 稳定排序。
 6. 支持 quota_bytes 模拟浏览器本地空间不足；超限返回 storage_quota_exceeded，失败写入不部分覆盖已有对象。
 
-这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Project Bundle 只复制项目文件作为本地备份/手动同步包，不替代 live storage、不自动保存当前 session、不恢复运行态；Browser Local Storage Backend 是核心协议测试替身，不是真实 JavaScript IndexedDB / OPFS adapter、云同步或可靠备份；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Parser Fixture Harness 只存在于测试边界，当前覆盖 synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib、synthetic ORCA cclib、standard XYZ、ASE extxyz 和 bad XYZ expected-error 样例，并通过 `support-matrix.yaml` 记录 fixture-backed 字段状态、known limits、diagnostic catalog 和 MAPLE reference-only artifacts；它不进入 `rxnflow.parsers` runtime API，不调用 Project Store、Import Workflow、Chemical Registry、Reaction Graph、Energy Engine 或 Report Export；Parser Corpus Developer Guide 只记录维护 fixture corpus 的开发者/agent 流程，不新增 runtime API、fixture 或用户可见导入能力；Import Preview Parser Regression 也只存在于测试边界，用 fixture corpus 验证 Import Workflow / Platform Shell 的 preview 投影保真，不确认导入、不登记 ChemicalObject、不新增 runtime API；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑，`project.open`/`project.save_content` 只是恢复和保存运行态服务状态的壳层编排，`project.export_bundle`/`project.import_bundle` 只是项目包传输编排。
+Core Platform 本身仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。独立 `web/` Web Workbench app shell 已经存在，但它通过前端 ShellClient / FixtureTransport 消费 ShellResponse 投影，不属于 Python core，也不改变 core runtime 规则。Web runtime boundary 当前确认第一版职责分工：浏览器本地项目仓储和 `.rxnflow.zip` bundle 承担项目内容 authority，Python core 通过 Shell Command / Shell Response 暴露能力，Vercel/http-api 只可作为无状态 command executor 候选。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Project Bundle 只复制项目文件作为本地备份/手动同步包，不替代 live storage、不自动保存当前 session、不恢复运行态；Browser Local Storage Backend 是核心协议测试替身，不是真实 JavaScript IndexedDB / OPFS adapter、云同步或可靠备份；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Parser Fixture Harness 只存在于测试边界，当前覆盖 synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib、synthetic ORCA cclib、standard XYZ、ASE extxyz 和 bad XYZ expected-error 样例，并通过 `support-matrix.yaml` 记录 fixture-backed 字段状态、known limits、diagnostic catalog 和 MAPLE reference-only artifacts；它不进入 `rxnflow.parsers` runtime API，不调用 Project Store、Import Workflow、Chemical Registry、Reaction Graph、Energy Engine 或 Report Export；Parser Corpus Developer Guide 只记录维护 fixture corpus 的开发者/agent 流程，不新增 runtime API、fixture 或用户可见导入能力；Import Preview Parser Regression 也只存在于测试边界，用 fixture corpus 验证 Import Workflow / Platform Shell 的 preview 投影保真，不确认导入、不登记 ChemicalObject、不新增 runtime API；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑，`project.open`/`project.save_content` 只是恢复和保存运行态服务状态的壳层编排，`project.export_bundle`/`project.import_bundle` 只是项目包传输编排。
 
 ## 2. 模块与职责
 
@@ -474,6 +475,8 @@ Platform Shell 当前使用以下稳定协议：
 - CLI 入口：`python3 -m rxnflow.cli`
 - artifact bytes 策略：默认不内联 bytes；`include_bytes=True` 时 ShellArtifact 使用 base64 字符串并记录 `metadata.encoding = "base64"`
 - JSON 投影边界：response dict 不包含 dataclass、Path、tuple 或 bytes
+- Web runtime boundary：Web UI 只通过 Shell Client / Shell Payload 调用 core；当前 `web/` app shell 只落地 `in-process-test` fixture transport，`local-python-bridge` 和 `http-api` 仍需独立 feature
+- http-api 边界：Vercel/serverless 方向只能执行无状态 command 或有限 parse/export/compute 请求，不作为长期 project storage、跨请求 session authority 或持久 filesystem
 
 Project Content Store 当前使用以下稳定协议：
 
@@ -621,12 +624,14 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - Project Content Validation 不自动修复或重写 project-content index、section JSON、manifest、raw files 或 export files，不删除 orphan files，不重新 parse raw files、不重新 register objects、不重新 compute profile、不重新 export reports。
 - Project Content Store 当前保存/加载 ChemicalObject、ReactionGraph、WorkspaceSnapshot、ImportBatch/ParsePreview、EnergyProfile 和 ExportArtifact index 长期 sections。
 - BrowserLocalProjectStorageBackend 不保存到磁盘、不提供跨浏览器/跨设备同步、不新增 Platform Shell/CLI/Web route/桌面入口，也不调用 parser/import/registry/graph/energy/export/bundle 服务。
+- Browser Project Repository 当前未实现真实 JS/TS adapter；Web MVP 第一版的项目内容 authority 由未来浏览器本地仓储和 `.rxnflow.zip` bundle 共同承担，不由 serverless filesystem 承担。
 - ProjectBundleService 只复制项目文件，不解析 raw file、不登记 ChemicalObject、不确认 import、不计算 EnergyProfile、不调用 ReportExportService、不保存当前 PlatformSession。
 - ProjectBundleService export 只打包 `.rxnflow/`、`inputs/raw/` 和 `exports/`，不打包项目根 notes、临时脚本或其他散落文件。
 - ProjectBundleService import 不覆盖、不自动改名、不 merge、不做冲突合并；第一版只支持 `fail_if_exists`。
 - Project Bundle 不是云同步，也不是浏览器本地存储 adapter；早期 Web 可把它作为用户手动备份/同步路径。
 - `rxnflow.cli` 当前不新增 packaging console script、Windows exe、Linux packaging、macOS app 或桌面启动入口。
 - handle_platform_payload 当前不新增 Next.js、React、Vercel Functions、FastAPI、Flask、Django、真实 Web route、server 或 worker。
+- Web Workbench app shell 当前位于独立 `web/` 工程；Core Platform 和 Web runtime boundary 不创建 HTTP route、cloud SDK、账号系统或 Browser Project Repository adapter。
 - Platform Shell 当前不新增 UI 组件、文件选择器、拖拽、canvas、窗口管理、报告预览、账号权限、云同步或后台任务队列。
 - GraphPatch 不包含 UI 状态，不负责自动布局、拖拽、缩放或选中态。
 - transition_state 节点只表达用户/上游对象语义，不判断虚频或结构特征。

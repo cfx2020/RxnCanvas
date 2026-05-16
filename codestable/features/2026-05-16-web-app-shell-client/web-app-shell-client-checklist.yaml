@@ -1,0 +1,108 @@
+feature: 2026-05-16-web-app-shell-client
+created: 2026-05-16
+
+steps:
+  - action: "前端工程骨架：创建 web/ package、Vite/TypeScript/React 基础配置和 npm scripts"
+    exit_signal: "npm install 后 npm run build 能产出静态 build"
+    status: done
+
+  - action: "Shell DTO 与 Fixture Transport：落地 TypeScript shell contracts、ShellClient、fixture response 和 unknown command 错误路径"
+    exit_signal: "前端单测覆盖 fixture.run 成功、未知 command invalid_input 和 JSON-safe payload"
+    status: done
+
+  - action: "Workbench Shell Layout：实现第一屏工作台布局、local-only indicator、command status、summary panel 和后续面板占位"
+    exit_signal: "浏览器打开后直接看到可操作工作台，点击 fixture command 会更新 UI state"
+    status: done
+
+  - action: "前端测试与范围守护：补 component/unit tests，确认没有 Python core 复制、没有 cloud/auth/http/server dependencies"
+    exit_signal: "前端 test/build 通过，scope grep 无方案外依赖"
+    status: done
+
+  - action: "浏览器验证：启动本地 dev server，用浏览器检查桌面和窄屏布局"
+    exit_signal: "桌面/窄屏无文本和控件重叠，第一屏不是 landing/hero"
+    status: done
+
+  - action: "收口：校验 CodeStable YAML、Python 单元测试和 git diff 范围，准备 acceptance 回写 architecture / requirement / roadmap"
+    exit_signal: "实现证据足以支撑验收报告"
+    status: done
+
+checks:
+  - item: "web/package.json 存在，并包含 build/test/dev scripts"
+    source: 验收场景
+    status: passed
+
+  - item: "web/ app 使用 React + TypeScript + Vite + npm，且不修改 Python core package 边界"
+    source: 验收场景
+    status: passed
+
+  - item: "ShellCommandPayload、ShellResponse、ShellArtifact 等 DTO 在 TypeScript 中有稳定定义"
+    source: 名词契约
+    status: passed
+
+  - item: "ShellClient.run({ command: \"fixture.run\", args: {} }) 通过 fixture transport 返回 ok=true"
+    source: 验收场景
+    status: passed
+
+  - item: "未知 command 通过 fixture transport 返回 ok=false 且 error.code 为 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "fixture response 可投影为 WorkbenchShellState，UI 展示 session/profile/object/artifact summary"
+    source: 名词契约
+    status: passed
+
+  - item: "App 首屏是工作台布局，不是 landing page、hero 页面或营销式介绍页"
+    source: 验收场景
+    status: passed
+
+  - item: "UI 显示 local-only 状态，但不承诺云同步"
+    source: 跨层纪律
+    status: passed
+
+  - item: "用户点击 fixture command 后，command status 从 idle/running 更新到 success 或 error"
+    source: 编排骨架
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "前端测试通过"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover 继续通过"
+    source: 验收场景
+    status: passed
+
+  - item: "浏览器桌面 viewport 验证布局可用、无明显重叠"
+    source: 验收场景
+    status: passed
+
+  - item: "浏览器窄屏 viewport 验证布局可用、无明显重叠"
+    source: 验收场景
+    status: passed
+
+  - item: "不出现 FastAPI、Flask、Django、Vercel route、Express server 或 real HTTP API implementation"
+    source: 范围守护
+    status: passed
+
+  - item: "不出现 Supabase、S3、R2、Vercel Blob、Firebase、Auth0、Clerk 或其他账号/云存储 SDK"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 IndexedDB / OPFS Browser Project Repository 实现"
+    source: 范围守护
+    status: passed
+
+  - item: "不在 Web component 内复制 parser、registry、reaction graph、energy 或 export 领域算法"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增真实导入、图谱编辑、能量计算或导出功能入口"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 rxnflow/parsers、rxnflow/registry.py、rxnflow/graph.py、rxnflow/energy.py、rxnflow/export.py 的领域行为"
+    source: 范围守护
+    status: passed

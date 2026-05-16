@@ -45,15 +45,19 @@
 - 涉及前端视觉、画布交互、图谱编辑或报告预览的改动，必须在浏览器或目标端里验证。
 - 画布、表格、曲线和导出预览必须检查桌面与窄屏布局，避免文字和控件重叠。
 - 图谱编辑器类界面优先服务高频编辑和信息扫描，不做营销式落地页布局。
+- Web 工作台开发预览必须从 `web/` 目录运行 `npm run dev`，再打开 `http://127.0.0.1:5173/`；不要直接用 `file://.../web/index.html` 预览 Vite/React 源码入口。
 
 ## 常用验证命令
 
 - 运行当前 Python 单元测试：`python3 -m unittest discover`
+- 运行 Web 工作台开发服务：`cd web && npm run dev`
+- 运行 Web 前端测试：`cd web && npm run test`
+- 运行 Web 前端构建：`cd web && npm run build`
 - 校验 CodeStable YAML：`python3 codestable/tools/validate-yaml.py --file <path> --yaml-only`
 
 ## 已知待决策
 
-- 主技术栈与包管理方式。
+- 长期主技术栈与包管理方式；当前 Web app shell 已采用 React + TypeScript + Vite + npm。
 - 化学对象与反应图谱的持久化格式。
 - 多端共享核心的语言/runtime 边界。
 - 首批支持的计算输出格式版本与解析容错策略。
