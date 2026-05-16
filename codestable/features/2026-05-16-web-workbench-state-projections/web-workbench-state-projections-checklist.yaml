@@ -1,0 +1,120 @@
+feature: 2026-05-16-web-workbench-state-projections
+created: 2026-05-16
+
+steps:
+  - action: "Platform Snapshot Contract：在 Platform Shell 增加 workbench.snapshot 只读 command 和 JSON-safe projection helper"
+    exit_signal: "Python 测试可从 fixture/project-open/import/workspace/energy/export session 读取 snapshot，并断言核心 counts / active ids / summaries 正确"
+    status: done
+
+  - action: "Read-only Scope Guard：补 missing session、manifest-only session 和 read-only 纪律测试"
+    exit_signal: "测试证明 snapshot 不创建 session、不保存项目、不调用 parser/import register/energy/export"
+    status: done
+
+  - action: "Frontend Domain Projection Types：新增 WorkbenchSnapshotData、WorkbenchDomainState、WorkbenchUiState 和 projector"
+    exit_signal: "前端单测能把 fixture snapshot 和 error response 投影成稳定 UI state"
+    status: done
+
+  - action: "Fixture Transport Integration：让 fixture transport 支持 workbench.snapshot，并让 WorkbenchShell 从统一 domain state 渲染"
+    exit_signal: "点击 fixture command 后 UI 通过 snapshot/projector 展示 project/object/profile summary"
+    status: done
+
+  - action: "Frontend / Browser Validation：前端 test/build 通过，浏览器桌面和窄屏复核现有 shell 不回退"
+    exit_signal: "npm run test、npm run build、浏览器 1280/390 viewport 验证通过"
+    status: done
+
+  - action: "收口：Python unittest、scope grep、CodeStable YAML、git diff 范围检查"
+    exit_signal: "实现证据足以进入 acceptance"
+    status: done
+
+checks:
+  - item: "PlatformShellService.run(ShellCommand(\"workbench.snapshot\", {\"session_id\": ...})) 对 fixture session 返回 ok=true"
+    source: 验收场景
+    status: passed
+
+  - item: "snapshot response 可 JSON 序列化，且包含 command、session_id、project_id、active ids、counts、objects、workspace、profile、artifacts、warnings"
+    source: 验收场景
+    status: passed
+
+  - item: "workbench.snapshot 缺少或不存在 session_id 时返回 ok=false，error.code 为 invalid_input，target 为 session_id"
+    source: 验收场景
+    status: passed
+
+  - item: "project.open(load_content=True) 后调用 workbench.snapshot 能看到 restored object/graph/workspace/profile/artifact/import counts"
+    source: 验收场景
+    status: passed
+
+  - item: "manifest-only session 的 snapshot 返回项目/session 基本信息，content counts 为 0"
+    source: 验收场景
+    status: passed
+
+  - item: "import preview / register / workspace open / energy compute / export 后调用 snapshot，projection 与当前 session state 一致"
+    source: 验收场景
+    status: passed
+
+  - item: "snapshot 不重新 parse raw files、不确认 import、不重新计算 energy、不导出报告、不保存 Project Content"
+    source: 跨层纪律
+    status: passed
+
+  - item: "TypeScript 中存在 WorkbenchSnapshotData / WorkbenchDomainState / WorkbenchUiState 或等价稳定类型"
+    source: 名词契约
+    status: passed
+
+  - item: "Web projector 能把 successful snapshot response 投影为 UI 可读 domain state"
+    source: 名词契约
+    status: passed
+
+  - item: "Web projector 能保留 ShellError / ShellWarning，错误 code 在 UI 中可见"
+    source: 错误语义
+    status: passed
+
+  - item: "fixture transport 支持 workbench.snapshot，unknown command 仍返回 invalid_input"
+    source: 编排骨架
+    status: passed
+
+  - item: "WorkbenchShell 首屏仍是工作台，不变成 landing/hero"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "浏览器桌面 viewport 验证布局可用、无明显重叠"
+    source: 验收场景
+    status: passed
+
+  - item: "浏览器窄屏 viewport 验证布局可用、无明显重叠"
+    source: 验收场景
+    status: passed
+
+  - item: "不新增真实 HTTP API、Vercel route、FastAPI、Flask、Django、Express server 或 local-python bridge"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 Supabase、S3、R2、Vercel Blob、Firebase、Auth0、Clerk 或其他账号/云存储 SDK"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 IndexedDB / OPFS Browser Project Repository 实现"
+    source: 范围守护
+    status: passed
+
+  - item: "不实现真实文件导入 UI、object drag/drop、graph canvas editing、energy curve 或 report export panel"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 parser、registry、reaction graph、energy engine 或 report export 的核心算法"
+    source: 范围守护
+    status: passed
+
+  - item: "不改变 Project Content schema 或持久化 codec"
+    source: 范围守护
+    status: passed

@@ -78,10 +78,12 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - CLI Entry：当前标准库入口为 `python3 -m rxnflow.cli`，用于运行 fixture、project create/load/open、project export-bundle/import-bundle 和 import preview 等最小命令。
 - Web Payload Adapter：当前为纯 Python dict adapter，把未来 Web/desktop bridge payload 转成 Shell Command，不创建真实 Web route。
 - Web Runtime Boundary：已确认的 Web MVP 运行时分工，要求浏览器 UI 只经 Shell Client / Shell Payload 调用 Python core，项目内容第一版由 Browser Project Repository 和 `.rxnflow.zip` bundle 承担。
+- Workbench Snapshot：Platform Shell 命令 `workbench.snapshot` 返回的只读工作台状态投影，汇总当前 session 的 project、active ids、counts、objects、imports、workspace、profile、artifacts 和 warnings；它不保存 Project Content，也不重新执行 parse/import/energy/export。
 - Web Workbench App Shell：当前位于 `web/` 的 React + TypeScript + Vite 浏览器工作台壳层，提供三栏工作台第一屏、local-only indicator、fixture command 和基础状态投影。
 - Frontend ShellClient：Web 前端统一命令客户端，接收 JSON-safe `ShellCommandPayload`，调用 `ShellTransport`，返回规范化 `ShellResponse`；当前只接 `in-process-test` fixture transport。
 - Shell Transport：Web Shell Client 到 core runtime 的可替换通道，规划为 `in-process-test`、`local-python-bridge`、`http-api`；当前前端代码只落地 `in-process-test`，未来 transport 仍需独立 feature。
-- WorkbenchShellState：Web app shell 从 `ShellResponse` 派生的最小 UI 可读投影，当前保存 command status、session/project/graph/profile summary、counts、warnings 和 error，不复制核心领域模型。
+- WorkbenchDomainState：Web app shell 从 Workbench Snapshot 派生的 UI 可读业务状态，当前保存 command status、session/project/active ids、objects/imports/workspace/profile/artifact summaries、counts、warnings 和 error，不复制核心领域模型。
+- WorkbenchUiState：Web app shell 的 UI-only 状态，例如 active panel、selection、viewport 和 pending command ids；它不进入 ShellResponse，也不替代 WorkspaceSnapshot。
 - Stateless Python API：Vercel/http-api 方向的候选执行层，只能作为无状态 command executor，不作为长期项目存储、跨请求 session authority 或持久 filesystem。
 
 ## 3. 子系统 / 模块索引
@@ -97,7 +99,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 当前已落地模块：
 
 - [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、Project Bundle 导入/导出、Browser Local Storage Backend 核心协议测试替身、首批 Parser Plugins、parser fixture harness、parser support matrix diagnostics、parser corpus developer guide、import preview parser regression、MAPLE、Gaussian/ORCA cclib 与 XYZ/extxyz synthetic fixture coverage、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX 基线导出、Platform Shell/App Kernel/CLI/payload adapter 基线，以及 Web runtime boundary developer guide / payload POC。
-- [Web Workbench](web-workbench.md)：`web/` React + TypeScript + Vite app shell、Frontend ShellClient、FixtureTransport、WorkbenchShellState、三栏工作台布局和浏览器验证边界。
+- [Web Workbench](web-workbench.md)：`web/` React + TypeScript + Vite app shell、Frontend ShellClient、FixtureTransport、Workbench Snapshot DTO、WorkbenchDomainState、WorkbenchUiState、三栏工作台布局和浏览器验证边界。
 
 ## 4. 关键架构决定
 

@@ -21,8 +21,8 @@ items:
   - slug: web-workbench-state-projections
     description: 补 Web 工作台需要的 read-only state projection，必要时新增 workbench.snapshot shell command，前端不从 UI 反推领域状态
     depends_on: [web-app-shell-client]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-16-web-workbench-state-projections
     minimal_loop: false
     notes: 优先补 projection，不让前端组件直接拼领域对象
 

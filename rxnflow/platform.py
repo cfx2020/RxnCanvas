@@ -202,6 +202,8 @@ class PlatformShellService:
             return self._run_energy_compute(command)
         if command.name == "export.profile":
             return self._run_export_profile(command)
+        if command.name == "workbench.snapshot":
+            return self._run_workbench_snapshot(command)
         return _invalid_input(f"Unknown shell command: {command.name}", "command")
 
     def _run_fixture(self, command: ShellCommand) -> ShellResponse:
@@ -849,6 +851,23 @@ class PlatformShellService:
             artifacts=artifacts,
         )
 
+    def _run_workbench_snapshot(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        warnings = _workbench_warnings(state)
+        return ShellResponse(
+            ok=True,
+            data=_response_data(
+                command.name,
+                state.session,
+                _workbench_snapshot_payload(self._kernel, state, warnings),
+                state=state,
+            ),
+            warnings=warnings,
+        )
+
     def _store_workspace(
         self,
         command_name: str,
@@ -1373,6 +1392,89 @@ def _response_data(
     }
     data.update(payload)
     return data
+
+
+def _workbench_snapshot_payload(
+    kernel: AppKernel,
+    state: _PlatformSessionState,
+    warnings: tuple[dict[str, Any], ...],
+) -> dict[str, Any]:
+    content_counts = _session_content_counts(state.session, state.artifacts, state)
+    return {
+        "project_path": state.session.project_path,
+        "project": _project_summary_from_state(kernel, state),
+        "active": {
+            "workspace_id": state.session.workspace_id,
+            "graph_id": state.session.graph_id,
+            "profile_id": state.session.profile_id,
+        },
+        "counts": {
+            "objects": content_counts["object_count"],
+            "imports": len(state.import_batches),
+            "graphs": content_counts["graph_count"],
+            "workspaces": content_counts["workspace_count"],
+            "profiles": content_counts["profile_count"],
+            "artifacts": content_counts["artifact_count"],
+        },
+        "objects": [_object_summary(obj) for obj in state.objects],
+        "imports": [_import_batch_summary(batch) for batch in state.import_batches],
+        "workspace": _workspace_summary(state.workspace) if state.workspace is not None else None,
+        "profile": _profile_summary(state.profile) if state.profile is not None else None,
+        "artifacts": _workbench_artifact_summaries(state),
+        "warnings": list(warnings),
+    }
+
+
+def _project_summary_from_state(
+    kernel: AppKernel,
+    state: _PlatformSessionState,
+) -> dict[str, Any] | None:
+    if state.session.project_path is not None:
+        loaded = kernel.project_store.load_project(state.session.project_path)
+        if loaded.ok and loaded.value is not None:
+            return _project_summary(loaded.value)
+    if state.session.project_id is None:
+        return None
+    return {
+        "id": state.session.project_id,
+        "name": None,
+        "schema_version": None,
+        "resource_count": 0,
+    }
+
+
+def _workbench_artifact_summaries(state: _PlatformSessionState) -> list[dict[str, Any]]:
+    runtime_artifacts = [
+        {
+            "id": artifact.id,
+            "format": artifact.format,
+            "path": artifact.path,
+            "bytes_base64": None,
+            "metadata": _json_safe(artifact.metadata),
+            "persisted": False,
+            "has_inline_bytes": artifact.bytes_base64 is not None,
+        }
+        for artifact in state.artifacts
+    ]
+    persisted_artifacts = [
+        {
+            "id": artifact.id,
+            "format": artifact.format,
+            "path": artifact.path,
+            "checksum": artifact.checksum,
+            "metadata": _json_safe(artifact.metadata),
+            "persisted": True,
+            "has_inline_bytes": False,
+        }
+        for artifact in state.export_artifact_records
+    ]
+    return runtime_artifacts + persisted_artifacts
+
+
+def _workbench_warnings(state: _PlatformSessionState) -> tuple[dict[str, Any], ...]:
+    if state.workspace is None:
+        return ()
+    return tuple(_warning_to_dict(warning) for warning in state.workspace.preview.warnings)
 
 
 def _session_content_counts(

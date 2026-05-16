@@ -2,9 +2,11 @@ import { useCallback, useState, type ReactNode } from "react"
 import { AlertTriangle, Boxes, CircleDot, FlaskConical, Network, Play } from "lucide-react"
 import type { FixtureRunData, ShellClient } from "../shell"
 import {
-  initialWorkbenchShellState,
-  projectFixtureResponse,
-  type WorkbenchShellState,
+  initialWorkbenchDomainState,
+  projectWorkbenchSnapshot,
+  type CommandStatus,
+  type WorkbenchDomainState,
+  type WorkbenchSnapshotData,
 } from "./workbenchState"
 
 type WorkbenchShellProps = {
@@ -12,17 +14,37 @@ type WorkbenchShellProps = {
 }
 
 export function WorkbenchShell({ shellClient }: WorkbenchShellProps) {
-  const [workbenchState, setWorkbenchState] = useState<WorkbenchShellState>(
-    initialWorkbenchShellState,
+  const [workbenchState, setWorkbenchState] = useState<WorkbenchDomainState>(
+    initialWorkbenchDomainState,
   )
 
   const runFixture = useCallback(async () => {
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
-    const response = await shellClient.run<FixtureRunData>({
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
       command: "fixture.run",
       args: {},
     })
-    setWorkbenchState(projectFixtureResponse(response))
+    if (!fixtureResponse.ok || !fixtureResponse.data) {
+      setWorkbenchState({
+        ...initialWorkbenchDomainState,
+        status: "error",
+        warnings: fixtureResponse.warnings,
+        error: fixtureResponse.error ?? {
+          code: "invalid_input",
+          message: "Shell command did not return fixture data.",
+          target: "fixture.run",
+        },
+      })
+      return
+    }
+
+    const snapshotResponse = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: {
+        session_id: fixtureResponse.data.session_id,
+      },
+    })
+    setWorkbenchState(projectWorkbenchSnapshot(snapshotResponse))
   }, [shellClient])
 
   const runInvalidCommand = useCallback(async () => {
@@ -32,7 +54,7 @@ export function WorkbenchShell({ shellClient }: WorkbenchShellProps) {
       args: {},
     })
     setWorkbenchState({
-      ...initialWorkbenchShellState,
+      ...initialWorkbenchDomainState,
       status: "error",
       warnings: response.warnings,
       error: response.error ?? undefined,
@@ -71,7 +93,7 @@ export function WorkbenchShell({ shellClient }: WorkbenchShellProps) {
 }
 
 type StateProps = {
-  state: WorkbenchShellState
+  state: WorkbenchDomainState
 }
 
 function ProjectRail({ state }: StateProps) {
@@ -79,14 +101,14 @@ function ProjectRail({ state }: StateProps) {
     <aside className="project-rail" aria-label="Project and object summary">
       <section className="rail-section">
         <p className="section-kicker">Project</p>
-        <h2>{state.projectName ?? "No project loaded"}</h2>
-        <p className="muted">{state.projectId ?? "No shell session"}</p>
+        <h2>{state.project?.name ?? "No project loaded"}</h2>
+        <p className="muted">{state.project?.id ?? state.sessionId ?? "No shell session"}</p>
       </section>
 
       <section className="rail-section metric-stack" aria-label="Object summary">
-        <Metric icon={<Boxes size={18} />} label="Objects" value={state.objectCount} />
-        <Metric icon={<Network size={18} />} label="Graph" value={state.graphId ? 1 : 0} />
-        <Metric icon={<FlaskConical size={18} />} label="Profile points" value={state.profilePointCount} />
+        <Metric icon={<Boxes size={18} />} label="Objects" value={state.counts.objects} />
+        <Metric icon={<Network size={18} />} label="Graph" value={state.counts.graphs} />
+        <Metric icon={<FlaskConical size={18} />} label="Profile points" value={state.profile?.point_count ?? 0} />
       </section>
     </aside>
   )
@@ -100,7 +122,7 @@ function GraphWorkspaceFrame({ state }: StateProps) {
       <div className="workspace-toolbar">
         <div>
           <p className="section-kicker">Graph workspace</p>
-          <h2>{state.graphId ?? "Awaiting shell response"}</h2>
+          <h2>{state.active.graphId ?? "Awaiting shell response"}</h2>
         </div>
         <span>{state.sessionId ?? "No session"}</span>
       </div>
@@ -121,7 +143,7 @@ function GraphWorkspaceFrame({ state }: StateProps) {
 }
 
 type InspectorPanelProps = {
-  state: WorkbenchShellState
+  state: WorkbenchDomainState
   onRunFixture: () => void
   onRunInvalidCommand: () => void
 }
@@ -144,10 +166,10 @@ function InspectorPanel({ state, onRunFixture, onRunInvalidCommand }: InspectorP
 
       <section className="inspector-section">
         <p className="section-kicker">Energy profile</p>
-        <h2>{state.profileId ?? "No profile"}</h2>
+        <h2>{state.profile?.id ?? "No profile"}</h2>
         <p className="muted">
-          {state.profilePointCount > 0
-            ? `${state.profilePointCount} profile points`
+          {(state.profile?.point_count ?? 0) > 0
+            ? `${state.profile?.point_count} profile points`
             : "Awaiting shell projection"}
         </p>
       </section>
@@ -173,7 +195,7 @@ function CommandStatusPanel({ state }: StateProps) {
   return (
     <div className="status-box">
       <strong>{statusLabel(state.status)}</strong>
-      <span>{state.artifactCount} artifacts indexed</span>
+      <span>{state.counts.artifacts} artifacts indexed</span>
     </div>
   )
 }
@@ -194,7 +216,7 @@ function Metric({ icon, label, value }: MetricProps) {
   )
 }
 
-function statusLabel(status: WorkbenchShellState["status"]): string {
+function statusLabel(status: CommandStatus): string {
   if (status === "running") return "Running"
   if (status === "success") return "Ready"
   if (status === "error") return "Error"

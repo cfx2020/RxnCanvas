@@ -91,6 +91,21 @@ class PlatformShellBaselineTest(unittest.TestCase):
         self.assertEqual([graph.id for graph in state.reaction_graphs], ["graph-a-b"])
         self.assertEqual([profile.id for profile in state.energy_profiles], ["profile-a-b-electronic"])
 
+        snapshot = PlatformShellService(kernel).run(
+            ShellCommand("workbench.snapshot", {"session_id": payload["data"]["session_id"]})
+        )
+        self.assertTrue(snapshot.ok, snapshot.error)
+        snapshot_payload = snapshot.to_dict()
+        json.dumps(snapshot_payload)
+        self.assertEqual(snapshot_payload["data"]["command"], "workbench.snapshot")
+        self.assertEqual(snapshot_payload["data"]["project_id"], "project-fixture-minimal-reaction")
+        self.assertEqual(snapshot_payload["data"]["counts"]["objects"], 2)
+        self.assertEqual(snapshot_payload["data"]["counts"]["graphs"], 1)
+        self.assertEqual(snapshot_payload["data"]["counts"]["profiles"], 1)
+        self.assertEqual(snapshot_payload["data"]["active"]["graph_id"], "graph-a-b")
+        self.assertEqual(snapshot_payload["data"]["objects"][0]["id"], "object-a")
+        self.assertEqual(snapshot_payload["data"]["profile"]["id"], "profile-a-b-electronic")
+
     def test_project_commands_and_fixture_export_artifacts(self) -> None:
         service = PlatformShellService(AppKernel())
 
@@ -255,6 +270,21 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertEqual(len(workspaces.value), 2)  # type: ignore[arg-type]
             self.assertEqual(batches.value, ())
 
+            snapshot_response = PlatformShellService(kernel).run(
+                ShellCommand("workbench.snapshot", {"session_id": payload["data"]["session_id"]})
+            )
+            self.assertTrue(snapshot_response.ok, snapshot_response.error)
+            snapshot_payload = snapshot_response.to_dict()
+            json.dumps(snapshot_payload)
+            self.assertEqual(snapshot_payload["data"]["project"]["name"], "fixture-minimal-reaction")
+            self.assertEqual(snapshot_payload["data"]["counts"]["objects"], 2)
+            self.assertEqual(snapshot_payload["data"]["counts"]["graphs"], 2)
+            self.assertEqual(snapshot_payload["data"]["counts"]["workspaces"], 2)
+            self.assertEqual(snapshot_payload["data"]["counts"]["profiles"], 2)
+            self.assertEqual(snapshot_payload["data"]["counts"]["artifacts"], 1)
+            self.assertEqual(snapshot_payload["data"]["active"]["workspace_id"], "workspace-graph-a-b")
+            self.assertEqual(snapshot_payload["data"]["artifacts"][0]["persisted"], True)
+
             saved_content = PlatformShellService(kernel).run(
                 ShellCommand("project.save_content", {"session_id": payload["data"]["session_id"]})
             )
@@ -324,6 +354,48 @@ class PlatformShellBaselineTest(unittest.TestCase):
         self.assertFalse(missing_path.ok)
         self.assertEqual(missing_path.error["target"], "project_path")  # type: ignore[index]
 
+    def test_workbench_snapshot_missing_session_and_manifest_only_session(self) -> None:
+        kernel = AppKernel()
+        service = PlatformShellService(kernel)
+
+        missing_arg = service.run(ShellCommand("workbench.snapshot"))
+        self.assertFalse(missing_arg.ok)
+        self.assertEqual(missing_arg.error["code"], "invalid_input")  # type: ignore[index]
+        self.assertEqual(missing_arg.error["target"], "session_id")  # type: ignore[index]
+        self.assertEqual(kernel._sessions, {})  # pylint: disable=protected-access
+
+        missing_session = service.run(
+            ShellCommand("workbench.snapshot", {"session_id": "missing-session"})
+        )
+        self.assertFalse(missing_session.ok)
+        self.assertEqual(missing_session.error["code"], "invalid_input")  # type: ignore[index]
+        self.assertEqual(missing_session.error["target"], "session_id")  # type: ignore[index]
+        self.assertEqual(kernel._sessions, {})  # pylint: disable=protected-access
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "demo"
+            created = service.run(
+                ShellCommand("project.create", {"name": "demo", "location": str(project_path)})
+            )
+            self.assertTrue(created.ok, created.error)
+            session_id = created.to_dict()["data"]["session_id"]
+
+            snapshot = service.run(ShellCommand("workbench.snapshot", {"session_id": session_id}))
+            self.assertTrue(snapshot.ok, snapshot.error)
+            payload = snapshot.to_dict()
+            json.dumps(payload)
+            self.assertEqual(payload["data"]["project"]["name"], "demo")
+            self.assertEqual(payload["data"]["project_path"], str(project_path))
+            self.assertEqual(payload["data"]["counts"]["objects"], 0)
+            self.assertEqual(payload["data"]["counts"]["imports"], 0)
+            self.assertEqual(payload["data"]["counts"]["graphs"], 0)
+            self.assertEqual(payload["data"]["counts"]["workspaces"], 0)
+            self.assertEqual(payload["data"]["counts"]["profiles"], 0)
+            self.assertEqual(payload["data"]["counts"]["artifacts"], 0)
+            self.assertIsNone(payload["data"]["active"]["workspace_id"])
+            self.assertIsNone(payload["data"]["workspace"])
+            self.assertIsNone(payload["data"]["profile"])
+
     def test_project_open_and_save_do_not_recompute_or_reexport(self) -> None:
         fixture = run_core_fixture_vertical_slice()
         self.assertTrue(fixture.ok, fixture.error)
@@ -347,6 +419,10 @@ class PlatformShellBaselineTest(unittest.TestCase):
 
             opened = service.run(ShellCommand("project.open", {"project_path": str(project_path)}))
             self.assertTrue(opened.ok, opened.error)
+            snapshot = service.run(
+                ShellCommand("workbench.snapshot", {"session_id": opened.to_dict()["data"]["session_id"]})
+            )
+            self.assertTrue(snapshot.ok, snapshot.error)
             save = service.run(
                 ShellCommand("project.save_content", {"session_id": opened.to_dict()["data"]["session_id"]})
             )
@@ -507,6 +583,26 @@ class PlatformShellBaselineTest(unittest.TestCase):
                 )
             )
             self.assertTrue(outside_export.ok, outside_export.error)
+
+            snapshot = service.run(ShellCommand("workbench.snapshot", {"session_id": session_id}))
+            self.assertTrue(snapshot.ok, snapshot.error)
+            snapshot_payload = snapshot.to_dict()
+            json.dumps(snapshot_payload)
+            self.assertEqual(snapshot_payload["data"]["project"]["name"], "demo")
+            self.assertEqual(snapshot_payload["data"]["counts"]["objects"], 1)
+            self.assertEqual(snapshot_payload["data"]["counts"]["imports"], 1)
+            self.assertEqual(snapshot_payload["data"]["counts"]["graphs"], 1)
+            self.assertEqual(snapshot_payload["data"]["counts"]["workspaces"], 1)
+            self.assertEqual(snapshot_payload["data"]["counts"]["profiles"], 1)
+            self.assertEqual(snapshot_payload["data"]["counts"]["artifacts"], 3)
+            self.assertEqual(len(snapshot_payload["data"]["imports"]), 1)
+            self.assertEqual(len(snapshot_payload["data"]["workspace"]["graph"]["nodes"]), 2)
+            self.assertEqual(snapshot_payload["data"]["profile"]["point_count"], 2)
+            self.assertEqual(
+                [artifact["format"] for artifact in snapshot_payload["data"]["artifacts"]],
+                ["cdxml", "png", "xlsx"],
+            )
+            self.assertFalse(snapshot_payload["data"]["artifacts"][0]["persisted"])
 
             saved_content = service.run(ShellCommand("project.save_content", {"session_id": session_id}))
             self.assertTrue(saved_content.ok, saved_content.error)

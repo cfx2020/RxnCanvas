@@ -95,10 +95,11 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 
 1. 通过 ShellCommand、ShellResponse、ShellArtifact 和 PlatformSession 定义端侧 JSON-safe 命令协议。
 2. 通过 AppKernel 集中装配 ProjectStore、ProjectContentStore、ProjectBundleService、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
-3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile`。
+3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute`、`export.profile` 和 `workbench.snapshot`。
 4. 通过 `python3 -m rxnflow.cli` 提供标准库 CLI 入口，支持 fixture、project create/load/open、project export-bundle/import-bundle 和 import preview 的 JSON 输出与错误 exit code；CLI project open 支持默认恢复 content 和 `--manifest-only`。
 5. 通过 handle_platform_payload 提供纯 Python dict adapter，供未来 Web route 或 desktop bridge 复用。
-6. 通过 `docs/dev/web-runtime-boundary.md` 记录 Web MVP 的 local-first browser workbench、Shell Client、Browser Project Repository、local bridge 和 stateless http-api 职责边界，并通过 `tests/test_web_runtime_boundary.py` 验证 payload POC 的成功/错误 JSON-safe response。
+6. 通过 `workbench.snapshot` 提供当前 Platform Session 的只读 Workbench Snapshot，汇总 project/session active ids、counts、objects、import batches、active workspace、active profile、runtime artifacts、persisted export artifact records 和 warnings；该命令不创建 session、不保存项目、不重新 parse/import/register/compute/export。
+7. 通过 `docs/dev/web-runtime-boundary.md` 记录 Web MVP 的 local-first browser workbench、Shell Client、Browser Project Repository、local bridge 和 stateless http-api 职责边界，并通过 `tests/test_web_runtime_boundary.py` 验证 payload POC 的成功/错误 JSON-safe response。
 
 第十一类是 Project Content Store：
 
@@ -218,6 +219,7 @@ ReportExportService
 PlatformShellService
 ├── run(ShellCommand)
 ├── fixture/project/import/workspace/energy/export command handlers
+├── workbench.snapshot read-only session projection
 ├── project.open validation-gated restore
 ├── project.save_content session snapshot save
 ├── project.export_bundle/project.import_bundle bundle transfer
@@ -473,6 +475,7 @@ Platform Shell 当前使用以下稳定协议：
 - PlatformShellService 入口：`run(command)`
 - Web/desktop bridge 入口：`handle_platform_payload(payload: dict) -> dict`
 - CLI 入口：`python3 -m rxnflow.cli`
+- Workbench Snapshot：`workbench.snapshot(session_id)` 返回当前 session 的只读 project/object/import/workspace/profile/artifact summary，不保存或重算任何核心状态
 - artifact bytes 策略：默认不内联 bytes；`include_bytes=True` 时 ShellArtifact 使用 base64 字符串并记录 `metadata.encoding = "base64"`
 - JSON 投影边界：response dict 不包含 dataclass、Path、tuple 或 bytes
 - Web runtime boundary：Web UI 只通过 Shell Client / Shell Payload 调用 core；当前 `web/` app shell 只落地 `in-process-test` fixture transport，`local-python-bridge` 和 `http-api` 仍需独立 feature
@@ -504,6 +507,7 @@ Project Content Store 当前使用以下稳定协议：
 - Platform manifest-only workflow：`project.load` 和 `project.open(load_content=False)` 只创建 manifest-only session，object/graph/workspace/profile/artifact counts 均为 0，不访问 Project Content
 - Platform save workflow：`project.save_content(session_id)` 从当前 session content collections 构造 ProjectContentSnapshot 并调用 ProjectContentStore.save_snapshot；session 缺失或没有 project_path 返回结构化 `invalid_input`
 - Platform artifact record workflow：`project.save_content` 会把运行时 ShellArtifact 中位于当前项目 `exports/...` 下的文件转为 ExportArtifactRecord，记录项目相对 path 和 sha256；bytes-only、项目外路径、缺文件或 checksum 读取失败只产生 warning，不阻断 save
+- Platform workbench snapshot workflow：`workbench.snapshot(session_id)` 只解析已存在的 `_PlatformSessionState`，返回 active ids、content counts、project summary、object/import/workspace/profile/artifact summaries 和 workspace warnings；缺少或不存在 `session_id` 返回 `invalid_input`，且不创建 session
 - CLI project open workflow：`python3 -m rxnflow.cli project open --json --project-path <path>` 默认恢复 content；`--manifest-only` 只打开 manifest；CLI 不提供 project save-content，因为 CLI 进程内 session 无法跨命令复用
 
 Project Bundle 使用以下稳定协议：
@@ -588,7 +592,7 @@ GraphEditorWorkspaceService 的 graph edit 操作失败时不更新 workspace gr
 
 EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返回的 EnergyProfile.options 会记录实际 baseline node、energy key、output unit 和 correction inclusion。
 
-PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空命令、未知命令和 shell 层参数缺失统一返回 `invalid_input`。Project Bundle validation error 以 `project_content_invalid` 或 `invalid_bundle` 投影。CLI 对 `ok=False` 返回非 0 exit code。
+PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空命令、未知命令和 shell 层参数缺失统一返回 `invalid_input`。`workbench.snapshot` 的缺失或不存在 session 也统一返回 `invalid_input`，不自动创建 session。Project Bundle validation error 以 `project_content_invalid` 或 `invalid_bundle` 投影。CLI 对 `ok=False` 返回非 0 exit code。
 
 ## 5. 约束与边界
 
@@ -616,6 +620,7 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - ReportExportService 当前不从 3D geometry 自动推断 bonds，不生成 molecule-level CDXML，不生成 generic reaction scheme CDXML，不生成 CDX。
 - ReportExportService 当前不实现 PDF、PPTX、SVG、CSV、JSON、SDF、MOL 或批量目录导出。
 - PlatformShellService 可以调用 ProjectStore、ProjectBundleService、ImportRegistryWorkflow、ChemicalRegistry、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService；它不复制 parser 字段映射、registry fingerprint、GraphPatch 语义、energy 计算规则、export writer 能力或 bundle zip 复制逻辑。
+- `workbench.snapshot` 只是 PlatformShellService 的只读投影命令，不调用 ParserRegistry、ImportRegistryWorkflow.confirm_import、ReactionGraphService.apply_patch、EnergyProfileEngine.compute_profile、ReportExportService.export 或 ProjectContentStore.save_snapshot。
 - AppKernel 只做进程内装配，不是数据库、全局单例或跨进程持久化层。
 - PlatformSession 只保存进程内可观察状态，不写 `.rxnflow/manifest.json`，也不新增 ProjectResource 来持久化 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 内容。
 - Project Content Store 不修改 `.rxnflow/manifest.json`，不新增 ProjectResource，不读取、复制、删除或解析 `inputs/raw/` 文件。

@@ -1,56 +1,112 @@
-import type { FixtureRunData, ShellError, ShellResponse, ShellWarning } from "../shell"
+import type {
+  EnergyProfileSummary,
+  ImportBatchSummary,
+  ObjectSummary,
+  ProjectSummary,
+  ShellError,
+  ShellResponse,
+  ShellWarning,
+  WorkbenchArtifactSummary,
+  WorkbenchCounts,
+  WorkbenchSnapshotData,
+  WorkspaceSummary,
+} from "../shell"
 
 export type CommandStatus = "idle" | "running" | "success" | "error"
 
-export type WorkbenchShellState = {
+export type {
+  EnergyProfileSummary,
+  ImportBatchSummary,
+  ObjectSummary,
+  ProjectSummary,
+  WorkbenchArtifactSummary,
+  WorkbenchCounts,
+  WorkbenchSnapshotData,
+  WorkspaceSummary,
+} from "../shell"
+
+export type WorkbenchDomainState = {
   status: CommandStatus
   sessionId?: string
-  projectId?: string
-  projectName?: string
-  graphId?: string
-  profileId?: string
-  profilePointCount: number
-  objectCount: number
-  artifactCount: number
+  project?: ProjectSummary
+  projectPath?: string
+  active: {
+    workspaceId?: string
+    graphId?: string
+    profileId?: string
+  }
+  counts: WorkbenchCounts
+  objects: ObjectSummary[]
+  imports: ImportBatchSummary[]
+  workspace?: WorkspaceSummary
+  profile?: EnergyProfileSummary
+  artifacts: WorkbenchArtifactSummary[]
   warnings: ShellWarning[]
   error?: ShellError
 }
 
-export const initialWorkbenchShellState: WorkbenchShellState = {
+export type WorkbenchUiState = {
+  activePanel: "project" | "import" | "objects" | "graph" | "energy" | "export"
+  pendingCommandIds: string[]
+}
+
+export const initialWorkbenchDomainState: WorkbenchDomainState = {
   status: "idle",
-  profilePointCount: 0,
-  objectCount: 0,
-  artifactCount: 0,
+  active: {},
+  counts: {
+    objects: 0,
+    imports: 0,
+    graphs: 0,
+    workspaces: 0,
+    profiles: 0,
+    artifacts: 0,
+  },
+  objects: [],
+  imports: [],
+  artifacts: [],
   warnings: [],
 }
 
-export function projectFixtureResponse(
-  response: ShellResponse<FixtureRunData>,
-): WorkbenchShellState {
+export const initialWorkbenchUiState: WorkbenchUiState = {
+  activePanel: "project",
+  pendingCommandIds: [],
+}
+
+export function projectWorkbenchSnapshot(
+  response: ShellResponse<WorkbenchSnapshotData>,
+): WorkbenchDomainState {
   if (!response.ok || !response.data) {
     return {
-      ...initialWorkbenchShellState,
+      ...initialWorkbenchDomainState,
       status: "error",
       warnings: response.warnings,
       error: response.error ?? {
         code: "invalid_input",
-        message: "Shell command did not return fixture data.",
-        target: "fixture.run",
+        message: "Shell command did not return workbench snapshot data.",
+        target: "workbench.snapshot",
       },
     }
   }
 
+  const data = response.data
+  const warnings = data.warnings.length > 0 ? data.warnings : response.warnings
   return {
     status: "success",
-    sessionId: response.data.session_id,
-    projectId: response.data.project.id,
-    projectName: response.data.project.name,
-    graphId: response.data.graph.id,
-    profileId: response.data.profile.id,
-    profilePointCount: response.data.profile.point_count,
-    objectCount: response.data.object_count,
-    artifactCount: response.data.artifact_count,
-    warnings: response.warnings,
+    sessionId: data.session_id,
+    project: data.project ?? undefined,
+    projectPath: data.project_path ?? undefined,
+    active: {
+      workspaceId: data.active.workspace_id ?? data.workspace_id ?? undefined,
+      graphId: data.active.graph_id ?? data.graph_id ?? undefined,
+      profileId: data.active.profile_id ?? data.profile_id ?? undefined,
+    },
+    counts: data.counts,
+    objects: data.objects,
+    imports: data.imports,
+    workspace: data.workspace ?? undefined,
+    profile: data.profile ?? undefined,
+    artifacts: data.artifacts,
+    warnings,
     error: undefined,
   }
 }

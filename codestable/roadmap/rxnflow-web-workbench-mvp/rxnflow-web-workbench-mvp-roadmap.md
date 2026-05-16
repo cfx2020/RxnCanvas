@@ -80,7 +80,7 @@ RxnFlow Web Workbench MVP
 ### Workbench State · 工作台状态投影
 
 - **职责**：把 ShellResponse 中的 project/session/import/workspace/profile/artifact 投影整理成 UI 可扫描的 state，并把 selection、panel open state、hover、viewport 等 UI-only 状态与核心领域 state 分开。
-- **承载的子 feature**：`web-workbench-state-projections`
+- **承载的子 feature**：`web-workbench-state-projections`（状态：done，feature：`2026-05-16-web-workbench-state-projections`）
 - **触碰的现有代码 / 模块**：可能新增 Platform Shell read-only projection command；前端状态容器。
 
 ### Project Sidebar · 项目侧边栏
@@ -467,8 +467,8 @@ type ExportProfileArgs = {
    - 状态：done
    - 对应 feature：`2026-05-16-web-app-shell-client`
 3. **web-workbench-state-projections**：补 Web 工作台需要的 read-only state projection，必要时新增 `workbench.snapshot` shell command，前端不从 UI 反推领域状态。
-   - 状态：planned
-   - 对应 feature：null
+   - 状态：done
+   - 对应 feature：`2026-05-16-web-workbench-state-projections`
 4. **web-local-project-repository**：实现真实浏览器本地项目仓储，映射 Project Content logical path、raw files、exports 和 project refs。
    - 状态：planned
    - 对应 feature：null
