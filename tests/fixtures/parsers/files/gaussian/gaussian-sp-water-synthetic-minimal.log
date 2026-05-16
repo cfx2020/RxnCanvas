@@ -1,0 +1,25 @@
+ Entering Gaussian System, Link 0=g16
+ Gaussian, Inc., synthetic parser fixture marker
+ 
+ ******************************************
+ Gaussian 16:  ES64L-G16RevC.01  1-Jan-2020
+                1-Jan-2020
+ ******************************************
+ #p B3LYP/6-31G(d) SP
+ 
+ RxnFlow synthetic minimal Gaussian log
+ 
+ Charge =  0 Multiplicity = 1
+ Standard orientation:
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0        0.000000    0.000000    0.000000
+      2          1           0        0.000000    0.000000    0.960000
+ ---------------------------------------------------------------------
+ Cycle   1  Pass 1  IDiag  1:
+ E= -75.0000000000     Delta-E= 0.0000000000     Rises=F Damp=F
+ RMSDP=1.00D-06 MaxDP=1.00D-05 DE=-1.00D-07 OVMax= 1.00D-05
+ SCF Done:  E(RB3LYP) =  -75.0000000000     A.U. after    1 cycles
+ Normal termination of Gaussian 16 at Mon Jan  1 00:00:00 2020.

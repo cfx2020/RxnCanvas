@@ -1,0 +1,71 @@
+roadmap: rxnflow-parser-fixture-corpus
+created: 2026-05-15
+
+items:
+  - slug: parser-fixture-harness
+    description: 建立 parser fixture 目录、manifest schema、golden snapshot schema、loader/assertion helper，并用一个最小 synthetic fixture 跑通回归闭环
+    depends_on: []
+    status: done
+    feature: 2026-05-15-parser-fixture-harness
+    minimal_loop: true
+    notes: 包含样例来源、许可证、脱敏和 redistributable 字段约束
+
+  - slug: xyz-extxyz-fixture-coverage
+    description: 补 standard XYZ 和 ASE extxyz 样例，覆盖 geometry、energy metadata、charge/spin 可用性、atom count mismatch 和 metadata 缺失 warning
+    depends_on: [parser-fixture-harness]
+    status: done
+    feature: 2026-05-15-xyz-extxyz-fixture-coverage
+    minimal_loop: false
+    notes: 用户已接受 ASE extxyz；仍需保持 ASE adapter 延迟依赖或明确依赖边界
+
+  - slug: gaussian-cclib-fixture-coverage
+    description: 补 Gaussian cclib 真实或最小可再分发 log 样例，确认 charge/spin/method/geometry/electronic energy/thermochemistry 首批字段边界
+    depends_on: [parser-fixture-harness]
+    status: done
+    feature: 2026-05-15-gaussian-cclib-fixture-coverage
+    minimal_loop: false
+    notes: 用户已接受 cclib；真实日志进入仓库前必须脱敏
+
+  - slug: orca-cclib-fixture-coverage
+    description: 补 ORCA cclib 真实或最小可再分发 output 样例，确认 ORCA banner、final energy、charge/spin/method/geometry 字段边界
+    depends_on: [parser-fixture-harness]
+    status: done
+    feature: 2026-05-16-orca-cclib-fixture-coverage
+    minimal_loop: false
+    notes: 用户已接受 cclib；真实输出进入仓库前必须脱敏
+
+  - slug: maple-fixture-coverage
+    description: 基于 ClickFF/MAPLE examples 的任务结构和可再分发策略，补 MAPLE .out / multi-frame .xyz 样例，并标注 .sum、AutoNEB tree、MD thermo、IRC path 的支持状态
+    depends_on: [parser-fixture-harness]
+    status: done
+    feature: 2026-05-16-maple-fixture-coverage
+    minimal_loop: false
+    notes: MAPLE example 输出可作为参考；vendoring 前需确认许可证和商业使用边界
+
+  - slug: parser-support-matrix-diagnostics
+    description: 落地支持矩阵和 warning code 规范，用真实 fixture 反推 parser 的 partial/unsupported 诊断
+    depends_on:
+      - xyz-extxyz-fixture-coverage
+      - gaussian-cclib-fixture-coverage
+      - orca-cclib-fixture-coverage
+      - maple-fixture-coverage
+    status: done
+    feature: 2026-05-16-parser-support-matrix-diagnostics
+    minimal_loop: false
+    notes: 支持矩阵只声明 fixture 覆盖过的版本/任务/字段，不宣称全程序支持
+
+  - slug: import-preview-parser-regression
+    description: 用 fixture corpus 驱动 ImportRegistryWorkflow 或 platform shell import preview 回归，确认 parser 输出进入 ImportItem/ParsePreview 后不丢 provenance、warnings 和 object_count
+    depends_on: [parser-support-matrix-diagnostics]
+    status: done
+    feature: 2026-05-16-import-preview-parser-regression
+    minimal_loop: false
+    notes: 不改变确认登记语义，只验证 import preview 数据保真
+
+  - slug: parser-corpus-docs
+    description: 补开发者/agent 文档，说明新增样例、许可证记录、脱敏、snapshot 更新和 parser gap 处理流程
+    depends_on: [parser-support-matrix-diagnostics]
+    status: done
+    feature: 2026-05-16-parser-corpus-docs
+    minimal_loop: false
+    notes: acceptance 阶段可进一步决定是否补 requirements 现状文档

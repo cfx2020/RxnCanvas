@@ -1,0 +1,228 @@
+schema_version: parser-support-matrix-v1
+
+diagnostics:
+  warning_codes:
+    partial_parse:
+      severity: warning
+      meaning: Parser returned usable data while leaving part of the recognized format unsupported.
+    missing_section:
+      severity: warning
+      meaning: Parser succeeded but an expected optional section was absent.
+    ambiguous_value:
+      severity: warning
+      meaning: Parser found a field but could not interpret it as a stable value.
+    unit_assumed:
+      severity: warning
+      meaning: Parser continued by applying an explicit unit assumption.
+    unsupported_task:
+      severity: warning
+      meaning: Parser recognized the program output but the task semantics are outside current coverage.
+    unsupported_field:
+      severity: warning
+      meaning: Parser recognized the field but does not map it into RxnFlow yet.
+    source_license_notice:
+      severity: warning
+      meaning: Fixture source metadata carries a redistribution or license caveat.
+  error_codes:
+    invalid_input:
+      severity: error
+      meaning: RawFile input is missing, unsafe, or not readable.
+    unsupported_format:
+      severity: error
+      meaning: No parser can confidently handle the RawFile or parser selection is ambiguous.
+    parse_failed:
+      severity: error
+      meaning: Parser recognized the format but could not map required fields.
+
+entries:
+  - id: maple-output-synthetic
+    program: maple
+    formats: [maple-output]
+    tasks: [sp, opt]
+    versions: [synthetic]
+    parser_id: maple-output
+    status: partial
+    fields:
+      geometry: supported
+      electronic_energy: supported
+      charge_spin: unsupported
+      method: supported
+      thermochemistry: unsupported
+      path_semantics: not-applicable
+    fixture_ids:
+      - maple-sp-synthetic-minimal
+      - maple-opt-synthetic-minimal
+    observed_warning_codes: []
+    observed_error_codes: []
+    known_limits:
+      - Synthetic fixtures only; real MAPLE versions and task variants are not declared.
+      - Charge, spin, thermochemistry, frequency and solvation fields are not mapped.
+
+  - id: maple-xyz-path-synthetic
+    program: maple
+    formats: [maple-xyz]
+    tasks: [irc-path]
+    versions: [synthetic]
+    parser_id: maple-output
+    status: partial
+    fields:
+      geometry: supported
+      electronic_energy: supported
+      frame_labels: supported
+      path_frames: partial
+      path_topology: unsupported
+      transition_state: unsupported
+    fixture_ids:
+      - maple-irc-path-synthetic-minimal
+    observed_warning_codes: []
+    observed_error_codes: []
+    known_limits:
+      - Path XYZ files are parsed as independent frame objects.
+      - IRC/NEB direction, iteration grouping, image topology and TS candidate semantics are not modeled.
+
+  - id: maple-sum-reference
+    program: maple
+    formats: [maple-sum]
+    tasks: [freq]
+    versions: [clickff-maple-example-reference]
+    parser_id: reference-only
+    status: reference-only
+    fields:
+      frequency_summary: reference-only
+      thermochemistry: reference-only
+    fixture_ids: []
+    observed_warning_codes: []
+    observed_error_codes: []
+    known_limits:
+      - MAPLE .sum examples are known from ClickFF/MAPLE but are not parsed or vendored.
+
+  - id: maple-autoneb-tree-reference
+    program: maple
+    formats: [json]
+    tasks: [autoneb]
+    versions: [clickff-maple-example-reference]
+    parser_id: reference-only
+    status: reference-only
+    fields:
+      path_tree: reference-only
+      transition_state_candidates: reference-only
+    fixture_ids: []
+    observed_warning_codes: []
+    observed_error_codes: []
+    known_limits:
+      - AutoNEB tree JSON topology is reference-only until path-level parser output is designed.
+
+  - id: maple-md-thermo-reference
+    program: maple
+    formats: [dat, txt]
+    tasks: [md]
+    versions: [clickff-maple-example-reference]
+    parser_id: reference-only
+    status: reference-only
+    fields:
+      md_thermo: reference-only
+      md_summary: reference-only
+    fixture_ids: []
+    observed_warning_codes: []
+    observed_error_codes: []
+    known_limits:
+      - MD thermo and summary artifacts are known from ClickFF/MAPLE but are not parsed or vendored.
+
+  - id: xyz-plain-synthetic
+    program: xyz
+    formats: [xyz]
+    tasks: [geometry]
+    versions: [synthetic]
+    parser_id: xyz-ase
+    status: partial
+    fields:
+      geometry: supported
+      electronic_energy: unsupported
+      charge_spin: unsupported
+      method: unsupported
+    fixture_ids:
+      - xyz-water-geometry-missing-energy
+    observed_warning_codes: [missing_section]
+    observed_error_codes: []
+    known_limits:
+      - Plain XYZ geometry-only files do not carry energy, charge, spin or method metadata.
+
+  - id: xyz-invalid-count-synthetic
+    program: xyz
+    formats: [xyz]
+    tasks: [invalid-atom-count]
+    versions: [synthetic]
+    parser_id: xyz-ase
+    status: unsupported
+    fields:
+      geometry: unsupported
+      electronic_energy: unsupported
+    fixture_ids:
+      - xyz-bad-atom-count
+    observed_warning_codes: []
+    observed_error_codes: [parse_failed]
+    known_limits:
+      - Atom count mismatch is an expected parser failure, not a partial parse.
+
+  - id: ase-extxyz-synthetic
+    program: ase-extxyz
+    formats: [extxyz]
+    tasks: [geometry-energy, geometry]
+    versions: [synthetic]
+    parser_id: xyz-ase
+    status: partial
+    fields:
+      geometry: supported
+      electronic_energy: partial
+      charge_spin: partial
+      method: unsupported
+      unit_metadata: partial
+    fixture_ids:
+      - extxyz-h2-energy-charge-spin
+      - extxyz-h2-missing-energy
+    observed_warning_codes: [missing_section, unit_assumed]
+    observed_error_codes: []
+    known_limits:
+      - Energy is treated as eV and converted to hartree when present.
+      - Missing energy remains a warning with an empty energy map.
+
+  - id: gaussian-log-cclib-synthetic
+    program: gaussian
+    formats: [gaussian-log]
+    tasks: [sp]
+    versions: [synthetic]
+    parser_id: gaussian-log-cclib
+    status: partial
+    fields:
+      geometry: supported
+      electronic_energy: supported
+      charge_spin: supported
+      method: supported
+      thermochemistry: unsupported
+    fixture_ids:
+      - gaussian-sp-water-synthetic-minimal
+    observed_warning_codes: []
+    observed_error_codes: []
+    known_limits:
+      - Synthetic fixture only; real Gaussian versions, job types and thermochemistry fields are not declared.
+
+  - id: orca-output-cclib-synthetic
+    program: orca
+    formats: [orca-output]
+    tasks: [sp]
+    versions: [synthetic]
+    parser_id: orca-output-cclib
+    status: partial
+    fields:
+      geometry: supported
+      electronic_energy: supported
+      charge_spin: supported
+      method: supported
+      thermochemistry: unsupported
+      scf_convergence: unsupported
+    fixture_ids:
+      - orca-sp-water-synthetic-minimal
+    observed_warning_codes: []
+    observed_error_codes: []
+    known_limits:
+      - Synthetic fixture only; real ORCA versions, job types and SCF convergence details are not declared.

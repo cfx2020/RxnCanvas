@@ -1,0 +1,226 @@
+schema_version: parser-fixtures-v1
+fixtures:
+  - id: maple-sp-synthetic-minimal
+    program: maple
+    format: maple-output
+    task: sp
+    parser_id: maple-output
+    file: files/maple/maple-sp-synthetic-minimal.out
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: maple-output
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/maple-sp-synthetic-minimal.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [maple, sp, synthetic]
+    notes: null
+
+  - id: maple-opt-synthetic-minimal
+    program: maple
+    format: maple-output
+    task: opt
+    parser_id: maple-output
+    file: files/maple/maple-opt-synthetic-minimal.out
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: maple-output
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/maple-opt-synthetic-minimal.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [maple, opt, energy, geometry, synthetic]
+    notes: "Synthetic opt output covering last coordinate block and last energy selection."
+
+  - id: maple-irc-path-synthetic-minimal
+    program: maple
+    format: maple-xyz
+    task: irc-path
+    parser_id: maple-output
+    file: files/maple/maple-irc-path-synthetic-minimal.xyz
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: maple-xyz
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/maple-irc-path-synthetic-minimal.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: partial
+    tags: [maple, irc, path, xyz, energy, geometry, synthetic]
+    notes: "Parses MAPLE path frames and energies only; path topology/IRC semantics are not modeled."
+
+  - id: xyz-water-geometry-missing-energy
+    program: xyz
+    format: xyz
+    task: geometry
+    parser_id: xyz-ase
+    file: files/xyz/xyz-water-geometry-missing-energy.xyz
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: xyz
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/xyz-water-geometry-missing-energy.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [xyz, geometry, missing-energy, synthetic]
+    notes: null
+
+  - id: extxyz-h2-energy-charge-spin
+    program: ase-extxyz
+    format: extxyz
+    task: geometry-energy
+    parser_id: xyz-ase
+    file: files/extxyz/extxyz-h2-energy-charge-spin.xyz
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: extxyz
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/extxyz-h2-energy-charge-spin.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [extxyz, ase, energy, charge, spin, synthetic]
+    notes: null
+
+  - id: extxyz-h2-missing-energy
+    program: ase-extxyz
+    format: extxyz
+    task: geometry
+    parser_id: xyz-ase
+    file: files/extxyz/extxyz-h2-missing-energy.xyz
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: extxyz
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/extxyz-h2-missing-energy.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: partial
+    tags: [extxyz, ase, missing-energy, synthetic]
+    notes: null
+
+  - id: gaussian-sp-water-synthetic-minimal
+    program: gaussian
+    format: gaussian-log
+    task: sp
+    parser_id: gaussian-log-cclib
+    file: files/gaussian/gaussian-sp-water-synthetic-minimal.log
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: gaussian-log
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/gaussian-sp-water-synthetic-minimal.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [gaussian, cclib, sp, energy, geometry, synthetic]
+    notes: "Synthetic minimal log authored for cclib fixture coverage; not a real Gaussian output."
+
+  - id: orca-sp-water-synthetic-minimal
+    program: orca
+    format: orca-output
+    task: sp
+    parser_id: orca-output-cclib
+    file: files/orca/orca-sp-water-synthetic-minimal.out
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: orca-output
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/orca-sp-water-synthetic-minimal.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [orca, cclib, sp, energy, geometry, synthetic]
+    notes: "Synthetic minimal output authored for cclib fixture coverage; not a real ORCA output."
+
+  - id: xyz-bad-atom-count
+    program: xyz
+    format: xyz
+    task: invalid-atom-count
+    parser_id: xyz-ase
+    file: files/xyz/xyz-bad-atom-count.xyz
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: xyz
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/xyz-bad-atom-count.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: unsupported
+    tags: [xyz, invalid, atom-count, synthetic]
+    notes: null

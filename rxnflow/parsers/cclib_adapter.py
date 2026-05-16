@@ -207,12 +207,30 @@ def _symbol_from_atomic_number(number: int) -> str:
 def _method_from_metadata(metadata: Any) -> str | None:
     if not isinstance(metadata, dict):
         return None
+    functional = metadata.get("functional")
     methods = metadata.get("methods")
     if isinstance(methods, (list, tuple)) and methods:
-        return str(methods[-1])
+        method = str(methods[-1])
+        if method.upper() == "DFT":
+            if functional:
+                return str(functional)
+            keyword_functional = _dft_functional_from_keywords(metadata.get("keywords"))
+            if keyword_functional is not None:
+                return keyword_functional
+        return method
     for key in ("functional", "method", "package"):
         if key in metadata:
             return str(metadata[key])
+    return None
+
+
+def _dft_functional_from_keywords(keywords: Any) -> str | None:
+    if not isinstance(keywords, (list, tuple)):
+        return None
+    for keyword in keywords:
+        normalized = str(keyword).strip().upper().replace("_", "-")
+        if normalized in _KNOWN_DFT_FUNCTIONALS:
+            return _KNOWN_DFT_FUNCTIONALS[normalized]
     return None
 
 
@@ -223,6 +241,18 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+_KNOWN_DFT_FUNCTIONALS = {
+    "B3LYP": "B3LYP",
+    "BP86": "BP86",
+    "PBE": "PBE",
+    "PBE0": "PBE0",
+    "TPSSH": "TPSSh",
+    "M06": "M06",
+    "M06-2X": "M06-2X",
+    "WB97X-D3": "wB97X-D3",
+}
 
 
 _ELEMENTS = (

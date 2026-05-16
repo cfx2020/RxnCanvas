@@ -1,0 +1,92 @@
+feature: 2026-05-15-xyz-extxyz-fixture-coverage
+created: 2026-05-15
+
+steps:
+  - action: "Corpus entries：新增 files/xyz/、files/extxyz/ synthetic 输入和 manifest entries"
+    exit_signal: "manifest loader 能读到 5 个 fixture 且新增路径安全"
+    status: done
+
+  - action: "Golden snapshots：生成 standard XYZ、extxyz energy/charge/spin、extxyz missing energy 和 bad count snapshots"
+    exit_signal: "projection 文件稳定且字段覆盖设计要求"
+    status: done
+
+  - action: "Regression wiring：扩展 fixture harness tests，默认跑 supported/partial XYZ/extxyz snapshots，bad count 单独断言 expected error"
+    exit_signal: "focused tests 通过"
+    status: done
+
+  - action: "Scope guards：确认未新增真实第三方输出、未改 runtime parser API、未调用外部计算或 import/project/registry/graph/energy/export"
+    exit_signal: "全量 unittest 和 YAML 校验通过"
+    status: done
+
+checks:
+  - item: "manifest 中新增 standard XYZ geometry-only fixture，source 为 synthetic，support_status=supported"
+    source: "验收场景"
+    status: passed
+
+  - item: "standard XYZ snapshot parse_ok=true，object_count=1，elements 为 [O, H, H]"
+    source: "验收场景"
+    status: passed
+
+  - item: "standard XYZ warning_codes 包含 missing_section"
+    source: "验收场景"
+    status: passed
+
+  - item: "manifest 中新增 extxyz energy/charge/spin fixture，source 为 synthetic，support_status=supported"
+    source: "验收场景"
+    status: passed
+
+  - item: "extxyz energy/charge/spin snapshot parse_ok=true，label、charge、spin_multiplicity、geometry、electronic energy 和 warning_codes 稳定"
+    source: "验收场景"
+    status: passed
+
+  - item: "extxyz energy value 为 hartree，数值等于 eV 输入乘以 EV_TO_HARTREE"
+    source: "验收场景"
+    status: passed
+
+  - item: "extxyz energy/charge/spin warning_codes 包含 unit_assumed"
+    source: "验收场景"
+    status: passed
+
+  - item: "manifest 中新增 extxyz missing energy fixture，support_status=partial"
+    source: "验收场景"
+    status: passed
+
+  - item: "extxyz missing energy snapshot parse_ok=true，warning_codes 包含 missing_section，energies 为空"
+    source: "验收场景"
+    status: passed
+
+  - item: "manifest 中新增 bad atom count fixture，support_status=unsupported"
+    source: "验收场景"
+    status: passed
+
+  - item: "bad atom count targeted test 断言 snapshot parse_ok=false 且 error.code=parse_failed"
+    source: "验收场景"
+    status: passed
+
+  - item: "新增 fixture 的 file / snapshot 均为 corpus 内相对路径，loader 安全校验通过"
+    source: "边界场景"
+    status: passed
+
+  - item: "supported / partial fixture 进入 executable fixtures；unsupported bad count 不进入 executable fixtures"
+    source: "边界场景"
+    status: passed
+
+  - item: "新增 snapshot 不保存完整轨迹，只保存对象摘要和必要 geometry sample"
+    source: "边界场景"
+    status: passed
+
+  - item: "本 feature 不新增真实第三方 XYZ/extxyz 文件或用户数据"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不修改 rxnflow.parsers.xyz 公共 contract，除非 snapshot 暴露实现 bug 且修复限制在 parser 行为内"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不调用 ProjectStore、ImportRegistryWorkflow、ChemicalRegistry、ReactionGraphService、EnergyProfileEngine、ReportExportService、PlatformShellService 或 ProjectBundleService"
+    source: "范围守护"
+    status: passed
+
+  - item: "不新增 CLI command、Web route、桌面入口或外部计算调用"
+    source: "范围守护"
+    status: passed

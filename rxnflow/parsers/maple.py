@@ -13,7 +13,11 @@ from .io import read_raw_text
 from .xyz import PARSER_TIME, parse_xyz_frames
 
 MAPLE_BANNER_MARKERS = ("M   A   P   L   E", "MAchine-learning Potential for Landscape Exploration")
-MAPLE_XYZ_COMMENT_RE = re.compile(r"^\s*(Image|Frame)\s+\d+\s+Energy\s*=", re.IGNORECASE)
+MAPLE_XYZ_COMMENT_RE = re.compile(
+    r"^\s*(?:(?:Iter|Iteration)\s+\d+\s+)?(?:Image|Frame)\s+\d+\s+Energy\s*="
+    r"|^\s*Iteration\s+\d+\s+Energy\s*=",
+    re.IGNORECASE,
+)
 MAPLE_ENERGY_RE = re.compile(
     r"Energy:\s*([-+]?\d+(?:\.\d+)?(?:[Ee][-+]?\d+)?)\s*(Hartree)?",
     re.IGNORECASE,

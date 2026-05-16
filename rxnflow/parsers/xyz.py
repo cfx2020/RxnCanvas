@@ -294,7 +294,11 @@ def _looks_like_extxyz_comment(comment: str) -> bool:
 
 
 def _label_from_comment(comment: str) -> str:
-    match = re.match(r"^\s*((?:Image|Frame)\s+\d+)\b", comment, re.IGNORECASE)
+    match = re.match(
+        r"^\s*((?:(?:Iter|Iteration)\s+\d+\s+)?(?:Image|Frame)\s+\d+|Iteration\s+\d+)\b",
+        comment,
+        re.IGNORECASE,
+    )
     if match is not None:
         return match.group(1)
     return comment

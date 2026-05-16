@@ -1,0 +1,76 @@
+feature: 2026-05-16-import-preview-parser-regression
+created: 2026-05-16
+
+steps:
+  - action: "Workflow fixture loop：用 manifest/snapshot 驱动 ImportRegistryWorkflow.import_files 成功/partial fixtures"
+    exit_signal: "preview fidelity 字段全部对齐"
+    status: done
+
+  - action: "Failure fixture path：把 xyz-bad-atom-count 作为 expected parser failure 走 import preview"
+    exit_signal: "raw_resource 保留、preview 为空、error code 对齐 snapshot"
+    status: done
+
+  - action: "Shell projection sample：用 PlatformShellService import.preview 跑 batch summary"
+    exit_signal: "JSON-safe payload 中 success/failure items 保留 preview/error/warnings"
+    status: done
+
+  - action: "Scope guards：确认不调用 confirm/register/graph/energy/export/bundle，不新增 runtime API 或 fixture"
+    exit_signal: "focused tests 与全量 unittest 通过"
+    status: done
+
+checks:
+  - item: "supported / partial parser fixture 都能通过 ImportRegistryWorkflow.import_files 进入 ImportItem.status=needs_confirmation"
+    source: "验收场景"
+    status: passed
+
+  - item: "每个成功 preview 的 parser_id、parser_version 与 parse_result.provenance 一致"
+    source: "验收场景"
+    status: passed
+
+  - item: "每个成功 preview 的 object_count 等于 parser golden snapshot 的 object_count"
+    source: "验收场景"
+    status: passed
+
+  - item: "每个成功 preview 的 warning codes 等于 snapshot 顶层 warning_codes"
+    source: "验收场景"
+    status: passed
+
+  - item: "每个成功 preview 的 raw_resource_id 等于 ImportItem.raw_resource.id，也等于 parse_result.provenance.source_file_id"
+    source: "验收场景"
+    status: passed
+
+  - item: "Preview-only import 后 ChemicalRegistry 仍为空，未登记 ChemicalObject"
+    source: "验收场景"
+    status: passed
+
+  - item: "xyz-bad-atom-count import item 为 failed，error.code=parse_failed，preview=None，且 raw_resource 已复制进项目"
+    source: "边界场景"
+    status: passed
+
+  - item: "Platform shell import.preview 对 success + failure batch 返回 ok=True，payload 可 JSON 序列化"
+    source: "边界场景"
+    status: passed
+
+  - item: "Shell batch summary 保留 success item 的 preview parser_id/object_count/warnings 和 failure item 的 error code/raw_resource"
+    source: "边界场景"
+    status: passed
+
+  - item: "缺少 source_path 或无效 session 的既有 shell error 行为不被改变"
+    source: "边界场景"
+    status: passed
+
+  - item: "本 feature 不新增 parser fixture file、support matrix entry 或 golden snapshot"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不修改 runtime parser modules、ParserRegistry、ImportRegistryWorkflow public API 或 PlatformShellService command set"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不调用 confirm_import、import.register_all、ChemicalRegistry.register、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine、ReportExportService 或 ProjectBundleService"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不新增 UI、CLI command、Web route、桌面入口、Project Content schema 或云/本地持久化能力"
+    source: "范围守护"
+    status: passed

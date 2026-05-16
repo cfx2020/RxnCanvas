@@ -1,0 +1,116 @@
+{
+  "fixture_id": "maple-irc-path-synthetic-minimal",
+  "object_count": 3,
+  "objects": [
+    {
+      "atom_count": 2,
+      "charge": null,
+      "elements": [
+        "C",
+        "H"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "Image 0  Energy = -14.1000000000",
+          "unit": "hartree",
+          "value": -14.1
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        }
+      ],
+      "label": "Image 0",
+      "method": null,
+      "spin_multiplicity": null,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    },
+    {
+      "atom_count": 2,
+      "charge": null,
+      "elements": [
+        "C",
+        "H"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "Iter 1 Image 1  Energy = -14.0500000000",
+          "unit": "hartree",
+          "value": -14.05
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        }
+      ],
+      "label": "Iter 1 Image 1",
+      "method": null,
+      "spin_multiplicity": null,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    },
+    {
+      "atom_count": 2,
+      "charge": null,
+      "elements": [
+        "C",
+        "H"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "Iteration 7  Energy = -14.0200000000",
+          "unit": "hartree",
+          "value": -14.02
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        }
+      ],
+      "label": "Iteration 7",
+      "method": null,
+      "spin_multiplicity": null,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    }
+  ],
+  "parse_ok": true,
+  "parser_id": "maple-output",
+  "provenance": {
+    "parser_id": "maple-output",
+    "parser_version": "0.1.0"
+  },
+  "schema_version": "parser-golden-v1",
+  "warning_codes": []
+}

@@ -3,8 +3,8 @@ doc_type: architecture
 slug: core-platform
 status: current
 created: 2026-05-02
-last_reviewed: 2026-05-14
-tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage]
+last_reviewed: 2026-05-16
+tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, parser-fixture-harness, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
 ---
 
 # Core Platform
@@ -35,6 +35,8 @@ RxnFlow 当前已经落地十三类核心能力。
 3. 用 cclib adapter 支持 Gaussian log 和 ORCA output 的基础字段映射。
 4. 支持标准 XYZ 和 ASE extxyz 的结构与可用 metadata 解析。
 5. 支持 MAPLE `.out` 基础字段和 MAPLE 风格多帧 `.xyz` energy 注释解析。
+6. 配套测试侧 Parser Fixture Harness，使用 `parser-fixtures-v1` manifest、`parser-support-matrix-v1` support matrix、synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib `.log`、synthetic ORCA cclib `.out`、standard XYZ、ASE extxyz、bad XYZ count 输入和 `parser-golden-v1` snapshot 验证 ParserRegistry 输出稳定性与 fixture-backed 支持边界。
+7. 配套 `docs/dev/parser-fixture-corpus.md` 开发者指南，说明新增样例、source policy、脱敏、snapshot 更新、support matrix / diagnostic codes、import preview regression 和 parser gap triage。
 
 第四类是 Chemical Registry 基线：
 
@@ -53,6 +55,7 @@ RxnFlow 当前已经落地十三类核心能力。
 4. `confirm_import` 按 ImportSelection 登记全部或指定 object indices 的 ChemicalObject。
 5. ImportBatch / ImportItem 保留 source_path、raw_resource、preview、warnings、error 和 registered_object_ids，供后续 sidebar 或 agent 读取。
 6. 支持从已持久化 ImportBatch 恢复 batch state，恢复后可继续 list/get batch 或确认 pending preview。
+7. 配套测试侧 import preview parser regression，使用 parser fixture corpus 验证 `import_files` 和 platform shell `import.preview` 保留 parser_id、parser_version、object_count、warnings、expected failure error code 和 raw_resource/provenance linkage。
 
 第六类是 Reaction Graph 协议：
 
@@ -130,7 +133,7 @@ RxnFlow 当前已经落地十三类核心能力。
 5. list_objects 支持 exact file 和 prefix subtree 语义，并按 POSIX path 稳定排序。
 6. 支持 quota_bytes 模拟浏览器本地空间不足；超限返回 storage_quota_exceeded，失败写入不部分覆盖已有对象。
 
-这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Project Bundle 只复制项目文件作为本地备份/手动同步包，不替代 live storage、不自动保存当前 session、不恢复运行态；Browser Local Storage Backend 是核心协议测试替身，不是真实 JavaScript IndexedDB / OPFS adapter、云同步或可靠备份；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑，`project.open`/`project.save_content` 只是恢复和保存运行态服务状态的壳层编排，`project.export_bundle`/`project.import_bundle` 只是项目包传输编排。
+这些能力仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Project Bundle 只复制项目文件作为本地备份/手动同步包，不替代 live storage、不自动保存当前 session、不恢复运行态；Browser Local Storage Backend 是核心协议测试替身，不是真实 JavaScript IndexedDB / OPFS adapter、云同步或可靠备份；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Parser Fixture Harness 只存在于测试边界，当前覆盖 synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib、synthetic ORCA cclib、standard XYZ、ASE extxyz 和 bad XYZ expected-error 样例，并通过 `support-matrix.yaml` 记录 fixture-backed 字段状态、known limits、diagnostic catalog 和 MAPLE reference-only artifacts；它不进入 `rxnflow.parsers` runtime API，不调用 Project Store、Import Workflow、Chemical Registry、Reaction Graph、Energy Engine 或 Report Export；Parser Corpus Developer Guide 只记录维护 fixture corpus 的开发者/agent 流程，不新增 runtime API、fixture 或用户可见导入能力；Import Preview Parser Regression 也只存在于测试边界，用 fixture corpus 验证 Import Workflow / Platform Shell 的 preview 投影保真，不确认导入、不登记 ChemicalObject、不新增 runtime API；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑，`project.open`/`project.save_content` 只是恢复和保存运行态服务状态的壳层编排，`project.export_bundle`/`project.import_bundle` 只是项目包传输编排。
 
 ## 2. 模块与职责
 
@@ -153,6 +156,19 @@ ParserRegistry
 ├── plugin.parse(RawFile)
 └── ParseResult(ChemicalObjectDraft[], provenance)
 
+ParserFixtureHarness (tests only)
+├── tests/fixtures/parsers/manifest.yaml
+├── tests/fixtures/parsers/support-matrix.yaml
+├── docs/dev/parser-fixture-corpus.md maintenance guide
+├── tests/fixtures/parsers/files/{maple,gaussian,orca,xyz,extxyz}/ synthetic inputs
+├── tests/fixtures/parsers/snapshots/*.json success and expected-error snapshots
+├── ParserFixtureManifest / ParserFixture test dataclasses
+├── ParserSupportMatrix / ParserSupportMatrixEntry / ParserDiagnosticCatalog test dataclasses
+├── RawFile(path=fixture.file) + ParseOptions projection
+├── ParserRegistry.default().parse
+├── parser-golden-v1 snapshot assertion with energy/coordinate tolerances
+└── parser-support-matrix-v1 validation for fixture ids, field statuses, diagnostic codes and partial known_limits
+
 ChemicalRegistry
 ├── register(project_id, ParseResult)
 ├── get_object(project_id, object_id)
@@ -165,7 +181,8 @@ ImportRegistryWorkflow
 ├── confirm_import(project_id, batch_id, ImportSelection[])
 ├── get_batch(project_id, batch_id)
 ├── list_batches(project_id)
-└── restore_batches(project_id, ImportBatch[], object_ids?, replace=False)
+├── restore_batches(project_id, ImportBatch[], object_ids?, replace=False)
+└── tests/test_import_preview_parser_regression.py fixture-backed preview fidelity tests
 
 ReactionGraphService
 ├── create_graph(project_id, label?)
@@ -246,6 +263,10 @@ ProjectBundleService
 - `rxnflow.parsers.cclib_adapter`：Gaussian/ORCA 的 cclib adapter，把 cclib data 映射为 ChemicalObjectDraft。
 - `rxnflow.parsers.xyz`：标准 XYZ 解析和 ASE extxyz adapter。
 - `rxnflow.parsers.maple`：MAPLE `.out` 基础字段和 MAPLE 多帧 `.xyz` 解析。
+- `tests/parser_fixture_harness.py`：测试侧 parser fixture harness，读取 `tests/fixtures/parsers/manifest.yaml` 和 `support-matrix.yaml`，构造 `RawFile` / `ParseOptions`，调用 `ParserRegistry` 并按 `parser-golden-v1` snapshot 比较成功解析和 expected-error 输出，同时校验 support matrix schema、fixture id 覆盖、diagnostic code 引用和 partial known limits；不作为 runtime API。
+- `tests/fixtures/parsers/`：parser fixture corpus，当前包含 `parser-fixtures-v1` manifest、`parser-support-matrix-v1` support matrix、synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib `.log`、synthetic ORCA cclib `.out`、standard XYZ geometry-only、ASE extxyz energy/charge/spin、ASE extxyz missing energy 和 bad XYZ count 输入及其 golden snapshots。
+- `docs/dev/parser-fixture-corpus.md`：开发者和 agent 维护指南，说明新增 fixture workflow、source policy、redaction checklist、snapshot update procedure、support matrix / diagnostic code 维护规则、import preview regression 和 parser gap triage；不作为 runtime API 或用户指南。
+- `tests/test_import_preview_parser_regression.py`：测试侧 import preview parser regression，使用 parser fixture corpus 驱动 `ImportRegistryWorkflow.import_files` 和 `PlatformShellService(import.preview)`，核对 ParsePreview / Shell Preview Projection 的 parser metadata、object_count、warnings、error code 和 raw_resource/provenance linkage；不作为 runtime API。
 - `rxnflow.registry`：fixture object draft 到 ChemicalObject 的登记和 provenance 附加；通用 ChemicalRegistry 的项目内对象登记、查询、fingerprint 幂等去重和 correction 追加。
 - `rxnflow.chemical_object_codec`：`chemical-objects-v1` section 的 ChemicalObject 序列化、反序列化和字段校验，覆盖 energies、thermochemistry、provenance、corrections 和 registry_fingerprint。
 - `rxnflow.import_workflow`：ImportRegistryWorkflow 和 ImportBatch / ImportItem / ParsePreview / ImportSelection 状态协议，串联 raw file resource、解析预览、确认登记和 batch restore。
@@ -364,10 +385,10 @@ Parser Plugins 使用以下稳定协议：
 
 当前 parser 能力边界：
 
-- Gaussian/ORCA：通过 cclib adapter 读取基础字段；cclib 的 `scfenergies` 按 eV 转 hartree。
+- Gaussian/ORCA：通过 cclib adapter 读取基础字段；cclib 的 `scfenergies` 按 eV 转 hartree；Gaussian DFT method 优先使用 `metadata.functional`，ORCA DFT method 可从已知 `metadata.keywords` functional token 恢复，避免只保留泛称 `DFT`。
 - XYZ：标准 XYZ 解析元素和坐标；缺失 energy 返回 `missing_section` warning。
 - extxyz：通过 ASE 读取 geometry 和可用 metadata；energy 按 ASE eV 语义转 hartree。
-- MAPLE：解析 `.out` 中 task/model、坐标、Hartree energy；解析 MAPLE 风格 `.xyz` 中 `Image N` / `Frame N` 和 energy 注释。
+- MAPLE：解析 `.out` 中 task/model、坐标、Hartree energy；解析 MAPLE 风格 `.xyz` 中 `Image N`、`Frame N`、`Iter N Image M`、`Iteration N` 和 energy 注释；path `.xyz` 当前只生成 frame-level objects，不生成 ReactionPath 或 TS 语义。
 
 Chemical Registry 当前使用以下稳定协议：
 
@@ -391,6 +412,7 @@ Import Registry Workflow 当前使用以下稳定协议：
 - 批量语义：单个 source file 的 add/parse/register 失败记录在 ImportItem，batch 可继续返回部分成功结果
 - restore 行为：直接恢复已持久化 ImportBatch，不调用 `import_files`、ParserRegistry 或 ChemicalRegistry.register；registered_object_ids 可按已加载 ChemicalObject ids 校验
 - 持久化边界：ProjectStore 中的 raw file resource 落盘；ChemicalObject 内容可通过 `chemical-objects-v1` 保存；ImportBatch 和 ParsePreview 可通过 `import-ledger-v1` 保存
+- fixture-backed preview regression：supported/partial parser fixtures 在 `import_files` 后必须形成 `needs_confirmation` item，preview parser metadata、object_count、warnings 和 raw_resource/provenance linkage 必须与 golden snapshot 对齐；expected parser failure fixture 必须形成 failed item、保留 raw_resource、暴露 error code 且不登记 ChemicalObject。
 
 Reaction Graph 当前使用以下稳定协议：
 
@@ -618,4 +640,4 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - `HARTREE_TO_KCAL_MOL = 627.509474` 是当前显式使用的转换常量。
 - `KCAL_MOL_TO_KJ_MOL = 4.184` 是当前 kcal/mol 与 kJ/mol 的转换常量。
 - 化学计量系数、多组分能量表达式、过渡态化学判定、热化学表达式、溶剂化公式和交互式曲线绘图尚未实现。
-- Gaussian/ORCA 真实 fixture corpus、MAPLE `.sum`/AutoNEB tree/MD thermo/IRC path 语义建模尚未实现。
+- Gaussian/ORCA/MAPLE 真实 fixture corpus、Gaussian/ORCA/MAPLE 版本/任务支持矩阵、MAPLE `.sum`/AutoNEB tree/MD thermo/path topology 语义建模尚未实现。

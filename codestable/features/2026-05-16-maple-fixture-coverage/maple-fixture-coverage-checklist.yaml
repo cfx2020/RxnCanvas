@@ -1,0 +1,84 @@
+feature: 2026-05-16-maple-fixture-coverage
+created: 2026-05-16
+
+steps:
+  - action: "Corpus entries：新增 MAPLE opt .out 和 IRC/path .xyz synthetic files 与 manifest entries"
+    exit_signal: "loader 能读到 9 个 fixtures，MAPLE opt supported，MAPLE path partial 且进入 executable fixtures"
+    status: done
+
+  - action: "Trajectory comment boundary：扩展 MAPLE .xyz detection 和 labels"
+    exit_signal: "Image、Iter ... Image、Iteration 均由 MapleOutputPlugin 识别并保持 label"
+    status: done
+
+  - action: "Golden snapshots：生成并固定 opt/path snapshots"
+    exit_signal: "ParserRegistry.default 解析成功，MAPLE opt/path 数值和 labels 稳定"
+    status: done
+
+  - action: "Regression wiring：扩展 fixture harness tests 和 MAPLE parser baseline"
+    exit_signal: "focused tests 通过"
+    status: done
+
+  - action: "Scope guards：确认未 vendor ClickFF/MAPLE examples、未解析 .sum/AutoNEB/MD thermo、未调用外部 MAPLE 或 import/project/registry/graph/energy/export"
+    exit_signal: "全量 unittest 和 YAML 校验通过"
+    status: done
+
+checks:
+  - item: "manifest 中新增 maple-opt-synthetic-minimal，source 为 synthetic，support_status=supported"
+    source: "验收场景"
+    status: passed
+
+  - item: "manifest 中新增 maple-irc-path-synthetic-minimal，source 为 synthetic，support_status=partial"
+    source: "验收场景"
+    status: passed
+
+  - item: "两个新增 MAPLE fixtures 进入 manifest.executable_fixtures，并由 ParserRegistry.default 解析成功"
+    source: "验收场景"
+    status: passed
+
+  - item: "opt snapshot parse_ok=true，object_count=1，parser_id=maple-output"
+    source: "验收场景"
+    status: passed
+
+  - item: "opt snapshot 对象固定 label=MAPLE opt、method=opt ani2x、last geometry sample、electronic Hartree energy 和 thermochemistry_keys=[]"
+    source: "验收场景"
+    status: passed
+
+  - item: "IRC/path snapshot parse_ok=true，object_count=3，labels 固定为 Image 0、Iter 1 Image 1、Iteration 7"
+    source: "验收场景"
+    status: passed
+
+  - item: "IRC/path snapshot 每个 object 都有 geometry 和 electronic Hartree energy；warning_codes 为空"
+    source: "验收场景"
+    status: passed
+
+  - item: "MapleOutputPlugin.can_parse 支持 Iter N Image M Energy = 和 Iteration N Energy = MAPLE trajectory comments"
+    source: "边界场景"
+    status: passed
+
+  - item: ".sum、AutoNEB tree JSON、MD thermo .dat 只在本 feature 文档标为 reference-only，不进入 manifest executable fixtures"
+    source: "边界场景"
+    status: passed
+
+  - item: "新增 fixture file / snapshot 均为 corpus 内相对路径，loader 安全校验通过"
+    source: "边界场景"
+    status: passed
+
+  - item: "本 feature 不提交真实 ClickFF/MAPLE examples 或用户输出"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不新增 MAPLE 完整版本/任务支持矩阵，不宣称 sp/opt/ts/irc/md/scan/freq 全支持"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不把 MAPLE path .xyz 转为 ReactionPath、ReactionGraph、EnergyProfile 或 TS object"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不调用 ProjectStore、ImportRegistryWorkflow、ChemicalRegistry、ReactionGraphService、EnergyProfileEngine、ReportExportService、PlatformShellService 或 ProjectBundleService"
+    source: "范围守护"
+    status: passed
+
+  - item: "不新增 CLI command、Web route、桌面入口、外部 MAPLE 调用、examples 下载流程或 snapshot 自动更新命令"
+    source: "范围守护"
+    status: passed

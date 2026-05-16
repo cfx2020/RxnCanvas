@@ -1,0 +1,84 @@
+feature: 2026-05-15-gaussian-cclib-fixture-coverage
+created: 2026-05-15
+
+steps:
+  - action: "Corpus entry：新增 files/gaussian/ synthetic Gaussian log 和 manifest entry"
+    exit_signal: "manifest loader 能读到 6 个 fixture，Gaussian fixture 是 supported 且进入 executable fixtures"
+    status: done
+
+  - action: "Golden snapshot：用 ParserRegistry.default 生成 Gaussian success snapshot"
+    exit_signal: "cclib 真实解析 .log 文件并固定 charge/spin/method/geometry/electronic energy/thermochemistry absence"
+    status: done
+
+  - action: "Regression wiring：扩展 fixture harness tests，默认跑 Gaussian snapshot，并用 targeted test 固定 missing geometry parse_failed"
+    exit_signal: "focused tests 通过"
+    status: done
+
+  - action: "Scope guards：确认未 vendor cclib-data/真实 Gaussian 输出、未改 runtime parser API、未调用外部计算或 import/project/registry/graph/energy/export"
+    exit_signal: "全量 unittest 和 YAML 校验通过"
+    status: done
+
+checks:
+  - item: "manifest 中新增 gaussian-sp-water-synthetic-minimal，source 为 synthetic，support_status=supported"
+    source: "验收场景"
+    status: passed
+
+  - item: "Gaussian fixture 的 program=gaussian、format=gaussian-log、parser_id=gaussian-log-cclib、parse_options.expected_format=gaussian-log"
+    source: "验收场景"
+    status: passed
+
+  - item: "gaussian-sp-water-synthetic-minimal 进入 manifest.executable_fixtures，并由 ParserRegistry.default 解析成功"
+    source: "验收场景"
+    status: passed
+
+  - item: "Gaussian snapshot parse_ok=true，object_count=1，provenance.parser_id=gaussian-log-cclib"
+    source: "验收场景"
+    status: passed
+
+  - item: "Gaussian snapshot 对象固定 label、charge=0、spin_multiplicity=1、method=B3LYP、elements=[O,H]、atom_count=2 和第一个 geometry sample"
+    source: "验收场景"
+    status: passed
+
+  - item: "Gaussian snapshot energy_keys=[electronic]，energy unit 为 hartree，reference 为 cclib scfenergies converted from eV"
+    source: "验收场景"
+    status: passed
+
+  - item: "Gaussian snapshot electronic energy value 等于 synthetic SCF energy 经 cclib/adapter 转换后的 hartree"
+    source: "验收场景"
+    status: passed
+
+  - item: "Gaussian snapshot thermochemistry_keys=[]，明确当前 Gaussian thermochemistry 未映射"
+    source: "验收场景"
+    status: passed
+
+  - item: "missing geometry targeted test 返回 parse_failed，不泄漏 backend exception，也不生成 partial object"
+    source: "边界场景"
+    status: passed
+
+  - item: "新增 fixture file / snapshot 均为 corpus 内相对路径，loader 安全校验通过"
+    source: "边界场景"
+    status: passed
+
+  - item: "snapshot 不保存完整 log、完整坐标轨迹或 Gaussian 运行环境路径，只保存对象摘要和必要 geometry sample"
+    source: "边界场景"
+    status: passed
+
+  - item: "本 feature 不提交真实 Gaussian 输出、cclib-data log 或用户日志"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不新增 Gaussian 版本/任务支持矩阵，不宣称 Gaussian 03/09/16 全支持"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不修改 GaussianLogPlugin parser id、public contract、energy key 或 unit conversion 策略，除非 snapshot 暴露实现 bug 且修复限制在 parser 行为内"
+    source: "范围守护"
+    status: passed
+
+  - item: "本 feature 不调用 ProjectStore、ImportRegistryWorkflow、ChemicalRegistry、ReactionGraphService、EnergyProfileEngine、ReportExportService、PlatformShellService 或 ProjectBundleService"
+    source: "范围守护"
+    status: passed
+
+  - item: "不新增 CLI command、Web route、桌面入口、外部 Gaussian 调用、cclib-data 下载流程或 snapshot 自动更新命令"
+    source: "范围守护"
+    status: passed

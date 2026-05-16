@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 创建日期：2026-05-01
-> 最近更新：2026-05-14
+> 最近更新：2026-05-16
 
 ## 1. 项目简介
 
@@ -33,6 +33,12 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Raw File Resource：复制进 Project Directory 的原始输入文件索引项，manifest 只记录项目相对 path、sha256 checksum 和 metadata。
 - Parser Plugin：核心层格式解析插件，声明 can_parse 能力并把单个 Raw File 解析为 ChemicalObjectDraft。
 - Parse Result：单次解析产物，包含 ChemicalObjectDraft 列表、provenance 和 warnings。
+- Parser Fixture Corpus：`tests/fixtures/parsers/` 下的解析器回归样例集合，当前包含 manifest、support matrix、synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib、synthetic ORCA cclib、standard XYZ、ASE extxyz 输入、bad XYZ expected-error 样例和 golden snapshots，用于验证 ParserRegistry 语义稳定性和 import preview 保真。
+- Fixture Manifest：parser fixture corpus 的 `parser-fixtures-v1` YAML 清单，记录 fixture id、program、format、task、parser_id、source policy、parse options、expected snapshot 和浮点容差。
+- Golden Snapshot：parser fixture 的 `parser-golden-v1` JSON 期望，记录 ParseResult 的稳定投影，包括 object_count、provenance.parser_id、对象摘要、energy keys、energy units/value 和 warning codes。
+- Parser Support Matrix：parser fixture corpus 的 `parser-support-matrix-v1` YAML 支持矩阵，按 program、format、task、field status、fixture ids、known limits 和 observed diagnostics 记录当前 fixture-backed 支持边界。
+- Parser Diagnostic Catalog：support matrix 内的 warning/error code 目录，当前定义 `partial_parse`、`missing_section`、`ambiguous_value`、`unit_assumed`、`unsupported_task`、`unsupported_field`、`source_license_notice`、`invalid_input`、`unsupported_format` 和 `parse_failed` 的测试侧语义。
+- Parser Corpus Developer Guide：`docs/dev/parser-fixture-corpus.md` 下的开发者和 agent 任务指南，说明新增 fixture、source policy、脱敏、snapshot 更新、support matrix、diagnostic codes、import preview regression 和 parser gap triage。
 - Import Registry Workflow：核心层导入编排服务，串联 Project Store、Parser Registry 和 Chemical Registry，把 source file 变成等待确认或已登记的结构化导入状态。
 - Import Batch / Import Item：单文件或批量导入的内存状态快照，逐项记录 source_path、raw resource、parse preview、warnings、error 和 registered object ids。
 - Parse Preview：等待用户或 agent 确认的解析预览，记录 parser provenance、object_count、warnings 和原始 ParseResult；确认前不登记 ChemicalObject。
@@ -83,7 +89,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 
 当前已落地模块：
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、Project Bundle 导入/导出、Browser Local Storage Backend 核心协议测试替身、首批 Parser Plugins、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
+- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、Project Bundle 导入/导出、Browser Local Storage Backend 核心协议测试替身、首批 Parser Plugins、parser fixture harness、parser support matrix diagnostics、parser corpus developer guide、import preview parser regression、MAPLE、Gaussian/ORCA cclib 与 XYZ/extxyz synthetic fixture coverage、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX 基线导出，以及 Platform Shell/App Kernel/CLI/payload adapter 基线。
 
 ## 4. 关键架构决定
 
@@ -94,6 +100,10 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - raw file resource 以 sha256 checksum 去重；重复添加同一内容应返回已有 resource。
 - `project-v1` 之外的 manifest schema 不做 silent migration，当前返回 `invalid_input`。
 - Parser Plugins 当前输出 ChemicalObjectDraft + provenance + warnings，不写 Project Store，不登记 ChemicalObject，不生成 ReactionGraph/EnergyProfile。
+- Parser Fixture Harness 当前只存在于测试边界，通过 `tests/fixtures/parsers/manifest.yaml`、`tests/fixtures/parsers/support-matrix.yaml` 和 golden snapshot 验证 ParserRegistry 输出及 fixture-backed 支持边界；它不属于 `rxnflow.parsers` runtime API，不调用 Project Store、Import Workflow、Chemical Registry、Reaction Graph、Energy Engine 或 Report Export。
+- Parser Fixture Corpus 当前覆盖 synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib `.log`、synthetic ORCA cclib `.out`、standard XYZ geometry-only、ASE extxyz energy/charge/spin、ASE extxyz missing energy 和 bad XYZ count expected-error 样例；`support-matrix.yaml` 覆盖当前 9 个 manifest fixture ids，并把 MAPLE `.sum`、AutoNEB tree JSON 和 MD thermo artifact 记录为 reference-only；这些条目只固定当前 fixture-backed 解析边界，不声明真实第三方输出的完整版本支持矩阵。
+- Parser Corpus Developer Guide 当前只记录开发者和 agent 维护流程，不新增 runtime API、fixture、diagnostic code、用户指南、UI、CLI command 或 Web route；真实第三方输出进入 corpus 前必须按该指南确认 source policy、redistributable、license 和 redaction。
+- Import Preview Parser Regression 当前只存在于测试边界，用 parser fixture corpus 驱动 `ImportRegistryWorkflow.import_files` 和 `PlatformShellService(import.preview)`，验证 supported/partial fixture 进入 ParsePreview 后保留 parser_id、parser_version、object_count、warning codes、raw_resource/provenance linkage，并验证 expected parser failure 保留 raw resource 和 error code；它不确认导入、不登记 ChemicalObject、不新增 runtime API。
 - Chemical Registry 当前接收 ParseResult 并登记 ChemicalObject；它不解析文件、不写 Project Store、不生成 ReactionGraph/EnergyProfile。
 - ChemicalObject 当前携带 `registry_fingerprint`，用于持久化后恢复 ChemicalRegistry 的同来源同 draft 内容幂等索引；它不是化学相似度指纹，不用于自动合并。
 - ChemicalRegistry 当前提供 `list_objects` 和 `restore_objects`，用于把已持久化 ChemicalObject 恢复为 project-scoped registry state；restore 不重新 parse raw file，也不调用 `register` 重新计算 fingerprint。
@@ -114,9 +124,9 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Graph Editor Workspace 不调用 EnergyProfileEngine；能量曲线和 path-energy 联动留给后续 feature。
 - ReactionGraphService 当前提供 `list_graphs` 和 `restore_graphs`，用于把已持久化 ReactionGraph 恢复为可继续 patch 的 project-scoped graph state；restore 不回放 GraphPatch。
 - GraphEditorWorkspaceService 当前提供 `list_workspaces` 和 `restore_workspaces`，用于把已持久化 workspace-only 状态恢复为可继续编辑的 headless workspace；恢复时 palette 和 preview 仍由 ChemicalObject / ReactionGraph 派生。
-- Gaussian/ORCA 解析通过 cclib adapter 隔离；XYZ/extxyz 解析通过标准 XYZ 解析器和 ASE extxyz adapter；MAPLE parser 只读已有 `.out` / `.xyz` 输出文件。
+- Gaussian/ORCA 解析通过 cclib adapter 隔离；Gaussian DFT method 优先使用 cclib `metadata.functional`，ORCA DFT method 可从已知 `metadata.keywords` functional token 恢复，避免把具体泛函退化为泛称 `DFT`；XYZ/extxyz 解析通过标准 XYZ 解析器和 ASE extxyz adapter；MAPLE parser 只读已有 `.out` / `.xyz` 输出文件。
 - cclib/ASE 提供的 eV energy 必须转换为 hartree 后进入 `EnergyValue`；MAPLE 明确标注 Hartree 的 energy 直接进入 hartree。
-- 内置 fixture 只表达核心数据流，不代表真实化学体系，也不替代真实 Parser Plugin fixture corpus。
+- 内置 fixture 只表达核心数据流，不代表真实化学体系；parser fixture corpus 当前仍是 synthetic / file-level 回归样例，`parser-support-matrix-v1` 只声明这些 fixture 和 reference-only artifacts 的字段边界，不替代 Gaussian/ORCA/MAPLE 真实版本支持矩阵。
 - 相对能量计算必须记录基线和单位；缺失能量不得默认为 0。
 - Energy Engine 当前只读取传入的 ReactionGraph 和 ChemicalObject 集合，不解析、不登记、不持久化、不导出，也不修改 graph/object 状态。
 - Energy Engine 的多对象节点能量当前按所有 ChemicalObject 的指定 energy key 以隐含系数 1 求和；更复杂的计量系数和热化学表达式尚未实现。
@@ -158,7 +168,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - ProjectContentValidator 只读 `.rxnflow/state/`、`.rxnflow/manifest.json` 和 `exports/...`，聚合 index/schema/path/checksum/codec/cross-ref/artifact issues；它不修复、不删除、不写回项目文件。
 - ProjectContentStore 当前暴露 `validate_project(project_ref)` 和 `migration_plan(project_ref, target_schema_version="project-content-v1")`；`load_snapshot` 不自动 migration。
 - `project-content-v1`、`chemical-objects-v1`、`reaction-graphs-v1`、`workspaces-v1`、`import-ledger-v1`、`energy-profiles-v1` 和 `export-artifacts-v1` 不做 silent fallback；index 缺失、schema 不兼容、坏 JSON、不安全 path、裸 energy、unsupported unit、重复 object/graph/workspace/profile/artifact/node/edge/path id、缺失 object/node/edge/path/workspace/profile 引用、非法 viewport、profile point energy/missing_reason 冲突、artifact path/checksum/metadata shape 错误和 warning shape 错误等返回结构化错误。
-- 待补：真实 Gaussian/ORCA/MAPLE fixture corpus 与支持版本边界。
+- 待补：真实 Gaussian/ORCA/MAPLE fixture coverage、Gaussian/ORCA/MAPLE/XYZ/extxyz 支持版本边界；当前 support matrix 只覆盖 synthetic/reference-only corpus，MAPLE `.sum`、AutoNEB tree JSON、MD thermo 和 path topology 语义仍未解析。
 - 待补：真实图谱编辑 UI 渲染、画布布局持久化与端侧交互协议。
 - 待补：组合报告、报告预览、图谱画布截图、CDX、PDF/PPTX/SVG/CSV 等导出能力边界。
 
