@@ -164,6 +164,10 @@ export const fixtureTransport: ShellTransport = {
       return fixtureWorkspaceRemoveResponse(payload.args)
     }
 
+    if (payload.command === "workspace.update_edge") {
+      return fixtureWorkspaceUpdateEdgeResponse(payload.args)
+    }
+
     if (payload.command === "workspace.set_viewport") {
       return fixtureWorkspaceSetViewportResponse(payload.args)
     }
@@ -512,6 +516,41 @@ function fixtureWorkspaceRemoveResponse(args: JsonObject): ShellResponse<Workspa
     })
   }
   return workspaceCommandResponse("workspace.remove")
+}
+
+function fixtureWorkspaceUpdateEdgeResponse(args: JsonObject): ShellResponse<WorkspaceCommandData> {
+  if (args.session_id !== fixtureSessionId) {
+    return invalidSessionResponse()
+  }
+  const edgeId = typeof args.edge_id === "string" && args.edge_id ? args.edge_id : ""
+  if (!edgeId) {
+    return invalidWorkspaceInput("Edge id is required.", "edge_id")
+  }
+  if (!("label" in args) && !("metadata" in args)) {
+    return invalidWorkspaceInput("Edge label is required.", "edge_label")
+  }
+  const edge = fixtureWorkspace.graph.edges.find((item) => item.id === edgeId)
+  if (!edge) {
+    return invalidWorkspaceInput("Graph edge does not exist.", "edge_id", "graph_invalid")
+  }
+  const labelResult = "label" in args ? edgeLabelFromArgs(args.label) : { label: edge.label ?? null }
+  if ("error" in labelResult) {
+    return invalidWorkspaceInput(labelResult.error.message, labelResult.error.target)
+  }
+  const metadataResult = "metadata" in args ? edgeMetadataFromArgs(args.metadata) : { metadata: edge.metadata ?? {} }
+  if ("error" in metadataResult) {
+    return invalidWorkspaceInput(metadataResult.error.message, metadataResult.error.target)
+  }
+  fixtureWorkspace = normalizeWorkspace({
+    ...fixtureWorkspace,
+    graph: {
+      ...fixtureWorkspace.graph,
+      edges: fixtureWorkspace.graph.edges.map((item) => item.id === edgeId
+        ? { ...item, label: labelResult.label, metadata: metadataResult.metadata }
+        : item),
+    },
+  })
+  return workspaceCommandResponse("workspace.update_edge")
 }
 
 function fixtureWorkspaceSetViewportResponse(args: JsonObject): ShellResponse<WorkspaceCommandData> {
@@ -1716,6 +1755,27 @@ function idsFromArgs(value: JsonValue | undefined): string[] {
   if (Array.isArray(value)) return Array.from(new Set(value.map(String).filter(Boolean)))
   const id = String(value)
   return id ? [id] : []
+}
+
+function edgeLabelFromArgs(value: JsonValue | undefined): { label: string | null } | { error: { message: string; target: string } } {
+  if (value === undefined || value === null) {
+    return { label: null }
+  }
+  if (typeof value !== "string") {
+    return { error: { message: "Edge label must be a string or null.", target: "edge_label" } }
+  }
+  const label = value.trim()
+  return { label: label ? label : null }
+}
+
+function edgeMetadataFromArgs(value: JsonValue | undefined): { metadata: JsonObject } | { error: { message: string; target: string } } {
+  if (value === undefined || value === null) {
+    return { metadata: {} }
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return { error: { message: "Edge metadata must be an object.", target: "metadata" } }
+  }
+  return { metadata: value }
 }
 
 function compositionTermsFromArgs(

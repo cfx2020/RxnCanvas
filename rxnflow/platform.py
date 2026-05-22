@@ -265,6 +265,8 @@ class PlatformShellService:
             return self._run_workspace_move_node(command)
         if command.name == "workspace.remove":
             return self._run_workspace_remove(command)
+        if command.name == "workspace.update_edge":
+            return self._run_workspace_update_edge(command)
         if command.name == "workspace.set_viewport":
             return self._run_workspace_set_viewport(command)
         if command.name == "workspace.select":
@@ -873,6 +875,45 @@ class PlatformShellService:
             return _result_error_response(updated)
         return self._store_workspace(command.name, state, updated.value)
 
+    def _run_workspace_update_edge(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        if state.workspace is None:
+            return _invalid_input("Workspace must be opened before updating graph edges.", "workspace_id")
+        edge_id = _required_str(command.args, "edge_id")
+        if edge_id is None:
+            return _invalid_input("Edge id is required.", "edge_id")
+        has_label = "label" in command.args
+        has_metadata = "metadata" in command.args
+        if not has_label and not has_metadata:
+            return _invalid_input("Edge label is required.", "edge_label")
+        if has_label:
+            label = _edge_label_arg(command.args.get("label"))
+            if isinstance(label, ShellResponse):
+                return label
+        else:
+            edge = next((item for item in state.workspace.graph.edges if item.id == edge_id), None)
+            if edge is None:
+                return _shell_error("graph_invalid", f"Edge '{edge_id}' does not exist.", "edge_id")
+            label = edge.label
+        metadata = _edge_metadata_arg(command.args.get("metadata")) if has_metadata else None
+        if isinstance(metadata, ShellResponse):
+            return metadata
+        updated = self._kernel.workspace_service.update_edge(
+            state.session.project_id or "",
+            state.workspace.workspace_id,
+            edge_id,
+            label,
+            metadata=metadata,
+        )
+        if not updated.ok or updated.value is None:
+            if updated.error and updated.error.code == "graph_invalid" and updated.error.target == edge_id:
+                return _shell_error(updated.error.code, updated.error.message, "edge_id")
+            return _result_error_response(updated)
+        return self._store_workspace(command.name, state, updated.value)
+
     def _run_workspace_set_viewport(self, command: ShellCommand) -> ShellResponse:
         resolved = self._resolve_state(command.args)
         if isinstance(resolved, ShellResponse):
@@ -1385,6 +1426,23 @@ def _required_str(args: dict[str, Any], key: str) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _edge_label_arg(value: Any) -> str | None | ShellResponse:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return _invalid_input("Edge label must be a string or null.", "edge_label")
+    text = value.strip()
+    return text if text else None
+
+
+def _edge_metadata_arg(value: Any) -> dict[str, Any] | ShellResponse:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        return _invalid_input("Edge metadata must be an object.", "metadata")
+    return dict(value)
 
 
 def _source_paths(args: dict[str, Any]) -> tuple[str, ...]:

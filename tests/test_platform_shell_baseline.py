@@ -1012,6 +1012,63 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertEqual(moved_nodes[1]["position"], [240.0, 180.0])
             edge_id = connected.to_dict()["data"]["workspace"]["graph"]["edges"][0]["id"]
 
+            selected_edge = service.run(
+                ShellCommand(
+                    "workspace.select",
+                    {"session_id": session_id, "selection": {"edge_ids": [edge_id]}},
+                )
+            )
+            self.assertTrue(selected_edge.ok, selected_edge.error)
+            updated_edge = service.run(
+                ShellCommand(
+                    "workspace.update_edge",
+                    {"session_id": session_id, "edge_id": edge_id, "label": "TS search"},
+                )
+            )
+            self.assertTrue(updated_edge.ok, updated_edge.error)
+            updated_edge_payload = updated_edge.to_dict()
+            json.dumps(updated_edge_payload)
+            self.assertEqual(updated_edge_payload["data"]["command"], "workspace.update_edge")
+            edge = updated_edge_payload["data"]["workspace"]["graph"]["edges"][0]
+            self.assertEqual(edge["label"], "TS search")
+            self.assertEqual(edge["from_node"], node_ids[0])
+            self.assertEqual(edge["to_node"], node_ids[1])
+            self.assertEqual(updated_edge_payload["data"]["workspace"]["selection"]["edge_ids"], [edge_id])
+
+            cleared_edge = service.run(
+                ShellCommand(
+                    "workspace.update_edge",
+                    {"session_id": session_id, "edge_id": edge_id, "label": "   "},
+                )
+            )
+            self.assertTrue(cleared_edge.ok, cleared_edge.error)
+            self.assertIsNone(cleared_edge.to_dict()["data"]["workspace"]["graph"]["edges"][0]["label"])
+
+            missing_edge_update = service.run(
+                ShellCommand(
+                    "workspace.update_edge",
+                    {"session_id": session_id, "edge_id": "edge-missing", "label": "missing"},
+                )
+            )
+            self.assertFalse(missing_edge_update.ok)
+            self.assertEqual(missing_edge_update.error["code"], "graph_invalid")  # type: ignore[index]
+            self.assertEqual(missing_edge_update.error["target"], "edge_id")  # type: ignore[index]
+
+            missing_edge_id_update = service.run(
+                ShellCommand("workspace.update_edge", {"session_id": session_id, "label": "missing id"})
+            )
+            self.assertFalse(missing_edge_id_update.ok)
+            self.assertEqual(missing_edge_id_update.error["target"], "edge_id")  # type: ignore[index]
+
+            invalid_label_update = service.run(
+                ShellCommand(
+                    "workspace.update_edge",
+                    {"session_id": session_id, "edge_id": edge_id, "label": 42},
+                )
+            )
+            self.assertFalse(invalid_label_update.ok)
+            self.assertEqual(invalid_label_update.error["target"], "edge_label")  # type: ignore[index]
+
             removed_edge = service.run(
                 ShellCommand(
                     "workspace.remove",

@@ -405,6 +405,29 @@ describe("ShellClient", () => {
     expect(repeated.data?.workspace.graph.edge_count).toBe(2)
     const edgeId = connected.data?.workspace.graph.edges.find((edge) => edge.to_node === "node-web-3")?.id
 
+    const edgeLabel = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.update_edge",
+      args: {
+        session_id: sessionId,
+        edge_id: edgeId ?? "",
+        label: "TS search",
+      },
+    })
+    expect(edgeLabel.ok).toBe(true)
+    expect(edgeLabel.data?.command).toBe("workspace.update_edge")
+    expect(edgeLabel.data?.workspace.graph.edges.find((edge) => edge.id === edgeId)?.label).toBe("TS search")
+
+    const clearedEdgeLabel = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.update_edge",
+      args: {
+        session_id: sessionId,
+        edge_id: edgeId ?? "",
+        label: "   ",
+      },
+    })
+    expect(clearedEdgeLabel.ok).toBe(true)
+    expect(clearedEdgeLabel.data?.workspace.graph.edges.find((edge) => edge.id === edgeId)?.label).toBeNull()
+
     const path = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.set_path",
       args: {
@@ -690,6 +713,50 @@ describe("ShellClient", () => {
     expect(response.ok).toBe(false)
     expect(response.error?.code).toBe("graph_invalid")
     expect(response.error?.target).toBe("node_id")
+  })
+
+  it("returns structured errors for invalid fixture edge label updates", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+
+    const missingEdge = await shellClient.run({
+      command: "workspace.update_edge",
+      args: {
+        session_id: sessionId,
+        edge_id: "edge-missing",
+        label: "TS search",
+      },
+    })
+    expect(missingEdge.ok).toBe(false)
+    expect(missingEdge.error?.code).toBe("graph_invalid")
+    expect(missingEdge.error?.target).toBe("edge_id")
+
+    const missingEdgeId = await shellClient.run({
+      command: "workspace.update_edge",
+      args: {
+        session_id: sessionId,
+        label: "TS search",
+      },
+    })
+    expect(missingEdgeId.ok).toBe(false)
+    expect(missingEdgeId.error?.code).toBe("invalid_input")
+    expect(missingEdgeId.error?.target).toBe("edge_id")
+
+    const badLabel = await shellClient.run({
+      command: "workspace.update_edge",
+      args: {
+        session_id: sessionId,
+        edge_id: "edge-a-b",
+        label: 1,
+      },
+    })
+    expect(badLabel.ok).toBe(false)
+    expect(badLabel.error?.code).toBe("invalid_input")
+    expect(badLabel.error?.target).toBe("edge_label")
   })
 
   it("computes a JSON-safe fixture energy profile from the active path", async () => {

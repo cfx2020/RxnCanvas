@@ -8,7 +8,7 @@ steps:
 
   - action: "Platform Shell And Fixture Contract：新增 workspace.update_edge shell handler、fixture transport command、Shell DTO 类型和 tests"
     exit_signal: "真实 shell 与 fixture 都能 update / clear edge label，错误 target 一致，JSON-safe projection 保持"
-    status: pending
+    status: done
 
   - action: "Web Edge Label Draft Entry：GraphCanvas / WorkbenchShell 增加 selected edge draft UI、Apply/Reset/clear 编排和 component tests"
     exit_signal: "选中 edge 后 draft 初始化；编辑不立即改可见 graph；Apply 发送 workspace.update_edge，ShellResponse 后 label 可见且 draft clean"
