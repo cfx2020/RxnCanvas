@@ -4,7 +4,7 @@ created: 2026-05-22
 steps:
   - action: "Selection Intent State：扩展 interaction helper 支持 replace/add/toggle/clear、rubber-band draft、keyboard intent 和 stale prune"
     exit_signal: "helper tests 证明 mixed selection 可 add/toggle/dedupe/prune，rubber-band release 可产出 node ids，keyboard intent 不处理输入控件"
-    status: pending
+    status: done
 
   - action: "GraphCanvas Multi-select UI：接入 Shift-click node/edge/path、rubber-band node selection、多选视觉和 single-item editor guard"
     exit_signal: "component tests 证明普通点击 replace，Shift-click add/toggle，框选多个 node 后只发送 workspace.select，multi selection 不误开单 item draft"

@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest"
 import {
   clearGraphEditorPendingEdge,
+  clearGraphEditorSelection,
   completeGraphEditorConnection,
   endGraphEditorCanvasDrag,
+  endGraphEditorRubberBand,
+  graphEditorRubberBandRectangle,
   initialGraphEditorInteractionState,
   pruneGraphEditorInteractionState,
   resolveGraphEditorDirectEdgeGesture,
+  resolveGraphEditorKeyboardIntent,
+  resolveGraphEditorRubberBandNodeIds,
   selectGraphEditorEdge,
   selectGraphEditorNode,
   selectGraphEditorPath,
@@ -13,8 +18,10 @@ import {
   startGraphEditorCanvasDrag,
   startGraphEditorConnection,
   startGraphEditorPointerEdge,
+  startGraphEditorRubberBand,
   updateGraphEditorCanvasDrag,
   updateGraphEditorPointerEdge,
+  updateGraphEditorRubberBand,
   type GraphEditorInteractionState,
 } from "./graphEditorInteractionState"
 
@@ -47,6 +54,62 @@ describe("graphEditorInteractionState", () => {
       nodeIds: [],
       edgeIds: [],
       pathIds: ["path-a-b"],
+    })
+  })
+
+  it("adds and toggles mixed graph selections while keeping stable order", () => {
+    const nodeA = selectGraphEditorNode(initialGraphEditorInteractionState, "node-a")
+    const nodeB = selectGraphEditorNode(nodeA, "node-b", "add")
+    const duplicateNodeB = selectGraphEditorNode(nodeB, "node-b", "add")
+    const mixed = selectGraphEditorPath(
+      selectGraphEditorEdge(duplicateNodeB, "edge-a-b", "add"),
+      "path-a-b",
+      "add",
+    )
+    const withoutNodeA = selectGraphEditorNode(mixed, "node-a", "toggle")
+    const withoutPath = selectGraphEditorPath(withoutNodeA, "path-a-b", "toggle")
+
+    expect(mixed.selection).toEqual({
+      nodeIds: ["node-a", "node-b"],
+      edgeIds: ["edge-a-b"],
+      pathIds: ["path-a-b"],
+    })
+    expect(withoutNodeA.selection).toEqual({
+      nodeIds: ["node-b"],
+      edgeIds: ["edge-a-b"],
+      pathIds: ["path-a-b"],
+    })
+    expect(withoutPath.selection).toEqual({
+      nodeIds: ["node-b"],
+      edgeIds: ["edge-a-b"],
+      pathIds: [],
+    })
+  })
+
+  it("can toggle the last selected item to an empty selection", () => {
+    const selected = selectGraphEditorEdge(initialGraphEditorInteractionState, "edge-a-b")
+    const empty = selectGraphEditorEdge(selected, "edge-a-b", "toggle")
+
+    expect(empty.selection).toEqual({
+      nodeIds: [],
+      edgeIds: [],
+      pathIds: [],
+    })
+  })
+
+  it("clears selection, pending edge, and rubber-band drafts together", () => {
+    const pending = startGraphEditorConnection(selectGraphEditorNode(initialGraphEditorInteractionState, "node-a"))
+    const rubberBand = startGraphEditorRubberBand(selectGraphEditorNode(initialGraphEditorInteractionState, "node-a"), { x: 10, y: 10 })
+
+    expect(clearGraphEditorSelection(pending)).toMatchObject({
+      mode: "select",
+      pendingEdge: null,
+      selection: { nodeIds: [], edgeIds: [], pathIds: [] },
+    })
+    expect(clearGraphEditorSelection(rubberBand)).toMatchObject({
+      mode: "select",
+      dragging: null,
+      selection: { nodeIds: [], edgeIds: [], pathIds: [] },
     })
   })
 
@@ -176,6 +239,65 @@ describe("graphEditorInteractionState", () => {
     expect(ended.dragging).toBeNull()
   })
 
+  it("tracks rubber-band drafts and resolves contained node ids", () => {
+    const started = startGraphEditorRubberBand(initialGraphEditorInteractionState, { x: 220, y: 180 }, "add")
+    const updated = updateGraphEditorRubberBand(started, { x: 80, y: 60 })
+    const nodeIds = resolveGraphEditorRubberBandNodeIds(updated, [
+      { id: "node-a", position: { x: 100, y: 100 } },
+      { id: "node-b", position: { x: 240, y: 100 } },
+      { id: "node-c", position: { x: 220, y: 180 } },
+    ])
+    const ended = endGraphEditorRubberBand(updated)
+
+    expect(started.dragging).toEqual({
+      kind: "rubber-band",
+      origin: { x: 220, y: 180 },
+      current: { x: 220, y: 180 },
+      mode: "add",
+    })
+    expect(graphEditorRubberBandRectangle({ x: 220, y: 180 }, { x: 80, y: 60 })).toEqual({
+      left: 80,
+      top: 60,
+      right: 220,
+      bottom: 180,
+    })
+    expect(nodeIds).toEqual(["node-a", "node-c"])
+    expect(ended.dragging).toBeNull()
+  })
+
+  it("only starts rubber-band drafts in select mode", () => {
+    const pan = setGraphEditorMode(initialGraphEditorInteractionState, "pan")
+
+    expect(startGraphEditorRubberBand(pan, { x: 0, y: 0 })).toBe(pan)
+  })
+
+  it("resolves scoped graph keyboard intents", () => {
+    expect(resolveGraphEditorKeyboardIntent({ key: "Delete" })).toEqual({ kind: "delete-selection" })
+    expect(resolveGraphEditorKeyboardIntent({ key: "Backspace" })).toEqual({ kind: "delete-selection" })
+    expect(resolveGraphEditorKeyboardIntent({ key: "Escape" })).toEqual({ kind: "clear-selection" })
+    expect(resolveGraphEditorKeyboardIntent({ key: "ArrowRight" })).toEqual({
+      kind: "nudge-selection",
+      delta: { x: 20, y: 0 },
+    })
+    expect(resolveGraphEditorKeyboardIntent({ key: "ArrowUp" })).toEqual({
+      kind: "nudge-selection",
+      delta: { x: 0, y: -20 },
+    })
+    expect(resolveGraphEditorKeyboardIntent({ key: "ArrowRight", metaKey: true })).toBeNull()
+    expect(resolveGraphEditorKeyboardIntent({ key: "Enter" })).toBeNull()
+  })
+
+  it("does not resolve graph keyboard intents from editable targets", () => {
+    const input = document.createElement("input")
+    const textarea = document.createElement("textarea")
+    const editor = document.createElement("div")
+    editor.contentEditable = "true"
+
+    expect(resolveGraphEditorKeyboardIntent({ key: "Delete", target: input })).toBeNull()
+    expect(resolveGraphEditorKeyboardIntent({ key: "Escape", target: textarea })).toBeNull()
+    expect(resolveGraphEditorKeyboardIntent({ key: "ArrowDown", target: editor })).toBeNull()
+  })
+
   it("prunes stale selection, hover, pending edge, and dragging node references", () => {
     const state: GraphEditorInteractionState = {
       mode: "connect",
@@ -235,6 +357,20 @@ describe("graphEditorInteractionState", () => {
       targetNodeId: null,
       source: "pointer",
     })
+  })
+
+  it("prunes rubber-band drafts", () => {
+    const state = updateGraphEditorRubberBand(
+      startGraphEditorRubberBand(initialGraphEditorInteractionState, { x: 10, y: 10 }),
+      { x: 120, y: 120 },
+    )
+    const pruned = pruneGraphEditorInteractionState(state, {
+      nodeIds: ["node-a"],
+      edgeIds: [],
+      pathIds: [],
+    })
+
+    expect(pruned.dragging).toBeNull()
   })
 
   it("uses a valid fallback node when the current node selection is gone", () => {

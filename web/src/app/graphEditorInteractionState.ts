@@ -11,6 +11,13 @@ export type GraphEditorSelection = {
   pathIds: string[]
 }
 
+export type GraphEditorSelectionMode = "replace" | "add" | "toggle"
+
+export type GraphEditorSelectionTarget = {
+  kind: "node" | "edge" | "path"
+  id: string
+}
+
 export type GraphEditorHoverTarget = {
   kind: "node" | "edge" | "path"
   id: string
@@ -20,6 +27,7 @@ export type GraphEditorDraggingState =
   | { kind: "node"; nodeIds: string[]; origin: CanvasPoint; current: CanvasPoint }
   | { kind: "canvas"; origin: CanvasPoint; current: CanvasPoint }
   | { kind: "object-drop"; objectId: string; current: CanvasPoint }
+  | { kind: "rubber-band"; origin: CanvasPoint; current: CanvasPoint; mode: "replace" | "add" }
 
 export type PendingEdgeDraft = {
   fromNodeId: string
@@ -31,6 +39,23 @@ export type PendingEdgeDraft = {
 export type DirectEdgeGestureResult =
   | { kind: "connect"; fromNodeId: string; toNodeId: string }
   | { kind: "cancel"; reason: "empty-target" | "same-node" | "stale-source" | "pointer-cancel" }
+
+export type GraphEditorKeyboardIntent =
+  | { kind: "delete-selection" }
+  | { kind: "clear-selection" }
+  | { kind: "nudge-selection"; delta: CanvasPoint }
+
+export type GraphEditorRubberBandNode = {
+  id: string
+  position: CanvasPoint
+}
+
+export type GraphEditorSelectionRectangle = {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
 
 export type GraphEditorInteractionState = {
   mode: GraphEditorMode
@@ -63,44 +88,46 @@ export const initialGraphEditorInteractionState: GraphEditorInteractionState = {
 export function selectGraphEditorNode(
   state: GraphEditorInteractionState,
   nodeId: string,
+  mode: GraphEditorSelectionMode = "replace",
 ): GraphEditorInteractionState {
   return {
     ...state,
     mode: state.pendingEdge ? "connect" : "select",
-    selection: {
-      ...state.selection,
-      nodeIds: [nodeId],
-      edgeIds: [],
-      pathIds: [],
-    },
+    selection: applyGraphEditorSelectionIntent(state.selection, { kind: "node", id: nodeId }, mode),
   }
 }
 
 export function selectGraphEditorEdge(
   state: GraphEditorInteractionState,
   edgeId: string,
+  mode: GraphEditorSelectionMode = "replace",
 ): GraphEditorInteractionState {
+  const base = clearGraphEditorPendingEdge(state)
   return {
-    ...clearGraphEditorPendingEdge(state),
-    selection: {
-      nodeIds: [],
-      edgeIds: [edgeId],
-      pathIds: [],
-    },
+    ...base,
+    selection: applyGraphEditorSelectionIntent(state.selection, { kind: "edge", id: edgeId }, mode),
   }
 }
 
 export function selectGraphEditorPath(
   state: GraphEditorInteractionState,
   pathId: string,
+  mode: GraphEditorSelectionMode = "replace",
+): GraphEditorInteractionState {
+  const base = clearGraphEditorPendingEdge(state)
+  return {
+    ...base,
+    selection: applyGraphEditorSelectionIntent(state.selection, { kind: "path", id: pathId }, mode),
+  }
+}
+
+export function clearGraphEditorSelection(
+  state: GraphEditorInteractionState,
 ): GraphEditorInteractionState {
   return {
     ...clearGraphEditorPendingEdge(state),
-    selection: {
-      nodeIds: [],
-      edgeIds: [],
-      pathIds: [pathId],
-    },
+    dragging: state.dragging?.kind === "rubber-band" ? null : state.dragging ?? null,
+    selection: initialGraphEditorSelection,
   }
 }
 
@@ -202,6 +229,70 @@ export function endGraphEditorCanvasDrag(
   }
 }
 
+export function startGraphEditorRubberBand(
+  state: GraphEditorInteractionState,
+  origin: CanvasPoint,
+  mode: "replace" | "add" = "replace",
+): GraphEditorInteractionState {
+  if (state.mode !== "select") return state
+  return {
+    ...clearGraphEditorPendingEdge(state),
+    dragging: {
+      kind: "rubber-band",
+      origin,
+      current: origin,
+      mode,
+    },
+  }
+}
+
+export function updateGraphEditorRubberBand(
+  state: GraphEditorInteractionState,
+  current: CanvasPoint,
+): GraphEditorInteractionState {
+  if (!state.dragging || state.dragging.kind !== "rubber-band") return state
+  return {
+    ...state,
+    dragging: {
+      ...state.dragging,
+      current,
+    },
+  }
+}
+
+export function endGraphEditorRubberBand(
+  state: GraphEditorInteractionState,
+): GraphEditorInteractionState {
+  if (!state.dragging || state.dragging.kind !== "rubber-band") return state
+  return {
+    ...state,
+    dragging: null,
+  }
+}
+
+export function graphEditorRubberBandRectangle(
+  origin: CanvasPoint,
+  current: CanvasPoint,
+): GraphEditorSelectionRectangle {
+  return {
+    left: Math.min(origin.x, current.x),
+    top: Math.min(origin.y, current.y),
+    right: Math.max(origin.x, current.x),
+    bottom: Math.max(origin.y, current.y),
+  }
+}
+
+export function resolveGraphEditorRubberBandNodeIds(
+  state: GraphEditorInteractionState,
+  nodes: readonly GraphEditorRubberBandNode[],
+): string[] {
+  if (!state.dragging || state.dragging.kind !== "rubber-band") return []
+  const rectangle = graphEditorRubberBandRectangle(state.dragging.origin, state.dragging.current)
+  return nodes
+    .filter((node) => pointInRectangle(node.position, rectangle))
+    .map((node) => node.id)
+}
+
 export function clearGraphEditorPendingEdge(
   state: GraphEditorInteractionState,
 ): GraphEditorInteractionState {
@@ -249,6 +340,35 @@ export function resolveGraphEditorDirectEdgeGesture(
   return { kind: "connect", fromNodeId: pendingEdge.fromNodeId, toNodeId: targetNodeId }
 }
 
+export function resolveGraphEditorKeyboardIntent(
+  event: {
+    key: string
+    target?: EventTarget | null
+    altKey?: boolean
+    ctrlKey?: boolean
+    metaKey?: boolean
+  },
+): GraphEditorKeyboardIntent | null {
+  if (event.altKey || event.ctrlKey || event.metaKey || isEditableKeyboardTarget(event.target)) return null
+  switch (event.key) {
+    case "Delete":
+    case "Backspace":
+      return { kind: "delete-selection" }
+    case "Escape":
+      return { kind: "clear-selection" }
+    case "ArrowUp":
+      return { kind: "nudge-selection", delta: { x: 0, y: -20 } }
+    case "ArrowDown":
+      return { kind: "nudge-selection", delta: { x: 0, y: 20 } }
+    case "ArrowLeft":
+      return { kind: "nudge-selection", delta: { x: -20, y: 0 } }
+    case "ArrowRight":
+      return { kind: "nudge-selection", delta: { x: 20, y: 0 } }
+    default:
+      return null
+  }
+}
+
 export function pruneGraphEditorInteractionState(
   state: GraphEditorInteractionState,
   references: GraphEditorReferenceSet,
@@ -293,6 +413,51 @@ function targetExists(
   return validPathIds.has(target.id)
 }
 
+function applyGraphEditorSelectionIntent(
+  selection: GraphEditorSelection,
+  target: GraphEditorSelectionTarget,
+  mode: GraphEditorSelectionMode,
+): GraphEditorSelection {
+  if (mode === "replace") {
+    return {
+      nodeIds: target.kind === "node" ? [target.id] : [],
+      edgeIds: target.kind === "edge" ? [target.id] : [],
+      pathIds: target.kind === "path" ? [target.id] : [],
+    }
+  }
+  return {
+    nodeIds: updateSelectionIds(selection.nodeIds, target.kind === "node" ? target.id : null, mode),
+    edgeIds: updateSelectionIds(selection.edgeIds, target.kind === "edge" ? target.id : null, mode),
+    pathIds: updateSelectionIds(selection.pathIds, target.kind === "path" ? target.id : null, mode),
+  }
+}
+
+function updateSelectionIds(
+  ids: string[],
+  targetId: string | null,
+  mode: Exclude<GraphEditorSelectionMode, "replace">,
+): string[] {
+  if (!targetId) return ids
+  const exists = ids.includes(targetId)
+  if (mode === "add") return exists ? ids : [...ids, targetId]
+  return exists ? ids.filter((id) => id !== targetId) : [...ids, targetId]
+}
+
+function pointInRectangle(point: CanvasPoint, rectangle: GraphEditorSelectionRectangle): boolean {
+  return point.x >= rectangle.left
+    && point.x <= rectangle.right
+    && point.y >= rectangle.top
+    && point.y <= rectangle.bottom
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null | undefined): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tagName = target.tagName.toLowerCase()
+  if (tagName === "input" || tagName === "textarea" || tagName === "select") return true
+  if (target.isContentEditable || target.contentEditable === "true" || target.contentEditable === "plaintext-only") return true
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']"))
+}
+
 function prunePendingEdge(
   pendingEdge: PendingEdgeDraft | null,
   validNodeIds: Set<string>,
@@ -309,6 +474,7 @@ function pruneDraggingState(
   dragging: GraphEditorDraggingState | null,
   validNodeIds: Set<string>,
 ): GraphEditorDraggingState | null {
+  if (dragging?.kind === "rubber-band") return null
   if (!dragging || dragging.kind !== "node") return dragging
   const nodeIds = dragging.nodeIds.filter((nodeId) => validNodeIds.has(nodeId))
   if (nodeIds.length === 0) return null
