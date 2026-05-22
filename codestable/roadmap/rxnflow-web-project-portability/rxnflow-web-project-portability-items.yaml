@@ -13,10 +13,10 @@ items:
   - slug: web-project-bundle-archive-adapter
     description: 建立 Web 侧 .rxnflow.zip archive helper，覆盖 allowed roots、entry 安全校验、summary 和 zip read/write tests
     depends_on: []
-    status: in-progress
+    status: done
     feature: 2026-05-22-web-project-bundle-archive-adapter
     minimal_loop: false
-    notes: feature design 阶段需要决策 zip 依赖或实现策略，保持核心 Project Bundle allowed roots 与安全路径语义一致
+    notes: 已采用 fflate 作为 Web zip dependency boundary；helper-only，不启用 Sidebar UI，不写 repository，保持核心 Project Bundle allowed roots 与安全路径语义一致
 
   - slug: web-project-bundle-export
     description: 启用 Project Sidebar Export Bundle，把 active browser project 下载为 .rxnflow.zip，包含 .rxnflow/、inputs/raw/ 和 exports/

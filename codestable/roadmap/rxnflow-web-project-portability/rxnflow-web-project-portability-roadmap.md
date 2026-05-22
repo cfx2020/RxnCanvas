@@ -345,7 +345,7 @@ type WebProjectPortabilityRoundtrip =
 2. **web-project-bundle-archive-adapter** — 建立 Web 侧 `.rxnflow.zip` archive helper，覆盖 allowed roots、entry 安全校验、summary 和 zip read/write tests。
    - 所属模块：Browser Bundle Archive Adapter
    - 依赖：无
-   - 状态：planned
+   - 状态：done。已采用 `fflate` 作为 Web zip dependency boundary；当前只提供 helper，不启用 Project Sidebar import/export UI，也不写 Browser Project Repository。
 
 3. **web-project-bundle-export** — 启用 Project Sidebar Export Bundle，把 active browser project 下载为 `.rxnflow.zip`，包含 `.rxnflow/`、`inputs/raw/` 和 `exports/`。
    - 所属模块：Project Sidebar Bundle UI / Browser Bundle Archive Adapter
@@ -377,7 +377,7 @@ type WebProjectPortabilityRoundtrip =
 
 ## 7. 观察项
 
-- Web bundle archive feature 需要选择 zip 依赖或实现策略。候选可以是 `fflate` / `jszip` 等成熟库；feature design 阶段需要结合 bundle size、TypeScript 类型、浏览器兼容和 license 决策。
+- Web bundle archive adapter 已选择 `fflate` 并隔离在 `web/src/app/projectBundleArchive.ts`；后续 Sidebar export/import feature 不应直接散落调用 zip 依赖。
 - IndexedDB 对大 raw output 的容量和持久性仍不是可靠备份；本 roadmap 不做 OPFS/chunking，但后续可能需要单独 roadmap。
 - Project Sidebar 当前没有精确 dirty tracking；Export Bundle 前是否提示 Save Bridge Session 需要在 feature design 中用现有 bridge status 做保守处理。
 - Browser import 第一版如果写入中途失败，IndexedDB 没有跨 object 事务封装在现有 repository API 上暴露；feature design 需要决定是扩展 repository transaction API，还是接受失败后提示用户删除部分 project。

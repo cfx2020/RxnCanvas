@@ -3,7 +3,7 @@ doc_type: requirement
 slug: project-content-persistence
 pitch: 把项目里的对象、图谱、导入记录、基础结果和导出索引保存下来，让用户关掉项目后还能继续工作
 status: current
-last_reviewed: 2026-05-20
+last_reviewed: 2026-05-22
 implemented_by:
   - core-platform
   - web-workbench
@@ -44,6 +44,8 @@ Web Workbench Project Sidebar 已接入该 repository。用户可以在左侧栏
 
 Web Workbench Report Export Panel 已能在 active browser project 下把 `export.profile` 返回的 PNG/CDXML/XLSX inline bytes 写入 Browser Project Repository 的 `exports/{basename}.{format}` object。写入成功后，Web 会 upsert `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中 export artifacts section 的 checksum，让 Project Sidebar shallow validation 继续显示 valid。该能力只持久化已由 ShellResponse 返回的 bytes，不在前端生成报告文件，也不自动调用 `project.save_content` 或 Save Bridge Session。
 
+Web Workbench 还提供 Browser Bundle Archive Adapter。它位于 `web/src/app/projectBundleArchive.ts`，使用隔离的 `fflate` dependency boundary 从 project-relative bytes entries 生成 `.rxnflow.zip` bytes，或读取 `.rxnflow.zip` bytes 并返回 safe project-relative entries 与 shallow bundle summary。adapter 复刻核心 Project Bundle 的 single-root、manifest required、allowed roots、`inputs/raw`、duplicate、`__MACOSX` 和 symlink safety 语义；它当前不接 Project Sidebar UI，不读写 Browser Project Repository，不调用 Python `ProjectBundleService`，也不替代 Project Content deep validation。
+
 ## 边界
 
 - 它不负责云同步、账号权限、多人协作或冲突合并。
@@ -63,7 +65,7 @@ Web Workbench Report Export Panel 已能在 active browser project 下把 `expor
 - Project Bundle import 不覆盖现有项目，不做自动改名、merge、diff 或冲突合并。
 - BrowserLocalProjectStorageBackend 当前是 Python 核心协议测试替身，不是真实 JavaScript IndexedDB / OPFS adapter。
 - Browser Project Repository 当前是真实 JavaScript IndexedDB-first adapter，并已接入 Web Project Sidebar 的 list/create/open/save Project Content files、显式 bridge open/save 流程和 Report Export Panel 的 `exports/...` artifact persistence；它仍不提供桌面 UI、文件选择器、浏览器持久存储权限请求、拖拽导入或完整本地数据管理界面。
-- Browser Project Repository 当前不实现 OPFS payload store、Web Worker、Service Worker、大文件 chunking、真实 `.rxnflow.zip` 读写、云同步或账号系统。
+- Browser Project Repository 当前不实现 OPFS payload store、Web Worker、Service Worker、大文件 chunking、云同步或账号系统；`.rxnflow.zip` bytes 读写 helper 已在 Web archive adapter 中落地，但还没有接 Project Sidebar 或 repository import/export workflow。
 - Web Project Sidebar 保存 Project Content files，但 Web 本身不解析或重写 ChemicalObject、Import Ledger、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact index 领域内容；这些 bytes 的深度恢复/保存仍由 Platform Shell 和 ProjectContentStore 承担。
 - Web Export Artifact Persistence 会重写 `export-artifacts-v1` index 和 Project Content index 中的 checksum，但只处理 ShellArtifact inline bytes 到 browser-local `exports/...` 的窄路径；它不在前端生成 PNG/CDXML/XLSX bytes，不新增导出格式，不把 artifact 写入 Project Manifest resources，也不把 Browser Project Ref 当作 Python filesystem path。
 - Project Sidebar 的 validation 只是浏览器 repository 浅校验，不调用 Python ProjectContentValidator，也不做 schema migration 或跨 section 引用检查。
@@ -80,3 +82,4 @@ Web Workbench Report Export Panel 已能在 active browser project 下把 `expor
 - 2026-05-20：补充 Web Project Sidebar 现状：可在浏览器本地 list/create/open/save 真实 Project Content files，并显示 local-only、validation、checksum 和 disabled bundle entry。
 - 2026-05-20：更新 Web Project Sidebar bridge 现状：显式 Open Bridge / Save Bridge Session 可通过 `project.open(content_files)` 与 `project.save_content(include_content_files=true)` 协作；bundle IO、云同步和 browser_storage import adapter 仍未实现。
 - 2026-05-20：补充 Web Export Artifact Persistence 现状：active browser project 下可把 runtime PNG/CDXML/XLSX inline artifacts 写入 `exports/...`，同步 `export-artifacts-v1` index 和 Project Content index checksum。
+- 2026-05-22：补充 Web Browser Bundle Archive Adapter 现状：`fflate` 隔离在 archive helper 内，已支持 `.rxnflow.zip` bytes 读写、安全 entry 校验和 shallow summary，但用户可见 Project Sidebar import/export 仍未启用。

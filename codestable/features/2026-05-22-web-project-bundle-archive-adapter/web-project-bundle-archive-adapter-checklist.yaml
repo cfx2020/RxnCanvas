@@ -25,76 +25,76 @@ steps:
 checks:
   - item: "Browser Bundle Archive Adapter / Browser Project Bundle Entry / Bundle Root / Bundle Entry Safety / Browser Project Bundle Summary / Zip Dependency Boundary 术语落地"
     source: 名词契约
-    status: pending
+    status: passed
 
   - item: "输入 manifest、Project Content state、inputs/raw/water.xyz 和 exports/profile.png entries，writer 生成单 Bundle Root 下的 .rxnflow.zip bytes"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "同一输入重复 writer，输出 checksum 保持稳定"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "writer 跳过 .DS_Store 和包含 __MACOSX segment 的 export-only metadata entry"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "writer 拒绝空 root、含 / 或 \\ 的 root、root 为 . / .. / __MACOSX"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "writer 拒绝 absolute path、backslash、empty segment、.、..、allowed roots 外文件、root file 和 inputs/cache/..."
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "reader 能读取 writer 生成的 archive，返回 project-relative entries、entry checksum、bundle checksum、fileCount 和 byteSize"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "reader 从 manifest.json 提取 project id/name 到 summary，manifest JSON 异常有 structured error 或明确 validation 状态"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "reader 拒绝 multi-root、missing manifest、duplicate entry、absolute path、backslash、.、..、root file、__MACOSX、allowed roots 外 entry 和 inputs/ 非 raw entry"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "symlink entry 按 fflate metadata 能力拒绝或明确记录 Web 不创建 filesystem symlink 的限制"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "fflate 只在 archive adapter module/tests 中被 import"
     source: 依赖边界
-    status: pending
+    status: passed
 
   - item: "Project Sidebar bundle actions 保持 disabled/unavailable"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不触发 file picker、download、object URL 或 repository import/export write"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不改 Python ProjectBundleService、Platform Shell bundle commands、CLI 或 core Project Content validation"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不创建 browser-local project，不写 Browser Project Repository"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不调用 local-http bridge 或 Shell command"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不实现 cloud/OPFS/chunking/Worker/Service Worker"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不把 manifest shallow parse 当作 Project Content deep validation"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "npm run test -- --run 和 npm run build 通过"
     source: 验证
-    status: pending
+    status: passed

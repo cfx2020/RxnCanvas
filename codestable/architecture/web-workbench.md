@@ -5,7 +5,7 @@ status: current
 created: 2026-05-16
 last_reviewed: 2026-05-22
 implements: [web-workbench-shell, project-content-persistence]
-tags: [web, workbench, shell-client, react, vite, local-first, indexeddb, browser-storage, i18n, import-inbox, raw-inputs, object-registry, graph-canvas, graph-editor-interaction-state, graph-object-drop, graph-node-layout, graph-edge-path-editing, graph-viewport-controls, graph-editor-workspace-persistence, node-composition, energy-semantics, energy-profile, energy-curve-interaction, report-export, export-readiness, export-artifact-persistence, local-http-shell-bridge, http-api-transport, e2e, bridge-qa]
+tags: [web, workbench, shell-client, react, vite, local-first, indexeddb, browser-storage, project-bundle, zip, i18n, import-inbox, raw-inputs, object-registry, graph-canvas, graph-editor-interaction-state, graph-object-drop, graph-node-layout, graph-edge-path-editing, graph-viewport-controls, graph-editor-workspace-persistence, node-composition, energy-semantics, energy-profile, energy-curve-interaction, report-export, export-readiness, export-artifact-persistence, local-http-shell-bridge, http-api-transport, e2e, bridge-qa]
 ---
 
 # Web Workbench
@@ -14,7 +14,7 @@ tags: [web, workbench, shell-client, react, vite, local-first, indexeddb, browse
 
 RxnFlow 当前已有独立 `web/` 前端工程，用于承载 Web Workbench MVP 的第一屏 app shell。该工程使用 React + TypeScript + Vite + npm，提供 `dev`、`build`、`test`、`test:e2e` 和 `test:e2e:local-http` scripts。
 
-当前 Web Workbench 已落地浏览器端壳层、只读工作台状态投影、真实浏览器本地项目仓储、第一版项目侧边栏、Web i18n 基础、Import Inbox UI、Browser Raw Input Store、Object Registry Panel、Graph Canvas MVP、Graph Editor Interaction State、Graph Object Drop、Graph Node Layout、Graph Edge/Path Editing、Graph Canvas Viewport Controls、Graph Editor Workspace Persistence、Node Composition Editor、Energy Semantics Controls、Energy Profile Panel、Interactive Energy Curve 和 Report Export Panel：
+当前 Web Workbench 已落地浏览器端壳层、只读工作台状态投影、真实浏览器本地项目仓储、第一版项目侧边栏、Web i18n 基础、Import Inbox UI、Browser Raw Input Store、Browser Bundle Archive Adapter、Object Registry Panel、Graph Canvas MVP、Graph Editor Interaction State、Graph Object Drop、Graph Node Layout、Graph Edge/Path Editing、Graph Canvas Viewport Controls、Graph Editor Workspace Persistence、Node Composition Editor、Energy Semantics Controls、Energy Profile Panel、Interactive Energy Curve 和 Report Export Panel：
 
 1. 浏览器入口 `web/index.html` 挂载 React app。
 2. `App` 通过 `createConfiguredShellRuntime(import.meta.env)` 创建前端 `ShellClient`，默认接入 `in-process-test` fixture transport；当 `VITE_RXNFLOW_SHELL_TRANSPORT=local-http` 时接入 `http-api` transport，并调用 `VITE_RXNFLOW_SHELL_ENDPOINT` 指向的本地 HTTP shell bridge。
@@ -26,7 +26,7 @@ RxnFlow 当前已有独立 `web/` 前端工程，用于承载 Web Workbench MVP 
 8. `web/src/repository/` 提供 Browser Project Repository 契约、IndexedDB-first implementation、内存测试替身、path/checksum helpers 和结构化错误。
 9. `createBrowserProjectRepository()` 在真实浏览器 IndexedDB 可用时返回 `IndexedDbBrowserProjectRepository`；IndexedDB 不可用时抛出 `storage_unavailable`，不静默退化成内存持久化。
 10. Project Sidebar 从 Browser Project Repository 派生 UI state，可列出 browser-local projects，新建 project，打开已有 project，保存 / 覆盖 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` 真实 Project Content files，并显示 local-only、backend、persistence、validation、bridge、checksum 和 repository error。
-11. Project Bundle import/export 入口在侧边栏中可见但 disabled / unavailable；当前不触发 file picker、download、JSZip 或真实 `.rxnflow.zip` IO。
+11. Project Bundle import/export 入口在侧边栏中可见但 disabled / unavailable；当前不触发 file picker、download、object URL 或 repository import/export write。
 12. 打开 browser project 只更新 ProjectSidebarState，不自动创建 Python `PlatformSession`。只有用户显式点击 Open Bridge / Save Bridge Session 时，WorkbenchShell 才调用 `project.open(content_files)` / `project.save_content(include_content_files=true)` 并用 Workbench Snapshot 更新 WorkbenchDomainState。
 13. `web/src/app/i18n/` 提供轻量 Web i18n runtime，当前支持 `zh-CN` 和 `en-US` message catalogs、typed message keys、`I18nProvider` / `useI18n`、本地浏览器 locale preference 和顶栏 locale switcher。
 14. 中间工作区新增 `ImportInbox`，接收浏览器选择文件的 metadata 和可选 `File` 引用，展示 `import.preview` batch/items、parser metadata、raw resource、warnings/errors，并通过 `import.register_all` response 展示 registered object ids 和更新 WorkbenchDomainState 的 imports/objects/counts。
@@ -34,6 +34,8 @@ RxnFlow 当前已有独立 `web/` 前端工程，用于承载 Web Workbench MVP 
 16. 当前 Import Inbox 在 active browser project 存在且 preview payload 校验通过时，会把 selected browser `File` 写入 Browser Project Repository 的 `inputs/raw/{sha12}-{safeName}`，并把对应 `raw_file` resource merge 进 `.rxnflow/manifest.json`；selected file list 显示 persisted/skipped/error 的 Raw Persistence Summary。
 17. 当前 Browser Raw Input Store 使用 SHA-256 生成 `raw-{sha12}` id 和 `inputs/raw/{sha12}-{safeName}` path，metadata 记录 source name、byte size、mime type 和 last modified；同 checksum manifest resource 不重复追加，raw object 可覆盖同 path bytes。
 18. 当前 Import Inbox 不实现大文件 chunking、OPFS payload store、Worker pool、browser_storage adapter、云上传或前端化学解析；超出 inline limit 的文件在前端显示 `payload_too_large`，不读取 bytes、不写 `inputs/raw/...`、不发 shell command。
+19. 当前 Web 已新增 Browser Bundle Archive Adapter，使用 `fflate` 作为隔离的 zip dependency boundary。helper 能从 project-relative entries 生成 `.rxnflow.zip` bytes，或读取 zip bytes 并返回 safe project-relative entries 与 shallow summary；它复刻核心 Project Bundle 的 single-root、manifest required、allowed roots、`inputs/raw`、duplicate、`__MACOSX` 和 symlink safety 语义。
+20. Browser Bundle Archive Adapter 当前不接 Project Sidebar UI，不读写 Browser Project Repository，不调用 ShellClient / local-http bridge / Python `ProjectBundleService`，也不执行 Project Content deep validation。后续 Project Sidebar export/import feature 需要通过该 helper 处理 zip bytes。
 16. 右侧 inspector 顶部新增 `ObjectRegistryPanel`，展示 `WorkbenchDomainState.objects` 中的已登记对象列表、active object detail、source、formula、charge/spin、method、energy keys、thermochemistry keys、provenance、warnings、correction count/list 和 Correction Entry Form。
 17. `WorkbenchShell` 维护 `activeObjectId` UI-only state；objects 更新后保留仍存在的 active object，否则自动选择第一个对象，selection 不进入 ShellResponse、Project Content 或 core workspace。
 18. Correction Entry Form 对 active object 提交 `registry.apply_correction`，支持 manual/solvation/resonance、value/unit/reference/id/note 输入；成功后 `WorkbenchShell` 只用 ShellResponse object summary 替换 `WorkbenchDomainState.objects` 中的对象，失败时显示 ShellError code/message/target，不本地 append correction。
@@ -117,6 +119,7 @@ web/
         ├── i18n/
         ├── importInboxState.ts
         ├── rawInputPersistence.ts
+        ├── projectBundleArchive.ts
         ├── exportArtifactPersistence.ts
         ├── projectSidebarActions.ts
         ├── projectSidebarState.ts
@@ -148,6 +151,7 @@ web/
 - `web/src/app/i18n/`：定义 `SupportedLocale`、`MessageKey`、`MessageCatalog`、`I18nProvider`、`useI18n`、locale detection / localStorage preference helpers，以及 `zh-CN` / `en-US` catalogs。
 - `web/src/app/importInboxState.ts`：定义 Import Inbox UI state、file metadata projection、raw persistence UI projection、preview args helper、register eligibility 和 file size formatting。
 - `web/src/app/rawInputPersistence.ts`：定义 Browser Raw Resource / Raw Persistence helper，负责 active browser project 下 selected File 的 SHA-256 checksum、safe basename、`inputs/raw/{sha12}-{safeName}` object 写入、`.rxnflow/manifest.json` raw resource merge 和 repository error payload 映射。
+- `web/src/app/projectBundleArchive.ts`：定义 Browser Bundle Archive Adapter，负责 `.rxnflow.zip` writer/reader、Bundle Root 校验、zip central directory inspection、allowed roots / `inputs/raw` / duplicate / symlink / `__MACOSX` safety、fixed mtime stable output、entry checksum 和 shallow manifest summary。它是 Web 侧唯一直接 import `fflate` 的业务模块，不接 UI、repository writer 或 ShellClient。
 - `web/src/app/projectContentBridge.ts`：定义 Browser Project Content Files helpers，生成空 `project-v1` manifest 与 `project-content-v1` sections，读写 Browser Project Repository，执行 shallow checksum validation，并在 Web bytes 与 shell `content_files` base64 payload 之间转换。
 - `web/src/app/projectSidebarActions.ts`：封装 repository-backed sidebar actions：`refreshProjects`、`createProject`、`openProject` 和 `saveProjectContent`。
 - `web/src/app/projectSidebarState.ts`：定义 `ProjectSidebarState`、`ProjectPersistenceState`、`ProjectBridgeState` 和 `SidebarValidationStatus`。
@@ -220,6 +224,7 @@ web/
 - Browser Project Repository 当前是 IndexedDB-first：project refs、metadata 和 bytes 都写入 IndexedDB；OPFS payload store、Web Worker、Service Worker、StorageManager.persist 权限 UI 和大文件 chunking 尚未实现。
 - Browser Project Repository 使用项目相对 POSIX path，禁止空路径、绝对路径、反斜杠、`.` 和 `..`；`writeObject` 覆盖同一 `projectRef/path`，`deleteObject` 对缺失对象幂等成功，`listObjects` 支持 exact file 和 prefix subtree。
 - Browser Project Repository 明确 local-only；浏览器清数据、profile 损坏或 origin 变化可能删除项目内容。早期跨设备迁移仍依赖 `.rxnflow.zip` 手动备份路径。
+- Browser Bundle Archive Adapter 是 helper-only archive boundary：`fflate` 只允许在 `projectBundleArchive.ts` 和对应测试中直接 import；Project Sidebar、WorkbenchShell、repository writer 和 Shell transport 不直接调用 zip library。adapter reader 不返回部分安全 entries；任一非法 zip entry 使整个 read 返回 structured `invalid_bundle` / `zip_failed`。
 - Browser Project Content Files 使用现有 `.rxnflow/manifest.json`、`.rxnflow/state/project-content.json` 和 6 个 section files schema；Web 创建空 sections 或写回 shell 返回 bytes，但不解析 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 领域内容。
 - Project Sidebar 的 validation 是 shallow repository validation：读取 index 与 section files，检查缺失和 checksum mismatch；它不调用 Python `ProjectContentValidator`，不做跨 section 引用深校验或 migration。
 - Web I18n Runtime 是前端 UI runtime，不进入 ShellResponse，不写 Project Content，也不改变 Browser Project Repository 或 Python core contract。
@@ -234,7 +239,7 @@ web/
 - Raw Persistence Summary 是 selected file list 的 UI-only projection；长期状态只在 Browser Project Repository object 和 manifest resource 中，不写 localStorage、Project Content index 或 ShellResponse。
 - Raw persistence failure 与 parser preview error 分开展示；repository write/manifest error 显示在 selected file list，preview 仍可继续使用原有 path/inline payload。oversized inline file 在 payload 阶段直接 `payload_too_large`，不会读取 bytes 或写 raw object。
 - Import Inbox fixture preview 不代表真实 Gaussian、ORCA、MAPLE、XYZ/extxyz 完整支持；parser_id、warning/error code、raw resource path/checksum 都按 ShellResponse 原样显示。
-- 当前已实现显式 Project Content open/save bridge、Web Export Artifact Persistence、已登记对象拖入画布创建节点、已有 graph node 基础拖动布局、edge 删除和 path 顺序草稿；仍不实现 bundle import/export IO、自动布局、缩放/平移持久化、path delete、自由绘线、edge label 编辑、高级 energy curve 编辑或报告预览。
+- 当前已实现显式 Project Content open/save bridge、Web Export Artifact Persistence、Browser Bundle Archive Adapter、已登记对象拖入画布创建节点、已有 graph node 基础拖动布局、edge 删除和 path 顺序草稿；仍不实现 Project Sidebar bundle import/export UI、repository bundle writer、自动布局、缩放/平移持久化、path delete、自由绘线、edge label 编辑、高级 energy curve 编辑或报告预览。
 - 当前 Web 前端不实现 HTTP route、Vercel route、FastAPI、Flask、Django、Express server、云存储、账号、权限或同步；`http-api` transport 只调用外部已启动的本地 HTTP shell bridge。
 
 ## 4. QA 与验证
@@ -261,6 +266,7 @@ web/
 - ShellClient tests 覆盖 fixture `registry.apply_correction` 的 JSON-safe object projection、自动 correction id、重复同 payload 幂等、snapshot 同步、invalid kind/unit/missing object 错误路径，以及 fixture `energy.compute` 的 JSON-safe profile projection、`kj_mol` output unit、`corrections_empty` warning 和 missing path `graph_invalid` error。
 - WorkbenchShell component tests 覆盖 Import Inbox 文件 metadata queue、expected format/strict、preview batch、parser metadata、raw resource、warnings/errors、register all、registered object ids、imports/objects count 更新和中文文案。
 - WorkbenchShell / raw input persistence tests 覆盖 active browser project 下 `water.xyz` 写入 `inputs/raw/{sha12}-water.xyz`、manifest `raw_file` resource merge、同 checksum 重复 preview 不重复 resource、无 active project skipped、repository write failure 独立显示 raw persistence error、oversized inline file 不读写 raw object、坏 manifest structured error，以及 raw id/path/checksum 中英文 UI 文案。
+- Project Bundle Archive Adapter tests 覆盖 `.rxnflow.zip` writer/reader roundtrip、summary project id/name、entry checksum、稳定输出、`.DS_Store` / `__MACOSX` export skip、unsafe writer root/path rejection、unsafe reader multi-root/missing manifest/absolute/backslash/dotdot/dot/root file/outside roots/`inputs` 非 raw rejection、显式 safe directory entries、duplicate central directory entry、symlink external attributes 和 malformed manifest warning summary。
 - WorkbenchShell component tests 覆盖 Object Registry Panel 空态、Fixture object 列表/详情、active object selection、Correction Entry Form 成功提交、失败错误展示且不本地追加 correction、import register 后 imported object 可选、warning 原样显示和中文静态文案。
 - WorkbenchShell component tests 覆盖 Graph Canvas 首屏空态、workspace commands disabled、Fixture graph nodes/paths/preview、Open Workspace、Add Node、Connect、重复 Connect 幂等、Set Path、workspace error 可见和中文静态文案。
 - Graph Editor Interaction State helper tests 覆盖 node selection 数组协议、pending edge start/complete/clear、stale selection/hover/dragging prune 和非 connect mode 保留。
