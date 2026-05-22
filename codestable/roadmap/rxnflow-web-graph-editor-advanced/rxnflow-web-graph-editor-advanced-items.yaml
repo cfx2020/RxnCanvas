@@ -37,10 +37,10 @@ items:
   - slug: graph-editor-multiselect-keyboard
     description: 支持多选、框选、Delete、Escape 和 selected node nudge，并复用 Workspace Selection 数组协议
     depends_on: [graph-editor-path-delete]
-    status: in-progress
+    status: done
     feature: 2026-05-22-graph-editor-multiselect-keyboard
     minimal_loop: false
-    notes: Delete selection 统一发送 workspace.remove；nudge 只移动 selected node ids
+    notes: 已落地 Shift-click add/toggle、select mode rubber-band node selection、Delete/Backspace/Escape 和方向键 selected node nudge；selection authority 仍是 Workspace Selection projection，nudge 复用 workspace.move_node
 
   - slug: graph-editor-wheel-minimap
     description: 补 wheel/pinch zoom 和 minimap navigation，继续通过 workspace.set_viewport 更新 viewport

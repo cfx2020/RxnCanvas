@@ -299,8 +299,9 @@ type GraphEditorHistoryEntry = {
 5. **graph-editor-multiselect-keyboard**：支持多选、框选、Delete、Escape 和 selected node nudge，并复用 Workspace Selection 数组协议。
    - 所属模块：Selection Keyboard Model
    - 依赖：`graph-editor-path-delete`
-   - 状态：planned
-   - 对应 feature：无
+   - 状态：done
+   - 对应 feature：`2026-05-22-graph-editor-multiselect-keyboard`
+   - 备注：已落地 `GraphEditorSelectionMode` replace/add/toggle、rubber-band node selection draft、Graph Canvas scoped Delete/Backspace/Escape/Arrow keys、Delete Selected 复用 `workspace.remove` 和 selected node nudge 顺序 `workspace.move_node`；multi/mixed selection 下单对象编辑 draft 保守禁用。
 6. **graph-editor-wheel-minimap**：补 wheel/pinch zoom 和 minimap navigation，继续通过 `workspace.set_viewport` 更新 viewport。
    - 所属模块：Viewport Navigation Layer
    - 依赖：`graph-editor-auto-layout`
@@ -321,7 +322,7 @@ type GraphEditorHistoryEntry = {
 
 先做 `graph-editor-auto-layout`，因为它不需要新 core command 或 schema，就能立刻改善画布可读性，也能为后续 minimap 和 history 提供可逆布局操作样本。
 
-`graph-editor-path-delete`、`graph-editor-edge-label-edit` 和 `graph-editor-free-edge-drawing` 已完成。下一步可推进 `graph-editor-multiselect-keyboard`，复用已落地的 node/edge/path remove contract、Workspace Selection projection 和 click/direct connect 边界；也可以推进 `graph-editor-wheel-minimap`，它已具备 auto layout 和 viewport helper 基础。最后用 `graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
+`graph-editor-path-delete`、`graph-editor-edge-label-edit`、`graph-editor-free-edge-drawing` 和 `graph-editor-multiselect-keyboard` 已完成。下一步可推进 `graph-editor-wheel-minimap`，它已具备 auto layout、viewport helper 和多选键盘边界基础。最后用 `graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
 
 技术依赖之外的产品优先级不由本 roadmap 替用户决定；如果用户更想先补 edge label 或 wheel/minimap，可以在不违反依赖的前提下调整启动顺序。
 
@@ -329,6 +330,7 @@ type GraphEditorHistoryEntry = {
 
 - Core `ReactionGraphService`、`GraphEditorWorkspaceService.remove_items`、Platform Shell、fixture transport 和 Web `workspace.remove` 当前已经暴露 `path_ids` path 删除协议；后续多选/键盘删除可复用同一 node/edge/path selection contract。
 - Core `ReactionGraphService` 当前已经支持 `update_edge` patch，`GraphEditorWorkspaceService`、Platform Shell、fixture transport 和 Web GraphCanvas 已暴露 label-only `workspace.update_edge` command；Direct Edge Gesture 已独立复用 `workspace.connect`，后续端点重连不应塞进 `workspace.update_edge`。
-- 当前 GraphCanvas 的 edge hit target 是 HTML button，继续承载 edge selection 和 label edit；直接拖线已通过 node Edge Connect Handle 和 Pending Edge Draft 落地，后续剩余编辑手感主要是 endpoint reconnect、多选/键盘、wheel/minimap 和 history。
+- 当前 GraphCanvas 的 edge hit target 是 HTML button，继续承载 edge selection 和 label edit；直接拖线已通过 node Edge Connect Handle 和 Pending Edge Draft 落地，多选/键盘已通过 Workspace Selection arrays 与 scoped keyboard intent 落地，后续剩余编辑手感主要是 endpoint reconnect、wheel/minimap 和 history。
+- 多选/键盘已复用 Workspace Selection arrays、`workspace.remove` 和 `workspace.move_node` 落地；后续 lightweight history 可把 selection / nudge 作为可逆样本，但仍不应把 history stack 持久化。
 - Auto layout 若未来要服务 CLI/agent，可把纯计算 helper 移到共享 TypeScript-independent 或 Python core；本 roadmap 首轮只承诺 Web helper，避免让 core domain 依赖 UI layout 假设。
 - Undo/redo 是高风险扩展点；首轮只覆盖可逆 UI/workspace 操作，不碰 destructive delete、Project Content history、CRDT 或协作。
