@@ -322,7 +322,7 @@ describe("WorkbenchShell", () => {
       node_id: "node-b",
       position: [420, 220],
     })
-    expect(await within(graphCanvas).findByRole("button", { name: /node-b/i })).toHaveStyle({
+    expect(nodeShell(await within(graphCanvas).findByRole("button", { name: /node-b/i }))).toHaveStyle({
       left: "70%",
     })
   })
@@ -348,6 +348,73 @@ describe("WorkbenchShell", () => {
       node_id: "node-b",
       position: [400, 200],
     })
+  })
+
+  it("draws a direct graph edge from a node handle through workspace.connect", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
+    mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
+
+    fireEvent.click(within(objectRegistry).getByRole("button", { name: /object b/i }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Add Node" }))
+    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
+    const nodeWeb = within(graphCanvas).getByRole("button", { name: /node-web-3/i })
+    const handle = within(nodeShell(nodeB)).getByRole("button", { name: "Draw edge from Object B" })
+    const restoreElementsFromPoint = mockElementsFromPoint([nodeWeb])
+    try {
+      fireEvent.pointerDown(handle, { button: 0, clientX: 360, clientY: 160, pointerId: 7 })
+      fireEvent.pointerMove(handle, { button: 0, clientX: 480, clientY: 160, pointerId: 7 })
+
+      expect(transport.payloads.filter((payload) => payload.command === "workspace.connect" && payload.args.to_node_id === "node-web-3")).toHaveLength(0)
+      expect(within(graphCanvas).queryByRole("button", { name: "Edge Object B to Object B" })).not.toBeInTheDocument()
+
+      fireEvent.pointerUp(handle, { button: 0, clientX: 480, clientY: 160, pointerId: 7 })
+
+      await waitFor(() => expect(lastPayload(transport, "workspace.connect")?.args).toMatchObject({
+        from_node_id: "node-b",
+        to_node_id: "node-web-3",
+      }))
+      expect(await within(graphCanvas).findByRole("button", { name: "Edge Object B to Object B" })).toBeInTheDocument()
+      expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(0)
+    } finally {
+      restoreElementsFromPoint()
+    }
+  })
+
+  it("clears direct edge gestures released on empty or same-node targets", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const handle = within(graphCanvas).getByRole("button", { name: "Draw edge from Object A" })
+    const connectCount = transport.payloads.filter((payload) => payload.command === "workspace.connect").length
+
+    const restoreElementsFromPoint = mockElementsFromPoint([])
+    try {
+      fireEvent.pointerDown(handle, { button: 0, clientX: 120, clientY: 160, pointerId: 8 })
+      fireEvent.pointerMove(handle, { button: 0, clientX: 240, clientY: 220, pointerId: 8 })
+      fireEvent.pointerUp(handle, { button: 0, clientX: 240, clientY: 220, pointerId: 8 })
+
+      expect(transport.payloads.filter((payload) => payload.command === "workspace.connect")).toHaveLength(connectCount)
+
+      const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
+      mockElementsFromPoint([nodeA])
+      fireEvent.pointerDown(handle, { button: 0, clientX: 120, clientY: 160, pointerId: 9 })
+      fireEvent.pointerMove(handle, { button: 0, clientX: 120, clientY: 160, pointerId: 9 })
+      fireEvent.pointerUp(handle, { button: 0, clientX: 120, clientY: 160, pointerId: 9 })
+
+      expect(transport.payloads.filter((payload) => payload.command === "workspace.connect")).toHaveLength(connectCount)
+    } finally {
+      restoreElementsFromPoint()
+    }
   })
 
   it("pans the empty canvas surface in pan mode without affecting node drag", async () => {
@@ -419,7 +486,7 @@ describe("WorkbenchShell", () => {
     expect(viewportPayload?.args.viewport).toMatchObject({
       zoom: expect.any(Number),
     })
-    expect(await within(graphCanvas).findByRole("button", { name: /node-a/i })).toHaveStyle({
+    expect(nodeShell(await within(graphCanvas).findByRole("button", { name: /node-a/i }))).toHaveStyle({
       left: "13.333333333333334%",
     })
 
@@ -1701,6 +1768,22 @@ function mockCanvasSurfaceRect(element: HTMLElement, width = 900, height = 420) 
     height,
     toJSON: () => ({}),
   } as DOMRect)
+}
+
+function mockElementsFromPoint(elements: Element[]) {
+  const originalElementsFromPoint = document.elementsFromPoint
+  document.elementsFromPoint = vi.fn(() => elements)
+  return () => {
+    document.elementsFromPoint = originalElementsFromPoint
+  }
+}
+
+function nodeShell(nodeButton: HTMLElement): HTMLElement {
+  const shell = nodeButton.closest(".graph-node-card-shell")
+  if (!(shell instanceof HTMLElement)) {
+    throw new Error("Graph node shell was not rendered.")
+  }
+  return shell
 }
 
 function dispatchDrop(

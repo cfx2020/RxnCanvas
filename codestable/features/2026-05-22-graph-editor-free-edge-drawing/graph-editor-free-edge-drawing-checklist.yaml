@@ -8,11 +8,11 @@ steps:
 
   - action: "GraphCanvas Direct Gesture UI：新增 Edge Connect Handle、pending preview line、target hit testing，并确保 node body drag / pan / object drop 不回退"
     exit_signal: "component test 能从 node-a handle 拖到 node-b，Apply 前无本地 edge append，release 后发送 workspace.connect"
-    status: pending
+    status: done
 
   - action: "Shared Connect Orchestration：WorkbenchShell 抽共享 connect function，click fallback 和 pointer release 都走同一 shell response projection"
     exit_signal: "click-driven connect 既有测试仍通过；direct drag 和 click connect payload/error 语义一致"
-    status: pending
+    status: done
 
   - action: "Verification And Scope Guard：跑 Web tests/build、必要 Python tests、浏览器桌面/窄屏验证"
     exit_signal: "direct edge drag 可用，release 空白/同 node 不发 command；无 console error/overlay/水平溢出；scope grep 未新增 core command/schema/autosave/energy/export 变更"

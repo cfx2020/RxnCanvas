@@ -30,13 +30,17 @@ import {
   endGraphEditorCanvasDrag,
   initialGraphEditorInteractionState,
   pruneGraphEditorInteractionState,
+  clearGraphEditorPendingEdge,
+  resolveGraphEditorDirectEdgeGesture,
   selectGraphEditorEdge,
   selectGraphEditorNode,
   selectGraphEditorPath,
   setGraphEditorMode,
   startGraphEditorCanvasDrag,
   startGraphEditorConnection,
+  startGraphEditorPointerEdge,
   updateGraphEditorCanvasDrag,
+  updateGraphEditorPointerEdge,
   type CanvasPoint,
 } from "./graphEditorInteractionState"
 import type { GraphLayoutPlan } from "./graphAutoLayout"
@@ -998,21 +1002,27 @@ export function WorkbenchShell({
     applyWorkspaceResponse(response)
   }, [applyWorkspaceResponse, pathOrderDraft, shellClient, workbenchState.sessionId])
 
+  const connectGraphNodes = useCallback(async (fromNodeId: string, toNodeId: string) => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId || fromNodeId === toNodeId) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.connect",
+      args: {
+        session_id: sessionId,
+        from_node_id: fromNodeId,
+        to_node_id: toNodeId,
+      },
+    })
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+
   const selectGraphNode = useCallback(
     async (nodeId: string) => {
       const pendingConnectionFromId = graphEditorInteraction.pendingEdge?.fromNodeId
-      if (pendingConnectionFromId && pendingConnectionFromId !== nodeId && workbenchState.sessionId) {
-        setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
-        const response = await shellClient.run<WorkspaceCommandData>({
-          command: "workspace.connect",
-          args: {
-            session_id: workbenchState.sessionId,
-            from_node_id: pendingConnectionFromId,
-            to_node_id: nodeId,
-          },
-        })
+      if (graphEditorInteraction.pendingEdge?.source === "click" && pendingConnectionFromId && pendingConnectionFromId !== nodeId) {
         setGraphEditorInteraction((current) => completeGraphEditorConnection(current, nodeId))
-        applyWorkspaceResponse(response)
+        await connectGraphNodes(pendingConnectionFromId, nodeId)
         return
       }
       setGraphEditorInteraction((current) => selectGraphEditorNode(current, nodeId))
@@ -1026,8 +1036,37 @@ export function WorkbenchShell({
       setCompositionDraft(compositionDraftFromSelectedNode(nextWorkspace))
       void selectGraphItems({ node_ids: [nodeId], edge_ids: [], path_ids: [] })
     },
-    [applyWorkspaceResponse, graphEditorInteraction.pendingEdge?.fromNodeId, selectGraphItems, shellClient, workbenchState.sessionId, workbenchState.workspace],
+    [connectGraphNodes, graphEditorInteraction.pendingEdge, selectGraphItems, workbenchState.workspace],
   )
+
+  const startPointerEdge = useCallback((nodeId: string, position: CanvasPoint) => {
+    setGraphEditorInteraction((current) => startGraphEditorPointerEdge(current, nodeId, position))
+  }, [])
+
+  const updatePointerEdge = useCallback((position: CanvasPoint, targetNodeId: string | null) => {
+    setGraphEditorInteraction((current) => updateGraphEditorPointerEdge(current, position, targetNodeId))
+  }, [])
+
+  const cancelPointerEdge = useCallback(() => {
+    setGraphEditorInteraction(clearGraphEditorPendingEdge)
+  }, [])
+
+  const endPointerEdge = useCallback((targetNodeId: string | null) => {
+    const nodeIds = workbenchState.workspace?.graph.nodes.map((node) => node.id) ?? []
+    const result = resolveGraphEditorDirectEdgeGesture(
+      graphEditorInteraction,
+      { nodeIds, edgeIds: [], pathIds: [] },
+      targetNodeId,
+    )
+    setGraphEditorInteraction((current) => (
+      result.kind === "connect"
+        ? completeGraphEditorConnection(current, result.toNodeId)
+        : clearGraphEditorPendingEdge(current)
+    ))
+    if (result.kind === "connect") {
+      void connectGraphNodes(result.fromNodeId, result.toNodeId)
+    }
+  }, [connectGraphNodes, graphEditorInteraction, workbenchState.workspace])
 
   const setActiveCanvasPath = useCallback(async () => {
     const sessionId = workbenchState.sessionId
@@ -1387,6 +1426,10 @@ export function WorkbenchShell({
             onStartCanvasDrag={startCanvasDrag}
             onUpdateCanvasDrag={updateCanvasDrag}
             onEndCanvasDrag={endCanvasDrag}
+            onStartPointerEdge={startPointerEdge}
+            onUpdatePointerEdge={updatePointerEdge}
+            onEndPointerEdge={endPointerEdge}
+            onCancelPointerEdge={cancelPointerEdge}
             onOpenWorkspace={openWorkspace}
             onAddObjectNode={addObjectNode}
             onMoveNode={moveGraphNode}

@@ -3,7 +3,8 @@ import type { DragEvent, PointerEvent } from "react"
 import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, XCircle, ZoomIn, ZoomOut } from "lucide-react"
 import type { ShellError } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
-import type { CanvasPoint, GraphEditorInteractionState } from "./graphEditorInteractionState"
+import type { CanvasPoint, GraphEditorInteractionState, PendingEdgeDraft } from "./graphEditorInteractionState"
+import { resolveGraphEditorDirectEdgeGesture } from "./graphEditorInteractionState"
 import { createGraphLayoutPlan, type GraphLayoutPlan, type GraphLayoutWarning } from "./graphAutoLayout"
 import { graphObjectDragMimeType, parseGraphObjectDragPayload } from "./graphObjectDragPayload"
 import {
@@ -79,6 +80,10 @@ type GraphCanvasProps = {
   onStartCanvasDrag: (origin: CanvasPoint) => void
   onUpdateCanvasDrag: (current: CanvasPoint) => void
   onEndCanvasDrag: () => void
+  onStartPointerEdge: (nodeId: string, position: CanvasPoint) => void
+  onUpdatePointerEdge: (position: CanvasPoint, targetNodeId: string | null) => void
+  onEndPointerEdge: (targetNodeId: string | null) => void
+  onCancelPointerEdge: () => void
   onOpenWorkspace: () => void
   onAddObjectNode: (request?: AddObjectNodeRequest) => void
   onMoveNode: (request: MoveGraphNodeRequest) => void
@@ -122,6 +127,10 @@ export function GraphCanvas({
   onStartCanvasDrag,
   onUpdateCanvasDrag,
   onEndCanvasDrag,
+  onStartPointerEdge,
+  onUpdatePointerEdge,
+  onEndPointerEdge,
+  onCancelPointerEdge,
   onOpenWorkspace,
   onAddObjectNode,
   onMoveNode,
@@ -140,6 +149,7 @@ export function GraphCanvas({
   const { t } = useI18n()
   const nodeDragRef = useRef<NodeDragSession | null>(null)
   const canvasDragRef = useRef<CanvasDragSession | null>(null)
+  const edgeDragRef = useRef<EdgeDragSession | null>(null)
   const ignoreNextNodeClickRef = useRef<string | null>(null)
   const workspace = state.workspace
   const graph = workspace?.graph
@@ -154,6 +164,13 @@ export function GraphCanvas({
   const selectedEdgeTarget = selectedEdge ? nodes.find((node) => node.id === edgeTarget(selectedEdge)) : undefined
   const selectedPathId = interactionState.selection.pathIds[0]
   const pendingConnectionFromId = interactionState.pendingEdge?.fromNodeId
+  const graphReferences = {
+    nodeIds: nodes.map((node) => node.id),
+    edgeIds: edges.map((edge) => edge.id),
+    pathIds: paths.map((path) => path.id),
+  }
+  const directEdgeGesture = resolveGraphEditorDirectEdgeGesture(interactionState, graphReferences)
+  const pendingDirectEdgeTargetId = directEdgeGesture.kind === "connect" ? directEdgeGesture.toNodeId : null
   const viewport = normalizeGraphViewport(workspace?.viewport)
   const zoomPercent = Math.round(viewport.zoom * 100)
   const panActive = interactionState.mode === "pan"
@@ -303,6 +320,44 @@ export function GraphCanvas({
     if (drag.dragging) onEndNodeDrag()
   }
 
+  const handleEdgeHandlePointerDown = (node: GraphNodeSummary, event: PointerEvent<HTMLButtonElement>) => {
+    if (!canUseWorkspace || event.button !== 0) return
+    event.stopPropagation()
+    const position = pointFromPointerEvent(event, viewport)
+    edgeDragRef.current = {
+      fromNodeId: node.id,
+    }
+    onStartPointerEdge(node.id, position)
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+    event.preventDefault()
+  }
+
+  const handleEdgeHandlePointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = edgeDragRef.current
+    if (!drag) return
+    event.stopPropagation()
+    const position = pointFromPointerEvent(event, viewport)
+    onUpdatePointerEdge(position, nodeIdFromPoint(event.clientX, event.clientY, nodes, drag.fromNodeId))
+    event.preventDefault()
+  }
+
+  const handleEdgeHandlePointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = edgeDragRef.current
+    if (!drag) return
+    event.stopPropagation()
+    edgeDragRef.current = null
+    onEndPointerEdge(nodeIdFromPoint(event.clientX, event.clientY, nodes, drag.fromNodeId))
+    event.preventDefault()
+  }
+
+  const handleEdgeHandlePointerCancel = () => {
+    if (!edgeDragRef.current) return
+    edgeDragRef.current = null
+    onCancelPointerEdge()
+  }
+
   return (
     <section className="graph-workspace" aria-label={t("graphCanvas.aria")}>
       <div className="workspace-toolbar">
@@ -413,6 +468,7 @@ export function GraphCanvas({
                   nodes={nodes}
                   edges={edges}
                   selectedEdgeId={selectedEdgeId}
+                  pendingEdge={interactionState.pendingEdge}
                   onSelectEdge={onSelectEdge}
                 />
                 <div className="graph-node-layer">
@@ -423,6 +479,7 @@ export function GraphCanvas({
                       object={objectForNode(node, state.objects)}
                       selected={node.id === selectedNodeId}
                       pending={node.id === pendingConnectionFromId}
+                      pendingTarget={node.id === pendingDirectEdgeTargetId}
                       activePath={isNodeInActivePath(node.id, workspace?.active_path_id, paths)}
                       dragging={isDraggingNode(interactionState, node.id)}
                       draggingPosition={draggingNodePosition(interactionState, node)}
@@ -430,6 +487,10 @@ export function GraphCanvas({
                       onPointerMove={handleNodePointerMove}
                       onPointerUp={handleNodePointerUp}
                       onPointerCancel={handleNodePointerCancel}
+                      onEdgeHandlePointerDown={handleEdgeHandlePointerDown}
+                      onEdgeHandlePointerMove={handleEdgeHandlePointerMove}
+                      onEdgeHandlePointerUp={handleEdgeHandlePointerUp}
+                      onEdgeHandlePointerCancel={handleEdgeHandlePointerCancel}
                       onClick={handleNodeClick}
                     />
                   ))}
@@ -543,13 +604,17 @@ type CanvasDragSession = {
   dragging: boolean
 }
 
+type EdgeDragSession = {
+  fromNodeId: string
+}
+
 function hasGraphObjectDragPayload(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes(graphObjectDragMimeType)
 }
 
 function isCanvasPanStartTarget(target: EventTarget): boolean {
   if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
-  return !target.closest(".graph-node-card, .graph-edge-hitbox")
+  return !target.closest(".graph-node-card, .graph-edge-connect-handle, .graph-edge-hitbox")
 }
 
 function canvasPositionFromDrop(event: DragEvent<HTMLDivElement>, viewport: GraphViewport): [number, number] {
@@ -602,6 +667,7 @@ function GraphNodeButton({
   object,
   selected,
   pending,
+  pendingTarget,
   activePath,
   dragging,
   draggingPosition,
@@ -609,12 +675,17 @@ function GraphNodeButton({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
+  onEdgeHandlePointerDown,
+  onEdgeHandlePointerMove,
+  onEdgeHandlePointerUp,
+  onEdgeHandlePointerCancel,
   onClick,
 }: {
   node: GraphNodeSummary
   object?: ObjectSummary
   selected: boolean
   pending: boolean
+  pendingTarget: boolean
   activePath: boolean
   dragging: boolean
   draggingPosition?: GraphNodeLayoutPosition
@@ -622,6 +693,10 @@ function GraphNodeButton({
   onPointerMove: (node: GraphNodeSummary, event: PointerEvent<HTMLButtonElement>) => void
   onPointerUp: (node: GraphNodeSummary, event: PointerEvent<HTMLButtonElement>) => void
   onPointerCancel: (node: GraphNodeSummary) => void
+  onEdgeHandlePointerDown: (node: GraphNodeSummary, event: PointerEvent<HTMLButtonElement>) => void
+  onEdgeHandlePointerMove: (event: PointerEvent<HTMLButtonElement>) => void
+  onEdgeHandlePointerUp: (event: PointerEvent<HTMLButtonElement>) => void
+  onEdgeHandlePointerCancel: () => void
   onClick: (nodeId: string) => void
 }) {
   const { t } = useI18n()
@@ -630,22 +705,41 @@ function GraphNodeButton({
     ? node.composition
     : (node.chemical_object_ids ?? []).map((objectId) => ({ object_id: objectId, coefficient: 1 }))
   return (
-    <button
-      type="button"
-      className={`graph-node-card ${selected ? "graph-node-card--selected" : ""} ${pending ? "graph-node-card--pending" : ""} ${activePath ? "graph-node-card--path" : ""} ${dragging ? "graph-node-card--dragging" : ""}`}
+    <div
+      className={`graph-node-card-shell ${dragging ? "graph-node-card-shell--dragging" : ""}`}
       style={position}
-      onPointerDown={(event) => onPointerDown(node, event)}
-      onPointerMove={(event) => onPointerMove(node, event)}
-      onPointerUp={(event) => onPointerUp(node, event)}
-      onPointerCancel={() => onPointerCancel(node)}
-      onClick={() => onClick(node.id)}
-      aria-current={selected ? "true" : undefined}
+      data-graph-node-id={node.id}
     >
-      <span>{node.label}</span>
-      <small>{node.id}</small>
-      <code>{formatCompositionSummary(composition) || t("graphCanvas.noObject")}</code>
-      {object?.formula ? <em>{object.formula}</em> : null}
-    </button>
+      <button
+        type="button"
+        className={`graph-node-card ${selected ? "graph-node-card--selected" : ""} ${pending ? "graph-node-card--pending" : ""} ${pendingTarget ? "graph-node-card--pending-target" : ""} ${activePath ? "graph-node-card--path" : ""} ${dragging ? "graph-node-card--dragging" : ""}`}
+        data-graph-node-id={node.id}
+        onPointerDown={(event) => onPointerDown(node, event)}
+        onPointerMove={(event) => onPointerMove(node, event)}
+        onPointerUp={(event) => onPointerUp(node, event)}
+        onPointerCancel={() => onPointerCancel(node)}
+        onClick={() => onClick(node.id)}
+        aria-current={selected ? "true" : undefined}
+      >
+        <span>{node.label}</span>
+        <small>{node.id}</small>
+        <code>{formatCompositionSummary(composition) || t("graphCanvas.noObject")}</code>
+        {object?.formula ? <em>{object.formula}</em> : null}
+      </button>
+      <button
+        type="button"
+        className="graph-edge-connect-handle"
+        aria-label={t("graphCanvas.edgeHandle", { node: node.label })}
+        title={t("graphCanvas.edgeHandle", { node: node.label })}
+        data-graph-node-id={node.id}
+        onPointerDown={(event) => onEdgeHandlePointerDown(node, event)}
+        onPointerMove={(event) => onEdgeHandlePointerMove(event)}
+        onPointerUp={(event) => onEdgeHandlePointerUp(event)}
+        onPointerCancel={onEdgeHandlePointerCancel}
+      >
+        <Link2 size={14} />
+      </button>
+    </div>
   )
 }
 
@@ -677,11 +771,13 @@ function GraphEdgeLayer({
   nodes,
   edges,
   selectedEdgeId,
+  pendingEdge,
   onSelectEdge,
 }: {
   nodes: GraphNodeSummary[]
   edges: GraphEdgeSummary[]
   selectedEdgeId?: string
+  pendingEdge?: PendingEdgeDraft | null
   onSelectEdge: (edgeId: string) => void
 }) {
   const segments = edges.map((edge) => {
@@ -699,10 +795,28 @@ function GraphEdgeLayer({
     targetLabel: string
     label: string | null
   }>
+  const pendingSegment = pendingEdgeSegment(nodes, pendingEdge ?? null)
 
   return (
     <div className="graph-edge-layer" aria-label="Graph edges">
       <svg className="graph-edge-svg" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
+        {pendingSegment ? (
+          <g className="graph-edge-pending">
+            <line
+              className="graph-edge-pending-line"
+              x1={(pendingSegment.from.x / graphNodeLayoutBounds.width) * 100}
+              y1={(pendingSegment.from.y / graphNodeLayoutBounds.height) * 100}
+              x2={(pendingSegment.to.x / graphNodeLayoutBounds.width) * 100}
+              y2={(pendingSegment.to.y / graphNodeLayoutBounds.height) * 100}
+            />
+            <circle
+              className="graph-edge-pending-end"
+              cx={(pendingSegment.to.x / graphNodeLayoutBounds.width) * 100}
+              cy={(pendingSegment.to.y / graphNodeLayoutBounds.height) * 100}
+              r="1.5"
+            />
+          </g>
+        ) : null}
         {segments.map((segment) => (
           <g key={segment.id} className={segment.id === selectedEdgeId ? "graph-edge--selected" : ""}>
             <line
@@ -747,6 +861,42 @@ function GraphEdgeLayer({
       })}
     </div>
   )
+}
+
+function pendingEdgeSegment(
+  nodes: GraphNodeSummary[],
+  pendingEdge: PendingEdgeDraft | null,
+): { from: GraphNodeLayoutPosition; to: GraphNodeLayoutPosition } | null {
+  if (!pendingEdge || pendingEdge.source !== "pointer") return null
+  const source = nodes.find((node) => node.id === pendingEdge.fromNodeId)
+  if (!source) return null
+  const target = pendingEdge.targetNodeId
+    ? nodes.find((node) => node.id === pendingEdge.targetNodeId)
+    : undefined
+  const to = target ? graphNodePosition(target) : pendingEdge.pointerGraphPosition
+  if (!to) return null
+  return {
+    from: graphNodePosition(source),
+    to,
+  }
+}
+
+function nodeIdFromPoint(
+  clientX: number,
+  clientY: number,
+  nodes: GraphNodeSummary[],
+  fallbackNodeId?: string,
+): string | null {
+  const validNodeIds = new Set(nodes.map((node) => node.id))
+  if (typeof document.elementsFromPoint !== "function") {
+    return fallbackNodeId && validNodeIds.has(fallbackNodeId) ? fallbackNodeId : null
+  }
+  for (const element of document.elementsFromPoint(clientX, clientY)) {
+    const nodeElement = element.closest<HTMLElement>("[data-graph-node-id]")
+    const nodeId = nodeElement?.dataset.graphNodeId
+    if (nodeId && validNodeIds.has(nodeId)) return nodeId
+  }
+  return null
 }
 
 function EdgeLabelEditor({
