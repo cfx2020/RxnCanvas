@@ -61,7 +61,7 @@ items:
   - slug: energy-curve-interaction-polish
     description: 强化能量曲线交互，显示 point tooltip、missing/correction 标记、选中节点联动和导出一致性检查
     depends_on: [web-energy-semantics-controls]
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-05-22-energy-curve-interaction-polish
     minimal_loop: false
     notes: 偏体验收尾，不作为前置化学语义能力
