@@ -25,84 +25,84 @@ steps:
 checks:
   - item: "Browser Raw Input Object / Browser Raw Resource / Raw Persistence Summary / Import Preview Storage Mode / Inline Preview Payload 术语落地"
     source: 名词契约
-    status: done
+    status: passed
 
   - item: "有 active browser project 时选择 water.xyz 并 Preview 会写入 inputs/raw/{sha12}-water.xyz"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: ".rxnflow/manifest.json 追加 raw_file resource，id/path/checksum/metadata 与 raw object 对齐"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "同一文件重复 Preview 不重复追加 manifest resource"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "没有 active browser project 时 Preview 仍运行，selected file 显示 raw persistence skipped"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "raw persistence 成功但 parser preview warning/error 时，raw status 仍 persisted 且 parser error 来自 ShellResponse"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "raw object 或 manifest 写入失败时 Import Inbox 显示 raw persistence error code/target"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "oversized inline file 仍返回 payload_too_large，不读取 bytes 写 raw object"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "selected file list 显示 persisted raw id/path/checksum，动态 filename/path/checksum 不翻译"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "新增静态文案进入 zh-CN / en-US"
     source: i18n
-    status: done
+    status: passed
 
   - item: "桌面浏览器 Import Inbox selected file list、raw status 和 preview results 无文字重叠"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "窄屏浏览器 raw status 不造成页面整体水平溢出"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "Import Inbox selected file list 挂入点可完整卸载"
     source: 挂载点
-    status: done
+    status: passed
 
   - item: "WorkbenchShell import preview orchestration 挂入点可完整卸载"
     source: 挂载点
-    status: done
+    status: passed
 
   - item: "Project Content/Manifest raw resource helper 挂入点可完整卸载"
     source: 挂载点
-    status: done
+    status: passed
 
   - item: "不新增 Shell command、Project Content schema、Browser Project Repository interface 或 Project Bundle IO"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "不在 Web 代码里 import Python parser/core 或解析 Gaussian/ORCA/MAPLE/XYZ/extxyz"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "不让 local-http bridge 读取 Browser Project Repository / IndexedDB"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "不自动确认 import、登记 ChemicalObject 或修改 import.register_all"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "不使用 localStorage 保存 raw bytes 或 raw persistence state"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "不实现 raw cleanup、overwrite confirmation、OPFS/chunking/cloud sync"
     source: 范围守护
-    status: done
+    status: passed

@@ -339,7 +339,7 @@ type WebProjectPortabilityRoundtrip =
 1. **web-raw-input-persistence** — 保存浏览器选择的 raw output 文件到 active browser project `inputs/raw/...`，并更新 manifest raw resource。
    - 所属模块：Browser Raw Input Store
    - 依赖：无
-   - 状态：planned
+   - 状态：done
    - 最小闭环：是。完成后用户选择的小文件不再只是 preview payload，而是能在 browser-local project 中留下 raw input anchor。
 
 2. **web-project-bundle-archive-adapter** — 建立 Web 侧 `.rxnflow.zip` archive helper，覆盖 allowed roots、entry 安全校验、summary 和 zip read/write tests。

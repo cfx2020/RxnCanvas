@@ -128,14 +128,16 @@ type PersistRawInputResult =
 flowchart TD
   A["User selects files in Import Inbox"] --> B["WebImportFile keeps File refs"]
   B --> C["User clicks Preview"]
-  C --> D{"Active browser project?"}
+  C --> P["Build existing import.preview args"]
+  P --> Q{"Preview payload ok?"}
+  Q -->|no| R["Show payload error without raw persistence"]
+  Q -->|yes| D{"Active browser project?"}
   D -->|yes| E["Persist each File to inputs/raw/{sha12}-{safeName}"]
   E --> F["Merge raw_file resource into manifest resources"]
   F --> G["Attach Raw Persistence Summary to selected files"]
   D -->|no| H["Mark raw persistence skipped"]
-  G --> I["Build existing import.preview args"]
-  H --> I
-  I --> J["ShellClient import.preview"]
+  G --> J["ShellClient import.preview"]
+  H --> J
   J --> K["Import Inbox shows parser preview + raw persistence status"]
 ```
 
@@ -147,7 +149,8 @@ flowchart TD
 
 **变化**
 
-- `WorkbenchShell.runImportPreview` 在构造 preview args 前调用 raw persistence helper：当 `projectSidebarState.activeProject` 存在且 selected file 有 `File` 引用时，写 raw object 并更新 manifest。
+- `WorkbenchShell.runImportPreview` 先复用 `importPreviewArgsFromFiles` 构造 path/inline preview args，并保留现有 inline size guard；payload OK 后再调用 raw persistence helper，避免 oversized file 被读取或写入 raw storage。
+- 当 `projectSidebarState.activeProject` 存在且 selected file 有 `File` 引用时，raw persistence helper 写 raw object 并更新 manifest。
 - raw persistence helper 使用 `checksumBrowserStorageBytes(fileBytes)`，生成 `inputs/raw/{sha12}-{safeName}` object，metadata `kind=raw_file`。
 - helper 读取现有 `.rxnflow/manifest.json`，merge raw resource；同 checksum resource 已存在则保持幂等，不重复追加。
 - Import Inbox selected file list 显示 raw persistence status：persisted 显示 raw id/path/checksum；skipped 显示没有 active project 或非 File/path source；error 显示 repository error code/target。
