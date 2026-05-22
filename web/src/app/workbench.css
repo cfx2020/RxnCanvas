@@ -412,6 +412,53 @@ button {
   overflow-wrap: anywhere;
 }
 
+.bundle-hint-message,
+.bundle-status-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.bundle-hint-message {
+  border-left: 4px solid var(--amber);
+  background: rgba(194, 119, 42, 0.1);
+  padding: 8px;
+}
+
+.bundle-status-message--active {
+  color: var(--blueprint);
+  font-weight: 800;
+}
+
+.bundle-summary {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  border-left: 4px solid var(--blueprint);
+  background: rgba(39, 89, 106, 0.08);
+  padding: 9px 10px;
+  color: var(--blueprint);
+}
+
+.bundle-summary span,
+.bundle-summary small,
+.bundle-summary code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bundle-summary span,
+.bundle-summary small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.bundle-summary code {
+  color: var(--blueprint);
+  font-size: 0.72rem;
+}
+
 .workspace-column {
   min-height: 0;
   display: grid;

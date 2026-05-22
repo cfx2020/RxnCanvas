@@ -4,23 +4,23 @@ created: 2026-05-22
 steps:
   - action: "Export action contract：新增 export action helper，定义 request/result/error/status 形状和 project name -> root/fileName safety"
     exit_signal: "unit tests 覆盖 active project guard、缺 manifest、prefix collection、checksum fallback 和 filename suffix"
-    status: pending
+    status: done
 
   - action: "Archive adapter bridge：把 repository objects 映射为 BrowserProjectBundleEntry[] 并调用 createBrowserProjectBundleArchive"
     exit_signal: "manifest + state + raw + export repository objects 生成 Blob summary；allowed roots 仍由 adapter 拒绝"
-    status: pending
+    status: done
 
   - action: "Sidebar UI wiring：ProjectSidebar 接收 export props，启用 Export Bundle，保留 Import Bundle disabled，并展示 exporting/success/error/hint"
     exit_signal: "component tests 能点击 Export Bundle 并看到 fileName/fileCount/checksum；无 active project 时 disabled 或返回 active_project_required"
-    status: pending
+    status: done
 
   - action: "Download lifecycle：WorkbenchShell 成功导出后创建 object URL、触发 download、revoke URL，不持久化 URL"
     exit_signal: "tests mock URL.createObjectURL/revokeObjectURL 和 anchor click，确认调用成对发生"
-    status: pending
+    status: done
 
   - action: "Scope guards and verification：补 i18n/CSS，更新 disabled bundle test，跑 Web test/build 和浏览器桌面/窄屏验证"
     exit_signal: "npm run test -- --run、npm run build、desktop + narrow browser smoke 通过；grep 确认不调用 Shell bundle/save 和 repository write"
-    status: pending
+    status: done
 
 checks:
   - item: "Browser Bundle Export Action / Export Bundle Status / Export Bundle Download / Current Repository Bytes / Unsaved Bridge Hint 术语落地"

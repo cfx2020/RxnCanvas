@@ -49,6 +49,7 @@ import {
 } from "./importInboxState"
 import { ObjectRegistryPanel, type ApplyCorrectionRequest } from "./ObjectRegistryPanel"
 import { persistImportFilesAsRawInputs } from "./rawInputPersistence"
+import { exportBrowserProjectBundle, type ExportBundleStatus } from "./projectBundleExport"
 import { createProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
 import {
   contentFilesToShellPayload,
@@ -92,6 +93,7 @@ export function WorkbenchShell({
   const [projectSidebarState, setProjectSidebarState] = useState<ProjectSidebarState>(
     initialProjectSidebarState,
   )
+  const [exportBundleStatus, setExportBundleStatus] = useState<ExportBundleStatus>({ state: "idle" })
   const [importInboxState, setImportInboxState] = useState<ImportInboxState>(
     initialImportInboxState,
   )
@@ -144,6 +146,10 @@ export function WorkbenchShell({
   useEffect(() => {
     void refreshProjectSidebar()
   }, [refreshProjectSidebar])
+
+  useEffect(() => {
+    setExportBundleStatus({ state: "idle" })
+  }, [projectSidebarState.activeProjectRef])
 
   useEffect(() => {
     setActiveObjectId((current) => {
@@ -398,6 +404,22 @@ export function WorkbenchShell({
     })
     setWorkbenchState((current) => ({ ...current, status: "success", warnings: response.warnings, error: undefined }))
   }, [projectRepository, replaceProjectSidebarState, shellClient, workbenchState.sessionId])
+
+  const exportSidebarBundle = useCallback(async () => {
+    const activeProject = projectSidebarStateRef.current.activeProject
+    setExportBundleStatus({ state: "exporting" })
+    const result = await exportBrowserProjectBundle(projectRepository, activeProject)
+    if (!result.ok) {
+      setExportBundleStatus({ state: "error", error: result.error })
+      return
+    }
+    triggerBrowserBundleDownload(result.blob, result.fileName)
+    setExportBundleStatus({
+      state: "success",
+      fileName: result.fileName,
+      summary: result.summary,
+    })
+  }, [projectRepository])
 
   const runFixture = useCallback(async () => {
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
@@ -1147,12 +1169,14 @@ export function WorkbenchShell({
         <ProjectSidebar
           state={projectSidebarState}
           workbenchState={workbenchState}
+          exportBundleStatus={exportBundleStatus}
           onRefreshProjects={refreshProjectSidebar}
           onCreateProject={createSidebarProject}
           onOpenProject={openSidebarProject}
           onSaveProjectContent={saveSidebarProjectStub}
           onOpenBridgeSession={openSidebarBridgeSession}
           onSaveBridgeSession={saveSidebarBridgeSession}
+          onExportBundle={exportSidebarBundle}
         />
         <div className="workspace-column">
           <ImportInbox
@@ -1480,6 +1504,22 @@ function RuntimeBadge({ runtimeInfo }: { runtimeInfo: ShellRuntimeInfo }) {
       {label}
     </span>
   )
+}
+
+function triggerBrowserBundleDownload(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  try {
+    link.href = url
+    link.download = fileName
+    link.rel = "noopener"
+    link.style.display = "none"
+    document.body.appendChild(link)
+    link.click()
+  } finally {
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
 }
 
 type LocaleSwitcherProps = {

@@ -1,5 +1,5 @@
 import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { BrowserProjectRepositoryError, MemoryBrowserProjectRepository } from "../repository"
 import { ShellClient, fixtureTransport, type ShellCommandPayload, type ShellResponse, type ShellRuntimeInfo, type ShellTransport } from "../shell"
 import { graphObjectDragMimeType } from "./graphObjectDragPayload"
@@ -1242,13 +1242,79 @@ describe("WorkbenchShell", () => {
     expect(screen.getByText("name")).toBeInTheDocument()
   })
 
-  it("shows bundle actions as unavailable without enabling zip IO", async () => {
+  it("exports the active browser project bundle with object URL cleanup", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const transport = new RecordingProjectBridgeTransport()
+    await createProjectWithContent(repository, "Bundle Export")
+    const download = mockBrowserDownload()
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: /bundle export/i }))
+      expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
+      const exportButton = screen.getByRole("button", { name: "Export Bundle" })
+      expect(exportButton).toBeEnabled()
+
+      fireEvent.click(exportButton)
+
+      expect(await screen.findByText("Bundle ready")).toBeInTheDocument()
+      expect(screen.getByText(/Bundle-Export\.rxnflow\.zip/)).toBeInTheDocument()
+      expect(screen.getByText(/8 files/)).toBeInTheDocument()
+      expect(screen.getByText("Bundle-Export.rxnflow")).toBeInTheDocument()
+      expect(screen.getAllByText(/sha256:[a-f0-9]{64}/i).length).toBeGreaterThanOrEqual(2)
+      expect(download.createObjectURL).toHaveBeenCalledTimes(1)
+      expect(download.revokeObjectURL).toHaveBeenCalledWith("blob:rxnflow-bundle")
+      expect(download.click).toHaveBeenCalledTimes(1)
+      expect(transport.payloads.filter((payload) => payload.command === "project.save_content")).toHaveLength(0)
+      expect(transport.payloads.filter((payload) => payload.command === "project.export_bundle")).toHaveLength(0)
+    } finally {
+      download.restore()
+    }
+  })
+
+  it("keeps bundle import disabled while export is active", async () => {
     renderWorkbench()
 
     expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Import Bundle" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Export Bundle" })).toBeDisabled()
-    expect(screen.getByText(/Bundle import\/export is unavailable/)).toBeInTheDocument()
+    expect(screen.getByText(/Bundle import will be enabled/)).toBeInTheDocument()
+    expect(screen.getByText(/Export downloads the current browser-local repository bytes/)).toBeInTheDocument()
+  })
+
+  it("shows bundle export errors without creating an object URL", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    await repository.createProject({ name: "Missing Bundle Content" })
+    const download = mockBrowserDownload()
+    renderWorkbench(repository)
+
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: /missing bundle content/i }))
+      expect(await screen.findByText("Missing")).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "Export Bundle" }))
+
+      expect(await screen.findByText("project_content_missing")).toBeInTheDocument()
+      expect(screen.getByText("Browser project bundle export requires .rxnflow/manifest.json.")).toBeInTheDocument()
+      expect(screen.getByText(".rxnflow/manifest.json")).toBeInTheDocument()
+      expect(download.createObjectURL).not.toHaveBeenCalled()
+      expect(download.revokeObjectURL).not.toHaveBeenCalled()
+    } finally {
+      download.restore()
+    }
+  })
+
+  it("prompts users to save an open bridge session before bundle export", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await createProjectWithContent(repository, "Bridge Bundle")
+    renderWorkbench(repository)
+
+    fireEvent.click(await screen.findByRole("button", { name: /bridge bundle/i }))
+    expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Open Bridge" }))
+
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    expect(screen.getByText("Bridge session is open. Save Bridge Session first if you want recent shell changes in the bundle.")).toBeInTheDocument()
+    expect(project.name).toBe("Bridge Bundle")
   })
 
   it("renders sidebar validation messages through the active locale", async () => {
@@ -1359,6 +1425,28 @@ function lastPayload(
   command: string,
 ) {
   return transport.payloads.filter((payload) => payload.command === command).at(-1)
+}
+
+function mockBrowserDownload() {
+  const originalCreateObjectURL = URL.createObjectURL
+  const originalRevokeObjectURL = URL.revokeObjectURL
+  const originalClick = HTMLAnchorElement.prototype.click
+  const createObjectURL = vi.fn(() => "blob:rxnflow-bundle")
+  const revokeObjectURL = vi.fn()
+  const click = vi.fn()
+  URL.createObjectURL = createObjectURL
+  URL.revokeObjectURL = revokeObjectURL
+  HTMLAnchorElement.prototype.click = click
+  return {
+    createObjectURL,
+    revokeObjectURL,
+    click,
+    restore: () => {
+      URL.createObjectURL = originalCreateObjectURL
+      URL.revokeObjectURL = originalRevokeObjectURL
+      HTMLAnchorElement.prototype.click = originalClick
+    },
+  }
 }
 
 async function createProjectWithContent(

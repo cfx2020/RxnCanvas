@@ -16,32 +16,38 @@ import {
 import { browserProjectBackendId } from "../repository"
 import type { WorkbenchDomainState } from "./workbenchState"
 import type { ProjectSidebarState } from "./projectSidebarState"
+import type { ExportBundleStatus } from "./projectBundleExport"
 import { useI18n } from "./i18n"
 
 type ProjectSidebarProps = {
   state: ProjectSidebarState
   workbenchState: WorkbenchDomainState
+  exportBundleStatus: ExportBundleStatus
   onRefreshProjects: () => Promise<void>
   onCreateProject: (name: string) => Promise<ProjectSidebarState>
   onOpenProject: (projectRef: string) => Promise<void>
   onSaveProjectContent: () => Promise<void>
   onOpenBridgeSession: () => Promise<void>
   onSaveBridgeSession: () => Promise<void>
+  onExportBundle: () => Promise<void>
 }
 
 export function ProjectSidebar({
   state,
   workbenchState,
+  exportBundleStatus,
   onRefreshProjects,
   onCreateProject,
   onOpenProject,
   onSaveProjectContent,
   onOpenBridgeSession,
   onSaveBridgeSession,
+  onExportBundle,
 }: ProjectSidebarProps) {
   const { t } = useI18n()
   const [projectName, setProjectName] = useState("")
   const isBusy = state.status === "loading"
+  const isExporting = exportBundleStatus.state === "exporting"
 
   const handleCreateProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -189,15 +195,18 @@ export function ProjectSidebar({
           <button
             type="button"
             className="sidebar-command-button sidebar-command-button--secondary"
-            disabled
+            onClick={onExportBundle}
+            disabled={isBusy || isExporting || !state.activeProject}
           >
             <Download size={16} />
             <span>{t("projectSidebar.exportBundle")}</span>
           </button>
         </div>
-        <p className="bundle-unavailable-message">
-          {t("projectSidebar.bundleUnavailable")}
-        </p>
+        <p className="bundle-unavailable-message">{t("projectSidebar.importBundleUnavailable")}</p>
+        {state.bridge.state === "open" ? (
+          <p className="bundle-hint-message">{t("projectSidebar.bundleSaveBridgeHint")}</p>
+        ) : null}
+        <BundleExportStatusView status={exportBundleStatus} />
       </section>
 
       <section className="rail-section">
@@ -216,6 +225,51 @@ export function ProjectSidebar({
         />
       </section>
     </aside>
+  )
+}
+
+type BundleExportStatusViewProps = {
+  status: ExportBundleStatus
+}
+
+function BundleExportStatusView({ status }: BundleExportStatusViewProps) {
+  const { t } = useI18n()
+  if (status.state === "idle") {
+    return (
+      <p className="bundle-status-message">
+        {t("projectSidebar.bundleExportIdle")}
+      </p>
+    )
+  }
+  if (status.state === "exporting") {
+    return (
+      <p className="bundle-status-message bundle-status-message--active">
+        {t("projectSidebar.bundleExporting")}
+      </p>
+    )
+  }
+  if (status.state === "error") {
+    return (
+      <div className="sidebar-error" role="alert">
+        <strong>{status.error.code}</strong>
+        <span>{status.error.message}</span>
+        {status.error.target ? <small>{status.error.target}</small> : null}
+      </div>
+    )
+  }
+  return (
+    <div className="bundle-summary" role="status">
+      <strong>{t("projectSidebar.bundleExportSuccess")}</strong>
+      <span>
+        {t("projectSidebar.bundleExportSummary", {
+          fileName: status.fileName,
+          fileCount: status.summary.fileCount,
+          byteSize: formatBundleByteSize(status.summary.byteSize),
+        })}
+      </span>
+      <small>{status.summary.rootName}</small>
+      <code>{status.summary.checksum}</code>
+    </div>
   )
 }
 
@@ -250,6 +304,13 @@ function Metric({ icon, label, value }: MetricProps) {
       <strong>{value}</strong>
     </div>
   )
+}
+
+function formatBundleByteSize(byteSize: number): string {
+  if (byteSize < 1024) return `${byteSize} B`
+  const kib = byteSize / 1024
+  if (kib < 1024) return `${kib.toFixed(1)} KiB`
+  return `${(kib / 1024).toFixed(1)} MiB`
 }
 
 type Translate = ReturnType<typeof useI18n>["t"]
