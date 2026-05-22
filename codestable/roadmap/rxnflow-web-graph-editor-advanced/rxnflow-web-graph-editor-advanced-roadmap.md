@@ -286,8 +286,8 @@ type GraphEditorHistoryEntry = {
 3. **graph-editor-edge-label-edit**：新增 edge label draft 和 workspace edge update command，让 selected edge 可编辑 label。
    - 所属模块：Edge Detail Adapter
    - 依赖：无
-   - 状态：planned
-   - 对应 feature：无
+   - 状态：in-progress
+   - 对应 feature：`2026-05-22-graph-editor-edge-label-edit`
 4. **graph-editor-free-edge-drawing**：新增从节点拖到节点的直接连线手势，保留 click-driven connect fallback。
    - 所属模块：Direct Edge Gesture
    - 依赖：`graph-editor-edge-label-edit`
