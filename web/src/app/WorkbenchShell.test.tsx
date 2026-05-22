@@ -155,7 +155,7 @@ describe("WorkbenchShell", () => {
     })
 
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
-    fireEvent.click(within(energyPanel).getByLabelText("Include corrections"))
+    fireEvent.change(within(energyPanel).getByLabelText("Correction policy"), { target: { value: "all" } })
     fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
 
     expect(await within(energyPanel).findByText("Correction terms")).toBeInTheDocument()
@@ -445,6 +445,55 @@ describe("WorkbenchShell", () => {
     expect(within(graphCanvas).getAllByText("node-b").length).toBeGreaterThan(0)
   })
 
+  it("edits selected node composition through a Composition Draft before applying workspace.set_node_composition", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
+    expect(within(editor).getByDisplayValue("1")).toBeInTheDocument()
+    fireEvent.click(within(editor).getByRole("button", { name: "Add" }))
+    const objectSelects = within(editor).getAllByLabelText("Object")
+    const coefficientInputs = within(editor).getAllByLabelText("Coef")
+    const roleSelects = within(editor).getAllByLabelText("Role")
+
+    fireEvent.change(objectSelects[1], { target: { value: "object-b" } })
+    fireEvent.change(coefficientInputs[1], { target: { value: "2" } })
+    fireEvent.change(roleSelects[1], { target: { value: "reagent" } })
+    fireEvent.click(within(editor).getByRole("button", { name: "Apply" }))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.set_node_composition")?.args).toMatchObject({
+      node_id: "node-a",
+      composition: [
+        { object_id: "object-a", coefficient: 1, role: null, label: null, metadata: {} },
+        { object_id: "object-b", coefficient: 2, role: "reagent", label: null, metadata: {} },
+      ],
+    }))
+    expect(within(graphCanvas).getAllByText("object-a + 2*object-b").length).toBeGreaterThan(0)
+  })
+
+  it("shows composition coefficient errors without sending workspace.set_node_composition", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
+    fireEvent.change(within(editor).getByLabelText("Coef"), { target: { value: "0" } })
+    fireEvent.click(within(editor).getByRole("button", { name: "Apply" }))
+
+    expect(await within(editor).findByText("invalid_input")).toBeInTheDocument()
+    expect(within(editor).getByText("composition.0.coefficient")).toBeInTheDocument()
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.set_node_composition")).toHaveLength(0)
+  })
+
   it("edits path order through a UI draft before applying workspace.set_path", async () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
@@ -552,7 +601,7 @@ describe("WorkbenchShell", () => {
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     expect(within(energyPanel).getByRole("button", { name: "Compute" })).toBeEnabled()
     fireEvent.change(within(energyPanel).getByLabelText("Output unit"), { target: { value: "kj_mol" } })
-    fireEvent.click(within(energyPanel).getByLabelText("Include corrections"))
+    fireEvent.change(within(energyPanel).getByLabelText("Correction policy"), { target: { value: "all" } })
     fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
 
     expect((await within(energyPanel).findAllByText("profile-path-a-b-electronic-kj_mol")).length).toBeGreaterThan(0)
@@ -560,6 +609,91 @@ describe("WorkbenchShell", () => {
     expect(screen.getAllByText("corrections_empty").length).toBeGreaterThan(0)
     expect(within(energyPanel).getByText("Expression details")).toBeInTheDocument()
     expect(within(energyPanel).getAllByText("-51.882").length).toBeGreaterThan(0)
+  })
+
+  it("maps correction policy none, all, kinds, and ids to energy.compute args", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
+
+    fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
+    await waitFor(() => expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
+      include_corrections: false,
+      correction_policy: { mode: "none" },
+    }))
+
+    fireEvent.change(within(energyPanel).getByLabelText("Correction policy"), { target: { value: "all" } })
+    fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
+    await waitFor(() => expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
+      include_corrections: true,
+      correction_policy: { mode: "all" },
+    }))
+
+    fireEvent.change(within(energyPanel).getByLabelText("Correction policy"), { target: { value: "kinds" } })
+    fireEvent.click(within(energyPanel).getByLabelText("manual"))
+    fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
+    await waitFor(() => expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
+      include_corrections: true,
+      correction_policy: { mode: "kinds", kinds: ["solvation", "resonance"] },
+    }))
+
+    fireEvent.change(within(energyPanel).getByLabelText("Correction policy"), { target: { value: "ids" } })
+    fireEvent.change(within(energyPanel).getByLabelText("Correction IDs"), { target: { value: "corr-a, corr-b corr-c" } })
+    fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
+    await waitFor(() => expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
+      include_corrections: true,
+      correction_policy: { mode: "ids", ids: ["corr-a", "corr-b", "corr-c"] },
+    }))
+  })
+
+  it("selects thermochemistry energy channels and sends energy_source to energy.compute", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
+
+    expect(within(energyPanel).getByText("thermochemistry:gibbs · hartree · 2")).toBeInTheDocument()
+    fireEvent.change(within(energyPanel).getByLabelText("Energy channel"), {
+      target: { value: "thermochemistry:gibbs" },
+    })
+    fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
+
+    await waitFor(() => expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
+      energy_key: "gibbs",
+      energy_source: "thermochemistry",
+    }))
+    expect((await within(energyPanel).findAllByText("profile-path-a-b-gibbs-thermochemistry-kcal_mol")).length).toBeGreaterThan(0)
+  })
+
+  it("shows composition coefficients in energy expression details after composition edits", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
+    fireEvent.click(within(editor).getByRole("button", { name: "Add" }))
+    const objectSelects = within(editor).getAllByLabelText("Object")
+    const coefficientInputs = within(editor).getAllByLabelText("Coef")
+    fireEvent.change(objectSelects[1], { target: { value: "object-b" } })
+    fireEvent.change(coefficientInputs[1], { target: { value: "2" } })
+    fireEvent.click(within(editor).getByRole("button", { name: "Apply" }))
+    await waitFor(() => expect(lastPayload(transport, "workspace.set_node_composition")).toBeTruthy())
+
+    const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
+    fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
+
+    expect(within(graphCanvas).getAllByText("object-a + 2*object-b").length).toBeGreaterThan(0)
+    const expressionDetails = within(energyPanel).getByLabelText("Expression details")
+    await waitFor(() => expect(within(expressionDetails).getAllByText("coef 2").length).toBeGreaterThan(0))
+    expect(within(expressionDetails).getAllByText("electronic · energies").length).toBeGreaterThan(0)
   })
 
   it("exports profile artifacts with inline download links", async () => {

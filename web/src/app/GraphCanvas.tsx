@@ -1,6 +1,7 @@
 import { useRef } from "react"
 import type { DragEvent, PointerEvent } from "react"
-import { GitBranch, Hand, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, ZoomIn, ZoomOut } from "lucide-react"
+import { Check, GitBranch, Hand, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, ZoomIn, ZoomOut } from "lucide-react"
+import type { ShellError } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
 import type { CanvasPoint, GraphEditorInteractionState } from "./graphEditorInteractionState"
 import { graphObjectDragMimeType, parseGraphObjectDragPayload } from "./graphObjectDragPayload"
@@ -24,6 +25,7 @@ import {
   type GraphViewport,
 } from "./graphViewport"
 import type { GraphPathOrderDraft } from "./graphPathOrderDraft"
+import type { CompositionDraftRow, CompositionDraftState } from "./compositionDraftState"
 import { useI18n } from "./i18n"
 
 export type AddObjectNodeRequest = {
@@ -46,6 +48,9 @@ type GraphCanvasProps = {
   activeObjectId?: string
   interactionState: GraphEditorInteractionState
   pathOrderDraft: GraphPathOrderDraft | null
+  compositionDraft: CompositionDraftState
+  compositionPending: boolean
+  compositionError: ShellError | null
   onSelectNode: (nodeId: string) => void
   onSelectEdge: (edgeId: string) => void
   onSelectPath: (pathId: string, nodeIds: string[]) => void
@@ -65,6 +70,11 @@ type GraphCanvasProps = {
   onTogglePanMode: () => void
   onStartConnection: () => void
   onSetActivePath: () => void
+  onCompositionDraftRowChange: (index: number, field: keyof CompositionDraftRow, value: string) => void
+  onAddCompositionDraftRow: () => void
+  onRemoveCompositionDraftRow: (index: number) => void
+  onResetCompositionDraft: () => void
+  onApplyCompositionDraft: () => void
 }
 
 export function GraphCanvas({
@@ -72,6 +82,9 @@ export function GraphCanvas({
   activeObjectId,
   interactionState,
   pathOrderDraft,
+  compositionDraft,
+  compositionPending,
+  compositionError,
   onSelectNode,
   onSelectEdge,
   onSelectPath,
@@ -91,6 +104,11 @@ export function GraphCanvas({
   onTogglePanMode,
   onStartConnection,
   onSetActivePath,
+  onCompositionDraftRowChange,
+  onAddCompositionDraftRow,
+  onRemoveCompositionDraftRow,
+  onResetCompositionDraft,
+  onApplyCompositionDraft,
 }: GraphCanvasProps) {
   const { t } = useI18n()
   const nodeDragRef = useRef<NodeDragSession | null>(null)
@@ -403,6 +421,17 @@ export function GraphCanvas({
             onApplyPathOrderDraft={onApplyPathOrderDraft}
           />
           <PreviewWarnings disconnectedNodeIds={workspace?.preview.disconnected_node_ids ?? []} />
+          <NodeCompositionEditor
+            draft={compositionDraft}
+            objects={state.objects}
+            pending={compositionPending}
+            error={compositionError}
+            onRowChange={onCompositionDraftRowChange}
+            onAddRow={onAddCompositionDraftRow}
+            onRemoveRow={onRemoveCompositionDraftRow}
+            onReset={onResetCompositionDraft}
+            onApply={onApplyCompositionDraft}
+          />
         </aside>
       </div>
     </section>
@@ -504,6 +533,9 @@ function GraphNodeButton({
 }) {
   const { t } = useI18n()
   const position = graphNodeCssPosition(draggingPosition ?? graphNodePosition(node))
+  const composition = node.composition?.length
+    ? node.composition
+    : (node.chemical_object_ids ?? []).map((objectId) => ({ object_id: objectId, coefficient: 1 }))
   return (
     <button
       type="button"
@@ -518,10 +550,16 @@ function GraphNodeButton({
     >
       <span>{node.label}</span>
       <small>{node.id}</small>
-      <code>{node.chemical_object_ids?.[0] ?? t("graphCanvas.noObject")}</code>
+      <code>{formatCompositionSummary(composition) || t("graphCanvas.noObject")}</code>
       {object?.formula ? <em>{object.formula}</em> : null}
     </button>
   )
+}
+
+function formatCompositionSummary(composition: Array<{ object_id: string; coefficient?: number }>): string {
+  return composition
+    .map((term) => `${term.coefficient && term.coefficient !== 1 ? `${term.coefficient}*` : ""}${term.object_id}`)
+    .join(" + ")
 }
 
 function draggingNodePosition(
@@ -704,6 +742,172 @@ function PreviewWarnings({ disconnectedNodeIds }: { disconnectedNodeIds: string[
       {disconnectedNodeIds.map((nodeId) => (
         <code key={nodeId}>{nodeId}</code>
       ))}
+    </div>
+  )
+}
+
+function NodeCompositionEditor({
+  draft,
+  objects,
+  pending,
+  error,
+  onRowChange,
+  onAddRow,
+  onRemoveRow,
+  onReset,
+  onApply,
+}: {
+  draft: CompositionDraftState
+  objects: ObjectSummary[]
+  pending: boolean
+  error: ShellError | null
+  onRowChange: (index: number, field: keyof CompositionDraftRow, value: string) => void
+  onAddRow: () => void
+  onRemoveRow: (index: number) => void
+  onReset: () => void
+  onApply: () => void
+}) {
+  const { t } = useI18n()
+  const disabled = !draft.nodeId || pending
+  return (
+    <form
+      className="composition-editor"
+      aria-label={t("compositionEditor.aria")}
+      onSubmit={(event) => {
+        event.preventDefault()
+        onApply()
+      }}
+    >
+      <div className="composition-editor-header">
+        <div>
+          <span>{t("compositionEditor.title")}</span>
+          <code>{draft.nodeId ?? t("graphCanvas.none")}</code>
+        </div>
+        <small>{draft.dirty ? t("compositionEditor.dirty") : t("compositionEditor.clean")}</small>
+      </div>
+
+      {draft.rows.length > 0 ? (
+        <div className="composition-row-list">
+          {draft.rows.map((row, index) => (
+            <CompositionDraftRowEditor
+              key={`${draft.nodeId ?? "none"}-${index}`}
+              row={row}
+              index={index}
+              objects={objects}
+              disabled={disabled}
+              canRemove={draft.rows.length > 1}
+              onRowChange={onRowChange}
+              onRemoveRow={onRemoveRow}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="muted">{t("compositionEditor.empty")}</p>
+      )}
+
+      {error ? (
+        <p className="composition-error">
+          <code>{error.code}</code>
+          <span>{error.message}</span>
+          {error.target ? <small>{error.target}</small> : null}
+        </p>
+      ) : null}
+
+      <div className="composition-command-row">
+        <button type="button" onClick={onAddRow} disabled={disabled || objects.length === 0}>
+          <Plus size={15} />
+          <span>{t("compositionEditor.addTerm")}</span>
+        </button>
+        <button type="button" onClick={onReset} disabled={disabled || !draft.dirty}>
+          <RotateCcw size={15} />
+          <span>{t("compositionEditor.reset")}</span>
+        </button>
+        <button type="submit" disabled={disabled || !draft.dirty || draft.rows.length === 0}>
+          <Check size={15} />
+          <span>{pending ? t("compositionEditor.applying") : t("compositionEditor.apply")}</span>
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function CompositionDraftRowEditor({
+  row,
+  index,
+  objects,
+  disabled,
+  canRemove,
+  onRowChange,
+  onRemoveRow,
+}: {
+  row: CompositionDraftRow
+  index: number
+  objects: ObjectSummary[]
+  disabled: boolean
+  canRemove: boolean
+  onRowChange: (index: number, field: keyof CompositionDraftRow, value: string) => void
+  onRemoveRow: (index: number) => void
+}) {
+  const { t } = useI18n()
+  return (
+    <div className="composition-row">
+      <label>
+        <span>{t("compositionEditor.object")}</span>
+        <select
+          value={row.objectId}
+          onChange={(event) => onRowChange(index, "objectId", event.currentTarget.value)}
+          disabled={disabled || objects.length === 0}
+        >
+          {objects.map((object) => (
+            <option key={object.id} value={object.id}>
+              {object.label ?? object.id}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>{t("compositionEditor.coefficient")}</span>
+        <input
+          type="number"
+          step="any"
+          value={row.coefficient}
+          onChange={(event) => onRowChange(index, "coefficient", event.currentTarget.value)}
+          disabled={disabled}
+        />
+      </label>
+      <label>
+        <span>{t("compositionEditor.role")}</span>
+        <select
+          value={row.role}
+          onChange={(event) => onRowChange(index, "role", event.currentTarget.value)}
+          disabled={disabled}
+        >
+          <option value="">{t("compositionEditor.role.none")}</option>
+          <option value="reactant">{t("compositionEditor.role.reactant")}</option>
+          <option value="reagent">{t("compositionEditor.role.reagent")}</option>
+          <option value="catalyst">{t("compositionEditor.role.catalyst")}</option>
+          <option value="product">{t("compositionEditor.role.product")}</option>
+        </select>
+      </label>
+      <label>
+        <span>{t("compositionEditor.label")}</span>
+        <input
+          type="text"
+          value={row.label}
+          onChange={(event) => onRowChange(index, "label", event.currentTarget.value)}
+          disabled={disabled}
+          placeholder={t("compositionEditor.labelPlaceholder")}
+        />
+      </label>
+      <button
+        type="button"
+        title={t("compositionEditor.removeTerm")}
+        aria-label={t("compositionEditor.removeTerm")}
+        onClick={() => onRemoveRow(index)}
+        disabled={disabled || !canRemove}
+      >
+        <Trash2 size={15} />
+      </button>
     </div>
   )
 }

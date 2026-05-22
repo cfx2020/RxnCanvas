@@ -3,6 +3,8 @@ import type { ReactNode } from "react"
 import type {
   CorrectionComponentSummary,
   EnergyComponentSummary,
+  EnergyChannelSelectionSource,
+  EnergyChannelSummary,
   EnergyExpressionMissingSummary,
   EnergyExpressionSummary,
   EnergyOutputUnit,
@@ -10,6 +12,7 @@ import type {
   EnergyProfileSummary,
   EnergyValueSummary,
   ShellWarning,
+  ObjectSummary,
   WorkspaceSummary,
 } from "../shell"
 import { useI18n } from "./i18n"
@@ -17,14 +20,18 @@ import { useI18n } from "./i18n"
 export type EnergyPanelOptions = {
   pathId: string
   outputUnit: EnergyOutputUnit
-  includeCorrections: boolean
   energyKey: string
+  energySource: EnergyChannelSelectionSource
   baselineNodeId: string
+  correctionPolicyMode: "none" | "all" | "kinds" | "ids"
+  correctionKinds: string[]
+  correctionIds: string
 }
 
 type EnergyProfilePanelProps = {
   profile?: EnergyProfileSummary
   workspace?: WorkspaceSummary
+  objects: ObjectSummary[]
   options: EnergyPanelOptions
   disabled: boolean
   warnings: ShellWarning[]
@@ -45,6 +52,7 @@ type NormalizedEnergyPoint = {
 export function EnergyProfilePanel({
   profile,
   workspace,
+  objects,
   options,
   disabled,
   warnings,
@@ -55,6 +63,7 @@ export function EnergyProfilePanel({
   const paths = workspace?.graph.paths ?? []
   const selectedPath = paths.find((path) => path.id === options.pathId)
   const baselineNodeIds = selectedPath?.node_ids ?? []
+  const energyChannelOptions = energyChannelOptionsFromObjects(objects)
   const points = profile?.points.map(normalizeEnergyPoint) ?? []
   const panelWarnings = uniqueWarnings([
     ...warnings,
@@ -103,6 +112,33 @@ export function EnergyProfilePanel({
         </label>
 
         <label className="energy-field">
+          <span>{t("energyPanel.energyChannel")}</span>
+          <select
+            value={channelSelectValue(options)}
+            onChange={(event) => {
+              const channel = energyChannelOptions.find((item) => item.value === event.currentTarget.value)
+              if (!channel) return
+              onOptionsChange({
+                ...options,
+                energyKey: channel.key,
+                energySource: channel.source,
+              })
+            }}
+            disabled={energyChannelOptions.length === 0}
+          >
+            {energyChannelOptions.length === 0 ? (
+              <option value="">{t("energyPanel.noEnergyChannels")}</option>
+            ) : null}
+            {energyChannelOptions.map((channel) => (
+              <option key={channel.value} value={channel.value}>
+                {channel.label}
+              </option>
+            ))}
+            <option value="custom">{t("energyPanel.customEnergyChannel")}</option>
+          </select>
+        </label>
+
+        <label className="energy-field">
           <span>{t("energyPanel.energyKey")}</span>
           <input
             type="text"
@@ -110,6 +146,18 @@ export function EnergyProfilePanel({
             onChange={(event) => onOptionsChange({ ...options, energyKey: event.currentTarget.value })}
             placeholder="electronic"
           />
+        </label>
+
+        <label className="energy-field">
+          <span>{t("energyPanel.energySource")}</span>
+          <select
+            value={options.energySource}
+            onChange={(event) => onOptionsChange({ ...options, energySource: event.currentTarget.value as EnergyChannelSelectionSource })}
+          >
+            <option value="auto">{t("energyPanel.energySource.auto")}</option>
+            <option value="energies">energies</option>
+            <option value="thermochemistry">thermochemistry</option>
+          </select>
         </label>
 
         <label className="energy-field">
@@ -129,15 +177,55 @@ export function EnergyProfilePanel({
         </label>
       </div>
 
-      <div className="energy-command-row">
-        <label className="energy-toggle">
-          <input
-            type="checkbox"
-            checked={options.includeCorrections}
-            onChange={(event) => onOptionsChange({ ...options, includeCorrections: event.currentTarget.checked })}
-          />
-          <span>{t("energyPanel.includeCorrections")}</span>
+      <div className="energy-policy-panel" aria-label={t("energyPanel.correctionPolicyControls")}>
+        <label className="energy-field">
+          <span>{t("energyPanel.correctionPolicy")}</span>
+          <select
+            value={options.correctionPolicyMode}
+            onChange={(event) => onOptionsChange({
+              ...options,
+              correctionPolicyMode: event.currentTarget.value as EnergyPanelOptions["correctionPolicyMode"],
+            })}
+          >
+            <option value="none">{t("energyPanel.correctionPolicy.none")}</option>
+            <option value="all">{t("energyPanel.correctionPolicy.all")}</option>
+            <option value="kinds">{t("energyPanel.correctionPolicy.kinds")}</option>
+            <option value="ids">{t("energyPanel.correctionPolicy.ids")}</option>
+          </select>
         </label>
+        {options.correctionPolicyMode === "kinds" ? (
+          <div className="energy-kind-grid" aria-label={t("energyPanel.correctionKinds")}>
+            {["solvation", "resonance", "manual"].map((kind) => (
+              <label key={kind} className="energy-toggle">
+                <input
+                  type="checkbox"
+                  checked={options.correctionKinds.includes(kind)}
+                  onChange={(event) => onOptionsChange({
+                    ...options,
+                    correctionKinds: event.currentTarget.checked
+                      ? Array.from(new Set([...options.correctionKinds, kind]))
+                      : options.correctionKinds.filter((item) => item !== kind),
+                  })}
+                />
+                <span>{kind}</span>
+              </label>
+            ))}
+          </div>
+        ) : null}
+        {options.correctionPolicyMode === "ids" ? (
+          <label className="energy-field">
+            <span>{t("energyPanel.correctionIds")}</span>
+            <input
+              type="text"
+              value={options.correctionIds}
+              onChange={(event) => onOptionsChange({ ...options, correctionIds: event.currentTarget.value })}
+              placeholder="corr-a, corr-b"
+            />
+          </label>
+        ) : null}
+      </div>
+
+      <div className="energy-command-row">
         <button
           type="button"
           className="command-button"
@@ -193,6 +281,42 @@ function SummaryValue({ label, value }: { label: string; value?: string | number
       <code>{value ?? "none"}</code>
     </div>
   )
+}
+
+type EnergyChannelOption = {
+  value: string
+  key: string
+  source: EnergyChannelSelectionSource
+  label: string
+}
+
+function energyChannelOptionsFromObjects(objects: ObjectSummary[]): EnergyChannelOption[] {
+  const channelMap = new Map<string, EnergyChannelSummary>()
+  for (const object of objects) {
+    for (const channel of object.energy_channels ?? []) {
+      const id = `${channel.source}:${channel.key}`
+      const existing = channelMap.get(id)
+      if (existing) {
+        channelMap.set(id, {
+          ...existing,
+          object_ids: Array.from(new Set([...existing.object_ids, ...channel.object_ids])),
+        })
+      } else {
+        channelMap.set(id, { ...channel, object_ids: [...channel.object_ids] })
+      }
+    }
+  }
+  return Array.from(channelMap.values()).map((channel) => ({
+    value: `${channel.source}:${channel.key}`,
+    key: channel.key,
+    source: channel.source,
+    label: `${channel.source}:${channel.key} · ${channel.unit} · ${channel.object_ids.length}`,
+  }))
+}
+
+function channelSelectValue(options: EnergyPanelOptions): string {
+  const source = options.energySource === "auto" ? "" : options.energySource
+  return source ? `${source}:${options.energyKey}` : "custom"
 }
 
 function EnergyTable({ points }: { points: NormalizedEnergyPoint[] }) {

@@ -1382,6 +1382,144 @@ button {
   padding: 8px;
 }
 
+.composition-editor {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.composition-editor-header {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.composition-editor-header div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.composition-editor-header span {
+  color: var(--sage);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.composition-editor-header code {
+  color: var(--blueprint);
+  overflow-wrap: anywhere;
+}
+
+.composition-editor-header small {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(39, 89, 106, 0.18);
+  background: rgba(39, 89, 106, 0.08);
+  color: var(--blueprint);
+  padding: 0 7px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.composition-row-list {
+  display: grid;
+  gap: 8px;
+}
+
+.composition-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(84px, 1.2fr) minmax(58px, 0.6fr) minmax(82px, 0.8fr) minmax(78px, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+  border: 1px solid rgba(31, 33, 29, 0.1);
+  background: rgba(255, 250, 240, 0.76);
+  padding: 7px;
+}
+
+.composition-row label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--sage);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.composition-row select,
+.composition-row input {
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0 6px;
+  font-size: 0.76rem;
+}
+
+.composition-row button,
+.composition-command-row button {
+  min-width: 0;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.composition-row button:disabled,
+.composition-command-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.composition-command-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.composition-command-row button[type="submit"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.composition-error {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 7px;
+  border-left: 4px solid var(--oxide);
+  background: rgba(141, 53, 39, 0.1);
+  color: var(--oxide);
+  padding: 8px;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.composition-error code,
+.composition-error span,
+.composition-error small {
+  overflow-wrap: anywhere;
+}
+
+.composition-error small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
 .energy-profile-panel {
   min-width: 0;
   display: grid;
@@ -1440,9 +1578,26 @@ button {
 
 .energy-command-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+  grid-template-columns: minmax(120px, auto);
+  justify-content: end;
   align-items: center;
   gap: 8px;
+}
+
+.energy-policy-panel {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(31, 33, 29, 0.1);
+  background: rgba(255, 255, 255, 0.42);
+  padding: 8px;
+}
+
+.energy-kind-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
 }
 
 .energy-toggle {
@@ -2036,6 +2191,8 @@ button {
 
   .import-controls,
   .import-command-row,
+  .composition-command-row,
+  .composition-row,
   .energy-command-row,
   .report-export-command-row,
   .export-format-grid,

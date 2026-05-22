@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AlertTriangle, Play } from "lucide-react"
 import { BrowserProjectRepositoryError, type BrowserProjectRepository } from "../repository"
-import type { EnergyComputeData, ExportProfileData, FixtureRunData, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary } from "../shell"
+import type { EnergyComputeData, ExportProfileData, FixtureRunData, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, JsonObject, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary } from "../shell"
+import {
+  addCompositionDraftRow,
+  compositionDraftFromSelectedNode,
+  initialCompositionDraftState,
+  reconcileCompositionDraft,
+  removeCompositionDraftRow,
+  updateCompositionDraftRow,
+  type CompositionDraftState,
+} from "./compositionDraftState"
 import { EnergyProfilePanel, type EnergyPanelOptions } from "./EnergyProfilePanel"
 import {
   applyArtifactPersistenceResults,
@@ -92,12 +101,20 @@ export function WorkbenchShell({
     initialGraphEditorInteractionState,
   )
   const [pathOrderDraft, setPathOrderDraft] = useState<GraphPathOrderDraft | null>(null)
+  const [compositionDraft, setCompositionDraft] = useState<CompositionDraftState>(
+    initialCompositionDraftState,
+  )
+  const [compositionPending, setCompositionPending] = useState(false)
+  const [compositionError, setCompositionError] = useState<ShellError | null>(null)
   const [energyPanelOptions, setEnergyPanelOptions] = useState<EnergyPanelOptions>({
     pathId: "",
     outputUnit: "kcal_mol",
-    includeCorrections: false,
     energyKey: "electronic",
+    energySource: "auto",
     baselineNodeId: "",
+    correctionPolicyMode: "none",
+    correctionKinds: ["solvation", "resonance", "manual"],
+    correctionIds: "",
   })
   const [reportExportOptions, setReportExportOptions] = useState<ReportExportOptions>({
     formats: ["png", "cdxml", "xlsx"],
@@ -150,6 +167,15 @@ export function WorkbenchShell({
       if (!current) return current
       const path = graph?.paths.find((item) => item.id === current.pathId)
       return path ? current : null
+    })
+  }, [workbenchState.workspace])
+
+  useEffect(() => {
+    setCompositionDraft((current) => reconcileCompositionDraft(current, workbenchState.workspace))
+    setCompositionError((current) => {
+      if (!current) return current
+      const selectedNodeId = workbenchState.workspace?.selection?.node_ids[0]
+      return selectedNodeId ? current : null
     })
   }, [workbenchState.workspace])
 
@@ -602,6 +628,94 @@ export function WorkbenchShell({
     applyWorkspaceResponse(response)
   }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
 
+  const updateNodeCompositionDraft = useCallback((
+    index: number,
+    field: keyof CompositionDraftState["rows"][number],
+    value: string,
+  ) => {
+    setCompositionError(null)
+    setCompositionDraft((current) => updateCompositionDraftRow(current, index, field, value))
+  }, [])
+
+  const addNodeCompositionDraftRow = useCallback(() => {
+    const fallbackObjectId = activeObjectId ?? workbenchState.objects[0]?.id ?? ""
+    setCompositionError(null)
+    setCompositionDraft((current) => addCompositionDraftRow(current, fallbackObjectId))
+  }, [activeObjectId, workbenchState.objects])
+
+  const removeNodeCompositionDraftRow = useCallback((index: number) => {
+    setCompositionError(null)
+    setCompositionDraft((current) => removeCompositionDraftRow(current, index))
+  }, [])
+
+  const resetNodeCompositionDraft = useCallback(() => {
+    setCompositionError(null)
+    setCompositionDraft(compositionDraftFromSelectedNode(workbenchState.workspace))
+  }, [workbenchState.workspace])
+
+  const applyNodeCompositionDraft = useCallback(async () => {
+    const sessionId = workbenchState.sessionId
+    const nodeId = compositionDraft.nodeId
+    if (!sessionId || !nodeId) return
+    const compositionTerms = []
+    let validationError: ShellError | null = null
+    for (const [index, row] of compositionDraft.rows.entries()) {
+      const coefficient = Number(row.coefficient)
+      if (!row.objectId || !Number.isFinite(coefficient) || coefficient === 0) {
+        validationError = shellError("invalid_input", "Composition coefficient must be a non-zero finite number.", `composition.${index}.coefficient`)
+        break
+      }
+      compositionTerms.push({
+        object_id: row.objectId,
+        coefficient,
+        role: row.role.trim() || null,
+        label: row.label.trim() || null,
+        metadata: {},
+      })
+    }
+    if (validationError) {
+      setCompositionError(validationError)
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        error: validationError,
+      }))
+      return
+    }
+    if (compositionTerms.length === 0) {
+      const error = shellError("invalid_input", "Node composition must include at least one term.", "composition")
+      setCompositionError(error)
+      setWorkbenchState((current) => ({ ...current, status: "error", error }))
+      return
+    }
+
+    setCompositionPending(true)
+    setCompositionError(null)
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_node_composition",
+      args: {
+        session_id: sessionId,
+        node_id: nodeId,
+        composition: compositionTerms,
+      },
+    })
+    setCompositionPending(false)
+    if (!response.ok || !response.data) {
+      const error = response.error ?? shellError("invalid_input", "Workspace command did not return data.", "workspace.set_node_composition")
+      setCompositionError(error)
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error,
+      }))
+      return
+    }
+    setCompositionDraft(compositionDraftFromSelectedNode(response.data.workspace))
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, compositionDraft, shellClient, workbenchState.sessionId])
+
   const removeGraphItems = useCallback(async (request: RemoveGraphItemsRequest) => {
     const sessionId = workbenchState.sessionId
     if (!sessionId || (request.nodeIds.length === 0 && request.edgeIds.length === 0)) return
@@ -705,9 +819,17 @@ export function WorkbenchShell({
         return
       }
       setGraphEditorInteraction((current) => selectGraphEditorNode(current, nodeId))
+      const nextWorkspace = workbenchState.workspace
+        ? {
+          ...workbenchState.workspace,
+          selection: { node_ids: [nodeId], edge_ids: [], path_ids: [] },
+        }
+        : undefined
+      setCompositionError(null)
+      setCompositionDraft(compositionDraftFromSelectedNode(nextWorkspace))
       void selectGraphItems({ node_ids: [nodeId], edge_ids: [], path_ids: [] })
     },
-    [applyWorkspaceResponse, graphEditorInteraction.pendingEdge?.fromNodeId, selectGraphItems, shellClient, workbenchState.sessionId],
+    [applyWorkspaceResponse, graphEditorInteraction.pendingEdge?.fromNodeId, selectGraphItems, shellClient, workbenchState.sessionId, workbenchState.workspace],
   )
 
   const setActiveCanvasPath = useCallback(async () => {
@@ -734,6 +856,7 @@ export function WorkbenchShell({
       || workbenchState.workspace?.graph.paths[0]?.id
       || ""
     const energyKey = energyPanelOptions.energyKey.trim() || "electronic"
+    const correctionPolicy = correctionPolicyFromEnergyOptions(energyPanelOptions)
     if (!sessionId || !pathId) return
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<EnergyComputeData>({
@@ -742,8 +865,10 @@ export function WorkbenchShell({
         session_id: sessionId,
         path_id: pathId,
         output_unit: energyPanelOptions.outputUnit,
-        include_corrections: energyPanelOptions.includeCorrections,
+        include_corrections: energyPanelOptions.correctionPolicyMode !== "none",
         energy_key: energyKey,
+        energy_source: energyPanelOptions.energySource,
+        correction_policy: correctionPolicy,
         ...(energyPanelOptions.baselineNodeId ? { baseline_node_id: energyPanelOptions.baselineNodeId } : {}),
       },
     })
@@ -1034,6 +1159,9 @@ export function WorkbenchShell({
             activeObjectId={activeObjectId}
             interactionState={graphEditorInteraction}
             pathOrderDraft={pathOrderDraft}
+            compositionDraft={compositionDraft}
+            compositionPending={compositionPending}
+            compositionError={compositionError}
             onSelectNode={selectGraphNode}
             onSelectEdge={selectGraphEdge}
             onSelectPath={selectGraphPath}
@@ -1053,6 +1181,11 @@ export function WorkbenchShell({
             onTogglePanMode={togglePanMode}
             onStartConnection={startConnection}
             onSetActivePath={setActiveCanvasPath}
+            onCompositionDraftRowChange={updateNodeCompositionDraft}
+            onAddCompositionDraftRow={addNodeCompositionDraftRow}
+            onRemoveCompositionDraftRow={removeNodeCompositionDraftRow}
+            onResetCompositionDraft={resetNodeCompositionDraft}
+            onApplyCompositionDraft={applyNodeCompositionDraft}
           />
         </div>
         <InspectorPanel
@@ -1115,6 +1248,22 @@ function energyOptionsForWorkspace(
     pathId: activePathId,
     baselineNodeId: baselineStillExists ? current.baselineNodeId : "",
   }
+}
+
+function correctionPolicyFromEnergyOptions(options: EnergyPanelOptions): JsonObject {
+  if (options.correctionPolicyMode === "kinds") {
+    return {
+      mode: "kinds",
+      kinds: options.correctionKinds,
+    }
+  }
+  if (options.correctionPolicyMode === "ids") {
+    return {
+      mode: "ids",
+      ids: options.correctionIds.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean),
+    }
+  }
+  return { mode: options.correctionPolicyMode }
 }
 
 function shellArtifactSummary(artifact: ShellArtifact): WorkbenchArtifactSummary {
@@ -1242,6 +1391,7 @@ function InspectorPanel({
       <EnergyProfilePanel
         profile={state.profile}
         workspace={state.workspace}
+        objects={state.objects}
         options={energyPanelOptions}
         disabled={!state.sessionId || !energyPanelOptions.pathId && !state.workspace?.active_path_id && !state.workspace?.graph.paths[0]?.id}
         warnings={state.warnings}

@@ -1153,7 +1153,14 @@ function profileSummary(options: {
 }): EnergyProfileSummary {
   const path = fixtureWorkspace.graph.paths.find((item) => item.id === options.pathId)
   const nodeIds = path?.node_ids ?? ["node-a", "node-b"]
-  const points = nodeIds.map((nodeId, index) => profilePoint(nodeId, index, options.outputUnit, options.includeCorrections === true))
+  const points = nodeIds.map((nodeId, index) => profilePoint(
+    nodeId,
+    index,
+    options.outputUnit,
+    options.energyKey,
+    options.energySource ?? "auto",
+    options.includeCorrections === true,
+  ))
   return {
     id: profileId(options.pathId, options.energyKey, options.outputUnit, options.energySource ?? "auto"),
     graph_id: fixtureGraphId,
@@ -1259,6 +1266,8 @@ function profilePoint(
   nodeId: string,
   index: number,
   outputUnit: EnergyOutputUnit,
+  energyKey: string,
+  energySource: "energies" | "thermochemistry" | "auto",
   includeCorrections: boolean,
 ): EnergyProfilePointSummary {
   const node = fixtureWorkspace.graph.nodes.find((item) => item.id === nodeId)
@@ -1276,15 +1285,15 @@ function profilePoint(
         total: null,
         missing: [{
           code: "missing_energy",
-          message: "Fixture object does not expose an electronic energy value.",
+          message: `Fixture object does not expose a ${energyKey} energy value.`,
           object_id: objectId,
-          energy_key: "electronic",
-          energy_source: "auto",
+          energy_key: energyKey,
+          energy_source: energySource,
         }],
       },
       warnings: [{
         code: "missing_energy",
-        message: "Fixture object does not expose an electronic energy value.",
+        message: `Fixture object does not expose a ${energyKey} energy value.`,
         target: nodeId,
       }],
     }
@@ -1300,7 +1309,7 @@ function profilePoint(
       reference: "fixture-electronic",
     },
     missing_reason: null,
-    expression: fixtureExpression(nodeId, node?.label ?? nodeId, outputUnit, value, includeCorrections),
+    expression: fixtureExpression(nodeId, node?.label ?? nodeId, outputUnit, value, energyKey, energySource, includeCorrections),
     warnings: [],
   }
 }
@@ -1310,19 +1319,24 @@ function fixtureExpression(
   label: string,
   outputUnit: EnergyOutputUnit,
   relativeValue: number,
+  energyKey: string,
+  energySource: "energies" | "thermochemistry" | "auto",
   includeCorrections: boolean,
 ): EnergyExpressionSummary {
   const node = fixtureWorkspace.graph.nodes.find((item) => item.id === nodeId)
-  const objectIds = node?.chemical_object_ids?.length ? node.chemical_object_ids : ["object-a"]
-  const terms: EnergyComponentSummary[] = objectIds.map((objectId, index) => {
+  const composition = node?.composition?.length
+    ? node.composition
+    : compositionTermsFromArgs(undefined, node?.chemical_object_ids?.length ? node.chemical_object_ids : ["object-a"])
+  const terms: EnergyComponentSummary[] = composition.map((term, index) => {
+    const objectId = term.object_id
     const object = fixtureObjects.find((item) => item.id === objectId)
     const contributionValue = index === 0 ? relativeValue : 0
     return {
       object_id: objectId,
       object_label: object?.label ?? label,
-      coefficient: 1,
-      energy_key: "electronic",
-      energy_source: "energies",
+      coefficient: term.coefficient,
+      energy_key: energyKey,
+      energy_source: energySource === "auto" ? "energies" : energySource,
       raw_energy: {
         value: objectId === "object-b" ? -99.98 : -100,
         unit: "hartree",
@@ -1340,13 +1354,14 @@ function fixtureExpression(
       },
     }
   })
-  const corrections: CorrectionComponentSummary[] = includeCorrections ? objectIds.flatMap((objectId) => {
+  const corrections: CorrectionComponentSummary[] = includeCorrections ? composition.flatMap((term) => {
+    const objectId = term.object_id
     const object = fixtureObjects.find((item) => item.id === objectId)
     return (object?.corrections ?? []).map((correction) => ({
       object_id: objectId,
       correction_id: correction.id,
       kind: correction.kind,
-      coefficient: 1,
+      coefficient: term.coefficient,
       raw_energy: correction.energy,
       converted_energy: correction.energy,
       contribution: correction.energy,
