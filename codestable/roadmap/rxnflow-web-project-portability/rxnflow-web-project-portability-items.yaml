@@ -37,7 +37,7 @@ items:
   - slug: web-project-portability-roundtrip
     description: 验证 bundle import 后 Open Bridge、编辑/导出、Save Bridge Session、Export Bundle 的 repository/core session 同步口径
     depends_on: [web-raw-input-persistence, web-project-bundle-export, web-project-bundle-import]
-    status: in-progress
+    status: done
     feature: 2026-05-22-web-project-portability-roundtrip
     minimal_loop: false
     notes: 重点验证 inputs/raw、exports、Project Content state 和 bridge session 显式保存之间的边界

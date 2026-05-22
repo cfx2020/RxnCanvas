@@ -360,7 +360,7 @@ type WebProjectPortabilityRoundtrip =
 5. **web-project-portability-roundtrip** — 验证 bundle import 后 Open Bridge、编辑/导出、Save Bridge Session、Export Bundle 的 repository/core session 同步口径。
    - 所属模块：Bridge Roundtrip Consistency
    - 依赖：`web-raw-input-persistence`、`web-project-bundle-export`、`web-project-bundle-import`
-   - 状态：planned
+   - 状态：done。已用 WorkbenchShell component test 和 local-http Playwright smoke 验证 bundle 导入后需显式 Open Bridge 才恢复 core session，Save Bridge Session 后 Project Content state 写回 repository 且 `inputs/raw/...`、`exports/...` 保留，随后 Export Bundle 生成的 zip 可重新导入并显式 Open Bridge。
 
 6. **web-project-portability-qa-guides** — 补桌面/窄屏/local-http E2E、错误 bundle 样例和 Web 项目备份/恢复用户指南。
    - 所属模块：Portability QA & Guides
@@ -372,8 +372,8 @@ type WebProjectPortabilityRoundtrip =
 - 先做 `web-raw-input-persistence`，让用户选择的原始输出文件真正进入 browser-local project。
 - 再做 `web-project-bundle-archive-adapter`，把 zip 安全协议和 summary 固定住，避免 UI feature 各自处理 zip。
 - `web-project-bundle-export` 和 `web-project-bundle-import` 已完成，用户已经能手动备份并恢复 browser-local project。
-- 下一步推进 `web-project-portability-roundtrip`，用真实流程连接 bundle 与 local-http bridge，检查 session 保存口径。
-- 最后用 `web-project-portability-qa-guides` 收口真实浏览器回归和用户文档。
+- `web-project-portability-roundtrip` 已完成，用真实流程连接 bundle 与 local-http bridge，检查了 session 保存口径。
+- 下一步用 `web-project-portability-qa-guides` 收口真实浏览器回归、错误 bundle 样例和用户/开发者文档。
 
 ## 7. 观察项
 
