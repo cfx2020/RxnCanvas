@@ -350,7 +350,7 @@ type WebProjectPortabilityRoundtrip =
 3. **web-project-bundle-export** — 启用 Project Sidebar Export Bundle，把 active browser project 下载为 `.rxnflow.zip`，包含 `.rxnflow/`、`inputs/raw/` 和 `exports/`。
    - 所属模块：Project Sidebar Bundle UI / Browser Bundle Archive Adapter
    - 依赖：`web-project-bundle-archive-adapter`
-   - 状态：planned
+   - 状态：done。Export Bundle 读取 Browser Project Repository 当前 `.rxnflow/`、`inputs/raw/` 和 `exports/` bytes，通过 Web archive adapter 生成 `.rxnflow.zip` Blob 并触发下载；不会自动 Save Bridge Session，不生成缺失 artifact bytes。
 
 4. **web-project-bundle-import** — 启用 Project Sidebar Import Bundle，从安全 `.rxnflow.zip` 创建新的 browser-local project 并写入 bundle entries。
    - 所属模块：Bundle Import Repository Writer / Project Sidebar Bundle UI
@@ -371,7 +371,7 @@ type WebProjectPortabilityRoundtrip =
 
 - 先做 `web-raw-input-persistence`，让用户选择的原始输出文件真正进入 browser-local project。
 - 再做 `web-project-bundle-archive-adapter`，把 zip 安全协议和 summary 固定住，避免 UI feature 各自处理 zip。
-- `web-project-bundle-export` 和 `web-project-bundle-import` 可以按顺序推进；export 较容易先让用户拿到备份，import 则需要更严的安全校验。
+- `web-project-bundle-export` 已完成，用户已经能拿到手动备份；下一步推进 `web-project-bundle-import`，需要更严的安全校验和新 browser-local project writer。
 - `web-project-portability-roundtrip` 用真实流程连接 bundle 与 local-http bridge，检查 session 保存口径。
 - 最后用 `web-project-portability-qa-guides` 收口真实浏览器回归和用户文档。
 
