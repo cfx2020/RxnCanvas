@@ -31,6 +31,7 @@ import {
   updateGraphEditorCanvasDrag,
   type CanvasPoint,
 } from "./graphEditorInteractionState"
+import type { GraphLayoutPlan } from "./graphAutoLayout"
 import type { GraphViewport } from "./graphViewport"
 import {
   createGraphPathOrderDraft,
@@ -38,7 +39,7 @@ import {
   type GraphPathOrderDraft,
   type GraphPathOrderMoveDirection,
 } from "./graphPathOrderDraft"
-import { GraphCanvas, type AddObjectNodeRequest, type MoveGraphNodeRequest, type RemoveGraphItemsRequest } from "./GraphCanvas"
+import { GraphCanvas, type AddObjectNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type RemoveGraphItemsRequest } from "./GraphCanvas"
 import { ImportInbox } from "./ImportInbox"
 import {
   importPreviewArgsFromFiles,
@@ -109,6 +110,7 @@ export function WorkbenchShell({
   const [graphEditorInteraction, setGraphEditorInteraction] = useState(
     initialGraphEditorInteractionState,
   )
+  const [autoLayoutStatus, setAutoLayoutStatus] = useState<GraphAutoLayoutStatus>({ state: "idle" })
   const [pathOrderDraft, setPathOrderDraft] = useState<GraphPathOrderDraft | null>(null)
   const [compositionDraft, setCompositionDraft] = useState<CompositionDraftState>(
     initialCompositionDraftState,
@@ -684,6 +686,73 @@ export function WorkbenchShell({
     applyWorkspaceResponse(response)
   }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
 
+  const applyGraphAutoLayout = useCallback(async (plan: GraphLayoutPlan) => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId) return
+    if (plan.changedNodeIds.length === 0) {
+      setAutoLayoutStatus({
+        state: "noop",
+        message: `${Object.keys(plan.nodePositions).length} nodes already match ${plan.strategy}.`,
+        warnings: plan.warnings,
+      })
+      return
+    }
+
+    setAutoLayoutStatus({
+      state: "applying",
+      message: `${plan.changedNodeIds.length} node moves queued.`,
+      warnings: plan.warnings,
+    })
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+
+    for (const nodeId of plan.changedNodeIds) {
+      const position = plan.nodePositions[nodeId]
+      if (!position) continue
+      const response = await shellClient.run<WorkspaceCommandData>({
+        command: "workspace.move_node",
+        args: {
+          session_id: sessionId,
+          node_id: nodeId,
+          position,
+        },
+      })
+      applyWorkspaceResponse(response)
+      if (!response.ok || !response.data) {
+        setAutoLayoutStatus({
+          state: "error",
+          message: response.error?.message ?? "Layout move failed.",
+          warnings: plan.warnings,
+        })
+        return
+      }
+    }
+
+    if (plan.viewportIntent) {
+      const response = await shellClient.run<WorkspaceCommandData>({
+        command: "workspace.set_viewport",
+        args: {
+          session_id: sessionId,
+          viewport: plan.viewportIntent,
+        },
+      })
+      applyWorkspaceResponse(response)
+      if (!response.ok || !response.data) {
+        setAutoLayoutStatus({
+          state: "error",
+          message: response.error?.message ?? "Layout viewport fit failed.",
+          warnings: plan.warnings,
+        })
+        return
+      }
+    }
+
+    setAutoLayoutStatus({
+      state: "success",
+      message: `${plan.changedNodeIds.length} nodes moved with ${plan.strategy}.`,
+      warnings: plan.warnings,
+    })
+  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+
   const updateNodeCompositionDraft = useCallback((
     index: number,
     field: keyof CompositionDraftState["rows"][number],
@@ -1227,6 +1296,7 @@ export function WorkbenchShell({
             state={workbenchState}
             activeObjectId={activeObjectId}
             interactionState={graphEditorInteraction}
+            autoLayoutStatus={autoLayoutStatus}
             pathOrderDraft={pathOrderDraft}
             compositionDraft={compositionDraft}
             compositionPending={compositionPending}
@@ -1245,6 +1315,7 @@ export function WorkbenchShell({
             onOpenWorkspace={openWorkspace}
             onAddObjectNode={addObjectNode}
             onMoveNode={moveGraphNode}
+            onApplyAutoLayout={applyGraphAutoLayout}
             onRemoveGraphItems={removeGraphItems}
             onSetViewport={setGraphViewport}
             onTogglePanMode={togglePanMode}

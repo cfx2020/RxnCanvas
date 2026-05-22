@@ -4,19 +4,19 @@ created: 2026-05-22
 steps:
   - action: "Layout Plan Helper：新增 graphAutoLayout helper 和单元测试，覆盖 layered、grid fallback、empty/single/disconnected/cycle、snap/clamp、changed node 计算"
     exit_signal: "helper tests 证明同一 graph 输入得到稳定 plan；所有 position 在虚拟画布内且按 grid snap"
-    status: pending
+    status: done
 
   - action: "Canvas Apply Entry：GraphCanvas 接入 Apply Layout 按钮、disabled/no-op/warning 显示和 onApplyAutoLayout(plan) prop"
     exit_signal: "component test 可点击 Apply Layout，生成 plan；无 session/无 nodes 时按钮不可用或 no-op 状态清晰"
-    status: pending
+    status: done
 
   - action: "Sequential Move Orchestration：WorkbenchShell 实现顺序提交 layout plan 的 workspace.move_node，成功后可选 workspace.set_viewport"
     exit_signal: "component test 看到多个 move command 按稳定顺序发出；ShellResponse 更新后节点位置来自 projection；第二次 Apply 不重复 move"
-    status: pending
+    status: done
 
   - action: "Verification And Scope Guard：跑 Web tests/build、必要 Python 单测和浏览器主链路"
     exit_signal: "测试通过；Playwright 或 Browser 验证页面非空白、console clean、Apply Layout 有可观察位置变化；scope grep 未新增 core command/schema、localStorage、third-party layout library 或 autosave"
-    status: pending
+    status: done
 
 checks:
   - item: "createGraphLayoutPlan 对同一 graph 多次调用返回稳定 nodePositions 和 changedNodeIds"

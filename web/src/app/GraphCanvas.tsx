@@ -1,9 +1,10 @@
 import { useRef } from "react"
 import type { DragEvent, PointerEvent } from "react"
-import { Check, GitBranch, Hand, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, ZoomIn, ZoomOut } from "lucide-react"
+import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, ZoomIn, ZoomOut } from "lucide-react"
 import type { ShellError } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
 import type { CanvasPoint, GraphEditorInteractionState } from "./graphEditorInteractionState"
+import { createGraphLayoutPlan, type GraphLayoutPlan, type GraphLayoutWarning } from "./graphAutoLayout"
 import { graphObjectDragMimeType, parseGraphObjectDragPayload } from "./graphObjectDragPayload"
 import {
   canvasPointToGraphNodePosition,
@@ -43,10 +44,17 @@ export type RemoveGraphItemsRequest = {
   edgeIds: string[]
 }
 
+export type GraphAutoLayoutStatus = {
+  state: "idle" | "applying" | "success" | "noop" | "error"
+  message?: string
+  warnings?: GraphLayoutWarning[]
+}
+
 type GraphCanvasProps = {
   state: WorkbenchDomainState
   activeObjectId?: string
   interactionState: GraphEditorInteractionState
+  autoLayoutStatus?: GraphAutoLayoutStatus
   pathOrderDraft: GraphPathOrderDraft | null
   compositionDraft: CompositionDraftState
   compositionPending: boolean
@@ -65,6 +73,7 @@ type GraphCanvasProps = {
   onOpenWorkspace: () => void
   onAddObjectNode: (request?: AddObjectNodeRequest) => void
   onMoveNode: (request: MoveGraphNodeRequest) => void
+  onApplyAutoLayout: (plan: GraphLayoutPlan) => void
   onRemoveGraphItems: (request: RemoveGraphItemsRequest) => void
   onSetViewport: (viewport: GraphViewport) => void
   onTogglePanMode: () => void
@@ -81,6 +90,7 @@ export function GraphCanvas({
   state,
   activeObjectId,
   interactionState,
+  autoLayoutStatus,
   pathOrderDraft,
   compositionDraft,
   compositionPending,
@@ -99,6 +109,7 @@ export function GraphCanvas({
   onOpenWorkspace,
   onAddObjectNode,
   onMoveNode,
+  onApplyAutoLayout,
   onRemoveGraphItems,
   onSetViewport,
   onTogglePanMode,
@@ -131,6 +142,7 @@ export function GraphCanvas({
   const canConnect = Boolean(selectedNodeId)
   const canSetPath = nodes.length > 1
   const canRemoveSelection = Boolean(selectedNodeId || selectedEdgeId)
+  const canApplyLayout = canUseWorkspace && nodes.length > 0 && autoLayoutStatus?.state !== "applying"
   const dropEnabled = canUseWorkspace && state.objects.length > 0
 
   const handleZoom = (direction: "in" | "out") => {
@@ -139,6 +151,11 @@ export function GraphCanvas({
 
   const handleFitViewport = (element: HTMLElement) => {
     onSetViewport(fitGraphViewportToNodes(nodes, surfaceSizeFromElement(element)))
+  }
+
+  const handleApplyAutoLayout = () => {
+    if (!graph) return
+    onApplyAutoLayout(createGraphLayoutPlan({ graph }))
   }
 
   const handleCanvasPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -293,6 +310,10 @@ export function GraphCanvas({
           <Route size={16} />
           <span>{t("graphCanvas.setPath")}</span>
         </button>
+        <button type="button" onClick={handleApplyAutoLayout} disabled={!canApplyLayout}>
+          <LayoutDashboard size={16} />
+          <span>{t("graphCanvas.applyLayout")}</span>
+        </button>
         <button
           type="button"
           onClick={() => onRemoveGraphItems({
@@ -305,6 +326,9 @@ export function GraphCanvas({
           <span>{t("graphCanvas.deleteSelected")}</span>
         </button>
       </div>
+      {autoLayoutStatus && autoLayoutStatus.state !== "idle" ? (
+        <LayoutStatus status={autoLayoutStatus} />
+      ) : null}
 
       <div className="graph-viewport-bar" aria-label={t("graphCanvas.viewportControls")}>
         <button
@@ -436,6 +460,42 @@ export function GraphCanvas({
       </div>
     </section>
   )
+}
+
+function LayoutStatus({ status }: { status: GraphAutoLayoutStatus }) {
+  const { t } = useI18n()
+  const warning = status.warnings?.[0]
+  return (
+    <div className={`graph-layout-status graph-layout-status--${status.state}`}>
+      <strong>{graphLayoutStatusLabel(status.state, t)}</strong>
+      {status.message ? <span>{status.message}</span> : null}
+      {warning ? (
+        <small>
+          <code>{warning.code}</code>
+          {warning.message}
+        </small>
+      ) : null}
+    </div>
+  )
+}
+
+function graphLayoutStatusLabel(
+  state: GraphAutoLayoutStatus["state"],
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  switch (state) {
+    case "applying":
+      return t("graphCanvas.layoutStatus.applying")
+    case "success":
+      return t("graphCanvas.layoutStatus.success")
+    case "noop":
+      return t("graphCanvas.layoutStatus.noop")
+    case "error":
+      return t("graphCanvas.layoutStatus.error")
+    case "idle":
+    default:
+      return t("graphCanvas.layoutStatus.idle")
+  }
 }
 
 type NodeDragSession = {

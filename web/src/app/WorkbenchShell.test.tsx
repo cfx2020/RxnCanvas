@@ -401,6 +401,34 @@ describe("WorkbenchShell", () => {
     await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toBeInTheDocument())
   })
 
+  it("applies graph auto layout through stable workspace move commands", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Apply Layout" }))
+
+    await within(graphCanvas).findByText("Layout applied")
+    const movePayloads = transport.payloads.filter((payload) => payload.command === "workspace.move_node")
+    expect(movePayloads.map((payload) => payload.args.node_id)).toEqual(["node-a", "node-b"])
+    expect(movePayloads.map((payload) => payload.args.position)).toEqual([[80, 180], [520, 180]])
+    const viewportPayload = lastPayload(transport, "workspace.set_viewport")
+    expect(viewportPayload?.args.viewport).toMatchObject({
+      zoom: expect.any(Number),
+    })
+    expect(await within(graphCanvas).findByRole("button", { name: /node-a/i })).toHaveStyle({
+      left: "13.333333333333334%",
+    })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Apply Layout" }))
+
+    await within(graphCanvas).findByText("Layout already clean")
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(2)
+  })
+
   it("selects and deletes graph edges through workspace.remove", async () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
