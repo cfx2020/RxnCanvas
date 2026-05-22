@@ -4,23 +4,23 @@ created: 2026-05-22
 steps:
   - action: "Zip dependency boundary：安装 fflate，建立 archive adapter module 和最小 typed result/error shape"
     exit_signal: "Web build/test 可解析依赖；grep 只有 adapter/tests import fflate"
-    status: pending
+    status: done
 
   - action: "Path safety parity：实现 bundle root、entry name、project-relative path、allowed roots、duplicate entry 和 export skip rules"
     exit_signal: "tests 覆盖 absolute/backslash/dotdot/dot/empty/root file/multi-root/__MACOSX/outside roots/inputs 非 raw/duplicate"
-    status: pending
+    status: done
 
   - action: "Archive writer：从 safe entries 生成 .rxnflow.zip bytes、固定排序/mtime、checksum 和 summary"
     exit_signal: "manifest + raw + export entries 生成单 root archive；同输入重复输出 checksum 稳定；.DS_Store 和 __MACOSX 被跳过"
-    status: pending
+    status: done
 
   - action: "Archive reader：从 zip bytes 读取 safe project-relative entries，校验 manifest present，并提取 shallow summary"
     exit_signal: "roundtrip tests 返回 .rxnflow/manifest.json、inputs/raw/...、exports/... entries，entry checksum/fileCount/byteSize 正确"
-    status: pending
+    status: done
 
   - action: "Scope guards and verification：证明没有启用 UI/repository writer/shell bridge，并跑 Web test/build"
     exit_signal: "npm run test -- --run、npm run build 通过；scope grep 确认无 file picker/download/object URL/sidebar action 接入"
-    status: pending
+    status: done
 
 checks:
   - item: "Browser Bundle Archive Adapter / Browser Project Bundle Entry / Bundle Root / Bundle Entry Safety / Browser Project Bundle Summary / Zip Dependency Boundary 术语落地"
