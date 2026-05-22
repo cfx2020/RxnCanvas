@@ -1,4 +1,5 @@
 import type { ImportBatchSummary, ImportRegisterAllData, JsonObject, ShellError, ShellWarning } from "../shell"
+import type { RawPersistenceState } from "./rawInputPersistence"
 
 export const defaultInlineImportByteLimit = 1024 * 1024
 
@@ -13,6 +14,7 @@ export type WebImportFile = {
   storagePath?: string
   file?: File
   sourceKind?: ImportPreviewSourceKind
+  rawPersistence?: RawPersistenceState
 }
 
 export type ImportInboxStatus =

@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, FilePlus2, RotateCcw, UploadCloud } from "lucide-react"
 import type { ChangeEvent } from "react"
 import type { ImportItemSummary, ShellError, ShellWarning } from "../shell"
-import { useI18n } from "./i18n"
+import { useI18n, type MessageKey } from "./i18n"
 import {
   canPreviewImport,
   canRegisterImport,
@@ -128,9 +128,47 @@ function SelectedFileList({ files }: { files: WebImportFile[] }) {
           <small>{file.sourceKind ? t(`importInbox.source.${file.sourceKind}`) : t("importInbox.source.path")}</small>
           <small>{file.mimeType ?? t("importInbox.mimeUnknown")}</small>
           {file.lastModified ? <small>{new Date(file.lastModified).toLocaleDateString()}</small> : null}
+          <RawPersistenceSummary file={file} />
         </li>
       ))}
     </ul>
+  )
+}
+
+function RawPersistenceSummary({ file }: { file: WebImportFile }) {
+  const { t } = useI18n()
+  const state = file.rawPersistence
+  if (!state || state.state === "idle") {
+    return null
+  }
+
+  if (state.state === "persisted") {
+    return (
+      <div className="raw-persistence raw-persistence--persisted">
+        <span>{t("importInbox.rawPersistence.persisted")}</span>
+        <code>{state.resource.id}</code>
+        <code>{state.resource.path}</code>
+        <code>{state.resource.checksum}</code>
+      </div>
+    )
+  }
+
+  if (state.state === "skipped") {
+    return (
+      <div className="raw-persistence raw-persistence--skipped">
+        <span>{t("importInbox.rawPersistence.skipped")}</span>
+        <code>{t(`importInbox.rawPersistence.reason.${state.reason}` as MessageKey)}</code>
+      </div>
+    )
+  }
+
+  return (
+    <div className="raw-persistence raw-persistence--error" role="status">
+      <span>{t("importInbox.rawPersistence.error")}</span>
+      <code>{state.error.code}</code>
+      {state.error.target ? <code>{state.error.target}</code> : null}
+      <span>{state.error.message}</span>
+    </div>
   )
 }
 

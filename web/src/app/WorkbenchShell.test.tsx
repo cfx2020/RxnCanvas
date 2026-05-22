@@ -911,6 +911,129 @@ describe("WorkbenchShell", () => {
     expect(screen.getAllByText("Inline bytes").length).toBeGreaterThan(0)
   })
 
+  it("persists selected import files as raw inputs in the active browser project before preview", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await createProjectWithContent(repository, "Raw Preview")
+    const transport = new RecordingImportPreviewTransport()
+    renderWorkbench(repository, "en-US", {
+      mode: "local-http",
+      transportKind: "http-api",
+      endpoint: "http://127.0.0.1:8765/api/shell",
+    }, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /raw preview/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Select Files"), {
+      target: {
+        files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
+      },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }))
+
+    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
+    const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
+    expect(rawObjects).toHaveLength(1)
+    expect(rawObjects[0]).toMatchObject({
+      path: expect.stringMatching(/^inputs\/raw\/[a-f0-9]{12}-water\.xyz$/),
+      checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      metadata: expect.objectContaining({
+        kind: "raw_file",
+        source_name: "water.xyz",
+        byte_size: 8,
+      }),
+    })
+    const manifest = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, ".rxnflow/manifest.json")).bytes))
+    expect(manifest.resources).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^raw-[a-f0-9]{12}$/),
+        kind: "raw_file",
+        path: rawObjects[0].path,
+        checksum: rawObjects[0].checksum,
+      }),
+    ])
+    expect(screen.getByText("Persisted raw input")).toBeInTheDocument()
+    expect(screen.getByText(rawObjects[0].path)).toBeInTheDocument()
+    expect(screen.getAllByText(rawObjects[0].checksum ?? "")).toHaveLength(1)
+  })
+
+  it("does not duplicate manifest raw resources when the same file is previewed repeatedly", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await createProjectWithContent(repository, "Raw Repeat")
+    const transport = new RecordingImportPreviewTransport()
+    renderWorkbench(repository, "en-US", {
+      mode: "local-http",
+      transportKind: "http-api",
+      endpoint: "http://127.0.0.1:8765/api/shell",
+    }, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /raw repeat/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Select Files"), {
+      target: {
+        files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
+      },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }))
+    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }))
+
+    await waitFor(() => expect(transport.payloads.filter((payload) => payload.command === "import.preview")).toHaveLength(2))
+    const manifest = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, ".rxnflow/manifest.json")).bytes))
+    expect(manifest.resources.filter((resource: { kind: string }) => resource.kind === "raw_file")).toHaveLength(1)
+  })
+
+  it("keeps parser preview visible when raw persistence fails", async () => {
+    const repository = new FailingRawInputProjectRepository()
+    await createProjectWithContent(repository, "Raw Fails")
+    const transport = new RecordingImportPreviewTransport()
+    renderWorkbench(repository, "en-US", {
+      mode: "local-http",
+      transportKind: "http-api",
+      endpoint: "http://127.0.0.1:8765/api/shell",
+    }, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /raw fails/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Select Files"), {
+      target: {
+        files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
+      },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }))
+
+    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
+    expect(screen.getByText("Raw persistence error")).toBeInTheDocument()
+    expect(screen.getByText("storage_quota_exceeded")).toBeInTheDocument()
+    expect(screen.getByText("inputs/raw")).toBeInTheDocument()
+    expect(screen.getByText("xyz-ase")).toBeInTheDocument()
+  })
+
+  it("keeps import preview running without an active project and marks raw persistence skipped", async () => {
+    const transport = new RecordingImportPreviewTransport()
+    renderWorkbench(undefined, "en-US", {
+      mode: "local-http",
+      transportKind: "http-api",
+      endpoint: "http://127.0.0.1:8765/api/shell",
+    }, new ShellClient(transport))
+
+    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Select Files"), {
+      target: {
+        files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
+      },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }))
+
+    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
+    expect(screen.getByText("Raw input not persisted")).toBeInTheDocument()
+    expect(screen.getByText("No active browser project")).toBeInTheDocument()
+  })
+
   it("shows oversized import payload errors before shell preview commands", async () => {
     const transport = new RecordingImportPreviewTransport()
     renderWorkbench(undefined, "en-US", {
@@ -932,6 +1055,31 @@ describe("WorkbenchShell", () => {
 
     expect((await screen.findAllByText("payload_too_large")).length).toBeGreaterThan(0)
     expect(screen.getAllByText("bytes_base64").length).toBeGreaterThan(0)
+    expect(transport.payloads.filter((payload) => payload.command === "import.preview")).toHaveLength(0)
+  })
+
+  it("does not write active project raw inputs for oversized inline preview files", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await createProjectWithContent(repository, "Large Raw")
+    const transport = new RecordingImportPreviewTransport()
+    renderWorkbench(repository, "en-US", {
+      mode: "local-http",
+      transportKind: "http-api",
+      endpoint: "http://127.0.0.1:8765/api/shell",
+    }, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /large raw/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Select Files"), {
+      target: {
+        files: [new File(["x".repeat(1024 * 1024 + 1)], "large.xyz", { type: "chemical/x-xyz" })],
+      },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }))
+
+    expect((await screen.findAllByText("payload_too_large")).length).toBeGreaterThan(0)
+    await expect(repository.listObjects(project.projectRef, "inputs/raw")).resolves.toHaveLength(0)
     expect(transport.payloads.filter((payload) => payload.command === "import.preview")).toHaveLength(0)
   })
 
@@ -1145,6 +1293,8 @@ describe("WorkbenchShell", () => {
     fireEvent.click(screen.getByRole("button", { name: "预览" }))
 
     expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
+    expect(screen.getByText("原始输入未持久化")).toBeInTheDocument()
+    expect(screen.getByText("无当前浏览器项目")).toBeInTheDocument()
     expect(screen.getByText("xyz-ase")).toBeInTheDocument()
     expect(screen.getAllByText("missing_section").length).toBeGreaterThan(0)
     expect(screen.getByText("water.xyz")).toBeInTheDocument()
@@ -1315,6 +1465,19 @@ class FailingExportProjectRepository extends MemoryBrowserProjectRepository {
         code: "storage_quota_exceeded",
         message: "Browser local storage quota would be exceeded.",
         target: "quota",
+      })
+    }
+    return super.writeObject(projectRef, object)
+  }
+}
+
+class FailingRawInputProjectRepository extends MemoryBrowserProjectRepository {
+  async writeObject(projectRef: string, object: Parameters<MemoryBrowserProjectRepository["writeObject"]>[1]) {
+    if (object.path.startsWith("inputs/raw/")) {
+      throw new BrowserProjectRepositoryError({
+        code: "storage_quota_exceeded",
+        message: "Browser local storage quota would be exceeded.",
+        target: "inputs/raw",
       })
     }
     return super.writeObject(projectRef, object)

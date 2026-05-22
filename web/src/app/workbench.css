@@ -559,6 +559,43 @@ button {
   white-space: nowrap;
 }
 
+.raw-persistence {
+  min-width: 0;
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  border-left: 4px solid var(--sage);
+  background: rgba(88, 111, 79, 0.1);
+  padding: 7px 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.raw-persistence--skipped {
+  border-left-color: var(--amber);
+  background: rgba(194, 119, 42, 0.1);
+}
+
+.raw-persistence--error {
+  border-left-color: var(--oxide);
+  background: rgba(141, 53, 39, 0.1);
+  color: var(--oxide);
+}
+
+.raw-persistence span,
+.raw-persistence code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.raw-persistence span:first-child {
+  color: var(--ink);
+  font-weight: 800;
+}
+
 .import-preview-summary {
   display: grid;
   gap: 10px;

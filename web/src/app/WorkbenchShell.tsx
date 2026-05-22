@@ -48,6 +48,7 @@ import {
   type WebImportFile,
 } from "./importInboxState"
 import { ObjectRegistryPanel, type ApplyCorrectionRequest } from "./ObjectRegistryPanel"
+import { persistImportFilesAsRawInputs } from "./rawInputPersistence"
 import { createProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
 import {
   contentFilesToShellPayload,
@@ -1005,10 +1006,15 @@ export function WorkbenchShell({
       return
     }
     const args = payload.args
+    const selectedFiles = await persistImportFilesAsRawInputs(
+      projectRepository,
+      projectSidebarStateRef.current.activeProject,
+      payload.files,
+    )
     setImportInboxState((current) => ({
       ...current,
       status: "previewing",
-      selectedFiles: payload.files,
+      selectedFiles,
       warnings: [],
       error: undefined,
     }))
@@ -1054,7 +1060,7 @@ export function WorkbenchShell({
         error: undefined,
       }
     })
-  }, [importInboxState, runtimeInfo.mode, shellClient, workbenchState.sessionId])
+  }, [importInboxState, projectRepository, runtimeInfo.mode, shellClient, workbenchState.sessionId])
 
   const registerImportBatch = useCallback(async () => {
     const batchId = importInboxState.activeBatch?.id

@@ -64,6 +64,44 @@ describe("importInboxState", () => {
     })
   })
 
+  it("preserves raw persistence state while deriving preview sources", async () => {
+    const result = await importPreviewArgsFromFiles({
+      ...initialImportInboxState,
+      selectedFiles: [
+        {
+          id: "water",
+          name: "water.xyz",
+          size: 8,
+          storagePath: "inbox/water.xyz",
+          file: new File(["2\nwater\n"], "water.xyz"),
+          rawPersistence: {
+            state: "persisted",
+            resource: {
+              id: "raw-demo",
+              kind: "raw_file",
+              path: "inputs/raw/demo-water.xyz",
+              checksum: "sha256:demo",
+              metadata: {
+                source_name: "water.xyz",
+                byte_size: 8,
+              },
+            },
+          },
+        },
+      ],
+    }, "session-1", { preferInlineBytes: true })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.files[0].rawPersistence).toEqual({
+      state: "persisted",
+      resource: expect.objectContaining({
+        id: "raw-demo",
+        path: "inputs/raw/demo-water.xyz",
+      }),
+    })
+  })
+
   it("returns payload_too_large before reading oversized inline files", async () => {
     const result = await importPreviewArgsFromFiles({
       ...initialImportInboxState,

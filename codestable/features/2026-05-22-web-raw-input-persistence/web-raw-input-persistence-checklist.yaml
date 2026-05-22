@@ -4,105 +4,105 @@ created: 2026-05-22
 steps:
   - action: "Raw resource helper 契约：实现 checksum、safe name、raw object path、manifest parse/merge 和 deterministic manifest bytes helper"
     exit_signal: "helper tests 覆盖 id/path/checksum、同 checksum 幂等、manifest resource 保留和坏 manifest error"
-    status: pending
+    status: done
 
   - action: "Import preview orchestration：在 runImportPreview 中接入 active project raw persistence，并把结果写回 selected files"
     exit_signal: "component test 证明 active project + selected File 会写 inputs/raw/... 和 manifest resource；无 active project 时 preview 仍可执行且状态 skipped"
-    status: pending
+    status: done
 
   - action: "Import Inbox status UI：展示 persisted/skipped/error 摘要和 raw id/path/checksum"
     exit_signal: "中英文静态文案可见；动态 path/checksum 原样显示"
-    status: pending
+    status: done
 
   - action: "Error/idempotency coverage：覆盖 repository write failure、manifest missing/bad shape、重复 preview 同文件和 oversized file"
     exit_signal: "raw persistence error 不伪造成 parser error；重复 preview manifest resources 不重复"
-    status: pending
+    status: done
 
   - action: "Responsive/browser QA：桌面/窄屏运行 Fixture 或选择小文件 preview，确认 Import Inbox status 不重叠、不水平溢出"
     exit_signal: "npm run test、npm run build 通过；浏览器桌面/窄屏 QA 通过"
-    status: pending
+    status: done
 
 checks:
   - item: "Browser Raw Input Object / Browser Raw Resource / Raw Persistence Summary / Import Preview Storage Mode / Inline Preview Payload 术语落地"
     source: 名词契约
-    status: pending
+    status: done
 
   - item: "有 active browser project 时选择 water.xyz 并 Preview 会写入 inputs/raw/{sha12}-water.xyz"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: ".rxnflow/manifest.json 追加 raw_file resource，id/path/checksum/metadata 与 raw object 对齐"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "同一文件重复 Preview 不重复追加 manifest resource"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "没有 active browser project 时 Preview 仍运行，selected file 显示 raw persistence skipped"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "raw persistence 成功但 parser preview warning/error 时，raw status 仍 persisted 且 parser error 来自 ShellResponse"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "raw object 或 manifest 写入失败时 Import Inbox 显示 raw persistence error code/target"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "oversized inline file 仍返回 payload_too_large，不读取 bytes 写 raw object"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "selected file list 显示 persisted raw id/path/checksum，动态 filename/path/checksum 不翻译"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "新增静态文案进入 zh-CN / en-US"
     source: i18n
-    status: pending
+    status: done
 
   - item: "桌面浏览器 Import Inbox selected file list、raw status 和 preview results 无文字重叠"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "窄屏浏览器 raw status 不造成页面整体水平溢出"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "Import Inbox selected file list 挂入点可完整卸载"
     source: 挂载点
-    status: pending
+    status: done
 
   - item: "WorkbenchShell import preview orchestration 挂入点可完整卸载"
     source: 挂载点
-    status: pending
+    status: done
 
   - item: "Project Content/Manifest raw resource helper 挂入点可完整卸载"
     source: 挂载点
-    status: pending
+    status: done
 
   - item: "不新增 Shell command、Project Content schema、Browser Project Repository interface 或 Project Bundle IO"
     source: 范围守护
-    status: pending
+    status: done
 
   - item: "不在 Web 代码里 import Python parser/core 或解析 Gaussian/ORCA/MAPLE/XYZ/extxyz"
     source: 范围守护
-    status: pending
+    status: done
 
   - item: "不让 local-http bridge 读取 Browser Project Repository / IndexedDB"
     source: 范围守护
-    status: pending
+    status: done
 
   - item: "不自动确认 import、登记 ChemicalObject 或修改 import.register_all"
     source: 范围守护
-    status: pending
+    status: done
 
   - item: "不使用 localStorage 保存 raw bytes 或 raw persistence state"
     source: 范围守护
-    status: pending
+    status: done
 
   - item: "不实现 raw cleanup、overwrite confirmation、OPFS/chunking/cloud sync"
     source: 范围守护
-    status: pending
+    status: done
