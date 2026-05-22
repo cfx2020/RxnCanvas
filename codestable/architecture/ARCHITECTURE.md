@@ -44,7 +44,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Workspace Selection Projection：Web Graph Canvas 当前选中的 node/edge/path id 集合，来自 ShellResponse `WorkspaceSummary.selection`，通过 `workspace.select` 更新，并可随显式 Project Content open/save bridge 保存/恢复。
 - Pending Web Connection：Web Graph Canvas 中已选的连接起点 node id，下一次点击目标 node 后提交 `workspace.connect`；属于 UI-only state，不写入 ReactionGraph。
 - Web Network Preview Panel：Web Graph Canvas 旁的结构摘要面板，显示 node/edge/path count、active path 和 disconnected diagnostics，不是能量曲线或报告预览。
-- Web Energy Profile Panel：Web 工作台右侧 inspector 中命令驱动的能量面板，当前基于 active path 调用 `energy.compute`，展示 profile summary、relative energy table、missing reason、warnings 和基础 SVG curve。
+- Web Energy Profile Panel：Web 工作台右侧 inspector 中命令驱动的能量面板，当前基于 active path 调用 `energy.compute`，展示 profile summary、relative energy table、missing reason、warnings、Energy Expression Details 和基础 SVG curve。
 - Web Energy Panel Options：Energy Profile Panel 的 UI-only command options，包括 path、output unit、include corrections、energy key、energy source 和 baseline node；只在点击 Compute 时映射为 Shell command args，不写 Project Content。
 - Web Report Export Panel：Web 工作台右侧 inspector 中命令驱动的报告导出面板，当前基于 active profile 调用 `export.profile`，展示 PNG/CDXML/XLSX runtime artifacts、metadata、warnings、inline download link，以及 active browser project 下的 browser-local persisted path/checksum。
 - Web Report Export Options：Report Export Panel 的 UI-only command options，包括 formats、include bytes、basename 和 title；只在点击 Export 时映射为 Shell command args，不写 core Project Content session。
@@ -90,7 +90,11 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Energy Source Selection：EnergyOptions 中的 `energy_source` 选择，取值为 `energies`、`thermochemistry` 或 `auto`；缺失时等价于 `auto`，auto 先查 `energies` 再查 `thermochemistry`，同名冲突返回 `ambiguous_energy_channel`。
 - CorrectionPolicy：EnergyOptions 中的结构化校正项选择策略，支持 `none`、`all`、`kinds` 和 `ids`；它与 `include_corrections` 兼容，`include_corrections=false` 等价不计 corrections。
 - Energy Profile：从选定反应路径计算得到的相对能量数据表与交互式能量曲线数据。
-- Energy Profile Persistence：Project Content 中的 `energy-profiles-v1` section，保存已计算 EnergyProfile、EnergyOptions、EnergyPoint、missing reason 和 warnings；EnergyOptions 持久化 `energy_source`，旧 profile 缺失该字段时按 `auto` 读取；加载时校验 graph/path/node 顺序但不重新计算。
+- EnergyExpression：EnergyPoint 上的结构化能量来源明细，包含节点 composition terms、correction terms、total 和 missing diagnostics。
+- EnergyComponent：EnergyExpression 中来自 ChemicalObject selected energy channel 的贡献项，记录 object、coefficient、energy key/source、raw energy、converted energy 和 contribution。
+- CorrectionComponent：EnergyExpression 中来自 ChemicalObject correction 的贡献项，记录 object、correction id、kind、coefficient、raw energy、converted energy 和 contribution。
+- Energy Expression Details：Web Energy Profile Panel 中逐点显示 EnergyExpression 的只读明细区；它只展示 ShellResponse profile projection，不在前端重算能量。
+- Energy Profile Persistence：Project Content 中的 `energy-profiles-v1` section，保存已计算 EnergyProfile、EnergyOptions、EnergyPoint、可选 EnergyExpression、missing reason 和 warnings；EnergyOptions 持久化 `energy_source`，旧 profile 缺失该字段时按 `auto` 读取，旧 point 缺失 `expression` 时按 null 读取；加载时校验 graph/path/node 顺序但不重新计算。
 - Report Export：面向发布或复用的标准化导出结果，初期目标包括 PNG、ChemDraw/CDXML 与 Excel 能量表格。
 - Report Export Service：核心层报告导出编排服务，消费已加载 graph/profile/object/table_rows，返回 ExportArtifact bytes 或写入指定目录。
 - Export Artifact：`ReportExportService` 的运行时导出结果，可包含 bytes 或当前进程输出路径，不作为长期项目内容直接保存。
@@ -183,9 +187,10 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Energy Engine 当前通过 energy channel resolver 选择对象能量：`energy_source=energies` 只查 `ChemicalObject.energies`，`thermochemistry` 只查 `ChemicalObject.thermochemistry`，`auto` 先查 energies 再查 thermochemistry；同一对象两个 section 同名且 source 为 auto 时返回 `ambiguous_energy_channel target=energy_options.energy_key`。
 - Energy Engine 的校正项计入由 `EnergyOptions.include_corrections` 与可选 `correction_policy` 显式控制；Correction.energy 正负号由 correction value 表达。
 - Energy Engine 输出单位当前支持 `kcal_mol` 和 `kj_mol`；参与相减前必须统一转换到输出单位。
-- Energy Engine 的 baseline 节点缺失能量时返回 `missing_energy`；非 baseline 点缺失能量时可返回带 `missingReason` 的 EnergyPoint 和 warning。
+- Energy Engine 在计算节点 total 时同步物化 `EnergyExpression`；新计算 profile 的 baseline point 和普通 point 都带 expression，relative energy 仍由 expression total 与 baseline total 相减得到。
+- Energy Engine 的 baseline 节点缺失能量时返回 `missing_energy`；非 baseline 点缺失能量时可返回带 `missingReason` 的 EnergyPoint、`total=null` 的 expression 和 warning。
 - Energy Profile Persistence 当前保存物化后的 EnergyProfile snapshot，而不是计算 recipe；load/save 不调用 EnergyProfileEngine，不比较当前 ChemicalObject energy/corrections 是否已变化。
-- `energy-profiles-v1` 中的 options 保存 `output_unit`、`include_corrections`、`energy_key`、`energy_source`、可选 `correction_policy` 和可空 baseline；旧 JSON 缺 `energy_source` 时加载为 `auto`，缺 `correction_policy` 时加载为 null。point energy 必须是 `{value, unit, reference}` 对象，unit 必须匹配 EnergyOptions.output_unit；missing point 必须只有 missing_reason，不允许混入 absolute/relative energy。
+- `energy-profiles-v1` 中的 options 保存 `output_unit`、`include_corrections`、`energy_key`、`energy_source`、可选 `correction_policy` 和可空 baseline；旧 JSON 缺 `energy_source` 时加载为 `auto`，缺 `correction_policy` 时加载为 null。point energy 必须是 `{value, unit, reference}` 对象，unit 必须匹配 EnergyOptions.output_unit；missing point 必须只有 missing_reason，不允许混入 absolute/relative energy。point.expression 是同一 v1 schema 下的可选字段，不升级 schema version；旧 profile 没有 expression 合法，新计算 profile 包含 expression。
 - `energy-profiles-v1` 加载时基于已加载 ReactionGraph 校验 graph_id、path_id、points[].node_id 顺序和 baseline_node_id；引用缺失或顺序错位返回结构化错误。
 - Report Export Service 当前只消费调用方传入的已加载对象，不从 Project Store 读取 graph/profile，也不写 manifest 或登记 ProjectResource。
 - Report Export Service 当前支持 `png`、`cdxml` 和 `xlsx` 三种 ExportFormat；其他格式返回 `invalid_input`。
@@ -237,9 +242,9 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Web Graph Canvas 支持 click-driven MVP fallback、Object Registry registered-object drag/drop 创建节点、已有节点 pointer drag 布局、edge/node selection delete、Path Order Draft，以及 Pan/Zoom/Fit/Reset viewport controls。node positions、viewport、selection 和 active path 可通过 Project Sidebar 显式 Save Bridge Session / Open Bridge 使用现有 Project Content files 保存和恢复。
 - Web Graph Canvas 的 Workspace Selection 是 workspace-only projection；active object selection、pending connection、Path Order Draft、hover、dragging、viewport intent、transient pan drag 和 toolbar state 都是 UI-only state，它们不进入 Project Content、Workspace Snapshot、ReactionGraph 或 localStorage。
 - Web Graph Canvas 当前不调用 `energy.compute`、`export.profile` 或 `project.save_content`，不实现自动布局、拖动实时写盘、缩放/平移自动保存、undo/redo、minimap、wheel/pinch、云同步或账号系统；路径能量计算由右侧 Web Energy Profile Panel 触发，项目保存仍由 Project Sidebar 显式按钮触发。
-- Web Energy Profile Panel 当前通过 `web/src/app/EnergyProfilePanel.tsx` 提供。它基于 `WorkbenchDomainState.workspace` 和 typed `EnergyProfileSummary` 展示 command options、profile summary、relative energy table、missing reason、warnings 和基础 SVG curve。
+- Web Energy Profile Panel 当前通过 `web/src/app/EnergyProfilePanel.tsx` 提供。它基于 `WorkbenchDomainState.workspace` 和 typed `EnergyProfileSummary` 展示 command options、profile summary、relative energy table、missing reason、warnings、Energy Expression Details 和基础 SVG curve。
 - Web Energy Profile Panel 只通过 ShellClient 调用 fixture `energy.compute`；`WorkbenchShell` 成功后只更新 `WorkbenchDomainState.profile`、`active.profileId` 和 `counts.profiles`，不直接 patch graph/object/import state，不调用 `project.save_content` 或 Browser Project Repository。
-- Web Energy Profile Panel 不在前端重算能量、校正项或单位换算；output unit、include corrections、energy key、energy source 和 baseline node 只作为 command args，显示值以 ShellResponse profile projection 为准。
+- Web Energy Profile Panel 不在前端重算能量、校正项、expression 或单位换算；output unit、include corrections、energy key、energy source 和 baseline node 只作为 command args，显示值以 ShellResponse profile projection 为准。
 - Web Energy Profile Panel 对 missing relative energy 保留 `missing_reason` 和 warning，基础 SVG curve 跳过 missing point，不补 0。当前不生成 PNG/CDXML/XLSX，也不登记 ExportArtifact。
 - Web Report Export Panel 当前通过 `web/src/app/ReportExportPanel.tsx` 提供。它基于 `WorkbenchDomainState.profile` 展示 PNG/CDXML/XLSX format selection、include bytes、basename/title、artifact list、metadata、warnings、inline download link、persisted state 和 checksum。
 - Web Report Export Panel 只通过 ShellClient 调用当前 runtime 的 `export.profile`；`WorkbenchShell` 成功后把 `ShellResponse.artifacts` 转成 `WorkbenchArtifactSummary` 并按 artifact id merge 到 `WorkbenchDomainState.artifacts`，同步 `counts.artifacts` 和 warnings。若存在 active browser project，`WorkbenchShell` 会把 inline bytes 写入 Browser Project Repository 的 `exports/{basename}.{format}`，并刷新 Project Sidebar shallow validation。

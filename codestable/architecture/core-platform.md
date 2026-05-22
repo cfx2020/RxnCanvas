@@ -87,7 +87,8 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 4. `energy_source=auto` 先查 `energies[key]`，再查 `thermochemistry[key]`；如果同一对象两个 section 都有同名 key 且 source 未显式指定，返回 `ambiguous_energy_channel target=energy_options.energy_key`。
 5. 支持按 ReactionNode.composition term coefficient 计算节点能量；旧 `chemical_object_ids` 节点通过 coefficient 1 composition 保持兼容。
 6. 通过 `include_corrections` 和可选 `CorrectionPolicy` 显式控制是否叠加 ChemicalObject 上的 Correction.energy，支持 none/all/kinds/ids。
-7. baseline 缺失能量时返回 `missing_energy`；非 baseline 缺失点保留为带 `missing_reason` 的 EnergyPoint 和 warning。
+7. 在计算节点 total 时同步物化 `EnergyExpression`，记录 composition term、energy source、raw/converted/contribution、included correction contribution、total 和 missing diagnostics。
+8. baseline 缺失能量时返回 `missing_energy`；非 baseline 缺失点保留为带 `missing_reason`、`total=None` expression 和 warning 的 EnergyPoint。
 
 第九类是 Report Export：
 
@@ -120,7 +121,7 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 6. 通过 `reaction-graphs-v1` codec 保存和加载真实 ReactionGraph、ReactionNode、ReactionEdge 和 ReactionPath，并校验 object/node/edge/path 引用。
 7. 通过 `workspaces-v1` codec 保存和加载 workspace-only 状态，workspace 的 Object Palette 和 NetworkPreview 在加载后从 ChemicalObject / ReactionGraph 派生。
 8. 通过 `import-ledger-v1` codec 保存和加载 ImportBatch、ImportItem、ParsePreview、registered ids、warnings 和 errors。
-9. 通过 `energy-profiles-v1` codec 保存和加载已计算 EnergyProfile、EnergyOptions、EnergyPoint、missing reason 和 warnings；options 保存 `energy_source`，旧 JSON 缺字段时按 `auto` 加载，并校验 profile 与 loaded ReactionGraph / ReactionPath 的引用一致性。
+9. 通过 `energy-profiles-v1` codec 保存和加载已计算 EnergyProfile、EnergyOptions、EnergyPoint、可选 EnergyExpression、missing reason 和 warnings；options 保存 `energy_source`，旧 JSON 缺字段时按 `auto` 加载，旧 point 缺 `expression` 时按 null 加载，并校验 profile 与 loaded ReactionGraph / ReactionPath 的引用一致性。
 10. 通过 `export-artifacts-v1` codec 保存和加载 ExportArtifactRecord 索引，记录导出文件的项目相对 path、format、checksum、metadata 和 created_at，不保存 artifact bytes。
 11. 通过 ProjectContentValidationIssue / ProjectContentValidationReport 聚合 `.rxnflow/state/` index、section bytes checksum、section codec、跨 section 引用和 export artifact file checksum 的只读验证结果。
 12. 通过 ProjectContentValidator 和 ProjectContentStore.validate_project 生成 validation report；内容不一致进入 report issues，backend internal I/O failure 仍返回 Result error。
@@ -297,8 +298,8 @@ ProjectBundleService
 - `rxnflow.graph`：fixture graph 构造；通用 ReactionGraphService 的项目内图谱创建、GraphPatch 应用、路径列表、graph snapshot/restore 和 node/object/edge/path 引用校验。
 - `rxnflow.workspace`：GraphEditorWorkspaceService 和 CanvasViewport / WorkspaceSelection / ObjectPaletteItem / NetworkPreview / WorkspaceSnapshot / NodePlacement 协议，串联 graph patch、对象面板、workspace-only 状态、网络预览和 workspace snapshot/restore。
 - `rxnflow.graph_workspace_codec`：`reaction-graphs-v1` 和 `workspaces-v1` sections 的 ReactionGraph / WorkspaceSnapshot 序列化、反序列化、引用校验和 derived palette/preview 构造边界。
-- `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、单位转换、correction inclusion 和缺失点诊断。
-- `rxnflow.energy_profile_codec`：`energy-profiles-v1` section 的 EnergyProfile / EnergyOptions / EnergyPoint / RxnFlowWarning 序列化、反序列化、字段校验和 graph/path/node sequence 引用校验。
+- `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、EnergyExpression 物化、单位转换、correction inclusion 和缺失点诊断。
+- `rxnflow.energy_profile_codec`：`energy-profiles-v1` section 的 EnergyProfile / EnergyOptions / EnergyPoint / EnergyExpression / RxnFlowWarning 序列化、反序列化、字段校验和 graph/path/node sequence 引用校验。
 - `rxnflow.export`：ExportRequest / ExportArtifact / ExportArtifactRecord / EnergyTableColumn / EnergyTableRow / EnergyDiagramRoute 协议，以及 ReportExportService 的 PNG、CDXML、XLSX bytes-first 导出编排；Energy Table Contract 当前包含 `ENERGY_TABLE_SCHEMA_VERSION`、列 key 查询 helper 和样表 header normalization helper。`docs/dev/report-export-artifacts.md` 是该模块的开发者使用指南。
 - `rxnflow.export_artifact_codec`：`export-artifacts-v1` section 的 ExportArtifactRecord 序列化、反序列化、format/path/checksum/metadata 校验和重复 id/path 检查。
 - `rxnflow.platform`：ShellCommand / ShellResponse / ShellArtifact / PlatformSession / AppKernel / PlatformShellService / handle_platform_payload，提供端侧薄壳层命令协议和 JSON 投影。
@@ -394,9 +395,10 @@ Project Content Store 使用以下稳定目录与 index 协议：
 - `energy-profiles.json` 当前 schema version：`energy-profiles-v1`
 - `energy-profiles-v1` 保存 Stored EnergyProfile 的 `id`、`graph_id`、`path_id`、`options`、`points` 和 `warnings`
 - Stored EnergyOptions 保存 `output_unit`、`include_corrections`、`energy_key`、`energy_source`、可选 `correction_policy` 和可空 `baseline_node_id`；旧 Stored EnergyOptions 缺 `energy_source` 时加载为 `auto`，缺 `correction_policy` 时加载为 null
-- Stored EnergyPoint 保存 `node_id`、`label`、`absolute_energy`、`relative_energy` 和 `missing_reason`
+- Stored EnergyPoint 保存 `node_id`、`label`、`absolute_energy`、`relative_energy`、`missing_reason` 和可选 `expression`
+- Stored EnergyExpression 保存 `node_id`、`terms`、`corrections`、`total` 和 `missing`；terms 记录 object、coefficient、energy key/source、raw energy、converted energy 和 contribution，corrections 记录 object、correction id、kind、coefficient、raw energy、converted energy 和 contribution。`total`、converted energy 和 contribution 使用 profile output unit；raw energy 保留来源 unit。
 - EnergyPoint 的 absolute/relative energy 必须显式保存 `{value, unit, reference}`，unit 必须等于 options.output_unit；missing point 必须只有 missing_reason，不能混入 absolute/relative energy
-- Energy profile load/save 基于已加载 ReactionGraph 校验 graph_id、path_id、point node 顺序和 baseline_node_id；不重新调用 EnergyProfileEngine，不根据当前 ChemicalObject energy/corrections 自动刷新 profile
+- Energy profile load/save 基于已加载 ReactionGraph 校验 graph_id、path_id、point node 顺序和 baseline_node_id；不重新调用 EnergyProfileEngine，不根据当前 ChemicalObject energy/corrections 自动刷新 profile。`expression` 是 `energy-profiles-v1` 下的可选字段，不升级 schema version；旧 profile 缺 expression 合法，新计算 profile 会填入 expression。
 
 Parser Plugins 使用以下稳定协议：
 
@@ -472,7 +474,8 @@ Energy Engine 当前使用以下稳定协议：
 - node total energy：遍历 `ReactionNode.composition`，对每个 term 按 `options.energy_key + options.energy_source` 取值，转换到 output unit 后乘 term coefficient 并求和；重复 object term 不合并
 - correction inclusion：`include_corrections=True` 且没有 policy 时叠加每个对象上的所有 Correction.energy；`correction_policy.mode` 支持 none/all/kinds/ids；`False` 时忽略 corrections 且不改写原始 energy channel
 - unit conversion：输入 `hartree`、`kcal_mol`、`kj_mol`，输出 `kcal_mol` 或 `kj_mol`
-- missing point：baseline 缺失直接失败；非 baseline 缺失返回带 `missing_reason="missing_energy"` 的 EnergyPoint 和 warning
+- expression provenance：节点 total 计算同时生成 `EnergyExpression`，terms/corrections 按 composition term 顺序和 correction policy 保留 raw energy、converted energy 与 contribution；profile relative energy 使用 expression total 与 baseline expression total 相减，不另起前端或壳层计算路径
+- missing point：baseline 缺失直接失败；非 baseline 缺失返回带 `missing_reason="missing_energy"`、`total=None` expression 和 warning 的 EnergyPoint
 
 Report Export 当前使用以下稳定协议：
 

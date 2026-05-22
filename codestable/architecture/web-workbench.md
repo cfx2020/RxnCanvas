@@ -45,7 +45,7 @@ RxnFlow 当前已有独立 `web/` 前端工程，用于承载 Web Workbench MVP 
 25. Graph Canvas Viewport Controls 第一版提供 Pan、Zoom In、Zoom Out、Fit 和 Reset；`workspace.viewport` 由 ShellResponse projection 提供，Web 只生成 viewport intent 并发送 `workspace.set_viewport`。`graphViewport.ts` 统一处理 `600 x 360` 虚拟画布下的 viewport fallback、zoom clamp、screen/graph 坐标换算、CSS transform、zoom、pan、fit 和 reset；object drop、node drag 和 pan drag 共用该换算。
 26. Graph Editor Workspace Persistence 复用现有 Project Content `reaction-graphs-v1` 和 `workspaces-v1`：node positions 保存在 `ReactionGraph.nodes[].position`，viewport、selection 和 active path 保存在 `WorkspaceSnapshot`。选择 node/edge/path 后 Web 发送 `workspace.select`；Project Sidebar 显式 Save Bridge Session 返回的 content files 会包含当前 graph/workspace 状态，Open Bridge / restored snapshot 后 GraphCanvas 恢复 node position、viewport、selected node/edge/path 和 active path。
 27. Graph Canvas 当前不实现自动布局、碰撞避让、缩放/平移自动持久化、拖动实时写盘、undo/redo、多选框选、键盘 nudging、path delete、自由绘线、edge label 编辑、minimap、wheel/pinch 或项目自动保存。
-27. 右侧 inspector 新增 `EnergyProfilePanel`，基于 workspace active path 或用户选择 path 调用 fixture `energy.compute`，展示 profile summary、relative energy table、missing reason、warnings 和基础 SVG curve。
+27. 右侧 inspector 新增 `EnergyProfilePanel`，基于 workspace active path 或用户选择 path 调用 fixture `energy.compute`，展示 profile summary、relative energy table、missing reason、warnings、Energy Expression Details 和基础 SVG curve。
 28. `EnergyProfilePanel` 支持 `output_unit`、`include_corrections`、`energy_key` 和 `baseline_node_id` UI options；这些 options 只在点击 Compute 时映射为 Shell command args，不写入 Project Content 或 Browser Project Repository。
 29. `energy.compute` 成功后 `WorkbenchShell` 只更新 `WorkbenchDomainState.profile`、`active.profileId` 和 `counts.profiles`；失败时显示 ShellError code/message/target，不直接 mutate graph/object/import state。
 30. Energy curve preview 跳过缺失 relative energy 的 point，missing point 在表格中显示 `missing_reason` 和 warning，不补 0。
@@ -116,7 +116,7 @@ web/
         └── workbench.css
 ```
 
-- `web/src/shell/types.ts`：定义前端 JSON-safe Shell DTO，包括 `JsonValue`、`ShellCommandPayload`、`ShellError`、`ShellWarning`、`ShellArtifact`、`ShellResponse`、`ShellTransport`，以及 Workbench Snapshot、Object Summary Projection、Import Preview/Register summary DTO、Graph Summary Projection、`WorkspaceSelectionSummary`、`CanvasViewportSummary`、`WorkspaceCommandData`、`workspace.move_node` / `workspace.remove` / `workspace.select` / `workspace.set_viewport` command projection、typed Energy Profile Projection、`EnergyComputeData`、`ExportFormat` 和 `ExportProfileData`。
+- `web/src/shell/types.ts`：定义前端 JSON-safe Shell DTO，包括 `JsonValue`、`ShellCommandPayload`、`ShellError`、`ShellWarning`、`ShellArtifact`、`ShellResponse`、`ShellTransport`，以及 Workbench Snapshot、Object Summary Projection、Import Preview/Register summary DTO、Graph Summary Projection、`WorkspaceSelectionSummary`、`CanvasViewportSummary`、`WorkspaceCommandData`、`workspace.move_node` / `workspace.remove` / `workspace.select` / `workspace.set_viewport` command projection、typed Energy Profile Projection、Energy Expression summary types、`EnergyComputeData`、`ExportFormat` 和 `ExportProfileData`。
 - `web/src/shell/ShellClient.ts`：负责 request id 填充、transport 调用和 response normalization。
 - `web/src/shell/httpTransport.ts`：实现 `http-api` ShellTransport，通过 `fetch` POST JSON-safe Shell payload 到 local bridge endpoint；fetch/network/invalid JSON/malformed response 失败时返回 `transport_unavailable` ShellResponse。
 - `web/src/shell/runtime.ts`：读取 Vite env 并创建 configured runtime；默认 `fixture`，`VITE_RXNFLOW_SHELL_TRANSPORT=local-http` 时使用 `createHttpShellTransport`，endpoint 默认 `http://127.0.0.1:8765/api/shell`。
@@ -130,7 +130,7 @@ web/
 - `web/src/app/graphViewport.ts`：定义 Graph Canvas Viewport helper，提供 `CanvasViewportSummary` fallback、`0.35..2.5` zoom clamp、screen/graph 坐标换算、CSS transform、zoom、pan、fit 和 reset helper；它只生成 viewport intent，不保存 Project Content。
 - `web/src/app/graphObjectDragPayload.ts`：定义 Graph Object Drop 的 `application/x-rxnflow-graph-object` MIME type、`GraphObjectDragPayload`、serialize/parse helpers；payload 只承载 `kind`、`objectId`、`label`。
 - `web/src/app/graphPathOrderDraft.ts`：定义 Path Order Draft helper，用于从 existing path 初始化 ordered node ids、上移/下移节点和判断 draft 是否变化；draft 只服务 Web UI，不进入 Shell DTO 或 Project Content。
-- `web/src/app/EnergyProfilePanel.tsx`：能量面板 UI，展示 command options、profile summary、relative energy table、missing reason、warnings 和基础 SVG curve；只消费 ShellResponse profile projection。
+- `web/src/app/EnergyProfilePanel.tsx`：能量面板 UI，展示 command options、profile summary、relative energy table、missing reason、warnings、Energy Expression Details 和基础 SVG curve；只消费 ShellResponse profile projection。
 - `web/src/app/ReportExportPanel.tsx`：报告导出面板 UI，展示 format selection、include bytes、basename/title、artifact list、metadata、warnings、inline download link、persisted state 和 checksum；只消费 ShellResponse artifact projection 与 Workbench persisted summary。
 - `web/src/app/exportArtifactPersistence.ts`：Web Export Artifact Persistence helper，负责把 `ShellArtifact.bytes_base64` 解码写入 Browser Project Repository `exports/...`，upsert `export-artifacts-v1` records，并更新 Project Content index 中 export artifact section checksum。
 - `web/src/app/ProjectSidebar.tsx`：左侧项目入口 UI，展示 browser-local project list、active browser project、local-only/backend badges、persistence/validation/bridge/checksum、repository error、Save Content、Open Bridge、Save Bridge 和 disabled Project Bundle actions。
@@ -178,10 +178,11 @@ web/
 - Node Layout position 属于 workspace graph 的 `ReactionNode.position` 投影，不写 ChemicalObject、Object Registry、Import Inbox、Energy Profile 或 Report Export；Web helper 只做 `600 x 360` / `20` grid 的显示和输入换算。
 - Graph Object Drop 只接受 Object Registry 已登记对象产生的 `registered-object` payload；malformed payload、wrong kind、unknown object id、Import Inbox pending/failed item、raw resource、parser preview item 和浏览器文件都不能直接创建 graph node。
 - Fixture `workspace.connect` 对同一 node pair 幂等；缺失 node 返回 `graph_invalid` / `target=node_id`。
-- Energy Profile Panel 只通过 `energy.compute` 获取 profile projection，不从 graph/object energy keys 在前端重算相对能量、校正项或单位换算。
+- Energy Profile Panel 只通过 `energy.compute` 获取 profile projection，不从 graph/object energy keys 在前端重算相对能量、校正项、expression 或单位换算。
 - Energy Panel options 是 UI-only state；`path_id` 默认跟随 `workspace.active_path_id`，`baseline_node_id` 只能来自当前 path node ids 或留空。
 - Energy compute 成功只替换 `WorkbenchDomainState.profile` 并更新 `active.profileId` / `counts.profiles`；不调用 `project.save_content`，不写 Browser Project Repository，不保存 Project Content。
-- Energy point 缺失时必须显示 `missing_reason` 和 warning；基础 SVG curve 只绘制有 relative energy 的点，不把 missing point 当作 0。
+- Energy Expression Details 逐点展示 Shell DTO 中的 terms、corrections、total 和 missing diagnostics；旧 profile 没有 expression 时该区域自然为空，不从 graph/object state 推断。
+- Energy point 缺失时必须显示 `missing_reason` 和 warning；如 Shell DTO 带 missing expression details，则 details 区展示缺失 code/object/key/source/message；基础 SVG curve 只绘制有 relative energy 的点，不把 missing point 当作 0。
 - Fixture `energy.compute` 支持 `kcal_mol` / `kj_mol`、`include_corrections` warning、missing path `graph_invalid` 和 imported object `missing_energy` 测试路径；它不代表真实 Energy Engine 算法运行在浏览器中。
 - Report Export Panel 只通过 `export.profile` 获取 runtime `ShellArtifact` projection；前端不调用 core `ReportExportService` writer，不在浏览器生成 PNG/CDXML/XLSX bytes。
 - Report Export options 是 UI-only state；`formats`、`include_bytes`、`basename` 和 `title` 只在点击 Export 时映射为 Shell command args，不写 core Project Content session。

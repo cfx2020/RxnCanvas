@@ -1614,6 +1614,105 @@ button {
   color: var(--muted);
 }
 
+.energy-expression-details {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(31, 33, 29, 0.12);
+  background: rgba(255, 255, 255, 0.34);
+  padding: 10px;
+}
+
+.energy-expression-details > strong {
+  color: var(--sage);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.energy-expression-card {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(31, 33, 29, 0.1);
+  padding-top: 8px;
+}
+
+.energy-expression-card header {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+
+.energy-expression-card header span,
+.energy-expression-card header code,
+.energy-expression-card header small,
+.energy-expression-block p > * {
+  overflow-wrap: anywhere;
+}
+
+.energy-expression-card header span {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.energy-expression-card header code {
+  color: var(--blueprint);
+  font-weight: 800;
+}
+
+.energy-expression-card header small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.energy-expression-block {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.energy-expression-block > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.energy-expression-block p {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  border: 1px solid rgba(31, 33, 29, 0.1);
+  background: rgba(250, 248, 241, 0.7);
+  padding: 7px;
+  font-size: 0.76rem;
+}
+
+.energy-expression-block code {
+  color: var(--blueprint);
+  font-weight: 800;
+}
+
+.energy-expression-block span {
+  color: var(--sage);
+  font-weight: 800;
+}
+
+.energy-expression-block strong {
+  color: var(--ink);
+  text-align: right;
+}
+
+.energy-expression-block.missing p {
+  grid-template-columns: auto minmax(0, 0.8fr) minmax(0, 0.8fr) auto minmax(0, 1.5fr);
+  border-left: 4px solid var(--amber);
+}
+
 .report-export-panel {
   min-width: 0;
   display: grid;

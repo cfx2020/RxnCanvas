@@ -39,6 +39,10 @@ from .models import (
     ChemicalObject,
     CoreFixtureResult,
     Correction,
+    CorrectionComponent,
+    EnergyComponent,
+    EnergyExpression,
+    EnergyExpressionMissing,
     EnergyOptions,
     EnergyProfile,
     EnergyChannel,
@@ -2317,9 +2321,57 @@ def _profile_summary(profile: EnergyProfile) -> dict[str, Any]:
                 "label": point.label,
                 "relative_energy": _energy_value_summary(point.relative_energy),
                 "missing_reason": point.missing_reason,
+                "expression": _energy_expression_summary(point.expression),
             }
             for point in profile.points
         ],
+    }
+
+
+def _energy_expression_summary(expression: EnergyExpression | None) -> dict[str, Any] | None:
+    if expression is None:
+        return None
+    return {
+        "node_id": expression.node_id,
+        "terms": [_energy_component_summary(term) for term in expression.terms],
+        "corrections": [_correction_component_summary(component) for component in expression.corrections],
+        "total": _energy_value_summary(expression.total),
+        "missing": [_energy_expression_missing_summary(missing) for missing in expression.missing],
+    }
+
+
+def _energy_component_summary(component: EnergyComponent) -> dict[str, Any]:
+    return {
+        "object_id": component.object_id,
+        "object_label": component.object_label,
+        "coefficient": component.coefficient,
+        "energy_key": component.energy_key,
+        "energy_source": component.energy_source,
+        "raw_energy": _energy_value_summary(component.raw_energy),
+        "converted_energy": _energy_value_summary(component.converted_energy),
+        "contribution": _energy_value_summary(component.contribution),
+    }
+
+
+def _correction_component_summary(component: CorrectionComponent) -> dict[str, Any]:
+    return {
+        "object_id": component.object_id,
+        "correction_id": component.correction_id,
+        "kind": component.kind,
+        "coefficient": component.coefficient,
+        "raw_energy": _energy_value_summary(component.raw_energy),
+        "converted_energy": _energy_value_summary(component.converted_energy),
+        "contribution": _energy_value_summary(component.contribution),
+    }
+
+
+def _energy_expression_missing_summary(missing: EnergyExpressionMissing) -> dict[str, Any]:
+    return {
+        "code": missing.code,
+        "message": missing.message,
+        "object_id": missing.object_id,
+        "energy_key": missing.energy_key,
+        "energy_source": missing.energy_source,
     }
 
 

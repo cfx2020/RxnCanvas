@@ -88,6 +88,9 @@ describe("WorkbenchShell", () => {
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     expect(within(energyPanel).getByText("Energy curve")).toBeInTheDocument()
     expect(within(energyPanel).getByText("Relative energy")).toBeInTheDocument()
+    expect(within(energyPanel).getByText("Expression details")).toBeInTheDocument()
+    expect(within(energyPanel).getAllByText("Composition terms").length).toBeGreaterThan(0)
+    expect(within(energyPanel).getAllByText("electronic · energies").length).toBeGreaterThan(0)
     expect(within(energyPanel).getAllByText("-12.4").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Ready").length).toBeGreaterThan(0)
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
@@ -150,6 +153,13 @@ describe("WorkbenchShell", () => {
         note: "fixture solvation",
       },
     })
+
+    const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
+    fireEvent.click(within(energyPanel).getByLabelText("Include corrections"))
+    fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
+
+    expect(await within(energyPanel).findByText("Correction terms")).toBeInTheDocument()
+    expect(within(energyPanel).getByText(/^corr-object-b-solvation-/)).toBeInTheDocument()
   })
 
   it("shows registry correction errors without locally appending corrections", async () => {
@@ -548,6 +558,7 @@ describe("WorkbenchShell", () => {
     expect((await within(energyPanel).findAllByText("profile-path-a-b-electronic-kj_mol")).length).toBeGreaterThan(0)
     expect(within(energyPanel).getAllByText("kj_mol").length).toBeGreaterThan(0)
     expect(screen.getAllByText("corrections_empty").length).toBeGreaterThan(0)
+    expect(within(energyPanel).getByText("Expression details")).toBeInTheDocument()
     expect(within(energyPanel).getAllByText("-51.882").length).toBeGreaterThan(0)
   })
 
@@ -976,6 +987,7 @@ describe("WorkbenchShell", () => {
     expect(screen.getByText("water.xyz")).toBeInTheDocument()
     const energyPanel = screen.getByRole("region", { name: "能量剖面面板" })
     expect(within(energyPanel).getByText("相对能量")).toBeInTheDocument()
+    expect(within(energyPanel).getByText("表达式明细")).toBeInTheDocument()
     expect(within(energyPanel).getByRole("button", { name: "计算" })).toBeEnabled()
     const exportPanel = screen.getByRole("region", { name: "报告导出面板" })
     expect(within(exportPanel).getByText("报告导出")).toBeInTheDocument()

@@ -1,5 +1,10 @@
 import { Activity, Calculator } from "lucide-react"
+import type { ReactNode } from "react"
 import type {
+  CorrectionComponentSummary,
+  EnergyComponentSummary,
+  EnergyExpressionMissingSummary,
+  EnergyExpressionSummary,
   EnergyOutputUnit,
   EnergyProfilePointSummary,
   EnergyProfileSummary,
@@ -33,6 +38,7 @@ type NormalizedEnergyPoint = {
   value?: number
   unit?: string
   missingReason?: string
+  expression?: EnergyExpressionSummary | null
   warnings: ShellWarning[]
 }
 
@@ -154,6 +160,7 @@ export function EnergyProfilePanel({
         <>
           <EnergyCurvePreview points={points} />
           <EnergyTable points={points} />
+          <EnergyExpressionDetails points={points} />
         </>
       ) : (
         <div className="energy-empty-state">
@@ -219,6 +226,97 @@ function EnergyTable({ points }: { points: NormalizedEnergyPoint[] }) {
   )
 }
 
+function EnergyExpressionDetails({ points }: { points: NormalizedEnergyPoint[] }) {
+  const { t } = useI18n()
+  const pointsWithExpression = points.filter((point) => point.expression)
+  if (pointsWithExpression.length === 0) return null
+
+  return (
+    <div className="energy-expression-details" aria-label={t("energyPanel.expressionDetails")}>
+      <strong>{t("energyPanel.expressionDetails")}</strong>
+      {pointsWithExpression.map((point) => (
+        <article key={point.nodeId} className="energy-expression-card">
+          <header>
+            <span>{point.label}</span>
+            <code>{point.nodeId}</code>
+            <small>{formatEnergyValue(point.expression?.total)}</small>
+          </header>
+          {point.expression?.terms.length ? (
+            <ExpressionComponentList
+              label={t("energyPanel.expressionTerms")}
+              components={point.expression.terms}
+              renderComponent={(component) => (
+                <>
+                  <code>{component.object_label ?? component.object_id}</code>
+                  <span>{t("energyPanel.coefficient")} {formatCoefficient(component.coefficient)}</span>
+                  <span>{component.energy_key} · {component.energy_source}</span>
+                  <strong>{formatEnergyValue(component.contribution)}</strong>
+                </>
+              )}
+            />
+          ) : null}
+          {point.expression?.corrections.length ? (
+            <ExpressionComponentList
+              label={t("energyPanel.expressionCorrections")}
+              components={point.expression.corrections}
+              renderComponent={(component) => (
+                <>
+                  <code>{component.correction_id}</code>
+                  <span>{component.kind}</span>
+                  <span>{t("energyPanel.coefficient")} {formatCoefficient(component.coefficient)}</span>
+                  <strong>{formatEnergyValue(component.contribution)}</strong>
+                </>
+              )}
+            />
+          ) : null}
+          {point.expression?.missing.length ? (
+            <ExpressionMissingList missing={point.expression.missing} />
+          ) : null}
+        </article>
+      ))}
+    </div>
+  )
+}
+
+function ExpressionComponentList<TComponent extends EnergyComponentSummary | CorrectionComponentSummary>({
+  label,
+  components,
+  renderComponent,
+}: {
+  label: string
+  components: TComponent[]
+  renderComponent: (component: TComponent) => ReactNode
+}) {
+  return (
+    <div className="energy-expression-block">
+      <span>{label}</span>
+      {components.map((component, index) => (
+        <p key={`${label}-${index}`}>
+          {renderComponent(component)}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+function ExpressionMissingList({ missing }: { missing: EnergyExpressionMissingSummary[] }) {
+  const { t } = useI18n()
+  return (
+    <div className="energy-expression-block missing">
+      <span>{t("energyPanel.expressionMissing")}</span>
+      {missing.map((item, index) => (
+        <p key={`${item.code}-${index}`}>
+          <code>{item.code}</code>
+          {item.object_id ? <span>{item.object_id}</span> : null}
+          {item.energy_key ? <span>{item.energy_key}</span> : null}
+          {item.energy_source ? <span>{item.energy_source}</span> : null}
+          <strong>{item.message}</strong>
+        </p>
+      ))}
+    </div>
+  )
+}
+
 function EnergyCurvePreview({ points }: { points: NormalizedEnergyPoint[] }) {
   const { t } = useI18n()
   const drawable = points
@@ -264,6 +362,7 @@ function normalizeEnergyPoint(point: EnergyProfilePointSummary): NormalizedEnerg
       value: relative,
       unit: point.unit ?? undefined,
       missingReason: point.missing_reason ?? undefined,
+      expression: point.expression,
       warnings: point.warnings ?? [],
     }
   }
@@ -274,6 +373,7 @@ function normalizeEnergyPoint(point: EnergyProfilePointSummary): NormalizedEnerg
     value: valueSummary?.value,
     unit: valueSummary?.unit ?? point.unit ?? undefined,
     missingReason: point.missing_reason ?? undefined,
+    expression: point.expression,
     warnings: point.warnings ?? [],
   }
 }
@@ -300,4 +400,13 @@ function uniqueWarnings(warnings: ShellWarning[]): ShellWarning[] {
 
 function formatEnergy(value: number): string {
   return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")
+}
+
+function formatEnergyValue(value?: EnergyValueSummary | null): string {
+  if (!value) return ""
+  return `${formatEnergy(value.value)} ${value.unit}`
+}
+
+function formatCoefficient(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toString()
 }

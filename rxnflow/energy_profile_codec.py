@@ -2,16 +2,30 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from .energy_channels import validate_energy_source
 from .errors import RxnFlowError, RxnFlowWarning
-from .models import CorrectionPolicy, EnergyOptions, EnergyPoint, EnergyProfile, EnergyValue, ID, ReactionGraph
+from .models import (
+    CorrectionComponent,
+    CorrectionPolicy,
+    EnergyComponent,
+    EnergyExpression,
+    EnergyExpressionMissing,
+    EnergyOptions,
+    EnergyPoint,
+    EnergyProfile,
+    EnergyValue,
+    ID,
+    ReactionGraph,
+)
 from .result import Result, err, ok
 
 
 ENERGY_PROFILES_SCHEMA_VERSION = "energy-profiles-v1"
 SUPPORTED_PROFILE_UNITS = frozenset({"kcal_mol", "kj_mol"})
+SUPPORTED_EXPRESSION_UNITS = frozenset({"hartree", "kcal_mol", "kj_mol"})
 
 
 def energy_profiles_section_to_dict(
@@ -302,6 +316,7 @@ def _point_to_dict(
             "absolute_energy": absolute,
             "relative_energy": relative,
             "missing_reason": point.missing_reason,
+            "expression": _expression_to_dict(point.expression, f"{target}.expression"),
         }
     )
 
@@ -322,12 +337,14 @@ def _point_from_dict(
         return err(relative.error)
 
     try:
+        expression = _expression_from_value(data.get("expression"), f"{target}.expression")
         point = EnergyPoint(
             node_id=str(data["node_id"]),
             label=data["label"],
             absolute_energy=absolute.value,
             relative_energy=relative.value,
             missing_reason=data.get("missing_reason"),
+            expression=expression,
         )
     except KeyError as exc:
         return err(
@@ -337,6 +354,8 @@ def _point_from_dict(
                 target=target,
             )
         )
+    except (TypeError, ValueError) as exc:
+        return err(RxnFlowError("invalid_input", str(exc), target=f"{target}.expression"))
     validation = _validate_point(point, options, target)
     if validation is not None:
         return err(validation)
@@ -369,6 +388,162 @@ def _energy_value_from_value(value: Any, target: str) -> Result[EnergyValue]:
     except (TypeError, ValueError) as exc:
         return err(RxnFlowError("invalid_input", f"Energy value is invalid: {exc}.", target=f"{target}.value"))
     return ok(EnergyValue(numeric_value, value["unit"], reference=value.get("reference")))
+
+
+def _expression_to_dict(expression: EnergyExpression | None, target: str) -> dict[str, Any] | None:
+    if expression is None:
+        return None
+    return {
+        "node_id": expression.node_id,
+        "terms": [_energy_component_to_dict(term, f"{target}.terms[{index}]") for index, term in enumerate(expression.terms)],
+        "corrections": [
+            _correction_component_to_dict(correction, f"{target}.corrections[{index}]")
+            for index, correction in enumerate(expression.corrections)
+        ],
+        "total": _expression_energy_value_to_dict(expression.total) if expression.total is not None else None,
+        "missing": [_missing_to_dict(missing) for missing in expression.missing],
+    }
+
+
+def _energy_component_to_dict(component: EnergyComponent, target: str) -> dict[str, Any]:
+    return {
+        "object_id": component.object_id,
+        "object_label": component.object_label,
+        "coefficient": component.coefficient,
+        "energy_key": component.energy_key,
+        "energy_source": component.energy_source,
+        "raw_energy": _expression_energy_value_to_dict(component.raw_energy),
+        "converted_energy": _expression_energy_value_to_dict(component.converted_energy),
+        "contribution": _expression_energy_value_to_dict(component.contribution),
+    }
+
+
+def _correction_component_to_dict(component: CorrectionComponent, target: str) -> dict[str, Any]:
+    return {
+        "object_id": component.object_id,
+        "correction_id": component.correction_id,
+        "kind": component.kind,
+        "coefficient": component.coefficient,
+        "raw_energy": _expression_energy_value_to_dict(component.raw_energy),
+        "converted_energy": _expression_energy_value_to_dict(component.converted_energy),
+        "contribution": _expression_energy_value_to_dict(component.contribution),
+    }
+
+
+def _expression_energy_value_to_dict(value: EnergyValue) -> dict[str, Any]:
+    return {"value": value.value, "unit": value.unit, "reference": value.reference}
+
+
+def _missing_to_dict(missing: EnergyExpressionMissing) -> dict[str, Any]:
+    return {
+        "code": missing.code,
+        "message": missing.message,
+        "object_id": missing.object_id,
+        "energy_key": missing.energy_key,
+        "energy_source": missing.energy_source,
+    }
+
+
+def _expression_from_value(value: Any, target: str) -> EnergyExpression | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError(f"{target} must be an object when present")
+    if not isinstance(value.get("terms", []), list):
+        raise ValueError(f"{target}.terms must be a list")
+    if not isinstance(value.get("corrections", []), list):
+        raise ValueError(f"{target}.corrections must be a list")
+    if not isinstance(value.get("missing", []), list):
+        raise ValueError(f"{target}.missing must be a list")
+    total_value = value.get("total")
+    total = None
+    if total_value is not None:
+        total = _expression_energy_value_from_value(total_value, f"{target}.total")
+    return EnergyExpression(
+        node_id=str(value.get("node_id") or ""),
+        terms=tuple(_energy_component_from_value(item, f"{target}.terms[{index}]") for index, item in enumerate(value.get("terms", []))),
+        corrections=tuple(
+            _correction_component_from_value(item, f"{target}.corrections[{index}]")
+            for index, item in enumerate(value.get("corrections", []))
+        ),
+        total=total,
+        missing=tuple(_missing_from_value(item) for item in value.get("missing", [])),
+    )
+
+
+def _energy_component_from_value(value: Any, target: str) -> EnergyComponent:
+    if not isinstance(value, dict):
+        raise ValueError(f"{target} must be an object")
+    coefficient = _coefficient_from_value(value.get("coefficient"), f"{target}.coefficient")
+    energy_source = value.get("energy_source")
+    if energy_source not in {"energies", "thermochemistry"}:
+        raise ValueError(f"{target}.energy_source must be energies or thermochemistry")
+    return EnergyComponent(
+        object_id=str(value.get("object_id") or ""),
+        object_label=value.get("object_label") if value.get("object_label") is None else str(value.get("object_label")),
+        coefficient=coefficient,
+        energy_key=str(value.get("energy_key") or ""),
+        energy_source=energy_source,  # type: ignore[arg-type]
+        raw_energy=_expression_energy_value_from_value(value.get("raw_energy"), f"{target}.raw_energy"),
+        converted_energy=_expression_energy_value_from_value(value.get("converted_energy"), f"{target}.converted_energy"),
+        contribution=_expression_energy_value_from_value(value.get("contribution"), f"{target}.contribution"),
+    )
+
+
+def _correction_component_from_value(value: Any, target: str) -> CorrectionComponent:
+    if not isinstance(value, dict):
+        raise ValueError(f"{target} must be an object")
+    coefficient = _coefficient_from_value(value.get("coefficient"), f"{target}.coefficient")
+    kind = value.get("kind")
+    if kind not in {"resonance", "solvation", "manual"}:
+        raise ValueError(f"{target}.kind is unsupported")
+    return CorrectionComponent(
+        object_id=str(value.get("object_id") or ""),
+        correction_id=str(value.get("correction_id") or ""),
+        kind=kind,  # type: ignore[arg-type]
+        coefficient=coefficient,
+        raw_energy=_expression_energy_value_from_value(value.get("raw_energy"), f"{target}.raw_energy"),
+        converted_energy=_expression_energy_value_from_value(value.get("converted_energy"), f"{target}.converted_energy"),
+        contribution=_expression_energy_value_from_value(value.get("contribution"), f"{target}.contribution"),
+    )
+
+
+def _missing_from_value(value: Any) -> EnergyExpressionMissing:
+    if not isinstance(value, dict):
+        raise ValueError("Expression missing entry must be an object")
+    return EnergyExpressionMissing(
+        code=str(value.get("code") or ""),
+        message=str(value.get("message") or ""),
+        object_id=value.get("object_id") if value.get("object_id") is None else str(value.get("object_id")),
+        energy_key=value.get("energy_key") if value.get("energy_key") is None else str(value.get("energy_key")),
+        energy_source=value.get("energy_source") if value.get("energy_source") is None else str(value.get("energy_source")),
+    )
+
+
+def _expression_energy_value_from_value(value: Any, target: str) -> EnergyValue:
+    if not isinstance(value, dict):
+        raise ValueError(f"{target} must include value and unit")
+    if "value" not in value or "unit" not in value:
+        raise ValueError(f"{target} must include value and unit")
+    if value["unit"] not in SUPPORTED_EXPRESSION_UNITS:
+        raise ValueError(f"{target}.unit is unsupported")
+    try:
+        numeric_value = float(value["value"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{target}.value is invalid: {exc}") from exc
+    if not math.isfinite(numeric_value):
+        raise ValueError(f"{target}.value must be finite")
+    return EnergyValue(numeric_value, value["unit"], reference=value.get("reference"))
+
+
+def _coefficient_from_value(value: Any, target: str) -> float:
+    try:
+        coefficient = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{target} must be numeric") from exc
+    if not math.isfinite(coefficient):
+        raise ValueError(f"{target} must be finite")
+    return coefficient
 
 
 def _warnings_to_list(warnings: tuple[Any, ...], target: str) -> Result[list[dict[str, Any]]]:

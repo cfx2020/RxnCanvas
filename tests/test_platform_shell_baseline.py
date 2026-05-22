@@ -132,6 +132,11 @@ class PlatformShellBaselineTest(unittest.TestCase):
         self.assertEqual(snapshot_payload["data"]["profile"]["id"], "profile-a-b-electronic")
         self.assertEqual(snapshot_payload["data"]["profile"]["energy_key"], "electronic")
         self.assertEqual(snapshot_payload["data"]["profile"]["energy_source"], "auto")
+        expression = snapshot_payload["data"]["profile"]["points"][0]["expression"]
+        self.assertEqual(expression["node_id"], "node-a")
+        self.assertEqual(expression["terms"][0]["object_id"], "object-a")
+        self.assertEqual(expression["terms"][0]["energy_source"], "energies")
+        self.assertEqual(expression["terms"][0]["raw_energy"]["unit"], "hartree")
 
     def test_project_commands_and_fixture_export_artifacts(self) -> None:
         service = PlatformShellService(AppKernel())

@@ -92,6 +92,47 @@ class CorrectionPolicy:
 
 
 @dataclass(frozen=True)
+class EnergyComponent:
+    object_id: ID
+    object_label: str | None
+    coefficient: float
+    energy_key: str
+    energy_source: EnergyChannelSource
+    raw_energy: EnergyValue
+    converted_energy: EnergyValue
+    contribution: EnergyValue
+
+
+@dataclass(frozen=True)
+class CorrectionComponent:
+    object_id: ID
+    correction_id: ID
+    kind: CorrectionKind
+    coefficient: float
+    raw_energy: EnergyValue
+    converted_energy: EnergyValue
+    contribution: EnergyValue
+
+
+@dataclass(frozen=True)
+class EnergyExpressionMissing:
+    code: str
+    message: str
+    object_id: ID | None = None
+    energy_key: str | None = None
+    energy_source: str | None = None
+
+
+@dataclass(frozen=True)
+class EnergyExpression:
+    node_id: ID
+    terms: tuple[EnergyComponent, ...] = ()
+    corrections: tuple[CorrectionComponent, ...] = ()
+    total: EnergyValue | None = None
+    missing: tuple[EnergyExpressionMissing, ...] = ()
+
+
+@dataclass(frozen=True)
 class ChemicalObjectDraft:
     label: str | None = None
     formula: str | None = None
@@ -222,6 +263,7 @@ class EnergyPoint:
     absolute_energy: EnergyValue | None = None
     relative_energy: EnergyValue | None = None
     missing_reason: str | None = None
+    expression: EnergyExpression | None = None
 
 
 @dataclass(frozen=True)

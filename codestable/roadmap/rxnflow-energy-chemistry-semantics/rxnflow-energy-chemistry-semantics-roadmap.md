@@ -391,7 +391,7 @@ energy-profiles-v1 point:
    - 依赖：`reaction-node-stoichiometry-contract`、`energy-channel-catalog`
    - 状态：done
    - 对应 feature：`2026-05-22-energy-expression-engine`
-   - 备注：已落地 EnergyOptions.correction_policy、composition coefficient 节点能量计算、重复 term 顺序求和、thermochemistry source 与 coefficient 组合、correction policy none/all/kinds/ids、energy-profiles-v1 可选 correction_policy 保存/旧数据 null 兼容读取、Shell/Web correction_policy 投影；未落地 EnergyPoint.expression/provenance 持久化或 Web selector UI。
+   - 备注：已落地 EnergyOptions.correction_policy、composition coefficient 节点能量计算、重复 term 顺序求和、thermochemistry source 与 coefficient 组合、correction policy none/all/kinds/ids、energy-profiles-v1 可选 correction_policy 保存/旧数据 null 兼容读取、Shell/Web correction_policy 投影；EnergyPoint.expression/provenance 由后续 `energy-profile-provenance-details` 落地，Web selector UI 仍未落地。
 
 4. **correction-command-and-ui** — 增加 registry.apply_correction Shell command 和 Web Object Registry 校正项表单。
    - 所属模块：Correction Policy / Web Workbench Integration
@@ -403,9 +403,9 @@ energy-profiles-v1 point:
 5. **energy-profile-provenance-details** — 在 EnergyProfile point 中输出 expression/components/corrections，并在 Web 面板显示表达式明细。
    - 所属模块：Profile Provenance Projection / Web Workbench Integration
    - 依赖：`energy-expression-engine`、`correction-command-and-ui`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：解决相对能量表只给数字、不说明组成来源的问题。
+   - 状态：done
+   - 对应 feature：`2026-05-22-energy-profile-provenance-details`
+   - 备注：已落地 EnergyExpression/EnergyComponent/CorrectionComponent、EnergyPoint.expression、Engine 同步物化 expression、energy-profiles-v1 可选 expression 读写/旧数据兼容、Shell/Web DTO 投影和 Web Expression Details；未新增 Web selector 或前端重算。
 
 6. **energy-semantics-project-content-migration** — 为 reaction graph composition 和 profile expression 补持久化验证、兼容加载和 migration plan 说明。
    - 所属模块：Project Content Migration

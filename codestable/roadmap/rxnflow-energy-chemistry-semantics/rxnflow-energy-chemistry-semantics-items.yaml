@@ -37,10 +37,10 @@ items:
   - slug: energy-profile-provenance-details
     description: 在 EnergyProfile point 中输出 expression/components/corrections，并在 Web 面板显示表达式明细
     depends_on: [energy-expression-engine, correction-command-and-ui]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-22-energy-profile-provenance-details
     minimal_loop: false
-    notes: 解决相对能量表只给数字、不说明组成来源的问题
+    notes: 已落地 EnergyExpression/EnergyComponent/CorrectionComponent、EnergyPoint.expression、Engine 同步物化 expression、energy-profiles-v1 可选 expression 读写/旧数据兼容、Shell/Web DTO 投影和 Web Expression Details；未新增 Web selector 或前端重算
 
   - slug: energy-semantics-project-content-migration
     description: 为 reaction graph composition 和 profile expression 补持久化验证、兼容加载和 migration plan 说明

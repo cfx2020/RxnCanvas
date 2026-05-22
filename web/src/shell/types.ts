@@ -271,12 +271,50 @@ export type EnergyValueSummary = JsonObject & {
   reference?: string | null
 }
 
+export type EnergyComponentSummary = JsonObject & {
+  object_id: string
+  object_label?: string | null
+  coefficient: number
+  energy_key: string
+  energy_source: EnergyChannelSource | string
+  raw_energy: EnergyValueSummary | null
+  converted_energy: EnergyValueSummary | null
+  contribution: EnergyValueSummary | null
+}
+
+export type CorrectionComponentSummary = JsonObject & {
+  object_id: string
+  correction_id: string
+  kind: CorrectionKind | string
+  coefficient: number
+  raw_energy: EnergyValueSummary | null
+  converted_energy: EnergyValueSummary | null
+  contribution: EnergyValueSummary | null
+}
+
+export type EnergyExpressionMissingSummary = JsonObject & {
+  code: string
+  message: string
+  object_id?: string | null
+  energy_key?: string | null
+  energy_source?: string | null
+}
+
+export type EnergyExpressionSummary = JsonObject & {
+  node_id: string
+  terms: EnergyComponentSummary[]
+  corrections: CorrectionComponentSummary[]
+  total?: EnergyValueSummary | null
+  missing: EnergyExpressionMissingSummary[]
+}
+
 export type EnergyProfilePointSummary = JsonObject & {
   node_id: string
   label: string
   relative_energy?: EnergyValueSummary | number | null
   unit?: string | null
   missing_reason?: string | null
+  expression?: EnergyExpressionSummary | null
   warnings?: ShellWarning[]
 }
 

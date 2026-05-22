@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TypeVar
 
 from .errors import RxnFlowError
-from .models import ChemicalObject, EnergyChannel, EnergyChannelSelectionSource, EnergyValue
+from .models import ChemicalObject, EnergyChannel, EnergyChannelSelectionSource, EnergyChannelSource, EnergyValue
 from .result import Result, err, ok
 
 
 T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class ResolvedEnergyChannel:
+    value: EnergyValue
+    source: EnergyChannelSource
 
 
 def energy_channel_catalog(objects: tuple[ChemicalObject, ...]) -> tuple[EnergyChannel, ...]:
@@ -46,6 +53,19 @@ def resolve_energy_channel(
     energy_source: EnergyChannelSelectionSource,
 ) -> Result[EnergyValue]:
     """Resolve an object's selected energy value with compatibility auto rules."""
+    resolved = resolve_energy_channel_with_source(obj, energy_key, energy_source)
+    if not resolved.ok or resolved.value is None:
+        assert resolved.error is not None
+        return err(resolved.error)
+    return ok(resolved.value.value)
+
+
+def resolve_energy_channel_with_source(
+    obj: ChemicalObject,
+    energy_key: str,
+    energy_source: EnergyChannelSelectionSource,
+) -> Result[ResolvedEnergyChannel]:
+    """Resolve selected energy and expose the concrete source used."""
     source_validation = validate_energy_source(energy_source, "energy_options.energy_source")
     if source_validation is not None:
         return err(source_validation)
@@ -71,16 +91,16 @@ def resolve_energy_channel(
                 )
             )
         if has_energy:
-            return ok(obj.energies[energy_key])
+            return ok(ResolvedEnergyChannel(obj.energies[energy_key], "energies"))
         if has_thermochemistry:
-            return ok(obj.thermochemistry[energy_key])
+            return ok(ResolvedEnergyChannel(obj.thermochemistry[energy_key], "thermochemistry"))
         return _missing_energy(obj.id, energy_key, energy_source)
 
     values = obj.energies if energy_source == "energies" else obj.thermochemistry
     energy = values.get(energy_key)
     if energy is None:
         return _missing_energy(obj.id, energy_key, energy_source)
-    return ok(energy)
+    return ok(ResolvedEnergyChannel(energy, energy_source))
 
 
 def validate_energy_source(

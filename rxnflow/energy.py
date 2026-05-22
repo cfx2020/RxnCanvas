@@ -6,12 +6,16 @@ from dataclasses import replace
 from typing import TypeVar
 
 from .constants import HARTREE_TO_KCAL_MOL, KCAL_MOL_TO_KJ_MOL
-from .energy_channels import resolve_energy_channel, validate_energy_source
+from .energy_channels import resolve_energy_channel, resolve_energy_channel_with_source, validate_energy_source
 from .errors import RxnFlowError, RxnFlowWarning
 from .models import (
     ChemicalObject,
     Correction,
+    CorrectionComponent,
     ID,
+    EnergyComponent,
+    EnergyExpression,
+    EnergyExpressionMissing,
     EnergyOptions,
     EnergyPoint,
     EnergyProfile,
@@ -54,10 +58,17 @@ class EnergyProfileEngine:
                 baseline_node_id,
             )
 
-        baseline = _node_total_energy(baseline_node_id, node_by_id, object_by_id, options)
+        baseline = _node_energy_expression(baseline_node_id, node_by_id, object_by_id, options)
         if not baseline.ok or baseline.value is None:
             assert baseline.error is not None
             return err(baseline.error)
+        if baseline.value.total is None:
+            missing = baseline.value.missing[0] if baseline.value.missing else None
+            return _missing_energy(
+                missing.message if missing is not None else "Baseline node is missing energy.",
+                baseline_node_id,
+                _missing_details(missing),
+            )
 
         points: list[EnergyPoint] = []
         warnings: list[RxnFlowWarning] = []
@@ -69,13 +80,13 @@ class EnergyProfileEngine:
                     node_id,
                 )
 
-            total = _node_total_energy(node_id, node_by_id, object_by_id, options)
-            if not total.ok or total.value is None:
-                assert total.error is not None
-                if total.error.code == "missing_energy" and node_id != baseline_node_id:
+            expression = _node_energy_expression(node_id, node_by_id, object_by_id, options)
+            if not expression.ok or expression.value is None:
+                assert expression.error is not None
+                if expression.error.code == "missing_energy" and node_id != baseline_node_id:
                     warning = RxnFlowWarning(
                         code="missing_energy",
-                        message=total.error.message,
+                        message=expression.error.message,
                         target=node_id,
                     )
                     warnings.append(warning)
@@ -84,18 +95,44 @@ class EnergyProfileEngine:
                             node_id=node.id,
                             label=node.label,
                             missing_reason="missing_energy",
+                            expression=_missing_expression_from_error(node.id, expression.error),
                         )
                     )
                     continue
-                return err(total.error)
+                return err(expression.error)
 
-            relative = round(total.value.value - baseline.value.value, 8)
+            if expression.value.total is None:
+                missing = expression.value.missing[0] if expression.value.missing else None
+                if node_id != baseline_node_id:
+                    warning = RxnFlowWarning(
+                        code=missing.code if missing is not None else "missing_energy",
+                        message=missing.message if missing is not None else "Energy is missing.",
+                        target=node_id,
+                    )
+                    warnings.append(warning)
+                    points.append(
+                        EnergyPoint(
+                            node_id=node.id,
+                            label=node.label,
+                            missing_reason="missing_energy",
+                            expression=expression.value,
+                        )
+                    )
+                    continue
+                return _missing_energy(
+                    missing.message if missing is not None else "Baseline node is missing energy.",
+                    node_id,
+                    _missing_details(missing),
+                )
+
+            relative = round(expression.value.total.value - baseline.value.total.value, 8)
             points.append(
                 EnergyPoint(
                     node_id=node.id,
                     label=node.label,
-                    absolute_energy=total.value,
+                    absolute_energy=expression.value.total,
                     relative_energy=EnergyValue(relative, options.output_unit),
+                    expression=expression.value,
                 )
             )
 
@@ -155,6 +192,10 @@ def compute_fixture_profile(
         energy = _node_energy_kcal(node_id, node_by_id, object_by_id, options)
         if not energy.ok or energy.value is None:
             return energy
+        expression = _node_energy_expression(node_id, node_by_id, object_by_id, options)
+        if not expression.ok or expression.value is None:
+            assert expression.error is not None
+            return err(expression.error)
         node = node_by_id[node_id]
         relative = round(energy.value - baseline.value, 8)
         points.append(
@@ -163,6 +204,7 @@ def compute_fixture_profile(
                 label=node.label,
                 absolute_energy=EnergyValue(round(energy.value, 8), "kcal_mol"),
                 relative_energy=EnergyValue(relative, "kcal_mol"),
+                expression=expression.value,
             )
         )
 
@@ -254,22 +296,27 @@ def _select_path(graph: ReactionGraph, path_id: ID) -> Result[ReactionPath]:
     return _graph_invalid(f"Reaction path '{path_id}' does not exist.", path_id)
 
 
-def _node_total_energy(
+def _node_energy_expression(
     node_id: ID,
     node_by_id: dict[ID, ReactionNode],
     object_by_id: dict[ID, ChemicalObject],
     options: EnergyOptions,
-) -> Result[EnergyValue]:
+) -> Result[EnergyExpression]:
     node = node_by_id.get(node_id)
     if node is None:
         return _graph_invalid(f"Path references missing node '{node_id}'.", node_id)
     if not node.composition:
-        return _missing_energy(
-            f"Node '{node.id}' does not reference chemical objects for energy calculation.",
-            node.id,
+        return ok(
+            _missing_expression(
+                node.id,
+                "missing_energy",
+                f"Node '{node.id}' does not reference chemical objects for energy calculation.",
+            )
         )
 
     total = 0.0
+    terms: list[EnergyComponent] = []
+    correction_components: list[CorrectionComponent] = []
     for term in node.composition:
         obj = object_by_id.get(term.object_id)
         if obj is None:
@@ -277,16 +324,32 @@ def _node_total_energy(
                 f"Node '{node.id}' references missing chemical object '{term.object_id}'.",
                 node.id,
             )
-        energy_result = resolve_energy_channel(obj, options.energy_key, options.energy_source)
+        energy_result = resolve_energy_channel_with_source(obj, options.energy_key, options.energy_source)
         if not energy_result.ok or energy_result.value is None:
             assert energy_result.error is not None
-            return err(_node_scoped_energy_error(energy_result.error, node.id))
-        energy = energy_result.value
+            scoped = _node_scoped_energy_error(energy_result.error, node.id)
+            if scoped.code == "missing_energy":
+                return ok(_missing_expression_from_error(node.id, scoped))
+            return err(scoped)
+        energy = energy_result.value.value
         converted = _to_output_unit(energy, options.output_unit, node.id)
         if not converted.ok or converted.value is None:
             assert converted.error is not None
             return err(converted.error)
-        total += converted.value * term.coefficient
+        contribution = converted.value * term.coefficient
+        total += contribution
+        terms.append(
+            EnergyComponent(
+                object_id=obj.id,
+                object_label=obj.label,
+                coefficient=term.coefficient,
+                energy_key=options.energy_key,
+                energy_source=energy_result.value.source,
+                raw_energy=energy,
+                converted_energy=EnergyValue(round(converted.value, 8), options.output_unit, energy.reference),
+                contribution=EnergyValue(round(contribution, 8), options.output_unit, energy.reference),
+            )
+        )
 
         corrections = _included_corrections(obj.corrections, options)
         if not corrections.ok or corrections.value is None:
@@ -301,9 +364,89 @@ def _node_total_energy(
             if not correction_energy.ok or correction_energy.value is None:
                 assert correction_energy.error is not None
                 return err(correction_energy.error)
-            total += correction_energy.value * term.coefficient
+            correction_contribution = correction_energy.value * term.coefficient
+            total += correction_contribution
+            correction_components.append(
+                CorrectionComponent(
+                    object_id=obj.id,
+                    correction_id=correction.id,
+                    kind=correction.kind,
+                    coefficient=term.coefficient,
+                    raw_energy=correction.energy,
+                    converted_energy=EnergyValue(
+                        round(correction_energy.value, 8),
+                        options.output_unit,
+                        correction.energy.reference,
+                    ),
+                    contribution=EnergyValue(
+                        round(correction_contribution, 8),
+                        options.output_unit,
+                        correction.energy.reference,
+                    ),
+                )
+            )
 
-    return ok(EnergyValue(round(total, 8), options.output_unit))
+    return ok(
+        EnergyExpression(
+            node_id=node.id,
+            terms=tuple(terms),
+            corrections=tuple(correction_components),
+            total=EnergyValue(round(total, 8), options.output_unit),
+        )
+    )
+
+
+def _missing_expression(
+    node_id: ID,
+    code: str,
+    message: str,
+    object_id: ID | None = None,
+    energy_key: str | None = None,
+    energy_source: str | None = None,
+) -> EnergyExpression:
+    return EnergyExpression(
+        node_id=node_id,
+        total=None,
+        missing=(
+            EnergyExpressionMissing(
+                code=code,
+                message=message,
+                object_id=object_id,
+                energy_key=energy_key,
+                energy_source=energy_source,
+            ),
+        ),
+    )
+
+
+def _missing_expression_from_error(node_id: ID, error: RxnFlowError) -> EnergyExpression:
+    return _missing_expression(
+        node_id,
+        error.code,
+        error.message,
+        object_id=_optional_str(error.details.get("object_id")),
+        energy_key=_optional_str(error.details.get("energy_key")),
+        energy_source=_optional_str(error.details.get("energy_source")),
+    )
+
+
+def _missing_details(missing: EnergyExpressionMissing | None) -> dict[str, object]:
+    if missing is None:
+        return {}
+    details: dict[str, object] = {}
+    if missing.object_id is not None:
+        details["object_id"] = missing.object_id
+    if missing.energy_key is not None:
+        details["energy_key"] = missing.energy_key
+    if missing.energy_source is not None:
+        details["energy_source"] = missing.energy_source
+    return details
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def _included_corrections(

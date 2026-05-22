@@ -50,6 +50,8 @@ class EnergyProfilePersistenceTest(unittest.TestCase):
         self.assertIsNone(payload["profiles"][0]["options"]["correction_policy"])
         self.assertEqual(payload["profiles"][0]["points"][1]["missing_reason"], "missing_energy")
         self.assertIsNone(payload["profiles"][0]["points"][1]["absolute_energy"])
+        self.assertIsNone(payload["profiles"][0]["points"][1]["expression"]["total"])
+        self.assertEqual(payload["profiles"][0]["points"][1]["expression"]["missing"][0]["object_id"], "object-b")
         self.assertEqual(payload["profiles"][0]["warnings"][0]["target"], "node-b")
 
         restored = energy_profiles_section_from_dict(PROJECT_ID, payload, graphs=(graph,))
@@ -60,6 +62,7 @@ class EnergyProfilePersistenceTest(unittest.TestCase):
         self.assertEqual(restored_profile.options.energy_source, "auto")
         self.assertEqual(restored_profile.points[1].missing_reason, "missing_energy")
         self.assertIsNone(restored_profile.points[1].relative_energy)
+        self.assertIsNone(restored_profile.points[1].expression.total)  # type: ignore[union-attr]
         self.assertEqual(restored_profile.warnings[0].code, "missing_energy")
 
     def test_content_store_persists_energy_profiles_with_stable_checksum(self) -> None:
@@ -93,6 +96,7 @@ class EnergyProfilePersistenceTest(unittest.TestCase):
 
             section = json.loads((root / ENERGY_PROFILES_PATH).read_text(encoding="utf-8"))
             self.assertEqual(section["profiles"][0]["points"][0]["absolute_energy"]["unit"], "kcal_mol")
+            self.assertEqual(section["profiles"][0]["points"][0]["expression"]["terms"][0]["raw_energy"]["unit"], "hartree")
             loaded = store.load_snapshot(root)
 
             self.assertTrue(loaded.ok, loaded.error)
@@ -236,6 +240,28 @@ class EnergyProfilePersistenceTest(unittest.TestCase):
         restored_legacy = energy_profiles_section_from_dict(PROJECT_ID, legacy, graphs=(graph,))
         self.assertTrue(restored_legacy.ok, restored_legacy.error)
         self.assertIsNone(restored_legacy.value[0].options.correction_policy)  # type: ignore[index]
+
+    def test_legacy_points_without_expression_load_as_none(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            path=("node-a",),
+        )
+        profile = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (_object("object-a", -100.0),),
+            _options(),
+        ).value
+        assert profile is not None
+        section = energy_profiles_section_to_dict(PROJECT_ID, (profile,), graphs=(graph,)).value
+        assert section is not None
+        del section["profiles"][0]["points"][0]["expression"]  # type: ignore[index]
+
+        restored = energy_profiles_section_from_dict(PROJECT_ID, section, graphs=(graph,))
+
+        self.assertTrue(restored.ok, restored.error)
+        self.assertIsNone(restored.value[0].points[0].expression)  # type: ignore[index]
 
     def test_scope_guard_does_not_recompute_or_touch_other_domains(self) -> None:
         sources = (

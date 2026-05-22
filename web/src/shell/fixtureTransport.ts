@@ -1,6 +1,9 @@
 import type {
+  CorrectionComponentSummary,
   CorrectionSummary,
+  EnergyComponentSummary,
   EnergyComputeData,
+  EnergyExpressionSummary,
   ExportFormat,
   ExportProfileData,
   EnergyOutputUnit,
@@ -58,12 +61,6 @@ const fixtureWorkspaceId = "workspace-fixture"
 const fixtureImportBatch = importBatchSummary("needs_confirmation")
 const fixtureRegisteredObjectIds = ["object-imported-water"]
 let fixtureWorkspace = baseWorkspaceSummary()
-let fixtureProfile = profileSummary({
-  pathId: "path-a-b",
-  outputUnit: "kcal_mol",
-  energyKey: "electronic",
-  baselineNodeId: "node-a",
-})
 const initialFixtureObjects: ObjectSummary[] = [
   objectSummary("object-a", "Object A") as ObjectSummary,
   objectSummary("object-b", "Object B", {
@@ -108,6 +105,12 @@ const initialFixtureObjects: ObjectSummary[] = [
   },
 ]
 let fixtureObjects: ObjectSummary[] = cloneObjects(initialFixtureObjects.slice(0, 2))
+let fixtureProfile = profileSummary({
+  pathId: "path-a-b",
+  outputUnit: "kcal_mol",
+  energyKey: "electronic",
+  baselineNodeId: "node-a",
+})
 
 export const fixtureTransport: ShellTransport = {
   kind: "in-process-test",
@@ -1150,7 +1153,7 @@ function profileSummary(options: {
 }): EnergyProfileSummary {
   const path = fixtureWorkspace.graph.paths.find((item) => item.id === options.pathId)
   const nodeIds = path?.node_ids ?? ["node-a", "node-b"]
-  const points = nodeIds.map((nodeId, index) => profilePoint(nodeId, index, options.outputUnit))
+  const points = nodeIds.map((nodeId, index) => profilePoint(nodeId, index, options.outputUnit, options.includeCorrections === true))
   return {
     id: profileId(options.pathId, options.energyKey, options.outputUnit, options.energySource ?? "auto"),
     graph_id: fixtureGraphId,
@@ -1256,6 +1259,7 @@ function profilePoint(
   nodeId: string,
   index: number,
   outputUnit: EnergyOutputUnit,
+  includeCorrections: boolean,
 ): EnergyProfilePointSummary {
   const node = fixtureWorkspace.graph.nodes.find((item) => item.id === nodeId)
   const objectId = node?.chemical_object_ids?.[0]
@@ -1265,6 +1269,19 @@ function profilePoint(
       label: node?.label ?? nodeId,
       relative_energy: null,
       missing_reason: "missing_energy",
+      expression: {
+        node_id: nodeId,
+        terms: [],
+        corrections: [],
+        total: null,
+        missing: [{
+          code: "missing_energy",
+          message: "Fixture object does not expose an electronic energy value.",
+          object_id: objectId,
+          energy_key: "electronic",
+          energy_source: "auto",
+        }],
+      },
       warnings: [{
         code: "missing_energy",
         message: "Fixture object does not expose an electronic energy value.",
@@ -1283,7 +1300,68 @@ function profilePoint(
       reference: "fixture-electronic",
     },
     missing_reason: null,
+    expression: fixtureExpression(nodeId, node?.label ?? nodeId, outputUnit, value, includeCorrections),
     warnings: [],
+  }
+}
+
+function fixtureExpression(
+  nodeId: string,
+  label: string,
+  outputUnit: EnergyOutputUnit,
+  relativeValue: number,
+  includeCorrections: boolean,
+): EnergyExpressionSummary {
+  const node = fixtureWorkspace.graph.nodes.find((item) => item.id === nodeId)
+  const objectIds = node?.chemical_object_ids?.length ? node.chemical_object_ids : ["object-a"]
+  const terms: EnergyComponentSummary[] = objectIds.map((objectId, index) => {
+    const object = fixtureObjects.find((item) => item.id === objectId)
+    const contributionValue = index === 0 ? relativeValue : 0
+    return {
+      object_id: objectId,
+      object_label: object?.label ?? label,
+      coefficient: 1,
+      energy_key: "electronic",
+      energy_source: "energies",
+      raw_energy: {
+        value: objectId === "object-b" ? -99.98 : -100,
+        unit: "hartree",
+        reference: "fixture-electronic",
+      },
+      converted_energy: {
+        value: contributionValue,
+        unit: outputUnit,
+        reference: "fixture-electronic",
+      },
+      contribution: {
+        value: contributionValue,
+        unit: outputUnit,
+        reference: "fixture-electronic",
+      },
+    }
+  })
+  const corrections: CorrectionComponentSummary[] = includeCorrections ? objectIds.flatMap((objectId) => {
+    const object = fixtureObjects.find((item) => item.id === objectId)
+    return (object?.corrections ?? []).map((correction) => ({
+      object_id: objectId,
+      correction_id: correction.id,
+      kind: correction.kind,
+      coefficient: 1,
+      raw_energy: correction.energy,
+      converted_energy: correction.energy,
+      contribution: correction.energy,
+    }))
+  }) : []
+  return {
+    node_id: nodeId,
+    terms,
+    corrections,
+    total: {
+      value: relativeValue,
+      unit: outputUnit,
+      reference: "fixture-expression",
+    },
+    missing: [],
   }
 }
 

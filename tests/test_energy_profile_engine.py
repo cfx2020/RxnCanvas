@@ -374,6 +374,16 @@ class EnergyProfileEngineTest(unittest.TestCase):
         profile = result.value
         assert profile is not None
         self.assertEqual(profile.points[1].relative_energy, EnergyValue(4.0, "kcal_mol"))
+        expression = profile.points[1].expression
+        assert expression is not None
+        self.assertEqual(expression.total, EnergyValue(5.0, "kcal_mol"))
+        self.assertEqual([term.object_id for term in expression.terms], ["object-a", "object-b"])
+        self.assertEqual([term.coefficient for term in expression.terms], [1.0, 2.0])
+        self.assertEqual(expression.terms[1].energy_key, "electronic")
+        self.assertEqual(expression.terms[1].energy_source, "energies")
+        self.assertEqual(expression.terms[1].raw_energy, EnergyValue(2.0, "kcal_mol"))
+        self.assertEqual(expression.terms[1].converted_energy, EnergyValue(2.0, "kcal_mol"))
+        self.assertEqual(expression.terms[1].contribution, EnergyValue(4.0, "kcal_mol"))
 
     def test_fractional_negative_and_duplicate_composition_terms_are_ordered_terms(self) -> None:
         graph = _graph(
@@ -438,6 +448,9 @@ class EnergyProfileEngineTest(unittest.TestCase):
         profile = result.value
         assert profile is not None
         self.assertEqual(profile.points[1].relative_energy, EnergyValue(4.0, "kcal_mol"))
+        expression = profile.points[1].expression
+        assert expression is not None
+        self.assertEqual(expression.terms[1].energy_source, "thermochemistry")
 
     def test_corrections_are_scaled_by_composition_coefficients_when_enabled(self) -> None:
         graph = _graph(
@@ -471,6 +484,13 @@ class EnergyProfileEngineTest(unittest.TestCase):
         profile = result.value
         assert profile is not None
         self.assertEqual(profile.points[1].relative_energy, EnergyValue(3.0, "kcal_mol"))
+        expression = profile.points[1].expression
+        assert expression is not None
+        self.assertEqual(len(expression.corrections), 1)
+        self.assertEqual(expression.corrections[0].correction_id, "corr-a")
+        self.assertEqual(expression.corrections[0].kind, "manual")
+        self.assertEqual(expression.corrections[0].coefficient, 2.0)
+        self.assertEqual(expression.corrections[0].contribution, EnergyValue(1.0, "kcal_mol"))
 
     def test_correction_policy_filters_by_kind_and_id(self) -> None:
         graph = _graph(
@@ -582,6 +602,10 @@ class EnergyProfileEngineTest(unittest.TestCase):
 
         self.assertTrue(annotation.ok, annotation.error)
         self.assertEqual(annotation.value.points[1].missing_reason, "missing_energy")  # type: ignore[union-attr]
+        missing_expression = annotation.value.points[1].expression  # type: ignore[union-attr]
+        assert missing_expression is not None
+        self.assertIsNone(missing_expression.total)
+        self.assertEqual(missing_expression.missing[0].code, "missing_energy")
         self.assertFalse(baseline_group.ok)
         self.assertIsNotNone(baseline_group.error)
         assert baseline_group.error is not None
