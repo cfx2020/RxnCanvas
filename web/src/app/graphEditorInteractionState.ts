@@ -21,12 +21,23 @@ export type GraphEditorDraggingState =
   | { kind: "canvas"; origin: CanvasPoint; current: CanvasPoint }
   | { kind: "object-drop"; objectId: string; current: CanvasPoint }
 
+export type PendingEdgeDraft = {
+  fromNodeId: string
+  pointerGraphPosition?: CanvasPoint | null
+  targetNodeId?: string | null
+  source: "click" | "pointer"
+}
+
+export type DirectEdgeGestureResult =
+  | { kind: "connect"; fromNodeId: string; toNodeId: string }
+  | { kind: "cancel"; reason: "empty-target" | "same-node" | "stale-source" | "pointer-cancel" }
+
 export type GraphEditorInteractionState = {
   mode: GraphEditorMode
   selection: GraphEditorSelection
   hover?: GraphEditorHoverTarget | null
   dragging?: GraphEditorDraggingState | null
-  pendingEdge?: { fromNodeId: string } | null
+  pendingEdge?: PendingEdgeDraft | null
 }
 
 export type GraphEditorReferenceSet = {
@@ -101,7 +112,42 @@ export function startGraphEditorConnection(
   return {
     ...state,
     mode: "connect",
-    pendingEdge: { fromNodeId },
+    pendingEdge: { fromNodeId, source: "click" },
+  }
+}
+
+export function startGraphEditorPointerEdge(
+  state: GraphEditorInteractionState,
+  fromNodeId: string,
+  pointerGraphPosition: CanvasPoint,
+): GraphEditorInteractionState {
+  if (!fromNodeId) return state
+  return {
+    ...state,
+    mode: "connect",
+    dragging: null,
+    pendingEdge: {
+      fromNodeId,
+      pointerGraphPosition,
+      targetNodeId: null,
+      source: "pointer",
+    },
+  }
+}
+
+export function updateGraphEditorPointerEdge(
+  state: GraphEditorInteractionState,
+  pointerGraphPosition: CanvasPoint,
+  targetNodeId: string | null = null,
+): GraphEditorInteractionState {
+  if (!state.pendingEdge || state.pendingEdge.source !== "pointer") return state
+  return {
+    ...state,
+    pendingEdge: {
+      ...state.pendingEdge,
+      pointerGraphPosition,
+      targetNodeId,
+    },
   }
 }
 
@@ -181,6 +227,28 @@ export function completeGraphEditorConnection(
   }
 }
 
+export function resolveGraphEditorDirectEdgeGesture(
+  state: GraphEditorInteractionState,
+  references: GraphEditorReferenceSet,
+  targetNodeId: string | null = state.pendingEdge?.targetNodeId ?? null,
+): DirectEdgeGestureResult {
+  const pendingEdge = state.pendingEdge
+  if (!pendingEdge || pendingEdge.source !== "pointer") {
+    return { kind: "cancel", reason: "pointer-cancel" }
+  }
+  const validNodeIds = new Set(references.nodeIds)
+  if (!validNodeIds.has(pendingEdge.fromNodeId)) {
+    return { kind: "cancel", reason: "stale-source" }
+  }
+  if (!targetNodeId || !validNodeIds.has(targetNodeId)) {
+    return { kind: "cancel", reason: "empty-target" }
+  }
+  if (targetNodeId === pendingEdge.fromNodeId) {
+    return { kind: "cancel", reason: "same-node" }
+  }
+  return { kind: "connect", fromNodeId: pendingEdge.fromNodeId, toNodeId: targetNodeId }
+}
+
 export function pruneGraphEditorInteractionState(
   state: GraphEditorInteractionState,
   references: GraphEditorReferenceSet,
@@ -201,9 +269,7 @@ export function pruneGraphEditorInteractionState(
   const hover = state.hover && targetExists(state.hover, validNodeIds, validEdgeIds, validPathIds)
     ? state.hover
     : null
-  const pendingEdge = state.pendingEdge && validNodeIds.has(state.pendingEdge.fromNodeId)
-    ? state.pendingEdge
-    : null
+  const pendingEdge = prunePendingEdge(state.pendingEdge ?? null, validNodeIds)
   const dragging = pruneDraggingState(state.dragging ?? null, validNodeIds)
 
   return {
@@ -225,6 +291,18 @@ function targetExists(
   if (target.kind === "node") return validNodeIds.has(target.id)
   if (target.kind === "edge") return validEdgeIds.has(target.id)
   return validPathIds.has(target.id)
+}
+
+function prunePendingEdge(
+  pendingEdge: PendingEdgeDraft | null,
+  validNodeIds: Set<string>,
+): PendingEdgeDraft | null {
+  if (!pendingEdge || !validNodeIds.has(pendingEdge.fromNodeId)) return null
+  if (!pendingEdge.targetNodeId || validNodeIds.has(pendingEdge.targetNodeId)) return pendingEdge
+  return {
+    ...pendingEdge,
+    targetNodeId: null,
+  }
 }
 
 function pruneDraggingState(

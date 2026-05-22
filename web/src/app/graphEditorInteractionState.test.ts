@@ -5,13 +5,16 @@ import {
   endGraphEditorCanvasDrag,
   initialGraphEditorInteractionState,
   pruneGraphEditorInteractionState,
+  resolveGraphEditorDirectEdgeGesture,
   selectGraphEditorEdge,
   selectGraphEditorNode,
   selectGraphEditorPath,
   setGraphEditorMode,
   startGraphEditorCanvasDrag,
   startGraphEditorConnection,
+  startGraphEditorPointerEdge,
   updateGraphEditorCanvasDrag,
+  updateGraphEditorPointerEdge,
   type GraphEditorInteractionState,
 } from "./graphEditorInteractionState"
 
@@ -52,7 +55,7 @@ describe("graphEditorInteractionState", () => {
     const pending = startGraphEditorConnection(selected)
 
     expect(pending.mode).toBe("connect")
-    expect(pending.pendingEdge).toEqual({ fromNodeId: "node-a" })
+    expect(pending.pendingEdge).toEqual({ fromNodeId: "node-a", source: "click" })
 
     const completed = completeGraphEditorConnection(pending, "node-b")
     expect(completed.mode).toBe("select")
@@ -69,6 +72,73 @@ describe("graphEditorInteractionState", () => {
     const pending = startGraphEditorConnection(initialGraphEditorInteractionState)
 
     expect(pending).toBe(initialGraphEditorInteractionState)
+  })
+
+  it("tracks pointer pending edge drafts without changing graph selection", () => {
+    const selected = selectGraphEditorNode(initialGraphEditorInteractionState, "node-a")
+    const pending = startGraphEditorPointerEdge(selected, "node-a", { x: 120, y: 160 })
+    const updated = updateGraphEditorPointerEdge(pending, { x: 240, y: 180 }, "node-b")
+
+    expect(pending.mode).toBe("connect")
+    expect(pending.selection.nodeIds).toEqual(["node-a"])
+    expect(pending.pendingEdge).toEqual({
+      fromNodeId: "node-a",
+      pointerGraphPosition: { x: 120, y: 160 },
+      targetNodeId: null,
+      source: "pointer",
+    })
+    expect(updated.pendingEdge).toEqual({
+      fromNodeId: "node-a",
+      pointerGraphPosition: { x: 240, y: 180 },
+      targetNodeId: "node-b",
+      source: "pointer",
+    })
+  })
+
+  it("resolves pointer edge gestures into connect or cancel results", () => {
+    const references = { nodeIds: ["node-a", "node-b"], edgeIds: [], pathIds: [] }
+    const pending = updateGraphEditorPointerEdge(
+      startGraphEditorPointerEdge(initialGraphEditorInteractionState, "node-a", { x: 100, y: 120 }),
+      { x: 300, y: 120 },
+      "node-b",
+    )
+
+    expect(resolveGraphEditorDirectEdgeGesture(pending, references)).toEqual({
+      kind: "connect",
+      fromNodeId: "node-a",
+      toNodeId: "node-b",
+    })
+    expect(resolveGraphEditorDirectEdgeGesture(pending, references, null)).toEqual({
+      kind: "cancel",
+      reason: "empty-target",
+    })
+    expect(resolveGraphEditorDirectEdgeGesture(pending, references, "node-a")).toEqual({
+      kind: "cancel",
+      reason: "same-node",
+    })
+    expect(resolveGraphEditorDirectEdgeGesture(pending, references, "node-missing")).toEqual({
+      kind: "cancel",
+      reason: "empty-target",
+    })
+    expect(resolveGraphEditorDirectEdgeGesture(
+      startGraphEditorPointerEdge(initialGraphEditorInteractionState, "node-missing", { x: 0, y: 0 }),
+      references,
+      "node-b",
+    )).toEqual({
+      kind: "cancel",
+      reason: "stale-source",
+    })
+    expect(resolveGraphEditorDirectEdgeGesture(initialGraphEditorInteractionState, references)).toEqual({
+      kind: "cancel",
+      reason: "pointer-cancel",
+    })
+  })
+
+  it("ignores pointer pending updates for click-driven pending edges", () => {
+    const pending = startGraphEditorConnection(selectGraphEditorNode(initialGraphEditorInteractionState, "node-a"))
+    const updated = updateGraphEditorPointerEdge(pending, { x: 100, y: 100 }, "node-b")
+
+    expect(updated).toBe(pending)
   })
 
   it("switches modes while clearing pending edge and transient dragging state", () => {
@@ -121,7 +191,7 @@ describe("graphEditorInteractionState", () => {
         origin: { x: 0, y: 0 },
         current: { x: 1, y: 1 },
       },
-      pendingEdge: { fromNodeId: "node-missing" },
+      pendingEdge: { fromNodeId: "node-missing", source: "pointer", targetNodeId: "node-b" },
     }
 
     const pruned = pruneGraphEditorInteractionState(state, {
@@ -143,6 +213,27 @@ describe("graphEditorInteractionState", () => {
       nodeIds: ["node-b"],
       origin: { x: 0, y: 0 },
       current: { x: 1, y: 1 },
+    })
+  })
+
+  it("prunes stale pending edge targets while keeping valid sources", () => {
+    const state = updateGraphEditorPointerEdge(
+      startGraphEditorPointerEdge(initialGraphEditorInteractionState, "node-a", { x: 10, y: 20 }),
+      { x: 200, y: 80 },
+      "node-missing",
+    )
+    const pruned = pruneGraphEditorInteractionState(state, {
+      nodeIds: ["node-a"],
+      edgeIds: [],
+      pathIds: [],
+    })
+
+    expect(pruned.mode).toBe("connect")
+    expect(pruned.pendingEdge).toEqual({
+      fromNodeId: "node-a",
+      pointerGraphPosition: { x: 200, y: 80 },
+      targetNodeId: null,
+      source: "pointer",
     })
   })
 

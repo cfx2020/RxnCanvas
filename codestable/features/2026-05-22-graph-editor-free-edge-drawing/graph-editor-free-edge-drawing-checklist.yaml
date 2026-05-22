@@ -4,7 +4,7 @@ created: 2026-05-22
 steps:
   - action: "Pending Edge Gesture State：扩展 pending edge draft shape 和 helper tests，覆盖 pointer start/update/target/cancel/prune，同时保持 click pending flow"
     exit_signal: "helper tests 证明 click pending 和 pointer pending 都能 start/complete/clear，stale source 会 prune"
-    status: pending
+    status: done
 
   - action: "GraphCanvas Direct Gesture UI：新增 Edge Connect Handle、pending preview line、target hit testing，并确保 node body drag / pan / object drop 不回退"
     exit_signal: "component test 能从 node-a handle 拖到 node-b，Apply 前无本地 edge append，release 后发送 workspace.connect"
