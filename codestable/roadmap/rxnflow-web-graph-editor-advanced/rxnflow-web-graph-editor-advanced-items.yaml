@@ -29,8 +29,8 @@ items:
   - slug: graph-editor-free-edge-drawing
     description: 新增从节点拖到节点的直接连线手势，保留 click-driven connect fallback
     depends_on: [graph-editor-edge-label-edit]
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-05-22-graph-editor-free-edge-drawing
     minimal_loop: false
     notes: Pending edge draft 是 UI-only；只有 release 到合法 target node 才发送 workspace.connect
 
