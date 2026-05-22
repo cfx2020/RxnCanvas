@@ -5,8 +5,8 @@ items:
   - slug: web-raw-input-persistence
     description: 保存浏览器选择的 raw output 文件到 active browser project inputs/raw/...，并更新 manifest raw resource
     depends_on: []
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-05-22-web-raw-input-persistence
     minimal_loop: true
     notes: 最小闭环；让 Web 选择文件不再只是 preview payload，而是可随 browser-local project 和后续 bundle 被带走的 raw input anchor
 
