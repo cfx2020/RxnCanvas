@@ -1055,6 +1055,38 @@ class PlatformShellBaselineTest(unittest.TestCase):
                 )
             )
             self.assertTrue(path_before_remove.ok, path_before_remove.error)
+            selected_path = service.run(
+                ShellCommand(
+                    "workspace.select",
+                    {"session_id": session_id, "selection": {"path_ids": ["path-extra"]}},
+                )
+            )
+            self.assertTrue(selected_path.ok, selected_path.error)
+            removed_path = service.run(
+                ShellCommand(
+                    "workspace.remove",
+                    {"session_id": session_id, "path_ids": ["path-extra"]},
+                )
+            )
+            self.assertTrue(removed_path.ok, removed_path.error)
+            removed_path_payload = removed_path.to_dict()
+            self.assertEqual(removed_path_payload["data"]["command"], "workspace.remove")
+            self.assertEqual(removed_path_payload["data"]["workspace"]["graph"]["node_count"], 3)
+            self.assertEqual(removed_path_payload["data"]["workspace"]["graph"]["edge_count"], 1)
+            self.assertNotIn(
+                "path-extra",
+                [path["id"] for path in removed_path_payload["data"]["workspace"]["graph"]["paths"]],
+            )
+            self.assertIsNone(removed_path_payload["data"]["workspace"]["active_path_id"])
+            self.assertEqual(removed_path_payload["data"]["workspace"]["selection"]["path_ids"], [])
+
+            path_before_remove = service.run(
+                ShellCommand(
+                    "workspace.set_path",
+                    {"session_id": session_id, "path_id": "path-extra", "node_ids": (node_ids[0], extra_node_id)},
+                )
+            )
+            self.assertTrue(path_before_remove.ok, path_before_remove.error)
             removed_node = service.run(
                 ShellCommand(
                     "workspace.remove",
@@ -1073,6 +1105,12 @@ class PlatformShellBaselineTest(unittest.TestCase):
             empty_remove = service.run(ShellCommand("workspace.remove", {"session_id": session_id}))
             self.assertFalse(empty_remove.ok)
             self.assertEqual(empty_remove.error["target"], "selection")  # type: ignore[index]
+            missing_path_remove = service.run(
+                ShellCommand("workspace.remove", {"session_id": session_id, "path_ids": ["path-missing"]})
+            )
+            self.assertFalse(missing_path_remove.ok)
+            self.assertEqual(missing_path_remove.error["code"], "graph_invalid")  # type: ignore[index]
+            self.assertEqual(missing_path_remove.error["target"], "path_id")  # type: ignore[index]
 
             bad_move = service.run(
                 ShellCommand(

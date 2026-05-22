@@ -479,6 +479,32 @@ describe("WorkbenchShell", () => {
     expect(within(graphCanvas).getAllByText("node-b").length).toBeGreaterThan(0)
   })
 
+  it("deletes selected graph paths without removing nodes or edges", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
+    expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { path_ids: ["path-a-b"] },
+    })
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Delete Selected" }))
+
+    await waitFor(() => {
+      expect(lastPayload(transport, "workspace.remove")?.args).toMatchObject({
+        path_ids: ["path-a-b"],
+      })
+    })
+    await waitFor(() => expect(within(graphCanvas).queryByText("path-a-b")).not.toBeInTheDocument())
+    expect(within(graphCanvas).getAllByText("node-a").length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getAllByText("node-b").length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" })).toBeInTheDocument()
+    expect(within(graphCanvas).getByText("No paths")).toBeInTheDocument()
+  })
+
   it("edits selected node composition through a Composition Draft before applying workspace.set_node_composition", async () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))

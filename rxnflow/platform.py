@@ -857,15 +857,19 @@ class PlatformShellService:
             return _invalid_input("Workspace must be opened before removing graph items.", "workspace_id")
         node_ids = _tuple_of_str(command.args.get("node_ids", ()))
         edge_ids = _tuple_of_str(command.args.get("edge_ids", ()))
-        if not node_ids and not edge_ids:
-            return _invalid_input("At least one graph node or edge id is required.", "selection")
+        path_ids = _tuple_of_str(command.args.get("path_ids", ()))
+        if not node_ids and not edge_ids and not path_ids:
+            return _invalid_input("At least one graph node, edge or path id is required.", "selection")
         updated = self._kernel.workspace_service.remove_items(
             state.session.project_id or "",
             state.workspace.workspace_id,
             node_ids,
             edge_ids,
+            path_ids,
         )
         if not updated.ok or updated.value is None:
+            if updated.error and updated.error.code == "graph_invalid" and updated.error.target in set(path_ids):
+                return _shell_error(updated.error.code, updated.error.message, "path_id")
             return _result_error_response(updated)
         return self._store_workspace(command.name, state, updated.value)
 

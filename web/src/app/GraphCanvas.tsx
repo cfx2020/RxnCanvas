@@ -42,6 +42,7 @@ export type MoveGraphNodeRequest = {
 export type RemoveGraphItemsRequest = {
   nodeIds: string[]
   edgeIds: string[]
+  pathIds: string[]
 }
 
 export type GraphAutoLayoutStatus = {
@@ -133,6 +134,7 @@ export function GraphCanvas({
   const activeObject = state.objects.find((object) => object.id === activeObjectId) ?? state.objects[0]
   const selectedNodeId = interactionState.selection.nodeIds[0]
   const selectedEdgeId = interactionState.selection.edgeIds[0]
+  const selectedPathId = interactionState.selection.pathIds[0]
   const pendingConnectionFromId = interactionState.pendingEdge?.fromNodeId
   const viewport = normalizeGraphViewport(workspace?.viewport)
   const zoomPercent = Math.round(viewport.zoom * 100)
@@ -141,7 +143,7 @@ export function GraphCanvas({
   const canAddNode = canUseWorkspace && Boolean(activeObject)
   const canConnect = Boolean(selectedNodeId)
   const canSetPath = nodes.length > 1
-  const canRemoveSelection = Boolean(selectedNodeId || selectedEdgeId)
+  const canRemoveSelection = Boolean(selectedNodeId || selectedEdgeId || selectedPathId)
   const canApplyLayout = canUseWorkspace && nodes.length > 0 && autoLayoutStatus?.state !== "applying"
   const dropEnabled = canUseWorkspace && state.objects.length > 0
 
@@ -319,6 +321,7 @@ export function GraphCanvas({
           onClick={() => onRemoveGraphItems({
             nodeIds: interactionState.selection.nodeIds,
             edgeIds: interactionState.selection.edgeIds,
+            pathIds: interactionState.selection.pathIds,
           })}
           disabled={!canRemoveSelection}
         >

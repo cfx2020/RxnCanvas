@@ -458,11 +458,13 @@ function fixtureWorkspaceRemoveResponse(args: JsonObject): ShellResponse<Workspa
   }
   const nodeIds = idsFromArgs(args.node_ids)
   const edgeIds = idsFromArgs(args.edge_ids)
-  if (nodeIds.length === 0 && edgeIds.length === 0) {
-    return invalidWorkspaceInput("At least one graph node or edge id is required.", "selection")
+  const pathIds = idsFromArgs(args.path_ids)
+  if (nodeIds.length === 0 && edgeIds.length === 0 && pathIds.length === 0) {
+    return invalidWorkspaceInput("At least one graph node, edge or path id is required.", "selection")
   }
   const graphNodeIds = new Set(fixtureWorkspace.graph.nodes.map((node) => node.id))
   const graphEdgeIds = new Set(fixtureWorkspace.graph.edges.map((edge) => edge.id))
+  const graphPathIds = new Set(fixtureWorkspace.graph.paths.map((path) => path.id))
   const missingNodeId = nodeIds.find((nodeId) => !graphNodeIds.has(nodeId))
   if (missingNodeId) {
     return invalidWorkspaceInput("Graph node does not exist.", "node_id", "graph_invalid")
@@ -477,6 +479,16 @@ function fixtureWorkspaceRemoveResponse(args: JsonObject): ShellResponse<Workspa
   if (missingEdgeId) {
     return invalidWorkspaceInput("Graph edge does not exist.", "edge_id", "graph_invalid")
   }
+  const incidentPathIds = new Set(
+    fixtureWorkspace.graph.paths
+      .filter((path) => path.node_ids.some((nodeId) => nodeIds.includes(nodeId)))
+      .map((path) => path.id),
+  )
+  const pathIdsToRemove = pathIds.filter((pathId) => !incidentPathIds.has(pathId))
+  const missingPathId = pathIdsToRemove.find((pathId) => !graphPathIds.has(pathId))
+  if (missingPathId) {
+    return invalidWorkspaceInput("Graph path does not exist.", "path_id", "graph_invalid")
+  }
   fixtureWorkspace = normalizeWorkspace({
     ...fixtureWorkspace,
     graph: {
@@ -487,7 +499,10 @@ function fixtureWorkspaceRemoveResponse(args: JsonObject): ShellResponse<Workspa
         && !nodeIds.includes(edgeSource(edge))
         && !nodeIds.includes(edgeTarget(edge))
       )),
-      paths: fixtureWorkspace.graph.paths.filter((path) => !path.node_ids.some((nodeId) => nodeIds.includes(nodeId))),
+      paths: fixtureWorkspace.graph.paths.filter((path) => (
+        !pathIdsToRemove.includes(path.id)
+        && !path.node_ids.some((nodeId) => nodeIds.includes(nodeId))
+      )),
     },
   })
   if (fixtureWorkspace.active_path_id && !fixtureWorkspace.graph.paths.some((path) => path.id === fixtureWorkspace.active_path_id)) {

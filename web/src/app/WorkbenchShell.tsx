@@ -843,7 +843,7 @@ export function WorkbenchShell({
 
   const removeGraphItems = useCallback(async (request: RemoveGraphItemsRequest) => {
     const sessionId = workbenchState.sessionId
-    if (!sessionId || (request.nodeIds.length === 0 && request.edgeIds.length === 0)) return
+    if (!sessionId || (request.nodeIds.length === 0 && request.edgeIds.length === 0 && request.pathIds.length === 0)) return
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.remove",
@@ -851,6 +851,7 @@ export function WorkbenchShell({
         session_id: sessionId,
         node_ids: request.nodeIds,
         edge_ids: request.edgeIds,
+        path_ids: request.pathIds,
       },
     })
     applyWorkspaceResponse(response)

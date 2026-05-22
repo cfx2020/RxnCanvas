@@ -418,6 +418,30 @@ describe("ShellClient", () => {
     expect(path.data?.workspace.graph.paths.map((item) => item.id)).toContain("path-web-main")
     expect(() => JSON.stringify(path)).not.toThrow()
 
+    const removedPath = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.remove",
+      args: {
+        session_id: sessionId,
+        path_ids: ["path-web-main"],
+      },
+    })
+    expect(removedPath.ok).toBe(true)
+    expect(removedPath.data?.command).toBe("workspace.remove")
+    expect(removedPath.data?.workspace.graph.node_count).toBe(3)
+    expect(removedPath.data?.workspace.graph.edge_count).toBe(2)
+    expect(removedPath.data?.workspace.graph.paths.map((item) => item.id)).not.toContain("path-web-main")
+    expect(removedPath.data?.workspace.active_path_id).toBeNull()
+
+    const restoredPath = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_path",
+      args: {
+        session_id: sessionId,
+        path_id: "path-web-main",
+        node_ids: ["node-a", "node-b", "node-web-3"],
+      },
+    })
+    expect(restoredPath.ok).toBe(true)
+
     const removedEdge = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.remove",
       args: {
@@ -637,6 +661,14 @@ describe("ShellClient", () => {
     expect(missingEdge.ok).toBe(false)
     expect(missingEdge.error?.code).toBe("graph_invalid")
     expect(missingEdge.error?.target).toBe("edge_id")
+
+    const missingPath = await shellClient.run({
+      command: "workspace.remove",
+      args: { session_id: sessionId, path_ids: ["path-missing"] },
+    })
+    expect(missingPath.ok).toBe(false)
+    expect(missingPath.error?.code).toBe("graph_invalid")
+    expect(missingPath.error?.target).toBe("path_id")
   })
 
   it("returns graph_invalid when connecting a missing fixture node", async () => {

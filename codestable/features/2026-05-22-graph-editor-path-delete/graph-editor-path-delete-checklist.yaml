@@ -4,19 +4,19 @@ created: 2026-05-22
 steps:
   - action: "Core Workspace Remove Contract：扩展 remove_items / _remove_item_ids 支持 path ids，并补 core workspace tests"
     exit_signal: "删除 path 保留 node/edge，active path 和 selection 被 projection 修剪；missing path / empty selection 错误稳定"
-    status: pending
+    status: done
 
   - action: "Platform Shell And Fixture Contract：扩展 workspace.remove shell adapter 与 fixture transport，补 shell / fixture tests"
     exit_signal: "真实 Platform Shell 和 fixture runtime 都能用 path_ids 删除 path，错误 code/target 一致"
-    status: pending
+    status: done
 
   - action: "Web Delete Selected Entry：GraphCanvas / WorkbenchShell 把 selected path 纳入 Delete Selected payload，更新 component tests"
     exit_signal: "选中 path 后 Delete Selected 可用，发送 workspace.remove(path_ids=[...])，UI 按 ShellResponse 移除 path 并清理 path draft"
-    status: pending
+    status: done
 
   - action: "Verification And Scope Guard：跑 Python 单测、Web tests/build 和浏览器主链路"
     exit_signal: "测试通过；浏览器可选中 path 并删除，node/edge 仍保留，active path/selection UI 无残留；scope grep 未新增 schema/persistence/autosave/energy/report 变更"
-    status: pending
+    status: done
 
 checks:
   - item: "GraphEditorWorkspaceService.remove_items(path_ids=(path_id,)) 删除 path 后，graph nodes 和 edges 保留"

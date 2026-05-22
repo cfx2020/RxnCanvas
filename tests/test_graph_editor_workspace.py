@@ -401,6 +401,62 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
         self.assertEqual(snapshot.graph.edges, ())
         self.assertEqual(snapshot.preview.disconnected_node_ids, (reactant.id, product.id))
 
+    def test_remove_path_keeps_nodes_edges_and_prunes_active_selection(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
+        reactant = _add_species(workspace, workspace_id, "R", "object-r")
+        product = _add_species(workspace, workspace_id, "P", "object-p")
+        connected = workspace.connect_nodes(PROJECT_ID, workspace_id, reactant.id, product.id)
+        self.assertTrue(connected.ok, connected.error)
+        workspace.set_active_path(PROJECT_ID, workspace_id, "path-main", (reactant.id, product.id))
+        workspace.select(PROJECT_ID, workspace_id, WorkspaceSelection(path_ids=("path-main",)))
+
+        removed = workspace.remove_items(PROJECT_ID, workspace_id, path_ids=("path-main",))
+
+        self.assertTrue(removed.ok, removed.error)
+        snapshot = removed.value
+        assert snapshot is not None
+        self.assertEqual([node.id for node in snapshot.graph.nodes], [reactant.id, product.id])
+        self.assertEqual(len(snapshot.graph.edges), 1)
+        self.assertEqual(snapshot.graph.paths, ())
+        self.assertIsNone(snapshot.active_path_id)
+        self.assertEqual(snapshot.selection, WorkspaceSelection())
+        self.assertEqual(snapshot.preview.paths, ())
+
+    def test_remove_non_active_path_keeps_active_path(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
+        reactant = _add_species(workspace, workspace_id, "R", "object-r")
+        product = _add_species(workspace, workspace_id, "P", "object-p")
+        workspace.set_active_path(PROJECT_ID, workspace_id, "path-main", (reactant.id, product.id))
+        workspace.set_active_path(PROJECT_ID, workspace_id, "path-branch", (product.id,))
+        workspace.set_active_path(PROJECT_ID, workspace_id, "path-main", (reactant.id, product.id))
+
+        removed = workspace.remove_items(PROJECT_ID, workspace_id, path_ids=("path-branch",))
+
+        self.assertTrue(removed.ok, removed.error)
+        snapshot = removed.value
+        assert snapshot is not None
+        self.assertEqual(snapshot.active_path_id, "path-main")
+        self.assertEqual([path.id for path in snapshot.graph.paths], ["path-main"])
+
+    def test_remove_node_and_its_path_once_when_path_is_also_selected(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
+        reactant = _add_species(workspace, workspace_id, "R", "object-r")
+        product = _add_species(workspace, workspace_id, "P", "object-p")
+        workspace.set_active_path(PROJECT_ID, workspace_id, "path-main", (reactant.id, product.id))
+
+        removed = workspace.remove_items(
+            PROJECT_ID,
+            workspace_id,
+            node_ids=(reactant.id,),
+            path_ids=("path-main",),
+        )
+
+        self.assertTrue(removed.ok, removed.error)
+        snapshot = removed.value
+        assert snapshot is not None
+        self.assertEqual([node.id for node in snapshot.graph.nodes], [product.id])
+        self.assertEqual(snapshot.graph.paths, ())
+
     def test_remove_items_rejects_empty_and_missing_selection_without_state_change(self) -> None:
         workspace, workspace_id = _workspace_with_objects(_object("object-r"))
         _add_species(workspace, workspace_id, "R", "object-r")
@@ -408,6 +464,7 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
 
         empty = workspace.remove_items(PROJECT_ID, workspace_id)
         missing = workspace.remove_items(PROJECT_ID, workspace_id, edge_ids=("edge-missing",))
+        missing_path = workspace.remove_items(PROJECT_ID, workspace_id, path_ids=("path-missing",))
         after = workspace.snapshot(PROJECT_ID, workspace_id).value.graph
 
         self.assertFalse(empty.ok)
@@ -415,6 +472,9 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
         self.assertEqual(empty.error.target, "selection")  # type: ignore[union-attr]
         self.assertFalse(missing.ok)
         self.assertEqual(missing.error.code, "graph_invalid")  # type: ignore[union-attr]
+        self.assertFalse(missing_path.ok)
+        self.assertEqual(missing_path.error.code, "graph_invalid")  # type: ignore[union-attr]
+        self.assertEqual(missing_path.error.target, "path-missing")  # type: ignore[union-attr]
         self.assertEqual(after, before)
 
     def test_network_preview_reports_disconnected_nodes(self) -> None:

@@ -293,15 +293,19 @@ class GraphEditorWorkspaceService:
         workspace_id: ID,
         node_ids: tuple[ID, ...] = (),
         edge_ids: tuple[ID, ...] = (),
+        path_ids: tuple[ID, ...] = (),
     ) -> Result[WorkspaceSnapshot]:
         state_result = self._get_state(project_id, workspace_id)
         if not state_result.ok or state_result.value is None:
             assert state_result.error is not None
             return err(state_result.error)
         state = state_result.value
-        patches = tuple(GraphPatch("remove", id=item_id) for item_id in _remove_item_ids(state.graph, node_ids, edge_ids))
+        patches = tuple(
+            GraphPatch("remove", id=item_id)
+            for item_id in _remove_item_ids(state.graph, node_ids, edge_ids, path_ids)
+        )
         if not patches:
-            return _invalid_input("At least one graph node or edge id is required.", "selection")
+            return _invalid_input("At least one graph node, edge or path id is required.", "selection")
         return self._apply_graph_patches(state, patches)
 
     def set_active_path(
@@ -471,17 +475,30 @@ def _edge_id(graph: ReactionGraph, from_node_id: ID, to_node_id: ID) -> ID:
     return f"edge-{hashlib.sha256(payload).hexdigest()[:12]}"
 
 
-def _remove_item_ids(graph: ReactionGraph, node_ids: tuple[ID, ...], edge_ids: tuple[ID, ...]) -> tuple[ID, ...]:
+def _remove_item_ids(
+    graph: ReactionGraph,
+    node_ids: tuple[ID, ...],
+    edge_ids: tuple[ID, ...],
+    path_ids: tuple[ID, ...],
+) -> tuple[ID, ...]:
     normalized_node_ids = tuple(dict.fromkeys(node_id for node_id in node_ids if node_id))
     incident_edge_ids = {
         edge.id
         for edge in graph.edges
         if edge.from_node in normalized_node_ids or edge.to_node in normalized_node_ids
     }
+    incident_path_ids = {
+        path.id
+        for path in graph.paths
+        if any(node_id in normalized_node_ids for node_id in path.node_ids)
+    }
     normalized_edge_ids = tuple(
         dict.fromkeys(edge_id for edge_id in edge_ids if edge_id and edge_id not in incident_edge_ids)
     )
-    return normalized_node_ids + normalized_edge_ids
+    normalized_path_ids = tuple(
+        dict.fromkeys(path_id for path_id in path_ids if path_id and path_id not in incident_path_ids)
+    )
+    return normalized_node_ids + normalized_edge_ids + normalized_path_ids
 
 
 def _object_ids(objects: tuple[ChemicalObject, ...]) -> frozenset[ID]:
