@@ -1,0 +1,116 @@
+feature: 2026-05-22-graph-editor-wheel-minimap
+created: 2026-05-22
+
+steps:
+  - action: "Viewport Intent Helpers：扩展 graphViewport.ts，支持 anchor-preserving wheel zoom、minimap geometry 和 minimap center mapping"
+    exit_signal: "helper tests 证明 zoom clamp、anchor 保持、minimap node/window geometry 和 center mapping 稳定"
+    status: pending
+
+  - action: "Wheel / Pinch Surface Input：GraphCanvas 接入 scoped wheel handler，并保持按钮/pan/drop/drag/rubber-band/direct edge 不回退"
+    exit_signal: "component tests 证明 wheel 发送 workspace.set_viewport，graph surface 外/无 workspace 不发送，现有 viewport buttons 仍可用"
+    status: pending
+
+  - action: "Graph Minimap UI：新增 minimap overview、viewport window、click/drag navigation 和响应式样式"
+    exit_signal: "component tests 证明 minimap click/drag release 只发送一次 workspace.set_viewport，drag draft 不写 shell，窄屏不水平溢出"
+    status: pending
+
+  - action: "Verification And Scope Guard：跑 Web tests/build、必要 Python tests、浏览器桌面/窄屏验证"
+    exit_signal: "wheel zoom、minimap navigation、buttons、pan、node drag、rubber-band、direct edge、object drop 可用；scope grep 未新增 core/schema/autosave/history/export 变更"
+    status: pending
+
+checks:
+  - item: "Viewport helper 对 wheel delta 生成 zoom intent，zoom 始终在 0.35..2.5 内"
+    source: 验收场景
+    status: pending
+
+  - item: "Wheel zoom 以 pointer anchor 为中心，缩放后 anchor 对应 graph point 尽量保持在同一 screen point"
+    source: 验收场景
+    status: pending
+
+  - item: "Minimap geometry 可从 nodes、current viewport 和 minimap size 派生 node dots、graph bounds 和 viewport window"
+    source: 验收场景
+    status: pending
+
+  - item: "Minimap center mapping 保留 current zoom，只改变 viewport x/y"
+    source: 验收场景
+    status: pending
+
+  - item: "Graph surface 内 wheel 发送一次 workspace.set_viewport；payload 只包含 viewport"
+    source: 验收场景
+    status: pending
+
+  - item: "Graph surface 外 wheel 不发送 shell command"
+    source: 范围守护
+    status: pending
+
+  - item: "no session / no workspace / no nodes 时 wheel 不发送 shell command"
+    source: 范围守护
+    status: pending
+
+  - item: "ctrl/meta wheel 或 pinch-like wheel path 不绕过 zoom clamp"
+    source: 验收场景
+    status: pending
+
+  - item: "现有 Zoom In/Out、Fit、Reset buttons 仍发送 workspace.set_viewport"
+    source: 回归场景
+    status: pending
+
+  - item: "Pan mode pointer drag 仍发送 workspace.set_viewport，不被 wheel/minimap 改坏"
+    source: 回归场景
+    status: pending
+
+  - item: "Node drag、rubber-band selection、direct edge gesture 和 object drop 坐标换算不回退"
+    source: 回归场景
+    status: pending
+
+  - item: "Minimap 显示 node dots、viewport window 和 zoom percent"
+    source: 验收场景
+    status: pending
+
+  - item: "点击 minimap graph 区域发送一次 workspace.set_viewport，viewport center 对应点击 graph point"
+    source: 验收场景
+    status: pending
+
+  - item: "拖动 minimap viewport window 时显示 transient draft，drag 过程中不发送 shell command，release 后发送一次"
+    source: 验收场景
+    status: pending
+
+  - item: "Minimap 在窄屏布局中不造成页面级水平溢出，控件文字不重叠"
+    source: 验收场景
+    status: pending
+
+  - item: "不新增 Python core / Platform Shell command、Project Content schema、Browser Project Repository write、localStorage persistence、autosave、history stack、EnergyProfile 或 Report Export 变更"
+    source: 范围守护
+    status: pending
+
+  - item: "cd web && npm run test -- --run 通过"
+    source: 验收场景
+    status: pending
+
+  - item: "cd web && npm run build 通过"
+    source: 验收场景
+    status: pending
+
+  - item: "浏览器验证开发服务页面非空白、无 framework overlay、console clean；desktop/narrow 验证 wheel/minimap/viewport controls 无明显重叠或水平溢出"
+    source: 验收场景
+    status: pending
+
+  - item: "不把 viewport intent 做成前端本地 domain state patch"
+    source: 跨层纪律
+    status: pending
+
+  - item: "不新增 workspace.zoom、workspace.minimap 或 batch viewport command"
+    source: 范围守护
+    status: pending
+
+  - item: "不把 minimap drag draft / geometry / wheel delta 写入 ShellResponse、Project Content、Browser Project Repository 或 localStorage"
+    source: 范围守护
+    status: pending
+
+  - item: "不让 graph surface 外 wheel 阻止页面滚动"
+    source: 范围守护
+    status: pending
+
+  - item: "不引入第三方 minimap / diagramming dependency"
+    source: 范围守护
+    status: pending

@@ -45,8 +45,8 @@ items:
   - slug: graph-editor-wheel-minimap
     description: 补 wheel/pinch zoom 和 minimap navigation，继续通过 workspace.set_viewport 更新 viewport
     depends_on: [graph-editor-auto-layout]
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-05-22-graph-editor-wheel-minimap
     minimal_loop: false
     notes: Minimap 只读取 graph node bounds 和 current viewport；不另存 graph layout state
 
