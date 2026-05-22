@@ -25,68 +25,68 @@ steps:
 checks:
   - item: "Portability QA Matrix / Invalid Bundle Samples / Web Backup/Restore Guide / Manual Portability Boundary / Guide Verification Hooks 术语落地"
     source: 名词契约
-    status: pending
+    status: passed
 
   - item: "默认 fixture desktop E2E 能创建 browser project、导出 .rxnflow.zip、检查 manifest/content index entries、再导入并看到 Bundle imported"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "默认 fixture narrow E2E 能显示 bundle controls，执行至少一条 Import/Export Bundle 成功路径或错误路径，并保持无水平溢出、console clean"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Invalid Bundle Samples 至少覆盖 non-zip 或 missing manifest；Project Sidebar file input 导入时显示 invalid_bundle 或 zip_failed，且不激活坏项目"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "local-http E2E 继续覆盖真实 Python bridge 下 raw input persistence、Open Bridge、Save Bridge、Export Bundle、Import Bundle、再次 Open Bridge"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "用户指南说明 Web 导出前如有 bridge session 改动要先 Save Bridge Session；导入后需要显式 Open Bridge 才恢复 core session"
     source: 文档
-    status: pending
+    status: passed
 
   - item: "用户指南说明 .rxnflow.zip 包含 .rxnflow/、inputs/raw/、exports/，不包含云同步、浏览器外散落文件、live session 或未保存 bridge 改动"
     source: 文档
-    status: pending
+    status: passed
 
   - item: "开发者指南说明 Web bundle import/export 不调用 Python ProjectBundleService / project.import_bundle / project.export_bundle，只围绕 Browser Project Repository bytes 和 Web archive adapter"
     source: 文档
-    status: pending
+    status: passed
 
   - item: "开发者指南列出 npm run test:e2e、npm run test:e2e:local-http、npm run test -- --run 和 npm run build 的用途"
     source: 文档
-    status: pending
+    status: passed
 
   - item: "文档和测试中的错误 code 与源码一致：invalid_bundle、zip_failed、storage_failed 不写错"
     source: 文档
-    status: pending
+    status: passed
 
   - item: "不改 bundle schema、allowed roots、Project Content/Manifest schema"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不新增自动保存、自动打开、dirty tracking、live storage、cloud sync、account/auth、conflict merge"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不调用 Python bundle service 或新增 Shell bundle command"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不做 deep validation、schema migration、raw reparse、对象登记、能量重算或报告 bytes 生成"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不新增 OPFS/chunking、Worker、Service Worker、repository transaction API"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不把 QA helper 或 invalid sample generator 暴露为 production API"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "npm run test -- --run、npm run build、npm run test:e2e 和 npm run test:e2e:local-http 通过"
     source: 验证
-    status: pending
+    status: passed

@@ -1,7 +1,7 @@
 ---
 doc_type: roadmap
 slug: rxnflow-web-project-portability
-status: active
+status: completed
 created: 2026-05-22
 last_reviewed: 2026-05-22
 tags: [rxnflow, web, project-portability, browser-storage, project-bundle, raw-inputs, local-first]
@@ -365,7 +365,7 @@ type WebProjectPortabilityRoundtrip =
 6. **web-project-portability-qa-guides** — 补桌面/窄屏/local-http E2E、错误 bundle 样例和 Web 项目备份/恢复用户指南。
    - 所属模块：Portability QA & Guides
    - 依赖：`web-project-portability-roundtrip`
-   - 状态：planned
+   - 状态：done。已补默认 fixture desktop bundle backup/restore、narrow invalid bundle import、local-http roundtrip 证据，并更新 Web/CLI 用户指南与开发者 QA/边界指南。
 
 ## 6. 排期与推进建议
 
@@ -373,12 +373,12 @@ type WebProjectPortabilityRoundtrip =
 - 再做 `web-project-bundle-archive-adapter`，把 zip 安全协议和 summary 固定住，避免 UI feature 各自处理 zip。
 - `web-project-bundle-export` 和 `web-project-bundle-import` 已完成，用户已经能手动备份并恢复 browser-local project。
 - `web-project-portability-roundtrip` 已完成，用真实流程连接 bundle 与 local-http bridge，检查了 session 保存口径。
-- 下一步用 `web-project-portability-qa-guides` 收口真实浏览器回归、错误 bundle 样例和用户/开发者文档。
+- `web-project-portability-qa-guides` 已完成，真实浏览器回归、错误 bundle 样例和用户/开发者文档已收口。本 roadmap 的子 feature 均已 done。
 
 ## 7. 观察项
 
 - Web bundle archive adapter 已选择 `fflate` 并隔离在 `web/src/app/projectBundleArchive.ts`；后续 Sidebar export/import feature 不应直接散落调用 zip 依赖。
 - IndexedDB 对大 raw output 的容量和持久性仍不是可靠备份；本 roadmap 不做 OPFS/chunking，但后续可能需要单独 roadmap。
-- Project Sidebar 当前没有精确 dirty tracking；Export Bundle 前是否提示 Save Bridge Session 需要在 feature design 中用现有 bridge status 做保守处理。
-- Browser import 第一版如果写入中途失败，IndexedDB 没有跨 object 事务封装在现有 repository API 上暴露；feature design 需要决定是扩展 repository transaction API，还是接受失败后提示用户删除部分 project。
-- Core ProjectBundleService 已有更深的 Python validation；Web import 只能做 archive 安全和 shallow content validation，深校验仍应通过 Open Bridge 暴露。
+- Project Sidebar 当前没有精确 dirty tracking；当前采用 bridge open 时保守提示和用户指南说明导出前先 Save Bridge Session。后续若要自动判断未保存改动，应另起 dirty tracking / autosave feature。
+- Browser import 第一版如果写入中途失败，IndexedDB 没有跨 object transaction API；当前 UI 和指南暴露 partial import risk，后续如需 rollback/transaction 另起 repository transaction feature。
+- Core ProjectBundleService 已有更深的 Python validation；Web import 当前只做 archive 安全和 shallow content validation，深校验仍通过显式 Open Bridge / core ProjectContentValidator 暴露。

@@ -45,7 +45,7 @@ items:
   - slug: web-project-portability-qa-guides
     description: 补桌面/窄屏/local-http E2E、错误 bundle 样例和 Web 项目备份/恢复用户指南
     depends_on: [web-project-portability-roundtrip]
-    status: in-progress
+    status: done
     feature: 2026-05-22-web-project-portability-qa-guides
     minimal_loop: false
     notes: 收口用户可见指南，明确 .rxnflow.zip 是手动备份/迁移，不是云同步或 live storage
