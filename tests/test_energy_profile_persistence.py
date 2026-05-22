@@ -18,7 +18,7 @@ from rxnflow.energy_profile_codec import (
     energy_profiles_section_from_dict,
     energy_profiles_section_to_dict,
 )
-from rxnflow.models import ChemicalObject, EnergyOptions, EnergyValue, ReactionGraph, ReactionNode, ReactionPath
+from rxnflow.models import ChemicalObject, CorrectionPolicy, EnergyOptions, EnergyValue, ReactionGraph, ReactionNode, ReactionPath
 
 
 PROJECT_ID = "project-a"
@@ -46,6 +46,8 @@ class EnergyProfilePersistenceTest(unittest.TestCase):
         payload = section.value
         assert payload is not None
         self.assertEqual(payload["schema_version"], ENERGY_PROFILES_SCHEMA_VERSION)
+        self.assertEqual(payload["profiles"][0]["options"]["energy_source"], "auto")
+        self.assertIsNone(payload["profiles"][0]["options"]["correction_policy"])
         self.assertEqual(payload["profiles"][0]["points"][1]["missing_reason"], "missing_energy")
         self.assertIsNone(payload["profiles"][0]["points"][1]["absolute_energy"])
         self.assertEqual(payload["profiles"][0]["warnings"][0]["target"], "node-b")
@@ -55,6 +57,7 @@ class EnergyProfilePersistenceTest(unittest.TestCase):
         self.assertTrue(restored.ok, restored.error)
         restored_profile = restored.value[0]  # type: ignore[index]
         self.assertEqual(restored_profile.options.baseline_node_id, "node-a")
+        self.assertEqual(restored_profile.options.energy_source, "auto")
         self.assertEqual(restored_profile.points[1].missing_reason, "missing_energy")
         self.assertIsNone(restored_profile.points[1].relative_energy)
         self.assertEqual(restored_profile.warnings[0].code, "missing_energy")
@@ -120,6 +123,8 @@ class EnergyProfilePersistenceTest(unittest.TestCase):
             ({**valid, "profiles": [valid["profiles"][0], valid["profiles"][0]]}, (graph,), "invalid_input", profile.id),
             (_with_profile_patch(valid, {"options": {**valid["profiles"][0]["options"], "output_unit": "hartree"}}), (graph,), "invalid_input", "profiles[0].options.output_unit"),
             (_with_profile_patch(valid, {"options": {**valid["profiles"][0]["options"], "energy_key": ""}}), (graph,), "invalid_input", "profiles[0].options.energy_key"),
+            (_with_profile_patch(valid, {"options": {**valid["profiles"][0]["options"], "energy_source": "bad-source"}}), (graph,), "invalid_input", "profiles[0].options.energy_source"),
+            (_with_profile_patch(valid, {"options": {**valid["profiles"][0]["options"], "correction_policy": {"mode": "bad"}}}), (graph,), "invalid_input", "profiles[0].options.correction_policy.mode"),
             (_with_point_patch(valid, 0, {"absolute_energy": -62750.9474}), (graph,), "invalid_input", "profiles[0].points[0].absolute_energy"),
             (_with_point_patch(valid, 0, {"absolute_energy": {"value": 1, "unit": "hartree", "reference": None}}), (graph,), "invalid_input", "profiles[0].points[0].absolute_energy.unit"),
             (_with_point_patch(valid, 0, {"relative_energy": None}), (graph,), "invalid_input", "profiles[0].points[0]"),
@@ -164,6 +169,74 @@ class EnergyProfilePersistenceTest(unittest.TestCase):
 
         self.assert_error(result, "invalid_input", "profiles[0].warnings[0]")
 
+    def test_energy_source_round_trips_and_legacy_options_default_to_auto(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            ReactionNode("node-b", "species", "B", ("object-b",)),
+            path=("node-a", "node-b"),
+        )
+        profile = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (
+                _object("object-a", -100.0, thermochemistry={"gibbs": EnergyValue(-99.90, "hartree")}),
+                _object("object-b", -100.0, thermochemistry={"gibbs": EnergyValue(-99.88, "hartree")}),
+            ),
+            replace(_options(), energy_key="gibbs", energy_source="thermochemistry"),
+        ).value
+        assert profile is not None
+
+        section = energy_profiles_section_to_dict(PROJECT_ID, (profile,), graphs=(graph,)).value
+        assert section is not None
+        self.assertEqual(section["profiles"][0]["options"]["energy_source"], "thermochemistry")
+
+        restored = energy_profiles_section_from_dict(PROJECT_ID, section, graphs=(graph,))
+        self.assertTrue(restored.ok, restored.error)
+        self.assertEqual(restored.value[0].options.energy_source, "thermochemistry")  # type: ignore[index]
+
+        legacy = deepcopy(section)
+        del legacy["profiles"][0]["options"]["energy_source"]  # type: ignore[index]
+        restored_legacy = energy_profiles_section_from_dict(PROJECT_ID, legacy, graphs=(graph,))
+        self.assertTrue(restored_legacy.ok, restored_legacy.error)
+        self.assertEqual(restored_legacy.value[0].options.energy_source, "auto")  # type: ignore[index]
+
+    def test_correction_policy_round_trips_and_legacy_options_default_to_none(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            path=("node-a",),
+        )
+        profile = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (_object("object-a", -100.0),),
+            replace(
+                _options(),
+                include_corrections=True,
+                correction_policy=CorrectionPolicy(mode="kinds", kinds=("solvation",)),
+            ),
+        ).value
+        assert profile is not None
+
+        section = energy_profiles_section_to_dict(PROJECT_ID, (profile,), graphs=(graph,)).value
+        assert section is not None
+        self.assertEqual(section["profiles"][0]["options"]["correction_policy"]["mode"], "kinds")
+        self.assertEqual(section["profiles"][0]["options"]["correction_policy"]["kinds"], ["solvation"])
+
+        restored = energy_profiles_section_from_dict(PROJECT_ID, section, graphs=(graph,))
+        self.assertTrue(restored.ok, restored.error)
+        policy = restored.value[0].options.correction_policy  # type: ignore[index]
+        assert policy is not None
+        self.assertEqual(policy.mode, "kinds")
+        self.assertEqual(policy.kinds, ("solvation",))
+
+        legacy = deepcopy(section)
+        del legacy["profiles"][0]["options"]["correction_policy"]  # type: ignore[index]
+        restored_legacy = energy_profiles_section_from_dict(PROJECT_ID, legacy, graphs=(graph,))
+        self.assertTrue(restored_legacy.ok, restored_legacy.error)
+        self.assertIsNone(restored_legacy.value[0].options.correction_policy)  # type: ignore[index]
+
     def test_scope_guard_does_not_recompute_or_touch_other_domains(self) -> None:
         sources = (
             Path("rxnflow/content_store.py").read_text(encoding="utf-8"),
@@ -206,11 +279,16 @@ def _graph(*nodes: ReactionNode, path: tuple[str, ...]) -> ReactionGraph:
     )
 
 
-def _object(object_id: str, electronic: float) -> ChemicalObject:
+def _object(
+    object_id: str,
+    electronic: float,
+    thermochemistry: dict[str, EnergyValue] | None = None,
+) -> ChemicalObject:
     return ChemicalObject(
         id=object_id,
         label=object_id,
         energies={"electronic": EnergyValue(electronic, "hartree")},
+        thermochemistry=thermochemistry or {},
         registry_fingerprint=object_id,
     )
 

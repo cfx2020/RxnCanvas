@@ -5,7 +5,7 @@ component: web-runtime-boundary-decision
 status: current
 summary: RxnFlow Web Workbench MVP 的浏览器、Shell Client、Python core 和 HTTP/serverless 边界
 tags: [web, runtime-boundary, local-first, platform-shell]
-last_reviewed: 2026-05-16
+last_reviewed: 2026-05-20
 ---
 
 # Web Runtime Boundary
@@ -105,12 +105,65 @@ assert response["ok"] is False
 assert response["error"]["code"] == "invalid_input"
 ```
 
+## Local HTTP Shell Bridge
+
+当前已落地本地开发用 HTTP bridge，可用标准库启动，不引入 FastAPI、Flask、Django 或 Vercel route：
+
+```bash
+python3 -m rxnflow.local_bridge --host 127.0.0.1 --port 8765
+```
+
+可用 endpoint：
+
+- `GET /health`：返回 bridge service、version 和 `ok=true`。
+- `POST /api/shell`：接收 JSON-safe `ShellCommandPayload`，返回标准 `ShellResponse`。
+
+同一个 bridge server 进程持有同一个 `PlatformShellService(AppKernel())`，因此 `fixture.run` 返回的 `session_id` 可在下一次 `workbench.snapshot` 中继续使用。server 重启后 session 丢失；这不是项目持久化机制，也不是云同步方案。
+
+本地 bridge 默认只监听 `127.0.0.1`。它用于本机开发、后续 Web HTTP transport 和桌面壳层验证，不是生产公网服务。Bridge 层错误会包装成 JSON ShellResponse shape，例如 `invalid_json`、`not_found`、`method_not_allowed`；领域命令错误继续由 Platform Shell 返回 `invalid_input` 等 code。
+
+## Import Preview Payload
+
+`import.preview` 当前可接收三类 JSON-safe source：
+
+- `path`：使用本机 `source_path`，继续服务 CLI、本地 Python path 和测试。
+- `inline_bytes`：使用 `filename` 与 `bytes_base64` 传小文件。Platform Shell 会把 bytes 写入临时文件，复用现有 Import Workflow / Project Store / Parser Registry，返回前清理临时文件；项目内 raw file 副本仍由 Project Store 写入 `inputs/raw/`。session 没有 core `project_path` 时，Platform Shell 会创建进程内 Temporary Preview Project，让 local-http 页面能完成真实 parser preview。
+- `browser_storage`：预留给后续 Browser Project Repository adapter；Python bridge 当前不读 IndexedDB/OPFS，返回 `storage_object_missing target=storage_path`。
+
+Web Import Inbox 在 fixture runtime 下仍传 `source_paths`，在 local-http runtime 下优先把浏览器 `File` 编码为 `sources[].kind=inline_bytes`。inline payload 有大小限制；超限时 Web 直接显示 `payload_too_large target=bytes_base64`，不发 shell command。这条桥接只解决小文件 preview，不替代长期 raw storage、Browser Project Repository、Project Content 保存或大文件上传协议。
+
+## Project Content Bridge
+
+Browser Project Repository 保存在浏览器 IndexedDB 中，Python bridge 不能也不应该直接读取该仓储。因此 Web Project Content Bridge 使用显式 bytes payload，而不是把 Browser Project Ref 当成 Python filesystem path。
+
+当前规则：
+
+- 打开 browser project 只更新 `ProjectSidebarState` 和 shallow validation，不自动创建 `PlatformSession`。
+- 用户点击 Open Bridge 时，Web 从 Browser Project Repository 读取 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json`，编码为 `project.open(content_files, load_content=true)` 的 JSON-safe base64 payload。
+- Platform Shell 收到 `content_files` 后 materialize 到进程内临时 project directory，再复用既有 ProjectStore / ProjectContentStore 打开与校验流程。
+- 用户点击 Save Bridge Session 时，Web 调用 `project.save_content(include_content_files=true)`；Platform Shell 写回临时 project directory，并返回 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` bytes，Web 再覆盖写回 Browser Project Repository。
+- `project.open(project_path)` 和 `project.save_content(session_id)` 的本地 filesystem 行为保持可用；`include_content_files=false` 时不返回 bytes payload。
+
+该桥接不实现 `.rxnflow.zip` bundle IO、云存储、账号同步、OPFS/chunking、Worker、Service Worker 或 browser_storage import adapter。Web 只搬运 content files bytes 和 checksum，不在前端解析或重写 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 领域内容。
+
+## Export Artifact Persistence
+
+Report Export Panel 的 runtime artifact bytes 仍来自 `export.profile` 返回的 `ShellArtifact.bytes_base64`。当前 Web 只在 active browser project 存在时做 browser-local 持久化：
+
+- Web 根据当前 basename 和 format 生成 `exports/{basename}.{format}`，只支持 PNG/CDXML/XLSX。
+- Web 把 inline bytes 写入 Browser Project Repository object，metadata 标记 `kind=export_artifact`、artifact id 和 format。
+- Web upsert `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中该 section 的 checksum。
+- Project Sidebar 随后重新做 shallow validation；这只验证 browser-local content files 可读和 checksum 对齐，不替代 Python ProjectContentValidator 深校验。
+
+没有 active browser project、include bytes 关闭、artifact 缺少 inline bytes 或写入失败时，Web 仍保留 runtime artifact summary 和可用 download link；持久化失败会显示 warning，不会让前端重新生成 artifact bytes。
+
 ## 明确不做
 
 - 不在本 feature 初始化 `package.json`、`web/`、Vite、Next.js、React、Tailwind 或 Playwright。
-- 不新增 FastAPI、Flask、Django、Vercel route 或真实 HTTP server。
-- 不实现真实 IndexedDB / OPFS adapter。
-- 不实现浏览器 File / Blob / ArrayBuffer 到 parser 的大文件桥接。
+- 不新增 FastAPI、Flask、Django、Vercel route 或生产 HTTP server；当前只有本机开发用标准库 bridge。
+- 不实现 OPFS adapter、Service Worker 或大文件 chunking；真实 IndexedDB-first Browser Project Repository 已在 Web Workbench 中承担 browser-local content files 和 export artifact bytes object 保存。
+- 不实现浏览器 File / Blob / ArrayBuffer 到 parser 的大文件桥接、chunking、OPFS payload store 或 Worker pool。
+- 不在前端生成 PNG/CDXML/XLSX bytes，不新增 CDX/PDF/PPTX/SVG/CSV 等导出格式。
 - 不新增云存储、账号、权限、同步、队列或外部量化计算调度。
 - 不修改 parser、registry、reaction graph、energy engine 或 report export 的领域行为。
 

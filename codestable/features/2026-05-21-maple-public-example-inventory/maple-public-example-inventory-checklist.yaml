@@ -1,0 +1,49 @@
+feature: 2026-05-21-maple-public-example-inventory
+status: done
+created: 2026-05-21
+
+steps:
+  - action: "Design and roadmap gate：建立 feature design/checklist，把 roadmap item 标为 in-progress，并补 roadmap candidate_file_ids 契约"
+    exit_signal: "feature checklist 与 roadmap YAML 通过"
+    status: done
+  - action: "MAPLE source entries：补 MAPLE scan/TS/MD/freq 代表文件到 sources.yaml"
+    exit_signal: "MAPLE source 覆盖 sp/opt/scan/ts/irc/md/freq 代表 file ids"
+    status: done
+  - action: "Support matrix candidate/reference links：新增 candidate_file_ids loader guard 和 MAPLE support matrix entries"
+    exit_signal: "candidate/reference policy cross-check 通过，错误引用会失败"
+    status: done
+  - action: "Docs and acceptance：回写 docs/architecture/roadmap，补验收报告并运行验证"
+    exit_signal: "checks 全 passed，roadmap item done，YAML/focused/full tests 通过"
+    status: done
+
+checks:
+  - item: "sources.yaml 的 MAPLE source 至少包含 sp、opt、scan、ts、irc、md、freq 代表 file ids"
+    status: passed
+  - item: "MAPLE sp/opt candidate files 进入 candidate_file_ids，不进入 reference_file_ids"
+    status: passed
+  - item: "MAPLE scan/path/MD/frequency files 进入 reference_file_ids，不进入 executable fixture_ids"
+    status: passed
+  - item: "support matrix 有 maple-output-public-candidates entry，status 为 candidate"
+    status: passed
+  - item: "support matrix 有 MAPLE scan/path/MD/frequency reference entries，status 为 reference-only"
+    status: passed
+  - item: "loader 拒绝未知 candidate_file_ids"
+    status: passed
+  - item: "loader 拒绝 reference-only file 出现在 candidate_file_ids"
+    status: passed
+  - item: "loader 拒绝 candidate file 出现在 reference_file_ids"
+    status: passed
+  - item: "reference_only_entries() 仍只返回 reference-only entries，不返回 candidate entries"
+    status: passed
+  - item: "docs/architecture 明确 MAPLE public inventory 不 vendor 文件、不新增 runtime parser 支持"
+    status: passed
+  - item: "不新增 MAPLE executable fixture"
+    status: passed
+  - item: "不复制 MAPLE example 文件进 tests/fixtures/parsers/files/"
+    status: passed
+  - item: "不修改 parser runtime、ImportRegistryWorkflow、Platform Shell 或 Web UI"
+    status: passed
+  - item: "不声明 MAPLE scan/path/MD/frequency 已支持"
+    status: passed
+  - item: "不解决 MAPLE license 再分发判断"
+    status: passed

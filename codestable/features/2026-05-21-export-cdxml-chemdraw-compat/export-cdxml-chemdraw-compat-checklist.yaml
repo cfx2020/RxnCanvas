@@ -1,0 +1,45 @@
+feature: 2026-05-21-export-cdxml-chemdraw-compat
+status: in-progress
+created: 2026-05-21
+
+steps:
+  - action: "Document/page attributes：补 root/page/group document shape"
+    exit_signal: "XML root/page/group attributes tests 通过"
+    status: done
+  - action: "Object shape discipline：补 graphic/arrow/text 的 Z/BoundingBox/LineWidth/Justification"
+    exit_signal: "所有 generated graphic/arrow/text 有 id/Z 和必要 geometry"
+    status: done
+  - action: "Compatibility regression tests：补 unique ids、state line count、arrow shape、text shape、CDX unsupported"
+    exit_signal: "focused report export tests 通过"
+    status: done
+  - action: "Scope validation：跑全量 Python tests 和 YAML 校验"
+    exit_signal: "测试通过，未引入 CDX/GUI/外部转换依赖"
+    status: done
+
+checks:
+  - item: "CDXML root 有 CreationProgram=RxnFlow、LabelFont、CaptionFont、LineWidth、color、bgcolor"
+    status: passed
+  - item: "page 有 BoundingBox、HeaderPosition、FooterPosition"
+    status: passed
+  - item: "group 有 Integral=yes、BoundingBox、Z"
+    status: passed
+  - item: "所有带 id 的 generated elements id 唯一"
+    status: passed
+  - item: "state line graphic 有 GraphicType=Line、LineWidth、BoundingBox、Z"
+    status: passed
+  - item: "arrow 有 Tail3D、Head3D、BoundingBox、FillType、LineWidth、Z"
+    status: passed
+  - item: "text <t> 有 p、BoundingBox、CaptionJustification、Justification、LineHeight、Z，子 <s> 有 font/size/color/face"
+    status: passed
+  - item: "missing point 不生成 state line"
+    status: passed
+  - item: "请求 cdx 仍返回 invalid_input target=formats"
+    status: passed
+  - item: "不新增 CDX 或其他 ExportFormat"
+    status: passed
+  - item: "不引入 ChemDraw GUI、PyQt、Open Babel、RDKit 或 binary converter"
+    status: passed
+  - item: "不生成 molecule-level CDXML 或 reaction scheme"
+    status: passed
+  - item: "不修改 PNG/XLSX/Web/Project Content"
+    status: passed

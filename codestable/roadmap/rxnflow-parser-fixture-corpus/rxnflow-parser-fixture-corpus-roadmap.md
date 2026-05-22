@@ -1,9 +1,9 @@
 ---
 doc_type: roadmap
 slug: rxnflow-parser-fixture-corpus
-status: active
+status: completed
 created: 2026-05-15
-last_reviewed: 2026-05-16
+last_reviewed: 2026-05-21
 tags: [rxnflow, parser, fixture-corpus, gaussian, orca, maple, xyz, extxyz]
 related_requirements: []
 related_architecture: [ARCHITECTURE, core-platform]
@@ -363,3 +363,7 @@ def assert_parser_fixture_snapshot(
 - Gaussian / ORCA 真实 fixture 可能含有路径、用户名、主机名、scratch 路径和许可相关信息，必须先建立脱敏规则；当前 Gaussian 覆盖使用项目自有 synthetic log，不代表真实 Gaussian 输出支持矩阵。
 - 当前 requirements 还没有单独的 parser/import format support 文档；本 roadmap 完成的是开发/测试侧 fixture corpus，不新增用户可见格式支持承诺，parser/import format support requirement 应在支持边界对外暴露时再补。
 - 当前 architecture 已记录 parser fixture harness、XYZ/extxyz synthetic coverage、Gaussian/ORCA cclib synthetic coverage、MAPLE synthetic/reference-only coverage、fixture-backed support matrix 和 import preview parser regression 已落地；真实 Gaussian/ORCA/MAPLE fixture coverage 与真实版本支持边界仍待补，不应把未覆盖的程序版本写成已支持。
+
+## 8. 变更日志
+
+- 2026-05-21：8 个子 feature 均已 `done`，主文档状态标为 `completed`；保留真实 Gaussian/ORCA/MAPLE 版本覆盖和对外 parser support requirement 作为后续规划观察项。

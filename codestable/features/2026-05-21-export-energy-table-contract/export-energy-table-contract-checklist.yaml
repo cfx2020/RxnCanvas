@@ -1,0 +1,56 @@
+feature: 2026-05-21-export-energy-table-contract
+status: in-progress
+created: 2026-05-21
+
+steps:
+  - action: "Schema helper：新增 schema version、column lookup helper 和 column uniqueness tests"
+    exit_signal: "所有 column key 唯一，第一列仍为 structure_name"
+    status: done
+  - action: "Header mapping：新增样表 header normalization helper，覆盖 gas/solution/shermo/profile 常见列和未知 entropy 列"
+    exit_signal: "用户 workbook 表头中的稳定列能映射，Sgau/Swhit/RT 原始列返回 None"
+    status: done
+  - action: "Row merge contract：补 manual rows / object rows / profile rows 的优先级测试，确保不补 0、不覆盖手工 relative energy"
+    exit_signal: "manual row 的 existing values 保持，missing field 不出现在 values"
+    status: done
+  - action: "Artifact metadata：XLSX artifact metadata 带 schema version 和 column count，格式枚举仍不含 CSV/CDX"
+    exit_signal: "XLSX export metadata 可审计，csv / cdx 仍 invalid_input"
+    status: done
+  - action: "验证与范围守护：跑 report export tests、全量 Python tests 和 roadmap YAML 校验"
+    exit_signal: "测试通过，未触碰 PNG/CDXML/Web 格式枚举或 parser/import/project schema"
+    status: done
+
+checks:
+  - item: "ENERGY_TABLE_SCHEMA_VERSION 为稳定字符串，XLSX metadata 带出该值"
+    status: passed
+  - item: "ENERGY_TABLE_COLUMNS 所有 key 唯一，第一列 key 为 structure_name、label 为 Structure"
+    status: passed
+  - item: "energy_table_columns_by_key()[\"egas_hartree\"] 返回 Hartree 列，unit/source 正确"
+    status: passed
+  - item: "normalize_energy_table_header(\"Egas\", context=\"hartree\") 返回 egas_hartree"
+    status: passed
+  - item: "normalize_energy_table_header(\"basis function\", context=\"solution\") 返回 solution_basis_functions"
+    status: passed
+  - item: "normalize_energy_table_header(\"Ggas（shermo+1M）\", context=\"hartree\") 返回 ggas_shermo_1m_hartree"
+    status: passed
+  - item: "normalize_energy_table_header(\"Sgau,tran\") 返回 None，不把 entropy 原始列误映射成能量列"
+    status: passed
+  - item: "ChemicalObject 只有 electronic energy 时，row 写入 egas_hartree / egas_kcal_mol，不写 basis function"
+    status: passed
+  - item: "ChemicalObject 有 thermochemistry[\"ggas_1m\"] 时，row 写入 Ggas+1M 成对列"
+    status: passed
+  - item: "Manual EnergyTableRow 中已有 relative_energy 时，profile merge 不覆盖该值"
+    status: passed
+  - item: "Profile-only 输入时，rows 来自 EnergyPoint label，missing point 保留 missing_reason"
+    status: passed
+  - item: "请求 csv 或 cdx 仍返回 unsupported/invalid format"
+    status: passed
+  - item: "不新增 ExportFormat，不开放 CSV/CDX"
+    status: passed
+  - item: "不读取用户 workbook 原文件"
+    status: passed
+  - item: "不修改 PNG/CDXML writer 或 Web Report Export Panel"
+    status: passed
+  - item: "不新增 parser、ChemicalObject、Project Content 或 Web repository 字段"
+    status: passed
+  - item: "不把缺失 basis/entropy/standard-state 字段写成 0"
+    status: passed

@@ -5,7 +5,7 @@ import unittest
 
 from rxnflow import run_core_fixture_vertical_slice
 from rxnflow.graph import ReactionGraphService
-from rxnflow.models import GraphPatch, ReactionEdge, ReactionNode, ReactionPath
+from rxnflow.models import GraphPatch, ReactionEdge, ReactionNode, ReactionNodeCompositionTerm, ReactionPath
 
 
 class ReactionGraphProtocolTest(unittest.TestCase):
@@ -45,6 +45,90 @@ class ReactionGraphProtocolTest(unittest.TestCase):
 
         self.assertTrue(result.ok, result.error)
         self.assertEqual(result.value.nodes, (node,))  # type: ignore[union-attr]
+        self.assertEqual(result.value.nodes[0].composition[0].coefficient, 1.0)  # type: ignore[union-attr]
+
+    def test_composition_terms_are_authority_and_project_chemical_object_ids(self) -> None:
+        service, graph_id = _service_with_graph()
+        node = ReactionNode(
+            id="node-combo",
+            kind="species",
+            label="A + 2B",
+            composition=(
+                ReactionNodeCompositionTerm("object-a", 1.0),
+                ReactionNodeCompositionTerm("object-b", 2.0, role="reagent"),
+                ReactionNodeCompositionTerm("object-a", -0.5, label="A correction basis"),
+            ),
+        )
+
+        result = service.apply_patch(
+            "project-a",
+            graph_id,
+            (GraphPatch("add_node", node=node),),
+            object_ids={"object-a", "object-b"},
+        )
+
+        self.assertTrue(result.ok, result.error)
+        stored = result.value.nodes[0]  # type: ignore[union-attr]
+        self.assertEqual([term.object_id for term in stored.composition], ["object-a", "object-b", "object-a"])
+        self.assertEqual([term.coefficient for term in stored.composition], [1.0, 2.0, -0.5])
+        self.assertEqual(stored.chemical_object_ids, ("object-a", "object-b"))
+
+    def test_update_node_composition_validates_coefficients_and_missing_objects(self) -> None:
+        service, graph_id = _service_with_graph()
+        service.apply_patch(
+            "project-a",
+            graph_id,
+            (GraphPatch("add_node", node=ReactionNode("node-r", "species", "R", ("object-r",))),),
+            object_ids={"object-r", "object-a"},
+        )
+
+        updated = service.apply_patch(
+            "project-a",
+            graph_id,
+            (
+                GraphPatch(
+                    "update_node",
+                    id="node-r",
+                    patch={"composition": (ReactionNodeCompositionTerm("object-a", 2.0),)},
+                ),
+            ),
+            object_ids={"object-r", "object-a"},
+        )
+        bad_coefficient = service.apply_patch(
+            "project-a",
+            graph_id,
+            (
+                GraphPatch(
+                    "update_node",
+                    id="node-r",
+                    patch={"composition": (ReactionNodeCompositionTerm("object-a", 0.0),)},
+                ),
+            ),
+            object_ids={"object-r", "object-a"},
+        )
+        missing_object = service.apply_patch(
+            "project-a",
+            graph_id,
+            (
+                GraphPatch(
+                    "update_node",
+                    id="node-r",
+                    patch={"composition": (ReactionNodeCompositionTerm("object-missing", 1.0),)},
+                ),
+            ),
+            object_ids={"object-r", "object-a"},
+        )
+        graph_after_errors = service.apply_patch("project-a", graph_id, ()).value
+
+        self.assertTrue(updated.ok, updated.error)
+        self.assertEqual(updated.value.nodes[0].chemical_object_ids, ("object-a",))  # type: ignore[union-attr]
+        self.assertFalse(bad_coefficient.ok)
+        self.assertEqual(bad_coefficient.error.code, "invalid_input")  # type: ignore[union-attr]
+        self.assertEqual(bad_coefficient.error.target, "composition")  # type: ignore[union-attr]
+        self.assertFalse(missing_object.ok)
+        self.assertEqual(missing_object.error.code, "graph_invalid")  # type: ignore[union-attr]
+        self.assertEqual(missing_object.error.target, "object_id")  # type: ignore[union-attr]
+        self.assertEqual(graph_after_errors.nodes[0].chemical_object_ids, ("object-a",))
 
     def test_add_edge_set_path_and_list_paths(self) -> None:
         service, graph_id = _service_with_graph()
@@ -231,7 +315,7 @@ class ReactionGraphProtocolTest(unittest.TestCase):
         self.assertNotIn("compute_fixture_profile", source)
         self.assertNotIn("EnergyProfile", source)
         self.assertNotIn("ExportArtifact", source)
-        self.assertNotIn("stoichiometric", source)
+        self.assertIn("composition", source)
 
 
 def _service_with_graph() -> tuple[ReactionGraphService, str]:

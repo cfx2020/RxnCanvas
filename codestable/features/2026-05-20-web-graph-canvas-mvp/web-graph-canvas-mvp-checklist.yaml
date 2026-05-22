@@ -1,0 +1,104 @@
+feature: 2026-05-20-web-graph-canvas-mvp
+created: 2026-05-20
+
+steps:
+  - action: "Workspace Projection And Fixture Commands：扩展 Web shell DTO 和 fixture transport，支持 workspace command success/error/idempotent paths"
+    exit_signal: "ShellClient tests 能调用 open/add/connect/set_path，返回 JSON-safe workspace graph"
+    status: done
+
+  - action: "Graph Canvas UI Skeleton：新增 Graph Canvas component，显示 toolbar、empty/session state、nodes/edges/paths 和 preview panel"
+    exit_signal: "Workbench tests 能看到 graph canvas、workspace preview counts 和 fixture nodes"
+    status: done
+
+  - action: "Command Integration：WorkbenchShell 编排 open/add/connect/set_path，成功后更新 workspace/graph counts，失败时显示 shell error"
+    exit_signal: "测试能通过按钮添加对象节点、连接两个节点、设置 active path"
+    status: done
+
+  - action: "I18n And Responsive Styling：新增双语文案和响应式样式，长 node/object/path id 不撑破布局"
+    exit_signal: "中文测试覆盖主文案；桌面/窄屏浏览器无水平溢出"
+    status: done
+
+  - action: "Verification And Scope Guard：跑 Web test/build、Python 单测、真实浏览器桌面/窄屏验证和范围 grep"
+    exit_signal: "npm run test、npm run build、python3 -m unittest discover 通过；scope grep 未触碰 core graph/energy/export/cloud"
+    status: done
+
+checks:
+  - item: "首屏无 session 时 Graph Canvas 显示可见空态，workspace commands disabled"
+    source: 验收场景
+    status: passed
+
+  - item: "Fixture Run 后 Graph Canvas 展示 workspace graph id、Object A / Object B 节点、edge 和 preview counts"
+    source: 验收场景
+    status: passed
+
+  - item: "点击 Open Workspace 可重复刷新 workspace，不丢失已有 nodes/edges"
+    source: 验收场景
+    status: passed
+
+  - item: "有已登记对象时可选择对象并添加 species node；新 node 出现在画布，object id 原样可见"
+    source: 验收场景
+    status: passed
+
+  - item: "选择两个不同 node 后可提交 connect；edge 出现在画布，重复 connect 不新增重复 edge"
+    source: 验收场景
+    status: passed
+
+  - item: "点击 Set Active Path 后 active path id 和 path node order 可见"
+    source: 验收场景
+    status: passed
+
+  - item: "workspace command error 显示 error code/message/target，不吞掉失败"
+    source: 验收场景
+    status: passed
+
+  - item: "中文 locale 下 Graph Canvas 静态文案变为简体中文；node id、object id、path id、warning code 保持原样"
+    source: i18n
+    status: passed
+
+  - item: "不从 pending/failed import item 生成 graph node；只使用已登记 objects/workspace palette"
+    source: 范围守护
+    status: passed
+
+  - item: "不直接 mutate WorkbenchDomainState.workspace.graph；graph 变化只来自 ShellClient response"
+    source: 范围守护
+    status: passed
+
+  - item: "不调用 energy.compute、export.profile 或 project.save_content"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 Python ReactionGraphService、GraphEditorWorkspaceService、GraphPatch、Project Content codec 或 Energy Engine"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增真实 drag/drop、自由拖动、自动布局、缩放/平移持久化"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 Object Registry Panel active object selection 写入 Workspace Selection"
+    source: 范围守护
+    status: passed
+
+  - item: "不翻译 node id、object id、path id、edge id、parser id 或 warning/error code"
+    source: i18n
+    status: passed
+
+  - item: "不新增 HTTP API、cloud SDK、账号系统或持久同步"
+    source: 范围守护
+    status: passed
+
+  - item: "npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "真实浏览器桌面和窄屏验证节点、edge、toolbar、preview 无重叠、无水平溢出"
+    source: 验收场景
+    status: passed

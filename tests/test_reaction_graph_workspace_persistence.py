@@ -21,7 +21,16 @@ from rxnflow.graph_workspace_codec import (
     workspaces_section_to_dict,
 )
 from rxnflow.graph import ReactionGraphService
-from rxnflow.models import ChemicalObject, EnergyValue, GraphPatch, ReactionEdge, ReactionGraph, ReactionNode, ReactionPath
+from rxnflow.models import (
+    ChemicalObject,
+    EnergyValue,
+    GraphPatch,
+    ReactionEdge,
+    ReactionGraph,
+    ReactionNode,
+    ReactionNodeCompositionTerm,
+    ReactionPath,
+)
 from rxnflow.project import ProjectStore
 from rxnflow.workspace import (
     CanvasViewport,
@@ -46,11 +55,65 @@ class ReactionGraphWorkspacePersistenceTest(unittest.TestCase):
         self.assertEqual(section["project_id"], "project-a")
         self.assertEqual(section["graphs"][0]["nodes"][0]["position"], [12.5, -4.0])
         self.assertEqual(section["graphs"][0]["nodes"][0]["chemical_object_ids"], ["object-a"])
+        self.assertEqual(
+            section["graphs"][0]["nodes"][0]["composition"],
+            [
+                {
+                    "object_id": "object-a",
+                    "coefficient": 1.0,
+                    "role": None,
+                    "label": None,
+                    "metadata": {},
+                }
+            ],
+        )
         self.assertEqual(section["graphs"][0]["edges"][0]["from_node"], "node-a")
         self.assertEqual(section["graphs"][0]["paths"][0]["node_ids"], ["node-a", "node-b"])
 
         decoded = reaction_graphs_section_from_dict("project-a", section, object_ids=_object_ids())
 
+        self.assertTrue(decoded.ok, decoded.error)
+        self.assertEqual(decoded.value, (graph,))
+
+    def test_reaction_graph_section_loads_legacy_nodes_without_composition(self) -> None:
+        section = reaction_graphs_section_to_dict("project-a", (_graph(),), object_ids=_object_ids()).value
+        assert section is not None
+        del section["graphs"][0]["nodes"][0]["composition"]
+
+        decoded = reaction_graphs_section_from_dict("project-a", section, object_ids=_object_ids())
+
+        self.assertTrue(decoded.ok, decoded.error)
+        node = decoded.value[0].nodes[0]  # type: ignore[index]
+        self.assertEqual(node.chemical_object_ids, ("object-a",))
+        self.assertEqual(node.composition, (ReactionNodeCompositionTerm("object-a"),))
+
+    def test_reaction_graph_section_round_trips_explicit_composition(self) -> None:
+        graph = _graph_with_patch(
+            _graph(),
+            nodes=(
+                ReactionNode(
+                    id="node-combo",
+                    kind="species",
+                    label="A + 2B",
+                    composition=(
+                        ReactionNodeCompositionTerm("object-a", 1.0),
+                        ReactionNodeCompositionTerm("object-b", 2.0, role="reagent", label="B"),
+                    ),
+                    position=(1.0, 2.0),
+                ),
+            ),
+            edges=(),
+            paths=(),
+        )
+
+        encoded = reaction_graphs_section_to_dict("project-a", (graph,), object_ids=_object_ids())
+        self.assertTrue(encoded.ok, encoded.error)
+        stored = encoded.value["graphs"][0]["nodes"][0]  # type: ignore[index]
+        self.assertEqual(stored["chemical_object_ids"], ["object-a", "object-b"])
+        self.assertEqual(stored["composition"][1]["coefficient"], 2.0)
+        self.assertEqual(stored["composition"][1]["role"], "reagent")
+
+        decoded = reaction_graphs_section_from_dict("project-a", encoded.value, object_ids=_object_ids())  # type: ignore[arg-type]
         self.assertTrue(decoded.ok, decoded.error)
         self.assertEqual(decoded.value, (graph,))
 
@@ -97,8 +160,17 @@ class ReactionGraphWorkspacePersistenceTest(unittest.TestCase):
                         {
                             **valid_graph["nodes"][0],
                             "chemical_object_ids": ["object-missing"],
+                            "composition": [{"object_id": "object-missing", "coefficient": 1.0}],
                         }
                     ],
+                ),
+                "graph_invalid",
+                "object_id",
+            ),
+            (
+                _section_with_nodes_patch(
+                    valid_graph,
+                    [{**valid_graph["nodes"][0], "chemical_object_ids": [], "composition": []}],
                 ),
                 "graph_invalid",
                 "node-a",
@@ -106,10 +178,15 @@ class ReactionGraphWorkspacePersistenceTest(unittest.TestCase):
             (
                 _section_with_nodes_patch(
                     valid_graph,
-                    [{**valid_graph["nodes"][0], "chemical_object_ids": []}],
+                    [
+                        {
+                            **valid_graph["nodes"][0],
+                            "composition": [{"object_id": "object-a", "coefficient": 0}],
+                        }
+                    ],
                 ),
-                "graph_invalid",
-                "node-a",
+                "invalid_input",
+                "graphs[0].nodes[0].composition",
             ),
             (
                 _section_with_nodes_patch(
@@ -534,7 +611,6 @@ class ReactionGraphWorkspacePersistenceTest(unittest.TestCase):
             "CRDT",
             "undo",
             "redo",
-            "stoichiometry",
             "IndexedDB",
             "OPFS",
             "Vercel Blob",

@@ -3,22 +3,22 @@ doc_type: architecture
 slug: core-platform
 status: current
 created: 2026-05-02
-last_reviewed: 2026-05-16
-tags: [core, fixture, domain-model, energy-profile, energy-profile-persistence, import-workflow, graph-editor-workspace, report-export, platform-shell, cli, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
+last_reviewed: 2026-05-22
+tags: [core, fixture, domain-model, energy-profile, energy-channel-catalog, energy-profile-persistence, import-workflow, graph-editor-workspace, graph-editor-node-layout, graph-editor-edge-path-editing, graph-editor-workspace-persistence, workspace-move-node, workspace-remove, workspace-select, report-export, platform-shell, cli, local-http-shell-bridge, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
 ---
 
 # Core Platform
 
 ## 1. 当前能力
 
-RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界上补充了 Web runtime boundary 开发者文档和 payload POC。
+RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界上补充了 Web runtime boundary 开发者文档、payload POC 和本地 HTTP shell bridge。
 
 第一类是内置 fixture 的最小核心链路：
 
 1. 创建内存 ProjectManifest。
 2. 将两个内置 ChemicalObjectDraft 登记为 ChemicalObject。
 3. 构造两个 species 节点、一条边和一条 path 的 ReactionGraph。
-4. 使用 `electronic` 能量键计算以第一个节点为基线的 EnergyProfile。
+4. 使用 `electronic` 能量键和默认 `energy_source=auto` 计算以第一个节点为基线的 EnergyProfile。
 
 第二类是可落盘的 Project Store 项目目录协议：
 
@@ -33,10 +33,12 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 1. 使用 RawFile / ParserCapability / ParseOptions / ParseResult / ParserPlugin 定义插件协议。
 2. 通过 ParserRegistry 对单个 RawFile 做插件选择、冲突处理和 parse 调用。
 3. 用 cclib adapter 支持 Gaussian log 和 ORCA output 的基础字段映射。
-4. 支持标准 XYZ 和 ASE extxyz 的结构与可用 metadata 解析。
+4. 支持标准 XYZ 和 ASE extxyz 的结构与可用 metadata 解析；extxyz energy 按 ASE eV 语义转 Hartree，缺失 energy 保留 `missing_section` warning。
 5. 支持 MAPLE `.out` 基础字段和 MAPLE 风格多帧 `.xyz` energy 注释解析。
-6. 配套测试侧 Parser Fixture Harness，使用 `parser-fixtures-v1` manifest、`parser-support-matrix-v1` support matrix、synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib `.log`、synthetic ORCA cclib `.out`、standard XYZ、ASE extxyz、bad XYZ count 输入和 `parser-golden-v1` snapshot 验证 ParserRegistry 输出稳定性与 fixture-backed 支持边界。
-7. 配套 `docs/dev/parser-fixture-corpus.md` 开发者指南，说明新增样例、source policy、脱敏、snapshot 更新、support matrix / diagnostic codes、import preview regression 和 parser gap triage。
+6. 配套测试侧 Parser Fixture Harness，使用 `parser-source-inventory-v1` source inventory、`parser-fixtures-v1` manifest、`parser-support-matrix-v1` support matrix、synthetic MAPLE sp/opt `.out`、MAPLE public-shape synthetic-derived `.out` / final `.xyz`、MAPLE path/path-family synthetic-derived `.xyz` partial、synthetic 与 public-shape synthetic-derived Gaussian/ORCA cclib fixtures、standard XYZ、ASE extxyz 单帧/多帧 project-authored variants、bad XYZ count 输入和 `parser-golden-v1` snapshot 验证 ParserRegistry 输出稳定性与 fixture-backed 支持边界。
+7. Parser Fixture Harness 校验 `vendored-third-party` source 的 upstream path/hash/size 条件必填，并在传入 source inventory 时校验 support matrix `source_ids` / `candidate_file_ids` / `reference_file_ids`。
+8. 配套 `docs/dev/parser-fixture-corpus.md` 开发者指南，说明新增样例、source policy、脱敏、snapshot 更新、support matrix / diagnostic codes、import preview regression 和 parser gap triage。
+9. 配套 `docs/user/parser-output-support.md` 用户指南，说明 fixture-backed parser 输出支持边界、warning/error 含义和贡献真实样例 checklist；不作为 runtime API 或真实软件版本认证。
 
 第四类是 Chemical Registry 基线：
 
@@ -61,7 +63,7 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 
 1. 使用 GraphPatch 定义 UI 和 agent 共用的图谱修改操作。
 2. 通过 ReactionGraphService 创建项目内空 ReactionGraph。
-3. 支持 add/update node、add/update edge、remove 和 set_path patch。
+3. 支持 add/update node、add/update edge、remove 和 set_path patch；update node 可替换节点 composition。
 4. 支持同一 graph 保存多条 ReactionPath，用多路径表达分叉。
 5. 校验 node/object/edge/path 引用，patch 批次失败时不写回 graph state。
 6. 支持列出和恢复项目内 ReactionGraph，恢复后可继续 list_paths 和 apply_patch。
@@ -70,18 +72,22 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 
 1. 通过 GraphEditorWorkspaceService 打开或创建围绕 ReactionGraph 的 headless 编辑 workspace。
 2. 从调用方传入的 ChemicalObject 或已 registered 的 ImportItem 生成 Object Palette。
-3. 将 add_node、connect_nodes、set_active_path 和 apply_patches 转换为 GraphPatch，并交由 ReactionGraphService 写入 graph state。
+3. 将 add_node、set_node_composition、move_node、remove_items、connect_nodes、set_active_path 和 apply_patches 转换为 GraphPatch，并交由 ReactionGraphService 写入 graph state。
 4. 在 workspace state 中维护 CanvasViewport、WorkspaceSelection 和 active_path_id，不写入 ReactionGraph。
 5. 从当前 graph 派生 NetworkPreview，包含 nodes、edges、paths、active path、disconnected node diagnostics 和 warnings。
-6. 支持列出和恢复项目内 WorkspaceSnapshot，恢复时保留 selection、viewport、active_path_id 和 updated_at，并重新派生 Object Palette / NetworkPreview。
+6. remove_items 支持按 node_ids / edge_ids 删除 graph item；删除 node 时复用 ReactionGraphService cascade，相关 edge 和包含该 node 的 path 会由 graph projection 消失；删除 edge 保留 nodes 并重新派生 disconnected diagnostics。
+7. 支持列出和恢复项目内 WorkspaceSnapshot，恢复时保留 selection、viewport、active_path_id 和 updated_at，并重新派生 Object Palette / NetworkPreview。
+8. `select` 接收 node/edge/path id 集合，校验引用必须存在于当前 graph；空 selection 合法，用于清空选择。删除 node/edge 或 apply graph patches 后会修剪失效 selection，最终 selection 通过 workspace projection 返回给端侧。
 
 第八类是 Energy Engine：
 
 1. 通过 EnergyProfileEngine 从指定 ReactionGraph / ReactionPath 和 ChemicalObject 集合计算 EnergyProfile。
 2. 支持 `hartree`、`kcal_mol`、`kj_mol` 输入，并统一输出为 `kcal_mol` 或 `kj_mol`。
-3. 支持多对象节点按隐含系数 1 求和。
-4. 通过 `include_corrections` 显式控制是否叠加 ChemicalObject 上的 Correction.energy。
-5. baseline 缺失能量时返回 `missing_energy`；非 baseline 缺失点保留为带 `missing_reason` 的 EnergyPoint 和 warning。
+3. 通过 EnergyChannel catalog / resolver 把 ChemicalObject 的 `energies` 与 `thermochemistry` 统一为可选择通道，EnergyOptions 可用 `energy_source=energies|thermochemistry|auto` 指定来源。
+4. `energy_source=auto` 先查 `energies[key]`，再查 `thermochemistry[key]`；如果同一对象两个 section 都有同名 key 且 source 未显式指定，返回 `ambiguous_energy_channel target=energy_options.energy_key`。
+5. 支持按 ReactionNode.composition term coefficient 计算节点能量；旧 `chemical_object_ids` 节点通过 coefficient 1 composition 保持兼容。
+6. 通过 `include_corrections` 和可选 `CorrectionPolicy` 显式控制是否叠加 ChemicalObject 上的 Correction.energy，支持 none/all/kinds/ids。
+7. baseline 缺失能量时返回 `missing_energy`；非 baseline 缺失点保留为带 `missing_reason` 的 EnergyPoint 和 warning。
 
 第九类是 Report Export：
 
@@ -90,16 +96,19 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 3. 使用 structure-first 的 Energy Table，第一列固定为结构名称；缺失字段留空或保留 missing reason。
 4. PNG 和 CDXML 共用 Energy Diagram Route；missing point 形成断点和 warning，不编造相对能量。
 5. 支持 bytes-only 返回，也支持写入已有 destination_dir 并返回 artifact.path。
+6. 通过 `docs/dev/report-export-artifacts.md` 和 `docs/user/report-export-artifacts.md` 记录开发者 API、Web 操作、PNG/CDXML/XLSX 格式用途、CDXML/CDX 边界、Energy Table 字段口径和 `exports/...` artifact 保存路径。
 
 第十类是 Platform Shell：
 
 1. 通过 ShellCommand、ShellResponse、ShellArtifact 和 PlatformSession 定义端侧 JSON-safe 命令协议。
 2. 通过 AppKernel 集中装配 ProjectStore、ProjectContentStore、ProjectBundleService、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
-3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`、`energy.compute`、`export.profile` 和 `workbench.snapshot`。
+3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`registry.apply_correction`、`workspace.open`、`workspace.add_node`、`workspace.set_node_composition`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.set_path`、`energy.compute`、`export.profile` 和 `workbench.snapshot`。
 4. 通过 `python3 -m rxnflow.cli` 提供标准库 CLI 入口，支持 fixture、project create/load/open、project export-bundle/import-bundle 和 import preview 的 JSON 输出与错误 exit code；CLI project open 支持默认恢复 content 和 `--manifest-only`。
 5. 通过 handle_platform_payload 提供纯 Python dict adapter，供未来 Web route 或 desktop bridge 复用。
 6. 通过 `workbench.snapshot` 提供当前 Platform Session 的只读 Workbench Snapshot，汇总 project/session active ids、counts、objects、import batches、active workspace、active profile、runtime artifacts、persisted export artifact records 和 warnings；该命令不创建 session、不保存项目、不重新 parse/import/register/compute/export。
 7. 通过 `docs/dev/web-runtime-boundary.md` 记录 Web MVP 的 local-first browser workbench、Shell Client、Browser Project Repository、local bridge 和 stateless http-api 职责边界，并通过 `tests/test_web_runtime_boundary.py` 验证 payload POC 的成功/错误 JSON-safe response。
+8. 通过 `rxnflow.local_bridge` 提供标准库本地 HTTP shell bridge，`GET /health` 返回 bridge health，`POST /api/shell` 接收 JSON-safe shell payload 并复用同一个 `PlatformShellService(AppKernel())` 保留跨请求 session；该 bridge 默认监听 `127.0.0.1:8765`，用于本机开发和后续 Web HTTP transport，不是生产公网服务或云存储方案。
+9. `import.preview` 当前支持 path source 和小文件 inline bytes source；inline bytes 由 Platform Shell 解码到临时文件后复用 ImportRegistryWorkflow，临时文件在 preview 返回前清理。session 没有 core `project_path` 时会创建进程内 Temporary Preview Project，用于 local-http 小文件 preview；`browser_storage` source 在 Python bridge 中仍返回 `storage_object_missing`。
 
 第十一类是 Project Content Store：
 
@@ -111,7 +120,7 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 6. 通过 `reaction-graphs-v1` codec 保存和加载真实 ReactionGraph、ReactionNode、ReactionEdge 和 ReactionPath，并校验 object/node/edge/path 引用。
 7. 通过 `workspaces-v1` codec 保存和加载 workspace-only 状态，workspace 的 Object Palette 和 NetworkPreview 在加载后从 ChemicalObject / ReactionGraph 派生。
 8. 通过 `import-ledger-v1` codec 保存和加载 ImportBatch、ImportItem、ParsePreview、registered ids、warnings 和 errors。
-9. 通过 `energy-profiles-v1` codec 保存和加载已计算 EnergyProfile、EnergyOptions、EnergyPoint、missing reason 和 warnings，并校验 profile 与 loaded ReactionGraph / ReactionPath 的引用一致性。
+9. 通过 `energy-profiles-v1` codec 保存和加载已计算 EnergyProfile、EnergyOptions、EnergyPoint、missing reason 和 warnings；options 保存 `energy_source`，旧 JSON 缺字段时按 `auto` 加载，并校验 profile 与 loaded ReactionGraph / ReactionPath 的引用一致性。
 10. 通过 `export-artifacts-v1` codec 保存和加载 ExportArtifactRecord 索引，记录导出文件的项目相对 path、format、checksum、metadata 和 created_at，不保存 artifact bytes。
 11. 通过 ProjectContentValidationIssue / ProjectContentValidationReport 聚合 `.rxnflow/state/` index、section bytes checksum、section codec、跨 section 引用和 export artifact file checksum 的只读验证结果。
 12. 通过 ProjectContentValidator 和 ProjectContentStore.validate_project 生成 validation report；内容不一致进入 report issues，backend internal I/O failure 仍返回 Result error。
@@ -135,7 +144,7 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 5. list_objects 支持 exact file 和 prefix subtree 语义，并按 POSIX path 稳定排序。
 6. 支持 quota_bytes 模拟浏览器本地空间不足；超限返回 storage_quota_exceeded，失败写入不部分覆盖已有对象。
 
-Core Platform 本身仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。独立 `web/` Web Workbench app shell 已经存在，但它通过前端 ShellClient / FixtureTransport 消费 ShellResponse 投影，不属于 Python core，也不改变 core runtime 规则。Web runtime boundary 当前确认第一版职责分工：浏览器本地项目仓储和 `.rxnflow.zip` bundle 承担项目内容 authority，Python core 通过 Shell Command / Shell Response 暴露能力，Vercel/http-api 只可作为无状态 command executor 候选。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Project Bundle 只复制项目文件作为本地备份/手动同步包，不替代 live storage、不自动保存当前 session、不恢复运行态；Browser Local Storage Backend 是核心协议测试替身，不是真实 JavaScript IndexedDB / OPFS adapter、云同步或可靠备份；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Parser Fixture Harness 只存在于测试边界，当前覆盖 synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib、synthetic ORCA cclib、standard XYZ、ASE extxyz 和 bad XYZ expected-error 样例，并通过 `support-matrix.yaml` 记录 fixture-backed 字段状态、known limits、diagnostic catalog 和 MAPLE reference-only artifacts；它不进入 `rxnflow.parsers` runtime API，不调用 Project Store、Import Workflow、Chemical Registry、Reaction Graph、Energy Engine 或 Report Export；Parser Corpus Developer Guide 只记录维护 fixture corpus 的开发者/agent 流程，不新增 runtime API、fixture 或用户可见导入能力；Import Preview Parser Regression 也只存在于测试边界，用 fixture corpus 验证 Import Workflow / Platform Shell 的 preview 投影保真，不确认导入、不登记 ChemicalObject、不新增 runtime API；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑，`project.open`/`project.save_content` 只是恢复和保存运行态服务状态的壳层编排，`project.export_bundle`/`project.import_bundle` 只是项目包传输编排。
+Core Platform 本身仍不提供真实图形 UI、Web route、桌面 app 或安装包。当前 CLI 是最小可测试端侧入口；Web payload adapter 只是 dict 边界，不是服务器。独立 `web/` Web Workbench app shell 已经存在，但它通过前端 ShellClient / FixtureTransport 消费 ShellResponse 投影，不属于 Python core，也不改变 core runtime 规则。Web runtime boundary 当前确认第一版职责分工：浏览器本地项目仓储和 `.rxnflow.zip` bundle 承担项目内容 authority，Python core 通过 Shell Command / Shell Response 暴露能力，Vercel/http-api 只可作为无状态 command executor 候选。fixture 链路仍是开发/测试用垂直切片；Project Store 只负责项目目录、manifest 和 raw file 资源索引；Project Content Store 当前保存/加载 ProjectContentSnapshot，并对 ChemicalObject、ReactionGraph、Workspace、Import Ledger、EnergyProfile 和 ExportArtifact index sections 提供长期持久化 codec、只读 validation report 和 no-op migration plan，不替代 Project Store 或完整项目数据库；Project Bundle 只复制项目文件作为本地备份/手动同步包，不替代 live storage、不自动保存当前 session、不恢复运行态；Browser Local Storage Backend 是核心协议测试替身，不是真实 JavaScript IndexedDB / OPFS adapter、云同步或可靠备份；Parser Plugins 只把 RawFile 解析为 ChemicalObjectDraft；Parser Fixture Harness 只存在于测试边界，当前覆盖 synthetic MAPLE sp/opt `.out`、MAPLE public-shape synthetic-derived `.out` / final `.xyz`、MAPLE path/path-family synthetic-derived `.xyz` partial、synthetic 与 public-shape synthetic-derived Gaussian/ORCA cclib fixtures、standard XYZ、ASE extxyz 单帧/多帧 project-authored variants 和 bad XYZ expected-error 样例，并通过 `sources.yaml` 记录 MAPLE/cclib-data/ASE extxyz 来源、license、hash、fixture policy，通过 `support-matrix.yaml` 记录 fixture-backed 字段状态、source links、candidate/reference file links、known limits、diagnostic catalog 和 MAPLE/cclib-data reference/candidate artifacts；MAPLE path fixtures 和 ASE multi-frame extxyz fixtures 只生成 frame-level `ChemicalObjectDraft`，不生成 `ReactionPath`、direction/topology、TS candidate 或 energy profile；cclib-data Gaussian/ORCA public originals 仍未 vendor，当前只用项目内 shape fixtures 验证 adapter 投影；它校验 vendored-third-party source metadata 和 support matrix source/candidate/reference links，但不进入 `rxnflow.parsers` runtime API，不调用 Project Store、Import Workflow、Chemical Registry、Reaction Graph、Energy Engine 或 Report Export；Parser Corpus Developer Guide 只记录维护 fixture corpus 的开发者/agent 流程，不新增 runtime API、真实第三方 fixture 或用户可见导入能力；Import Preview Parser Regression 也只存在于测试边界，用 fixture corpus 验证 Import Workflow / Platform Shell 的 preview 投影保真，覆盖 parser metadata、object_count、warning codes、raw_resource id/path/checksum 和 expected-error projection，不确认导入、不登记 ChemicalObject、不调用 graph/energy/export/bundle 服务、不新增 runtime API；Chemical Registry 只登记、列出、恢复对象和追加校正项；Import Registry Workflow 只编排导入、解析预览、确认登记和 batch 状态恢复；Reaction Graph 只维护节点、边、路径、patch 操作和运行态恢复，不计算能量；Graph Editor Workspace 只提供 headless 编辑会话、对象面板、workspace-only 状态、网络预览和运行态恢复协议，不渲染真实画布；Energy Engine 只读取传入 graph/object 数据并生成 profile 数据，不修改项目状态；Energy Profile Persistence 只保存物化 profile snapshot，不重新计算或修复 stale profile；Report Export 只消费调用方传入的已加载对象，不读写 manifest、不登记 ProjectResource、不调用 parser/import/registry/graph patch/energy compute；Export Artifact Index 只登记已存在导出文件的项目相对位置和元数据，不生成或复制 artifact bytes，artifact bytes 深校验由 Project Content Validation 只读执行；Platform Shell 只装配和投影这些核心能力，不复制业务逻辑，`project.open`/`project.save_content` 只是恢复和保存运行态服务状态的壳层编排，`project.export_bundle`/`project.import_bundle` 只是项目包传输编排。
 
 ## 2. 模块与职责
 
@@ -196,6 +205,8 @@ ReactionGraphService
 GraphEditorWorkspaceService
 ├── open_workspace(project_id, graph_id?, label?, objects?)
 ├── add_node(project_id, workspace_id, NodePlacement)
+├── move_node(project_id, workspace_id, node_id, position)
+├── remove_items(project_id, workspace_id, node_ids, edge_ids)
 ├── connect_nodes(project_id, workspace_id, from_node_id, to_node_id)
 ├── set_active_path(project_id, workspace_id, path_id, node_ids)
 ├── apply_patches(project_id, workspace_id, GraphPatch[])
@@ -218,7 +229,7 @@ ReportExportService
 
 PlatformShellService
 ├── run(ShellCommand)
-├── fixture/project/import/workspace/energy/export command handlers
+├── fixture/project/import/registry/workspace/energy/export command handlers
 ├── workbench.snapshot read-only session projection
 ├── project.open validation-gated restore
 ├── project.save_content session snapshot save
@@ -226,6 +237,14 @@ PlatformShellService
 ├── ShellResponse JSON-safe projection
 ├── handle_platform_payload(dict)
 └── rxnflow.cli argparse entry
+
+LocalShellBridge
+├── python3 -m rxnflow.local_bridge
+├── GET /health
+├── POST /api/shell
+├── shared PlatformShellService(AppKernel()) session state
+├── JSON ShellResponse error wrapping
+└── localhost-only default binding
 
 ProjectContentStore
 ├── save_snapshot(project_ref, ProjectContentSnapshot)
@@ -267,9 +286,10 @@ ProjectBundleService
 - `rxnflow.parsers.xyz`：标准 XYZ 解析和 ASE extxyz adapter。
 - `rxnflow.parsers.maple`：MAPLE `.out` 基础字段和 MAPLE 多帧 `.xyz` 解析。
 - `tests/parser_fixture_harness.py`：测试侧 parser fixture harness，读取 `tests/fixtures/parsers/manifest.yaml` 和 `support-matrix.yaml`，构造 `RawFile` / `ParseOptions`，调用 `ParserRegistry` 并按 `parser-golden-v1` snapshot 比较成功解析和 expected-error 输出，同时校验 support matrix schema、fixture id 覆盖、diagnostic code 引用和 partial known limits；不作为 runtime API。
-- `tests/fixtures/parsers/`：parser fixture corpus，当前包含 `parser-fixtures-v1` manifest、`parser-support-matrix-v1` support matrix、synthetic MAPLE sp/opt `.out`、synthetic MAPLE path `.xyz` partial、synthetic Gaussian cclib `.log`、synthetic ORCA cclib `.out`、standard XYZ geometry-only、ASE extxyz energy/charge/spin、ASE extxyz missing energy 和 bad XYZ count 输入及其 golden snapshots。
+- `tests/fixtures/parsers/`：parser fixture corpus，当前包含 `parser-fixtures-v1` manifest、`parser-support-matrix-v1` support matrix、synthetic MAPLE sp/opt `.out`、MAPLE public-shape synthetic-derived `.out` / final `.xyz`、MAPLE path/path-family synthetic-derived `.xyz` partial、synthetic 与 public-shape synthetic-derived Gaussian/ORCA cclib fixtures、standard XYZ geometry-only、ASE extxyz energy/charge/spin、ASE extxyz missing energy、ASE extxyz multi-frame metadata/calculator-energy fallback 和 bad XYZ count 输入及其 golden snapshots。
 - `docs/dev/parser-fixture-corpus.md`：开发者和 agent 维护指南，说明新增 fixture workflow、source policy、redaction checklist、snapshot update procedure、support matrix / diagnostic code 维护规则、import preview regression 和 parser gap triage；不作为 runtime API 或用户指南。
-- `tests/test_import_preview_parser_regression.py`：测试侧 import preview parser regression，使用 parser fixture corpus 驱动 `ImportRegistryWorkflow.import_files` 和 `PlatformShellService(import.preview)`，核对 ParsePreview / Shell Preview Projection 的 parser metadata、object_count、warnings、error code 和 raw_resource/provenance linkage；不作为 runtime API。
+- `docs/user/parser-output-support.md`：用户向 parser 输出支持边界指南，说明 supported/partial/candidate/reference-only/unsupported 状态、Gaussian/ORCA/MAPLE/XYZ/extxyz 当前 fixture-backed 字段、warning/error 含义和真实样例贡献要求；不作为 runtime API 或版本认证。
+- `tests/test_import_preview_parser_regression.py`：测试侧 import preview parser regression，使用 parser fixture corpus 驱动 `ImportRegistryWorkflow.import_files` 和 `PlatformShellService(import.preview)`，核对 Workflow Preview Projection / Shell Preview Projection 的 parser metadata、object_count、warnings、error code、raw_resource id/path/checksum 和 provenance linkage，并用 guard 证明 preview 不登记 ChemicalObject、不调用 graph/energy/export/bundle 服务；不作为 runtime API。
 - `rxnflow.registry`：fixture object draft 到 ChemicalObject 的登记和 provenance 附加；通用 ChemicalRegistry 的项目内对象登记、查询、fingerprint 幂等去重和 correction 追加。
 - `rxnflow.chemical_object_codec`：`chemical-objects-v1` section 的 ChemicalObject 序列化、反序列化和字段校验，覆盖 energies、thermochemistry、provenance、corrections 和 registry_fingerprint。
 - `rxnflow.import_workflow`：ImportRegistryWorkflow 和 ImportBatch / ImportItem / ParsePreview / ImportSelection 状态协议，串联 raw file resource、解析预览、确认登记和 batch restore。
@@ -279,7 +299,7 @@ ProjectBundleService
 - `rxnflow.graph_workspace_codec`：`reaction-graphs-v1` 和 `workspaces-v1` sections 的 ReactionGraph / WorkspaceSnapshot 序列化、反序列化、引用校验和 derived palette/preview 构造边界。
 - `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、单位转换、correction inclusion 和缺失点诊断。
 - `rxnflow.energy_profile_codec`：`energy-profiles-v1` section 的 EnergyProfile / EnergyOptions / EnergyPoint / RxnFlowWarning 序列化、反序列化、字段校验和 graph/path/node sequence 引用校验。
-- `rxnflow.export`：ExportRequest / ExportArtifact / ExportArtifactRecord / EnergyTableRow / EnergyDiagramRoute 协议，以及 ReportExportService 的 PNG、CDXML、XLSX bytes-first 导出编排。
+- `rxnflow.export`：ExportRequest / ExportArtifact / ExportArtifactRecord / EnergyTableColumn / EnergyTableRow / EnergyDiagramRoute 协议，以及 ReportExportService 的 PNG、CDXML、XLSX bytes-first 导出编排；Energy Table Contract 当前包含 `ENERGY_TABLE_SCHEMA_VERSION`、列 key 查询 helper 和样表 header normalization helper。`docs/dev/report-export-artifacts.md` 是该模块的开发者使用指南。
 - `rxnflow.export_artifact_codec`：`export-artifacts-v1` section 的 ExportArtifactRecord 序列化、反序列化、format/path/checksum/metadata 校验和重复 id/path 检查。
 - `rxnflow.platform`：ShellCommand / ShellResponse / ShellArtifact / PlatformSession / AppKernel / PlatformShellService / handle_platform_payload，提供端侧薄壳层命令协议和 JSON 投影。
 - `rxnflow.content_store`：ProjectContentIndex / ProjectContentFile / ProjectContentSnapshot / ProjectContentValidationIssue / ProjectContentValidationReport / ProjectContentMigrationPlan / ProjectStorageBackend / LocalProjectStorageBackend / ProjectContentValidator / ProjectContentStore，以及 fixture snapshot 的 `.rxnflow/state/` 保存、加载、只读验证和 migration plan 闭环。
@@ -365,7 +385,7 @@ Project Content Store 使用以下稳定目录与 index 协议：
 - `chemical-objects-v1` energy/correction energy 必须是 `{value, unit, reference}` 对象，unit 当前支持 `hartree`、`kcal_mol`、`kj_mol`，不接受裸 float
 - `reaction-graphs.json` 当前 schema version：`reaction-graphs-v1`
 - `reaction-graphs-v1` 保存 ReactionGraph 的 `id`、`project_id`、`nodes`、`edges` 和 `paths`
-- ReactionNode 保存 `id`、`kind`、`label`、`chemical_object_ids`、`position` 和 `metadata`；只引用 ChemicalObject id，不复制 ChemicalObject 内容
+- ReactionNode 保存 `id`、`kind`、`label`、`composition`、`chemical_object_ids`、`position` 和 `metadata`；`composition` 是权威节点组成字段，每个 term 保存 `object_id`、非零有限 `coefficient`、可选 `role`、可选 `label` 和 `metadata`；`chemical_object_ids` 是按 composition object_id 首次出现顺序去重得到的兼容投影。旧数据只有 `chemical_object_ids` 时加载为 coefficient 1 的 composition；node 只引用 ChemicalObject id，不复制 ChemicalObject 内容
 - ReactionEdge 保存 `id`、`from_node`、`to_node`、`label` 和 `metadata`
 - ReactionPath 保存 `id`、`label` 和有序 `node_ids`
 - `workspaces.json` 当前 schema version：`workspaces-v1`
@@ -373,7 +393,7 @@ Project Content Store 使用以下稳定目录与 index 协议：
 - Workspace section 不保存 ObjectPaletteItem、NetworkPreview、nodes、edges 或 paths；加载后 palette 从 ChemicalObject 派生，preview 从 ReactionGraph 派生
 - `energy-profiles.json` 当前 schema version：`energy-profiles-v1`
 - `energy-profiles-v1` 保存 Stored EnergyProfile 的 `id`、`graph_id`、`path_id`、`options`、`points` 和 `warnings`
-- Stored EnergyOptions 保存 `output_unit`、`include_corrections`、`energy_key` 和可空 `baseline_node_id`
+- Stored EnergyOptions 保存 `output_unit`、`include_corrections`、`energy_key`、`energy_source`、可选 `correction_policy` 和可空 `baseline_node_id`；旧 Stored EnergyOptions 缺 `energy_source` 时加载为 `auto`，缺 `correction_policy` 时加载为 null
 - Stored EnergyPoint 保存 `node_id`、`label`、`absolute_energy`、`relative_energy` 和 `missing_reason`
 - EnergyPoint 的 absolute/relative energy 必须显式保存 `{value, unit, reference}`，unit 必须等于 options.output_unit；missing point 必须只有 missing_reason，不能混入 absolute/relative energy
 - Energy profile load/save 基于已加载 ReactionGraph 校验 graph_id、path_id、point node 顺序和 baseline_node_id；不重新调用 EnergyProfileEngine，不根据当前 ChemicalObject energy/corrections 自动刷新 profile
@@ -391,7 +411,7 @@ Parser Plugins 使用以下稳定协议：
 - Gaussian/ORCA：通过 cclib adapter 读取基础字段；cclib 的 `scfenergies` 按 eV 转 hartree；Gaussian DFT method 优先使用 `metadata.functional`，ORCA DFT method 可从已知 `metadata.keywords` functional token 恢复，避免只保留泛称 `DFT`。
 - XYZ：标准 XYZ 解析元素和坐标；缺失 energy 返回 `missing_section` warning。
 - extxyz：通过 ASE 读取 geometry 和可用 metadata；energy 按 ASE eV 语义转 hartree。
-- MAPLE：解析 `.out` 中 task/model、坐标、Hartree energy；解析 MAPLE 风格 `.xyz` 中 `Image N`、`Frame N`、`Iter N Image M`、`Iteration N` 和 energy 注释；path `.xyz` 当前只生成 frame-level objects，不生成 ReactionPath 或 TS 语义。
+- MAPLE：解析 `.out` 中 task/model、坐标、Hartree energy；解析 MAPLE 风格 `.xyz` 中 `Image N`、`Frame N`、`Iter N Image M`、`Iteration N` 和 energy 注释；path `.xyz` 当前只生成 frame-level objects，不生成 ReactionPath、direction/topology、TS candidate 或 energy profile。
 
 Chemical Registry 当前使用以下稳定协议：
 
@@ -422,7 +442,8 @@ Reaction Graph 当前使用以下稳定协议：
 - GraphPatch op：`add_node`、`update_node`、`add_edge`、`update_edge`、`remove`、`set_path`
 - ReactionGraphService 入口：`create_graph(project_id, label)`、`apply_patch(project_id, graph_id, patches, object_ids)`、`list_paths(project_id, graph_id)`、`list_graphs(project_id)`、`restore_graphs(project_id, graphs, object_ids=None, replace=False)`
 - ReactionNode kind：`species`、`transition_state`、`group`、`annotation`
-- species / transition_state 节点必须引用至少一个 ChemicalObject id
+- species / transition_state 节点必须至少有一个 composition term；term.object_id 必须能在调用方提供的 ChemicalObject id 集合中找到
+- composition coefficient 必须是非零有限数；允许负数和小数，ReactionGraphService 不做自动配平、元素守恒或电荷守恒判断
 - annotation / group 节点允许不引用 ChemicalObject
 - 分叉路径表达：同一 ReactionGraph 的多条 ReactionPath
 - remove node 行为：删除节点，并级联删除相关 edge 和包含该 node 的 path
@@ -430,15 +451,15 @@ Reaction Graph 当前使用以下稳定协议：
 
 Graph Editor Workspace 当前使用以下稳定协议：
 
-- GraphEditorWorkspaceService 入口：`open_workspace(project_id, graph_id, label, objects)`、`add_node(project_id, workspace_id, placement)`、`connect_nodes(project_id, workspace_id, from_node_id, to_node_id)`、`set_active_path(project_id, workspace_id, path_id, node_ids)`、`apply_patches(project_id, workspace_id, patches)`、`select(project_id, workspace_id, selection)`、`set_viewport(project_id, workspace_id, viewport)`、`snapshot(project_id, workspace_id)`、`list_workspaces(project_id)`、`restore_workspaces(project_id, workspaces, objects=(), replace=False)`
+- GraphEditorWorkspaceService 入口：`open_workspace(project_id, graph_id, label, objects)`、`add_node(project_id, workspace_id, placement)`、`set_node_composition(project_id, workspace_id, node_id, composition)`、`move_node(project_id, workspace_id, node_id, position)`、`remove_items(project_id, workspace_id, node_ids=(), edge_ids=())`、`connect_nodes(project_id, workspace_id, from_node_id, to_node_id)`、`set_active_path(project_id, workspace_id, path_id, node_ids)`、`apply_patches(project_id, workspace_id, patches)`、`select(project_id, workspace_id, selection)`、`set_viewport(project_id, workspace_id, viewport)`、`snapshot(project_id, workspace_id)`、`list_workspaces(project_id)`、`restore_workspaces(project_id, workspaces, objects=(), replace=False)`
 - CanvasViewport：`x`、`y`、`zoom`
 - WorkspaceSelection：`node_ids`、`edge_ids`、`path_ids`
 - ObjectPaletteItem：`object_id`、`label`、`formula`、`charge`、`spin_multiplicity`、`method`、`source_file_id`、`energy_keys`
-- NodePlacement：`kind`、`label`、`chemical_object_ids`、`position`、`metadata`
+- NodePlacement：`kind`、`label`、`chemical_object_ids`、`position`、`metadata`、`composition`；旧 `chemical_object_ids` 输入会投影为 coefficient 1 composition
 - WorkspaceSnapshot：`workspace_id`、`project_id`、`graph`、`palette`、`selection`、`viewport`、`active_path_id`、`preview`、可选 `updated_at`
 - NetworkPreview：`graph_id`、`active_path_id`、`nodes`、`edges`、`paths`、`disconnected_node_ids`、`warnings`
 - Object Palette 来源：调用方传入的 ChemicalObject，以及 ImportRegistryWorkflow 中已 `registered` 且能由 ChemicalRegistry.get_object 解析的 registered object ids
-- graph 结构修改：统一通过 ReactionGraphService.apply_patch；selection、viewport 和 active_path_id 保留在 workspace-only 内存 state
+- graph 结构修改：统一通过 ReactionGraphService.apply_patch；`set_node_composition` 用 `GraphPatch("update_node", patch={"composition": terms})` 替换节点组成，失败时不写回 graph；`move_node` 只用 `GraphPatch("update_node", patch={"position": position})` 更新 `ReactionNode.position`，不修改 ChemicalObject、edge、path、selection 或 viewport；`remove_items` 只删除 graph node/edge，不删除 ChemicalObject 或 Project Content，node remove 的 edge/path cascade 来自 ReactionGraphService；`select` 只替换 workspace-only `WorkspaceSelection`，未知 node/edge/path 返回 `graph_invalid`，删除 graph item 或 apply patches 后会修剪失效 selection；`set_viewport` 只替换 workspace-only `CanvasViewport`，不触发 GraphPatch，不修改 nodes/edges/paths、selection 或 active path；selection、viewport 和 active_path_id 保留在 workspace-only 内存 state
 - NetworkPreview 只表达结构预览与诊断，不包含真实 canvas render、自动布局或能量曲线数据
 - restore 行为：从已恢复的 ReactionGraphService 读取 graph，重建 workspace-only state；Object Palette 和 NetworkPreview 重新派生，不从持久化 JSON 读取缓存
 
@@ -447,8 +468,9 @@ Energy Engine 当前使用以下稳定协议：
 - EnergyProfileEngine 入口：`compute_profile(project_id, graph, path_id, objects, options)`
 - 计算输入：已加载的 ReactionGraph、selected ReactionPath id、ChemicalObject 集合和 EnergyOptions
 - baseline 规则：`baseline_node_id` 为空时使用 selected path 第一个 node；非空时必须属于 selected path
-- node total energy：对 node 引用的所有 ChemicalObject 取 `options.energy_key` 并按隐含系数 1 求和
-- correction inclusion：`include_corrections=True` 时叠加每个对象上的所有 Correction.energy；`False` 时忽略 corrections 且不改写原始 energy channel
+- energy channel selection：`EnergyOptions.energy_key` 保持兼容，`energy_source` 可选 `energies`、`thermochemistry` 或 `auto`；`auto` 先查 energies 再查 thermochemistry，同一对象两个 section 同名时返回 `ambiguous_energy_channel`
+- node total energy：遍历 `ReactionNode.composition`，对每个 term 按 `options.energy_key + options.energy_source` 取值，转换到 output unit 后乘 term coefficient 并求和；重复 object term 不合并
+- correction inclusion：`include_corrections=True` 且没有 policy 时叠加每个对象上的所有 Correction.energy；`correction_policy.mode` 支持 none/all/kinds/ids；`False` 时忽略 corrections 且不改写原始 energy channel
 - unit conversion：输入 `hartree`、`kcal_mol`、`kj_mol`，输出 `kcal_mol` 或 `kj_mol`
 - missing point：baseline 缺失直接失败；非 baseline 缺失返回带 `missing_reason="missing_energy"` 的 EnergyPoint 和 warning
 
@@ -459,11 +481,13 @@ Report Export 当前使用以下稳定协议：
 - ExportRequest：`formats`、`graph`、`profile`、`objects`、`table_rows`、`destination_dir`、`basename`、`title`、`options`
 - ExportArtifact：`id`、`format`、`path`、`bytes`、`created_at`、`metadata`
 - ExportArtifactRecord：`id`、`format`、项目相对 `path`、`checksum`、`created_at`、`metadata`
-- Energy Table：第一列语义为 `structure_name`，默认列覆盖 Egas、Ggas、Ggas+1M、Ggas(shermo)、Ggas(shermo+1M)、Esol、Gsol、basis function 占位、relative energy 和 missing reason
-- Energy Diagram Route：从 EnergyProfile.points 派生 state label、relative value、unit 和 missing reason，供 PNG/CDXML 共用
-- XLSX workbook：写 `Energy Table` sheet，可选 `Energy Profile` sheet 和 `Warnings` sheet
-- CDXML energy diagram：写 CDXML root、page、colortable、fonttable、state lines、connectors、labels、relative values 和 y-axis 文本
+- Energy Table Contract：schema version 当前为 `energy-table-v1`；第一列语义为 `structure_name`，默认列覆盖 Egas、Ggas、Ggas+1M、Ggas(shermo)、Ggas(shermo+1M)、Esol、Gsol、basis function 占位、relative energy 和 missing reason；所有列可通过 `energy_table_columns_by_key()` 按 stable key 查询；XLSX 主表使用 title、group header row、column label row、autofilter、freeze pane 和按列类型设置的列宽
+- Workbook Header Mapping：`normalize_energy_table_header()` 可把用户样表常见表头如 `Egas`、`basis function`、`Ggas+1M`、`Ggas(shermo+1M)`、`Esol`、`Gsol` 映射为 Energy Table column key；`Sgau/Swhit/RT` 等 entropy 原始列当前返回 `None`，不被自动推断为能量列
+- Energy Diagram Route：从 EnergyProfile.points 派生 state label、relative value、unit、missing reason、padded energy bounds 和 state anchors；PNG/CDXML 共用这些 bounds/anchors，missing point 不生成 y 或 state line anchors
+- XLSX workbook：写 `Energy Table` sheet，可选 `Energy Profile` sheet 和 `Warnings` sheet，并始终写 `Export Metadata` sheet 记录 energy table schema version、column count、row count、title、profile id、graph id 和 path id
+- CDXML energy diagram：写带 `CreationProgram`、font/color、page header/footer 和 group geometry 的 CDXML document；state line 使用 `graphic GraphicType="Line"`，connector 使用 `arrow`，label/value/missing 文本使用 `t` + `s`；generated object id 单文档唯一，group/graphic/arrow/text 均带 `Z`，graphic/arrow/text 带稳定 BoundingBox / LineWidth / justification 属性
 - 文件输出：默认 bytes-only；提供 destination_dir 和 basename 时写入 `<basename>.<format>`，basename 不允许路径分隔符或 `..`
+- 指南入口：开发者指南为 `docs/dev/report-export-artifacts.md`，用户指南为 `docs/user/report-export-artifacts.md`
 
 Platform Shell 当前使用以下稳定协议：
 
@@ -475,10 +499,23 @@ Platform Shell 当前使用以下稳定协议：
 - PlatformShellService 入口：`run(command)`
 - Web/desktop bridge 入口：`handle_platform_payload(payload: dict) -> dict`
 - CLI 入口：`python3 -m rxnflow.cli`
+- Local HTTP bridge 入口：`python3 -m rxnflow.local_bridge --host 127.0.0.1 --port 8765`
+- Local HTTP bridge API：`GET /health` 返回 bridge health，`POST /api/shell` 返回 ShellResponse；同一 server 进程复用同一个 PlatformShellService，因此 `fixture.run` 返回的 session id 可被后续 `workbench.snapshot` 使用
+- Local HTTP bridge 错误：invalid JSON 返回 `invalid_json`，未知 path 返回 `not_found`，不支持的方法返回 `method_not_allowed`，bridge 未包装异常返回 `bridge_internal_error`
+- Local HTTP bridge 边界：默认只面向本机开发，不提供认证、TLS、公网部署、云存储、跨设备同步或生产安全边界
+- Import Preview Source：`source.kind=path` 使用 `source_path`；`source.kind=inline_bytes` 使用 `filename` 和 `bytes_base64`；`source.kind=browser_storage` 第一版未接 Python adapter，返回 `storage_object_missing target=storage_path`
+- Inline import limit：Platform Shell 只接受小文件 inline preview，超过限制返回 `payload_too_large target=bytes_base64`
+- Temporary Preview Project：session 没有 core `project_path` 且收到 inline preview 时创建的进程内临时项目；不写 Browser Project Repository，不替代 Project Content bridge
 - Workbench Snapshot：`workbench.snapshot(session_id)` 返回当前 session 的只读 project/object/import/workspace/profile/artifact summary，不保存或重算任何核心状态
+- Registry Apply Correction：`registry.apply_correction(session_id, object_id, correction)` 要求 correction kind 属于 `resonance`、`solvation`、`manual`，energy 是 `{value, unit, reference?}` 且 unit 为 `hartree|kcal_mol|kj_mol`、value 为有限数；缺省 correction id 时由 Shell 根据 object/kind/energy/note 生成稳定 id。成功后 Shell 只调用 `ChemicalRegistry.apply_correction`，替换 session objects 中的对应 ChemicalObject，并返回带 `correction_count` 和 `corrections` 明细的 object summary；不自动保存 Project Content。
+- Workspace Set Node Composition：`workspace.set_node_composition(session_id, node_id, composition)` 要求 composition 是非空数组，term.object_id 非空且 coefficient 为非零有限数；成功后返回 workspace graph projection，节点同时包含 `composition` 和兼容 `chemical_object_ids`；非法 payload 返回 `invalid_input target=composition`，未知 node 或 object 引用透传 `graph_invalid`，失败不更新 workspace graph
+- Workspace Move Node：`workspace.move_node(session_id, node_id, position)` 要求 position 是两个 finite number；成功后返回 workspace graph projection，缺失或未知 node 通过结构化 `invalid_input` / `graph_invalid` 返回，不更新 workspace graph
+- Workspace Remove：`workspace.remove(session_id, node_ids?, edge_ids?)` 要求至少提供一个 node 或 edge id；空 selection 返回 `invalid_input target=selection`，未知 node/edge 透传 `graph_invalid`，成功后返回 workspace graph projection；删除 node 的 edge/path cascade 由 core projection 表达，删除 edge 不删除 nodes
+- Workspace Select：`workspace.select(session_id, selection={node_ids?, edge_ids?, path_ids?})` 接受当前 graph 内存在的 node/edge/path id；空 selection 合法并清空选择，缺失 selection 返回 `invalid_input target=selection`，未知引用返回 `graph_invalid target=node_id|edge_id|path_id`，成功后返回包含相同 `selection` 的 workspace projection
+- Workspace Set Viewport：`workspace.set_viewport(session_id, viewport={x,y,zoom})` 要求 `x`、`y`、`zoom` 均为 finite number 且 `zoom > 0`；缺失或非法 viewport 返回 `invalid_input target=viewport`，非正 zoom 返回 `invalid_input target=viewport.zoom`；成功后返回 workspace projection 中的 viewport，不修改 workspace graph nodes/edges/paths
 - artifact bytes 策略：默认不内联 bytes；`include_bytes=True` 时 ShellArtifact 使用 base64 字符串并记录 `metadata.encoding = "base64"`
 - JSON 投影边界：response dict 不包含 dataclass、Path、tuple 或 bytes
-- Web runtime boundary：Web UI 只通过 Shell Client / Shell Payload 调用 core；当前 `web/` app shell 只落地 `in-process-test` fixture transport，`local-python-bridge` 和 `http-api` 仍需独立 feature
+- Web runtime boundary：Web UI 只通过 Shell Client / Shell Payload 调用 core；当前 `web/` app shell 已落地 `in-process-test` fixture transport 和 `http-api` local bridge transport；`http-api` 默认不启用，需通过 Vite env 切到 `local-http`
 - http-api 边界：Vercel/serverless 方向只能执行无状态 command 或有限 parse/export/compute 请求，不作为长期 project storage、跨请求 session authority 或持久 filesystem
 
 Project Content Store 当前使用以下稳定协议：
@@ -545,8 +582,9 @@ Project Bundle 使用以下稳定协议：
 - `invalid_input`：Chemical Registry 中 project id 缺失、ParseResult.objects 为空、ChemicalObject 不存在、restore object id/source_file_id 缺失、restore object id 重复、registry_fingerprint 指向冲突、Correction id 缺失或同 id correction 内容冲突。
 - `invalid_input`：ImportRegistryWorkflow 中 requests/selections 为空、project_path 无效、batch/item 不存在、item 没有 parse preview、object index 为空/越界/重复或 raw file resource 无法转换为 RawFile。
 - `invalid_input`：ReactionGraphService 中 project id 为空、graph id 不存在、GraphPatch 缺少必须 payload 或 patch 字段不支持。
+- `invalid_input`：ReactionGraphService 或 Graph section codec 中 ReactionNode composition term 缺少 object_id，coefficient 不是数字、为 0 或非有限数，或新 JSON 中 `chemical_object_ids` 与 composition object_id 投影不一致。
 - `invalid_input`：ReactionGraphService restore 中 graph id/project_id 无效、重复 graph/node/edge/path id 或与既有 graph 冲突。
-- `invalid_input`：GraphEditorWorkspaceService 中 project id 为空、workspace id 不存在、workspace/project 不匹配或绑定 graph 失败。
+- `invalid_input`：GraphEditorWorkspaceService 中 project id 为空、workspace id 不存在、workspace/project 不匹配、绑定 graph 失败，或 remove selection 为空。
 - `invalid_input`：GraphEditorWorkspaceService restore 中 workspace id/project_id/graph_id 无效、重复 workspace id、selection/active_path 引用缺失或 viewport zoom 非正数。
 - `invalid_input`：EnergyProfileEngine 中 project id 为空、energy key 为空、output unit 不支持或 EnergyValue unit 不支持。
 - `invalid_input`：ReportExportService 中 project id 为空、formats 为空、请求格式不支持、PNG/CDXML 缺少 EnergyProfile、XLSX 缺少 profile/object/table rows，或 basename 不是安全文件名。
@@ -557,7 +595,7 @@ Project Bundle 使用以下稳定协议：
 - `invalid_bundle`：Project Bundle zip 损坏、entry path 不安全、包含多 root、缺少 `.rxnflow/manifest.json`、包含 `__MACOSX` 或包含 allowed roots 外文件。
 - Validation Report issue：Project Content Validation 中 index schema/project_id/files shape 错误、unsafe path、duplicate kind/path、canonical path mismatch、section 缺失、section checksum mismatch、bad section JSON、section codec 错误、missing source/raw resource、missing export artifact、artifact checksum mismatch 或 export metadata ref 缺失会进入 ValidationIssue；error issue 使 report.ok 为 false，warning 不阻止 report 生成。
 - `invalid_input`：ChemicalObject section codec 中 `chemical-objects-v1` schema 不兼容、project id 不匹配、object id/source_file_id 缺失、energy 缺 value/unit、unit 不支持、重复 object id、重复 registry_fingerprint 冲突、重复 correction id 冲突。
-- `invalid_input`：Graph / Workspace section codec 中 `reaction-graphs-v1` 或 `workspaces-v1` schema 不兼容、project id 不匹配、字段 shape 错误、重复 graph/workspace/node/edge/path id、workspace selection/active_path 引用缺失或 viewport 非法。
+- `invalid_input`：Graph / Workspace section codec 中 `reaction-graphs-v1` 或 `workspaces-v1` schema 不兼容、project id 不匹配、字段 shape 错误、重复 graph/workspace/node/edge/path id、node composition shape 错误、workspace selection/active_path 引用缺失或 viewport 非法。
 - `invalid_input`：Import Ledger section codec 中 `import-ledger-v1` schema 不兼容、project id 不匹配、重复 batch/item id、非法 status、preview object_count 不一致、preview/provenance parser 信息不一致、registered_object_ids 引用缺失 ChemicalObject、warnings/error shape 错误。
 - `invalid_input`：Export Artifact section codec 中 `export-artifacts-v1` schema 不兼容、project id 不匹配、artifacts 不是 list、record 不是 object、重复 artifact id/path、format 不支持、path 不在 `exports/` 下、checksum 不是 `sha256:<64 hex>` 或 metadata 非 JSON-safe object。
 - `unsupported_format`：没有插件支持、置信度不足或插件选择歧义。
@@ -566,8 +604,8 @@ Project Bundle 使用以下稳定协议：
 - `internal_error`：Project Store 中 manifest 读写、raw file 复制或 source stat 的 I/O 失败。
 - `internal_error`：extxyz 解析缺少 ASE 依赖。
 - `internal_error`：Project Content Store 本地 backend 读、写、删、列文件时遇到文件系统 I/O 失败。
-- `graph_invalid`：node、edge、path 或 object 引用不存在，graph patch 重复 id，或 species / transition_state 节点缺少 ChemicalObject 引用。
-- `graph_invalid`：Graph section codec 或 ReactionGraphService restore 中 graph node/object/edge/path 引用不完整，或 species / transition_state 节点缺少 ChemicalObject 引用。
+- `graph_invalid`：node、edge、path 或 object 引用不存在，graph patch 重复 id，或 species / transition_state 节点缺少 composition / ChemicalObject 引用。
+- `graph_invalid`：Graph section codec 或 ReactionGraphService restore 中 graph node/object/edge/path 引用不完整，或 species / transition_state 节点缺少 composition / ChemicalObject 引用。
 - `graph_invalid`：GraphEditorWorkspaceService 的 add/connect/path 操作透传 ReactionGraphService 的 graph 引用错误或 object 引用错误。
 - `graph_invalid`：EnergyProfileEngine 中 selected path 不存在、baseline 不在 path 中、path 引用缺失 node 或 node 引用缺失 ChemicalObject。
 - `missing_energy`：请求的 energy key 在对应 ChemicalObject 中不存在。
@@ -592,7 +630,7 @@ GraphEditorWorkspaceService 的 graph edit 操作失败时不更新 workspace gr
 
 EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返回的 EnergyProfile.options 会记录实际 baseline node、energy key、output unit 和 correction inclusion。
 
-PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空命令、未知命令和 shell 层参数缺失统一返回 `invalid_input`。`workbench.snapshot` 的缺失或不存在 session 也统一返回 `invalid_input`，不自动创建 session。Project Bundle validation error 以 `project_content_invalid` 或 `invalid_bundle` 投影。CLI 对 `ok=False` 返回非 0 exit code。
+PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空命令、未知命令和 shell 层参数缺失统一返回 `invalid_input`。`registry.apply_correction` 的 shape 错误返回 `invalid_input target=correction.*` 或 `object_id`，ChemicalRegistry 的同 id 不同 payload 冲突统一投影为 `invalid_input target=correction.id`。`workbench.snapshot` 的缺失或不存在 session 也统一返回 `invalid_input`，不自动创建 session。Project Bundle validation error 以 `project_content_invalid` 或 `invalid_bundle` 投影。CLI 对 `ok=False` 返回非 0 exit code。
 
 ## 5. 约束与边界
 
@@ -610,16 +648,18 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - Correction 是 additive energy correction 的记录；正负号由用户输入值表达，是否参与能量计算由后续 Energy Engine 显式控制。
 - ReactionGraphService 不调用 Chemical Registry、Parser Plugin、Project Store、Energy Engine 或 Export Service；它只接收 object id 集合作为引用校验输入。
 - GraphEditorWorkspaceService 可以调用 ReactionGraphService、ImportRegistryWorkflow.list_batches 和 ChemicalRegistry.get_object；它不调用 ParserRegistry、ProjectStore.add_raw_file、ImportRegistryWorkflow.import_files、ImportRegistryWorkflow.confirm_import、EnergyProfileEngine 或 Export Service。
-- GraphEditorWorkspaceService 不新增 UI 组件、Web route、CLI 命令、桌面窗口、canvas 渲染、拖拽事件、自动布局、化学计量系数、自动路径搜索或化学合理性判定。
+- GraphEditorWorkspaceService 不新增 UI 组件、Web route、CLI 命令、桌面窗口、canvas 渲染、拖拽事件、自动布局、edge label 编辑、path delete、化学计量系数、自动路径搜索或化学合理性判定。
 - GraphEditorWorkspaceService 不直接写项目文件、不修改 Project Content Store、不持久化 ChemicalObject、EnergyProfile 或 export artifact；WorkspaceSnapshot、CanvasViewport、WorkspaceSelection 和 active_path_id 的长期保存由 ProjectContentStore 的 `workspaces-v1` section 负责。
 - EnergyProfileEngine 不调用 Project Store、Parser Registry、Parser Plugins、ChemicalRegistry.apply_correction、ReactionGraphService.apply_patch 或 Export Service。
 - EnergyProfileEngine 只读取传入的 ReactionGraph 和 ChemicalObject 集合，不登记对象、不修改 graph、不追加 correction、不写 `.rxnflow/manifest.json`。
 - ReportExportService 不调用 Project Store、Parser Registry、Parser Plugins、ImportRegistryWorkflow、ChemicalRegistry、ReactionGraphService.apply_patch 或 EnergyProfileEngine。
 - ReportExportService 只消费调用方传入的已加载对象，不读取 raw file、不解析、不登记对象、不计算 EnergyProfile、不修改 graph/object/profile 状态、不写 `.rxnflow/manifest.json`。
 - ReportExportService 当前不新增 UI 组件、Web route、CLI 命令、桌面保存面板、真实报告预览、graph canvas screenshot、Excel chart、公式、宏或模板。
-- ReportExportService 当前不从 3D geometry 自动推断 bonds，不生成 molecule-level CDXML，不生成 generic reaction scheme CDXML，不生成 CDX。
+- ReportExportService 的 Energy Table Contract 不读取用户 workbook 原文件；basis function、Shermo/Whitesides 或 entropy 原始字段当前只可由调用方 `table_rows` 显式提供，缺失值保持 blank/absent，不补 0。
+- ReportExportService 当前不从 3D geometry 自动推断 bonds，不生成 molecule-level CDXML，不生成 generic reaction scheme CDXML，不生成 CDX；`cdx` 请求仍按 unsupported format 返回 `invalid_input target=formats`。
 - ReportExportService 当前不实现 PDF、PPTX、SVG、CSV、JSON、SDF、MOL 或批量目录导出。
 - PlatformShellService 可以调用 ProjectStore、ProjectBundleService、ImportRegistryWorkflow、ChemicalRegistry、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService；它不复制 parser 字段映射、registry fingerprint、GraphPatch 语义、energy 计算规则、export writer 能力或 bundle zip 复制逻辑。
+- `registry.apply_correction` 是 PlatformShellService 暴露 ChemicalRegistry append-only correction 能力的薄命令层；它不修改 parser 输出、不重写 ChemicalObject 原始 `energies` / `thermochemistry` / provenance，不调用 graph/workspace/export，也不触发 `project.save_content`。
 - `workbench.snapshot` 只是 PlatformShellService 的只读投影命令，不调用 ParserRegistry、ImportRegistryWorkflow.confirm_import、ReactionGraphService.apply_patch、EnergyProfileEngine.compute_profile、ReportExportService.export 或 ProjectContentStore.save_snapshot。
 - AppKernel 只做进程内装配，不是数据库、全局单例或跨进程持久化层。
 - PlatformSession 只保存进程内可观察状态，不写 `.rxnflow/manifest.json`，也不新增 ProjectResource 来持久化 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 内容。
@@ -650,4 +690,4 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - `HARTREE_TO_KCAL_MOL = 627.509474` 是当前显式使用的转换常量。
 - `KCAL_MOL_TO_KJ_MOL = 4.184` 是当前 kcal/mol 与 kJ/mol 的转换常量。
 - 化学计量系数、多组分能量表达式、过渡态化学判定、热化学表达式、溶剂化公式和交互式曲线绘图尚未实现。
-- Gaussian/ORCA/MAPLE 真实 fixture corpus、Gaussian/ORCA/MAPLE 版本/任务支持矩阵、MAPLE `.sum`/AutoNEB tree/MD thermo/path topology 语义建模尚未实现。
+- Gaussian/ORCA/MAPLE executable 真实第三方 fixture corpus、Gaussian/ORCA/MAPLE 版本/任务支持矩阵、MAPLE `.sum`/AutoNEB tree/MD thermo/path topology 语义建模尚未实现；当前 `sources.yaml` / `support-matrix.yaml` 记录 MAPLE、cclib-data 和 ASE extxyz 的来源候选、hash、体积、candidate/reference policy 和 review-required policy，并用项目内 MAPLE public-shape synthetic-derived fixture 覆盖 sp `.out` / opt final `.xyz` 最小解析形状，用 MAPLE path-family synthetic-derived fixture 覆盖 path `.xyz` frame label/Hartree energy 的逐帧解析边界，用 Gaussian/ORCA public-shape synthetic-derived fixtures 覆盖 cclib adapter 的 method、charge/spin、geometry 和 energy 投影，用 ASE extxyz project-authored variant fixture 覆盖 multi-frame、metadata、calculator energy fallback、missing energy 和 unit warning。

@@ -1,0 +1,92 @@
+feature: 2026-05-20-web-runtime-bridge-qa
+created: 2026-05-20
+
+steps:
+  - action: "Contract and transport guard tests：补 Python bridge HTTP 边界与 Web http-api response normalization 测试"
+    exit_signal: "单元测试覆盖 CORS local origin、payload_too_large、endpoint missing、HTTP non-ok + ShellResponse 的可观察语义"
+    status: done
+
+  - action: "Local HTTP E2E harness：新增独立 Playwright config 和 npm script，固定启动 bridge 与 local-http Vite"
+    exit_signal: "命令 npm run test:e2e:local-http -- --list 能只发现 local-http spec，默认 test:e2e 不包含它"
+    status: done
+
+  - action: "Bridge smoke browser flow：新增 local-http browser smoke，验证 runtime badge、fixture.run/snapshot、inline import preview、project content bridge 和 export persistence"
+    exit_signal: "local-http smoke 在真实 Chromium 通过，console clean、无水平溢出，且能看到真实 xyz-ase preview 与 persisted artifacts"
+    status: done
+
+  - action: "Bridge unavailable smoke：覆盖 local-http endpoint 不可达时 transport_unavailable 能被 UI 展示，不污染默认 fixture mode"
+    exit_signal: "组件或浏览器测试证明 fetch failure 显示 transport_unavailable / http-api"
+    status: done
+
+  - action: "Docs and workflow closure：更新 architecture、requirement、roadmap/checklist，并跑完整验证命令"
+    exit_signal: "Python unittest、Web Vitest、build、fixture E2E、local-http E2E、YAML validation 与浏览器验证通过或记录明确 fallback 原因"
+    status: done
+
+checks:
+  - item: "默认 npm run test:e2e 仍使用 fixture runtime，能看到 Runtime Fixture，且不要求 Python bridge server"
+    source: 验收场景
+    status: passed
+
+  - item: "新增 npm run test:e2e:local-http 会启动 local bridge 与 local-http Vite，浏览器页面显示 Runtime Local HTTP，title/endpoint 指向 http://127.0.0.1:8766/api/shell"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http browser smoke 点击 Fixture Run 后通过真实 bridge 得到 Fixture Minimal Reaction、2 个 objects、workspace graph 和 profile projection"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http browser smoke 选择小 water.xyz 后使用 inline bytes preview，返回 xyz-ase parser preview，而不是 fixture-only import-batch-fixture-web-1 断言"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http browser smoke 可创建 browser-local project，显式 Open Bridge / Save Bridge Session 不报错，Project Sidebar 显示 bridge/open/save 状态"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http browser smoke 可计算 energy profile 并导出 PNG/CDXML/XLSX inline artifacts，active browser project 下显示 persisted path/checksum"
+    source: 验收场景
+    status: passed
+
+  - item: "bridge contract tests 覆盖 CORS local origin / OPTIONS preflight、payload_too_large 和 ShellResponse-shaped error body"
+    source: 验收场景
+    status: passed
+
+  - item: "Web http-api transport tests 覆盖 endpoint missing、fetch failure、malformed response、HTTP non-ok shell error 穿透和 HTTP non-ok ok-response normalization"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http endpoint 不可达时，Web 层可观察到 transport_unavailable 且 target 为 http-api"
+    source: 验收场景
+    status: passed
+
+  - item: "fixture 与 local-http 两套 E2E 的 baseURL、server env、测试文件互相隔离；local-http spec 不进入默认 test:e2e"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover、npm run test、npm run build、npm run test:e2e、npm run test:e2e:local-http 通过，浏览器无空白、无 framework overlay、无相关 console error"
+    source: 验收场景
+    status: passed
+
+  - item: "不新增 Web 用户功能、UI 面板、导出格式或 parser 支持声明"
+    source: 反向检查
+    status: passed
+
+  - item: "不改变默认 runtime，不让普通 Web dev server 依赖 Python bridge"
+    source: 反向检查
+    status: passed
+
+  - item: "不把 local HTTP bridge 改造成生产公网服务，不新增认证、权限、TLS、云存储或 Vercel route"
+    source: 反向检查
+    status: passed
+
+  - item: "不实现自动端口发现、后台 daemon、自动重连或 GUI 启停 bridge"
+    source: 反向检查
+    status: passed
+
+  - item: "不实现大文件 chunking、OPFS、browser_storage adapter、Service Worker 或 Worker pool"
+    source: 反向检查
+    status: passed
+
+  - item: "不修改核心 parser、registry、graph、energy、export 领域算法"
+    source: 反向检查
+    status: passed

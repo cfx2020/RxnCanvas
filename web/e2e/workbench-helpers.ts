@@ -1,0 +1,410 @@
+import { expect, type Locator, type Page, type TestInfo } from "playwright/test"
+
+export type ConsoleIssue = {
+  type: string
+  text: string
+}
+
+export function collectConsoleIssues(page: Page): ConsoleIssue[] {
+  const issues: ConsoleIssue[] = []
+  page.on("console", (message) => {
+    if (message.type() === "error" || message.type() === "warning") {
+      issues.push({ type: message.type(), text: message.text() })
+    }
+  })
+  page.on("pageerror", (error) => {
+    issues.push({ type: "pageerror", text: error.message })
+  })
+  return issues
+}
+
+export async function openWorkbench(page: Page) {
+  await gotoWorkbenchWithRetry(page, "networkidle")
+  await expect(page).toHaveTitle("RxnFlow Workbench")
+  await expect(page.getByRole("main", { name: /rxnflow web workbench/i })).toBeVisible()
+  await expect(page.getByRole("complementary", { name: "Project Sidebar" })).toBeVisible()
+}
+
+export async function resetWorkbenchStorage(page: Page) {
+  await gotoWorkbenchWithRetry(page, "domcontentloaded")
+  await page.evaluate(async () => {
+    localStorage.clear()
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase("rxnflow-browser-projects")
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+      request.onblocked = () => resolve()
+    })
+  })
+}
+
+async function gotoWorkbenchWithRetry(
+  page: Page,
+  waitUntil: "domcontentloaded" | "networkidle",
+) {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await page.goto("/", { waitUntil, timeout: 2_000 })
+      return
+    } catch (error) {
+      lastError = error
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+  throw lastError
+}
+
+export async function expectConsoleClean(issues: ConsoleIssue[]) {
+  const relevantIssues = issues.filter((issue) => !issue.text.includes("Download the React DevTools"))
+  expect(relevantIssues).toEqual([])
+}
+
+export async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+    bodyScrollWidth: document.body.scrollWidth,
+    bodyClientWidth: document.body.clientWidth,
+  }))
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1)
+  expect(overflow.bodyScrollWidth).toBeLessThanOrEqual(overflow.bodyClientWidth + 1)
+}
+
+export async function expectNoFrameworkOverlay(page: Page) {
+  await expect(page.locator("vite-error-overlay")).toHaveCount(0)
+  await expect(page.locator("[data-nextjs-dialog-overlay]")).toHaveCount(0)
+  await expect(page.locator("#webpack-dev-server-client-overlay")).toHaveCount(0)
+}
+
+export async function expectRegionVisible(page: Page, name: string | RegExp): Promise<Locator> {
+  const region = page.getByRole("region", { name })
+  await expect(region).toBeVisible()
+  return region
+}
+
+export async function attachViewportScreenshot(page: Page, testInfo: TestInfo, name: string) {
+  const screenshot = await page.screenshot({ fullPage: false })
+  await testInfo.attach(name, {
+    body: screenshot,
+    contentType: "image/png",
+  })
+}
+
+export async function createAndSaveBrowserProject(page: Page, name: string) {
+  const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
+  await sidebar.getByLabel("Project name").fill(name)
+  await sidebar.getByRole("button", { name: "Create Project" }).click()
+  await expect(sidebar.getByRole("heading", { name })).toBeVisible()
+  await expect(sidebar.getByText("Persisted", { exact: true })).toBeVisible()
+  await expect(sidebar.getByText("Valid", { exact: true })).toBeVisible()
+  await expect(sidebar.getByText(/sha256:[a-f0-9]{64}/i)).toBeVisible()
+
+  await sidebar.getByRole("button", { name: "Save Content" }).click()
+  await expect(sidebar.getByText(/Project content files are readable/)).toBeVisible()
+}
+
+export async function openBrowserProject(page: Page, name: string) {
+  const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
+  await sidebar.getByRole("button", { name: new RegExp(name) }).click()
+  await expect(sidebar.getByRole("heading", { name })).toBeVisible()
+  await expect(sidebar.getByText("Persisted", { exact: true })).toBeVisible()
+  await expect(sidebar.getByText("Valid", { exact: true })).toBeVisible()
+}
+
+export async function runFixture(page: Page) {
+  await page.getByRole("button", { name: "Fixture Run" }).click()
+  await expect(page.getByText("Fixture Minimal Reaction")).toBeVisible()
+  await expect(page.getByRole("region", { name: "Object Registry" })).toBeVisible()
+  await expect(page.getByRole("region", { name: "Graph Canvas" })).toBeVisible()
+  await expect(page.getByRole("region", { name: "Energy Profile Panel" })).toBeVisible()
+  await expect(page.getByRole("region", { name: "Report Export Panel" })).toBeVisible()
+}
+
+export async function dragRegisteredObjectToGraphCanvas(
+  page: Page,
+  options: {
+    objectName: string | RegExp
+    objectId: string
+    label: string
+    target?: { xRatio: number; yRatio: number }
+  },
+) {
+  const objectRegistry = page.getByRole("region", { name: "Object Registry" })
+  const source = objectRegistry.getByRole("button", { name: options.objectName }).first()
+  await expect(source).toBeVisible()
+
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  const surface = graphCanvas.getByLabel("Graph canvas surface")
+  await expect(surface).toBeVisible()
+
+  const box = await surface.boundingBox()
+  expect(box).not.toBeNull()
+  const target = options.target ?? { xRatio: 0.72, yRatio: 0.38 }
+  const clientX = box!.x + box!.width * target.xRatio
+  const clientY = box!.y + box!.height * target.yRatio
+
+  await surface.evaluate((element, payload) => {
+    const transfer = new DataTransfer()
+    transfer.setData("application/x-rxnflow-graph-object", JSON.stringify({
+      kind: "registered-object",
+      objectId: payload.objectId,
+      label: payload.label,
+    }))
+    const eventInit = {
+      bubbles: true,
+      cancelable: true,
+      clientX: payload.clientX,
+      clientY: payload.clientY,
+      dataTransfer: transfer,
+    }
+    element.dispatchEvent(new DragEvent("dragover", eventInit))
+    element.dispatchEvent(new DragEvent("drop", eventInit))
+  }, {
+    objectId: options.objectId,
+    label: options.label,
+    clientX,
+    clientY,
+  })
+}
+
+export async function dragGraphNode(
+  page: Page,
+  nodeName: string | RegExp,
+  delta: { x: number; y: number },
+) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  const node = graphCanvas.getByRole("button", { name: nodeName }).first()
+  await expect(node).toBeVisible()
+  await node.scrollIntoViewIfNeeded()
+
+  const before = await node.boundingBox()
+  expect(before).not.toBeNull()
+  await node.evaluate((element, dragDelta) => {
+    const target = element as HTMLElement & { setPointerCapture?: (pointerId: number) => void }
+    const rect = target.getBoundingClientRect()
+    const start = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    }
+    const pointerId = 91
+    const originalSetPointerCapture = target.setPointerCapture
+    target.setPointerCapture = () => undefined
+    const dispatchPointer = (type: string, clientX: number, clientY: number, buttons: number) => {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        buttons,
+        clientX,
+        clientY,
+      }))
+    }
+
+    try {
+      dispatchPointer("pointerdown", start.x, start.y, 1)
+      dispatchPointer("pointermove", start.x + dragDelta.x / 2, start.y + dragDelta.y / 2, 1)
+      dispatchPointer("pointermove", start.x + dragDelta.x, start.y + dragDelta.y, 1)
+      dispatchPointer("pointerup", start.x + dragDelta.x, start.y + dragDelta.y, 0)
+    } finally {
+      target.setPointerCapture = originalSetPointerCapture
+    }
+  }, delta)
+
+  await expect.poll(async () => {
+    const after = await node.boundingBox()
+    if (!after) return 0
+    return Math.abs(after.x - before!.x) + Math.abs(after.y - before!.y)
+  }).toBeGreaterThan(8)
+}
+
+export async function exerciseGraphViewportControls(page: Page) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  const surface = graphCanvas.getByLabel("Graph canvas surface")
+  const viewportLayer = graphCanvas.locator(".graph-viewport-layer")
+
+  await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
+  await expect(graphCanvas.getByText("120%")).toBeVisible()
+
+  await graphCanvas.getByRole("button", { name: "Fit" }).click()
+  await expect.poll(async () => graphCanvas.getByLabel(/%$/).textContent()).not.toBe("120%")
+
+  await graphCanvas.getByRole("button", { name: "Reset" }).click()
+  await expect(graphCanvas.getByText("100%")).toBeVisible()
+
+  const resetTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
+  await graphCanvas.getByRole("button", { name: "Pan" }).click()
+  await expect(graphCanvas.getByRole("button", { name: "Pan" })).toHaveAttribute("aria-pressed", "true")
+
+  await surface.evaluate((element) => {
+    const target = element as HTMLElement & { setPointerCapture?: (pointerId: number) => void }
+    const rect = target.getBoundingClientRect()
+    const start = {
+      x: rect.left + rect.width * 0.42,
+      y: rect.top + rect.height * 0.42,
+    }
+    const end = {
+      x: rect.left + rect.width * 0.55,
+      y: rect.top + rect.height * 0.3,
+    }
+    const pointerId = 92
+    const originalSetPointerCapture = target.setPointerCapture
+    target.setPointerCapture = () => undefined
+    const dispatchPointer = (type: string, clientX: number, clientY: number, buttons: number) => {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        buttons,
+        clientX,
+        clientY,
+      }))
+    }
+
+    try {
+      dispatchPointer("pointerdown", start.x, start.y, 1)
+      dispatchPointer("pointermove", (start.x + end.x) / 2, (start.y + end.y) / 2, 1)
+      dispatchPointer("pointermove", end.x, end.y, 1)
+      dispatchPointer("pointerup", end.x, end.y, 0)
+    } finally {
+      target.setPointerCapture = originalSetPointerCapture
+    }
+  })
+
+  await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(resetTransform)
+
+  await graphCanvas.getByRole("button", { name: "Pan" }).click()
+  await expect(graphCanvas.getByRole("button", { name: "Pan" })).toHaveAttribute("aria-pressed", "false")
+
+  await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
+  await expect(graphCanvas.getByText("120%")).toBeVisible()
+}
+
+export async function reorderFixturePathToReverse(page: Page) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  await graphCanvas.getByRole("button", { name: "Select path Fixture path" }).click()
+  const draft = graphCanvas.getByLabel("Path order draft")
+  await draft.getByRole("button", { name: "Up" }).last().click()
+  await draft.getByRole("button", { name: "Apply Path Order" }).click()
+  await expect(graphCanvas.getByText("node-b -> node-a")).toBeVisible()
+}
+
+export async function deleteFixtureEdge(page: Page) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  await graphCanvas.getByRole("button", { name: "Edge Object A to Object B" }).click()
+  await graphCanvas.getByRole("button", { name: "Delete Selected" }).click()
+  const preview = graphCanvas.getByLabel("Network Preview")
+  await expect(preview.locator("dd").nth(1)).toHaveText("0")
+  await expect(graphCanvas.getByRole("button", { name: /node-a/i })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: /node-b/i })).toBeVisible()
+}
+
+export async function saveReloadAndRestoreGraphWorkspace(page: Page, projectName: string) {
+  const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+
+  await sidebar.getByRole("button", { name: "Save Bridge" }).click()
+  await expect(sidebar.getByText("Project content files are readable.")).toBeVisible()
+
+  await page.reload({ waitUntil: "networkidle" })
+  await openWorkbench(page)
+  await openBrowserProject(page, projectName)
+  await sidebar.getByRole("button", { name: "Open Bridge" }).click()
+
+  await expect(graphCanvas.getByText("120%")).toBeVisible()
+  await expect(graphCanvas.getByText("node-b -> node-a")).toBeVisible()
+  await expect(graphCanvas.getByText("Active path").locator("..")).toContainText("path-a-b")
+  await expect(graphCanvas.getByRole("button", { name: /Select path .*path-a-b/ })).toBeVisible()
+}
+
+export async function previewAndRegisterImport(page: Page) {
+  const importInbox = page.getByRole("region", { name: "Import Inbox" })
+  await importInbox.getByLabel("Select Files").setInputFiles([
+    {
+      name: "water.xyz",
+      mimeType: "chemical/x-xyz",
+      buffer: Buffer.from("2\nwater\nO 0 0 0\nH 0 0 1\n"),
+    },
+    {
+      name: "bad-count.xyz",
+      mimeType: "chemical/x-xyz",
+      buffer: Buffer.from("bad\n"),
+    },
+  ])
+  await importInbox.getByLabel("Expected format").selectOption("xyz")
+  await importInbox.getByLabel("Strict parser").check()
+  await importInbox.getByRole("button", { name: "Preview" }).click()
+
+  await expect(importInbox.getByText("import-batch-fixture-web-1")).toBeVisible()
+  await expect(importInbox.getByText("inputs/raw/water.xyz")).toBeVisible()
+  await expect(importInbox.getByText("missing_section").first()).toBeVisible()
+  await expect(importInbox.getByText("parse_failed")).toBeVisible()
+
+  await importInbox.getByRole("button", { name: "Register All" }).click()
+  await expect(importInbox.getByText("object-imported-water").first()).toBeVisible()
+}
+
+export async function buildImportedWaterPath(page: Page) {
+  const objectRegistry = page.getByRole("region", { name: "Object Registry" })
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+
+  await objectRegistry.getByRole("button", { name: /water.xyz/i }).click()
+  await graphCanvas.getByRole("button", { name: "Add Node" }).click()
+  await expect(graphCanvas.getByText("node-web-3").first()).toBeVisible()
+
+  await graphCanvas.getByRole("button", { name: /node-b/i }).click()
+  await graphCanvas.getByRole("button", { name: "Connect" }).click()
+  await graphCanvas.getByRole("button", { name: /node-web-3/i }).click()
+  await expect(graphCanvas.getByText("No disconnected nodes")).toBeVisible()
+
+  await graphCanvas.getByRole("button", { name: "Set Path" }).click()
+  await expect(graphCanvas.getByText("path-web-main").first()).toBeVisible()
+  await expect(graphCanvas.getByText("node-a -> node-b -> node-web-3")).toBeVisible()
+}
+
+export async function computeMissingEnergyProfile(page: Page) {
+  const energyPanel = page.getByRole("region", { name: "Energy Profile Panel" })
+  await energyPanel.getByRole("button", { name: "Compute" }).click()
+  await expect(energyPanel.getByText("missing_energy").first()).toBeVisible()
+  await expect(energyPanel.getByRole("row").filter({ hasText: "node-web-3" })).toContainText("missing_energy")
+}
+
+export async function exportFixtureProfile(page: Page) {
+  const exportPanel = page.getByRole("region", { name: "Report Export Panel" })
+  await exportPanel.getByRole("button", { name: "Export" }).click()
+  await expect(exportPanel.getByText("artifact-png-rxnflow-profile")).toBeVisible()
+  await expect(exportPanel.getByText("artifact-cdxml-rxnflow-profile")).toBeVisible()
+  await expect(exportPanel.getByText("artifact-xlsx-rxnflow-profile")).toBeVisible()
+  await expect(exportPanel.getByText("exports/rxnflow-profile.png")).toBeVisible()
+  await expect(exportPanel.getByText("exports/rxnflow-profile.cdxml")).toBeVisible()
+  await expect(exportPanel.getByText("exports/rxnflow-profile.xlsx")).toBeVisible()
+  await expect(exportPanel.getByText("fixture-png-energy-plot-v1")).toBeVisible()
+  await expect(exportPanel.getByText("fixture-cdxml-energy-v1")).toBeVisible()
+  await expect(exportPanel.getByText("fixture-xlsx-energy-table-v1")).toBeVisible()
+  await expect(exportPanel.getByText("energy_table_schema_version")).toBeVisible()
+  await expect(exportPanel.getByText("energy-table-v1", { exact: true })).toBeVisible()
+  await expect(exportPanel.getByText(/^sha256:[a-f0-9]{64}$/).first()).toBeVisible()
+  await expect(exportPanel.getByText("Yes").first()).toBeVisible()
+  await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(3)
+  await expect(exportPanel.getByRole("link", { name: "Download" }).first()).toHaveAttribute("download", "rxnflow-profile.png")
+  await expect(exportPanel.getByRole("link", { name: "Download" }).nth(1)).toHaveAttribute("download", "rxnflow-profile.cdxml")
+  await expect(exportPanel.getByRole("link", { name: "Download" }).nth(1)).toHaveAttribute("href", /^data:chemical\/x-cdxml;base64,/)
+  await expect(exportPanel.getByRole("link", { name: "Download" }).nth(2)).toHaveAttribute("download", "rxnflow-profile.xlsx")
+  await expect(exportPanel.getByRole("link", { name: "Download" }).nth(2)).toHaveAttribute("href", /^data:application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet;base64,/)
+  await expect(page.getByText("chemdraw_cdxml_only").first()).toBeVisible()
+}
+
+export async function exportWithoutInlineBytes(page: Page) {
+  const exportPanel = page.getByRole("region", { name: "Report Export Panel" })
+  await exportPanel.getByLabel("Include bytes").uncheck()
+  await exportPanel.getByRole("button", { name: "Export" }).click()
+  await expect(exportPanel.getByText("artifact-png-rxnflow-profile")).toBeVisible()
+  await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(0)
+  await expect(exportPanel.getByText("Download unavailable")).toHaveCount(3)
+}

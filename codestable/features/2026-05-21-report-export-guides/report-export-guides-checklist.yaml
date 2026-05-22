@@ -1,0 +1,47 @@
+feature: 2026-05-21-report-export-guides
+status: in-progress
+created: 2026-05-21
+
+steps:
+  - action: "Design and checklist：建立 feature design/checklist，并把 roadmap item 标为 in-progress"
+    exit_signal: "feature checklist 与 roadmap YAML 通过"
+    status: done
+  - action: "Developer guide：新增 docs/dev/report-export-artifacts.md，覆盖 core/Shell/Web persistence contract"
+    exit_signal: "dev-guide frontmatter current，API 示例来自现有代码，范围边界准确"
+    status: done
+  - action: "User guide：新增 docs/user/report-export-artifacts.md，覆盖 Web 操作、格式用途、保存路径和 FAQ"
+    exit_signal: "user-guide 不依赖未实现能力，不承诺云同步或 CDX/CSV"
+    status: done
+  - action: "Acceptance and docs index：回写 architecture/requirement/roadmap，补验收报告和验证命令"
+    exit_signal: "checks 全 passed，roadmap done，YAML/Python/Web tests 通过"
+    status: done
+
+checks:
+  - item: "docs/dev/report-export-artifacts.md 存在，frontmatter 为 doc_type=dev-guide、status=current"
+    status: passed
+  - item: "dev-guide 说明 ExportRequest / ReportExportService.export() 和 Platform Shell export.profile"
+    status: passed
+  - item: "dev-guide 列出 PNG/CDXML/XLSX 支持边界、CDX/CSV 不支持边界、XlsxWriter/Pillow 延迟依赖错误语义"
+    status: passed
+  - item: "dev-guide 说明 Energy Table schema version、第一列结构名称、常见列和 manual row / missing value 语义"
+    status: passed
+  - item: "dev-guide 说明 ExportArtifact、ShellArtifact.bytes_base64、ExportArtifactRecord 和 exports/... checksum 边界"
+    status: passed
+  - item: "docs/user/report-export-artifacts.md 存在，frontmatter 为 doc_type=user-guide、status=current"
+    status: passed
+  - item: "user-guide 说明 Web 工作台导出步骤：active path/profile、Export、格式、include bytes、basename/title"
+    status: passed
+  - item: "user-guide 说明 PNG/CDXML/XLSX 用途、.cdxml 可用 ChemDraw 打开、.cdx 当前不支持"
+    status: passed
+  - item: "user-guide 说明 Download、Persisted、Checksum、Metadata、Warnings 的用户含义"
+    status: passed
+  - item: "指南不承诺 CSV/CDX/PDF/PPTX/SVG、云存储、自动保存或浏览器前端生成 bytes"
+    status: passed
+  - item: "不改运行时代码"
+    status: passed
+  - item: "不新增 Web UI、截图或报告预览"
+    status: passed
+  - item: "不复制用户私有 workbook"
+    status: passed
+  - item: "不把 Playwright artifacts 加入版本控制"
+    status: passed

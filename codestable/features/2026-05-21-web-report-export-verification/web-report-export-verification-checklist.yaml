@@ -1,0 +1,47 @@
+feature: 2026-05-21-web-report-export-verification
+status: in-progress
+created: 2026-05-21
+
+steps:
+  - action: "Fixture metadata and unit guards：补 fixture artifact metadata、download/MIME、metadata、unsupported persistence 单测"
+    exit_signal: "相关 Vitest 单测通过"
+    status: done
+  - action: "E2E export assertions：补 fixture/local-http E2E report export metadata/checksum/download/warning 断言"
+    exit_signal: "fixture 与 local-http Playwright E2E 通过"
+    status: done
+  - action: "Rendered browser QA：用 Browser plugin 验证桌面与窄屏 export surface"
+    exit_signal: "页面非空、无 overlay、console clean、导出交互证据通过"
+    status: done
+  - action: "Scope validation：跑 Web build/test 和 YAML 校验"
+    exit_signal: "构建测试通过，未新增 CSV/CDX/Web bytes writer/cloud storage"
+    status: done
+
+checks:
+  - item: "Fixture export 后显示 PNG/CDXML/XLSX 三个 artifact、3 个 download link、writer metadata 和 chemdraw_cdxml_only warning"
+    status: passed
+  - item: "CDXML download link 使用 chemical/x-cdxml data URL，XLSX 使用 spreadsheet MIME"
+    status: passed
+  - item: "Active browser project + inline bytes 时写入 exports/rxnflow-profile.{format}，显示 persisted yes 和 sha256 checksum，并更新 export-artifacts-v1"
+    status: passed
+  - item: "include bytes 关闭时无 download link，不写 browser-local exports，export-artifacts-v1 保持空"
+    status: passed
+  - item: "persistence failure 时 runtime artifacts 和 download link 仍可见，并显示 artifact_persistence_failed warning"
+    status: passed
+  - item: "unsupported artifact format 不写 Browser Project Repository，不写 export artifact record"
+    status: passed
+  - item: "local-http E2E 显示真实 writer ids、persisted path、checksum 和 download"
+    status: passed
+  - item: "窄屏 E2E 中 Report Export Panel 可见、Export 可点击、3 个 download link 可见，无水平溢出"
+    status: passed
+  - item: "Browser 验证桌面/窄屏页面非空、无 Vite overlay、console clean、export 后 artifact cards 可见"
+    status: passed
+  - item: "不新增 CSV/CDX 等 Web export format"
+    status: passed
+  - item: "不在 Web 前端生成 PNG/CDXML/XLSX bytes"
+    status: passed
+  - item: "不调用云存储、账号、OPFS、File System Access API 或自动保存"
+    status: passed
+  - item: "不修改 Python core export writer"
+    status: passed
+  - item: "不把测试截图/report/trace 加入版本控制"
+    status: passed

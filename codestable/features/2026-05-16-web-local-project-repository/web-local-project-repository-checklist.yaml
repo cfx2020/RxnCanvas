@@ -1,0 +1,76 @@
+feature: 2026-05-16-web-local-project-repository
+created: 2026-05-16
+
+steps:
+  - action: "Repository Contract Types：新增 Browser Project Repository DTO、错误类型和 path/checksum helper"
+    exit_signal: "前端单测能验证 project ref / object / receipt 形状、path safety 和 checksum 格式"
+    status: done
+
+  - action: "IndexedDB Repository Implementation：实现 project refs 和 object records 的 IndexedDB CRUD"
+    exit_signal: "测试替身或 fake IndexedDB 可跑通 create/list/write/read/exists/list/delete"
+    status: done
+
+  - action: "Local-only Error / Edge Semantics：补 project isolation、overwrite、missing object、delete idempotency、quota/unavailable 映射"
+    exit_signal: "单测覆盖 roadmap 4.3 contract 的正常、边界和错误路径"
+    status: done
+
+  - action: "Browser Smoke Validation：在 Vite dev server 的真实浏览器环境动态 import repository 并执行 create/write/read/list/delete smoke"
+    exit_signal: "桌面浏览器 smoke 通过；不需要新增用户可见 UI"
+    status: done
+
+  - action: "Scope Guard / Docs Prep：跑 Web test/build、scope grep、确认未引入云/bridge/UI/Python core 改动"
+    exit_signal: "验证证据足以进入 acceptance"
+    status: done
+
+checks:
+  - item: "BrowserProjectRepository interface 存在，包含 listProjects/createProject/readObject/writeObject/exists/listObjects/deleteObject"
+    source: 名词契约
+    status: passed
+
+  - item: "BrowserProjectRef / BrowserStorageObject / BrowserWriteReceipt / BrowserProjectRepositoryError DTO 已定义且 JSON-safe"
+    source: 名词契约
+    status: passed
+
+  - item: "path 规则拒绝空路径、绝对路径、反斜杠、. 和 .."
+    source: 名词契约
+    status: passed
+
+  - item: "writeObject 覆盖同一 projectRef/path 并返回 sha256 checksum、byteSize、updatedAt 和 backendId"
+    source: 编排骨架
+    status: passed
+
+  - item: "readObject / exists / listObjects / deleteObject 语义与 BrowserLocalProjectStorageBackend 对齐"
+    source: 编排骨架
+    status: passed
+
+  - item: "不同 projectRef 下相同 path 互相隔离"
+    source: 验收场景
+    status: passed
+
+  - item: "missing object、invalid_input、storage_unavailable 和 storage_quota_exceeded 错误语义稳定"
+    source: 跨层纪律
+    status: passed
+
+  - item: "IndexedDB-first implementation 落地，但 OPFS / Worker / Service Worker / 持久存储权限 UI 不实现"
+    source: 范围守护
+    status: passed
+
+  - item: "Project Sidebar UI、bundle import/export UI、File picker、drag/drop 和 parser preview 不实现"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 Python parser、registry、graph、energy、export、ProjectContentStore 或 BrowserLocalProjectStorageBackend"
+    source: 范围守护
+    status: passed
+
+  - item: "npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "真实浏览器 smoke 通过"
+    source: 验收场景
+    status: passed

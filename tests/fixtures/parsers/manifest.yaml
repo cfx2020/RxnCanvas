@@ -50,6 +50,56 @@ fixtures:
     tags: [maple, opt, energy, geometry, synthetic]
     notes: "Synthetic opt output covering last coordinate block and last energy selection."
 
+  - id: maple-sp-public-shape-synthetic-derived
+    program: maple
+    format: maple-output
+    task: sp
+    parser_id: maple-output
+    file: files/maple/maple-sp-public-shape-synthetic-derived.out
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: maple-output
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/maple-sp-public-shape-synthetic-derived.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [maple, sp, energy, geometry, synthetic-derived, public-shape]
+    notes: "Project-authored MAPLE-like fixture derived from public candidate shape; does not copy ClickFF/MAPLE example content."
+
+  - id: maple-opt-final-xyz-public-shape-synthetic-derived
+    program: maple
+    format: maple-xyz
+    task: opt-final
+    parser_id: maple-output
+    file: files/maple/maple-opt-final-xyz-public-shape-synthetic-derived.xyz
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: maple-xyz
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/maple-opt-final-xyz-public-shape-synthetic-derived.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [maple, opt, xyz, energy, geometry, synthetic-derived, public-shape]
+    notes: "Project-authored single-frame final XYZ shape fixture; public MAPLE final XYZ remains unvendored."
+
   - id: maple-irc-path-synthetic-minimal
     program: maple
     format: maple-xyz
@@ -74,6 +124,31 @@ fixtures:
     support_status: partial
     tags: [maple, irc, path, xyz, energy, geometry, synthetic]
     notes: "Parses MAPLE path frames and energies only; path topology/IRC semantics are not modeled."
+
+  - id: maple-path-family-synthetic-derived
+    program: maple
+    format: maple-xyz
+    task: path-family
+    parser_id: maple-output
+    file: files/maple/maple-path-family-synthetic-derived.xyz
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: maple-xyz
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/maple-path-family-synthetic-derived.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: partial
+    tags: [maple, irc, neb, string, autoneb, path, xyz, energy, geometry, synthetic-derived, public-shape]
+    notes: "Project-authored MAPLE path-family shape fixture covering frame labels and Hartree energies only; no direction/topology/TS semantics."
 
   - id: xyz-water-geometry-missing-energy
     program: xyz
@@ -150,6 +225,31 @@ fixtures:
     tags: [extxyz, ase, missing-energy, synthetic]
     notes: null
 
+  - id: extxyz-multiframe-metadata-calculator-energy
+    program: ase-extxyz
+    format: extxyz
+    task: multiframe-geometry-energy
+    parser_id: xyz-ase
+    file: files/extxyz/extxyz-multiframe-metadata-calculator-energy.xyz
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: extxyz
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/extxyz-multiframe-metadata-calculator-energy.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: partial
+    tags: [extxyz, ase, multiframe, metadata, calculator-energy, missing-energy, synthetic]
+    notes: "Project-authored extxyz variant covering multi-frame metadata, calculator energy fallback and missing energy."
+
   - id: gaussian-sp-water-synthetic-minimal
     program: gaussian
     format: gaussian-log
@@ -175,6 +275,31 @@ fixtures:
     tags: [gaussian, cclib, sp, energy, geometry, synthetic]
     notes: "Synthetic minimal log authored for cclib fixture coverage; not a real Gaussian output."
 
+  - id: gaussian-sp-public-shape-synthetic-derived
+    program: gaussian
+    format: gaussian-log
+    task: sp
+    parser_id: gaussian-log-cclib
+    file: files/gaussian/gaussian-sp-public-shape-synthetic-derived.log
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: gaussian-log
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/gaussian-sp-public-shape-synthetic-derived.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [gaussian, cclib, sp, energy, geometry, synthetic-derived, public-shape]
+    notes: "Project-authored Gaussian-like fixture derived from cclib-data candidate shape; does not copy cclib-data content."
+
   - id: orca-sp-water-synthetic-minimal
     program: orca
     format: orca-output
@@ -199,6 +324,31 @@ fixtures:
     support_status: supported
     tags: [orca, cclib, sp, energy, geometry, synthetic]
     notes: "Synthetic minimal output authored for cclib fixture coverage; not a real ORCA output."
+
+  - id: orca-sp-public-shape-synthetic-derived
+    program: orca
+    format: orca-output
+    task: sp
+    parser_id: orca-output-cclib
+    file: files/orca/orca-sp-public-shape-synthetic-derived.out
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: orca-output
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/orca-sp-public-shape-synthetic-derived.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: supported
+    tags: [orca, cclib, sp, energy, geometry, synthetic-derived, public-shape]
+    notes: "Project-authored ORCA-like fixture derived from cclib-data candidate shape; does not copy cclib-data content."
 
   - id: xyz-bad-atom-count
     program: xyz

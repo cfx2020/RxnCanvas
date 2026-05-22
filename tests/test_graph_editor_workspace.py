@@ -13,6 +13,7 @@ from rxnflow.models import (
     EnergyValue,
     GraphPatch,
     Provenance,
+    ReactionNodeCompositionTerm,
 )
 from rxnflow.parsers import ParserRegistry
 from rxnflow.project import ProjectStore
@@ -126,8 +127,57 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
         self.assertEqual(node.kind, "species")
         self.assertEqual(node.label, "Reactant")
         self.assertEqual(node.chemical_object_ids, (obj.id,))
+        self.assertEqual(node.composition, (ReactionNodeCompositionTerm(obj.id),))
         self.assertEqual(node.position, (120.0, 80.0))
         self.assertEqual(node.metadata, {"role": "substrate"})
+
+    def test_set_node_composition_updates_existing_node_and_preserves_projection(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(
+            _object("object-a", label="A"),
+            _object("object-b", label="B"),
+        )
+        node = _add_species(workspace, workspace_id, "Combo", "object-a")
+
+        updated = workspace.set_node_composition(
+            PROJECT_ID,
+            workspace_id,
+            node.id,
+            (
+                ReactionNodeCompositionTerm("object-a", 1.0),
+                ReactionNodeCompositionTerm("object-b", 2.0, role="reagent"),
+            ),
+        )
+
+        self.assertTrue(updated.ok, updated.error)
+        stored = updated.value.graph.nodes[0]  # type: ignore[union-attr]
+        self.assertEqual(stored.chemical_object_ids, ("object-a", "object-b"))
+        self.assertEqual([term.coefficient for term in stored.composition], [1.0, 2.0])
+        self.assertEqual(stored.composition[1].role, "reagent")
+
+    def test_set_node_composition_errors_do_not_change_state(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-a"))
+        node = _add_species(workspace, workspace_id, "A", "object-a")
+        before = workspace.snapshot(PROJECT_ID, workspace_id).value.graph
+
+        bad_coefficient = workspace.set_node_composition(
+            PROJECT_ID,
+            workspace_id,
+            node.id,
+            (ReactionNodeCompositionTerm("object-a", 0.0),),
+        )
+        missing_object = workspace.set_node_composition(
+            PROJECT_ID,
+            workspace_id,
+            node.id,
+            (ReactionNodeCompositionTerm("object-missing", 1.0),),
+        )
+        after = workspace.snapshot(PROJECT_ID, workspace_id).value.graph
+
+        self.assertFalse(bad_coefficient.ok)
+        self.assertEqual(bad_coefficient.error.code, "invalid_input")  # type: ignore[union-attr]
+        self.assertFalse(missing_object.ok)
+        self.assertEqual(missing_object.error.code, "graph_invalid")  # type: ignore[union-attr]
+        self.assertEqual(after, before)
 
     def test_add_annotation_and_group_nodes_without_objects(self) -> None:
         workspace, workspace_id = _workspace_with_objects()
@@ -233,6 +283,41 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
         self.assertEqual([path.id for path in snapshot.preview.paths], ["path-main", "path-product"])
         self.assertEqual(snapshot.active_path_id, "path-product")
 
+    def test_move_node_updates_position_without_changing_edges_or_paths(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
+        reactant = _add_species(workspace, workspace_id, "R", "object-r")
+        product = _add_species(workspace, workspace_id, "P", "object-p")
+        workspace.connect_nodes(PROJECT_ID, workspace_id, reactant.id, product.id)
+        workspace.set_active_path(PROJECT_ID, workspace_id, "path-main", (reactant.id, product.id))
+
+        moved = workspace.move_node(PROJECT_ID, workspace_id, product.id, (240.0, 180.0))
+
+        self.assertTrue(moved.ok, moved.error)
+        snapshot = moved.value
+        assert snapshot is not None
+        moved_node = next(node for node in snapshot.graph.nodes if node.id == product.id)
+        self.assertEqual(moved_node.position, (240.0, 180.0))
+        self.assertEqual(
+            [(edge.from_node, edge.to_node) for edge in snapshot.graph.edges],
+            [(reactant.id, product.id)],
+        )
+        self.assertEqual(snapshot.graph.paths[0].node_ids, (reactant.id, product.id))
+        self.assertEqual(snapshot.preview.disconnected_node_ids, ())
+
+    def test_move_missing_node_returns_graph_invalid_without_state_change(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"))
+        _add_species(workspace, workspace_id, "R", "object-r")
+        before = workspace.snapshot(PROJECT_ID, workspace_id).value.graph
+
+        moved = workspace.move_node(PROJECT_ID, workspace_id, "node-missing", (240.0, 180.0))
+        after = workspace.snapshot(PROJECT_ID, workspace_id).value.graph
+
+        self.assertFalse(moved.ok)
+        self.assertIsNotNone(moved.error)
+        assert moved.error is not None
+        self.assertEqual(moved.error.code, "graph_invalid")
+        self.assertEqual(after, before)
+
     def test_selection_and_viewport_do_not_change_graph(self) -> None:
         workspace, workspace_id = _workspace_with_objects(_object("object-r"))
         node = _add_species(workspace, workspace_id, "R", "object-r")
@@ -255,17 +340,37 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
         self.assertEqual(moved.value.selection.node_ids, (node.id,))  # type: ignore[union-attr]
         self.assertEqual(moved.value.viewport, CanvasViewport(x=10.0, y=-4.0, zoom=1.5))  # type: ignore[union-attr]
 
+    def test_select_rejects_missing_graph_item_without_state_change(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"))
+        _add_species(workspace, workspace_id, "R", "object-r")
+        before = workspace.snapshot(PROJECT_ID, workspace_id).value
+
+        selected = workspace.select(
+            PROJECT_ID,
+            workspace_id,
+            WorkspaceSelection(node_ids=("node-missing",)),
+        )
+        after = workspace.snapshot(PROJECT_ID, workspace_id).value
+
+        self.assertFalse(selected.ok)
+        self.assertIsNotNone(selected.error)
+        assert selected.error is not None
+        self.assertEqual(selected.error.code, "graph_invalid")
+        self.assertEqual(selected.error.target, "node_id")
+        self.assertEqual(after.selection, before.selection)
+
     def test_remove_node_updates_preview_after_graph_service_cascade(self) -> None:
         workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
         reactant = _add_species(workspace, workspace_id, "R", "object-r")
         product = _add_species(workspace, workspace_id, "P", "object-p")
         workspace.connect_nodes(PROJECT_ID, workspace_id, reactant.id, product.id)
         workspace.set_active_path(PROJECT_ID, workspace_id, "path-main", (reactant.id, product.id))
+        workspace.select(PROJECT_ID, workspace_id, WorkspaceSelection(node_ids=(reactant.id,)))
 
-        removed = workspace.apply_patches(
+        removed = workspace.remove_items(
             PROJECT_ID,
             workspace_id,
-            (GraphPatch("remove", id=reactant.id),),
+            node_ids=(reactant.id,),
         )
 
         self.assertTrue(removed.ok, removed.error)
@@ -274,9 +379,43 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
         self.assertEqual(snapshot.graph.edges, ())
         self.assertEqual(snapshot.graph.paths, ())
         self.assertIsNone(snapshot.active_path_id)
+        self.assertEqual(snapshot.selection, WorkspaceSelection())
         self.assertEqual(snapshot.preview.edges, ())
         self.assertEqual(snapshot.preview.paths, ())
         self.assertEqual(snapshot.preview.disconnected_node_ids, (product.id,))
+
+    def test_remove_edge_keeps_nodes_and_updates_preview(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
+        reactant = _add_species(workspace, workspace_id, "R", "object-r")
+        product = _add_species(workspace, workspace_id, "P", "object-p")
+        connected = workspace.connect_nodes(PROJECT_ID, workspace_id, reactant.id, product.id)
+        self.assertTrue(connected.ok, connected.error)
+        edge_id = connected.value.graph.edges[0].id  # type: ignore[union-attr]
+
+        removed = workspace.remove_items(PROJECT_ID, workspace_id, edge_ids=(edge_id,))
+
+        self.assertTrue(removed.ok, removed.error)
+        snapshot = removed.value
+        assert snapshot is not None
+        self.assertEqual([node.id for node in snapshot.graph.nodes], [reactant.id, product.id])
+        self.assertEqual(snapshot.graph.edges, ())
+        self.assertEqual(snapshot.preview.disconnected_node_ids, (reactant.id, product.id))
+
+    def test_remove_items_rejects_empty_and_missing_selection_without_state_change(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"))
+        _add_species(workspace, workspace_id, "R", "object-r")
+        before = workspace.snapshot(PROJECT_ID, workspace_id).value.graph
+
+        empty = workspace.remove_items(PROJECT_ID, workspace_id)
+        missing = workspace.remove_items(PROJECT_ID, workspace_id, edge_ids=("edge-missing",))
+        after = workspace.snapshot(PROJECT_ID, workspace_id).value.graph
+
+        self.assertFalse(empty.ok)
+        self.assertEqual(empty.error.code, "invalid_input")  # type: ignore[union-attr]
+        self.assertEqual(empty.error.target, "selection")  # type: ignore[union-attr]
+        self.assertFalse(missing.ok)
+        self.assertEqual(missing.error.code, "graph_invalid")  # type: ignore[union-attr]
+        self.assertEqual(after, before)
 
     def test_network_preview_reports_disconnected_nodes(self) -> None:
         workspace, workspace_id = _workspace_with_objects(_object("object-a"), _object("object-b"))

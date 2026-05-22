@@ -1,0 +1,104 @@
+feature: 2026-05-20-web-object-registry-panel
+created: 2026-05-20
+
+steps:
+  - action: "Object Projection Enrichment：扩展 Web ObjectSummary type 和 fixture objects metadata"
+    exit_signal: "ShellClient/workbench tests 仍能读取 objects，fixture/imported object 带 formula/charge/spin/method/provenance"
+    status: done
+
+  - action: "Object Registry Panel UI：新增对象列表、empty state、active object detail、source/keys/provenance/warnings/correction entry"
+    exit_signal: "component test 能看到 fixture objects、选择对象、查看详情和 disabled correction entry"
+    status: done
+
+  - action: "Workbench Integration：WorkbenchShell 维护 active object id，并在 objects 更新后保持或修正 selection"
+    exit_signal: "fixture run 后自动选择第一个 object；import register 后 imported object 出现在列表且可选"
+    status: done
+
+  - action: "I18n And Responsive Styling：新增双语文案和对象面板响应式样式"
+    exit_signal: "中文测试覆盖主文案，长 id/source/warning 不撑破布局"
+    status: done
+
+  - action: "Verification And Scope Guard：跑 Web test/build、Python 单测、真实浏览器桌面/窄屏验证"
+    exit_signal: "npm run test、npm run build、python3 -m unittest discover 通过；scope grep 未触碰 core registry/correction"
+    status: done
+
+checks:
+  - item: "首屏无对象时 Object Registry Panel 显示 empty state，correction entry disabled"
+    source: 验收场景
+    status: passed
+
+  - item: "运行 Fixture 后对象面板显示 Object A / Object B 列表和对象总数"
+    source: 验收场景
+    status: passed
+
+  - item: "有对象时自动选中第一个对象，详情显示 id、label、source_file_id、energy keys"
+    source: 验收场景
+    status: passed
+
+  - item: "详情显示 formula、charge、spin_multiplicity、method；缺失字段显示 unavailable"
+    source: 验收场景
+    status: passed
+
+  - item: "详情显示 provenance parser_id、parser_version、source_file_id、parsed_at 可用信息"
+    source: 验收场景
+    status: passed
+
+  - item: "详情显示 thermochemistry keys 和 correction_count；校正项入口 visible but disabled"
+    source: 验收场景
+    status: passed
+
+  - item: "点击另一个对象只改变 active object detail，不调用 ShellClient"
+    source: 验收场景
+    status: passed
+
+  - item: "Import Inbox register all 后 imported object 出现在对象列表，并可选中查看 source/provenance/energy key"
+    source: 验收场景
+    status: passed
+
+  - item: "Object warnings 显示 warning code/message/target，不被隐藏或翻译"
+    source: 验收场景
+    status: passed
+
+  - item: "中文 locale 下对象面板静态文案变为简体中文；object id、label、parser_id、warning code 保持原样"
+    source: i18n
+    status: passed
+
+  - item: "不从 pending/failed import item 生成对象卡片；只展示 WorkbenchDomainState.objects"
+    source: 范围守护
+    status: passed
+
+  - item: "不实现 correction form 或 registry write；disabled correction entry 不触发 Shell command"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 Python ChemicalRegistry、ChemicalObject codec、Project Content schema、parser plugins 或 Energy Engine"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 correction shell command、HTTP API、cloud SDK 或账号系统"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 Object Registry Panel 当作 Graph Canvas object drag/drop 实现"
+    source: 范围守护
+    status: passed
+
+  - item: "不翻译 object id、label、source_file_id、energy key、parser id/version 或 warning/error code"
+    source: i18n
+    status: passed
+
+  - item: "npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "真实浏览器桌面和窄屏验证对象列表/详情无重叠、无水平溢出"
+    source: 验收场景
+    status: passed

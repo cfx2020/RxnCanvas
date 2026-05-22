@@ -1,0 +1,50 @@
+{
+  "fixture_id": "maple-sp-public-shape-synthetic-derived",
+  "object_count": 1,
+  "objects": [
+    {
+      "atom_count": 4,
+      "charge": null,
+      "elements": [
+        "C",
+        "O",
+        "H",
+        "H"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "Energy: -112.3456789012 Hartree",
+          "unit": "hartree",
+          "value": -112.3456789012
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": -0.2,
+          "y": 0.0,
+          "z": 0.1
+        }
+      ],
+      "label": "MAPLE sp",
+      "method": "sp uma",
+      "spin_multiplicity": null,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    }
+  ],
+  "parse_ok": true,
+  "parser_id": "maple-output",
+  "provenance": {
+    "parser_id": "maple-output",
+    "parser_version": "0.1.0"
+  },
+  "schema_version": "parser-golden-v1",
+  "warning_codes": []
+}

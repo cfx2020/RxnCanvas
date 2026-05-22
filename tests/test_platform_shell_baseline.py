@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import replace
 from hashlib import sha256
 import json
@@ -11,6 +12,8 @@ from pathlib import Path
 
 from rxnflow.content_store import (
     CHEMICAL_OBJECTS_PATH,
+    PROJECT_CONTENT_INDEX_PATH,
+    PROJECT_MANIFEST_PATH,
     ProjectContentSnapshot,
     ProjectContentStore,
     project_content_snapshot_from_fixture,
@@ -27,6 +30,27 @@ from rxnflow.platform import (
     ShellResponse,
     handle_platform_payload,
 )
+from rxnflow.models import ChemicalObject, EnergyValue
+
+
+def _content_files_payload(project_path: Path) -> list[dict[str, object]]:
+    paths = [PROJECT_MANIFEST_PATH]
+    state_dir = project_path / ".rxnflow" / "state"
+    paths.extend(
+        path.relative_to(project_path).as_posix()
+        for path in sorted(state_dir.glob("*.json"))
+    )
+    payload: list[dict[str, object]] = []
+    for path in paths:
+        data = (project_path / path).read_bytes()
+        payload.append(
+            {
+                "path": path,
+                "bytes_base64": base64.b64encode(data).decode("ascii"),
+                "checksum": f"sha256:{sha256(data).hexdigest()}",
+            }
+        )
+    return payload
 
 
 class PlatformShellBaselineTest(unittest.TestCase):
@@ -104,7 +128,10 @@ class PlatformShellBaselineTest(unittest.TestCase):
         self.assertEqual(snapshot_payload["data"]["counts"]["profiles"], 1)
         self.assertEqual(snapshot_payload["data"]["active"]["graph_id"], "graph-a-b")
         self.assertEqual(snapshot_payload["data"]["objects"][0]["id"], "object-a")
+        self.assertEqual(snapshot_payload["data"]["objects"][0]["energy_channels"][0]["source"], "energies")
         self.assertEqual(snapshot_payload["data"]["profile"]["id"], "profile-a-b-electronic")
+        self.assertEqual(snapshot_payload["data"]["profile"]["energy_key"], "electronic")
+        self.assertEqual(snapshot_payload["data"]["profile"]["energy_source"], "auto")
 
     def test_project_commands_and_fixture_export_artifacts(self) -> None:
         service = PlatformShellService(AppKernel())
@@ -177,6 +204,283 @@ class PlatformShellBaselineTest(unittest.TestCase):
             inline_artifact = inline.to_dict()["artifacts"][0]
             self.assertIsNotNone(inline_artifact["bytes_base64"])
             self.assertEqual(inline_artifact["metadata"]["encoding"], "base64")
+
+    def test_import_preview_accepts_inline_bytes_source(self) -> None:
+        service = PlatformShellService(AppKernel())
+        inline_payload = base64.b64encode(
+            b"2\nEnergy = -1.5 Hartree\nH 0 0 0\nH 0 0 0.74\n"
+        ).decode("ascii")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "inline-demo"
+            created = service.run(
+                ShellCommand("project.create", {"name": "inline-demo", "location": str(project_path)})
+            )
+            self.assertTrue(created.ok, created.error)
+            preview = service.run(
+                ShellCommand(
+                    "import.preview",
+                    {
+                        "session_id": created.to_dict()["data"]["session_id"],
+                        "source": {
+                            "kind": "inline_bytes",
+                            "filename": "h2.xyz",
+                            "bytes_base64": inline_payload,
+                            "mime_type": "chemical/x-xyz",
+                        },
+                    },
+                )
+            )
+
+        self.assertTrue(preview.ok, preview.error)
+        item = preview.to_dict()["data"]["batch"]["items"][0]
+        self.assertEqual(item["source_path"].split("/")[-1], "h2.xyz")
+        self.assertEqual(item["status"], "needs_confirmation")
+        self.assertEqual(item["preview"]["parser_id"], "xyz-ase")
+        self.assertEqual(item["preview"]["object_count"], 1)
+
+    def test_workspace_select_command_projects_selection_and_errors(self) -> None:
+        service = PlatformShellService(AppKernel())
+        fixture = service.run(ShellCommand("fixture.run"))
+        self.assertTrue(fixture.ok, fixture.error)
+        session_id = fixture.to_dict()["data"]["session_id"]
+        opened = service.run(ShellCommand("workspace.open", {"session_id": session_id}))
+        self.assertTrue(opened.ok, opened.error)
+        first = service.run(
+            ShellCommand(
+                "workspace.add_node",
+                {
+                    "session_id": session_id,
+                    "kind": "species",
+                    "label": "Object A",
+                    "chemical_object_ids": ["object-a"],
+                },
+            )
+        )
+        self.assertTrue(first.ok, first.error)
+        first_id = first.to_dict()["data"]["workspace"]["graph"]["nodes"][0]["id"]
+        second = service.run(
+            ShellCommand(
+                "workspace.add_node",
+                {
+                    "session_id": session_id,
+                    "kind": "species",
+                    "label": "Object B",
+                    "chemical_object_ids": ["object-b"],
+                },
+            )
+        )
+        self.assertTrue(second.ok, second.error)
+        second_id = second.to_dict()["data"]["workspace"]["graph"]["nodes"][1]["id"]
+        connected = service.run(
+            ShellCommand(
+                "workspace.connect",
+                {
+                    "session_id": session_id,
+                    "from_node_id": first_id,
+                    "to_node_id": second_id,
+                },
+            )
+        )
+        self.assertTrue(connected.ok, connected.error)
+        edge_id = connected.to_dict()["data"]["workspace"]["graph"]["edges"][0]["id"]
+        path = service.run(
+            ShellCommand(
+                "workspace.set_path",
+                {
+                    "session_id": session_id,
+                    "path_id": "path-main",
+                    "node_ids": [first_id, second_id],
+                },
+            )
+        )
+        self.assertTrue(path.ok, path.error)
+
+        selected = service.run(
+            ShellCommand(
+                "workspace.select",
+                {
+                    "session_id": session_id,
+                    "selection": {
+                        "node_ids": [first_id],
+                        "edge_ids": [edge_id],
+                        "path_ids": ["path-main"],
+                    },
+                },
+            )
+        )
+        self.assertTrue(selected.ok, selected.error)
+        payload = selected.to_dict()
+        json.dumps(payload)
+        self.assertEqual(payload["data"]["command"], "workspace.select")
+        self.assertEqual(payload["data"]["workspace"]["selection"]["node_ids"], [first_id])
+        self.assertEqual(payload["data"]["workspace"]["selection"]["edge_ids"], [edge_id])
+        self.assertEqual(payload["data"]["workspace"]["selection"]["path_ids"], ["path-main"])
+
+        cleared = service.run(
+            ShellCommand(
+                "workspace.select",
+                {"session_id": session_id, "selection": {}},
+            )
+        )
+        self.assertTrue(cleared.ok, cleared.error)
+        self.assertEqual(cleared.to_dict()["data"]["workspace"]["selection"]["node_ids"], [])
+
+        missing = service.run(
+            ShellCommand(
+                "workspace.select",
+                {"session_id": session_id, "selection": {"node_ids": ["node-missing"]}},
+            )
+        )
+        self.assertFalse(missing.ok)
+        self.assertEqual(missing.error["code"], "graph_invalid")  # type: ignore[index]
+        self.assertEqual(missing.error["target"], "node_id")  # type: ignore[index]
+
+    def test_import_preview_creates_temporary_project_for_inline_session_without_project_path(self) -> None:
+        kernel = AppKernel()
+        service = PlatformShellService(kernel)
+        inline_payload = base64.b64encode(
+            b"2\nEnergy = -1.5 Hartree\nH 0 0 0\nH 0 0 0.74\n"
+        ).decode("ascii")
+        try:
+            fixture = service.run(ShellCommand("fixture.run", {}))
+            self.assertTrue(fixture.ok, fixture.error)
+            session_id = fixture.to_dict()["data"]["session_id"]
+
+            preview = service.run(
+                ShellCommand(
+                    "import.preview",
+                    {
+                        "session_id": session_id,
+                        "source": {
+                            "kind": "inline_bytes",
+                            "filename": "h2.xyz",
+                            "bytes_base64": inline_payload,
+                        },
+                    },
+                )
+            )
+            snapshot = service.run(ShellCommand("workbench.snapshot", {"session_id": session_id}))
+
+            self.assertTrue(preview.ok, preview.error)
+            item = preview.to_dict()["data"]["batch"]["items"][0]
+            self.assertEqual(item["status"], "needs_confirmation")
+            self.assertEqual(item["preview"]["parser_id"], "xyz-ase")
+            self.assertTrue(snapshot.ok, snapshot.error)
+            self.assertEqual(snapshot.to_dict()["data"]["project"]["id"], "project-web-inline-preview")
+            self.assertEqual(snapshot.to_dict()["data"]["counts"]["imports"], 1)
+        finally:
+            kernel.cleanup()
+
+    def test_import_preview_accepts_multiple_inline_byte_sources(self) -> None:
+        service = PlatformShellService(AppKernel())
+        water_payload = base64.b64encode(
+            b"3\nEnergy = -76.0 Hartree\nO 0 0 0\nH 0 0 0.95\nH 0.9 0 0\n"
+        ).decode("ascii")
+        h2_payload = base64.b64encode(
+            b"2\nEnergy = -1.5 Hartree\nH 0 0 0\nH 0 0 0.74\n"
+        ).decode("ascii")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "multi-inline-demo"
+            created = service.run(
+                ShellCommand("project.create", {"name": "multi-inline-demo", "location": str(project_path)})
+            )
+            self.assertTrue(created.ok, created.error)
+            preview = service.run(
+                ShellCommand(
+                    "import.preview",
+                    {
+                        "session_id": created.to_dict()["data"]["session_id"],
+                        "sources": [
+                            {
+                                "kind": "inline_bytes",
+                                "filename": "water.xyz",
+                                "bytes_base64": water_payload,
+                            },
+                            {
+                                "kind": "inline_bytes",
+                                "filename": "h2.xyz",
+                                "bytes_base64": h2_payload,
+                            },
+                        ],
+                    },
+                )
+            )
+
+        self.assertTrue(preview.ok, preview.error)
+        items = preview.to_dict()["data"]["batch"]["items"]
+        self.assertEqual(len(items), 2)
+        self.assertEqual([item["preview"]["parser_id"] for item in items], ["xyz-ase", "xyz-ase"])
+
+    def test_import_preview_rejects_inline_payload_errors(self) -> None:
+        service = PlatformShellService(AppKernel())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "inline-errors"
+            created = service.run(
+                ShellCommand("project.create", {"name": "inline-errors", "location": str(project_path)})
+            )
+            self.assertTrue(created.ok, created.error)
+            session_id = created.to_dict()["data"]["session_id"]
+
+            too_large = service.run(
+                ShellCommand(
+                    "import.preview",
+                    {
+                        "session_id": session_id,
+                        "source": {
+                            "kind": "inline_bytes",
+                            "filename": "large.xyz",
+                            "bytes_base64": base64.b64encode(b"x" * (1024 * 1024 + 1)).decode("ascii"),
+                        },
+                    },
+                )
+            )
+            invalid_base64 = service.run(
+                ShellCommand(
+                    "import.preview",
+                    {
+                        "session_id": session_id,
+                        "source": {
+                            "kind": "inline_bytes",
+                            "filename": "bad.xyz",
+                            "bytes_base64": "not-base64!",
+                        },
+                    },
+                )
+            )
+            missing_field = service.run(
+                ShellCommand(
+                    "import.preview",
+                    {"session_id": session_id, "source": {"kind": "inline_bytes", "filename": "bad.xyz"}},
+                )
+            )
+            browser_storage = service.run(
+                ShellCommand(
+                    "import.preview",
+                    {
+                        "session_id": session_id,
+                        "source": {
+                            "kind": "browser_storage",
+                            "project_ref": "browser-project-a",
+                            "storage_path": "inbox/water.xyz",
+                        },
+                    },
+                )
+            )
+
+        self.assertFalse(too_large.ok)
+        self.assertEqual(too_large.error["code"], "payload_too_large")  # type: ignore[index]
+        self.assertEqual(too_large.error["target"], "bytes_base64")  # type: ignore[index]
+        self.assertFalse(invalid_base64.ok)
+        self.assertEqual(invalid_base64.error["code"], "invalid_input")  # type: ignore[index]
+        self.assertEqual(invalid_base64.error["target"], "bytes_base64")  # type: ignore[index]
+        self.assertFalse(missing_field.ok)
+        self.assertEqual(missing_field.error["target"], "source")  # type: ignore[index]
+        self.assertFalse(browser_storage.ok)
+        self.assertEqual(browser_storage.error["code"], "storage_object_missing")  # type: ignore[index]
+        self.assertEqual(browser_storage.error["target"], "storage_path")  # type: ignore[index]
 
     def test_project_open_restores_saved_project_content(self) -> None:
         fixture = run_core_fixture_vertical_slice()
@@ -338,6 +642,179 @@ class PlatformShellBaselineTest(unittest.TestCase):
             objects = kernel.chemical_registry.list_objects("project-demo")
             self.assertTrue(objects.ok, objects.error)
             self.assertEqual(objects.value, ())
+
+    def test_project_open_accepts_inline_project_content_files(self) -> None:
+        fixture = run_core_fixture_vertical_slice()
+        self.assertTrue(fixture.ok, fixture.error)
+        assert fixture.value is not None
+        snapshot = project_content_snapshot_from_fixture(fixture.value)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "fixture"
+            created = AppKernel().project_store.create_project("fixture-minimal-reaction", project_path)
+            self.assertTrue(created.ok, created.error)
+            saved = ProjectContentStore().save_snapshot(project_path, snapshot)
+            self.assertTrue(saved.ok, saved.error)
+            content_files = _content_files_payload(project_path)
+
+        kernel = AppKernel()
+        service = PlatformShellService(kernel)
+        opened = service.run(
+            ShellCommand(
+                "project.open",
+                {
+                    "content_files": content_files,
+                    "load_content": True,
+                },
+            )
+        )
+
+        self.assertTrue(opened.ok, opened.error)
+        payload = opened.to_dict()
+        self.assertEqual(payload["data"]["project"]["id"], "project-fixture-minimal-reaction")
+        self.assertEqual(payload["data"]["object_count"], 2)
+        self.assertEqual(payload["data"]["graph_count"], 1)
+        self.assertEqual(payload["data"]["workspace_count"], 1)
+        self.assertEqual(payload["data"]["profile_count"], 1)
+        session_id = payload["data"]["session_id"]
+        state = kernel.get_session_state(session_id)
+        self.assertIsNotNone(state)
+        assert state is not None
+        self.assertIsNotNone(state.session.project_path)
+        self.assertTrue(Path(state.session.project_path or "").is_dir())
+
+        snapshot_response = service.run(ShellCommand("workbench.snapshot", {"session_id": session_id}))
+        self.assertTrue(snapshot_response.ok, snapshot_response.error)
+        snapshot_payload = snapshot_response.to_dict()
+        self.assertEqual(snapshot_payload["data"]["counts"]["objects"], 2)
+        self.assertEqual(snapshot_payload["data"]["active"]["workspace_id"], "workspace-graph-a-b")
+        kernel.cleanup()
+
+    def test_project_open_inline_content_files_manifest_only_and_errors(self) -> None:
+        fixture = run_core_fixture_vertical_slice()
+        self.assertTrue(fixture.ok, fixture.error)
+        assert fixture.value is not None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "fixture"
+            created = AppKernel().project_store.create_project("fixture-minimal-reaction", project_path)
+            self.assertTrue(created.ok, created.error)
+            saved = ProjectContentStore().save_snapshot(
+                project_path,
+                project_content_snapshot_from_fixture(fixture.value),
+            )
+            self.assertTrue(saved.ok, saved.error)
+            content_files = _content_files_payload(project_path)
+
+        service = PlatformShellService(AppKernel())
+        manifest_only = service.run(
+            ShellCommand(
+                "project.open",
+                {"content_files": content_files, "load_content": False},
+            )
+        )
+        self.assertTrue(manifest_only.ok, manifest_only.error)
+        self.assertFalse(manifest_only.to_dict()["data"]["load_content"])
+        self.assertEqual(manifest_only.to_dict()["data"]["object_count"], 0)
+
+        missing_manifest = service.run(
+            ShellCommand(
+                "project.open",
+                {
+                    "content_files": [
+                        item
+                        for item in content_files
+                        if item["path"] != PROJECT_MANIFEST_PATH
+                    ],
+                },
+            )
+        )
+        self.assertFalse(missing_manifest.ok)
+        self.assertEqual(missing_manifest.error["target"], "content_files")  # type: ignore[index]
+
+        invalid_base64 = service.run(
+            ShellCommand(
+                "project.open",
+                {
+                    "content_files": [
+                        {
+                            "path": PROJECT_MANIFEST_PATH,
+                            "bytes_base64": "not-base64!",
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertFalse(invalid_base64.ok)
+        self.assertEqual(invalid_base64.error["target"], "bytes_base64")  # type: ignore[index]
+
+        unsafe_path = service.run(
+            ShellCommand(
+                "project.open",
+                {
+                    "content_files": [
+                        {
+                            "path": "../manifest.json",
+                            "bytes_base64": content_files[0]["bytes_base64"],
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertFalse(unsafe_path.ok)
+        self.assertEqual(unsafe_path.error["target"], "path")  # type: ignore[index]
+
+        checksum_mismatch = service.run(
+            ShellCommand(
+                "project.open",
+                {
+                    "content_files": [
+                        {
+                            **dict(content_files[0]),
+                            "checksum": "sha256:" + "0" * 64,
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertFalse(checksum_mismatch.ok)
+        self.assertEqual(checksum_mismatch.error["code"], "checksum_mismatch")  # type: ignore[index]
+
+    def test_project_save_content_can_return_inline_project_content_files(self) -> None:
+        kernel = AppKernel()
+        service = PlatformShellService(kernel)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "demo"
+            created = service.run(
+                ShellCommand("project.create", {"name": "demo", "location": str(project_path)})
+            )
+            self.assertTrue(created.ok, created.error)
+            session_id = created.to_dict()["data"]["session_id"]
+
+            saved_content = service.run(
+                ShellCommand(
+                    "project.save_content",
+                    {
+                        "session_id": session_id,
+                        "include_content_files": True,
+                    },
+                )
+            )
+
+            self.assertTrue(saved_content.ok, saved_content.error)
+            payload = saved_content.to_dict()["data"]
+            files = payload["content_files"]
+            paths = {file["path"] for file in files}
+            self.assertIn(PROJECT_MANIFEST_PATH, paths)
+            self.assertIn(PROJECT_CONTENT_INDEX_PATH, paths)
+            self.assertIn(CHEMICAL_OBJECTS_PATH, paths)
+            self.assertEqual(payload["saved"]["file_count"], 6)
+            self.assertGreaterEqual(len(files), 8)
+            for file in files:
+                decoded = base64.b64decode(file["bytes_base64"])
+                self.assertEqual(file["checksum"], f"sha256:{sha256(decoded).hexdigest()}")
+                self.assertEqual(file["byte_size"], len(decoded))
 
     def test_project_save_content_requires_session_and_project_path(self) -> None:
         kernel = AppKernel()
@@ -517,6 +994,99 @@ class PlatformShellBaselineTest(unittest.TestCase):
                 )
             )
             self.assertTrue(connected.ok, connected.error)
+            moved = service.run(
+                ShellCommand(
+                    "workspace.move_node",
+                    {"session_id": session_id, "node_id": node_ids[1], "position": [240, 180]},
+                )
+            )
+            self.assertTrue(moved.ok, moved.error)
+            moved_payload = moved.to_dict()
+            moved_nodes = moved_payload["data"]["workspace"]["graph"]["nodes"]
+            self.assertEqual(moved_payload["data"]["command"], "workspace.move_node")
+            self.assertEqual(moved_nodes[1]["position"], [240.0, 180.0])
+            edge_id = connected.to_dict()["data"]["workspace"]["graph"]["edges"][0]["id"]
+
+            removed_edge = service.run(
+                ShellCommand(
+                    "workspace.remove",
+                    {"session_id": session_id, "edge_ids": [edge_id]},
+                )
+            )
+            self.assertTrue(removed_edge.ok, removed_edge.error)
+            removed_edge_payload = removed_edge.to_dict()
+            self.assertEqual(removed_edge_payload["data"]["command"], "workspace.remove")
+            self.assertEqual(removed_edge_payload["data"]["workspace"]["graph"]["edge_count"], 0)
+            self.assertEqual(
+                removed_edge_payload["data"]["workspace"]["preview"]["disconnected_node_ids"],
+                [node_ids[0], node_ids[1]],
+            )
+
+            reconnected = service.run(
+                ShellCommand(
+                    "workspace.connect",
+                    {"session_id": session_id, "from_node_id": node_ids[0], "to_node_id": node_ids[1]},
+                )
+            )
+            self.assertTrue(reconnected.ok, reconnected.error)
+
+            extra = service.run(
+                ShellCommand(
+                    "workspace.add_node",
+                    {
+                        "session_id": session_id,
+                        "kind": "species",
+                        "label": "Extra",
+                        "chemical_object_ids": object_ids,
+                    },
+                )
+            )
+            self.assertTrue(extra.ok, extra.error)
+            extra_node_id = extra.to_dict()["data"]["workspace"]["graph"]["nodes"][2]["id"]
+            path_before_remove = service.run(
+                ShellCommand(
+                    "workspace.set_path",
+                    {"session_id": session_id, "path_id": "path-extra", "node_ids": (node_ids[0], extra_node_id)},
+                )
+            )
+            self.assertTrue(path_before_remove.ok, path_before_remove.error)
+            removed_node = service.run(
+                ShellCommand(
+                    "workspace.remove",
+                    {"session_id": session_id, "node_ids": [extra_node_id]},
+                )
+            )
+            self.assertTrue(removed_node.ok, removed_node.error)
+            removed_node_payload = removed_node.to_dict()
+            self.assertEqual(removed_node_payload["data"]["workspace"]["graph"]["node_count"], 2)
+            self.assertEqual(removed_node_payload["data"]["workspace"]["graph"]["edge_count"], 1)
+            self.assertNotIn(
+                "path-extra",
+                [path["id"] for path in removed_node_payload["data"]["workspace"]["graph"]["paths"]],
+            )
+
+            empty_remove = service.run(ShellCommand("workspace.remove", {"session_id": session_id}))
+            self.assertFalse(empty_remove.ok)
+            self.assertEqual(empty_remove.error["target"], "selection")  # type: ignore[index]
+
+            bad_move = service.run(
+                ShellCommand(
+                    "workspace.move_node",
+                    {"session_id": session_id, "node_id": "missing-node", "position": [240, 180]},
+                )
+            )
+            self.assertFalse(bad_move.ok)
+            self.assertEqual(bad_move.error["code"], "graph_invalid")  # type: ignore[index]
+
+            bad_position = service.run(
+                ShellCommand(
+                    "workspace.move_node",
+                    {"session_id": session_id, "node_id": node_ids[1], "position": ["bad", 180]},
+                )
+            )
+            self.assertFalse(bad_position.ok)
+            self.assertEqual(bad_position.error["target"], "position")  # type: ignore[index]
+
             bad_connect = service.run(
                 ShellCommand(
                     "workspace.connect",
@@ -538,6 +1108,7 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertTrue(profile.ok, profile.error)
             profile_payload = profile.to_dict()
             self.assertEqual(profile_payload["data"]["profile"]["point_count"], 2)
+            self.assertEqual(profile_payload["data"]["profile"]["energy_source"], "auto")
             self.assertEqual(profile_payload["data"]["profile"]["points"][0]["relative_energy"]["value"], 0.0)
 
             export = service.run(
@@ -635,6 +1206,337 @@ class PlatformShellBaselineTest(unittest.TestCase):
             )
             self.assertFalse(missing_energy.ok)
             self.assertEqual(missing_energy.error["target"], "session_id")  # type: ignore[index]
+
+    def test_object_projection_lists_energy_channels_and_profile_source(self) -> None:
+        kernel = AppKernel()
+        service = PlatformShellService(kernel)
+        session = kernel.create_session(project_id="project-a")
+        obj_a = ChemicalObject(
+            id="object-a",
+            label="A",
+            energies={"electronic": EnergyValue(-100.0, "hartree")},
+            thermochemistry={"gibbs": EnergyValue(-99.9, "hartree")},
+            source_file_id="raw-a",
+            registry_fingerprint="object-a",
+        )
+        obj_b = ChemicalObject(
+            id="object-b",
+            label="B",
+            energies={"electronic": EnergyValue(-99.98, "hartree")},
+            thermochemistry={"gibbs": EnergyValue(-99.88, "hartree")},
+            source_file_id="raw-b",
+            registry_fingerprint="object-b",
+        )
+        restored = kernel.chemical_registry.restore_objects("project-a", (obj_a, obj_b), replace=True)
+        self.assertTrue(restored.ok, restored.error)
+        state = kernel.get_session_state(session.id)
+        assert state is not None
+        kernel.put_session_state(replace(state, objects=(obj_a, obj_b)))
+
+        snapshot = service.run(ShellCommand("workbench.snapshot", {"session_id": session.id}))
+
+        self.assertTrue(snapshot.ok, snapshot.error)
+        payload = snapshot.to_dict()
+        self.assertEqual(payload["data"]["objects"][0]["energy_keys"], ["electronic"])
+        self.assertEqual(payload["data"]["objects"][0]["thermochemistry_keys"], ["gibbs"])
+        self.assertEqual(
+            [(item["key"], item["source"]) for item in payload["data"]["objects"][0]["energy_channels"]],
+            [("electronic", "energies"), ("gibbs", "thermochemistry")],
+        )
+
+    def test_registry_apply_correction_updates_session_snapshot_and_energy_compute(self) -> None:
+        kernel = AppKernel()
+        service = PlatformShellService(kernel)
+        fixture = service.run(ShellCommand("fixture.run"))
+        self.assertTrue(fixture.ok, fixture.error)
+        session_id = fixture.to_dict()["data"]["session_id"]
+
+        applied = service.run(
+            ShellCommand(
+                "registry.apply_correction",
+                {
+                    "session_id": session_id,
+                    "object_id": "object-b",
+                    "correction": {
+                        "kind": "manual",
+                        "energy": {"value": 1.0, "unit": "kcal_mol", "reference": "manual-test"},
+                        "note": "test correction",
+                    },
+                },
+            )
+        )
+
+        self.assertTrue(applied.ok, applied.error)
+        applied_payload = applied.to_dict()
+        correction = applied_payload["data"]["object"]["corrections"][0]
+        self.assertTrue(correction["id"].startswith("corr-object-b-manual-"))
+        self.assertEqual(correction["kind"], "manual")
+        self.assertEqual(correction["energy"], {"value": 1.0, "unit": "kcal_mol", "reference": "manual-test"})
+        self.assertEqual(applied_payload["data"]["object"]["correction_count"], 1)
+
+        repeated = service.run(
+            ShellCommand(
+                "registry.apply_correction",
+                {
+                    "session_id": session_id,
+                    "object_id": "object-b",
+                    "correction": {
+                        "kind": "manual",
+                        "energy": {"value": 1.0, "unit": "kcal_mol", "reference": "manual-test"},
+                        "note": "test correction",
+                    },
+                },
+            )
+        )
+        self.assertTrue(repeated.ok, repeated.error)
+        self.assertEqual(repeated.to_dict()["data"]["object"]["correction_count"], 1)
+
+        snapshot = service.run(ShellCommand("workbench.snapshot", {"session_id": session_id}))
+        self.assertTrue(snapshot.ok, snapshot.error)
+        object_b = next(item for item in snapshot.to_dict()["data"]["objects"] if item["id"] == "object-b")
+        self.assertEqual(object_b["correction_count"], 1)
+        self.assertEqual(object_b["corrections"][0]["id"], correction["id"])
+
+        raw_profile = service.run(
+            ShellCommand(
+                "energy.compute",
+                {"session_id": session_id, "include_corrections": False},
+            )
+        )
+        corrected_profile = service.run(
+            ShellCommand(
+                "energy.compute",
+                {"session_id": session_id, "include_corrections": True},
+            )
+        )
+        self.assertTrue(raw_profile.ok, raw_profile.error)
+        self.assertTrue(corrected_profile.ok, corrected_profile.error)
+        raw_energy = raw_profile.to_dict()["data"]["profile"]["points"][1]["relative_energy"]["value"]
+        corrected_energy = corrected_profile.to_dict()["data"]["profile"]["points"][1]["relative_energy"]["value"]
+        self.assertAlmostEqual(corrected_energy - raw_energy, 1.0, places=6)
+
+    def test_registry_apply_correction_rejects_invalid_payload_without_state_change(self) -> None:
+        kernel = AppKernel()
+        service = PlatformShellService(kernel)
+        fixture = service.run(ShellCommand("fixture.run"))
+        self.assertTrue(fixture.ok, fixture.error)
+        session_id = fixture.to_dict()["data"]["session_id"]
+
+        first = service.run(
+            ShellCommand(
+                "registry.apply_correction",
+                {
+                    "session_id": session_id,
+                    "object_id": "object-a",
+                    "correction": {
+                        "id": "corr-fixed",
+                        "kind": "solvation",
+                        "energy": {"value": -2.0, "unit": "kcal_mol"},
+                    },
+                },
+            )
+        )
+        self.assertTrue(first.ok, first.error)
+
+        invalid_cases = (
+            (
+                {"object_id": "object-a", "correction": {"kind": "bad", "energy": {"value": 1, "unit": "kcal_mol"}}},
+                "correction.kind",
+            ),
+            (
+                {"object_id": "object-a", "correction": {"kind": "manual", "energy": {"value": 1, "unit": "eV"}}},
+                "correction.energy.unit",
+            ),
+            (
+                {"object_id": "object-a", "correction": {"kind": "manual", "energy": {"value": float("nan"), "unit": "kcal_mol"}}},
+                "correction.energy.value",
+            ),
+            (
+                {"object_id": "object-missing", "correction": {"kind": "manual", "energy": {"value": 1, "unit": "kcal_mol"}}},
+                "object_id",
+            ),
+            (
+                {"object_id": "object-a", "correction": {"id": "corr-fixed", "kind": "solvation", "energy": {"value": -1.0, "unit": "kcal_mol"}}},
+                "correction.id",
+            ),
+        )
+        for args, target in invalid_cases:
+            result = service.run(ShellCommand("registry.apply_correction", {"session_id": session_id, **args}))
+            self.assertFalse(result.ok)
+            self.assertEqual(result.error["code"], "invalid_input")  # type: ignore[index]
+            self.assertEqual(result.error["target"], target)  # type: ignore[index]
+
+        snapshot = service.run(ShellCommand("workbench.snapshot", {"session_id": session_id}))
+        self.assertTrue(snapshot.ok, snapshot.error)
+        object_a = next(item for item in snapshot.to_dict()["data"]["objects"] if item["id"] == "object-a")
+        self.assertEqual(object_a["correction_count"], 1)
+        self.assertEqual(object_a["corrections"][0]["id"], "corr-fixed")
+
+    def test_workspace_set_node_composition_updates_projection_and_preserves_state_on_error(self) -> None:
+        kernel = AppKernel()
+        service = PlatformShellService(kernel)
+        fixture = service.run(ShellCommand("fixture.run"))
+        self.assertTrue(fixture.ok, fixture.error)
+        session_id = fixture.to_dict()["data"]["session_id"]
+        opened = service.run(ShellCommand("workspace.open", {"session_id": session_id}))
+        self.assertTrue(opened.ok, opened.error)
+        added = service.run(
+            ShellCommand(
+                "workspace.add_node",
+                {
+                    "session_id": session_id,
+                    "kind": "species",
+                    "label": "Combo",
+                    "chemical_object_ids": ("object-a",),
+                },
+            )
+        )
+        self.assertTrue(added.ok, added.error)
+        node_id = added.to_dict()["data"]["workspace"]["graph"]["nodes"][-1]["id"]
+
+        updated = service.run(
+            ShellCommand(
+                "workspace.set_node_composition",
+                {
+                    "session_id": session_id,
+                    "node_id": node_id,
+                    "composition": [
+                        {"object_id": "object-a", "coefficient": 1},
+                        {"object_id": "object-b", "coefficient": 2, "role": "reagent"},
+                    ],
+                },
+            )
+        )
+
+        self.assertTrue(updated.ok, updated.error)
+        graph_node = updated.to_dict()["data"]["workspace"]["graph"]["nodes"][-1]
+        self.assertEqual(graph_node["chemical_object_ids"], ["object-a", "object-b"])
+        self.assertEqual(graph_node["composition"][1]["coefficient"], 2.0)
+        self.assertEqual(graph_node["composition"][1]["role"], "reagent")
+
+        bad = service.run(
+            ShellCommand(
+                "workspace.set_node_composition",
+                {
+                    "session_id": session_id,
+                    "node_id": node_id,
+                    "composition": [{"object_id": "object-a", "coefficient": 0}],
+                },
+            )
+        )
+        self.assertFalse(bad.ok)
+        self.assertEqual(bad.error["target"], "composition")  # type: ignore[index]
+        snapshot = service.run(ShellCommand("workbench.snapshot", {"session_id": session_id}))
+        self.assertTrue(snapshot.ok, snapshot.error)
+        self.assertEqual(
+            snapshot.to_dict()["data"]["workspace"]["graph"]["nodes"][-1]["chemical_object_ids"],
+            ["object-a", "object-b"],
+        )
+
+        bad_add = service.run(
+            ShellCommand(
+                "workspace.add_node",
+                {
+                    "session_id": session_id,
+                    "kind": "species",
+                    "label": "Bad composition",
+                    "composition": [{"object_id": "object-a", "coefficient": 0}],
+                },
+            )
+        )
+        self.assertFalse(bad_add.ok)
+        self.assertEqual(bad_add.error["target"], "composition")  # type: ignore[index]
+
+    def test_workspace_set_viewport_updates_only_workspace_viewport(self) -> None:
+        service = PlatformShellService(AppKernel())
+        fixture = service.run(ShellCommand("fixture.run"))
+        self.assertTrue(fixture.ok, fixture.error)
+        session_id = fixture.to_dict()["data"]["session_id"]
+
+        opened = service.run(ShellCommand("workspace.open", {"session_id": session_id}))
+        self.assertTrue(opened.ok, opened.error)
+        first = service.run(
+            ShellCommand(
+                "workspace.add_node",
+                {
+                    "session_id": session_id,
+                    "kind": "species",
+                    "label": "Object A",
+                    "chemical_object_ids": ("object-a",),
+                    "position": (120, 160),
+                },
+            )
+        )
+        self.assertTrue(first.ok, first.error)
+        second = service.run(
+            ShellCommand(
+                "workspace.add_node",
+                {
+                    "session_id": session_id,
+                    "kind": "species",
+                    "label": "Object B",
+                    "chemical_object_ids": ("object-b",),
+                    "position": (360, 160),
+                },
+            )
+        )
+        self.assertTrue(second.ok, second.error)
+        node_ids = tuple(node["id"] for node in second.to_dict()["data"]["workspace"]["graph"]["nodes"])
+        connected = service.run(
+            ShellCommand(
+                "workspace.connect",
+                {"session_id": session_id, "from_node_id": node_ids[0], "to_node_id": node_ids[1]},
+            )
+        )
+        self.assertTrue(connected.ok, connected.error)
+        path = service.run(
+            ShellCommand(
+                "workspace.set_path",
+                {"session_id": session_id, "path_id": "path-main", "node_ids": node_ids},
+            )
+        )
+        self.assertTrue(path.ok, path.error)
+        before_workspace = path.to_dict()["data"]["workspace"]
+        before_graph = before_workspace["graph"]
+
+        updated = service.run(
+            ShellCommand(
+                "workspace.set_viewport",
+                {
+                    "session_id": session_id,
+                    "viewport": {"x": 12, "y": -8, "zoom": 1.5},
+                },
+            )
+        )
+        self.assertTrue(updated.ok, updated.error)
+        updated_payload = updated.to_dict()
+        json.dumps(updated_payload)
+        self.assertEqual(updated_payload["data"]["command"], "workspace.set_viewport")
+        self.assertEqual(updated_payload["data"]["workspace"]["viewport"], {"x": 12.0, "y": -8.0, "zoom": 1.5})
+        self.assertEqual(updated_payload["data"]["workspace"]["graph"], before_graph)
+
+        invalid_cases = (
+            ({}, "viewport"),
+            ({"viewport": {"x": float("nan"), "y": 0, "zoom": 1}}, "viewport"),
+            ({"viewport": {"x": 0, "y": float("inf"), "zoom": 1}}, "viewport"),
+            ({"viewport": {"x": 0, "y": 0, "zoom": 0}}, "viewport.zoom"),
+            ({"viewport": {"x": 0, "y": 0, "zoom": -1}}, "viewport.zoom"),
+        )
+        for args, target in invalid_cases:
+            invalid = service.run(
+                ShellCommand(
+                    "workspace.set_viewport",
+                    {"session_id": session_id, **args},
+                )
+            )
+            self.assertFalse(invalid.ok)
+            self.assertEqual(invalid.error["code"], "invalid_input")  # type: ignore[index]
+            self.assertEqual(invalid.error["target"], target)  # type: ignore[index]
+            snapshot = service.run(ShellCommand("workbench.snapshot", {"session_id": session_id}))
+            self.assertTrue(snapshot.ok, snapshot.error)
+            workspace = snapshot.to_dict()["data"]["workspace"]
+            self.assertEqual(workspace["viewport"], {"x": 12.0, "y": -8.0, "zoom": 1.5})
+            self.assertEqual(workspace["graph"], before_graph)
 
     def test_cli_fixture_project_and_import_preview(self) -> None:
         fixture = subprocess.run(

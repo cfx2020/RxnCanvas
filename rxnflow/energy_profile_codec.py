@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from .energy_channels import validate_energy_source
 from .errors import RxnFlowError, RxnFlowWarning
-from .models import EnergyOptions, EnergyPoint, EnergyProfile, EnergyValue, ID, ReactionGraph
+from .models import CorrectionPolicy, EnergyOptions, EnergyPoint, EnergyProfile, EnergyValue, ID, ReactionGraph
 from .result import Result, err, ok
 
 
@@ -167,6 +168,8 @@ def _options_to_dict(options: EnergyOptions, target: str) -> Result[dict[str, An
             "output_unit": options.output_unit,
             "include_corrections": options.include_corrections,
             "energy_key": options.energy_key,
+            "energy_source": options.energy_source,
+            "correction_policy": _correction_policy_to_dict(options.correction_policy),
             "baseline_node_id": options.baseline_node_id,
         }
     )
@@ -176,11 +179,17 @@ def _options_from_value(value: Any, target: str) -> Result[EnergyOptions]:
     if not isinstance(value, dict):
         return err(RxnFlowError("invalid_input", "Energy profile options must be an object.", target=target))
     try:
+        policy = _correction_policy_from_value(value.get("correction_policy"), f"{target}.correction_policy")
+        if not policy.ok:
+            assert policy.error is not None
+            return err(policy.error)
         options = EnergyOptions(
             output_unit=value["output_unit"],
             include_corrections=value["include_corrections"],
             energy_key=value["energy_key"],
             baseline_node_id=value.get("baseline_node_id"),
+            energy_source=value.get("energy_source", "auto"),
+            correction_policy=policy.value,
         )
     except KeyError as exc:
         return err(
@@ -194,6 +203,36 @@ def _options_from_value(value: Any, target: str) -> Result[EnergyOptions]:
     if error is not None:
         return err(error)
     return ok(options)
+
+
+def _correction_policy_to_dict(policy: CorrectionPolicy | None) -> dict[str, Any] | None:
+    if policy is None:
+        return None
+    return {
+        "mode": policy.mode,
+        "kinds": list(policy.kinds),
+        "ids": list(policy.ids),
+    }
+
+
+def _correction_policy_from_value(value: Any, target: str) -> Result[CorrectionPolicy | None]:
+    if value is None:
+        return ok(None)
+    if not isinstance(value, dict):
+        return err(RxnFlowError("invalid_input", "Correction policy must be an object.", target=target))
+    mode = value.get("mode")
+    if mode not in {"none", "all", "kinds", "ids"}:
+        return err(RxnFlowError("invalid_input", "Correction policy mode is unsupported.", target=f"{target}.mode"))
+    kinds = value.get("kinds", [])
+    ids = value.get("ids", [])
+    if not isinstance(kinds, list) or not all(isinstance(item, str) for item in kinds):
+        return err(RxnFlowError("invalid_input", "Correction policy kinds must be a string list.", target=f"{target}.kinds"))
+    if not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
+        return err(RxnFlowError("invalid_input", "Correction policy ids must be a string list.", target=f"{target}.ids"))
+    allowed_kinds = {"resonance", "solvation", "manual"}
+    if any(kind not in allowed_kinds for kind in kinds):
+        return err(RxnFlowError("invalid_input", "Correction policy kind is unsupported.", target=f"{target}.kinds"))
+    return ok(CorrectionPolicy(mode=mode, kinds=tuple(kinds), ids=tuple(ids)))  # type: ignore[arg-type]
 
 
 def _points_to_list(
@@ -459,6 +498,13 @@ def _validate_options(options: EnergyOptions, target: str) -> RxnFlowError | Non
         )
     if not isinstance(options.energy_key, str) or not options.energy_key:
         return RxnFlowError("invalid_input", "Energy profile energy_key is required.", target=f"{target}.energy_key")
+    source_error = validate_energy_source(options.energy_source, f"{target}.energy_source")
+    if source_error is not None:
+        return source_error
+    if options.correction_policy is not None:
+        policy_error = _validate_correction_policy(options.correction_policy, f"{target}.correction_policy")
+        if policy_error is not None:
+            return policy_error
     if options.baseline_node_id is not None and (
         not isinstance(options.baseline_node_id, str) or not options.baseline_node_id
     ):
@@ -467,6 +513,19 @@ def _validate_options(options: EnergyOptions, target: str) -> RxnFlowError | Non
             "Energy profile baseline_node_id must be a non-empty string when present.",
             target=f"{target}.baseline_node_id",
         )
+    return None
+
+
+def _validate_correction_policy(policy: CorrectionPolicy, target: str) -> RxnFlowError | None:
+    if policy.mode not in {"none", "all", "kinds", "ids"}:
+        return RxnFlowError("invalid_input", "Correction policy mode is unsupported.", target=f"{target}.mode")
+    allowed_kinds = {"resonance", "solvation", "manual"}
+    if any(kind not in allowed_kinds for kind in policy.kinds):
+        return RxnFlowError("invalid_input", "Correction policy kind is unsupported.", target=f"{target}.kinds")
+    if policy.mode == "kinds" and not policy.kinds:
+        return RxnFlowError("invalid_input", "Correction policy kinds are required.", target=f"{target}.kinds")
+    if policy.mode == "ids" and not policy.ids:
+        return RxnFlowError("invalid_input", "Correction policy ids are required.", target=f"{target}.ids")
     return None
 
 

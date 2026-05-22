@@ -1,0 +1,108 @@
+feature: 2026-05-22-correction-command-and-ui
+created: 2026-05-22
+
+steps:
+  - action: "设计与 roadmap 接线：落 design/checklist，并把 roadmap item 标为 in-progress"
+    exit_signal: "feature spec 完整，items.yaml 通过校验"
+    status: done
+
+  - action: "Shell command 骨架：实现 registry.apply_correction payload validation、Correction 构造、session object 替换和 object summary response"
+    exit_signal: "平台单测覆盖合法 append、幂等、冲突、非法 kind/unit/value/object"
+    status: done
+
+  - action: "Web DTO 与 fixture transport：前端类型和 fixture runtime 支持 correction summary / apply command"
+    exit_signal: "ShellClient focused tests 覆盖 fixture apply correction 和错误路径"
+    status: done
+
+  - action: "Web Object Registry 表单：实现 correction entry form、提交 handler、i18n、状态更新和错误显示"
+    exit_signal: "WorkbenchShell component tests 覆盖添加校正项、重复 id 幂等、失败错误展示和中英文文案"
+    status: done
+
+  - action: "验证与验收：跑 Python/Web 测试、build、浏览器桌面/窄屏表单 QA，回写 architecture/roadmap 并写 acceptance"
+    exit_signal: "所有 checks passed，acceptance report 完成"
+    status: done
+
+checks:
+  - item: "ShellCommandName 支持 registry.apply_correction"
+    source: 名词契约
+    status: passed
+
+  - item: "Object Summary Projection 包含 corrections 明细且保留 correction_count"
+    source: 名词契约
+    status: passed
+
+  - item: "Shell command 只调用 ChemicalRegistry.apply_correction 并更新 session objects"
+    source: 编排骨架
+    status: passed
+
+  - item: "Web submit 成功后只使用 ShellResponse 更新 domain objects"
+    source: 编排骨架
+    status: passed
+
+  - item: "append-only correction 不修改 ChemicalObject 原始 energies/thermochemistry/provenance"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Platform Shell command registry 是可卸载挂载点"
+    source: 挂载点
+    status: passed
+
+  - item: "Web DTO / FixtureTransport 是可卸载挂载点"
+    source: 挂载点
+    status: passed
+
+  - item: "Web Object Registry form / WorkbenchShell handler 是可卸载挂载点"
+    source: 挂载点
+    status: passed
+
+  - item: "合法 manual/solvation/resonance correction 追加后 snapshot 同步刷新"
+    source: 验收场景
+    status: passed
+
+  - item: "缺省 correction id 由 Shell 生成且同 payload 重复提交幂等"
+    source: 验收场景
+    status: passed
+
+  - item: "同 id 不同 payload 返回 invalid_input target=correction.id 且不部分更新"
+    source: 验收场景
+    status: passed
+
+  - item: "invalid kind/unit/value/object 返回结构化 invalid_input"
+    source: 验收场景
+    status: passed
+
+  - item: "追加 correction 后 energy.compute(include_corrections=true) 消费新增 correction"
+    source: 验收场景
+    status: passed
+
+  - item: "Web Object Registry 表单提交后 correction count/list 刷新"
+    source: 验收场景
+    status: passed
+
+  - item: "Web submit 失败不本地伪造 correction 且错误可见"
+    source: 验收场景
+    status: passed
+
+  - item: "空对象状态下 correction form 不可提交"
+    source: 验收场景
+    status: passed
+
+  - item: "不新增 correction policy selector 或 energy profile policy UI"
+    source: 范围守护
+    status: passed
+
+  - item: "不实现 correction 编辑、删除、排序、批量导入或 undo/redo"
+    source: 范围守护
+    status: passed
+
+  - item: "不自动保存 Project Content 或调用 project.save_content"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 parser、graph、workspace、export 或 report export 逻辑"
+    source: 范围守护
+    status: passed
+
+  - item: "不改写 ChemicalObject 原始 energies/thermochemistry/provenance"
+    source: 范围守护
+    status: passed

@@ -1,0 +1,84 @@
+feature: 2026-05-21-graph-editor-workspace-persistence
+created: 2026-05-21
+
+steps:
+  - action: "Design And Roadmap Gate：落盘 design/checklist，回写 roadmap item 为 in-progress"
+    exit_signal: "design status approved；checklist YAML 和 roadmap items YAML 校验通过"
+    status: done
+
+  - action: "Shell Selection Contract：在 core Platform Shell 和 Web DTO/fixture 增加 workspace.select 与 WorkspaceSummary.selection"
+    exit_signal: "Python / ShellClient tests 覆盖选择、空选择、缺失引用和 JSON-safe projection"
+    status: done
+
+  - action: "Web Selection Sync：WorkbenchShell 把 node/edge/path 选择提交到 shell，并从 workspace projection 恢复 GraphEditorInteractionState"
+    exit_signal: "component tests 覆盖 node/edge/path selection command、Open Bridge 后 restored selection 可见，connect/path draft 不回退"
+    status: done
+
+  - action: "Fixture Content Restore：fixture save/open content files 序列化并恢复当前 graph/workspace 状态"
+    exit_signal: "Web tests 证明 Save Bridge 后的 content files 包含 node position、viewport、selection、active path，重新 Open Bridge 后状态恢复"
+    status: done
+
+  - action: "Verification And Scope Guard：跑 Web tests/build、Python 单测和浏览器主链路"
+    exit_signal: "测试通过；Browser/Playwright 验证页面非空白、console clean、保存/恢复有可观察结果；scope grep 未新增自动保存、localStorage graph state 或云同步"
+    status: done
+
+checks:
+  - item: "Platform Shell workspace.select(selection={node_ids:[...]}) 返回 workspace projection 中相同 selection"
+    source: 验收场景
+    status: passed
+
+  - item: "Platform Shell 允许空 selection，并清空 workspace selection"
+    source: 验收场景
+    status: passed
+
+  - item: "Platform Shell 对未知 node/edge/path id 返回结构化错误，不更新 selection"
+    source: 验收场景
+    status: passed
+
+  - item: "WorkspaceSummary.selection 在 fixture run、workbench snapshot、workspace command response 和 project open/save 后可见"
+    source: 验收场景
+    status: passed
+
+  - item: "Web fixture transport 支持 workspace.select，返回 JSON-safe WorkspaceCommandData.command=workspace.select"
+    source: 验收场景
+    status: passed
+
+  - item: "GraphCanvas 选择 node、edge、path 后会发送 workspace.select；connect 目标点击仍发送 workspace.connect，不被 select command 抢占"
+    source: 验收场景
+    status: passed
+
+  - item: "Save Bridge Session 生成的 Project Content files 能反映当前 node positions、viewport、selection 和 active path"
+    source: 验收场景
+    status: passed
+
+  - item: "Open Bridge / restored snapshot 后，GraphCanvas 恢复 node position、viewport、selected node/edge/path 和 path order"
+    source: 验收场景
+    status: passed
+
+  - item: "删除 node/edge 后 restored selection 不保留失效 id，cascade 仍来自 ShellResponse / fixture state"
+    source: 验收场景
+    status: passed
+
+  - item: "不保存 hover、dragging、pending edge、path order draft、surface DOM size、toolbar pressed state 或 Object Registry active object"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 Project Content schema、browser-local graph layout schema、localStorage persistence、自动保存、云同步或账号系统"
+    source: 范围守护
+    status: passed
+
+  - item: "npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "Browser dev preview 验证页面非空白、无 framework overlay、console error/warn clean；保存/恢复链路有可观察结果"
+    source: 验收场景
+    status: passed

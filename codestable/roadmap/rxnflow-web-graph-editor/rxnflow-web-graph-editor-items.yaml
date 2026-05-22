@@ -1,0 +1,59 @@
+roadmap: rxnflow-web-graph-editor
+created: 2026-05-21
+
+items:
+  - slug: graph-editor-interaction-state
+    description: 抽出 GraphCanvas interaction state 和 mode/selection/pending edge 模型，清理失效 selection，并保持现有 click-driven flow 不回退
+    depends_on: []
+    status: done
+    feature: 2026-05-21-graph-editor-interaction-state
+    minimal_loop: true
+    notes: 已落地 UI-only GraphEditorInteractionState、select/connect/prune helper、helper tests 和 Browser graph flow smoke；未实现 drag/drop、node dragging、viewport 或新 shell command
+
+  - slug: graph-editor-object-drop
+    description: 让 Object Registry 已登记对象可拖入画布，drop 后调用 workspace.add_node(position) 并显示来自 ShellResponse 的节点
+    depends_on: [graph-editor-interaction-state]
+    status: done
+    feature: 2026-05-21-graph-editor-object-drop
+    minimal_loop: false
+    notes: 已落地 graph object drag payload helper、Object Registry drag source、Graph Canvas drop target、workspace.add_node(position) 编排、component/helper tests、Browser 页面健康检查和 Playwright DragEvent 渲染验证；pending/failed import item、raw resource、parser preview item 仍不能直接成为节点
+
+  - slug: graph-editor-node-layout
+    description: 支持节点拖动、位置更新、基础 snap/grid 和稳定布局显示；必要时补 workspace.move_node shell command
+    depends_on: [graph-editor-interaction-state]
+    status: done
+    feature: 2026-05-21-graph-editor-node-layout
+    minimal_loop: false
+    notes: 已落地 GraphEditorWorkspaceService.move_node、Platform Shell/fixture workspace.move_node、graphNodeLayout helper、GraphCanvas pointer drag、ShellResponse authority、Python/Web tests 和 Playwright 鼠标拖动验证；position 是 workspace/layout 数据，不写 ChemicalObject，仍不做 viewport/persistence/auto layout
+
+  - slug: graph-editor-edge-path-editing
+    description: 补直接连线、删除节点/边、active path 顺序编辑和 disconnected diagnostics 同步；必要时补 remove command
+    depends_on: [graph-editor-node-layout]
+    status: done
+    feature: 2026-05-21-graph-editor-edge-path-editing
+    minimal_loop: false
+    notes: 已落地 workspace.remove、edge/node selection delete、Path Order Draft 上移/下移并复用 workspace.set_path；删除 cascade 由 core/fixture projection 返回，前端不自行推断；Web/Python tests、build 和 Browser/Playwright edge delete/path reorder 验证通过
+
+  - slug: graph-editor-viewport-controls
+    description: 实现 pan/zoom/fit/reset、viewport clamp 和窄屏可用布局
+    depends_on: [graph-editor-interaction-state]
+    status: done
+    feature: 2026-05-21-graph-editor-viewport-controls
+    minimal_loop: false
+    notes: 已落地 Platform Shell/fixture workspace.set_viewport、WorkspaceSummary.viewport、graphViewport helper、GraphCanvas Pan/Zoom/Fit/Reset toolbar、viewport transform、pan drag 和 viewport-aware object drop/node drag；viewport 是 workspace-only state，不进入 ReactionGraph，不自动保存 Project Content；Web/Python tests、build、Browser 页面健康检查和 Playwright zoom/fit/reset/pan 验证通过
+
+  - slug: graph-editor-workspace-persistence
+    description: 把 node positions、viewport、selection 和 active path 纳入 Project Content open/save bridge 的恢复闭环
+    depends_on: [graph-editor-node-layout, graph-editor-viewport-controls, graph-editor-edge-path-editing]
+    status: done
+    feature: 2026-05-21-graph-editor-workspace-persistence
+    minimal_loop: false
+    notes: 已落地 workspace.select、WorkspaceSummary.selection、fixture Project Content current graph/workspace save/open restore，以及 Save Bridge Session 对 node positions、viewport、selection、active path 的显式保存；不做自动保存、localStorage graph state、云同步或新 Project Content schema
+
+  - slug: graph-editor-e2e-qa
+    description: 补桌面/窄屏真实浏览器交互回归，覆盖 drag/drop、node move、edge/path edit、viewport 和 save/open restore
+    depends_on: [graph-editor-object-drop, graph-editor-node-layout, graph-editor-edge-path-editing, graph-editor-viewport-controls, graph-editor-workspace-persistence]
+    status: done
+    feature: 2026-05-21-graph-editor-e2e-qa
+    minimal_loop: false
+    notes: 已落地默认 fixture E2E 的 desktop graph editor matrix，覆盖 object drag/drop、node drag、edge delete、path reorder、viewport controls、Save/Open Bridge restore；窄屏 journey 补 zoom/reset、preview、energy/report 可用和无水平溢出；local-http smoke 仍只验证真实 bridge 主链路

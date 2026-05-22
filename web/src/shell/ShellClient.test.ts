@@ -1,8 +1,162 @@
-import { describe, expect, it } from "vitest"
-import { fixtureTransport, ShellClient } from "."
-import type { FixtureRunData, WorkbenchSnapshotData } from "."
+import { describe, expect, it, vi } from "vitest"
+import { createConfiguredShellRuntime, createHttpShellTransport, fixtureTransport, ShellClient } from "."
+import type {
+  EnergyComputeData,
+  ExportProfileData,
+  FixtureRunData,
+  ImportPreviewData,
+  ImportRegisterAllData,
+  RegistryApplyCorrectionData,
+  WorkbenchSnapshotData,
+  WorkspaceCommandData,
+} from "."
 
 describe("ShellClient", () => {
+  it("uses fixture transport by default in configured runtime", () => {
+    const runtime = createConfiguredShellRuntime({})
+
+    expect(runtime.transport.kind).toBe("in-process-test")
+    expect(runtime.runtimeInfo.mode).toBe("fixture")
+    expect(runtime.runtimeInfo.transportKind).toBe("in-process-test")
+  })
+
+  it("uses http-api transport when local-http runtime env is selected", () => {
+    const runtime = createConfiguredShellRuntime({
+      VITE_RXNFLOW_SHELL_TRANSPORT: "local-http",
+      VITE_RXNFLOW_SHELL_ENDPOINT: "http://127.0.0.1:8765/api/shell",
+    })
+
+    expect(runtime.transport.kind).toBe("http-api")
+    expect(runtime.runtimeInfo.mode).toBe("local-http")
+    expect(runtime.runtimeInfo.transportKind).toBe("http-api")
+    expect(runtime.runtimeInfo.endpoint).toBe("http://127.0.0.1:8765/api/shell")
+  })
+
+  it("posts shell payloads through http-api transport", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      data: { command: "fixture.run" },
+      error: null,
+      warnings: [],
+      artifacts: [],
+    })))
+    const transport = createHttpShellTransport({
+      endpoint: "http://127.0.0.1:8765/api/shell",
+      fetchImpl,
+    })
+
+    const response = await transport.run({ command: "fixture.run", args: {} })
+
+    expect(response.ok).toBe(true)
+    expect(response.data?.command).toBe("fixture.run")
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8765/api/shell",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: "fixture.run", args: {} }),
+      }),
+    )
+  })
+
+  it("normalizes http-api fetch failures to transport_unavailable", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("connection refused")
+    })
+    const transport = createHttpShellTransport({
+      endpoint: "http://127.0.0.1:8765/api/shell",
+      fetchImpl,
+    })
+
+    const response = await transport.run({ command: "fixture.run", args: {} })
+
+    expect(response.ok).toBe(false)
+    expect(response.error?.code).toBe("transport_unavailable")
+    expect(response.error?.target).toBe("http-api")
+    expect(response.error?.details).toMatchObject({
+      endpoint: "http://127.0.0.1:8765/api/shell",
+      reason: "connection refused",
+    })
+  })
+
+  it("normalizes missing http-api endpoints to transport_unavailable without fetch", async () => {
+    const fetchImpl = vi.fn()
+    const transport = createHttpShellTransport({
+      endpoint: "   ",
+      fetchImpl,
+    })
+
+    const response = await transport.run({ command: "fixture.run", args: {} })
+
+    expect(response.ok).toBe(false)
+    expect(response.error?.code).toBe("transport_unavailable")
+    expect(response.error?.target).toBe("http-api")
+    expect(response.error?.details).toMatchObject({ endpoint: "" })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it("preserves bridge shell errors from non-2xx http-api responses", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      ok: false,
+      data: null,
+      error: {
+        code: "invalid_json",
+        message: "Invalid JSON body.",
+        target: "body",
+        details: null,
+      },
+      warnings: [],
+      artifacts: [],
+    }), { status: 400 }))
+    const transport = createHttpShellTransport({
+      endpoint: "http://127.0.0.1:8765/api/shell",
+      fetchImpl,
+    })
+
+    const response = await transport.run({ command: "fixture.run", args: {} })
+
+    expect(response.ok).toBe(false)
+    expect(response.error?.code).toBe("invalid_json")
+    expect(response.error?.target).toBe("body")
+  })
+
+  it("normalizes non-ok http-api responses with ok shell bodies to transport_unavailable", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      data: { command: "fixture.run" },
+      error: null,
+      warnings: [],
+      artifacts: [],
+    }), { status: 502 }))
+    const transport = createHttpShellTransport({
+      endpoint: "http://127.0.0.1:8765/api/shell",
+      fetchImpl,
+    })
+
+    const response = await transport.run({ command: "fixture.run", args: {} })
+
+    expect(response.ok).toBe(false)
+    expect(response.error?.code).toBe("transport_unavailable")
+    expect(response.error?.target).toBe("http-api")
+    expect(response.error?.details).toMatchObject({
+      endpoint: "http://127.0.0.1:8765/api/shell",
+      status: 502,
+    })
+  })
+
+  it("normalizes malformed http-api responses to transport_unavailable", async () => {
+    const transport = createHttpShellTransport({
+      endpoint: "http://127.0.0.1:8765/api/shell",
+      fetchImpl: vi.fn(async () => new Response("not-json")),
+    })
+
+    const response = await transport.run({ command: "fixture.run", args: {} })
+
+    expect(response.ok).toBe(false)
+    expect(response.error?.code).toBe("transport_unavailable")
+    expect(response.error?.target).toBe("http-api")
+  })
+
   it("returns a JSON-safe fixture.run response", async () => {
     const shellClient = new ShellClient(fixtureTransport)
 
@@ -67,4 +221,706 @@ describe("ShellClient", () => {
     expect(() => JSON.stringify(response)).not.toThrow()
   })
 
+  it("returns a JSON-safe import.preview response with success, failure, and warnings", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+
+    const response = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        source_paths: ["inbox/water.xyz", "inbox/bad-count.xyz"],
+        expected_format: "xyz",
+        strict: false,
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.data?.command).toBe("import.preview")
+    expect(response.data?.batch.items.map((item) => item.status)).toEqual([
+      "needs_confirmation",
+      "failed",
+    ])
+    expect(response.data?.batch.items[0].preview?.parser_id).toBe("xyz-ase")
+    expect(response.data?.batch.items[0].preview?.object_count).toBe(1)
+    expect(response.data?.batch.items[0].warnings[0].code).toBe("missing_section")
+    expect(response.data?.batch.items[1].error?.code).toBe("parse_failed")
+    expect(response.warnings[0].code).toBe("unit_assumed")
+    expect(() => JSON.stringify(response)).not.toThrow()
+  })
+
+  it("registers the fixture import batch idempotently", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const preview = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        source_paths: ["inbox/water.xyz"],
+      },
+    })
+
+    const first = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        batch_id: preview.data?.batch.id ?? "",
+      },
+    })
+    const repeated = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        batch_id: preview.data?.batch.id ?? "",
+      },
+    })
+
+    expect(first.ok).toBe(true)
+    expect(first.data?.registered_object_ids).toEqual(["object-imported-water"])
+    expect(first.data?.batch.items[0].status).toBe("registered")
+    expect(first.data?.objects.map((object) => object.id)).toContain("object-imported-water")
+    expect(repeated.data?.registered_object_ids).toEqual(first.data?.registered_object_ids)
+    expect(() => JSON.stringify(first)).not.toThrow()
+  })
+
+  it("returns invalid_input when import.preview has no source paths", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+
+    const response = await shellClient.run({
+      command: "import.preview",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+      },
+    })
+
+    expect(response.ok).toBe(false)
+    expect(response.error?.code).toBe("invalid_input")
+    expect(response.error?.target).toBe("source_path")
+  })
+
+  it("runs fixture workspace commands with JSON-safe graph projection", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+
+    const opened = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.open",
+      args: { session_id: sessionId },
+    })
+    expect(opened.ok).toBe(true)
+    expect(opened.data?.workspace.graph.nodes.map((node) => node.id)).toEqual(["node-a", "node-b"])
+
+    const added = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.add_node",
+      args: {
+        session_id: sessionId,
+        kind: "species",
+        label: "Water node",
+        chemical_object_ids: ["object-a"],
+        position: [520, 180],
+      },
+    })
+    expect(added.ok).toBe(true)
+    expect(added.data?.workspace.graph.node_count).toBe(3)
+    expect(added.data?.workspace.graph.nodes[2].chemical_object_ids).toEqual(["object-a"])
+    expect(added.data?.workspace.graph.nodes[2].composition).toEqual([
+      { object_id: "object-a", coefficient: 1, role: null, label: null, metadata: {} },
+    ])
+
+    const composition = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_node_composition",
+      args: {
+        session_id: sessionId,
+        node_id: "node-web-3",
+        composition: [
+          { object_id: "object-a", coefficient: 1 },
+          { object_id: "object-b", coefficient: 2, role: "reagent" },
+        ],
+      },
+    })
+    expect(composition.ok).toBe(true)
+    expect(composition.data?.command).toBe("workspace.set_node_composition")
+    expect(composition.data?.workspace.graph.nodes[2].chemical_object_ids).toEqual(["object-a", "object-b"])
+    expect(composition.data?.workspace.graph.nodes[2].composition?.[1].coefficient).toBe(2)
+
+    const moved = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.move_node",
+      args: {
+        session_id: sessionId,
+        node_id: "node-web-3",
+        position: [420, 220],
+      },
+    })
+    expect(moved.ok).toBe(true)
+    expect(moved.data?.command).toBe("workspace.move_node")
+    expect(moved.data?.workspace.graph.nodes[2].position).toEqual([420, 220])
+
+    const selected = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.select",
+      args: {
+        session_id: sessionId,
+        selection: {
+          node_ids: ["node-web-3"],
+        },
+      },
+    })
+    expect(selected.ok).toBe(true)
+    expect(selected.data?.command).toBe("workspace.select")
+    expect(selected.data?.workspace.selection).toEqual({
+      node_ids: ["node-web-3"],
+      edge_ids: [],
+      path_ids: [],
+    })
+
+    const connected = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.connect",
+      args: {
+        session_id: sessionId,
+        from_node_id: "node-b",
+        to_node_id: "node-web-3",
+      },
+    })
+    const repeated = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.connect",
+      args: {
+        session_id: sessionId,
+        from_node_id: "node-b",
+        to_node_id: "node-web-3",
+      },
+    })
+    expect(connected.ok).toBe(true)
+    expect(repeated.data?.workspace.graph.edge_count).toBe(2)
+    const edgeId = connected.data?.workspace.graph.edges.find((edge) => edge.to_node === "node-web-3")?.id
+
+    const path = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_path",
+      args: {
+        session_id: sessionId,
+        path_id: "path-web-main",
+        node_ids: ["node-a", "node-b", "node-web-3"],
+      },
+    })
+    expect(path.ok).toBe(true)
+    expect(path.data?.workspace.active_path_id).toBe("path-web-main")
+    expect(path.data?.workspace.graph.paths.map((item) => item.id)).toContain("path-web-main")
+    expect(() => JSON.stringify(path)).not.toThrow()
+
+    const removedEdge = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.remove",
+      args: {
+        session_id: sessionId,
+        edge_ids: [edgeId ?? ""],
+      },
+    })
+    expect(removedEdge.ok).toBe(true)
+    expect(removedEdge.data?.command).toBe("workspace.remove")
+    expect(removedEdge.data?.workspace.graph.edge_count).toBe(1)
+    expect(removedEdge.data?.workspace.graph.node_count).toBe(3)
+
+    const removedNode = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.remove",
+      args: {
+        session_id: sessionId,
+        node_ids: ["node-web-3"],
+      },
+    })
+    expect(removedNode.ok).toBe(true)
+    expect(removedNode.data?.workspace.graph.nodes.map((node) => node.id)).not.toContain("node-web-3")
+    expect(removedNode.data?.workspace.graph.paths.map((item) => item.id)).not.toContain("path-web-main")
+    expect(removedNode.data?.workspace.selection?.node_ids).toEqual([])
+  })
+
+  it("returns structured errors for invalid fixture workspace selections", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+
+    const missingSelection = await shellClient.run({
+      command: "workspace.select",
+      args: { session_id: sessionId },
+    })
+    expect(missingSelection.ok).toBe(false)
+    expect(missingSelection.error?.code).toBe("invalid_input")
+    expect(missingSelection.error?.target).toBe("selection")
+
+    const missingNode = await shellClient.run({
+      command: "workspace.select",
+      args: {
+        session_id: sessionId,
+        selection: { node_ids: ["node-missing"] },
+      },
+    })
+    expect(missingNode.ok).toBe(false)
+    expect(missingNode.error?.code).toBe("graph_invalid")
+    expect(missingNode.error?.target).toBe("node_id")
+
+    const cleared = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.select",
+      args: {
+        session_id: sessionId,
+        selection: {},
+      },
+    })
+    expect(cleared.ok).toBe(true)
+    expect(cleared.data?.workspace.selection).toEqual({
+      node_ids: [],
+      edge_ids: [],
+      path_ids: [],
+    })
+  })
+
+  it("returns structured errors for invalid fixture node moves", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+
+    const missingNode = await shellClient.run({
+      command: "workspace.move_node",
+      args: {
+        session_id: sessionId,
+        node_id: "node-missing",
+        position: [100, 100],
+      },
+    })
+    expect(missingNode.ok).toBe(false)
+    expect(missingNode.error?.code).toBe("graph_invalid")
+    expect(missingNode.error?.target).toBe("node_id")
+
+    const invalidPosition = await shellClient.run({
+      command: "workspace.move_node",
+      args: {
+        session_id: sessionId,
+        node_id: "node-a",
+        position: ["bad", 100],
+      },
+    })
+    expect(invalidPosition.ok).toBe(false)
+    expect(invalidPosition.error?.code).toBe("invalid_input")
+    expect(invalidPosition.error?.target).toBe("position")
+  })
+
+  it("updates fixture workspace viewport without changing graph state", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+    const snapshot = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: { session_id: sessionId },
+    })
+    const graphBefore = snapshot.data?.workspace?.graph
+
+    expect(snapshot.ok).toBe(true)
+    expect(snapshot.data?.workspace?.viewport).toEqual({ x: 0, y: 0, zoom: 1 })
+
+    const updated = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_viewport",
+      args: {
+        session_id: sessionId,
+        viewport: { x: 12, y: -8, zoom: 1.5 },
+      },
+    })
+
+    expect(updated.ok).toBe(true)
+    expect(updated.data?.command).toBe("workspace.set_viewport")
+    expect(updated.data?.workspace.viewport).toEqual({ x: 12, y: -8, zoom: 1.5 })
+    expect(updated.data?.workspace.graph).toEqual(graphBefore)
+    expect(() => JSON.stringify(updated)).not.toThrow()
+
+    const zeroZoom = await shellClient.run({
+      command: "workspace.set_viewport",
+      args: {
+        session_id: sessionId,
+        viewport: { x: 0, y: 0, zoom: 0 },
+      },
+    })
+    expect(zeroZoom.ok).toBe(false)
+    expect(zeroZoom.error?.code).toBe("invalid_input")
+    expect(zeroZoom.error?.target).toBe("viewport.zoom")
+
+    const afterInvalid = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: { session_id: sessionId },
+    })
+    expect(afterInvalid.data?.workspace?.viewport).toEqual({ x: 12, y: -8, zoom: 1.5 })
+    expect(afterInvalid.data?.workspace?.graph).toEqual(graphBefore)
+  })
+
+  it("returns structured errors for invalid fixture workspace viewports", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+
+    const missingSession = await shellClient.run({
+      command: "workspace.set_viewport",
+      args: {
+        session_id: "missing-session",
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    })
+    expect(missingSession.ok).toBe(false)
+    expect(missingSession.error?.code).toBe("invalid_input")
+    expect(missingSession.error?.target).toBe("session_id")
+
+    const missingViewport = await shellClient.run({
+      command: "workspace.set_viewport",
+      args: { session_id: sessionId },
+    })
+    expect(missingViewport.ok).toBe(false)
+    expect(missingViewport.error?.code).toBe("invalid_input")
+    expect(missingViewport.error?.target).toBe("viewport")
+
+    const badNumber = await shellClient.run({
+      command: "workspace.set_viewport",
+      args: {
+        session_id: sessionId,
+        viewport: { x: Number.NaN, y: 0, zoom: 1 },
+      },
+    })
+    expect(badNumber.ok).toBe(false)
+    expect(badNumber.error?.code).toBe("invalid_input")
+    expect(badNumber.error?.target).toBe("viewport")
+  })
+
+  it("returns structured errors for invalid fixture removes", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+
+    const empty = await shellClient.run({
+      command: "workspace.remove",
+      args: { session_id: sessionId },
+    })
+    expect(empty.ok).toBe(false)
+    expect(empty.error?.code).toBe("invalid_input")
+    expect(empty.error?.target).toBe("selection")
+
+    const missingNode = await shellClient.run({
+      command: "workspace.remove",
+      args: { session_id: sessionId, node_ids: ["node-missing"] },
+    })
+    expect(missingNode.ok).toBe(false)
+    expect(missingNode.error?.code).toBe("graph_invalid")
+    expect(missingNode.error?.target).toBe("node_id")
+
+    const missingEdge = await shellClient.run({
+      command: "workspace.remove",
+      args: { session_id: sessionId, edge_ids: ["edge-missing"] },
+    })
+    expect(missingEdge.ok).toBe(false)
+    expect(missingEdge.error?.code).toBe("graph_invalid")
+    expect(missingEdge.error?.target).toBe("edge_id")
+  })
+
+  it("returns graph_invalid when connecting a missing fixture node", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+
+    const response = await shellClient.run({
+      command: "workspace.connect",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        from_node_id: "node-a",
+        to_node_id: "missing-node",
+      },
+    })
+
+    expect(response.ok).toBe(false)
+    expect(response.error?.code).toBe("graph_invalid")
+    expect(response.error?.target).toBe("node_id")
+  })
+
+  it("computes a JSON-safe fixture energy profile from the active path", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+
+    const response = await shellClient.run<EnergyComputeData>({
+      command: "energy.compute",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        path_id: "path-a-b",
+        output_unit: "kj_mol",
+        include_corrections: true,
+        energy_key: "electronic",
+        baseline_node_id: "node-a",
+        energy_source: "thermochemistry",
+        correction_policy: { mode: "kinds", kinds: ["solvation"] },
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.data?.command).toBe("energy.compute")
+    expect(response.data?.profile.path_id).toBe("path-a-b")
+    expect(response.data?.profile.output_unit).toBe("kj_mol")
+    expect(response.data?.profile.energy_key).toBe("electronic")
+    expect(response.data?.profile.energy_source).toBe("thermochemistry")
+    expect(response.data?.profile.correction_policy).toEqual({
+      mode: "kinds",
+      kinds: ["solvation"],
+      ids: [],
+    })
+    expect(response.data?.profile.points).toHaveLength(2)
+    expect(response.data?.profile.points[0].label).toBe("Object A")
+    expect(response.data?.profile.points[1].relative_energy).toMatchObject({
+      unit: "kj_mol",
+      reference: "fixture-electronic",
+    })
+    expect(response.warnings[0].code).toBe("corrections_empty")
+    expect(() => JSON.stringify(response)).not.toThrow()
+  })
+
+  it("projects fixture object energy channels", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+
+    const response = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: { session_id: "session-fixture-web" },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.data?.objects[0].energy_keys).toEqual(["electronic"])
+    expect(response.data?.objects[0].thermochemistry_keys).toEqual(["gibbs"])
+    expect(response.data?.objects[0].energy_channels).toEqual([
+      expect.objectContaining({ key: "electronic", source: "energies" }),
+      expect.objectContaining({ key: "gibbs", source: "thermochemistry" }),
+    ])
+  })
+
+  it("applies fixture object corrections and reflects them in snapshots", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+
+    const applied = await shellClient.run<RegistryApplyCorrectionData>({
+      command: "registry.apply_correction",
+      args: {
+        session_id: sessionId,
+        object_id: "object-b",
+        correction: {
+          kind: "solvation",
+          energy: { value: -2.4, unit: "kcal_mol", reference: "SMD" },
+          note: "fixture solvation",
+        },
+      },
+    })
+
+    expect(applied.ok).toBe(true)
+    expect(applied.data?.command).toBe("registry.apply_correction")
+    expect(applied.data?.object.id).toBe("object-b")
+    expect(applied.data?.object.correction_count).toBe(1)
+    expect(applied.data?.object.corrections?.[0]).toMatchObject({
+      id: expect.stringMatching(/^corr-object-b-solvation-/),
+      kind: "solvation",
+      energy: { value: -2.4, unit: "kcal_mol", reference: "SMD" },
+      note: "fixture solvation",
+    })
+
+    const repeated = await shellClient.run<RegistryApplyCorrectionData>({
+      command: "registry.apply_correction",
+      args: {
+        session_id: sessionId,
+        object_id: "object-b",
+        correction: {
+          kind: "solvation",
+          energy: { value: -2.4, unit: "kcal_mol", reference: "SMD" },
+          note: "fixture solvation",
+        },
+      },
+    })
+    expect(repeated.ok).toBe(true)
+    expect(repeated.data?.object.correction_count).toBe(1)
+
+    const snapshot = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: { session_id: sessionId },
+    })
+    const objectB = snapshot.data?.objects.find((object) => object.id === "object-b")
+    expect(objectB?.correction_count).toBe(1)
+    expect(objectB?.corrections?.[0].kind).toBe("solvation")
+    expect(() => JSON.stringify(snapshot)).not.toThrow()
+  })
+
+  it("returns invalid_input for invalid fixture correction payloads", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+
+    const invalidKind = await shellClient.run({
+      command: "registry.apply_correction",
+      args: {
+        session_id: sessionId,
+        object_id: "object-b",
+        correction: {
+          kind: "bad",
+          energy: { value: -2.4, unit: "kcal_mol" },
+        },
+      },
+    })
+    expect(invalidKind.ok).toBe(false)
+    expect(invalidKind.error?.target).toBe("correction.kind")
+
+    const invalidUnit = await shellClient.run({
+      command: "registry.apply_correction",
+      args: {
+        session_id: sessionId,
+        object_id: "object-b",
+        correction: {
+          kind: "manual",
+          energy: { value: -2.4, unit: "eV" },
+        },
+      },
+    })
+    expect(invalidUnit.ok).toBe(false)
+    expect(invalidUnit.error?.target).toBe("correction.energy.unit")
+
+    const missingObject = await shellClient.run({
+      command: "registry.apply_correction",
+      args: {
+        session_id: sessionId,
+        object_id: "object-missing",
+        correction: {
+          kind: "manual",
+          energy: { value: -2.4, unit: "kcal_mol" },
+        },
+      },
+    })
+    expect(missingObject.ok).toBe(false)
+    expect(missingObject.error?.target).toBe("object_id")
+  })
+
+  it("returns graph_invalid when computing a missing fixture energy path", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+
+    const response = await shellClient.run({
+      command: "energy.compute",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        path_id: "missing-path",
+      },
+    })
+
+    expect(response.ok).toBe(false)
+    expect(response.error?.code).toBe("graph_invalid")
+    expect(response.error?.target).toBe("path_id")
+  })
+
+  it("exports JSON-safe fixture profile artifacts with inline bytes", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+
+    const response = await shellClient.run<ExportProfileData>({
+      command: "export.profile",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        formats: ["png", "cdxml", "xlsx"],
+        include_bytes: true,
+        basename: "fixture-export",
+        title: "Fixture Export",
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.data?.command).toBe("export.profile")
+    expect(response.data?.artifact_count).toBe(3)
+    expect(response.artifacts.map((artifact) => artifact.format)).toEqual(["png", "cdxml", "xlsx"])
+    expect(response.artifacts[0].id).toBe("artifact-png-fixture-export")
+    expect(response.artifacts[0].bytes_base64).toEqual(expect.any(String))
+    expect(response.artifacts[0].metadata).toMatchObject({
+      basename: "fixture-export",
+      title: "Fixture Export",
+      profile_id: "profile-a-b-electronic",
+      writer_id: "fixture-png-energy-plot-v1",
+      encoding: "base64",
+    })
+    expect(response.warnings[0].code).toBe("chemdraw_cdxml_only")
+    expect(() => JSON.stringify(response)).not.toThrow()
+  })
+
+  it("exports fixture artifacts without inline bytes when include_bytes is false", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+
+    const response = await shellClient.run<ExportProfileData>({
+      command: "export.profile",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        formats: ["png"],
+        include_bytes: false,
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.artifacts).toHaveLength(1)
+    expect(response.artifacts[0].bytes_base64).toBeNull()
+    expect(response.artifacts[0].metadata.encoding).toBeNull()
+  })
+
+  it("returns invalid_input when exporting without formats", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+
+    const response = await shellClient.run({
+      command: "export.profile",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        formats: [],
+      },
+    })
+
+    expect(response.ok).toBe(false)
+    expect(response.error?.code).toBe("invalid_input")
+    expect(response.error?.target).toBe("formats")
+  })
 })

@@ -1,0 +1,96 @@
+feature: 2026-05-20-web-i18n-foundation
+created: 2026-05-20
+
+steps:
+  - action: "I18n Contract And Catalogs：新增 SupportedLocale、MessageKey、catalogs、format/detect/persistence helpers"
+    exit_signal: "单测覆盖 key completeness、fallback、zh detection、stored locale 和 {param} 插值"
+    status: done
+
+  - action: "Provider And Locale Switcher：新增 I18nProvider/useI18n，并在 App / WorkbenchShell 顶栏挂载 locale switcher"
+    exit_signal: "component test 能看到默认英文 switcher，切换到中文后顶栏文案更新"
+    status: done
+
+  - action: "Workbench Copy Migration：WorkbenchShell 的主 UI 文案迁移到 t(...)"
+    exit_signal: "fixture run、invalid command、status label、inspector 文案在英文测试中保持可查询，中文切换测试覆盖关键文案"
+    status: done
+
+  - action: "Project Sidebar Copy Migration：ProjectSidebar 和 sidebar validation message 迁移到 t(...) + message key/params"
+    exit_signal: "create/open/save/error/bundle tests 仍通过；缺 stub message 能随 locale 切换"
+    status: done
+
+  - action: "Verification And Scope Guard：跑 Web test/build，真实浏览器桌面/窄屏验证语言切换无重叠"
+    exit_signal: "npm run test、npm run build 通过；scope grep 确认未引入 i18n 库、cloud translation 或 route locale"
+    status: done
+
+checks:
+  - item: "SupportedLocale / MessageKey / MessageCatalog / I18nRuntime 契约存在且不进入 ShellResponse"
+    source: 名词契约
+    status: passed
+
+  - item: "zh-CN 和 en-US message catalog key 完全一致"
+    source: 名词契约
+    status: passed
+
+  - item: "I18nProvider / useI18n 挂在 App 层，组件不直接 import 单个 locale catalog"
+    source: 编排骨架
+    status: passed
+
+  - item: "默认 locale 按 browser language 选择，zh* 走 zh-CN，其他走 en-US"
+    source: 验收场景
+    status: passed
+
+  - item: "合法 stored locale 优先；非法或 storage 不可用时不崩溃并 fallback"
+    source: 验收场景
+    status: passed
+
+  - item: "用户可在顶栏切换中文 / English，刷新后偏好保留在浏览器本地"
+    source: 验收场景
+    status: passed
+
+  - item: "WorkbenchShell 主 UI 文案迁移到 t(...)，英文默认行为保持"
+    source: 验收场景
+    status: passed
+
+  - item: "ProjectSidebar 主 UI 文案和 validation message 迁移到 t(...) + message key/params"
+    source: 验收场景
+    status: passed
+
+  - item: "t(key, params) 支持 {param} 插值，缺失 param 不导致页面崩溃"
+    source: 验收场景
+    status: passed
+
+  - item: "repository error code、target、message 原样显示，不被 i18n runtime 改写"
+    source: 跨层纪律
+    status: passed
+
+  - item: "project name、projectRef、checksum、fixture object/profile ids 等动态数据原样显示"
+    source: 跨层纪律
+    status: passed
+
+  - item: "不引入 i18next、react-intl、FormatJS、ICU plural runtime 或其他 i18n 库"
+    source: 范围守护
+    status: passed
+
+  - item: "不接云端翻译、AI 翻译、账号偏好、URL locale routing 或多地区路由"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 Python core、ShellResponse DTO、Browser Project Repository schema 或 Project Content schema"
+    source: 范围守护
+    status: passed
+
+  - item: "不改变 Project Sidebar create/open/save 行为、bundle disabled 边界或 Workbench fixture flow"
+    source: 范围守护
+    status: passed
+
+  - item: "npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "真实浏览器桌面和窄屏验证 locale switcher 可用且无水平溢出"
+    source: 验收场景
+    status: passed

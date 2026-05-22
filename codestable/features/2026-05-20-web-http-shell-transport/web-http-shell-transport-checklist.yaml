@@ -1,0 +1,80 @@
+feature: 2026-05-20-web-http-shell-transport
+created: 2026-05-20
+
+steps:
+  - action: "Transport type and implementation：扩展 ShellTransportKind，新增 createHttpShellTransport"
+    exit_signal: "Vitest 可 mock fetch 验证 success / network failure / HTTP error / invalid JSON"
+    status: done
+
+  - action: "Runtime factory：新增 createConfiguredShellRuntime(import.meta.env)，默认 fixture，local-http 读取 endpoint"
+    exit_signal: "单测确认默认 fixture 和 local-http config"
+    status: done
+
+  - action: "UI indicator：WorkbenchShell 顶栏显示 runtime mode 和 endpoint"
+    exit_signal: "Testing Library 能看到 Runtime Fixture / Runtime Local HTTP"
+    status: done
+
+  - action: "Verification：跑 Web test/build、Python tests，并用浏览器验证默认 fixture 页面和 local-http bridge flow"
+    exit_signal: "桌面/窄屏无 console error、无水平溢出；local-http 模式可通过 bridge 执行 fixture.run"
+    status: done
+
+  - action: "Acceptance 回写：更新 architecture、requirement、roadmap 和验收报告"
+    exit_signal: "checklist 全 passed，roadmap item done"
+    status: done
+
+checks:
+  - item: "默认无 env 时，Web app 使用 fixture transport，页面仍可运行 Fixture flow"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http env + endpoint 有值时，ShellClient 使用 http-api transport"
+    source: 验收场景
+    status: passed
+
+  - item: "HTTP transport 成功时把 Shell payload POST 到 endpoint，并返回 normalized ShellResponse"
+    source: 验收场景
+    status: passed
+
+  - item: "HTTP transport fetch 失败时返回 transport_unavailable，target=http-api"
+    source: 验收场景
+    status: passed
+
+  - item: "HTTP 非 2xx 且 response 是 ShellResponse 时保留 bridge error code"
+    source: 验收场景
+    status: passed
+
+  - item: "HTTP transport invalid JSON / malformed response 返回 transport_unavailable"
+    source: 验收场景
+    status: passed
+
+  - item: "顶栏显示 runtime indicator，英文和中文都有文案"
+    source: 验收场景
+    status: passed
+
+  - item: "fixture 默认模式下现有 WorkbenchShell / E2E 主链路不回退"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http 模式下页面点击 Fixture Run 可显示真实 Python fixture project"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run test、npm run build、python3 -m unittest discover 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "不修改 parser、registry、graph、energy、export 领域行为"
+    source: 反向检查
+    status: passed
+
+  - item: "不扩展 import.preview bytes payload"
+    source: 反向检查
+    status: passed
+
+  - item: "不把 local-http 设为默认"
+    source: 反向检查
+    status: passed
+
+  - item: "不新增云存储、账号或服务端框架依赖"
+    source: 反向检查
+    status: passed

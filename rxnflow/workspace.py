@@ -17,6 +17,7 @@ from .models import (
     ReactionEdge,
     ReactionGraph,
     ReactionNode,
+    ReactionNodeCompositionTerm,
     ReactionNodeKind,
     ReactionPath,
 )
@@ -84,6 +85,7 @@ class NodePlacement:
     chemical_object_ids: tuple[ID, ...] = ()
     position: tuple[float, float] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    composition: tuple[ReactionNodeCompositionTerm, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -218,10 +220,29 @@ class GraphEditorWorkspaceService:
             chemical_object_ids=placement.chemical_object_ids,
             position=placement.position,
             metadata=dict(placement.metadata),
+            composition=placement.composition,
         )
         return self._apply_graph_patches(
             state,
             (GraphPatch("add_node", node=node),),
+            object_ids=_object_ids(self._available_objects(state)),
+        )
+
+    def set_node_composition(
+        self,
+        project_id: ID,
+        workspace_id: ID,
+        node_id: ID,
+        composition: tuple[ReactionNodeCompositionTerm, ...],
+    ) -> Result[WorkspaceSnapshot]:
+        state_result = self._get_state(project_id, workspace_id)
+        if not state_result.ok or state_result.value is None:
+            assert state_result.error is not None
+            return err(state_result.error)
+        state = state_result.value
+        return self._apply_graph_patches(
+            state,
+            (GraphPatch("update_node", id=node_id, patch={"composition": composition}),),
             object_ids=_object_ids(self._available_objects(state)),
         )
 
@@ -247,6 +268,41 @@ class GraphEditorWorkspaceService:
             metadata=dict(metadata or {}),
         )
         return self._apply_graph_patches(state, (GraphPatch("add_edge", edge=edge),))
+
+    def move_node(
+        self,
+        project_id: ID,
+        workspace_id: ID,
+        node_id: ID,
+        position: tuple[float, float],
+    ) -> Result[WorkspaceSnapshot]:
+        state_result = self._get_state(project_id, workspace_id)
+        if not state_result.ok or state_result.value is None:
+            assert state_result.error is not None
+            return err(state_result.error)
+        state = state_result.value
+        return self._apply_graph_patches(
+            state,
+            (GraphPatch("update_node", id=node_id, patch={"position": position}),),
+            object_ids=_object_ids(self._available_objects(state)),
+        )
+
+    def remove_items(
+        self,
+        project_id: ID,
+        workspace_id: ID,
+        node_ids: tuple[ID, ...] = (),
+        edge_ids: tuple[ID, ...] = (),
+    ) -> Result[WorkspaceSnapshot]:
+        state_result = self._get_state(project_id, workspace_id)
+        if not state_result.ok or state_result.value is None:
+            assert state_result.error is not None
+            return err(state_result.error)
+        state = state_result.value
+        patches = tuple(GraphPatch("remove", id=item_id) for item_id in _remove_item_ids(state.graph, node_ids, edge_ids))
+        if not patches:
+            return _invalid_input("At least one graph node or edge id is required.", "selection")
+        return self._apply_graph_patches(state, patches)
 
     def set_active_path(
         self,
@@ -296,6 +352,9 @@ class GraphEditorWorkspaceService:
             assert state_result.error is not None
             return err(state_result.error)
         state = state_result.value
+        validation_error = _validate_selection(selection, state.graph)
+        if validation_error is not None:
+            return err(validation_error)
         updated = replace(state, selection=selection)
         self._workspaces[project_id][workspace_id] = updated
         return ok(self._snapshot_from_state(updated))
@@ -389,6 +448,7 @@ class GraphEditorWorkspaceService:
         updated = replace(
             state,
             graph=graph,
+            selection=_prune_selection(state.selection, graph),
             active_path_id=resolved_active_path_id,
         )
         self._workspaces[state.project_id][state.workspace_id] = updated
@@ -411,8 +471,54 @@ def _edge_id(graph: ReactionGraph, from_node_id: ID, to_node_id: ID) -> ID:
     return f"edge-{hashlib.sha256(payload).hexdigest()[:12]}"
 
 
+def _remove_item_ids(graph: ReactionGraph, node_ids: tuple[ID, ...], edge_ids: tuple[ID, ...]) -> tuple[ID, ...]:
+    normalized_node_ids = tuple(dict.fromkeys(node_id for node_id in node_ids if node_id))
+    incident_edge_ids = {
+        edge.id
+        for edge in graph.edges
+        if edge.from_node in normalized_node_ids or edge.to_node in normalized_node_ids
+    }
+    normalized_edge_ids = tuple(
+        dict.fromkeys(edge_id for edge_id in edge_ids if edge_id and edge_id not in incident_edge_ids)
+    )
+    return normalized_node_ids + normalized_edge_ids
+
+
 def _object_ids(objects: tuple[ChemicalObject, ...]) -> frozenset[ID]:
     return frozenset(obj.id for obj in objects)
+
+
+def _validate_selection(
+    selection: WorkspaceSelection,
+    graph: ReactionGraph,
+) -> RxnFlowError | None:
+    node_ids = {node.id for node in graph.nodes}
+    edge_ids = {edge.id for edge in graph.edges}
+    path_ids = {path.id for path in graph.paths}
+    for node_id in selection.node_ids:
+        if node_id not in node_ids:
+            return RxnFlowError("graph_invalid", "Workspace selection references a missing node.", target="node_id")
+    for edge_id in selection.edge_ids:
+        if edge_id not in edge_ids:
+            return RxnFlowError("graph_invalid", "Workspace selection references a missing edge.", target="edge_id")
+    for path_id in selection.path_ids:
+        if path_id not in path_ids:
+            return RxnFlowError("graph_invalid", "Workspace selection references a missing path.", target="path_id")
+    return None
+
+
+def _prune_selection(
+    selection: WorkspaceSelection,
+    graph: ReactionGraph,
+) -> WorkspaceSelection:
+    node_ids = {node.id for node in graph.nodes}
+    edge_ids = {edge.id for edge in graph.edges}
+    path_ids = {path.id for path in graph.paths}
+    return WorkspaceSelection(
+        node_ids=tuple(node_id for node_id in selection.node_ids if node_id in node_ids),
+        edge_ids=tuple(edge_id for edge_id in selection.edge_ids if edge_id in edge_ids),
+        path_ids=tuple(path_id for path_id in selection.path_ids if path_id in path_ids),
+    )
 
 
 def _palette_item(obj: ChemicalObject) -> ObjectPaletteItem:

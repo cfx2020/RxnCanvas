@@ -98,17 +98,88 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
             self.assertTrue(objects.ok, objects.error)
             self.assertEqual(objects.value, ())
 
-    def test_platform_shell_import_preview_projects_success_and_failure_items(self) -> None:
+    def test_platform_shell_import_preview_projects_executable_fixture_snapshots(self) -> None:
         manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
-        success = _fixture_by_id(manifest, "xyz-water-geometry-missing-energy")
+
+        for fixture in manifest.executable_fixtures():
+            with self.subTest(fixture=fixture.id), TemporaryDirectory() as tmp:
+                expected = _snapshot(fixture.expected_snapshot)
+                kernel = AppKernel(
+                    chemical_registry=_PreviewOnlyRegistry(),
+                    graph_service=_NoGraphService(),
+                    energy_engine=_NoEnergyEngine(),
+                    export_service=_NoExportService(),
+                    bundle_service=_NoBundleService(),
+                )
+                service = PlatformShellService(kernel)
+                project_path = Path(tmp) / f"{fixture.id}.rxnflow"
+                created = service.run(
+                    ShellCommand("project.create", {"name": fixture.id, "location": str(project_path)})
+                )
+                self.assertTrue(created.ok, created.error)
+                session_id = created.to_dict()["data"]["session_id"]
+
+                preview = service.run(
+                    ShellCommand(
+                        "import.preview",
+                        {
+                            "session_id": session_id,
+                            "source_path": str(fixture.file),
+                        },
+                    )
+                )
+
+                self.assertTrue(preview.ok, preview.error)
+                payload = preview.to_dict()
+                json.dumps(payload)
+                items = payload["data"]["batch"]["items"]
+                self.assertEqual(len(items), 1)
+                item = items[0]
+                self.assertEqual(item["status"], "needs_confirmation")
+                self.assertIsNone(item["error"])
+                self.assertEqual(item["registered_object_ids"], [])
+
+                raw_resource = item["raw_resource"]
+                self.assertIsNotNone(raw_resource)
+                self.assertEqual(raw_resource["kind"], "raw_file")
+                self.assertTrue(raw_resource["path"])
+                self.assertTrue(raw_resource["checksum"].startswith("sha256:"))
+                self.assertTrue((project_path / raw_resource["path"]).is_file())
+
+                preview_summary = item["preview"]
+                self.assertIsNotNone(preview_summary)
+                self.assertEqual(preview_summary["raw_resource_id"], raw_resource["id"])
+                self.assertEqual(preview_summary["parser_id"], expected["provenance"]["parser_id"])
+                self.assertEqual(
+                    preview_summary["parser_version"],
+                    expected["provenance"]["parser_version"],
+                )
+                self.assertEqual(preview_summary["object_count"], expected["object_count"])
+                self.assertEqual(_payload_warning_codes(preview_summary["warnings"]), expected["warning_codes"])
+                self.assertEqual(_payload_warning_codes(item["warnings"]), expected["warning_codes"])
+
+                state = kernel.get_session_state(session_id)
+                self.assertIsNotNone(state)
+                assert state is not None
+                self.assertEqual(state.objects, ())
+
+    def test_platform_shell_import_preview_projects_expected_failure(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
         failure = _fixture_by_id(manifest, "xyz-bad-atom-count")
-        kernel = AppKernel()
+        expected = _snapshot(failure.expected_snapshot)
+        kernel = AppKernel(
+            chemical_registry=_PreviewOnlyRegistry(),
+            graph_service=_NoGraphService(),
+            energy_engine=_NoEnergyEngine(),
+            export_service=_NoExportService(),
+            bundle_service=_NoBundleService(),
+        )
         service = PlatformShellService(kernel)
 
         with TemporaryDirectory() as tmp:
-            project_path = Path(tmp) / "shell-preview.rxnflow"
+            project_path = Path(tmp) / "shell-preview-failure.rxnflow"
             created = service.run(
-                ShellCommand("project.create", {"name": "shell-preview", "location": str(project_path)})
+                ShellCommand("project.create", {"name": "shell-preview-failure", "location": str(project_path)})
             )
             self.assertTrue(created.ok, created.error)
             session_id = created.to_dict()["data"]["session_id"]
@@ -118,7 +189,7 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
                     "import.preview",
                     {
                         "session_id": session_id,
-                        "source_paths": (str(success.file), str(failure.file)),
+                        "source_path": str(failure.file),
                     },
                 )
             )
@@ -127,23 +198,16 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
             payload = preview.to_dict()
             json.dumps(payload)
             items = payload["data"]["batch"]["items"]
-            self.assertEqual([item["status"] for item in items], ["needs_confirmation", "failed"])
-
-            success_item = items[0]
-            self.assertEqual(success_item["preview"]["parser_id"], success.parser_id)
-            self.assertEqual(success_item["preview"]["object_count"], 1)
-            self.assertEqual(
-                [warning["code"] for warning in success_item["warnings"]],
-                ["missing_section"],
-            )
-            self.assertIsNotNone(success_item["raw_resource"])
-            self.assertEqual(success_item["raw_resource"]["kind"], "raw_file")
-
-            failure_item = items[1]
-            self.assertIsNone(failure_item["preview"])
-            self.assertEqual(failure_item["error"]["code"], "parse_failed")
-            self.assertIsNotNone(failure_item["raw_resource"])
-            self.assertEqual(failure_item["raw_resource"]["kind"], "raw_file")
+            self.assertEqual(len(items), 1)
+            item = items[0]
+            self.assertEqual(item["status"], "failed")
+            self.assertIsNone(item["preview"])
+            self.assertEqual(item["error"]["code"], expected["error"]["code"])
+            self.assertEqual(_payload_warning_codes(item["warnings"]), expected["warning_codes"])
+            raw_resource = item["raw_resource"]
+            self.assertIsNotNone(raw_resource)
+            self.assertEqual(raw_resource["kind"], "raw_file")
+            self.assertTrue((project_path / raw_resource["path"]).is_file())
 
             state = kernel.get_session_state(session_id)
             self.assertIsNotNone(state)
@@ -155,7 +219,7 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
             self.assertEqual(missing_source.error["code"], "invalid_input")  # type: ignore[index]
 
             missing_session = service.run(
-                ShellCommand("import.preview", {"session_id": "missing", "source_path": str(success.file)})
+                ShellCommand("import.preview", {"session_id": "missing", "source_path": str(failure.file)})
             )
             self.assertFalse(missing_session.ok)
             self.assertEqual(missing_session.error["code"], "invalid_input")  # type: ignore[index]
@@ -167,12 +231,18 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
             {
                 "maple-sp-synthetic-minimal",
                 "maple-opt-synthetic-minimal",
+                "maple-sp-public-shape-synthetic-derived",
+                "maple-opt-final-xyz-public-shape-synthetic-derived",
                 "maple-irc-path-synthetic-minimal",
+                "maple-path-family-synthetic-derived",
                 "xyz-water-geometry-missing-energy",
                 "extxyz-h2-energy-charge-spin",
                 "extxyz-h2-missing-energy",
+                "extxyz-multiframe-metadata-calculator-energy",
                 "gaussian-sp-water-synthetic-minimal",
+                "gaussian-sp-public-shape-synthetic-derived",
                 "orca-sp-water-synthetic-minimal",
+                "orca-sp-public-shape-synthetic-derived",
                 "xyz-bad-atom-count",
             },
         )
@@ -247,7 +317,11 @@ def _fixture_by_id(manifest: object, fixture_id: str) -> object:
 
 
 def _warning_codes(warnings: tuple[object, ...]) -> list[str]:
-    return [warning.code for warning in warnings]  # type: ignore[attr-defined]
+    return sorted(warning.code for warning in warnings)  # type: ignore[attr-defined]
+
+
+def _payload_warning_codes(warnings: list[dict[str, object]]) -> list[str]:
+    return sorted(str(warning["code"]) for warning in warnings)
 
 
 class _PreviewOnlyRegistry(ChemicalRegistry):

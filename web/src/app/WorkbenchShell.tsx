@@ -1,6 +1,55 @@
-import { useCallback, useState, type ReactNode } from "react"
-import { AlertTriangle, Boxes, CircleDot, FlaskConical, Network, Play } from "lucide-react"
-import type { FixtureRunData, ShellClient } from "../shell"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { AlertTriangle, Play } from "lucide-react"
+import { BrowserProjectRepositoryError, type BrowserProjectRepository } from "../repository"
+import type { EnergyComputeData, ExportProfileData, FixtureRunData, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary } from "../shell"
+import { EnergyProfilePanel, type EnergyPanelOptions } from "./EnergyProfilePanel"
+import {
+  applyArtifactPersistenceResults,
+  persistExportArtifacts,
+  type ExportArtifactPersistenceResult,
+} from "./exportArtifactPersistence"
+import {
+  completeGraphEditorConnection,
+  endGraphEditorCanvasDrag,
+  initialGraphEditorInteractionState,
+  pruneGraphEditorInteractionState,
+  selectGraphEditorEdge,
+  selectGraphEditorNode,
+  selectGraphEditorPath,
+  setGraphEditorMode,
+  startGraphEditorCanvasDrag,
+  startGraphEditorConnection,
+  updateGraphEditorCanvasDrag,
+  type CanvasPoint,
+} from "./graphEditorInteractionState"
+import type { GraphViewport } from "./graphViewport"
+import {
+  createGraphPathOrderDraft,
+  moveGraphPathDraftNode,
+  type GraphPathOrderDraft,
+  type GraphPathOrderMoveDirection,
+} from "./graphPathOrderDraft"
+import { GraphCanvas, type AddObjectNodeRequest, type MoveGraphNodeRequest, type RemoveGraphItemsRequest } from "./GraphCanvas"
+import { ImportInbox } from "./ImportInbox"
+import {
+  importPreviewArgsFromFiles,
+  initialImportInboxState,
+  mergeRegisteredObjects,
+  type ImportInboxState,
+  type WebImportFile,
+} from "./importInboxState"
+import { ObjectRegistryPanel, type ApplyCorrectionRequest } from "./ObjectRegistryPanel"
+import { createProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
+import {
+  contentFilesToShellPayload,
+  readProjectContentFiles,
+  shellPayloadToContentFiles,
+  type BrowserProjectContentFile,
+  type ProjectSaveContentData,
+} from "./projectContentBridge"
+import { initialProjectSidebarState, type ProjectSidebarState } from "./projectSidebarState"
+import { ProjectSidebar } from "./ProjectSidebar"
+import { ReportExportPanel, type ReportExportOptions } from "./ReportExportPanel"
 import {
   initialWorkbenchDomainState,
   projectWorkbenchSnapshot,
@@ -8,15 +57,320 @@ import {
   type WorkbenchDomainState,
   type WorkbenchSnapshotData,
 } from "./workbenchState"
+import { useI18n, type SupportedLocale } from "./i18n"
 
 type WorkbenchShellProps = {
   shellClient: ShellClient
+  projectRepository: BrowserProjectRepository
+  runtimeInfo?: ShellRuntimeInfo
 }
 
-export function WorkbenchShell({ shellClient }: WorkbenchShellProps) {
+const defaultRuntimeInfo: ShellRuntimeInfo = {
+  mode: "fixture",
+  transportKind: "in-process-test",
+}
+
+export function WorkbenchShell({
+  shellClient,
+  projectRepository,
+  runtimeInfo = defaultRuntimeInfo,
+}: WorkbenchShellProps) {
+  const { locale, setLocale, t } = useI18n()
   const [workbenchState, setWorkbenchState] = useState<WorkbenchDomainState>(
     initialWorkbenchDomainState,
   )
+  const [projectSidebarState, setProjectSidebarState] = useState<ProjectSidebarState>(
+    initialProjectSidebarState,
+  )
+  const [importInboxState, setImportInboxState] = useState<ImportInboxState>(
+    initialImportInboxState,
+  )
+  const [activeObjectId, setActiveObjectId] = useState<string | undefined>()
+  const [correctionPending, setCorrectionPending] = useState(false)
+  const [correctionError, setCorrectionError] = useState<ShellError | null>(null)
+  const [graphEditorInteraction, setGraphEditorInteraction] = useState(
+    initialGraphEditorInteractionState,
+  )
+  const [pathOrderDraft, setPathOrderDraft] = useState<GraphPathOrderDraft | null>(null)
+  const [energyPanelOptions, setEnergyPanelOptions] = useState<EnergyPanelOptions>({
+    pathId: "",
+    outputUnit: "kcal_mol",
+    includeCorrections: false,
+    energyKey: "electronic",
+    baselineNodeId: "",
+  })
+  const [reportExportOptions, setReportExportOptions] = useState<ReportExportOptions>({
+    formats: ["png", "cdxml", "xlsx"],
+    includeBytes: true,
+    basename: "rxnflow-profile",
+    title: "Relative energy profile",
+  })
+  const projectSidebarStateRef = useRef<ProjectSidebarState>(initialProjectSidebarState)
+
+  const replaceProjectSidebarState = useCallback((nextState: ProjectSidebarState) => {
+    projectSidebarStateRef.current = nextState
+    setProjectSidebarState(nextState)
+  }, [])
+
+  const refreshProjectSidebar = useCallback(async () => {
+    const loadingState: ProjectSidebarState = {
+      ...projectSidebarStateRef.current,
+      status: "loading",
+      error: undefined,
+    }
+    replaceProjectSidebarState(loadingState)
+    const nextState = await refreshProjects(projectRepository, loadingState)
+    replaceProjectSidebarState(nextState)
+  }, [projectRepository, replaceProjectSidebarState])
+
+  useEffect(() => {
+    void refreshProjectSidebar()
+  }, [refreshProjectSidebar])
+
+  useEffect(() => {
+    setActiveObjectId((current) => {
+      if (current && workbenchState.objects.some((object) => object.id === current)) {
+        return current
+      }
+      return workbenchState.objects[0]?.id
+    })
+  }, [workbenchState.objects])
+
+  useEffect(() => {
+    const graph = workbenchState.workspace?.graph
+    setGraphEditorInteraction((current) => pruneGraphEditorInteractionState(
+      current,
+      {
+        nodeIds: graph?.nodes.map((node) => node.id) ?? [],
+        edgeIds: graph?.edges.map((edge) => edge.id) ?? [],
+        pathIds: graph?.paths.map((path) => path.id) ?? [],
+      },
+    ))
+    setPathOrderDraft((current) => {
+      if (!current) return current
+      const path = graph?.paths.find((item) => item.id === current.pathId)
+      return path ? current : null
+    })
+  }, [workbenchState.workspace])
+
+  useEffect(() => {
+    const workspace = workbenchState.workspace
+    if (!workspace) return
+    const selection = workspace.selection ?? {
+      node_ids: [],
+      edge_ids: [],
+      path_ids: [],
+    }
+    setGraphEditorInteraction((current) => ({
+      ...current,
+      selection: {
+        nodeIds: selection.node_ids,
+        edgeIds: selection.edge_ids,
+        pathIds: selection.path_ids,
+      },
+    }))
+    if (selection.path_ids[0]) {
+      const path = workspace.graph.paths.find((item) => item.id === selection.path_ids[0])
+      setPathOrderDraft(path ? createGraphPathOrderDraft(path.id, path.node_ids) : null)
+    } else {
+      setPathOrderDraft((current) => current && workspace.graph.paths.some((path) => path.id === current.pathId) ? current : null)
+    }
+  }, [workbenchState.workspace])
+
+  useEffect(() => {
+    setEnergyPanelOptions((current) => {
+      const paths = workbenchState.workspace?.graph.paths ?? []
+      const activePathId = workbenchState.workspace?.active_path_id ?? paths[0]?.id ?? ""
+      const pathStillExists = current.pathId && paths.some((path) => path.id === current.pathId)
+      const nextPathId = activePathId || (pathStillExists ? current.pathId : "")
+      const nextPath = paths.find((path) => path.id === nextPathId)
+      const baselineStillExists = current.baselineNodeId
+        && nextPath?.node_ids.includes(current.baselineNodeId)
+      return {
+        ...current,
+        pathId: nextPathId,
+        baselineNodeId: baselineStillExists ? current.baselineNodeId : "",
+      }
+    })
+  }, [workbenchState.workspace])
+
+  const createSidebarProject = useCallback(
+    async (name: string) => {
+      const loadingState: ProjectSidebarState = {
+        ...projectSidebarStateRef.current,
+        status: "loading",
+        error: undefined,
+      }
+      replaceProjectSidebarState(loadingState)
+      const nextState = await createProject(projectRepository, loadingState, name)
+      replaceProjectSidebarState(nextState)
+      return nextState
+    },
+    [projectRepository, replaceProjectSidebarState],
+  )
+
+  const openSidebarProject = useCallback(
+    async (projectRef: string) => {
+      const loadingState: ProjectSidebarState = {
+        ...projectSidebarStateRef.current,
+        status: "loading",
+        error: undefined,
+      }
+      replaceProjectSidebarState(loadingState)
+      const nextState = await openProject(projectRepository, loadingState, projectRef)
+      replaceProjectSidebarState(nextState)
+    },
+    [projectRepository, replaceProjectSidebarState],
+  )
+
+  const saveSidebarProjectStub = useCallback(async () => {
+    const loadingState: ProjectSidebarState = {
+      ...projectSidebarStateRef.current,
+      status: "loading",
+      persistence: "saving",
+      error: undefined,
+    }
+    replaceProjectSidebarState(loadingState)
+    const nextState = await saveProjectContent(projectRepository, loadingState)
+    replaceProjectSidebarState(nextState)
+  }, [projectRepository, replaceProjectSidebarState])
+
+  const openSidebarBridgeSession = useCallback(async () => {
+    const activeProject = projectSidebarStateRef.current.activeProject
+    if (!activeProject) return
+    const loadingState: ProjectSidebarState = {
+      ...projectSidebarStateRef.current,
+      status: "loading",
+      bridge: { state: "opening" },
+      error: undefined,
+    }
+    replaceProjectSidebarState(loadingState)
+    let contentFiles
+    try {
+      const files = await readProjectContentFiles(projectRepository, activeProject.projectRef)
+      contentFiles = await contentFilesToShellPayload(files)
+    } catch (error) {
+      if (!(error instanceof BrowserProjectRepositoryError)) {
+        throw error
+      }
+      replaceProjectSidebarState({
+        ...loadingState,
+        status: "error",
+        bridge: { state: "error" },
+        persistence: "error",
+        validation: {
+          state: "error",
+          messageKey: "projectSidebar.errorMessage",
+          messageParams: { message: error.message },
+          checkedAt: new Date().toISOString(),
+        },
+        error: error.toJSON(),
+      })
+      return
+    }
+    const response = await shellClient.run({
+      command: "project.open",
+      args: {
+        content_files: contentFiles,
+        load_content: true,
+      },
+    })
+    if (!response.ok || !response.data) {
+      const nextState: ProjectSidebarState = {
+        ...loadingState,
+        status: "error",
+        bridge: { state: "error" },
+        persistence: "error",
+        validation: {
+          state: "error",
+          messageKey: "projectSidebar.errorMessage",
+          messageParams: { message: response.error?.message ?? "Project bridge open failed." },
+          checkedAt: new Date().toISOString(),
+        },
+        error: response.error ? {
+          code: "storage_failed",
+          message: response.error.message,
+          target: response.error.target ?? null,
+          details: response.error.details ?? null,
+        } : undefined,
+      }
+      replaceProjectSidebarState(nextState)
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error: response.error ?? shellError("invalid_input", "Project bridge open failed.", "project.open"),
+      }))
+      return
+    }
+    const snapshot = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: { session_id: response.data.session_id },
+    })
+    setWorkbenchState(projectWorkbenchSnapshot(snapshot))
+    const sessionId = String(response.data.session_id)
+    const nextState: ProjectSidebarState = {
+      ...loadingState,
+      status: "ready",
+      bridge: {
+        state: "open",
+        sessionId,
+      },
+      persistence: "persisted",
+      error: undefined,
+    }
+    replaceProjectSidebarState(nextState)
+  }, [projectRepository, replaceProjectSidebarState, shellClient])
+
+  const saveSidebarBridgeSession = useCallback(async () => {
+    const activeProject = projectSidebarStateRef.current.activeProject
+    const sessionId = workbenchState.sessionId
+    if (!activeProject || !sessionId) return
+    const loadingState: ProjectSidebarState = {
+      ...projectSidebarStateRef.current,
+      status: "loading",
+      persistence: "saving",
+      bridge: { ...projectSidebarStateRef.current.bridge, state: "saving" },
+      error: undefined,
+    }
+    replaceProjectSidebarState(loadingState)
+    const response = await shellClient.run<ProjectSaveContentData>({
+      command: "project.save_content",
+      args: {
+        session_id: sessionId,
+        include_content_files: true,
+      },
+    })
+    if (!response.ok || !response.data || !Array.isArray(response.data.content_files)) {
+      const nextState: ProjectSidebarState = {
+        ...loadingState,
+        status: "error",
+        bridge: { ...loadingState.bridge, state: "error" },
+        persistence: "error",
+        validation: {
+          state: "error",
+          messageKey: "projectSidebar.errorMessage",
+          messageParams: { message: response.error?.message ?? "Project bridge save failed." },
+          checkedAt: new Date().toISOString(),
+        },
+      }
+      replaceProjectSidebarState(nextState)
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error: response.error ?? shellError("invalid_input", "Project bridge save failed.", "project.save_content"),
+      }))
+      return
+    }
+    const files = shellPayloadToContentFiles(response.data.content_files) as BrowserProjectContentFile[]
+    const savedState = await saveProjectContent(projectRepository, loadingState, files)
+    replaceProjectSidebarState({
+      ...savedState,
+      bridge: { state: "open", sessionId },
+    })
+    setWorkbenchState((current) => ({ ...current, status: "success", warnings: response.warnings, error: undefined }))
+  }, [projectRepository, replaceProjectSidebarState, shellClient, workbenchState.sessionId])
 
   const runFixture = useCallback(async () => {
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
@@ -61,29 +415,659 @@ export function WorkbenchShell({ shellClient }: WorkbenchShellProps) {
     })
   }, [shellClient])
 
+  const selectImportFiles = useCallback((files: WebImportFile[]) => {
+    setImportInboxState((current) => ({
+      ...current,
+      status: files.length > 0 ? "selecting" : "idle",
+      selectedFiles: files,
+      activeBatch: undefined,
+      registeredObjectIds: [],
+      warnings: [],
+      error: undefined,
+    }))
+  }, [])
+
+  const changeImportExpectedFormat = useCallback((expectedFormat: string) => {
+    setImportInboxState((current) => ({ ...current, expectedFormat }))
+  }, [])
+
+  const changeImportStrict = useCallback((strict: boolean) => {
+    setImportInboxState((current) => ({ ...current, strict }))
+  }, [])
+
+  const clearImportInbox = useCallback(() => {
+    setImportInboxState(initialImportInboxState)
+  }, [])
+
+  const applyWorkspaceResponse = useCallback((response: Awaited<ReturnType<ShellClient["run"]>>) => {
+    if (!response.ok || !response.data) {
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error: response.error ?? shellError("invalid_input", "Workspace command did not return data.", "workspace"),
+      }))
+      return
+    }
+
+    const data = response.data as WorkspaceCommandData
+    setEnergyPanelOptions((current) => energyOptionsForWorkspace(current, data.workspace))
+    setWorkbenchState((current) => ({
+      ...current,
+      status: "success",
+      active: {
+        ...current.active,
+        workspaceId: data.workspace.workspace_id,
+        graphId: data.workspace.graph.id,
+      },
+      counts: {
+        ...current.counts,
+        graphs: 1,
+        workspaces: 1,
+      },
+      workspace: data.workspace,
+      warnings: response.warnings,
+      error: undefined,
+    }))
+  }, [])
+
+  const openWorkspace = useCallback(async () => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.open",
+      args: { session_id: sessionId },
+    })
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+
+  const addObjectNode = useCallback(async (request: AddObjectNodeRequest = {}) => {
+    const sessionId = workbenchState.sessionId
+    const activeObject = workbenchState.objects.find((object) => object.id === (request.objectId ?? activeObjectId))
+      ?? workbenchState.objects[0]
+    if (!sessionId || !activeObject) return
+    const nodeCount = workbenchState.workspace?.graph.nodes.length ?? 0
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.add_node",
+      args: {
+        session_id: sessionId,
+        kind: "species",
+        label: activeObject.label ?? activeObject.id,
+        chemical_object_ids: [activeObject.id],
+        position: request.position ?? [120 + nodeCount * 180, nodeCount % 2 === 0 ? 290 : 160],
+      },
+    })
+    applyWorkspaceResponse(response)
+  }, [activeObjectId, applyWorkspaceResponse, shellClient, workbenchState.objects, workbenchState.sessionId, workbenchState.workspace])
+
+  const applyCorrection = useCallback(async (request: ApplyCorrectionRequest) => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId) return
+    setCorrectionPending(true)
+    setCorrectionError(null)
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<RegistryApplyCorrectionData>({
+      command: "registry.apply_correction",
+      args: {
+        session_id: sessionId,
+        object_id: request.objectId,
+        correction: request.correction,
+      },
+    })
+    setCorrectionPending(false)
+    if (!response.ok || !response.data) {
+      const error = response.error ?? shellError("invalid_input", "Correction command did not return an object.", "registry.apply_correction")
+      setCorrectionError(error)
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error,
+      }))
+      return
+    }
+    const updatedObject = response.data.object
+
+    setWorkbenchState((current) => ({
+      ...current,
+      status: "success",
+      objects: replaceWorkbenchObject(current.objects, updatedObject),
+      counts: {
+        ...current.counts,
+        objects: Math.max(current.counts.objects, current.objects.length),
+      },
+      warnings: response.warnings,
+      error: undefined,
+    }))
+  }, [shellClient, workbenchState.sessionId])
+
+  const startNodeDrag = useCallback((nodeId: string, origin: CanvasPoint) => {
+    setGraphEditorInteraction((current) => ({
+      ...selectGraphEditorNode(current, nodeId),
+      dragging: {
+        kind: "node",
+        nodeIds: [nodeId],
+        origin,
+        current: origin,
+      },
+    }))
+  }, [])
+
+  const updateNodeDrag = useCallback((currentPoint: CanvasPoint) => {
+    setGraphEditorInteraction((current) => {
+      if (!current.dragging || current.dragging.kind !== "node") return current
+      return {
+        ...current,
+        dragging: {
+          ...current.dragging,
+          current: currentPoint,
+        },
+      }
+    })
+  }, [])
+
+  const endNodeDrag = useCallback(() => {
+    setGraphEditorInteraction((current) => ({
+      ...current,
+      dragging: null,
+    }))
+  }, [])
+
+  const startCanvasDrag = useCallback((origin: CanvasPoint) => {
+    setGraphEditorInteraction((current) => startGraphEditorCanvasDrag(current, origin))
+  }, [])
+
+  const updateCanvasDrag = useCallback((currentPoint: CanvasPoint) => {
+    setGraphEditorInteraction((current) => updateGraphEditorCanvasDrag(current, currentPoint))
+  }, [])
+
+  const endCanvasDrag = useCallback(() => {
+    setGraphEditorInteraction(endGraphEditorCanvasDrag)
+  }, [])
+
+  const moveGraphNode = useCallback(async (request: MoveGraphNodeRequest) => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.move_node",
+      args: {
+        session_id: sessionId,
+        node_id: request.nodeId,
+        position: request.position,
+      },
+    })
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+
+  const removeGraphItems = useCallback(async (request: RemoveGraphItemsRequest) => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId || (request.nodeIds.length === 0 && request.edgeIds.length === 0)) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.remove",
+      args: {
+        session_id: sessionId,
+        node_ids: request.nodeIds,
+        edge_ids: request.edgeIds,
+      },
+    })
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+
+  const setGraphViewport = useCallback(async (viewport: GraphViewport) => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_viewport",
+      args: {
+        session_id: sessionId,
+        viewport,
+      },
+    })
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+
+  const selectGraphItems = useCallback(async (selection: WorkspaceSelectionSummary) => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.select",
+      args: {
+        session_id: sessionId,
+        selection,
+      },
+    })
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+
+  const togglePanMode = useCallback(() => {
+    setGraphEditorInteraction((current) => setGraphEditorMode(
+      current,
+      current.mode === "pan" ? "select" : "pan",
+    ))
+  }, [])
+
+  const startConnection = useCallback(() => {
+    setGraphEditorInteraction(startGraphEditorConnection)
+  }, [])
+
+  const selectGraphEdge = useCallback((edgeId: string) => {
+    setGraphEditorInteraction((current) => selectGraphEditorEdge(current, edgeId))
+    void selectGraphItems({ node_ids: [], edge_ids: [edgeId], path_ids: [] })
+  }, [selectGraphItems])
+
+  const selectGraphPath = useCallback((pathId: string, nodeIds: string[]) => {
+    setGraphEditorInteraction((current) => selectGraphEditorPath(current, pathId))
+    setPathOrderDraft(createGraphPathOrderDraft(pathId, nodeIds))
+    void selectGraphItems({ node_ids: [], edge_ids: [], path_ids: [pathId] })
+  }, [selectGraphItems])
+
+  const movePathDraftNode = useCallback((nodeId: string, direction: GraphPathOrderMoveDirection) => {
+    setPathOrderDraft((current) => current ? moveGraphPathDraftNode(current, nodeId, direction) : current)
+  }, [])
+
+  const applyPathOrderDraft = useCallback(async () => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId || !pathOrderDraft) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_path",
+      args: {
+        session_id: sessionId,
+        path_id: pathOrderDraft.pathId,
+        node_ids: pathOrderDraft.nodeIds,
+        label: pathOrderDraft.pathId,
+      },
+    })
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, pathOrderDraft, shellClient, workbenchState.sessionId])
+
+  const selectGraphNode = useCallback(
+    async (nodeId: string) => {
+      const pendingConnectionFromId = graphEditorInteraction.pendingEdge?.fromNodeId
+      if (pendingConnectionFromId && pendingConnectionFromId !== nodeId && workbenchState.sessionId) {
+        setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+        const response = await shellClient.run<WorkspaceCommandData>({
+          command: "workspace.connect",
+          args: {
+            session_id: workbenchState.sessionId,
+            from_node_id: pendingConnectionFromId,
+            to_node_id: nodeId,
+          },
+        })
+        setGraphEditorInteraction((current) => completeGraphEditorConnection(current, nodeId))
+        applyWorkspaceResponse(response)
+        return
+      }
+      setGraphEditorInteraction((current) => selectGraphEditorNode(current, nodeId))
+      void selectGraphItems({ node_ids: [nodeId], edge_ids: [], path_ids: [] })
+    },
+    [applyWorkspaceResponse, graphEditorInteraction.pendingEdge?.fromNodeId, selectGraphItems, shellClient, workbenchState.sessionId],
+  )
+
+  const setActiveCanvasPath = useCallback(async () => {
+    const sessionId = workbenchState.sessionId
+    const nodeIds = workbenchState.workspace?.graph.nodes.map((node) => node.id) ?? []
+    if (!sessionId || nodeIds.length === 0) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_path",
+      args: {
+        session_id: sessionId,
+        path_id: "path-web-main",
+        node_ids: nodeIds,
+        label: "Canvas path",
+      },
+    })
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId, workbenchState.workspace])
+
+  const runEnergyCompute = useCallback(async () => {
+    const sessionId = workbenchState.sessionId
+    const pathId = workbenchState.workspace?.active_path_id
+      || energyPanelOptions.pathId
+      || workbenchState.workspace?.graph.paths[0]?.id
+      || ""
+    const energyKey = energyPanelOptions.energyKey.trim() || "electronic"
+    if (!sessionId || !pathId) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<EnergyComputeData>({
+      command: "energy.compute",
+      args: {
+        session_id: sessionId,
+        path_id: pathId,
+        output_unit: energyPanelOptions.outputUnit,
+        include_corrections: energyPanelOptions.includeCorrections,
+        energy_key: energyKey,
+        ...(energyPanelOptions.baselineNodeId ? { baseline_node_id: energyPanelOptions.baselineNodeId } : {}),
+      },
+    })
+
+    if (!response.ok || !response.data) {
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error: response.error ?? shellError("invalid_input", "Energy compute did not return a profile.", "energy.compute"),
+      }))
+      return
+    }
+
+    const profile = response.data.profile
+    setWorkbenchState((current) => ({
+      ...current,
+      status: "success",
+      active: {
+        ...current.active,
+        profileId: profile.id,
+      },
+      counts: {
+        ...current.counts,
+        profiles: Math.max(current.counts.profiles, 1),
+      },
+      profile,
+      warnings: response.warnings,
+      error: undefined,
+    }))
+  }, [energyPanelOptions, shellClient, workbenchState.sessionId, workbenchState.workspace])
+
+  const runReportExport = useCallback(async () => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId || !workbenchState.profile || reportExportOptions.formats.length === 0) return
+    const basename = reportExportOptions.basename.trim() || workbenchState.profile.id
+    const title = reportExportOptions.title.trim() || "Relative energy profile"
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<ExportProfileData>({
+      command: "export.profile",
+      args: {
+        session_id: sessionId,
+        formats: reportExportOptions.formats,
+        include_bytes: reportExportOptions.includeBytes,
+        basename,
+        title,
+      },
+    })
+
+    if (!response.ok || !response.data) {
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error: response.error ?? shellError("invalid_input", "Export profile did not return artifacts.", "export.profile"),
+      }))
+      return
+    }
+
+    const runtimeArtifacts = response.artifacts.map(shellArtifactSummary)
+    let nextArtifacts = mergeArtifacts(workbenchState.artifacts, runtimeArtifacts)
+    let persistenceWarnings = response.warnings
+    const activeProject = projectSidebarStateRef.current.activeProject
+    if (activeProject) {
+      try {
+        const persistenceResults = await persistExportArtifacts(
+          projectRepository,
+          activeProject.projectRef,
+          response.artifacts,
+          { basename },
+        )
+        nextArtifacts = mergeArtifacts(
+          workbenchState.artifacts,
+          applyArtifactPersistenceResults(runtimeArtifacts, persistenceResults),
+        )
+        persistenceWarnings = [...response.warnings, ...artifactPersistenceWarnings(persistenceResults)]
+        const refreshedSidebarState = await openProject(
+          projectRepository,
+          {
+            ...projectSidebarStateRef.current,
+            status: "loading",
+            persistence: "saving",
+            error: undefined,
+          },
+          activeProject.projectRef,
+        )
+        replaceProjectSidebarState({
+          ...refreshedSidebarState,
+          bridge: projectSidebarStateRef.current.bridge,
+        })
+      } catch (error) {
+        persistenceWarnings = [
+          ...response.warnings,
+          browserPersistenceWarning(error),
+        ]
+      }
+    }
+
+    setWorkbenchState((current) => ({
+      ...current,
+      status: "success",
+      counts: {
+        ...current.counts,
+        artifacts: nextArtifacts.length,
+      },
+      artifacts: nextArtifacts,
+      warnings: persistenceWarnings,
+      error: undefined,
+    }))
+  }, [projectRepository, replaceProjectSidebarState, reportExportOptions, shellClient, workbenchState.artifacts, workbenchState.profile, workbenchState.sessionId])
+
+  const previewImport = useCallback(async () => {
+    const payload = await importPreviewArgsFromFiles(importInboxState, workbenchState.sessionId, {
+      preferInlineBytes: runtimeInfo.mode === "local-http",
+    })
+    if (!payload.ok) {
+      setImportInboxState((current) => ({
+        ...current,
+        status: "error",
+        selectedFiles: payload.files,
+        warnings: [],
+        error: payload.error,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: [],
+        error: payload.error,
+      }))
+      return
+    }
+    const args = payload.args
+    setImportInboxState((current) => ({
+      ...current,
+      status: "previewing",
+      selectedFiles: payload.files,
+      warnings: [],
+      error: undefined,
+    }))
+    const response = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args,
+    })
+
+    if (!response.ok || !response.data) {
+      const error = response.error ?? shellError("invalid_input", "Import preview did not return a batch.", "import.preview")
+      setImportInboxState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error,
+      }))
+      return
+    }
+
+    const batch = response.data.batch
+    setImportInboxState((current) => ({
+      ...current,
+      status: "ready",
+      activeBatch: batch,
+      registeredObjectIds: [],
+      warnings: response.warnings,
+      error: undefined,
+    }))
+    setWorkbenchState((current) => {
+      const imports = upsertImportBatch(current.imports, batch)
+      return {
+        ...current,
+        status: "success",
+        imports,
+        counts: { ...current.counts, imports: imports.length },
+        warnings: response.warnings,
+        error: undefined,
+      }
+    })
+  }, [importInboxState, runtimeInfo.mode, shellClient, workbenchState.sessionId])
+
+  const registerImportBatch = useCallback(async () => {
+    const batchId = importInboxState.activeBatch?.id
+    setImportInboxState((current) => ({
+      ...current,
+      status: "registering",
+      warnings: [],
+      error: undefined,
+    }))
+    const response = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: workbenchState.sessionId ?? "",
+        batch_id: batchId ?? "",
+      },
+    })
+
+    if (!response.ok || !response.data) {
+      const error = response.error ?? shellError("invalid_input", "Import register did not return object ids.", "import.register_all")
+      setImportInboxState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error,
+      }))
+      return
+    }
+
+    const { batch, registered_object_ids: registeredObjectIds, objects } = response.data
+    setImportInboxState((current) => ({
+      ...current,
+      status: "registered",
+      activeBatch: batch,
+      registeredObjectIds,
+      warnings: response.warnings,
+      error: undefined,
+    }))
+    setWorkbenchState((current) => {
+      const imports = upsertImportBatch(current.imports, batch)
+      const mergedObjects = mergeRegisteredObjects(current.objects, objects)
+      return {
+        ...current,
+        status: "success",
+        imports,
+        objects: mergedObjects,
+        counts: {
+          ...current.counts,
+          imports: imports.length,
+          objects: mergedObjects.length,
+        },
+        warnings: response.warnings,
+        error: undefined,
+      }
+    })
+  }, [importInboxState.activeBatch?.id, shellClient, workbenchState.sessionId])
+
   return (
     <div className="workbench-shell">
       <header className="workbench-topbar">
         <div className="brand-lockup" aria-label="RxnFlow">
           <span className="brand-mark">Rf</span>
           <div>
-            <p className="brand-eyebrow">RxnFlow</p>
-            <h1>Workbench</h1>
+            <p className="brand-eyebrow">{t("app.brand")}</p>
+            <h1>{t("workbench.title")}</h1>
           </div>
         </div>
         <div className="topbar-status">
-          <span className="local-only-badge">Local-only</span>
+          <LocaleSwitcher locale={locale} onChange={setLocale} />
+          <span className="local-only-badge">{t("workbench.localOnly")}</span>
+          <RuntimeBadge runtimeInfo={runtimeInfo} />
           <span className={`run-state run-state--${workbenchState.status}`}>
-            {statusLabel(workbenchState.status)}
+            {statusLabel(workbenchState.status, t)}
           </span>
         </div>
       </header>
 
-      <main className="workbench-grid" aria-label="RxnFlow web workbench">
-        <ProjectRail state={workbenchState} />
-        <GraphWorkspaceFrame state={workbenchState} />
+      <main className="workbench-grid" aria-label={t("workbench.aria")}>
+        <ProjectSidebar
+          state={projectSidebarState}
+          workbenchState={workbenchState}
+          onRefreshProjects={refreshProjectSidebar}
+          onCreateProject={createSidebarProject}
+          onOpenProject={openSidebarProject}
+          onSaveProjectContent={saveSidebarProjectStub}
+          onOpenBridgeSession={openSidebarBridgeSession}
+          onSaveBridgeSession={saveSidebarBridgeSession}
+        />
+        <div className="workspace-column">
+          <ImportInbox
+            state={importInboxState}
+            onFilesSelected={selectImportFiles}
+            onExpectedFormatChange={changeImportExpectedFormat}
+            onStrictChange={changeImportStrict}
+            onPreview={previewImport}
+            onRegisterAll={registerImportBatch}
+            onClear={clearImportInbox}
+          />
+          <GraphCanvas
+            state={workbenchState}
+            activeObjectId={activeObjectId}
+            interactionState={graphEditorInteraction}
+            pathOrderDraft={pathOrderDraft}
+            onSelectNode={selectGraphNode}
+            onSelectEdge={selectGraphEdge}
+            onSelectPath={selectGraphPath}
+            onMovePathDraftNode={movePathDraftNode}
+            onApplyPathOrderDraft={applyPathOrderDraft}
+            onStartNodeDrag={startNodeDrag}
+            onUpdateNodeDrag={updateNodeDrag}
+            onEndNodeDrag={endNodeDrag}
+            onStartCanvasDrag={startCanvasDrag}
+            onUpdateCanvasDrag={updateCanvasDrag}
+            onEndCanvasDrag={endCanvasDrag}
+            onOpenWorkspace={openWorkspace}
+            onAddObjectNode={addObjectNode}
+            onMoveNode={moveGraphNode}
+            onRemoveGraphItems={removeGraphItems}
+            onSetViewport={setGraphViewport}
+            onTogglePanMode={togglePanMode}
+            onStartConnection={startConnection}
+            onSetActivePath={setActiveCanvasPath}
+          />
+        </div>
         <InspectorPanel
           state={workbenchState}
+          activeObjectId={activeObjectId}
+          correctionPending={correctionPending}
+          correctionError={correctionError}
+          energyPanelOptions={energyPanelOptions}
+          reportExportOptions={reportExportOptions}
+          onSelectObject={setActiveObjectId}
+          onApplyCorrection={applyCorrection}
+          onEnergyOptionsChange={setEnergyPanelOptions}
+          onReportExportOptionsChange={setReportExportOptions}
+          onRunEnergyCompute={runEnergyCompute}
+          onRunReportExport={runReportExport}
           onRunFixture={runFixture}
           onRunInvalidCommand={runInvalidCommand}
         />
@@ -92,90 +1076,190 @@ export function WorkbenchShell({ shellClient }: WorkbenchShellProps) {
   )
 }
 
+function upsertImportBatch(
+  batches: ImportBatchSummary[],
+  batch: ImportBatchSummary,
+): ImportBatchSummary[] {
+  const index = batches.findIndex((existing) => existing.id === batch.id)
+  if (index === -1) {
+    return [...batches, batch]
+  }
+  return batches.map((existing, currentIndex) => (currentIndex === index ? batch : existing))
+}
+
+function replaceWorkbenchObject(
+  objects: WorkbenchDomainState["objects"],
+  object: WorkbenchDomainState["objects"][number],
+): WorkbenchDomainState["objects"] {
+  if (!objects.some((item) => item.id === object.id)) {
+    return [...objects, object]
+  }
+  return objects.map((item) => item.id === object.id ? object : item)
+}
+
+function shellError(code: string, message: string, target: string): ShellError {
+  return { code, message, target }
+}
+
+function energyOptionsForWorkspace(
+  current: EnergyPanelOptions,
+  workspace: WorkspaceCommandData["workspace"],
+): EnergyPanelOptions {
+  const paths = workspace.graph.paths ?? []
+  const activePathId = workspace.active_path_id ?? paths[0]?.id ?? ""
+  const nextPath = paths.find((path) => path.id === activePathId)
+  const baselineStillExists = current.baselineNodeId
+    && nextPath?.node_ids.includes(current.baselineNodeId)
+  return {
+    ...current,
+    pathId: activePathId,
+    baselineNodeId: baselineStillExists ? current.baselineNodeId : "",
+  }
+}
+
+function shellArtifactSummary(artifact: ShellArtifact): WorkbenchArtifactSummary {
+  return {
+    id: artifact.id,
+    format: artifact.format,
+    path: artifact.path ?? null,
+    bytes_base64: artifact.bytes_base64 ?? null,
+    metadata: artifact.metadata,
+    persisted: false,
+    has_inline_bytes: typeof artifact.bytes_base64 === "string" && artifact.bytes_base64.length > 0,
+  }
+}
+
+function mergeArtifacts(
+  current: WorkbenchArtifactSummary[],
+  incoming: WorkbenchArtifactSummary[],
+): WorkbenchArtifactSummary[] {
+  const byId = new Map(current.map((artifact) => [artifact.id, artifact]))
+  for (const artifact of incoming) {
+    byId.set(artifact.id, artifact)
+  }
+  return Array.from(byId.values())
+}
+
+function artifactPersistenceWarnings(results: readonly ExportArtifactPersistenceResult[]) {
+  return results
+    .filter((result) => result.error && result.error.code !== "missing_inline_bytes")
+    .map((result) => ({
+      code: result.error?.code ?? "artifact_persistence_failed",
+      message: result.error?.message ?? "Export artifact persistence failed.",
+      target: result.error?.target ?? result.path ?? result.artifactId,
+      details: {
+        artifact_id: result.artifactId,
+        path: result.path ?? null,
+        checksum: result.checksum ?? null,
+      },
+    }))
+}
+
+function browserPersistenceWarning(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      code: "artifact_persistence_failed",
+      message: error.message,
+      target: "exports",
+    }
+  }
+  return {
+    code: "artifact_persistence_failed",
+    message: "Export artifact persistence failed.",
+    target: "exports",
+  }
+}
+
 type StateProps = {
   state: WorkbenchDomainState
 }
 
-function ProjectRail({ state }: StateProps) {
-  return (
-    <aside className="project-rail" aria-label="Project and object summary">
-      <section className="rail-section">
-        <p className="section-kicker">Project</p>
-        <h2>{state.project?.name ?? "No project loaded"}</h2>
-        <p className="muted">{state.project?.id ?? state.sessionId ?? "No shell session"}</p>
-      </section>
-
-      <section className="rail-section metric-stack" aria-label="Object summary">
-        <Metric icon={<Boxes size={18} />} label="Objects" value={state.counts.objects} />
-        <Metric icon={<Network size={18} />} label="Graph" value={state.counts.graphs} />
-        <Metric icon={<FlaskConical size={18} />} label="Profile points" value={state.profile?.point_count ?? 0} />
-      </section>
-    </aside>
-  )
-}
-
-function GraphWorkspaceFrame({ state }: StateProps) {
-  const hasFixture = state.status === "success"
-
-  return (
-    <section className="graph-workspace" aria-label="Graph workspace">
-      <div className="workspace-toolbar">
-        <div>
-          <p className="section-kicker">Graph workspace</p>
-          <h2>{state.active.graphId ?? "Awaiting shell response"}</h2>
-        </div>
-        <span>{state.sessionId ?? "No session"}</span>
-      </div>
-
-      <div className="path-board" aria-label="Fixture reaction path preview">
-        <div className={`path-node ${hasFixture ? "path-node--active" : ""}`}>
-          <CircleDot size={18} />
-          <span>Object A</span>
-        </div>
-        <div className="path-edge" />
-        <div className={`path-node ${hasFixture ? "path-node--active" : ""}`}>
-          <CircleDot size={18} />
-          <span>Object B</span>
-        </div>
-      </div>
-    </section>
-  )
-}
-
 type InspectorPanelProps = {
   state: WorkbenchDomainState
+  activeObjectId?: string
+  correctionPending: boolean
+  correctionError: ShellError | null
+  energyPanelOptions: EnergyPanelOptions
+  reportExportOptions: ReportExportOptions
+  onSelectObject: (objectId: string) => void
+  onApplyCorrection: (request: ApplyCorrectionRequest) => void
+  onEnergyOptionsChange: (options: EnergyPanelOptions) => void
+  onReportExportOptionsChange: (options: ReportExportOptions) => void
+  onRunEnergyCompute: () => void
+  onRunReportExport: () => void
   onRunFixture: () => void
   onRunInvalidCommand: () => void
 }
 
-function InspectorPanel({ state, onRunFixture, onRunInvalidCommand }: InspectorPanelProps) {
+function InspectorPanel({
+  state,
+  activeObjectId,
+  correctionPending,
+  correctionError,
+  energyPanelOptions,
+  reportExportOptions,
+  onSelectObject,
+  onApplyCorrection,
+  onEnergyOptionsChange,
+  onReportExportOptionsChange,
+  onRunEnergyCompute,
+  onRunReportExport,
+  onRunFixture,
+  onRunInvalidCommand,
+}: InspectorPanelProps) {
+  const { t } = useI18n()
+
   return (
     <aside className="inspector-panel" aria-label="Command and profile inspector">
+      <ObjectRegistryPanel
+        objects={state.objects}
+        activeObjectId={activeObjectId}
+        correctionPending={correctionPending}
+        correctionError={correctionError}
+        onSelectObject={onSelectObject}
+        onApplyCorrection={onApplyCorrection}
+      />
+
       <section className="command-panel">
-        <p className="section-kicker">Shell command</p>
+        <p className="section-kicker">{t("workbench.command.section")}</p>
         <div className="command-actions">
           <button type="button" className="command-button" onClick={onRunFixture}>
             <Play size={17} />
-            <span>Fixture Run</span>
+            <span>{t("workbench.command.fixtureRun")}</span>
           </button>
-          <button type="button" className="icon-button" onClick={onRunInvalidCommand} title="Invalid command">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onRunInvalidCommand}
+            title={t("workbench.command.invalid")}
+            aria-label={t("workbench.command.invalid")}
+          >
             <AlertTriangle size={17} />
           </button>
         </div>
       </section>
 
-      <section className="inspector-section">
-        <p className="section-kicker">Energy profile</p>
-        <h2>{state.profile?.id ?? "No profile"}</h2>
-        <p className="muted">
-          {(state.profile?.point_count ?? 0) > 0
-            ? `${state.profile?.point_count} profile points`
-            : "Awaiting shell projection"}
-        </p>
-      </section>
+      <EnergyProfilePanel
+        profile={state.profile}
+        workspace={state.workspace}
+        options={energyPanelOptions}
+        disabled={!state.sessionId || !energyPanelOptions.pathId && !state.workspace?.active_path_id && !state.workspace?.graph.paths[0]?.id}
+        warnings={state.warnings}
+        onOptionsChange={onEnergyOptionsChange}
+        onCompute={onRunEnergyCompute}
+      />
+
+      <ReportExportPanel
+        artifacts={state.artifacts}
+        options={reportExportOptions}
+        disabled={!state.sessionId || !state.profile}
+        warnings={state.warnings}
+        onOptionsChange={onReportExportOptionsChange}
+        onExport={onRunReportExport}
+      />
 
       <section className="inspector-section">
-        <p className="section-kicker">Command status</p>
+        <p className="section-kicker">{t("workbench.commandStatus.section")}</p>
         <CommandStatusPanel state={state} />
       </section>
     </aside>
@@ -183,42 +1267,69 @@ function InspectorPanel({ state, onRunFixture, onRunInvalidCommand }: InspectorP
 }
 
 function CommandStatusPanel({ state }: StateProps) {
+  const { t } = useI18n()
+
   if (state.error) {
     return (
       <div className="status-box status-box--error" role="alert">
         <strong>{state.error.code}</strong>
         <span>{state.error.message}</span>
+        {state.error.target ? <small>{state.error.target}</small> : null}
       </div>
     )
   }
 
   return (
     <div className="status-box">
-      <strong>{statusLabel(state.status)}</strong>
-      <span>{state.counts.artifacts} artifacts indexed</span>
+      <strong>{statusLabel(state.status, t)}</strong>
+      <span>{t("workbench.commandStatus.artifacts", { count: state.counts.artifacts })}</span>
     </div>
   )
 }
 
-type MetricProps = {
-  icon: ReactNode
-  label: string
-  value: number
+type Translate = ReturnType<typeof useI18n>["t"]
+
+function statusLabel(status: CommandStatus, t: Translate): string {
+  if (status === "running") return t("workbench.status.running")
+  if (status === "success") return t("workbench.status.ready")
+  if (status === "error") return t("workbench.status.error")
+  return t("workbench.status.idle")
 }
 
-function Metric({ icon, label, value }: MetricProps) {
+function RuntimeBadge({ runtimeInfo }: { runtimeInfo: ShellRuntimeInfo }) {
+  const { t } = useI18n()
+  const label = runtimeInfo.mode === "local-http"
+    ? t("workbench.runtime.localHttp")
+    : t("workbench.runtime.fixture")
+  const title = runtimeInfo.endpoint
+    ? t("workbench.runtime.endpoint", { endpoint: runtimeInfo.endpoint })
+    : t("workbench.runtime.transport", { transport: runtimeInfo.transportKind })
+
   return (
-    <div className="metric">
-      {icon}
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
+    <span className={`runtime-badge runtime-badge--${runtimeInfo.mode}`} title={title}>
+      {label}
+    </span>
   )
 }
 
-function statusLabel(status: CommandStatus): string {
-  if (status === "running") return "Running"
-  if (status === "success") return "Ready"
-  if (status === "error") return "Error"
-  return "Idle"
+type LocaleSwitcherProps = {
+  locale: SupportedLocale
+  onChange: (locale: SupportedLocale) => void
+}
+
+function LocaleSwitcher({ locale, onChange }: LocaleSwitcherProps) {
+  const { t } = useI18n()
+
+  return (
+    <label className="locale-switcher">
+      <span>{t("locale.label")}</span>
+      <select
+        value={locale}
+        onChange={(event) => onChange(event.currentTarget.value as SupportedLocale)}
+      >
+        <option value="zh-CN">{t("locale.zhCN")}</option>
+        <option value="en-US">{t("locale.enUS")}</option>
+      </select>
+    </label>
+  )
 }

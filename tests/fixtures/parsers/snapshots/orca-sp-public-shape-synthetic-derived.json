@@ -1,0 +1,48 @@
+{
+  "fixture_id": "orca-sp-public-shape-synthetic-derived",
+  "object_count": 1,
+  "objects": [
+    {
+      "atom_count": 2,
+      "charge": 0,
+      "elements": [
+        "C",
+        "O"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "cclib scfenergies converted from eV",
+          "unit": "hartree",
+          "value": -113.1234518080263
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        }
+      ],
+      "label": "orca-sp-public-shape-synthetic-derived.out",
+      "method": "PBE0",
+      "spin_multiplicity": 1,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    }
+  ],
+  "parse_ok": true,
+  "parser_id": "orca-output-cclib",
+  "provenance": {
+    "parser_id": "orca-output-cclib",
+    "parser_version": "0.1.0"
+  },
+  "schema_version": "parser-golden-v1",
+  "warning_codes": []
+}

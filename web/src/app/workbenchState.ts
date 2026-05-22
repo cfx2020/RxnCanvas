@@ -1,5 +1,8 @@
 import type {
   EnergyProfileSummary,
+  GraphEdgeSummary,
+  GraphNodeSummary,
+  GraphPathSummary,
   ImportBatchSummary,
   ObjectSummary,
   ProjectSummary,
@@ -16,6 +19,9 @@ export type CommandStatus = "idle" | "running" | "success" | "error"
 
 export type {
   EnergyProfileSummary,
+  GraphEdgeSummary,
+  GraphNodeSummary,
+  GraphPathSummary,
   ImportBatchSummary,
   ObjectSummary,
   ProjectSummary,

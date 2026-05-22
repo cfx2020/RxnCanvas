@@ -1,0 +1,80 @@
+feature: 2026-05-20-local-http-shell-bridge
+created: 2026-05-20
+
+steps:
+  - action: "Bridge skeleton：新增 LocalShellBridge、health payload 和 create_local_bridge_server"
+    exit_signal: "测试可直接实例化 bridge，并拿到 health object"
+    status: done
+
+  - action: "HTTP handler：实现 GET /health、POST /api/shell、JSON 读写、CORS/options 和错误 response"
+    exit_signal: "标准库 HTTP client 可得到 JSON response"
+    status: done
+
+  - action: "Session continuation：确保同一 bridge service 支持 fixture.run -> workbench.snapshot"
+    exit_signal: "HTTP 测试能用第一次 response 的 session_id 获取 snapshot"
+    status: done
+
+  - action: "CLI 模块入口：支持 python3 -m rxnflow.local_bridge --host ... --port ..."
+    exit_signal: "模块可解析参数并启动 server；测试不需要长期运行它"
+    status: done
+
+  - action: "文档和 roadmap 回写：更新 runtime boundary dev guide 和 roadmap item"
+    exit_signal: "YAML 校验和单元测试通过"
+    status: done
+
+checks:
+  - item: "LocalShellBridge.health 返回 ok=True、service 名和 version"
+    source: 验收场景
+    status: passed
+
+  - item: "GET /health 返回 200 JSON，包含 rxnflow-local-shell-bridge"
+    source: 验收场景
+    status: passed
+
+  - item: "POST /api/shell + fixture.run 返回 200 ShellResponse，ok=True，包含 session_id"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 server 的 workbench.snapshot 可使用 fixture.run 返回的 session_id"
+    source: 验收场景
+    status: passed
+
+  - item: "unknown shell command 返回 200 ShellResponse，ok=False、invalid_input、target=command"
+    source: 验收场景
+    status: passed
+
+  - item: "invalid JSON 返回 400 ShellResponse，error.code=invalid_json"
+    source: 验收场景
+    status: passed
+
+  - item: "unknown path 返回 404 ShellResponse，error.code=not_found"
+    source: 验收场景
+    status: passed
+
+  - item: "unsupported method 返回 405 ShellResponse，error.code=method_not_allowed"
+    source: 验收场景
+    status: passed
+
+  - item: "response 均为 JSON，不返回 HTML error page"
+    source: 跨层纪律
+    status: passed
+
+  - item: "python3 -m unittest discover 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "不新增第三方 server/runtime 依赖"
+    source: 反向检查
+    status: passed
+
+  - item: "不修改 parser、registry、graph、energy、export 领域行为"
+    source: 反向检查
+    status: passed
+
+  - item: "不修改 Web 前端 transport 或 UI"
+    source: 反向检查
+    status: passed
+
+  - item: "不把 bridge 描述成生产公网服务或云存储方案"
+    source: 反向检查
+    status: passed

@@ -1,0 +1,68 @@
+feature: 2026-05-21-graph-editor-object-drop
+created: 2026-05-21
+
+steps:
+  - action: "Drag Payload Helper：新增 graph object drag MIME type、serialize/parse helper 和单元测试"
+    exit_signal: "helper tests 覆盖 valid、malformed、wrong kind、empty object id"
+    status: done
+
+  - action: "Registry Drag Source：Object Registry 对已登记对象按钮写入 drag payload，click selection 不回退"
+    exit_signal: "component test 能读取 dragstart DataTransfer payload，object selection 测试仍通过"
+    status: done
+
+  - action: "Canvas Drop Target：Graph Canvas surface 接受 valid registered-object drop，计算 position 并调用 add handler"
+    exit_signal: "WorkbenchShell test 能 drop Object B 到 canvas 后看到新 node"
+    status: done
+
+  - action: "Verification And Scope Guard：跑 Web tests/build、Python 单测和浏览器主链路"
+    exit_signal: "测试通过；Browser smoke 覆盖 drag/drop add node；scope grep 未新增 shell/core/persistence 改动"
+    status: done
+
+checks:
+  - item: "GraphObjectDragPayload 只包含 kind=registered-object、objectId、label"
+    source: 名词契约
+    status: passed
+
+  - item: "Object Registry 已登记对象按钮可拖拽并写入 application/x-rxnflow-graph-object payload"
+    source: 验收场景
+    status: passed
+
+  - item: "drop Object B 到 Graph Canvas surface 后调用 workspace.add_node(position)，并显示来自 ShellResponse 的新 node"
+    source: 编排骨架
+    status: passed
+
+  - item: "malformed payload、wrong kind payload、未知 object id drop 不调用 shell command，不产生 graph node"
+    source: 跨层纪律
+    status: passed
+
+  - item: "click-driven Add Node 仍可用，保留 agent/键盘友好路径"
+    source: 验收场景
+    status: passed
+
+  - item: "pending/failed import item、raw resource、parser preview item 没有 draggable graph object payload"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 workspace.move_node、workspace.remove 或 Python shell command"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 drag payload、drop intent 或 transient pointer position 写入 ShellResponse、Project Content、Browser Project Repository 或 localStorage"
+    source: 范围守护
+    status: passed
+
+  - item: "不实现已有 graph node 拖动、snap/grid、自动布局、多选、undo/redo、viewport 持久化"
+    source: 范围守护
+    status: passed
+
+  - item: "npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "Browser dev preview 完成 object drag/drop 到 canvas，页面非空白、无 framework overlay、console error/warn clean"
+    source: 验收场景
+    status: passed

@@ -1,0 +1,48 @@
+{
+  "fixture_id": "gaussian-sp-public-shape-synthetic-derived",
+  "object_count": 1,
+  "objects": [
+    {
+      "atom_count": 2,
+      "charge": 0,
+      "elements": [
+        "C",
+        "O"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "cclib scfenergies converted from eV",
+          "unit": "hartree",
+          "value": -112.99999503345245
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        }
+      ],
+      "label": "gaussian-sp-public-shape-synthetic-derived.log",
+      "method": "PBE",
+      "spin_multiplicity": 1,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    }
+  ],
+  "parse_ok": true,
+  "parser_id": "gaussian-log-cclib",
+  "provenance": {
+    "parser_id": "gaussian-log-cclib",
+    "parser_version": "0.1.0"
+  },
+  "schema_version": "parser-golden-v1",
+  "warning_codes": []
+}

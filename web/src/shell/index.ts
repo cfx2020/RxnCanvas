@@ -1,15 +1,37 @@
 export { ShellClient, normalizeShellResponse } from "./ShellClient"
 export { fixtureTransport } from "./fixtureTransport"
+export { createHttpShellTransport } from "./httpTransport"
+export { createConfiguredShellRuntime } from "./runtime"
 export type { FixtureRunData } from "./fixtureTransport"
+export type { ConfiguredShellRuntime, ShellRuntimeEnv } from "./runtime"
 export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
   ActiveContent,
+  CanvasViewportSummary,
+  CorrectionKind,
+  CorrectionSummary,
+  EnergyComputeData,
+  ExportFormat,
+  ExportProfileData,
   EnergyProfileSummary,
+  EnergyProfilePointSummary,
+  EnergyOutputUnit,
+  EnergyValueSummary,
+  GraphEdgeSummary,
+  GraphNodeSummary,
+  GraphPathSummary,
+  GraphSummary,
   ImportBatchSummary,
+  ImportItemSummary,
+  ImportParsePreviewSummary,
+  ImportPreviewData,
+  ImportRawResourceSummary,
+  ImportRegisterAllData,
   ObjectSummary,
   ProjectSummary,
+  RegistryApplyCorrectionData,
   ShellArtifact,
   ShellCommandName,
   ShellCommandPayload,
@@ -17,9 +39,14 @@ export type {
   ShellResponse,
   ShellTransport,
   ShellTransportKind,
+  ShellRuntimeInfo,
   ShellWarning,
+  WebShellRuntimeMode,
+  NetworkPreviewSummary,
   WorkbenchArtifactSummary,
   WorkbenchCounts,
   WorkbenchSnapshotData,
+  WorkspaceCommandData,
+  WorkspaceSelectionSummary,
   WorkspaceSummary,
 } from "./types"

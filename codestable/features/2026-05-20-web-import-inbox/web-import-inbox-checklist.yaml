@@ -1,0 +1,120 @@
+feature: 2026-05-20-web-import-inbox
+created: 2026-05-20
+
+steps:
+  - action: "Import Projection Types And Fixture Commands：补 import item/preview/register DTO，fixture transport 支持 import.preview / import.register_all"
+    exit_signal: "ShellClient tests 可得到 JSON-safe preview batch、failed item、warning 和 repeated register ids"
+    status: done
+
+  - action: "Import Inbox State And UI：新增 Import Inbox 组件和本地 state，支持 file selection metadata、format/strict、preview/register/clear"
+    exit_signal: "component test 能选择两个文件并看到 queued list、按钮状态和 preview batch"
+    status: done
+
+  - action: "Workbench Integration：WorkbenchShell 挂载 Import Inbox，preview/register 更新 WorkbenchDomainState imports/objects/counts"
+    exit_signal: "preview 后 counts.imports 更新，register 后 objects/counts.objects 更新，fixture graph/workbench 仍可运行"
+    status: done
+
+  - action: "I18n And Error/Warning Rendering：新增双语文案，item warning/error/code/target/raw resource metadata 原样展示"
+    exit_signal: "英文/中文测试均能查询 Import Inbox 主文案，warning/error code 可见"
+    status: done
+
+  - action: "Verification And Scope Guard：跑 Web test/build、Python 单测、真实浏览器桌面/窄屏验证，无 prohibited bridge/cloud/parser scope"
+    exit_signal: "npm run test、npm run build、python3 -m unittest discover 通过；browser 无重叠；scope grep 通过"
+    status: done
+
+checks:
+  - item: "Import Inbox 首屏可见，显示 selected files empty state、expected format、strict toggle、Preview 和 Register All 按钮"
+    source: 验收场景
+    status: passed
+
+  - item: "用户选择多个文件后，UI 展示文件名、size、mime/lastModified 可用信息；动态文件名不翻译"
+    source: 验收场景
+    status: passed
+
+  - item: "没有 selected files 时 Preview disabled；没有 needs_confirmation batch 时 Register All disabled"
+    source: 验收场景
+    status: passed
+
+  - item: "点击 Preview 时通过 ShellClient 调用 import.preview，args 包含 session_id、source_paths、expected_format 和 strict"
+    source: 验收场景
+    status: passed
+
+  - item: "Preview 成功后显示 batch id、item status、parser_id、parser_version、object_count、raw resource path/checksum"
+    source: 验收场景
+    status: passed
+
+  - item: "Preview item warnings 显示 code、message、target；warning code 不被隐藏或翻译"
+    source: 验收场景
+    status: passed
+
+  - item: "Preview failed item 显示 error code、message、target"
+    source: 验收场景
+    status: passed
+
+  - item: "Preview 成功后 WorkbenchDomainState 的 imports 和 counts.imports 更新"
+    source: 验收场景
+    status: passed
+
+  - item: "有 needs_confirmation item 时 Register All enabled"
+    source: 验收场景
+    status: passed
+
+  - item: "点击 Register All 时通过 ShellClient 调用 import.register_all，args 包含 active batch id"
+    source: 验收场景
+    status: passed
+
+  - item: "Register 成功后显示 registered object ids，并更新 WorkbenchDomainState 的 objects 和 counts.objects"
+    source: 验收场景
+    status: passed
+
+  - item: "repeated register all 不产生前端异常，保持同一 registered ids"
+    source: 验收场景
+    status: passed
+
+  - item: "中文 locale 下 Import Inbox 主 UI 文案变为简体中文；parser_id、warning/error code、文件名保持原样"
+    source: i18n
+    status: passed
+
+  - item: "Shell command error 路径显示 error code/message/target"
+    source: 错误语义
+    status: passed
+
+  - item: "不实现真实 browser File bytes 到 Python source path / parser 的桥接"
+    source: 范围守护
+    status: passed
+
+  - item: "不引入 OPFS、Web Worker、HTTP API、serverless route、cloud storage SDK 或账号系统"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 Python ImportRegistryWorkflow、PlatformShellService、parser plugins、ProjectStore、Import Ledger schema"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 fixture preview 描述成真实 Gaussian/ORCA/MAPLE/XYZ/extxyz 完整支持"
+    source: 范围守护
+    status: passed
+
+  - item: "不隐藏 preview warnings/errors/code/target"
+    source: 跨层纪律
+    status: passed
+
+  - item: "不把 Project Sidebar bundle import/export 当作 raw computational output import 来实现"
+    source: 范围守护
+    status: passed
+
+  - item: "npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "真实浏览器桌面和窄屏验证文件列表/preview/register/status 无重叠、无水平溢出"
+    source: 验收场景
+    status: passed

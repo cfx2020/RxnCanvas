@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from .errors import RxnFlowError, RxnFlowWarning
-from .models import ChemicalObject, ID, ReactionEdge, ReactionGraph, ReactionNode, ReactionPath
+from .models import (
+    ChemicalObject,
+    ID,
+    ReactionEdge,
+    ReactionGraph,
+    ReactionNode,
+    ReactionNodeCompositionTerm,
+    ReactionPath,
+)
 from .result import Result, err, ok
 from .workspace import (
     CanvasViewport,
@@ -232,6 +241,7 @@ def _reaction_node_to_dict(node: ReactionNode) -> dict[str, Any]:
         "kind": node.kind,
         "label": node.label,
         "chemical_object_ids": list(node.chemical_object_ids),
+        "composition": [_composition_term_to_dict(term) for term in node.composition],
         "position": list(node.position) if node.position is not None else None,
         "metadata": node.metadata,
     }
@@ -251,6 +261,19 @@ def _reaction_node_from_dict(data: dict[str, Any], target: str) -> Result[Reacti
                 target=f"{target}.chemical_object_ids",
             )
         )
+    composition_result = _composition_from_value(data.get("composition"), chemical_object_ids, f"{target}.composition")
+    if not composition_result.ok or composition_result.value is None:
+        assert composition_result.error is not None
+        return err(composition_result.error)
+    projected_object_ids = _object_ids_from_composition(composition_result.value)
+    if data.get("composition") is not None and tuple(str(object_id) for object_id in chemical_object_ids) != projected_object_ids:
+        return err(
+            RxnFlowError(
+                "invalid_input",
+                "Reaction node chemical_object_ids must match composition object_id projection.",
+                target=f"{target}.chemical_object_ids",
+            )
+        )
     metadata = data.get("metadata", {})
     if not isinstance(metadata, dict):
         return err(RxnFlowError("invalid_input", "Reaction node metadata must be an object.", target=f"{target}.metadata"))
@@ -263,6 +286,7 @@ def _reaction_node_from_dict(data: dict[str, Any], target: str) -> Result[Reacti
                 chemical_object_ids=tuple(str(object_id) for object_id in chemical_object_ids),
                 position=position_result.value,
                 metadata=dict(metadata),
+                composition=composition_result.value,
             )
         )
     except KeyError as exc:
@@ -273,6 +297,84 @@ def _reaction_node_from_dict(data: dict[str, Any], target: str) -> Result[Reacti
                 target=target,
             )
         )
+
+
+def _composition_term_to_dict(term: ReactionNodeCompositionTerm) -> dict[str, Any]:
+    return {
+        "object_id": term.object_id,
+        "coefficient": term.coefficient,
+        "role": term.role,
+        "label": term.label,
+        "metadata": term.metadata,
+    }
+
+
+def _object_ids_from_composition(
+    composition: tuple[ReactionNodeCompositionTerm, ...],
+) -> tuple[ID, ...]:
+    return tuple(dict.fromkeys(term.object_id for term in composition if term.object_id))
+
+
+def _composition_from_value(
+    value: Any,
+    fallback_object_ids: list[Any],
+    target: str,
+) -> Result[tuple[ReactionNodeCompositionTerm, ...]]:
+    if value is None:
+        return ok(tuple(ReactionNodeCompositionTerm(str(object_id)) for object_id in fallback_object_ids))
+    if not isinstance(value, list):
+        return err(RxnFlowError("invalid_input", "Reaction node composition must be a list.", target=target))
+
+    terms: list[ReactionNodeCompositionTerm] = []
+    for index, item in enumerate(value):
+        item_target = f"{target}[{index}]"
+        if not isinstance(item, dict):
+            return err(
+                RxnFlowError("invalid_input", "Reaction node composition term must be an object.", target=item_target)
+            )
+        object_id = item.get("object_id")
+        if not isinstance(object_id, str) or not object_id:
+            return err(
+                RxnFlowError(
+                    "invalid_input",
+                    "Reaction node composition term object_id is required.",
+                    target=item_target,
+                )
+            )
+        coefficient = item.get("coefficient", 1.0)
+        if not isinstance(coefficient, (int, float)):
+            return err(
+                RxnFlowError(
+                    "invalid_input",
+                    "Reaction node composition coefficient must be numeric.",
+                    target=target,
+                )
+            )
+        metadata = item.get("metadata", {})
+        if not isinstance(metadata, dict):
+            return err(
+                RxnFlowError(
+                    "invalid_input",
+                    "Reaction node composition metadata must be an object.",
+                    target=f"{item_target}.metadata",
+                )
+            )
+        role = item.get("role")
+        if role is not None:
+            role = str(role)
+        label = item.get("label")
+        if label is not None:
+            label = str(label)
+        terms.append(
+            ReactionNodeCompositionTerm(
+                object_id=object_id,
+                coefficient=float(coefficient),
+                role=role,  # type: ignore[arg-type]
+                label=label,
+                metadata=dict(metadata),
+            )
+        )
+    return ok(tuple(terms))
 
 
 def _reaction_edge_to_dict(edge: ReactionEdge) -> dict[str, Any]:
@@ -680,7 +782,18 @@ def _validate_node(
     seen_node_ids.add(node.id)
     if node.kind not in SUPPORTED_NODE_KINDS:
         return RxnFlowError("invalid_input", "Reaction node kind is unsupported.", target=f"{target}.kind")
-    if node.kind in {"species", "transition_state"} and not node.chemical_object_ids:
+    for term in node.composition:
+        if not term.object_id:
+            return RxnFlowError("invalid_input", "Reaction node composition term object_id is required.", target=f"{target}.composition")
+        if not isinstance(term.coefficient, (int, float)):
+            return RxnFlowError("invalid_input", "Reaction node composition coefficient must be numeric.", target=f"{target}.composition")
+        if not math.isfinite(float(term.coefficient)) or float(term.coefficient) == 0:
+            return RxnFlowError(
+                "invalid_input",
+                "Reaction node composition coefficient must be a non-zero finite number.",
+                target=f"{target}.composition",
+            )
+    if node.kind in {"species", "transition_state"} and not node.composition:
         return RxnFlowError(
             "graph_invalid",
             f"Node '{node.id}' must reference at least one chemical object.",
@@ -688,12 +801,12 @@ def _validate_node(
         )
     if object_ids is None:
         return None
-    for object_id in node.chemical_object_ids:
+    for object_id in (term.object_id for term in node.composition):
         if object_id not in object_ids:
             return RxnFlowError(
                 "graph_invalid",
                 f"Node '{node.id}' references missing chemical object '{object_id}'.",
-                target=node.id,
+                target="object_id",
             )
     return None
 

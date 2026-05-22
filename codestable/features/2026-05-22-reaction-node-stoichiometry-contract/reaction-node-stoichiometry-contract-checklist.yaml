@@ -1,0 +1,100 @@
+feature: 2026-05-22-reaction-node-stoichiometry-contract
+created: 2026-05-22
+
+steps:
+  - action: "名词骨架：新增 composition term 类型和 ReactionNode/NodePlacement 兼容投影"
+    exit_signal: "旧 constructor 调用仍能通过，新 constructor 可得到 composition 和 chemical_object_ids 投影"
+    status: done
+
+  - action: "Graph validation：让 add/update/restore 使用 resolved composition 校验对象引用和 coefficient"
+    exit_signal: "正常、多对象、非法 coefficient、缺失 object 的 graph tests 可区分错误"
+    status: done
+
+  - action: "Workspace/Shell 编排：新增 set_node_composition 并让 add_node 接受 composition payload"
+    exit_signal: "Shell command 返回更新后的 workspace projection，失败不改 state"
+    status: done
+
+  - action: "Project Content / DTO：codec 保存/加载 composition，旧 JSON 自动补 coefficient 1，Web Shell types 能表达新字段"
+    exit_signal: "reaction graph section round-trip 和旧 section load tests 通过"
+    status: done
+
+  - action: "回归测试：补齐 Python focused tests 和 YAML 校验"
+    exit_signal: "相关单测和 CodeStable YAML 校验通过"
+    status: done
+
+checks:
+  - item: "ReactionNodeCompositionTerm、composition 和 chemical_object_ids 兼容投影按设计命名落地"
+    source: 名词契约
+    status: passed
+
+  - item: "workspace.set_node_composition 走 Shell → Workspace → GraphPatch → ShellResponse projection"
+    source: 编排骨架
+    status: passed
+
+  - item: "payload shape 错误返回 invalid_input，引用问题返回 graph_invalid，失败不写回 graph state"
+    source: 跨层纪律
+    status: passed
+
+  - item: "composition term 顺序保留，chemical_object_ids 按首次出现顺序去重投影"
+    source: 跨层纪律
+    status: passed
+
+  - item: "PlatformShellService.run 注册 workspace.set_node_composition"
+    source: 挂载点
+    status: passed
+
+  - item: "Python/Web Shell command union 支持 workspace.set_node_composition"
+    source: 挂载点
+    status: passed
+
+  - item: "reaction-graphs-v1 node JSON 增加可选 composition 并保持 chemical_object_ids"
+    source: 挂载点
+    status: passed
+
+  - item: "不新增或修改 Energy Engine coefficient 计算逻辑"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 thermochemistry channel selector、CorrectionPolicy 或 registry correction command"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 Web 节点组成编辑表单组件"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 reaction graph schema version v2 或 destructive migration"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增自动配平、元素守恒或电荷守恒校验逻辑"
+    source: 范围守护
+    status: passed
+
+  - item: "创建 ReactionNode(composition=[A, 2B]) 时保存 term 并投影 chemical_object_ids"
+    source: 验收场景
+    status: passed
+
+  - item: "旧 ReactionNode(chemical_object_ids=[A]) 自动得到 coefficient 1 composition 且旧行为不回退"
+    source: 验收场景
+    status: passed
+
+  - item: "workspace.set_node_composition 更新已有 node 并返回 composition 与 chemical_object_ids"
+    source: 验收场景
+    status: passed
+
+  - item: "非法 coefficient 返回 invalid_input target=composition 且 state 不写回"
+    source: 验收场景
+    status: passed
+
+  - item: "composition 引用缺失 object id 返回 graph_invalid 且 state 不写回"
+    source: 验收场景
+    status: passed
+
+  - item: "Project Content 保存新 graph 时 node 同时包含 composition 和 chemical_object_ids"
+    source: 验收场景
+    status: passed
+
+  - item: "Project Content 读取旧 graph JSON 时自动补 coefficient 1 composition"
+    source: 验收场景
+    status: passed

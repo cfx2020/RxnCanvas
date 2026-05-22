@@ -24,6 +24,7 @@ from .result import Result, err, ok
 ExportFormat = Literal["png", "cdxml", "xlsx"]
 
 ALLOWED_EXPORT_FORMATS: frozenset[str] = frozenset(("png", "cdxml", "xlsx"))
+ENERGY_TABLE_SCHEMA_VERSION = "energy-table-v1"
 EXPORT_CREATED_AT = "2026-05-05T00:00:00Z"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -74,6 +75,14 @@ class EnergyDiagramState:
     relative_value: float | None
     unit: EnergyUnit
     missing_reason: str | None = None
+    x: float | None = None
+    y: float | None = None
+    line_start_x: float | None = None
+    line_end_x: float | None = None
+    label_x: float | None = None
+    label_y: float | None = None
+    value_x: float | None = None
+    value_y: float | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +93,8 @@ class EnergyDiagramRoute:
     color: str | None = None
     y_axis_label: str | None = None
     warnings: tuple[RxnFlowWarning, ...] = ()
+    min_energy: float = -1.0
+    max_energy: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -131,6 +142,49 @@ ENERGY_TABLE_COLUMNS: tuple[EnergyTableColumn, ...] = (
     EnergyTableColumn("relative_unit", "Relative unit", group="Profile", source="profile"),
     EnergyTableColumn("missing_reason", "Missing reason", group="Profile", source="profile"),
 )
+
+
+def energy_table_columns_by_key() -> dict[str, EnergyTableColumn]:
+    """Return the versioned energy table schema keyed by stable column id."""
+
+    return {column.key: column for column in ENERGY_TABLE_COLUMNS}
+
+
+def normalize_energy_table_header(header: str, *, context: str | None = None) -> str | None:
+    """Map common computational chemistry workbook headers to table column ids."""
+
+    normalized = _normalize_table_header_token(header)
+    normalized_context = _normalize_table_header_token(context or "")
+    if not normalized:
+        return None
+
+    if normalized in {"structure", "structurename", "name", "label"}:
+        return "structure_name"
+    if normalized in {"egas", "egasenergy"}:
+        return _unit_column("egas", normalized_context)
+    if normalized in {"ggas", "ggasold"}:
+        return _unit_column("ggas", normalized_context)
+    if normalized in {"ggas1m", "ggas1mstandardstate"}:
+        return _unit_column("ggas_1m", normalized_context)
+    if normalized in {"ggasshermo", "ggasshermochemistry"}:
+        return _unit_column("ggas_shermo", normalized_context)
+    if normalized in {"ggasshermo1m", "ggasshermo1mstandardstate"}:
+        return _unit_column("ggas_shermo_1m", normalized_context)
+    if normalized in {"esol", "esolenergy"}:
+        return _unit_column("esol", normalized_context)
+    if normalized in {"gsol", "gsolold"}:
+        return _unit_column("gsol", normalized_context)
+    if normalized in {"relativeenergy", "relativee", "deltae"}:
+        return "relative_energy"
+    if normalized in {"relativeunit", "unit"} and "profile" in normalized_context:
+        return "relative_unit"
+    if normalized in {"missingreason", "missing"}:
+        return "missing_reason"
+    if normalized in {"basisfunction", "basisfunctions", "basisf"}:
+        if "solution" in normalized_context or "sol" in normalized_context:
+            return "solution_basis_functions"
+        return "gas_basis_functions"
+    return None
 
 
 @dataclass(frozen=True)
@@ -242,8 +296,14 @@ def build_energy_diagram_route(
     unit = profile.options.output_unit
     warnings = list(_profile_warnings(profile))
     states: list[EnergyDiagramState] = []
+    raw_values = [point.relative_energy.value if point.relative_energy is not None else None for point in profile.points]
+    min_energy, max_energy = _energy_bounds(raw_values)
+    positions = _state_positions(len(profile.points), 150.0, 624.0)
+    top = 62.0
+    bottom = 338.0
+    state_span = diagram_options.state_line_span
 
-    for point in profile.points:
+    for point, position_x in zip(profile.points, positions):
         relative_value = point.relative_energy.value if point.relative_energy is not None else None
         missing_reason = point.missing_reason
         if relative_value is None and missing_reason is None:
@@ -257,6 +317,7 @@ def build_energy_diagram_route(
                 )
             )
         state_unit = point.relative_energy.unit if point.relative_energy is not None else unit
+        y = _map_energy_to_y(relative_value, min_energy, max_energy, top, bottom) if relative_value is not None else None
         states.append(
             EnergyDiagramState(
                 node_id=point.node_id,
@@ -264,6 +325,14 @@ def build_energy_diagram_route(
                 relative_value=relative_value,
                 unit=state_unit,
                 missing_reason=missing_reason,
+                x=position_x,
+                y=y,
+                line_start_x=position_x - state_span / 2 if y is not None else None,
+                line_end_x=position_x + state_span / 2 if y is not None else None,
+                label_x=position_x - 26,
+                label_y=bottom + 18,
+                value_x=position_x - 18 if y is not None else None,
+                value_y=y - 16 if y is not None else None,
             )
         )
 
@@ -274,6 +343,8 @@ def build_energy_diagram_route(
         states=tuple(states),
         y_axis_label=y_axis_label,
         warnings=tuple(warnings),
+        min_energy=min_energy,
+        max_energy=max_energy,
     )
 
 
@@ -404,10 +475,43 @@ def _render_xlsx(
     header_format = workbook.add_format({"bold": True, "bg_color": "#E8EEF5", "border": 1})
     number_format = workbook.add_format({"num_format": "0.000000", "border": 1})
     text_format = workbook.add_format({"border": 1})
+    group_format = workbook.add_format({"bold": True, "bg_color": "#D9E6F2", "border": 1, "align": "center"})
+    formats = {
+        "group": group_format,
+        "header": header_format,
+        "number": number_format,
+        "text": text_format,
+    }
 
+    _write_energy_table_sheet(workbook, rows, title, formats)
+
+    if profile is not None:
+        _write_energy_profile_sheet(workbook, profile, formats)
+
+    warnings = _energy_table_warnings(rows, profile)
+    if warnings:
+        _write_warnings_sheet(workbook, warnings, formats)
+
+    _write_export_metadata_sheet(workbook, rows, profile, title, formats)
+
+    workbook.close()
+    return output.getvalue()
+
+
+def _write_energy_table_sheet(
+    workbook: Any,
+    rows: tuple[EnergyTableRow, ...],
+    title: str | None,
+    formats: dict[str, Any],
+) -> None:
     table_sheet = workbook.add_worksheet("Energy Table")
+    header_format = formats["header"]
+    number_format = formats["number"]
+    text_format = formats["text"]
     _write_title_row(table_sheet, title, len(ENERGY_TABLE_COLUMNS), header_format)
-    header_row = 1 if title else 0
+    group_row = 1 if title else 0
+    header_row = group_row + 1
+    _write_group_header_row(table_sheet, group_row, ENERGY_TABLE_COLUMNS, formats["group"])
     for column_index, column in enumerate(ENERGY_TABLE_COLUMNS):
         table_sheet.write(header_row, column_index, column.label, header_format)
     for row_index, table_row in enumerate(rows, start=header_row + 1):
@@ -415,48 +519,116 @@ def _render_xlsx(
             value = table_row.structure_name if column.key == "structure_name" else table_row.values.get(column.key)
             _write_cell(table_sheet, row_index, column_index, value, number_format, text_format)
     table_sheet.freeze_panes(header_row + 1, 1)
-    table_sheet.set_column(0, 0, 24)
-    table_sheet.set_column(1, len(ENERGY_TABLE_COLUMNS) - 1, 18)
+    last_data_row = max(header_row, header_row + len(rows))
+    table_sheet.autofilter(header_row, 0, last_data_row, len(ENERGY_TABLE_COLUMNS) - 1)
+    _set_energy_table_column_widths(table_sheet, ENERGY_TABLE_COLUMNS)
 
-    if profile is not None:
-        profile_sheet = workbook.add_worksheet("Energy Profile")
-        profile_headers = (
-            "Node ID",
-            "Label",
-            "Absolute value",
-            "Absolute unit",
-            "Relative value",
-            "Relative unit",
-            "Missing reason",
-        )
-        for column_index, header in enumerate(profile_headers):
-            profile_sheet.write(0, column_index, header, header_format)
-        for row_index, point in enumerate(profile.points, start=1):
-            absolute = point.absolute_energy
-            relative = point.relative_energy
-            profile_sheet.write(row_index, 0, point.node_id, text_format)
-            profile_sheet.write(row_index, 1, point.label, text_format)
-            _write_cell(profile_sheet, row_index, 2, absolute.value if absolute else None, number_format, text_format)
-            _write_cell(profile_sheet, row_index, 3, absolute.unit if absolute else None, number_format, text_format)
-            _write_cell(profile_sheet, row_index, 4, relative.value if relative else None, number_format, text_format)
-            _write_cell(profile_sheet, row_index, 5, relative.unit if relative else None, number_format, text_format)
-            _write_cell(profile_sheet, row_index, 6, point.missing_reason, number_format, text_format)
-        profile_sheet.freeze_panes(1, 1)
-        profile_sheet.set_column(0, 6, 18)
 
-    warnings = _energy_table_warnings(rows, profile)
-    if warnings:
-        warning_sheet = workbook.add_worksheet("Warnings")
-        for column_index, header in enumerate(("Code", "Message", "Target")):
-            warning_sheet.write(0, column_index, header, header_format)
-        for row_index, warning in enumerate(warnings, start=1):
-            warning_sheet.write(row_index, 0, warning.code, text_format)
-            warning_sheet.write(row_index, 1, warning.message, text_format)
-            warning_sheet.write(row_index, 2, warning.target, text_format)
-        warning_sheet.set_column(0, 2, 32)
+def _write_group_header_row(
+    sheet: Any,
+    row: int,
+    columns: tuple[EnergyTableColumn, ...],
+    group_format: Any,
+) -> None:
+    start = 0
+    while start < len(columns):
+        group = columns[start].group or columns[start].label
+        end = start
+        while end + 1 < len(columns) and (columns[end + 1].group or columns[end + 1].label) == group:
+            end += 1
+        if end > start:
+            sheet.merge_range(row, start, row, end, group, group_format)
+        else:
+            sheet.write(row, start, group, group_format)
+        start = end + 1
 
-    workbook.close()
-    return output.getvalue()
+
+def _set_energy_table_column_widths(
+    sheet: Any,
+    columns: tuple[EnergyTableColumn, ...],
+) -> None:
+    for column_index, column in enumerate(columns):
+        width = 18
+        if column.key == "structure_name":
+            width = 24
+        elif column.key.endswith("_basis_functions"):
+            width = 22
+        elif column.group == "Profile":
+            width = 18 if column.key != "missing_reason" else 24
+        sheet.set_column(column_index, column_index, width)
+
+
+def _write_energy_profile_sheet(
+    workbook: Any,
+    profile: EnergyProfile,
+    formats: dict[str, Any],
+) -> None:
+    profile_sheet = workbook.add_worksheet("Energy Profile")
+    profile_headers = (
+        "Node ID",
+        "Label",
+        "Absolute value",
+        "Absolute unit",
+        "Relative value",
+        "Relative unit",
+        "Missing reason",
+    )
+    for column_index, header in enumerate(profile_headers):
+        profile_sheet.write(0, column_index, header, formats["header"])
+    for row_index, point in enumerate(profile.points, start=1):
+        absolute = point.absolute_energy
+        relative = point.relative_energy
+        profile_sheet.write(row_index, 0, point.node_id, formats["text"])
+        profile_sheet.write(row_index, 1, point.label, formats["text"])
+        _write_cell(profile_sheet, row_index, 2, absolute.value if absolute else None, formats["number"], formats["text"])
+        _write_cell(profile_sheet, row_index, 3, absolute.unit if absolute else None, formats["number"], formats["text"])
+        _write_cell(profile_sheet, row_index, 4, relative.value if relative else None, formats["number"], formats["text"])
+        _write_cell(profile_sheet, row_index, 5, relative.unit if relative else None, formats["number"], formats["text"])
+        _write_cell(profile_sheet, row_index, 6, point.missing_reason, formats["number"], formats["text"])
+    profile_sheet.freeze_panes(1, 1)
+    profile_sheet.set_column(0, 6, 18)
+
+
+def _write_warnings_sheet(
+    workbook: Any,
+    warnings: tuple[RxnFlowWarning, ...],
+    formats: dict[str, Any],
+) -> None:
+    warning_sheet = workbook.add_worksheet("Warnings")
+    for column_index, header in enumerate(("Code", "Message", "Target")):
+        warning_sheet.write(0, column_index, header, formats["header"])
+    for row_index, warning in enumerate(warnings, start=1):
+        warning_sheet.write(row_index, 0, warning.code, formats["text"])
+        warning_sheet.write(row_index, 1, warning.message, formats["text"])
+        warning_sheet.write(row_index, 2, warning.target, formats["text"])
+    warning_sheet.set_column(0, 2, 32)
+
+
+def _write_export_metadata_sheet(
+    workbook: Any,
+    rows: tuple[EnergyTableRow, ...],
+    profile: EnergyProfile | None,
+    title: str | None,
+    formats: dict[str, Any],
+) -> None:
+    metadata_sheet = workbook.add_worksheet("Export Metadata")
+    metadata = (
+        ("energy_table_schema_version", ENERGY_TABLE_SCHEMA_VERSION),
+        ("energy_table_column_count", len(ENERGY_TABLE_COLUMNS)),
+        ("energy_table_row_count", len(rows)),
+        ("title", title or ""),
+        ("profile_id", profile.id if profile is not None else ""),
+        ("profile_graph_id", profile.graph_id if profile is not None else ""),
+        ("profile_path_id", profile.path_id if profile is not None else ""),
+    )
+    metadata_sheet.write(0, 0, "Key", formats["header"])
+    metadata_sheet.write(0, 1, "Value", formats["header"])
+    for row_index, (key, value) in enumerate(metadata, start=1):
+        metadata_sheet.write(row_index, 0, key, formats["text"])
+        _write_cell(metadata_sheet, row_index, 1, value, formats["number"], formats["text"])
+    metadata_sheet.freeze_panes(1, 1)
+    metadata_sheet.set_column(0, 0, 32)
+    metadata_sheet.set_column(1, 1, 28)
 
 
 def _render_png(route: EnergyDiagramRoute, title: str | None) -> bytes:
@@ -471,9 +643,7 @@ def _render_png(route: EnergyDiagramRoute, title: str | None) -> bytes:
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
 
-    valid_values = [state.relative_value for state in route.states if state.relative_value is not None]
-    min_y, max_y = _energy_bounds(valid_values)
-    positions = _state_positions(len(route.states), left + 38, width - right - 34)
+    min_y, max_y = route.min_energy, route.max_energy
 
     draw.line((left, top, left, height - bottom), fill=(28, 43, 58), width=2)
     draw.line((left, height - bottom, width - right, height - bottom), fill=(28, 43, 58), width=2)
@@ -488,17 +658,27 @@ def _render_png(route: EnergyDiagramRoute, title: str | None) -> bytes:
         draw.line((left + 1, tick_y, width - right, tick_y), fill=(230, 235, 240), width=1)
 
     previous: tuple[float, float] | None = None
-    for position_x, state in zip(positions, route.states):
+    for state in route.states:
+        position_x = _scale_diagram_x(state.x, left + 38, width - right - 34)
         label_y = height - bottom + 18
         if state.relative_value is None:
+            if position_x is None:
+                previous = None
+                continue
             draw.text((position_x - 28, label_y), state.label, fill=(118, 128, 138))
             draw.text((position_x - 24, label_y + 18), "missing", fill=(176, 87, 67))
             previous = None
             continue
+        if position_x is None:
+            previous = None
+            continue
 
-        y = _map_energy_to_y(state.relative_value, min_y, max_y, top, height - bottom)
-        start_x = position_x - 34
-        end_x = position_x + 34
+        y = _scale_diagram_y(state.y, top, height - bottom)
+        start_x = _scale_diagram_x(state.line_start_x, left + 38, width - right - 34)
+        end_x = _scale_diagram_x(state.line_end_x, left + 38, width - right - 34)
+        if y is None or start_x is None or end_x is None:
+            previous = None
+            continue
         if previous is not None:
             draw.line((previous[0], previous[1], start_x, y), fill=(72, 102, 140), width=3)
         draw.line((start_x, y, end_x, y), fill=(25, 86, 140), width=5)
@@ -516,12 +696,28 @@ def _render_cdxml(
     options: CdxmlDiagramOptions,
     title: str | None,
 ) -> bytes:
+    z_index = 2
+
+    def next_z() -> str:
+        nonlocal z_index
+        value = str(z_index)
+        z_index += 1
+        return value
+
     root = ElementTree.Element(
         "CDXML",
         {
             "CreationProgram": "RxnFlow",
             "Name": "RxnFlow Energy Diagram",
             "BoundingBox": "0 0 720 420",
+            "LabelFont": "3",
+            "LabelSize": "10",
+            "CaptionFont": "3",
+            "CaptionSize": "10",
+            "LineWidth": "1",
+            "BoldWidth": "2",
+            "color": "2",
+            "bgcolor": "1",
         },
     )
     color_table = ElementTree.SubElement(root, "colortable")
@@ -537,21 +733,28 @@ def _render_cdxml(
     font_table = ElementTree.SubElement(root, "fonttable")
     ElementTree.SubElement(font_table, "font", {"id": "3", "charset": "iso-8859-1", "name": "Arial"})
 
-    page = ElementTree.SubElement(root, "page", {"id": "1", "BoundingBox": "0 0 720 420"})
-    group = ElementTree.SubElement(page, "group", {"id": "2", "Integral": "yes"})
-    object_id = 3
+    page = ElementTree.SubElement(
+        root,
+        "page",
+        {"id": "1", "BoundingBox": "0 0 720 420", "HeaderPosition": "36", "FooterPosition": "36"},
+    )
+    group = ElementTree.SubElement(
+        page,
+        "group",
+        {"id": "2", "Integral": "yes", "BoundingBox": "0 0 720 420", "Z": "1"},
+    )
+    object_id = 4
 
-    _cdxml_text(group, object_id, 90, 22, title or route.y_axis_label or "Relative energy", size="14")
+    _cdxml_text(group, object_id, next_z(), 90, 22, title or route.y_axis_label or "Relative energy", size="14")
     object_id += 1
-    _cdxml_text(group, object_id, 20, 74, route.y_axis_label or "Relative energy", size="9")
+    _cdxml_text(group, object_id, next_z(), 20, 74, route.y_axis_label or "Relative energy", size="9")
     object_id += 1
 
     left = 88.0
     right = 662.0
     top = 62.0
     bottom = 338.0
-    valid_values = [state.relative_value for state in route.states if state.relative_value is not None]
-    min_y, max_y = _energy_bounds(valid_values)
+    min_y, max_y = route.min_energy, route.max_energy
 
     ElementTree.SubElement(
         group,
@@ -562,6 +765,8 @@ def _render_cdxml(
             "LineType": "Solid",
             "BoundingBox": f"{left:.1f} {top:.1f} {left:.1f} {bottom:.1f}",
             "color": "2",
+            "LineWidth": "1",
+            "Z": next_z(),
         },
     )
     object_id += 1
@@ -574,25 +779,51 @@ def _render_cdxml(
             "LineType": "Solid",
             "BoundingBox": f"{left:.1f} {bottom:.1f} {right:.1f} {bottom:.1f}",
             "color": "2",
+            "LineWidth": "1",
+            "Z": next_z(),
         },
     )
     object_id += 1
 
-    positions = _state_positions(len(route.states), left + 62, right - 38)
     previous: tuple[float, float] | None = None
     state_span = options.state_line_span
-    for position_x, state in zip(positions, route.states):
+    for state in route.states:
+        position_x = state.x
+        if position_x is None:
+            previous = None
+            continue
         if state.relative_value is None:
-            _cdxml_text(group, object_id, position_x - 28, bottom + 18, state.label, size="9", color="5")
+            _cdxml_text(
+                group,
+                object_id,
+                next_z(),
+                state.label_x or position_x - 28,
+                state.label_y or bottom + 18,
+                state.label,
+                size="9",
+                color="5",
+            )
             object_id += 1
-            _cdxml_text(group, object_id, position_x - 28, bottom + 34, "missing", size="8", color="4")
+            _cdxml_text(
+                group,
+                object_id,
+                next_z(),
+                state.label_x or position_x - 28,
+                (state.label_y or bottom + 18) + 16,
+                "missing",
+                size="8",
+                color="4",
+            )
             object_id += 1
             previous = None
             continue
 
-        y = _map_energy_to_y(state.relative_value, min_y, max_y, top, bottom)
-        line_start = position_x - state_span / 2
-        line_end = position_x + state_span / 2
+        y = state.y
+        line_start = state.line_start_x if state.line_start_x is not None else position_x - state_span / 2
+        line_end = state.line_end_x if state.line_end_x is not None else position_x + state_span / 2
+        if y is None:
+            previous = None
+            continue
         if previous is not None:
             ElementTree.SubElement(
                 group,
@@ -602,7 +833,11 @@ def _render_cdxml(
                     "ArrowheadType": "Solid",
                     "Tail3D": f"{previous[0]:.1f} {previous[1]:.1f} 0",
                     "Head3D": f"{line_start:.1f} {y:.1f} 0",
+                    "BoundingBox": _cdxml_bbox(previous[0], previous[1], line_start, y),
+                    "FillType": "None",
+                    "LineWidth": "1",
                     "color": "3",
+                    "Z": next_z(),
                 },
             )
             object_id += 1
@@ -616,18 +851,28 @@ def _render_cdxml(
                 "BoundingBox": f"{line_start:.1f} {y:.1f} {line_end:.1f} {y:.1f}",
                 "color": "3",
                 "LineWidth": "2",
+                "Z": next_z(),
             },
         )
         object_id += 1
         if options.show_labels:
-            _cdxml_text(group, object_id, position_x - 26, bottom + 18, state.label, size="9")
+            _cdxml_text(
+                group,
+                object_id,
+                next_z(),
+                state.label_x or position_x - 26,
+                state.label_y or bottom + 18,
+                state.label,
+                size="9",
+            )
             object_id += 1
         if options.show_values:
             _cdxml_text(
                 group,
                 object_id,
-                position_x - 18,
-                y - 16,
+                next_z(),
+                state.value_x or position_x - 18,
+                state.value_y or y - 16,
                 f"{state.relative_value:.{options.decimals}f}",
                 size="9",
             )
@@ -665,9 +910,39 @@ def _write_cell(
         sheet.write(row, column, str(value), text_format)
 
 
+def _normalize_table_header_token(value: str) -> str:
+    replacements = {
+        "（": "(",
+        "）": ")",
+        "+": "",
+        "-": "",
+        "_": "",
+        " ": "",
+        "\t": "",
+        "/": "",
+    }
+    normalized = str(value).strip().lower()
+    for old, new in replacements.items():
+        normalized = normalized.replace(old, new)
+    normalized = normalized.replace("(hartree)", "hartree")
+    normalized = normalized.replace("(kcalmol)", "kcalmol")
+    normalized = normalized.replace("(kcal)", "kcal")
+    normalized = normalized.replace("(shermo)", "shermo")
+    normalized = normalized.replace("(shermo1m)", "shermo1m")
+    normalized = normalized.replace("（", "(").replace("）", ")")
+    return normalized
+
+
+def _unit_column(prefix: str, normalized_context: str) -> str:
+    if "kcal" in normalized_context:
+        return f"{prefix}_kcal_mol"
+    return f"{prefix}_hartree"
+
+
 def _cdxml_text(
     parent: ElementTree.Element,
     object_id: int,
+    z_index: str,
     x: float,
     y: float,
     text: str,
@@ -682,6 +957,10 @@ def _cdxml_text(
             "id": str(object_id),
             "p": f"{x:.1f} {y:.1f}",
             "BoundingBox": f"{x:.1f} {y:.1f} {x + 160:.1f} {y + 16:.1f}",
+            "CaptionJustification": "Center",
+            "Justification": "Center",
+            "LineHeight": "auto",
+            "Z": z_index,
         },
     )
     string_node = ElementTree.SubElement(
@@ -690,6 +969,14 @@ def _cdxml_text(
         {"font": "3", "size": size, "color": color, "face": "0"},
     )
     string_node.text = text
+
+
+def _cdxml_bbox(x1: float, y1: float, x2: float, y2: float) -> str:
+    left = min(x1, x2)
+    top = min(y1, y2)
+    right = max(x1, x2)
+    bottom = max(y1, y2)
+    return f"{left:.1f} {top:.1f} {right:.1f} {bottom:.1f}"
 
 
 def _row_from_chemical_object(obj: ChemicalObject) -> EnergyTableRow:
@@ -821,7 +1108,7 @@ def _artifact_metadata(
     basename: str,
     byte_length: int,
 ) -> dict[str, Any]:
-    return {
+    metadata = {
         "project_id": project_id,
         "graph_id": request.graph.id if request.graph is not None else _profile_graph_id(request),
         "profile_id": request.profile.id if request.profile is not None else None,
@@ -834,6 +1121,10 @@ def _artifact_metadata(
         "basename": basename,
         "warnings": tuple(warning.code for warning in rendered.warnings),
     }
+    if rendered.format == "xlsx":
+        metadata["energy_table_schema_version"] = ENERGY_TABLE_SCHEMA_VERSION
+        metadata["energy_table_column_count"] = len(ENERGY_TABLE_COLUMNS)
+    return metadata
 
 
 def _artifact_id(
@@ -909,6 +1200,24 @@ def _energy_bounds(values: list[float | None]) -> tuple[float, float]:
 
 def _map_energy_to_y(value: float, min_y: float, max_y: float, top: float, bottom: float) -> float:
     return bottom - ((value - min_y) / (max_y - min_y)) * (bottom - top)
+
+
+def _scale_diagram_x(value: float | None, output_start: float, output_end: float) -> float | None:
+    if value is None:
+        return None
+    input_start = 150.0
+    input_end = 624.0
+    if input_start == input_end:
+        return (output_start + output_end) / 2
+    return output_start + (value - input_start) / (input_end - input_start) * (output_end - output_start)
+
+
+def _scale_diagram_y(value: float | None, output_top: float, output_bottom: float) -> float | None:
+    if value is None:
+        return None
+    input_top = 62.0
+    input_bottom = 338.0
+    return output_top + (value - input_top) / (input_bottom - input_top) * (output_bottom - output_top)
 
 
 def _unit_label(unit: EnergyUnit) -> str:

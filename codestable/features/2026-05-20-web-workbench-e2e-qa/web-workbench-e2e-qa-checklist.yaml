@@ -1,0 +1,116 @@
+feature: 2026-05-20-web-workbench-e2e-qa
+created: 2026-05-20
+
+steps:
+  - action: "E2E Project Setup：新增 Playwright config、npm run test:e2e 和 ignored output paths"
+    exit_signal: "npm run test:e2e -- --list 能列出 tests，dev server 使用 http://127.0.0.1:5173/"
+    status: done
+
+  - action: "E2E Helpers：新增清理 storage、console capture、layout overflow、region visibility 和 screenshot helper"
+    exit_signal: "helper 能在 workbench 页面返回稳定断言，不依赖临时 /tmp 脚本"
+    status: done
+
+  - action: "Desktop Workbench Journey：覆盖 project create/save、Fixture Run、import preview/register、object selection、graph add/connect/set path、energy compute、report export"
+    exit_signal: "Chromium 1280x720 下 journey 通过，关键文本/状态和 no-overflow 断言成立"
+    status: done
+
+  - action: "Narrow Layout Journey：覆盖 390x840 下 fixture -> graph/energy/export smoke 和关键区域布局健康"
+    exit_signal: "窄屏测试通过，graph surface、energy table/curve、artifact list 和 warnings 无水平溢出"
+    status: done
+
+  - action: "Verification And Docs：运行 E2E、Web test/build、Python 单测，回写 architecture/requirement/roadmap 验收文档"
+    exit_signal: "npm run test:e2e、npm run test、npm run build、python3 -m unittest discover 通过；CodeStable 文档完成"
+    status: done
+
+checks:
+  - item: "npm run test:e2e -- --list 能在 web/ 下列出 Playwright tests"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run test:e2e 启动或复用 http://127.0.0.1:5173/，不使用 file://"
+    source: 验收场景
+    status: passed
+
+  - item: "E2E page identity 验证 title 为 RxnFlow Workbench，main region 可见，页面非空白"
+    source: 验收场景
+    status: passed
+
+  - item: "E2E 捕获 console warning/error；相关 app warning/error 会导致测试失败"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面 flow 创建 browser-local project、保存 stub，并看到 Persisted / Valid / checksum"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面 flow Fixture Run 后看到 fixture project、Object Registry、Graph Canvas、Energy Profile Panel 和 Report Export Panel"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面 flow Import Inbox 注入 water.xyz / bad-count.xyz，Preview 后看到 batch、raw resource、warnings/errors，Register All 后看到 object-imported-water"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面 flow 选择 imported water object，Add Node、Connect、Set Path 后 active path 为 path-web-main 且 path text 包含 node-a -> node-b -> node-web-3"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面 flow 在 imported water path 上 Compute 后显示 missing_energy，不把 missing point 当作 0"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面 flow 默认 fixture profile Export 后看到 3 个 artifacts、download links、metadata 和 chemdraw_cdxml_only warning"
+    source: 验收场景
+    status: passed
+
+  - item: "E2E 覆盖 include bytes disabled：artifacts 可见但 Download link 为 0，Download unavailable 为 3"
+    source: 验收场景
+    status: passed
+
+  - item: "窄屏 flow 在 390x840 下完成 fixture -> graph add/connect/set path -> energy compute -> report export smoke"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面和窄屏均断言无 document/body 水平溢出"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面和窄屏均保存截图到 Playwright output；截图不进入 git tracked source"
+    source: 验收场景
+    status: passed
+
+  - item: "不新增业务 UI / shell command / parser bridge / Python bridge / HTTP route"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 Report Export、Energy Engine、Graph Workspace、Import Workflow 或 Browser Project Repository 业务实现"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 Playwright screenshots/traces 写入 Project Content、Browser Project Repository 或 git tracked source"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增云存储、账号系统、JSZip、OPFS、File System Access API、real parser fixture 声明或外部网络依赖"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 E2E 中的 synthetic file flow 描述成真实 Gaussian/ORCA/MAPLE/XYZ/extxyz 完整支持"
+    source: 范围守护
+    status: passed
+
+  - item: "npm run test:e2e 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover 通过"
+    source: 验收场景
+    status: passed

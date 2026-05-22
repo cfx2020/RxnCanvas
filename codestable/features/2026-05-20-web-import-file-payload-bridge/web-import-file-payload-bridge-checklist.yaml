@@ -1,0 +1,92 @@
+feature: 2026-05-20-web-import-file-payload-bridge
+created: 2026-05-20
+
+steps:
+  - action: "Source contract and backend resolution：在 Platform Shell 层解析 source/sources，支持 path 与小文件 inline_bytes"
+    exit_signal: "Python 单测确认 inline bytes .xyz preview 成功，invalid source / invalid base64 / payload too large 返回指定 error"
+    status: done
+
+  - action: "HTTP bridge contract coverage：通过 local bridge POST /api/shell 调用 inline bytes preview，确认 JSON-safe 与 session 保留"
+    exit_signal: "bridge 单测使用 project.create session + inline bytes import.preview 成功"
+    status: done
+
+  - action: "Web import payload builder：WebImportFile 保留 File，新增 async inline bytes args builder；fixture 模式继续可用 path fallback"
+    exit_signal: "Vitest 确认 selected File 生成 sources.inline_bytes，超限在前端返回 payload_too_large"
+    status: done
+
+  - action: "Workbench preview flow：WorkbenchShell.previewImport 改用 async args builder，Import Inbox 展示 inline/path source 状态"
+    exit_signal: "Testing Library 覆盖 file input -> preview command payload -> batch/error UI"
+    status: done
+
+  - action: "Acceptance and docs：更新 architecture、requirement、roadmap 和验收报告"
+    exit_signal: "checklist 全 passed，roadmap item done"
+    status: done
+
+checks:
+  - item: "Python import.preview 收到 source.kind=inline_bytes 的小 .xyz 文件时，返回 needs_confirmation item、parser_id=xyz-ase、object_count=1"
+    source: 验收场景
+    status: passed
+
+  - item: "Python import.preview 收到 sources 多文件 inline bytes 时，返回同一 batch 的多 item"
+    source: 验收场景
+    status: passed
+
+  - item: "Python import.preview 收到 fixture session + inline bytes 时，会创建 Temporary Preview Project 并返回真实 parser preview"
+    source: 验收场景
+    status: passed
+
+  - item: "inline bytes 超过限制时返回 payload_too_large target=bytes_base64，不调用 parser"
+    source: 验收场景
+    status: passed
+
+  - item: "inline base64 无效或 source kind 缺字段时返回 invalid_input target=source 或 target=bytes_base64"
+    source: 验收场景
+    status: passed
+
+  - item: "browser_storage source 返回 storage_object_missing target=storage_path，不假设 Python 能读 IndexedDB"
+    source: 验收场景
+    status: passed
+
+  - item: "local HTTP bridge 可以透传 inline bytes import.preview，并保持 project.create session"
+    source: 验收场景
+    status: passed
+
+  - item: "Web file input 选择真实 File 后，preview args 在 inline mode 下包含 sources[0].kind=inline_bytes、filename、mime_type 和 base64"
+    source: 验收场景
+    status: passed
+
+  - item: "Web 选择超出前端 inline limit 的文件时，不发 shell command，Import Inbox 显示 payload_too_large"
+    source: 验收场景
+    status: passed
+
+  - item: "fixture 默认模式下现有 Import Inbox preview/register 流程不回退"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http dev server + local bridge 下，浏览器选择 tiny .xyz 后点击 Preview 能看到真实 Python parser preview"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover、cd web && npm run test、cd web && npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "不修改 parser、registry、Project Store、Import Workflow 的领域行为"
+    source: 反向检查
+    status: passed
+
+  - item: "不实现 browser_storage adapter、chunking、OPFS 或 Worker"
+    source: 反向检查
+    status: passed
+
+  - item: "不把 browser-local Project Sidebar stub 当作 core project path；Temporary Preview Project 不写 Browser Project Repository"
+    source: 反向检查
+    status: passed
+
+  - item: "不在前端解析化学格式或登记 ChemicalObject"
+    source: 反向检查
+    status: passed
+
+  - item: "不新增云存储、账号或生产上传服务"
+    source: 反向检查
+    status: passed

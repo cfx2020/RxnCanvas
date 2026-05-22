@@ -1,9 +1,9 @@
 ---
 doc_type: roadmap
 slug: rxnflow-web-workbench-mvp
-status: active
+status: completed
 created: 2026-05-16
-last_reviewed: 2026-05-16
+last_reviewed: 2026-05-21
 tags: [rxnflow, web, workbench, frontend, local-first, graph-editor]
 related_requirements: [platform-shell-entry, project-content-persistence, web-workbench-shell]
 related_architecture: [ARCHITECTURE, core-platform, web-workbench]
@@ -25,11 +25,12 @@ RxnFlow 当前已经完成核心平台、项目内容持久化、项目 bundle�
 - Web app skeleton：项目工作台布局、路由入口、基础状态容器、命令调用和错误/warning 投影。
 - Browser local project repository：把已有 Project Content / Browser Local Storage Backend 协议映射到真实浏览器 IndexedDB / OPFS 或等价本地存储。
 - Project sidebar：新建、打开、保存、bundle import/export 和 local-only 状态提示。
+- I18n foundation：为 Web 工作台建立 typed message keys、locale provider 和 `zh-CN` / `en-US` 双语资源。
 - Import inbox：选择/批量导入原始计算输出、parser preview、warnings/errors 展示和确认登记。
 - Object registry panel：已登记 ChemicalObject 列表、详情、energy keys、provenance、warnings 和校正项入口。
 - Graph canvas MVP：对象面板拖入/放入画布、节点连线、设置 reaction path、network preview 和 selection/viewport。
 - Energy profile panel：选择 path，计算相对能量，显示表格和基础曲线。
-- Report export panel：生成 PNG、CDXML、XLSX，并展示/下载 artifacts。
+- Report export panel：生成 PNG、CDXML、XLSX，并展示/下载 runtime artifacts。
 - 浏览器验证：桌面和窄屏布局、画布、表格、曲线和导出预览的 Playwright / browser QA。
 
 ### 明确不做
@@ -41,6 +42,7 @@ RxnFlow 当前已经完成核心平台、项目内容持久化、项目 bundle�
 - 不做完整 ChemDraw 编辑器；CDXML 只作为导出 artifact。
 - 不一次性打包 macOS app、Windows exe 或 Linux installer；这些端侧壳层后续共享 Shell Client / command contract。
 - 不把当前 synthetic/reference-only parser corpus 描述成真实 Gaussian/ORCA/MAPLE 版本完整支持。
+- 不接云端翻译、AI 翻译服务、复杂多地区路由或账号级语言偏好；第一版语言偏好只保存在浏览器本地。
 
 ## 3. 模块拆分（概设）
 
@@ -51,11 +53,12 @@ RxnFlow Web Workbench MVP
 ├── Browser Project Repository：IndexedDB / OPFS 项目内容、raw files、exports 和 bundle IO
 ├── Workbench State：项目/session/workspace/import/profile/artifact 投影与 UI-only state
 ├── Project Sidebar：项目列表、open/save、bundle import/export 和 local-only 标识
+├── I18n Foundation：typed message keys、locale provider、语言切换和双语资源
 ├── Import Inbox：文件选择、parser preview、确认登记和失败项展示
 ├── Object Registry Panel：ChemicalObject 列表、详情、校正项入口
 ├── Graph Canvas：节点、边、路径、selection、viewport 和 network preview
 ├── Energy Profile Panel：路径能量表、曲线和 missing/warning 展示
-├── Report Export Panel：PNG / CDXML / XLSX artifact 生成、下载和索引
+├── Report Export Panel：PNG / CDXML / XLSX artifact 生成、下载和 runtime list
 └── Web QA Harness：浏览器交互、视觉布局和核心流程回归
 ```
 
@@ -74,7 +77,7 @@ RxnFlow Web Workbench MVP
 ### Browser Project Repository · 浏览器本地项目仓储
 
 - **职责**：把 Project Content logical path、raw file bytes、exports 和 project refs 映射到真实浏览器本地存储。它必须明确 local-only，不承诺跨设备同步。
-- **承载的子 feature**：`web-local-project-repository`
+- **承载的子 feature**：`web-local-project-repository`（状态：done，feature：`2026-05-16-web-local-project-repository`）
 - **触碰的现有代码 / 模块**：Web storage adapter；参考 `rxnflow.browser_storage` 和 `rxnflow.content_store` 协议。
 
 ### Workbench State · 工作台状态投影
@@ -86,44 +89,50 @@ RxnFlow Web Workbench MVP
 ### Project Sidebar · 项目侧边栏
 
 - **职责**：管理项目入口：新建项目、打开本地浏览器项目、保存、导入/导出 `.rxnflow.zip`、展示 validation/local-only 状态。
-- **承载的子 feature**：`web-project-sidebar`
+- **承载的子 feature**：`web-project-sidebar`（状态：done，feature：`2026-05-19-web-project-sidebar`）
 - **触碰的现有代码 / 模块**：Shell Client、Browser Project Repository、Project Bundle adapter。
+
+### I18n Foundation · 国际化基础
+
+- **职责**：为 Web 工作台提供最小但可扩展的国际化层，覆盖 `zh-CN` 简体中文和 `en-US` 英文，保证后续 Import Inbox、Object Registry、Graph Canvas、Energy/Profile 和 Export UI 不继续堆硬编码文案。
+- **承载的子 feature**：`web-i18n-foundation`（状态：done，feature：`2026-05-20-web-i18n-foundation`）
+- **触碰的现有代码 / 模块**：Web app text rendering、Project Sidebar 文案、Workbench Shell 文案、浏览器本地 locale preference；不修改 Python core 或 ShellResponse DTO。
 
 ### Import Inbox · 导入收件箱
 
 - **职责**：接收用户选择的 Gaussian/ORCA/MAPLE/XYZ/extxyz 文件，显示 parse preview、warnings/errors、object_count 和确认登记动作。
-- **承载的子 feature**：`web-import-inbox`
+- **承载的子 feature**：`web-import-inbox`（状态：done，feature：`2026-05-20-web-import-inbox`）
 - **触碰的现有代码 / 模块**：`import.preview`、`import.register_all` 或后续 stateless preview bridge；不直接调用 parser plugin。
 
 ### Object Registry Panel · 对象登记面板
 
 - **职责**：显示已登记 ChemicalObject、来源、charge/spin、method、energy keys、thermochemistry keys、warnings 和校正项入口。
-- **承载的子 feature**：`web-object-registry-panel`
+- **承载的子 feature**：`web-object-registry-panel`（状态：done，feature：`2026-05-20-web-object-registry-panel`）
 - **触碰的现有代码 / 模块**：Workbench State projection、ChemicalObject projection；校正项写入继续走核心 Shell/Registry 边界。
 
 ### Graph Canvas · 图谱画布
 
 - **职责**：提供可编辑 reaction graph canvas MVP：从 Object Palette 添加节点、连线、设置 active path、显示 network preview、selection 和 viewport。
-- **承载的子 feature**：`web-graph-canvas-mvp`
+- **承载的子 feature**：`web-graph-canvas-mvp`（状态：done，feature：`2026-05-20-web-graph-canvas-mvp`）
 - **触碰的现有代码 / 模块**：`workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path`。
 
 ### Energy Profile Panel · 能量面板
 
 - **职责**：基于 active path 调用 `energy.compute`，展示 EnergyProfile points、missing reason、warnings 和基础曲线。
-- **承载的子 feature**：`web-energy-profile-panel`
+- **承载的子 feature**：`web-energy-profile-panel`（状态：done，feature：`2026-05-20-web-energy-profile-panel`）
 - **触碰的现有代码 / 模块**：`energy.compute`、EnergyProfile projection；不改 Energy Engine 算法。
 
 ### Report Export Panel · 导出面板
 
-- **职责**：调用 `export.profile` 生成 PNG、CDXML 和 XLSX artifacts，提供下载和项目 artifact index 展示。
-- **承载的子 feature**：`web-report-export-panel`
-- **触碰的现有代码 / 模块**：`export.profile`、ShellArtifact、Browser Project Repository exports 写入。
+- **职责**：调用 `export.profile` 生成 PNG、CDXML 和 XLSX artifacts，提供 inline bytes 下载和 runtime artifact list 展示。
+- **承载的子 feature**：`web-report-export-panel`（状态：done，feature：`2026-05-20-web-report-export-panel`）
+- **触碰的现有代码 / 模块**：`export.profile`、ShellArtifact、Workbench artifact projection；browser-local `exports/...` 写入已由后续 `rxnflow-web-runtime-bridge/web-export-artifact-persistence` 完成。
 
 ### Web QA Harness · 浏览器验证
 
 - **职责**：用 Playwright / browser QA 覆盖项目创建、导入、图谱编辑、能量计算、导出和响应式布局，确保画布、表格、曲线、按钮文本不重叠。
-- **承载的子 feature**：`web-workbench-e2e-qa`
-- **触碰的现有代码 / 模块**：Web tests、screenshots、local dev server scripts。
+- **承载的子 feature**：`web-workbench-e2e-qa`（状态：done，feature：`2026-05-20-web-workbench-e2e-qa`）
+- **触碰的现有代码 / 模块**：Playwright E2E config、Web E2E tests、screenshots/traces/report output、local dev server scripts。
 
 ## 4. 模块间接口契约 / 共享协议（架构层详设）
 
@@ -458,6 +467,45 @@ type ExportProfileArgs = {
 - 桌面和窄屏必须都有可操作布局；窄屏可切换 panel，但不能让控件或文本重叠。
 - 画布、表格、曲线和导出预览改动必须用浏览器实际验证；仅 typecheck 不算完成。
 
+### 4.9 Web I18n Contract
+
+**方向**：Web components → I18n message catalog
+**形式**：typed message keys + locale provider
+
+**契约**：
+
+```ts
+type SupportedLocale = "zh-CN" | "en-US"
+
+type I18nMessageKey =
+  | "app.brand"
+  | "workbench.title"
+  | "projectSidebar.title"
+  | string
+
+type I18nMessages = Record<I18nMessageKey, string>
+
+type I18nState = {
+  locale: SupportedLocale
+  fallbackLocale: "en-US"
+}
+
+interface I18nRuntime {
+  locale: SupportedLocale
+  setLocale(locale: SupportedLocale): void
+  t(key: I18nMessageKey, params?: Record<string, string | number>): string
+}
+```
+
+**约束**：
+
+- 第一版只支持 `zh-CN` 和 `en-US`；默认语言按浏览器语言决定，中文环境走 `zh-CN`，其他环境走 `en-US`。
+- 用户手动选择的 locale 可保存在浏览器本地；不进入 Project Content，不依赖账号或云同步。
+- message catalog 必须有类型约束或测试约束，避免任一 locale 漏 key。
+- UI 组件不得继续新增面向用户的硬编码主文案；化学对象 id、文件名、错误 code、checksum、命令名等数据值不翻译。
+- ShellResponse / repository error 的 `code` 和 `target` 原样显示；`message` 后续如需翻译必须通过单独 error mapping feature 处理，不能在本 foundation 中猜测核心错误含义。
+- 不引入云端翻译、AI 翻译、复杂 ICU plural rules、URL locale routing 或账号级偏好。
+
 ## 5. 子 feature 清单
 
 1. **web-runtime-boundary-decision**：确认 Web MVP 的运行时边界，给出 local dev、Vercel/http-api、browser local storage 的职责分配，并跑一个 shell command POC。
@@ -470,38 +518,41 @@ type ExportProfileArgs = {
    - 状态：done
    - 对应 feature：`2026-05-16-web-workbench-state-projections`
 4. **web-local-project-repository**：实现真实浏览器本地项目仓储，映射 Project Content logical path、raw files、exports 和 project refs。
-   - 状态：planned
-   - 对应 feature：null
+   - 状态：done
+   - 对应 feature：`2026-05-16-web-local-project-repository`
 5. **web-project-sidebar**：实现项目侧边栏，新建、打开、保存、bundle import/export 和 local-only / validation 状态展示。
-   - 状态：planned
-   - 对应 feature：null
-6. **web-import-inbox**：实现导入面板，支持文件选择、批量 preview、warnings/errors 展示和确认登记。
-   - 状态：planned
-   - 对应 feature：null
-7. **web-object-registry-panel**：实现对象面板，展示已登记 ChemicalObject、energy keys、provenance、warnings 和校正项入口。
-   - 状态：planned
-   - 对应 feature：null
-8. **web-graph-canvas-mvp**：实现图谱画布 MVP，支持添加节点、连线、设置 active path、selection、viewport 和 network preview。
-   - 状态：planned
-   - 对应 feature：null
-9. **web-energy-profile-panel**：实现能量面板，调用 `energy.compute` 并显示相对能量表、missing reason、warnings 和基础曲线。
-   - 状态：planned
-   - 对应 feature：null
-10. **web-report-export-panel**：实现导出面板，调用 `export.profile`，处理 PNG/CDXML/XLSX artifacts、下载和 exports 索引展示。
-    - 状态：planned
-    - 对应 feature：null
-11. **web-workbench-e2e-qa**：补 Playwright / browser QA，覆盖桌面/窄屏、导入、图谱编辑、能量计算、导出和视觉重叠检查。
-    - 状态：planned
-    - 对应 feature：null
+   - 状态：done
+   - 对应 feature：`2026-05-19-web-project-sidebar`
+6. **web-i18n-foundation**：建立 Web 工作台国际化基础，支持 `zh-CN` / `en-US`、typed message keys、locale provider 和语言切换，并覆盖已落地 Workbench / Project Sidebar 文案。
+   - 状态：done
+   - 对应 feature：`2026-05-20-web-i18n-foundation`
+7. **web-import-inbox**：实现导入面板，支持文件选择、批量 preview、warnings/errors 展示和确认登记。
+   - 状态：done
+   - 对应 feature：`2026-05-20-web-import-inbox`
+8. **web-object-registry-panel**：实现对象面板，展示已登记 ChemicalObject、energy keys、provenance、warnings 和校正项入口。
+   - 状态：done
+   - 对应 feature：`2026-05-20-web-object-registry-panel`
+9. **web-graph-canvas-mvp**：实现图谱画布 MVP，支持添加节点、连线、设置 active path、selection、viewport 和 network preview。
+   - 状态：done
+   - 对应 feature：`2026-05-20-web-graph-canvas-mvp`
+10. **web-energy-profile-panel**：实现能量面板，调用 `energy.compute` 并显示相对能量表、missing reason、warnings 和基础曲线。
+   - 状态：done
+   - 对应 feature：`2026-05-20-web-energy-profile-panel`
+11. **web-report-export-panel**：实现导出面板，调用 `export.profile`，处理 PNG/CDXML/XLSX artifacts、下载和 runtime artifact list 展示。
+    - 状态：done
+    - 对应 feature：`2026-05-20-web-report-export-panel`
+12. **web-workbench-e2e-qa**：补 Playwright / browser QA，覆盖桌面/窄屏、导入、图谱编辑、能量计算、导出和视觉重叠检查。
+    - 状态：done
+    - 对应 feature：`2026-05-20-web-workbench-e2e-qa`
 
 ## 6. 排期与依赖
 
 - 第一阶段先做 `web-runtime-boundary-decision`，因为 Web/Vercel/local-first 的 runtime 关系必须先拍板，否则 UI 会绑定错误的调用方式。
 - 第二阶段 `web-app-shell-client` 已完成，它是当前最小可演示闭环：页面能打开、ShellClient 能调用 fixture command、工作台布局能承载后续 panel。
 - 第三阶段做 `web-workbench-state-projections` 和 `web-local-project-repository`，补齐 Web 工作台真实数据和 local-first 持久化基础。
-- 第四阶段做项目/导入/对象三个侧边面板，再做 graph canvas。
-- 第五阶段接 energy / export。
-- 最后用 `web-workbench-e2e-qa` 收敛浏览器交互和视觉风险。
+- 第四阶段做项目侧边栏和 i18n foundation，再做导入/对象两个侧边面板和 graph canvas；当前已完成到 Graph Canvas MVP。
+- 第五阶段接 energy / export，当前 energy panel 和 report export panel 已完成。
+- 最后用 `web-workbench-e2e-qa` 收敛浏览器交互和视觉风险；当前已完成。
 
 技术依赖之外的优先级不由本 roadmap 替用户决定。若用户希望先看图谱画布，也必须至少完成 runtime boundary、ShellClient 和 state projection，否则画布只能是演示假数据。
 
@@ -514,3 +565,14 @@ type ExportProfileArgs = {
 - Web 工作台需要更丰富的 object/session projection；若现有 ShellResponse 不够，优先新增 read-only projection command，而不是让 UI 读取内部 Python state。
 - Vercel 部署的 server filesystem 不能当长期项目存储；用户项目内容默认 local-only 或后续云 adapter。
 - 图谱画布和曲线属于高风险 UI 区域，每个相关 feature acceptance 必须浏览器验证桌面与窄屏。
+- Web UI 文案已经进入多面板增长阶段；在 Import Inbox 前先落地 `web-i18n-foundation`，避免后续面板继续堆硬编码英文文案再返工。
+
+## 8. 变更日志
+
+- 2026-05-20：插入 `web-i18n-foundation`，将 `zh-CN` / `en-US` 双语、typed message keys 和 locale provider 作为 Web UI 后续 feature 的共享约束；`web-import-inbox` 改为依赖 i18n foundation。
+- 2026-05-20：完成 `web-graph-canvas-mvp`，Web Workbench 中间区域已支持 click-driven add/connect/set path 和 network preview；下一项保持 `web-energy-profile-panel`。
+- 2026-05-20：启动 `web-energy-profile-panel`，范围限定为 Web UI 调用 `energy.compute` 并展示 profile table / missing reason / warnings / basic curve，不修改 Energy Engine 算法。
+- 2026-05-20：完成 `web-energy-profile-panel`，Web Workbench 右侧已支持从 active path 调用 `energy.compute`，展示相对能量表、missing reason、warnings 和基础 SVG curve；随后推进 `web-report-export-panel`。
+- 2026-05-20：完成 `web-report-export-panel`，Web Workbench 右侧已支持基于 active profile 调用 `export.profile`，展示 PNG/CDXML/XLSX runtime artifacts、metadata、warnings 和 inline bytes 下载；随后推进 `web-workbench-e2e-qa`。
+- 2026-05-20：完成 `web-workbench-e2e-qa`，`web/` 已提供 `npm run test:e2e`，覆盖 desktop/narrow Workbench Journey、console clean、无水平溢出和 Playwright QA artifact 边界。
+- 2026-05-21：`rxnflow-web-workbench-mvp` 的 12 个子 feature 均为 `done`，主文档状态标为 `completed`；后续 Web 真实 bridge、browser-local artifact persistence 和 local-http QA 已由 `rxnflow-web-runtime-bridge` roadmap 承接并完成。

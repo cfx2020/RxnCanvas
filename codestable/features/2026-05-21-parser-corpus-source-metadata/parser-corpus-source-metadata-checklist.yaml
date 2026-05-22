@@ -1,0 +1,53 @@
+feature: 2026-05-21-parser-corpus-source-metadata
+status: in-progress
+created: 2026-05-21
+
+steps:
+  - action: "Design and roadmap gate：建立 feature design/checklist，把 roadmap item 标为 in-progress"
+    exit_signal: "feature checklist 与 roadmap YAML 通过"
+    status: done
+  - action: "Manifest source metadata guard：扩展 ParserFixtureSource 和 manifest loader"
+    exit_signal: "vendored-third-party 缺少 upstream path/hash/size 会失败，synthetic fixture 仍通过"
+    status: done
+  - action: "Support matrix source links：扩展 support matrix entry 和 source inventory cross-check"
+    exit_signal: "source_ids / reference_file_ids 能加载并拒绝未知或非 reference-only file id"
+    status: done
+  - action: "Docs and acceptance：回写 docs/architecture/roadmap，补验收报告并运行验证"
+    exit_signal: "checks 全 passed，roadmap item done，YAML/focused unittest/full unittest 通过"
+    status: done
+
+checks:
+  - item: "Synthetic manifest fixtures 继续无需 source_path/source_sha256/source_size_bytes"
+    status: passed
+  - item: "Temp vendored-third-party manifest source 带完整 metadata 时可加载，并能读出 path/hash/size"
+    status: passed
+  - item: "Vendored-third-party source 缺少 source_path 时被拒绝"
+    status: passed
+  - item: "Vendored-third-party source 缺少 malformed source_sha256 时被拒绝"
+    status: passed
+  - item: "Vendored-third-party source 缺少或非法 source_size_bytes 时被拒绝"
+    status: passed
+  - item: "Vendored-third-party source redistributable=false 时被拒绝"
+    status: passed
+  - item: "support-matrix.yaml 可记录 source_ids 和 reference_file_ids"
+    status: passed
+  - item: "load_parser_support_matrix(..., source_inventory=inventory) 能校验当前 support matrix"
+    status: passed
+  - item: "support matrix 引用未知 source id 时被拒绝"
+    status: passed
+  - item: "support matrix 引用未知 reference file id 时被拒绝"
+    status: passed
+  - item: "support matrix 引用 candidate/vendored file id 作为 reference_file_ids 时被拒绝"
+    status: passed
+  - item: "docs/architecture 明确 source metadata 是测试侧 guard，不新增 runtime parser 支持"
+    status: passed
+  - item: "不新增 MAPLE/cclib-data executable fixture"
+    status: passed
+  - item: "不复制第三方 example/log 文件进 tests/fixtures/parsers/files/"
+    status: passed
+  - item: "不改 parser runtime、ImportRegistryWorkflow、Platform Shell 或 Web UI"
+    status: passed
+  - item: "不升级 schema version"
+    status: passed
+  - item: "不把 source links 描述成完整版本认证"
+    status: passed

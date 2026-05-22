@@ -10,6 +10,10 @@ ID = str
 ISODateTime = str
 
 EnergyUnit = Literal["hartree", "kcal_mol", "kj_mol"]
+EnergyChannelSource = Literal["energies", "thermochemistry"]
+EnergyChannelSelectionSource = Literal["energies", "thermochemistry", "auto"]
+CorrectionKind = Literal["resonance", "solvation", "manual"]
+CorrectionPolicyMode = Literal["none", "all", "kinds", "ids"]
 ResourceKind = Literal[
     "raw_file",
     "chemical_object",
@@ -18,6 +22,15 @@ ResourceKind = Literal[
     "export_artifact",
 ]
 ReactionNodeKind = Literal["species", "transition_state", "group", "annotation"]
+ReactionNodeCompositionRole = Literal[
+    "reactant",
+    "reagent",
+    "catalyst",
+    "solvent",
+    "product",
+    "transition_state",
+    "spectator",
+]
 GraphPatchOp = Literal[
     "add_node",
     "update_node",
@@ -33,6 +46,16 @@ class EnergyValue:
     value: float
     unit: EnergyUnit
     reference: str | None = None
+
+
+@dataclass(frozen=True)
+class EnergyChannel:
+    key: str
+    source: EnergyChannelSource
+    label: str
+    unit: EnergyUnit
+    reference: str | None = None
+    object_ids: tuple[ID, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -55,10 +78,17 @@ class Provenance:
 @dataclass(frozen=True)
 class Correction:
     id: ID
-    kind: Literal["resonance", "solvation", "manual"]
+    kind: CorrectionKind
     energy: EnergyValue
     created_at: ISODateTime
     note: str | None = None
+
+
+@dataclass(frozen=True)
+class CorrectionPolicy:
+    mode: CorrectionPolicyMode
+    kinds: tuple[CorrectionKind, ...] = ()
+    ids: tuple[ID, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -80,6 +110,15 @@ class ChemicalObject(ChemicalObjectDraft):
     corrections: tuple[Correction, ...] = ()
     provenance: Provenance | None = None
     registry_fingerprint: str | None = None
+
+
+@dataclass(frozen=True)
+class ReactionNodeCompositionTerm:
+    object_id: ID
+    coefficient: float = 1.0
+    role: ReactionNodeCompositionRole | None = None
+    label: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -109,6 +148,26 @@ class ReactionNode:
     chemical_object_ids: tuple[ID, ...] = ()
     position: tuple[float, float] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    composition: tuple[ReactionNodeCompositionTerm, ...] = ()
+
+    def __post_init__(self) -> None:
+        composition = tuple(self.composition)
+        if composition:
+            object.__setattr__(self, "composition", composition)
+            object.__setattr__(
+                self,
+                "chemical_object_ids",
+                _object_ids_from_composition(composition),
+            )
+            return
+
+        object_ids = tuple(self.chemical_object_ids)
+        object.__setattr__(self, "chemical_object_ids", object_ids)
+        object.__setattr__(
+            self,
+            "composition",
+            tuple(ReactionNodeCompositionTerm(object_id) for object_id in object_ids),
+        )
 
 
 @dataclass(frozen=True)
@@ -152,6 +211,8 @@ class EnergyOptions:
     include_corrections: bool
     energy_key: str
     baseline_node_id: ID | None = None
+    energy_source: EnergyChannelSelectionSource = "auto"
+    correction_policy: CorrectionPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -194,3 +255,9 @@ class CoreFixtureResult:
     objects: tuple[ChemicalObject, ...]
     graph: ReactionGraph
     profile: EnergyProfile
+
+
+def _object_ids_from_composition(
+    composition: tuple[ReactionNodeCompositionTerm, ...],
+) -> tuple[ID, ...]:
+    return tuple(dict.fromkeys(term.object_id for term in composition if term.object_id))

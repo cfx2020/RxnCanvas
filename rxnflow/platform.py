@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import binascii
 from dataclasses import asdict, dataclass, field, is_dataclass
 from hashlib import sha256
-from pathlib import Path
+import json
+import math
+from pathlib import Path, PurePosixPath
+import tempfile
 from typing import Any, cast
 import base64
 
 from .content_store import (
+    PROJECT_CONTENT_INDEX_PATH,
+    PROJECT_MANIFEST_PATH,
     ProjectContentIndex,
     ProjectContentSnapshot,
     ProjectContentStore,
@@ -16,6 +22,7 @@ from .content_store import (
     ProjectContentValidationReport,
 )
 from .energy import EnergyProfileEngine
+from .energy_channels import energy_channel_catalog
 from .errors import RxnFlowError, RxnFlowWarning
 from .export import (
     ALLOWED_EXPORT_FORMATS,
@@ -31,17 +38,25 @@ from .import_workflow import ImportBatch, ImportFileRequest, ImportRegistryWorkf
 from .models import (
     ChemicalObject,
     CoreFixtureResult,
+    Correction,
     EnergyOptions,
     EnergyProfile,
+    EnergyChannel,
+    EnergyValue,
+    CorrectionPolicy,
     ProjectManifest,
     ReactionGraph,
+    ReactionNodeCompositionTerm,
 )
 from .parsers import ParseOptions, ParserRegistry
 from .project import ProjectStore
 from .project_bundle import ProjectBundleService, ProjectBundleSummary
 from .registry import ChemicalRegistry
 from .result import Result
-from .workspace import GraphEditorWorkspaceService, NodePlacement, WorkspaceSnapshot
+from .workspace import CanvasViewport, GraphEditorWorkspaceService, NodePlacement, WorkspaceSelection, WorkspaceSnapshot
+
+
+MAX_INLINE_IMPORT_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -141,6 +156,10 @@ class AppKernel:
         self.energy_engine = energy_engine or EnergyProfileEngine()
         self.export_service = export_service or ReportExportService()
         self._sessions: dict[str, _PlatformSessionState] = {}
+        self._temp_project_dirs: list[tempfile.TemporaryDirectory[str]] = []
+
+    def __del__(self) -> None:
+        self.cleanup()
 
     def create_session(
         self,
@@ -161,6 +180,46 @@ class AppKernel:
 
     def put_session_state(self, state: _PlatformSessionState) -> None:
         self._sessions[state.session.id] = state
+
+    def cleanup(self) -> None:
+        while self._temp_project_dirs:
+            self._temp_project_dirs.pop().cleanup()
+
+    def keep_temp_project_dir(self, temp_dir: tempfile.TemporaryDirectory[str]) -> None:
+        self._temp_project_dirs.append(temp_dir)
+
+    def ensure_import_preview_project(self, state: _PlatformSessionState) -> _PlatformSessionState | ShellResponse:
+        if state.session.project_path is not None:
+            return state
+
+        temp_dir = tempfile.TemporaryDirectory(prefix="rxnflow-web-import-preview-")
+        project_path = Path(temp_dir.name) / f"{state.session.id}-inline-preview"
+        created = self.project_store.create_project("web-inline-preview", project_path)
+        if not created.ok or created.value is None:
+            temp_dir.cleanup()
+            return _result_error_response(created)
+
+        self._temp_project_dirs.append(temp_dir)
+        updated = _PlatformSessionState(
+            session=_session_with_core_state(
+                state.session,
+                project_path=str(project_path),
+                project_id=created.value.id,
+            ),
+            objects=state.objects,
+            graph=state.graph,
+            profile=state.profile,
+            workspace=state.workspace,
+            artifacts=state.artifacts,
+            import_batch_ids=state.import_batch_ids,
+            import_batches=state.import_batches,
+            reaction_graphs=state.reaction_graphs,
+            workspaces=state.workspaces,
+            energy_profiles=state.energy_profiles,
+            export_artifact_records=state.export_artifact_records,
+        )
+        self.put_session_state(updated)
+        return updated
 
 
 class PlatformShellService:
@@ -190,10 +249,22 @@ class PlatformShellService:
             return self._run_import_preview(command)
         if command.name == "import.register_all":
             return self._run_import_register_all(command)
+        if command.name == "registry.apply_correction":
+            return self._run_registry_apply_correction(command)
         if command.name == "workspace.open":
             return self._run_workspace_open(command)
         if command.name == "workspace.add_node":
             return self._run_workspace_add_node(command)
+        if command.name == "workspace.set_node_composition":
+            return self._run_workspace_set_node_composition(command)
+        if command.name == "workspace.move_node":
+            return self._run_workspace_move_node(command)
+        if command.name == "workspace.remove":
+            return self._run_workspace_remove(command)
+        if command.name == "workspace.set_viewport":
+            return self._run_workspace_set_viewport(command)
+        if command.name == "workspace.select":
+            return self._run_workspace_select(command)
         if command.name == "workspace.connect":
             return self._run_workspace_connect(command)
         if command.name == "workspace.set_path":
@@ -280,19 +351,39 @@ class PlatformShellService:
         )
 
     def _run_project_open(self, command: ShellCommand) -> ShellResponse:
-        project_path = _required_str(command.args, "project_path")
-        if project_path is None:
-            return _invalid_input("Project path is required.", "project_path")
+        materialized = None
+        if command.args.get("content_files") is not None:
+            materialized = _materialize_project_content_files(command.args)
+            if isinstance(materialized, ShellResponse):
+                return materialized
+            project_path, temp_dir = materialized
+        else:
+            project_path = _required_str(command.args, "project_path")
+            if project_path is None:
+                return _invalid_input("Project path is required.", "project_path")
+            temp_dir = None
         load_content = _bool_arg(command.args, "load_content", default=True)
         if isinstance(load_content, ShellResponse):
+            if materialized is not None:
+                temp_dir.cleanup()
             return load_content
 
         loaded = self._kernel.project_store.load_project(project_path)
         if not loaded.ok or loaded.value is None:
+            if materialized is not None:
+                temp_dir.cleanup()
             return _result_error_response(loaded)
         if load_content:
-            return self._open_project_with_content(command.name, project_path, loaded.value)
+            response = self._open_project_with_content(command.name, project_path, loaded.value)
+            if materialized is not None:
+                if response.ok:
+                    self._kernel.keep_temp_project_dir(temp_dir)
+                else:
+                    temp_dir.cleanup()
+            return response
         session = self._kernel.create_session(project_path=project_path, project_id=loaded.value.id)
+        if materialized is not None:
+            self._kernel.keep_temp_project_dir(temp_dir)
         return ShellResponse(
             ok=True,
             data=_response_data(
@@ -423,6 +514,9 @@ class PlatformShellService:
         resolved = self._resolve_state(command.args)
         if isinstance(resolved, ShellResponse):
             return resolved
+        include_content_files = _bool_arg(command.args, "include_content_files", default=False)
+        if isinstance(include_content_files, ShellResponse):
+            return include_content_files
         state = resolved
         if state.session.project_path is None:
             return _invalid_input("Project path is required to save project content.", "project_path")
@@ -453,22 +547,31 @@ class PlatformShellService:
         saved = self._kernel.content_store.save_snapshot(state.session.project_path, snapshot)
         if not saved.ok or saved.value is None:
             return _result_error_response(saved)
+        content_files: list[dict[str, Any]] | None = None
+        if include_content_files:
+            payloads = _project_content_files_payload(state.session.project_path, saved.value)
+            if isinstance(payloads, ShellResponse):
+                return payloads
+            content_files = payloads
         self._kernel.put_session_state(saved_state)
+        payload = {
+            "project_path": state.session.project_path,
+            "saved": _content_index_summary(saved.value),
+            "object_count": len(snapshot.chemical_objects),
+            "graph_count": len(snapshot.reaction_graphs),
+            "workspace_count": len(snapshot.workspaces),
+            "profile_count": len(snapshot.energy_profiles),
+            "artifact_count": len(snapshot.export_artifacts),
+            "import_batch_count": len(snapshot.import_batches),
+        }
+        if content_files is not None:
+            payload["content_files"] = content_files
         return ShellResponse(
             ok=True,
             data=_response_data(
                 command.name,
                 saved_state.session,
-                {
-                    "project_path": state.session.project_path,
-                    "saved": _content_index_summary(saved.value),
-                    "object_count": len(snapshot.chemical_objects),
-                    "graph_count": len(snapshot.reaction_graphs),
-                    "workspace_count": len(snapshot.workspaces),
-                    "profile_count": len(snapshot.energy_profiles),
-                    "artifact_count": len(snapshot.export_artifacts),
-                    "import_batch_count": len(snapshot.import_batches),
-                },
+                payload,
                 state=saved_state,
             ),
             warnings=artifact_warnings,
@@ -525,18 +628,24 @@ class PlatformShellService:
             return resolved
         state = resolved
         if state.session.project_path is None:
-            return _invalid_input("Project path is required.", "project_path")
+            state = self._kernel.ensure_import_preview_project(state)
+            if isinstance(state, ShellResponse):
+                return state
 
-        source_paths = _source_paths(command.args)
-        if not source_paths:
-            return _invalid_input("At least one source path is required.", "source_path")
-        parse_options = _parse_options(command.args)
-        imported = self._kernel.import_workflow.import_files(
-            state.session.project_path,
-            tuple(ImportFileRequest(path, parse_options) for path in source_paths),
-        )
-        if not imported.ok or imported.value is None:
-            return _result_error_response(imported)
+        prepared = _import_file_requests(command.args)
+        if isinstance(prepared, ShellResponse):
+            return prepared
+        requests, temp_dir = prepared
+        try:
+            imported = self._kernel.import_workflow.import_files(
+                state.session.project_path,
+                requests,
+            )
+            if not imported.ok or imported.value is None:
+                return _result_error_response(imported)
+        finally:
+            if temp_dir is not None:
+                temp_dir.cleanup()
 
         updated = _PlatformSessionState(
             session=state.session,
@@ -669,17 +778,126 @@ class PlatformShellService:
             return _invalid_input("Node kind is required.", "kind")
         if label is None:
             return _invalid_input("Node label is required.", "label")
+        composition = _optional_composition_terms(command.args.get("composition"))
+        if isinstance(composition, ShellResponse):
+            return composition
         placement = NodePlacement(
             kind=kind,  # type: ignore[arg-type]
             label=label,
             chemical_object_ids=_tuple_of_str(command.args.get("chemical_object_ids", ())),
             position=_position(command.args.get("position")),
             metadata=dict(command.args.get("metadata") or {}),
+            composition=composition,
         )
         updated = self._kernel.workspace_service.add_node(
             state.session.project_id or "",
             state.workspace.workspace_id,
             placement,
+        )
+        if not updated.ok or updated.value is None:
+            return _result_error_response(updated)
+        return self._store_workspace(command.name, state, updated.value)
+
+    def _run_workspace_set_node_composition(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        if state.workspace is None:
+            return _invalid_input("Workspace must be opened before setting node composition.", "workspace_id")
+        node_id = _required_str(command.args, "node_id")
+        if node_id is None:
+            return _invalid_input("Node id is required.", "node_id")
+        composition_result = _required_composition_terms(command.args.get("composition"))
+        if isinstance(composition_result, ShellResponse):
+            return composition_result
+        updated = self._kernel.workspace_service.set_node_composition(
+            state.session.project_id or "",
+            state.workspace.workspace_id,
+            node_id,
+            composition_result,
+        )
+        if not updated.ok or updated.value is None:
+            return _result_error_response(updated)
+        return self._store_workspace(command.name, state, updated.value)
+
+    def _run_workspace_move_node(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        if state.workspace is None:
+            return _invalid_input("Workspace must be opened before moving nodes.", "workspace_id")
+        node_id = _required_str(command.args, "node_id")
+        if node_id is None:
+            return _invalid_input("Node id is required.", "node_id")
+        position_result = _required_position(command.args.get("position"))
+        if isinstance(position_result, ShellResponse):
+            return position_result
+        updated = self._kernel.workspace_service.move_node(
+            state.session.project_id or "",
+            state.workspace.workspace_id,
+            node_id,
+            position_result,
+        )
+        if not updated.ok or updated.value is None:
+            return _result_error_response(updated)
+        return self._store_workspace(command.name, state, updated.value)
+
+    def _run_workspace_remove(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        if state.workspace is None:
+            return _invalid_input("Workspace must be opened before removing graph items.", "workspace_id")
+        node_ids = _tuple_of_str(command.args.get("node_ids", ()))
+        edge_ids = _tuple_of_str(command.args.get("edge_ids", ()))
+        if not node_ids and not edge_ids:
+            return _invalid_input("At least one graph node or edge id is required.", "selection")
+        updated = self._kernel.workspace_service.remove_items(
+            state.session.project_id or "",
+            state.workspace.workspace_id,
+            node_ids,
+            edge_ids,
+        )
+        if not updated.ok or updated.value is None:
+            return _result_error_response(updated)
+        return self._store_workspace(command.name, state, updated.value)
+
+    def _run_workspace_set_viewport(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        if state.workspace is None:
+            return _invalid_input("Workspace must be opened before setting viewport.", "workspace_id")
+        viewport = _required_viewport(command.args.get("viewport"))
+        if isinstance(viewport, ShellResponse):
+            return viewport
+        updated = self._kernel.workspace_service.set_viewport(
+            state.session.project_id or "",
+            state.workspace.workspace_id,
+            viewport,
+        )
+        if not updated.ok or updated.value is None:
+            return _result_error_response(updated)
+        return self._store_workspace(command.name, state, updated.value)
+
+    def _run_workspace_select(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        if state.workspace is None:
+            return _invalid_input("Workspace must be opened before selecting graph items.", "workspace_id")
+        selection = _required_workspace_selection(command.args.get("selection"))
+        if isinstance(selection, ShellResponse):
+            return selection
+        updated = self._kernel.workspace_service.select(
+            state.session.project_id or "",
+            state.workspace.workspace_id,
+            selection,
         )
         if not updated.ok or updated.value is None:
             return _result_error_response(updated)
@@ -755,6 +973,8 @@ class PlatformShellService:
             include_corrections=bool(command.args.get("include_corrections", False)),
             energy_key=str(command.args.get("energy_key") or "electronic"),
             baseline_node_id=command.args.get("baseline_node_id"),
+            energy_source=str(command.args.get("energy_source") or "auto"),  # type: ignore[arg-type]
+            correction_policy=_correction_policy_arg(command.args.get("correction_policy")),
         )
         profile = self._kernel.energy_engine.compute_profile(
             state.session.project_id or "",
@@ -868,6 +1088,84 @@ class PlatformShellService:
             warnings=warnings,
         )
 
+    def _run_registry_apply_correction(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        object_id = _required_str(command.args, "object_id")
+        if object_id is None:
+            return _invalid_input("Object id is required.", "object_id")
+        correction = _required_correction(command.args.get("correction"), object_id)
+        if isinstance(correction, ShellResponse):
+            return correction
+
+        restored = self._kernel.chemical_registry.restore_objects(
+            state.session.project_id or "",
+            state.objects,
+        )
+        if not restored.ok:
+            return _result_error_response(restored)
+        updated_object = self._kernel.chemical_registry.apply_correction(
+            state.session.project_id or "",
+            object_id,
+            correction,
+        )
+        if not updated_object.ok or updated_object.value is None:
+            if updated_object.error is not None and updated_object.error.target == correction.id:
+                return ShellResponse(
+                    ok=False,
+                    error=_error_to_dict(
+                        RxnFlowError(
+                            updated_object.error.code,
+                            updated_object.error.message,
+                            target="correction.id",
+                            details=updated_object.error.details,
+                        )
+                    ),
+                    warnings=tuple(_warning_to_dict(warning) for warning in updated_object.warnings),
+                )
+            if updated_object.error is not None and updated_object.error.target == object_id:
+                return ShellResponse(
+                    ok=False,
+                    error=_error_to_dict(
+                        RxnFlowError(
+                            updated_object.error.code,
+                            updated_object.error.message,
+                            target="object_id",
+                            details=updated_object.error.details,
+                        )
+                    ),
+                    warnings=tuple(_warning_to_dict(warning) for warning in updated_object.warnings),
+                )
+            return _result_error_response(updated_object)
+
+        updated = _PlatformSessionState(
+            session=state.session,
+            objects=_replace_object(state.objects, updated_object.value),
+            graph=state.graph,
+            profile=state.profile,
+            workspace=state.workspace,
+            artifacts=state.artifacts,
+            import_batch_ids=state.import_batch_ids,
+            import_batches=state.import_batches,
+            reaction_graphs=state.reaction_graphs,
+            workspaces=state.workspaces,
+            energy_profiles=state.energy_profiles,
+            export_artifact_records=state.export_artifact_records,
+        )
+        self._kernel.put_session_state(updated)
+        return ShellResponse(
+            ok=True,
+            data=_response_data(
+                command.name,
+                updated.session,
+                {"object": _object_summary(updated_object.value)},
+                state=updated,
+            ),
+            warnings=tuple(_warning_to_dict(warning) for warning in updated_object.warnings),
+        )
+
     def _store_workspace(
         self,
         command_name: str,
@@ -952,9 +1250,13 @@ def handle_platform_payload(
 
 
 def _invalid_input(message: str, target: str) -> ShellResponse:
+    return _shell_error("invalid_input", message, target)
+
+
+def _shell_error(code: str, message: str, target: str) -> ShellResponse:
     return ShellResponse(
         ok=False,
-        error=_error_to_dict(RxnFlowError("invalid_input", message, target=target)),
+        error=_error_to_dict(RxnFlowError(code, message, target=target)),
     )
 
 
@@ -1086,8 +1388,133 @@ def _source_paths(args: dict[str, Any]) -> tuple[str, ...]:
     return (str(source_path),) if source_path else ()
 
 
-def _parse_options(args: dict[str, Any]) -> ParseOptions | None:
-    expected_format = args.get("expected_format")
+def _import_file_requests(
+    args: dict[str, Any],
+) -> tuple[tuple[ImportFileRequest, ...], tempfile.TemporaryDirectory[str] | None] | ShellResponse:
+    if "sources" in args or "source" in args:
+        return _source_import_file_requests(args)
+
+    source_paths = _source_paths(args)
+    if not source_paths:
+        return _invalid_input("At least one source path is required.", "source_path")
+    parse_options = _parse_options(args)
+    return tuple(ImportFileRequest(path, parse_options) for path in source_paths), None
+
+
+def _source_import_file_requests(
+    args: dict[str, Any],
+) -> tuple[tuple[ImportFileRequest, ...], tempfile.TemporaryDirectory[str] | None] | ShellResponse:
+    sources = _import_preview_sources(args)
+    if isinstance(sources, ShellResponse):
+        return sources
+    if not sources:
+        return _invalid_input("At least one import preview source is required.", "source")
+
+    temp_dir: tempfile.TemporaryDirectory[str] | None = None
+    requests: list[ImportFileRequest] = []
+    for index, source in enumerate(sources):
+        request = _source_import_file_request(args, source, index, temp_dir)
+        if isinstance(request, ShellResponse):
+            if temp_dir is not None:
+                temp_dir.cleanup()
+            return request
+        import_request, next_temp_dir = request
+        temp_dir = next_temp_dir
+        requests.append(import_request)
+    return tuple(requests), temp_dir
+
+
+def _import_preview_sources(args: dict[str, Any]) -> tuple[dict[str, Any], ...] | ShellResponse:
+    raw_sources = args.get("sources")
+    if raw_sources is not None:
+        if not isinstance(raw_sources, list):
+            return _invalid_input("Import preview sources must be a list.", "source")
+        sources: list[dict[str, Any]] = []
+        for source in raw_sources:
+            if not isinstance(source, dict):
+                return _invalid_input("Import preview source must be a JSON object.", "source")
+            sources.append(dict(source))
+        return tuple(sources)
+
+    raw_source = args.get("source")
+    if raw_source is None:
+        return ()
+    if not isinstance(raw_source, dict):
+        return _invalid_input("Import preview source must be a JSON object.", "source")
+    return (dict(raw_source),)
+
+
+def _source_import_file_request(
+    args: dict[str, Any],
+    source: dict[str, Any],
+    index: int,
+    temp_dir: tempfile.TemporaryDirectory[str] | None,
+) -> tuple[ImportFileRequest, tempfile.TemporaryDirectory[str] | None] | ShellResponse:
+    kind = source.get("kind")
+    if kind == "path":
+        source_path = _required_str(source, "source_path")
+        if source_path is None:
+            return _invalid_input("Path import preview source requires source_path.", "source")
+        return ImportFileRequest(source_path, _parse_options(args, source)), temp_dir
+
+    if kind == "inline_bytes":
+        filename = _required_str(source, "filename")
+        bytes_base64 = source.get("bytes_base64")
+        if filename is None or not isinstance(bytes_base64, str) or not bytes_base64:
+            return _invalid_input("Inline import preview source requires filename and bytes_base64.", "source")
+        try:
+            payload = base64.b64decode(bytes_base64.encode("ascii"), validate=True)
+        except (UnicodeEncodeError, binascii.Error):
+            return _invalid_input("Inline import preview source bytes_base64 must be valid base64.", "bytes_base64")
+        if len(payload) > MAX_INLINE_IMPORT_BYTES:
+            return _shell_error(
+                "payload_too_large",
+                f"Inline import preview payload exceeds {MAX_INLINE_IMPORT_BYTES} bytes.",
+                "bytes_base64",
+            )
+        safe_filename = _safe_inline_filename(filename)
+        if safe_filename is None:
+            return _invalid_input("Inline import preview source filename is invalid.", "source")
+        active_temp_dir = temp_dir or tempfile.TemporaryDirectory(prefix="rxnflow-import-preview-")
+        source_dir = Path(active_temp_dir.name) / str(index)
+        source_path = source_dir / safe_filename
+        try:
+            source_dir.mkdir(parents=True, exist_ok=True)
+            source_path.write_bytes(payload)
+        except OSError as exc:
+            if temp_dir is None:
+                active_temp_dir.cleanup()
+            return _shell_error(
+                "internal_error",
+                f"Failed to stage inline import preview payload: {exc}.",
+                "source",
+            )
+        return ImportFileRequest(source_path, _parse_options(args, source)), active_temp_dir
+
+    if kind == "browser_storage":
+        storage_path = _required_str(source, "storage_path")
+        if storage_path is None:
+            return _invalid_input("Browser storage import preview source requires storage_path.", "source")
+        return _shell_error(
+            "storage_object_missing",
+            "Browser storage import preview sources are not available in the Python bridge.",
+            "storage_path",
+        )
+
+    return _invalid_input("Import preview source kind is not supported.", "source")
+
+
+def _safe_inline_filename(filename: str) -> str | None:
+    basename = filename.replace("\\", "/").split("/")[-1].strip()
+    if basename in {"", ".", ".."}:
+        return None
+    return basename
+
+
+def _parse_options(args: dict[str, Any], source: dict[str, Any] | None = None) -> ParseOptions | None:
+    expected_format = source.get("expected_format") if source is not None else None
+    if expected_format is None:
+        expected_format = args.get("expected_format")
     strict = args.get("strict")
     if expected_format is None and strict is None:
         return None
@@ -1144,6 +1571,15 @@ def _upsert_energy_profile(
     return tuple(item if item.id != profile.id else profile for item in profiles) if any(
         item.id == profile.id for item in profiles
     ) else profiles + (profile,)
+
+
+def _replace_object(
+    objects: tuple[ChemicalObject, ...],
+    obj: ChemicalObject,
+) -> tuple[ChemicalObject, ...]:
+    return tuple(item if item.id != obj.id else obj for item in objects) if any(
+        item.id == obj.id for item in objects
+    ) else objects + (obj,)
 
 
 def _collect_export_artifact_records(
@@ -1269,6 +1705,125 @@ def _snapshot_from_session_state(state: _PlatformSessionState) -> ProjectContent
     )
 
 
+def _materialize_project_content_files(
+    args: dict[str, Any],
+) -> tuple[str, tempfile.TemporaryDirectory[str]] | ShellResponse:
+    raw_files = args.get("content_files")
+    if not isinstance(raw_files, list) or not raw_files:
+        return _invalid_input("Project content files must be a non-empty list.", "content_files")
+
+    temp_dir = tempfile.TemporaryDirectory(prefix="rxnflow-web-project-open-")
+    project_path = Path(temp_dir.name) / "browser-project"
+    seen_paths: set[str] = set()
+    try:
+        for index, raw_file in enumerate(raw_files):
+            if not isinstance(raw_file, dict):
+                temp_dir.cleanup()
+                return _invalid_input("Project content file must be a JSON object.", "content_files")
+            path = _required_str(raw_file, "path")
+            bytes_base64 = raw_file.get("bytes_base64")
+            if path is None or not isinstance(bytes_base64, str) or not bytes_base64:
+                temp_dir.cleanup()
+                return _invalid_input("Project content file requires path and bytes_base64.", "content_files")
+            safe_path = _safe_project_content_path(path)
+            if safe_path is None:
+                temp_dir.cleanup()
+                return _invalid_input("Project content file path must be project-relative POSIX.", "path")
+            if safe_path in seen_paths:
+                temp_dir.cleanup()
+                return _invalid_input("Project content file path is duplicated.", "path")
+            seen_paths.add(safe_path)
+            try:
+                payload = base64.b64decode(bytes_base64.encode("ascii"), validate=True)
+            except (UnicodeEncodeError, binascii.Error):
+                temp_dir.cleanup()
+                return _invalid_input("Project content file bytes_base64 must be valid base64.", "bytes_base64")
+            checksum = raw_file.get("checksum")
+            computed_checksum = f"sha256:{sha256(payload).hexdigest()}"
+            if checksum is not None and str(checksum) != computed_checksum:
+                temp_dir.cleanup()
+                return _shell_error(
+                    "checksum_mismatch",
+                    "Project content file checksum does not match bytes.",
+                    "checksum",
+                )
+            destination = project_path / safe_path
+            try:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(payload)
+            except OSError as exc:
+                temp_dir.cleanup()
+                return _shell_error(
+                    "internal_error",
+                    f"Failed to materialize project content file: {exc}.",
+                    f"content_files[{index}]",
+                )
+    except Exception:
+        temp_dir.cleanup()
+        raise
+
+    if PROJECT_MANIFEST_PATH not in seen_paths:
+        temp_dir.cleanup()
+        return _invalid_input("Project content files require .rxnflow/manifest.json.", "content_files")
+    return str(project_path), temp_dir
+
+
+def _project_content_files_payload(
+    project_path: str,
+    index: ProjectContentIndex,
+) -> list[dict[str, Any]] | ShellResponse:
+    paths = [PROJECT_MANIFEST_PATH, PROJECT_CONTENT_INDEX_PATH, *(file.path for file in index.files)]
+    files: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+    root = Path(project_path)
+    for path in paths:
+        if path in seen_paths:
+            continue
+        seen_paths.add(path)
+        safe_path = _safe_project_content_path(path)
+        if safe_path is None:
+            return _invalid_input("Project content file path must be project-relative POSIX.", "path")
+        target = root / safe_path
+        try:
+            payload = target.read_bytes()
+        except OSError as exc:
+            return _shell_error(
+                "internal_error",
+                f"Failed to read saved project content file: {exc}.",
+                safe_path,
+            )
+        files.append(
+            {
+                "path": safe_path,
+                "bytes_base64": base64.b64encode(payload).decode("ascii"),
+                "checksum": f"sha256:{sha256(payload).hexdigest()}",
+                "byte_size": len(payload),
+                "metadata": _project_content_file_metadata(safe_path, index),
+            }
+        )
+    return files
+
+
+def _project_content_file_metadata(path: str, index: ProjectContentIndex) -> dict[str, Any]:
+    if path == PROJECT_MANIFEST_PATH:
+        return {"kind": "project_manifest"}
+    if path == PROJECT_CONTENT_INDEX_PATH:
+        return {"kind": "project_content_index"}
+    for file in index.files:
+        if file.path == path:
+            return {"kind": file.kind}
+    return {}
+
+
+def _safe_project_content_path(path: str) -> str | None:
+    if not isinstance(path, str) or path.strip() == "" or "\\" in path:
+        return None
+    posix_path = PurePosixPath(path)
+    if posix_path.is_absolute() or str(posix_path) in {"", "."} or ".." in posix_path.parts:
+        return None
+    return str(posix_path)
+
+
 def _tuple_of_str(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
@@ -1279,12 +1834,199 @@ def _tuple_of_str(value: Any) -> tuple[str, ...]:
     return (str(value),)
 
 
+def _optional_composition_terms(value: Any) -> tuple[ReactionNodeCompositionTerm, ...] | ShellResponse:
+    result = _composition_terms(value, required=False)
+    return result
+
+
+def _required_composition_terms(value: Any) -> tuple[ReactionNodeCompositionTerm, ...] | ShellResponse:
+    return _composition_terms(value, required=True)
+
+
+def _correction_policy_arg(value: Any) -> CorrectionPolicy | None:
+    if value is None or not isinstance(value, dict):
+        return None
+    mode = value.get("mode")
+    kinds = _tuple_of_str(value.get("kinds", ()))
+    ids = _tuple_of_str(value.get("ids", ()))
+    return CorrectionPolicy(mode=str(mode or ""), kinds=kinds, ids=ids)  # type: ignore[arg-type]
+
+
+SUPPORTED_CORRECTION_KINDS = frozenset({"resonance", "solvation", "manual"})
+SUPPORTED_CORRECTION_UNITS = frozenset({"hartree", "kcal_mol", "kj_mol"})
+CORRECTION_CREATED_AT = "1970-01-01T00:00:00Z"
+
+
+def _required_correction(value: Any, object_id: str) -> Correction | ShellResponse:
+    if not isinstance(value, dict):
+        return _invalid_input("Correction must be an object.", "correction")
+    kind = value.get("kind")
+    if kind not in SUPPORTED_CORRECTION_KINDS:
+        return _invalid_input("Correction kind is unsupported.", "correction.kind")
+    energy = _required_correction_energy(value.get("energy"))
+    if isinstance(energy, ShellResponse):
+        return energy
+
+    note = value.get("note")
+    reference = energy.reference
+    correction_id = value.get("id")
+    if correction_id is None or str(correction_id) == "":
+        resolved_id = _generated_correction_id(
+            object_id,
+            str(kind),
+            energy,
+            str(note) if note is not None else None,
+        )
+    else:
+        resolved_id = str(correction_id)
+    return Correction(
+        id=resolved_id,
+        kind=str(kind),  # type: ignore[arg-type]
+        energy=EnergyValue(energy.value, energy.unit, reference=reference),
+        created_at=CORRECTION_CREATED_AT,
+        note=str(note) if note is not None else None,
+    )
+
+
+def _required_correction_energy(value: Any) -> EnergyValue | ShellResponse:
+    if not isinstance(value, dict):
+        return _invalid_input("Correction energy must be an object.", "correction.energy")
+    unit = value.get("unit")
+    if unit not in SUPPORTED_CORRECTION_UNITS:
+        return _invalid_input("Correction energy unit is unsupported.", "correction.energy.unit")
+    try:
+        numeric_value = float(value.get("value"))
+    except (TypeError, ValueError):
+        return _invalid_input("Correction energy value must be numeric.", "correction.energy.value")
+    if not math.isfinite(numeric_value):
+        return _invalid_input("Correction energy value must be finite.", "correction.energy.value")
+    reference = value.get("reference")
+    return EnergyValue(
+        value=numeric_value,
+        unit=str(unit),  # type: ignore[arg-type]
+        reference=str(reference) if reference is not None else None,
+    )
+
+
+def _generated_correction_id(
+    object_id: str,
+    kind: str,
+    energy: EnergyValue,
+    note: str | None,
+) -> str:
+    payload = {
+        "object_id": object_id,
+        "kind": kind,
+        "energy": {
+            "value": energy.value,
+            "unit": energy.unit,
+            "reference": energy.reference,
+        },
+        "note": note,
+    }
+    digest = sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()[:12]
+    return f"corr-{_id_slug(object_id)}-{kind}-{digest}"
+
+
+def _id_slug(value: str) -> str:
+    slug = "".join(char.lower() if char.isalnum() else "-" for char in value.strip())
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug.strip("-") or "object"
+
+
+def _composition_terms(
+    value: Any,
+    *,
+    required: bool,
+) -> tuple[ReactionNodeCompositionTerm, ...] | ShellResponse:
+    if value is None:
+        return _invalid_input("Node composition is required.", "composition") if required else ()
+    if not isinstance(value, list):
+        return _invalid_input("Node composition must be a list.", "composition")
+    if required and not value:
+        return _invalid_input("Node composition must include at least one term.", "composition")
+
+    terms: list[ReactionNodeCompositionTerm] = []
+    for item in value:
+        if not isinstance(item, dict):
+            return _invalid_input("Node composition term must be an object.", "composition")
+        object_id = item.get("object_id")
+        if not isinstance(object_id, str) or not object_id:
+            return _invalid_input("Node composition term object_id is required.", "composition")
+        raw_coefficient = item.get("coefficient", 1.0)
+        try:
+            coefficient = float(raw_coefficient)
+        except (TypeError, ValueError):
+            return _invalid_input("Node composition coefficient must be numeric.", "composition")
+        if not math.isfinite(coefficient) or coefficient == 0:
+            return _invalid_input(
+                "Node composition coefficient must be a non-zero finite number.",
+                "composition",
+            )
+        metadata = item.get("metadata", {})
+        if not isinstance(metadata, dict):
+            return _invalid_input("Node composition metadata must be an object.", "composition")
+        role = item.get("role")
+        label = item.get("label")
+        terms.append(
+            ReactionNodeCompositionTerm(
+                object_id=object_id,
+                coefficient=coefficient,
+                role=str(role) if role is not None else None,  # type: ignore[arg-type]
+                label=str(label) if label is not None else None,
+                metadata=dict(metadata),
+            )
+        )
+    return tuple(terms)
+
+
 def _position(value: Any) -> tuple[float, float] | None:
     if value is None:
         return None
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         return None
     return (float(value[0]), float(value[1]))
+
+
+def _required_position(value: Any) -> tuple[float, float] | ShellResponse:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return _invalid_input("Node position must contain x and y.", "position")
+    try:
+        position = (float(value[0]), float(value[1]))
+    except (TypeError, ValueError):
+        return _invalid_input("Node position must contain finite x and y numbers.", "position")
+    if not math.isfinite(position[0]) or not math.isfinite(position[1]):
+        return _invalid_input("Node position must contain finite x and y numbers.", "position")
+    return position
+
+
+def _required_viewport(value: Any) -> CanvasViewport | ShellResponse:
+    if not isinstance(value, dict):
+        return _invalid_input("Workspace viewport must be an object.", "viewport")
+    try:
+        viewport = CanvasViewport(
+            x=float(value.get("x")),
+            y=float(value.get("y")),
+            zoom=float(value.get("zoom")),
+        )
+    except (TypeError, ValueError):
+        return _invalid_input("Workspace viewport must contain finite x, y and zoom numbers.", "viewport")
+    if not math.isfinite(viewport.x) or not math.isfinite(viewport.y) or not math.isfinite(viewport.zoom):
+        return _invalid_input("Workspace viewport must contain finite x, y and zoom numbers.", "viewport")
+    if viewport.zoom <= 0:
+        return _invalid_input("Workspace viewport zoom must be positive.", "viewport.zoom")
+    return viewport
+
+
+def _required_workspace_selection(value: Any) -> WorkspaceSelection | ShellResponse:
+    if not isinstance(value, dict):
+        return _invalid_input("Workspace selection must be an object.", "selection")
+    return WorkspaceSelection(
+        node_ids=_tuple_of_str(value.get("node_ids", ())),
+        edge_ids=_tuple_of_str(value.get("edge_ids", ())),
+        path_ids=_tuple_of_str(value.get("path_ids", ())),
+    )
 
 
 def _session_with_core_state(
@@ -1525,8 +2267,26 @@ def _object_summary(obj: ChemicalObject) -> dict[str, Any]:
     return {
         "id": obj.id,
         "label": obj.label,
+        "formula": obj.formula,
+        "charge": obj.charge,
+        "spin_multiplicity": obj.spin_multiplicity,
+        "method": obj.method,
         "source_file_id": obj.source_file_id,
         "energy_keys": sorted(obj.energies),
+        "thermochemistry_keys": sorted(obj.thermochemistry),
+        "energy_channels": [_energy_channel_summary(channel) for channel in energy_channel_catalog((obj,))],
+        "correction_count": len(obj.corrections),
+        "corrections": [_correction_summary(correction) for correction in obj.corrections],
+        "provenance": (
+            {
+                "source_file_id": obj.provenance.source_file_id,
+                "parser_id": obj.provenance.parser_id,
+                "parser_version": obj.provenance.parser_version,
+                "parsed_at": obj.provenance.parsed_at,
+            }
+            if obj.provenance is not None
+            else None
+        ),
     }
 
 
@@ -1546,6 +2306,9 @@ def _profile_summary(profile: EnergyProfile) -> dict[str, Any]:
         "graph_id": profile.graph_id,
         "path_id": profile.path_id,
         "point_count": len(profile.points),
+        "energy_key": profile.options.energy_key,
+        "energy_source": profile.options.energy_source,
+        "correction_policy": _correction_policy_summary(profile.options.correction_policy),
         "output_unit": profile.options.output_unit,
         "baseline_node_id": profile.options.baseline_node_id,
         "points": [
@@ -1557,6 +2320,37 @@ def _profile_summary(profile: EnergyProfile) -> dict[str, Any]:
             }
             for point in profile.points
         ],
+    }
+
+
+def _energy_channel_summary(channel: EnergyChannel) -> dict[str, Any]:
+    return {
+        "key": channel.key,
+        "source": channel.source,
+        "label": channel.label,
+        "unit": channel.unit,
+        "reference": channel.reference,
+        "object_ids": list(channel.object_ids),
+    }
+
+
+def _correction_summary(correction: Correction) -> dict[str, Any]:
+    return {
+        "id": correction.id,
+        "kind": correction.kind,
+        "energy": _energy_value_summary(correction.energy),
+        "created_at": correction.created_at,
+        "note": correction.note,
+    }
+
+
+def _correction_policy_summary(policy: CorrectionPolicy | None) -> dict[str, Any] | None:
+    if policy is None:
+        return None
+    return {
+        "mode": policy.mode,
+        "kinds": list(policy.kinds),
+        "ids": list(policy.ids),
     }
 
 
@@ -1606,6 +2400,16 @@ def _workspace_summary(workspace: WorkspaceSnapshot) -> dict[str, Any]:
         "workspace_id": workspace.workspace_id,
         "project_id": workspace.project_id,
         "active_path_id": workspace.active_path_id,
+        "selection": {
+            "node_ids": list(workspace.selection.node_ids),
+            "edge_ids": list(workspace.selection.edge_ids),
+            "path_ids": list(workspace.selection.path_ids),
+        },
+        "viewport": {
+            "x": workspace.viewport.x,
+            "y": workspace.viewport.y,
+            "zoom": workspace.viewport.zoom,
+        },
         "palette": [
             {
                 "object_id": item.object_id,
@@ -1640,6 +2444,7 @@ def _graph_detail(graph: ReactionGraph) -> dict[str, Any]:
             "kind": node.kind,
             "label": node.label,
             "chemical_object_ids": list(node.chemical_object_ids),
+            "composition": [_composition_term_summary(term) for term in node.composition],
             "position": list(node.position) if node.position is not None else None,
             "metadata": _json_safe(node.metadata),
         }
@@ -1660,6 +2465,16 @@ def _graph_detail(graph: ReactionGraph) -> dict[str, Any]:
         for path in graph.paths
     ]
     return detail
+
+
+def _composition_term_summary(term: ReactionNodeCompositionTerm) -> dict[str, Any]:
+    return {
+        "object_id": term.object_id,
+        "coefficient": term.coefficient,
+        "role": term.role,
+        "label": term.label,
+        "metadata": _json_safe(term.metadata),
+    }
 
 
 def _energy_value_summary(value: Any) -> dict[str, Any] | None:

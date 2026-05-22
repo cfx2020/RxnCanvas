@@ -4,4 +4,8 @@ __pycache__/
 node_modules/
 web/dist/
 web/.vite/
+web/playwright-report/
+web/test-results/
+web/playwright-report-local-http/
+web/test-results-local-http/
 *.tsbuildinfo

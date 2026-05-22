@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import math
 
 from .errors import RxnFlowError
 from .models import (
@@ -146,7 +147,7 @@ def build_fixture_graph(
     object_ids = {obj.id for obj in objects}
 
     for node in fixture_graph.nodes:
-        for object_id in node.chemical_object_ids:
+        for object_id in _composition_object_ids(node):
             if object_id not in object_ids:
                 return err(
                     RxnFlowError(
@@ -262,7 +263,7 @@ def _update_node(
     for index, node in enumerate(nodes):
         if node.id != node_id:
             continue
-        allowed = {"kind", "label", "chemical_object_ids", "position", "metadata"}
+        allowed = {"kind", "label", "chemical_object_ids", "composition", "position", "metadata"}
         unknown = set(patch) - allowed
         if unknown:
             return _invalid_input(f"Unsupported node patch field '{sorted(unknown)[0]}'.", node_id)
@@ -344,19 +345,40 @@ def _validate_node(
     node: ReactionNode,
     object_ids: set[ID] | frozenset[ID] | None,
 ) -> Result[None]:
-    if node.kind in {"species", "transition_state"} and not node.chemical_object_ids:
+    composition_result = _validate_composition(node)
+    if not composition_result.ok:
+        return composition_result
+    if node.kind in {"species", "transition_state"} and not node.composition:
         return _graph_invalid(
             f"Node '{node.id}' must reference at least one chemical object.",
             node.id,
         )
     if object_ids is not None:
-        for object_id in node.chemical_object_ids:
+        for object_id in _composition_object_ids(node):
             if object_id not in object_ids:
                 return _graph_invalid(
                     f"Node '{node.id}' references missing chemical object '{object_id}'.",
-                    node.id,
+                    "object_id",
                 )
     return ok(None)
+
+
+def _validate_composition(node: ReactionNode) -> Result[None]:
+    for term in node.composition:
+        if not term.object_id:
+            return _invalid_input("Reaction node composition term object_id is required.", "composition")
+        if not isinstance(term.coefficient, (int, float)):
+            return _invalid_input("Reaction node composition coefficient must be numeric.", "composition")
+        if not math.isfinite(float(term.coefficient)) or float(term.coefficient) == 0:
+            return _invalid_input(
+                "Reaction node composition coefficient must be a non-zero finite number.",
+                "composition",
+            )
+    return ok(None)
+
+
+def _composition_object_ids(node: ReactionNode) -> tuple[ID, ...]:
+    return tuple(term.object_id for term in node.composition)
 
 
 def _validate_restore_graph(

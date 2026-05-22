@@ -1,0 +1,67 @@
+roadmap: rxnflow-energy-chemistry-semantics
+created: 2026-05-22
+
+items:
+  - slug: reaction-node-stoichiometry-contract
+    description: 为 ReactionNode 增加 composition terms、workspace.set_node_composition 和旧 chemical_object_ids 兼容投影
+    depends_on: []
+    status: done
+    feature: 2026-05-22-reaction-node-stoichiometry-contract
+    minimal_loop: true
+    notes: 已落地 ReactionNodeCompositionTerm、composition 权威字段、chemical_object_ids 兼容投影、workspace.set_node_composition、reaction-graphs-v1 可选 composition 保存/旧数据 coefficient 1 兼容读取、Shell/Web graph projection；未改变 Energy Engine coefficient 计算
+
+  - slug: energy-channel-catalog
+    description: 统一 ChemicalObject energies 与 thermochemistry 的 channel catalog 和 EnergyOptions source 选择
+    depends_on: [reaction-node-stoichiometry-contract]
+    status: done
+    feature: 2026-05-22-energy-channel-catalog
+    minimal_loop: false
+    notes: 已落地 EnergyChannelSource/EnergyChannel、EnergyOptions.energy_source、energies/thermochemistry resolver、auto fallback、同名 ambiguity 错误、energy-profiles-v1 可选 energy_source 保存/旧数据 auto 兼容读取、Shell/Web object energy_channels 与 profile source 投影；未改变 composition coefficient 或 correction policy 计算
+
+  - slug: energy-expression-engine
+    description: 让 Energy Engine 按 composition coefficient、energy channel 和 correction policy 计算节点能量
+    depends_on: [reaction-node-stoichiometry-contract, energy-channel-catalog]
+    status: done
+    feature: 2026-05-22-energy-expression-engine
+    minimal_loop: false
+    notes: 已落地 EnergyOptions.correction_policy、composition coefficient 节点能量计算、重复 term 顺序求和、thermochemistry source 与 coefficient 组合、correction policy none/all/kinds/ids、energy-profiles-v1 可选 correction_policy 保存/旧数据 null 兼容读取、Shell/Web correction_policy 投影；未落地 EnergyPoint.expression/provenance 持久化或 Web selector UI
+
+  - slug: correction-command-and-ui
+    description: 增加 registry.apply_correction Shell command 和 Web Object Registry 校正项表单
+    depends_on: [reaction-node-stoichiometry-contract]
+    status: done
+    feature: 2026-05-22-correction-command-and-ui
+    minimal_loop: false
+    notes: 已落地 registry.apply_correction、Shell payload validation、稳定缺省 correction id、同 id 幂等/冲突错误、Object Summary corrections 明细、Web Correction Entry Form、fixture transport 和桌面/窄屏浏览器 QA；不实现 correction 编辑/删除/排序/批量导入或自动保存 Project Content
+
+  - slug: energy-profile-provenance-details
+    description: 在 EnergyProfile point 中输出 expression/components/corrections，并在 Web 面板显示表达式明细
+    depends_on: [energy-expression-engine, correction-command-and-ui]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 解决相对能量表只给数字、不说明组成来源的问题
+
+  - slug: energy-semantics-project-content-migration
+    description: 为 reaction graph composition 和 profile expression 补持久化验证、兼容加载和 migration plan 说明
+    depends_on: [reaction-node-stoichiometry-contract, energy-profile-provenance-details]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 若前面 feature 已局部落地持久化，本条负责补全 validation 和文档化迁移边界
+
+  - slug: web-energy-semantics-controls
+    description: 在 Web 中补节点组成编辑、energy channel selector、correction policy options 和 i18n 文案
+    depends_on: [energy-channel-catalog, correction-command-and-ui, energy-profile-provenance-details]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不在前端重算能量，只操作 Shell DTO
+
+  - slug: energy-curve-interaction-polish
+    description: 强化能量曲线交互，显示 point tooltip、missing/correction 标记、选中节点联动和导出一致性检查
+    depends_on: [web-energy-semantics-controls]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 偏体验收尾，不作为前置化学语义能力

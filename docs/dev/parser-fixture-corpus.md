@@ -14,13 +14,23 @@ last_reviewed: 2026-05-16
 
 Parser fixture corpus 是 RxnFlow parser 能力的开发者和 agent 维护入口。它把一组可提交的计算输出样例、期望解析结果、支持矩阵和导入预览回归串起来，用于判断 parser 是否还能稳定输出可复用的 ChemicalObject 预览。
 
-当前 corpus 只代表已提交 fixture 覆盖过的 synthetic / reference-only 场景，不代表 Gaussian、ORCA、MAPLE、ASE extxyz 或其他程序真实版本的完整支持。新增真实样例前必须先确认来源、再分发权限和脱敏状态。
+当前 corpus 只代表已提交 fixture 覆盖过的 synthetic / synthetic-derived / reference-only 场景，不代表 Gaussian、ORCA、MAPLE、ASE extxyz 或其他程序真实版本的完整支持。新增真实样例前必须先确认来源、再分发权限和脱敏状态。
+
+用户向支持边界见 `docs/user/parser-output-support.md`。开发者维护 corpus 时必须保持两份文档口径一致：本指南说明怎么维护测试资产，用户指南说明当前能预览什么、不能承诺什么。
+
+当前 corpus 覆盖摘要：
+
+- Gaussian / ORCA：通过 cclib adapter 的项目内 synthetic 与 synthetic-derived shape fixtures 固定 method、charge/spin、geometry 和 electronic energy 投影；cclib-data public originals 仍未 vendor。
+- MAPLE：项目内 synthetic / synthetic-derived fixtures 覆盖基础 `.out`、final `.xyz` 和 path-family `.xyz` frame label / Hartree energy；`.sum`、AutoNEB tree、MD thermo、frequency 等仍是 reference-only。
+- XYZ / ASE extxyz：plain XYZ 覆盖 geometry-only 和 missing energy warning；ASE extxyz project-authored variants 覆盖 metadata、multi-frame、calculator energy fallback、missing energy 和 eV 到 Hartree unit warning。
+- Import Preview Regression：同一 fixture corpus 驱动 `ImportRegistryWorkflow.import_files` 和 Platform Shell `import.preview`，只验证 preview projection，不确认导入、不登记 ChemicalObject。
 
 corpus 位于 `tests/fixtures/parsers/`：
 
 ```text
 tests/fixtures/parsers/
 ├── manifest.yaml
+├── sources.yaml
 ├── support-matrix.yaml
 ├── files/
 │   ├── extxyz/
@@ -35,9 +45,42 @@ tests/fixtures/parsers/
 ## 目录结构
 
 - `manifest.yaml`：fixture 清单。每条记录一个稳定 `id`，并声明 `program`、`format`、`task`、`parser_id`、输入文件、来源元数据、`parse_options`、`expected_snapshot`、数值容差、`support_status`、标签和说明。
+- `sources.yaml`：真实/公开输出接入前的 source inventory。它记录 MAPLE、cclib-data、ASE extxyz 等来源的 URL、commit/version、license、默认再分发状态、候选/reference-only 文件、`size_bytes`、`sha256` 和 `fixture_policy`。它不表示文件已经进入 executable corpus。
 - `support-matrix.yaml`：支持矩阵和 diagnostic catalog。它说明当前 corpus 覆盖的程序、格式、任务、字段状态、fixture ids、已观察 warning/error code 和 `known_limits`。
 - `files/`：可提交的 parser 输入文件。只有确认可再分发并完成脱敏的文件可以放进这里。
 - `snapshots/`：`parser-golden-v1` 期望输出。snapshot 是稳定投影，不保存完整日志，也不应保存不必要的完整原始轨迹。
+
+## Source Inventory
+
+`sources.yaml` 是真实/公开样例进入仓库前的登记层。它可以记录外部仓库里的文件路径和 hash，但测试不能依赖网络、`/tmp` clone 或用户本机路径。当前清单使用 `parser-source-inventory-v1`，已登记：
+
+- `maple-dev-example`：ClickFF/MAPLE `dev` 分支 examples，包含 sp/opt、scan、IRC/NEB/String/AutoNEB、MD 和 frequency 的 `.out`、`.xyz`、`.sum`、AutoNEB tree JSON、MD thermo/summary 等代表文件。MAPLE license 带 academic/commercial notice，默认 `review-required`。
+- `cclib-data-gaussian-orca`：cclib-data 中 Gaussian16、ORCA 5.0、ORCA 6.0 公开回归文件候选。当前 sparse checkout 未包含 LICENSE 文件；复核记录 commit 上的 LICENSE raw 和 GitHub license API 均无许可证结果，默认 `review-required`。
+- `ase-extxyz-project-authored`：项目内手写 ASE extxyz fixture，记录本地 ASE version 和 LGPL license expression，覆盖单帧 metadata、multi-frame、calculator energy fallback 和 missing energy warning；不 vendor 外部 extxyz 数据集。
+
+每个 file entry 必须包含：
+
+```yaml
+id: maple-sp-output-example
+path: example/sp/sp.out
+task: sp
+format: maple-output
+size_bytes: 4253
+sha256: sha256:<64 hex>
+fixture_policy: candidate
+parser_intent: maple-output
+```
+
+`fixture_policy` 只能使用：
+
+| Policy | 含义 |
+|---|---|
+| `candidate` | 后续 feature 可评估为 executable fixture，但现在未 vendor |
+| `vendored` | 文件已在本仓库内，且来源允许提交 |
+| `reference-only` | 只作为格式/任务参考，不进入 executable fixture |
+| `rejected` | 明确不适合后续使用，例如许可证、体积或隐私风险 |
+
+`review-required` 来源不得自动进入 `files/`。后续若要 vendor 第三方文件，必须另起 feature 更新 manifest/source metadata，并说明为什么该单个文件可再分发。
 
 ## 来源策略与脱敏
 
@@ -60,7 +103,24 @@ source:
 | `synthetic` | 项目内手写的最小样例，用于锁定 parser 行为 | `license` 使用 `project-test-fixture` 或等价项目内许可，`redistributable: true`，`redaction: none` |
 | `user-redacted` | 用户提供并明确允许进入仓库的真实输出 | 提交前完成脱敏，`redaction` 写明处理方式，必要时在 notes 说明授权边界 |
 | `external-reference` | 已知外部样例可作为格式参考，但不 vendor 到仓库 | `file` 不指向本地提交文件，在 support matrix 中保留 `reference-only` 说明和来源 URL |
-| `vendored-third-party` | 第三方样例许可证允许再分发，且确实需要随仓库测试 | 必须记录 `url`、`commit` 或 release、`license`、`redistributable: true` 和脱敏状态 |
+| `vendored-third-party` | 第三方样例许可证允许再分发，且确实需要随仓库测试 | 必须记录 `url`、`commit` 或 release、`license`、`redistributable: true`、脱敏状态、`source_path`、`source_sha256` 和 `source_size_bytes` |
+
+`vendored-third-party` source 的最小结构：
+
+```yaml
+source:
+  kind: vendored-third-party
+  url: https://github.com/ClickFF/MAPLE
+  commit: 001636482646bca0d1e867fb257322d2a172cc86
+  license: BSD-3-Clause plus academic/commercial notice
+  redistributable: true
+  redaction: none
+  source_path: example/sp/sp.out
+  source_sha256: sha256:<64 hex>
+  source_size_bytes: 4253
+```
+
+这些字段描述上游原始文件，不描述脱敏后本地 fixture。若本地 fixture 是用户授权脱敏版本，使用 `user-redacted`，不要伪装成第三方原文件。
 
 真实用户或第三方输出进入 `files/` 前，至少检查：
 
@@ -73,10 +133,16 @@ source:
 
 MAPLE 的 ClickFF/MAPLE examples 可以作为 `external-reference` 调研来源；若未来要 vendor 示例文件，必须先确认对应文件的 license、再分发边界和学术/商业使用限制，再把来源记录到 manifest 或 support matrix。
 
+当 public example 的许可证或输出 banner 同时带有 academic/commercial notice、all-rights-reserved 或其他再分发不确定文案时，不要把原文件复制进 `files/`。可以新增项目内 `synthetic-derived` shape fixture：只保留 parser 需要识别的最小格式形状、字段组合和单位语义，使用项目内手写结构与数值，并在 manifest `source.kind` 继续标为 `synthetic`。support matrix 可以通过 `source_ids` / `candidate_file_ids` / `reference_file_ids` 记录它参考了哪些 public candidate 或 reference-only 文件形状，但必须在 `known_limits` 说明 public originals 未 vendor。
+
+MAPLE path family 是单独边界：IRC/NEB/String/AutoNEB `.xyz` 的 synthetic-derived fixture 只能证明 `Image N Energy = ...` 等 frame comment 可投影为多个 frame-level `ChemicalObjectDraft`。不要把它描述成 RxnFlow `ReactionPath`、ReactionGraph、TS candidate、direction/topology 或 energy profile 支持；AutoNEB tree JSON、NEB/String `.out` 和 IRC forward/backward direction 仍保持 reference-only，后续如要消费 path-level topology 必须另起 graph/import feature。
+
+cclib-data 的 Gaussian/ORCA candidates 也按同一原则处理：许可证证据不足时，不要复制 cclib-data 原始 log/output 文件。可以新增项目内 Gaussian/ORCA `synthetic-derived` shape fixture 来固定 RxnFlow cclib adapter 的投影字段，例如 method、charge、spin multiplicity、last geometry 和 `scfenergies` eV 到 hartree 的转换。support matrix 可以用 `source_ids` / `candidate_file_ids` 连接 cclib-data candidates，但 `fixture_ids` 只能指向项目内手写 fixture，且 `known_limits` 必须说明 public originals 未 vendor、真实版本支持未声明。
+
 ## 新增 Fixture 流程
 
 1. 确认要覆盖的范围：先写清楚 program、format、task 和目标 parser。不要因为新增一个样例就扩大“完整支持”的说法；真实版本支持必须由 fixture、support matrix 和 known limits 一起说明。
-2. 准备输入文件：只有 `synthetic`、已授权的 `user-redacted` 或许可证允许的 `vendored-third-party` 文件可以进入 `files/`。仅作为调研参考的外部样例走 `external-reference`，不要提交本地副本。
+2. 准备输入文件：只有 `synthetic`、已授权的 `user-redacted` 或许可证允许的 `vendored-third-party` 文件可以进入 `files/`。仅作为调研参考的外部样例走 `external-reference`，不要提交本地副本；许可证不稳但格式形状有价值时，使用项目内 `synthetic-derived` fixture。
 3. 添加 `manifest.yaml` 记录：`id` 使用稳定、可读的 kebab-case；`file` 使用 `files/<format-or-program>/...` 相对路径；`parse_options.expected_format` 要和 parser 选择一致；数值字段必须保留单位和容差语义。
 4. 生成或核对 snapshot：普通测试不会自动重写 `snapshots/`。只有 parser 语义有意变化或新增 fixture 时，才显式生成 snapshot，并 review diff。
 5. 更新 `support-matrix.yaml`：把 fixture id 挂到对应 entry；若新增 entry，必须写 `status`、字段状态、observed warning/error codes 和 `known_limits`。`partial` 状态必须说明 limits。
@@ -141,12 +207,18 @@ git diff -- tests/fixtures/parsers/snapshots/<fixture-id>.json
 
 ## Support Matrix 与 Diagnostic Codes
 
-`support-matrix.yaml` 的 entry status 可使用 `supported`、`partial`、`unsupported` 或 `reference-only`。字段状态可使用 `supported`、`partial`、`unsupported`、`not-applicable` 或 `reference-only`。
+`support-matrix.yaml` 的 entry status 可使用 `supported`、`partial`、`unsupported`、`candidate` 或 `reference-only`。字段状态可使用 `supported`、`partial`、`unsupported`、`not-applicable` 或 `reference-only`。
 
 维护规则：
 
 - `partial` entry 必须填写 `known_limits`，说明真实边界。
+- `candidate` entry 用于记录 source inventory 中后续可评估的文件，不代表已 vendor、已解析或已进入 executable fixture。
 - `reference-only` entry 用于记录已知格式或任务，不代表 parser 已实现。
+- `source_ids` 指向 `sources.yaml` 中的 source id。仅在 loader 传入 source inventory 时做交叉校验；未传入时保持旧测试兼容。
+- `candidate_file_ids` 指向 `sources.yaml` 中 `fixture_policy: candidate` 的 file id。不要把 reference-only file id 放进这里。
+- `reference_file_ids` 指向 `sources.yaml` 中 `fixture_policy: reference-only` 的 file id。不要把 `candidate` 或 `vendored` file id 放进这里。
+- `fixture_ids` 仍只指向 `manifest.yaml` 中的 executable fixture id。source link 不替代 fixture coverage。
+- synthetic-derived fixture 可以和 candidate/reference source link 出现在同一个 partial entry 中，但 `fixture_ids` 指向的是项目内手写 fixture，不代表 `candidate_file_ids` 或 `reference_file_ids` 对应的 public originals 已经入库或已解析。
 - `observed_warning_codes` 和 `observed_error_codes` 只能引用 diagnostic catalog 中已有 code。
 - 新增 warning/error code 前，先确认不是已有 code 的同义重复；新增后要同步 support matrix、snapshot 测试和相关设计/验收文档。
 
@@ -172,6 +244,13 @@ git diff -- tests/fixtures/parsers/snapshots/<fixture-id>.json
 
 import preview regression 只校验预览路径，不确认导入、不登记 ChemicalObject，也不更新项目状态。若 preview 通过但 confirm/import 行为改变，应另起对应 workflow 的 feature 或 issue。
 
+ASE extxyz 项目内 fixture 维护规则：
+
+- extxyz energy 按 ASE eV 语义进入 parser，必须在 snapshot 中显示为 Hartree，并带 `unit_assumed` warning。
+- ASE 读回 extxyz 时 energy 可能位于 `atoms.calc.results["energy"]` 而不是 `atoms.info["energy"]`；新增变体要用 snapshot 或断言固定该 fallback 行为。
+- multi-frame extxyz 只表示同一文件内多个 `ChemicalObjectDraft`，不得顺手声明 reaction path、direction/topology、TS candidate 或 energy profile。
+- missing energy frame 保持 parse success、空 `energies` 和 `missing_section` warning，不补 0。
+
 ## Parser Gap Triage
 
 解析失败、字段缺失或 snapshot diff 出现时，先按下面顺序分流：
@@ -195,6 +274,12 @@ python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/manifest
 
 ```bash
 python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/support-matrix.yaml --yaml-only
+```
+
+校验 source inventory：
+
+```bash
+python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/sources.yaml --yaml-only
 ```
 
 运行 parser fixture harness：
@@ -225,6 +310,7 @@ python3 codestable/tools/validate-yaml.py --file codestable/features/2026-05-16-
 
 - 不提交未脱敏的真实 Gaussian、ORCA、MAPLE、ASE 或其他计算输出。
 - 不提交 `.DS_Store`、checkpoint、大型二进制、许可证文件、账号信息或机器环境 dump。
+- 不把 `sources.yaml` 中的 `candidate` 或 `reference-only` 条目当成已进入 corpus 的 executable fixture。
 - 不把 synthetic / reference-only corpus 描述成真实程序版本完整支持。
 - 不让 parser 直接依赖 ProjectStore、Registry、ReactionGraph、EnergyProfile 或 ExportArtifact。
 - 不在普通测试中自动重写 snapshot。
@@ -232,7 +318,9 @@ python3 codestable/tools/validate-yaml.py --file codestable/features/2026-05-16-
 
 ## 相关文档
 
+- `docs/user/parser-output-support.md`
 - `codestable/architecture/core-platform.md`
+- `codestable/roadmap/rxnflow-parser-real-output-compatibility/rxnflow-parser-real-output-compatibility-roadmap.md`
 - `codestable/roadmap/rxnflow-parser-fixture-corpus/rxnflow-parser-fixture-corpus-roadmap.md`
 - `codestable/features/2026-05-15-parser-fixture-harness/parser-fixture-harness-design.md`
 - `codestable/features/2026-05-16-parser-support-matrix-diagnostics/parser-support-matrix-diagnostics-acceptance.md`

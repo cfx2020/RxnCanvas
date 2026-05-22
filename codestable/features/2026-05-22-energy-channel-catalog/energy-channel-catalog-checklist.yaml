@@ -1,0 +1,108 @@
+feature: 2026-05-22-energy-channel-catalog
+created: 2026-05-22
+
+steps:
+  - action: "名词骨架：新增 source/channel 类型、EnergyOptions 默认 source 和 catalog helper"
+    exit_signal: "单对象 catalog 可同时列出 energies 与 thermochemistry，旧 EnergyOptions constructor 仍可用"
+    status: done
+
+  - action: "Engine 选择规则：把能量取值切到 resolver，覆盖 auto fallback、explicit source、ambiguity 和 missing"
+    exit_signal: "同一 key 双 section未显式 source 返回 ambiguity，显式 thermochemistry 可计算 profile"
+    status: done
+
+  - action: "持久化兼容：Energy Profile codec 保存/加载 energy_source 并兼容旧 JSON"
+    exit_signal: "新 JSON round-trip 保留 source，旧 JSON load 得到 auto"
+    status: done
+
+  - action: "Shell/Web DTO：Platform Shell object/profile projection 和 Web fixture/types 暴露 channels/source"
+    exit_signal: "Shell baseline tests 与 Web ShellClient tests 能看到 energy_channels 和 energy_source"
+    status: done
+
+  - action: "回归测试：补齐 focused tests、全量 Python、Web test/build 和 YAML 校验"
+    exit_signal: "相关验证命令通过，checklist steps 全部 done"
+    status: done
+
+checks:
+  - item: "EnergyChannelSource、EnergyChannel 和 EnergyOptions.energy_source 按设计命名落地"
+    source: 名词契约
+    status: passed
+
+  - item: "Energy Engine 通过 resolver 选择 energies / thermochemistry，而不是直接只查 obj.energies"
+    source: 编排骨架
+    status: passed
+
+  - item: "source shape 错误返回 invalid_input，缺 key 返回 missing_energy，auto 同名冲突返回 ambiguous_energy_channel"
+    source: 跨层纪律
+    status: passed
+
+  - item: "缺失 energy_source 的旧调用与旧 JSON 等价于 auto"
+    source: 跨层纪律
+    status: passed
+
+  - item: "catalog 输出按 energies 后 thermochemistry、key 排序"
+    source: 跨层纪律
+    status: passed
+
+  - item: "EnergyOptions / EnergyChannel 模型契约已更新"
+    source: 挂载点
+    status: passed
+
+  - item: "Energy Engine 取能量路径使用 channel resolver"
+    source: 挂载点
+    status: passed
+
+  - item: "energy-profiles-v1 options JSON 增加可选 energy_source"
+    source: 挂载点
+    status: passed
+
+  - item: "Platform Shell / Web DTO 输出 energy_channels 和 profile source 字段"
+    source: 挂载点
+    status: passed
+
+  - item: "不修改 parser runtime 或 parser fixture snapshot 原始字段结构"
+    source: 范围守护
+    status: passed
+
+  - item: "不在本 feature 中让 Energy Engine 使用 composition coefficient"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 CorrectionPolicy、registry.apply_correction 或 correction form"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 Web energy channel selector UI"
+    source: 范围守护
+    status: passed
+
+  - item: "不升级 energy-profiles-v1 schema version"
+    source: 范围守护
+    status: passed
+
+  - item: "object summary / Web DTO 输出 energies 与 thermochemistry 两类 channel"
+    source: 验收场景
+    status: passed
+
+  - item: "显式 thermochemistry source 可计算 profile"
+    source: 验收场景
+    status: passed
+
+  - item: "auto 可从 energies fallback 到 thermochemistry"
+    source: 验收场景
+    status: passed
+
+  - item: "auto 遇到同名 energies/thermochemistry key 返回 ambiguous_energy_channel"
+    source: 验收场景
+    status: passed
+
+  - item: "explicit source 缺 key 返回 missing_energy 且 details 含 energy_source"
+    source: 验收场景
+    status: passed
+
+  - item: "Energy Profile 新 JSON round-trip 保留 energy_source，旧 JSON load 为 auto"
+    source: 验收场景
+    status: passed
+
+  - item: "Shell energy.compute 接收 energy_source 并在 profile summary 回显"
+    source: 验收场景
+    status: passed

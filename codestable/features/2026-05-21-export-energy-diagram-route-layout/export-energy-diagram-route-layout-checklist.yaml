@@ -1,0 +1,41 @@
+feature: 2026-05-21-export-energy-diagram-route-layout
+status: in-progress
+created: 2026-05-21
+
+steps:
+  - action: "Route dataclass layout fields：扩展 state/route dataclass 并保持现有 tests 通过"
+    exit_signal: "旧构造方式仍可用，route 有 min/max 默认值"
+    status: done
+  - action: "Route anchor builder：在 build_energy_diagram_route() 中计算 bounds 和 anchors"
+    exit_signal: "有效点有 x/y/line/value anchors；missing point y/line/value 为 None"
+    status: done
+  - action: "Writer anchor consumption：PNG/CDXML writer 使用 route anchors"
+    exit_signal: "PNG/CDXML existing tests 仍通过，missing state line 仍不生成"
+    status: done
+  - action: "Regression tests：补 same-energy bounds、all-missing bounds、anchor monotonicity 和 scope guard"
+    exit_signal: "focused tests、全量 Python tests、YAML 校验通过"
+    status: done
+
+checks:
+  - item: "旧 EnergyDiagramState(\"node-a\", \"A\", 0.0, \"kcal_mol\") 构造仍可用"
+    status: passed
+  - item: "build_energy_diagram_route() 对有效 points 生成递增 x anchors"
+    status: passed
+  - item: "有效 state 有 y、line_start_x、line_end_x、value anchor"
+    status: passed
+  - item: "missing state 的 y 和 state line anchors 为 None，warning 仍包含 missing_energy_point"
+    status: passed
+  - item: "所有有效点 relative energy 相同仍生成 min_energy < max_energy"
+    status: passed
+  - item: "全部 points missing 时 route bounds 为默认范围，PNG/CDXML 仍可成功"
+    status: passed
+  - item: "PNG/CDXML writer tests 仍通过，CDXML missing point 不生成假 state line"
+    status: passed
+  - item: "不新增 export format"
+    status: passed
+  - item: "不修改 XLSX writer、Web Report Export Panel、Project Content schema"
+    status: passed
+  - item: "不实现 label collision avoidance、ChemDraw molecule-level CDXML 或 CDX"
+    status: passed
+  - item: "不重新计算 EnergyProfile"
+    status: passed

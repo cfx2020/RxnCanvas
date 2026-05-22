@@ -1,0 +1,11 @@
+2
+Properties=species:S:1:pos:R:3 label=co-calc-energy charge=0 spin_multiplicity=1 energy=-14.25 pbc="F F F"
+C        0.00000000       0.00000000       0.00000000
+O        0.00000000       0.00000000       1.13000000
+2
+Properties=species:S:1:pos:R:3 label=h2-spin-metadata energy=-1.1 charge=0 spin=1 pbc="F F F"
+H        0.00000000       0.00000000       0.00000000
+H        0.00000000       0.00000000       0.75000000
+1
+Properties=species:S:1:pos:R:3 label=he-missing-energy charge=0 spin_multiplicity=1 pbc="F F F"
+He       0.00000000       0.00000000       0.00000000

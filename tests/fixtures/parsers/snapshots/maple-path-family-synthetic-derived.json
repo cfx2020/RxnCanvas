@@ -1,0 +1,154 @@
+{
+  "fixture_id": "maple-path-family-synthetic-derived",
+  "object_count": 4,
+  "objects": [
+    {
+      "atom_count": 3,
+      "charge": null,
+      "elements": [
+        "C",
+        "H",
+        "H"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "Image 0  Energy = -100.0000000000",
+          "unit": "hartree",
+          "value": -100.0
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        }
+      ],
+      "label": "Image 0",
+      "method": null,
+      "spin_multiplicity": null,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    },
+    {
+      "atom_count": 3,
+      "charge": null,
+      "elements": [
+        "C",
+        "H",
+        "H"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "Image 1  Energy = -99.9700000000",
+          "unit": "hartree",
+          "value": -99.97
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": 0.02,
+          "y": 0.0,
+          "z": 0.0
+        }
+      ],
+      "label": "Image 1",
+      "method": null,
+      "spin_multiplicity": null,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    },
+    {
+      "atom_count": 3,
+      "charge": null,
+      "elements": [
+        "C",
+        "H",
+        "H"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "Image 2  Energy = -99.9100000000",
+          "unit": "hartree",
+          "value": -99.91
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": 0.05,
+          "y": 0.0,
+          "z": 0.0
+        }
+      ],
+      "label": "Image 2",
+      "method": null,
+      "spin_multiplicity": null,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    },
+    {
+      "atom_count": 3,
+      "charge": null,
+      "elements": [
+        "C",
+        "H",
+        "H"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "Image 3  Energy = -99.9600000000",
+          "unit": "hartree",
+          "value": -99.96
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": 0.08,
+          "y": 0.0,
+          "z": 0.0
+        }
+      ],
+      "label": "Image 3",
+      "method": null,
+      "spin_multiplicity": null,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    }
+  ],
+  "parse_ok": true,
+  "parser_id": "maple-output",
+  "provenance": {
+    "parser_id": "maple-output",
+    "parser_version": "0.1.0"
+  },
+  "schema_version": "parser-golden-v1",
+  "warning_codes": []
+}

@@ -8,15 +8,18 @@ import unittest
 from rxnflow import run_core_fixture_vertical_slice
 from rxnflow.constants import HARTREE_TO_KCAL_MOL, KCAL_MOL_TO_KJ_MOL
 from rxnflow.energy import EnergyProfileEngine
+from rxnflow.energy_channels import energy_channel_catalog
 from rxnflow.models import (
     ChemicalObject,
     Correction,
+    CorrectionPolicy,
     EnergyOptions,
     EnergyUnit,
     EnergyValue,
     Provenance,
     ReactionGraph,
     ReactionNode,
+    ReactionNodeCompositionTerm,
     ReactionPath,
 )
 
@@ -232,6 +235,324 @@ class EnergyProfileEngineTest(unittest.TestCase):
         )
         self.assertEqual(object_b.energies["electronic"], EnergyValue(1.0, "kcal_mol"))
 
+    def test_energy_channel_catalog_lists_energy_and_thermochemistry_sources(self) -> None:
+        obj = ChemicalObject(
+            id="object-a",
+            label="A",
+            energies={"electronic": EnergyValue(-100.0, "hartree")},
+            thermochemistry={"gibbs": EnergyValue(-99.9, "hartree")},
+            source_file_id="raw-a",
+            provenance=_provenance(),
+        )
+
+        catalog = energy_channel_catalog((obj,))
+
+        self.assertEqual(len(catalog), 2)
+        self.assertEqual(catalog[0].key, "electronic")
+        self.assertEqual(catalog[0].source, "energies")
+        self.assertEqual(catalog[0].label, "electronic (energies)")
+        self.assertEqual(catalog[0].unit, "hartree")
+        self.assertEqual(catalog[0].object_ids, ("object-a",))
+        self.assertEqual(catalog[1].key, "gibbs")
+        self.assertEqual(catalog[1].source, "thermochemistry")
+
+    def test_explicit_thermochemistry_source_computes_profile(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            ReactionNode("node-b", "species", "B", ("object-b",)),
+            path=("node-a", "node-b"),
+        )
+
+        result = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (
+                _object("object-a", -100.0, thermochemistry={"gibbs": EnergyValue(-99.90, "hartree")}),
+                _object("object-b", -100.0, thermochemistry={"gibbs": EnergyValue(-99.88, "hartree")}),
+            ),
+            replace(_options(), energy_key="gibbs", energy_source="thermochemistry"),
+        )
+
+        self.assertTrue(result.ok, result.error)
+        profile = result.value
+        assert profile is not None
+        self.assertEqual(profile.options.energy_source, "thermochemistry")
+        self.assertEqual(profile.points[1].relative_energy, EnergyValue(12.55018948, "kcal_mol"))
+
+    def test_auto_energy_source_falls_back_to_thermochemistry(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            ReactionNode("node-b", "species", "B", ("object-b",)),
+            path=("node-a", "node-b"),
+        )
+
+        result = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (
+                _object_without_energy("object-a", thermochemistry={"gibbs": EnergyValue(-99.90, "hartree")}),
+                _object_without_energy("object-b", thermochemistry={"gibbs": EnergyValue(-99.88, "hartree")}),
+            ),
+            replace(_options(), energy_key="gibbs"),
+        )
+
+        self.assertTrue(result.ok, result.error)
+        profile = result.value
+        assert profile is not None
+        self.assertEqual(profile.options.energy_source, "auto")
+        self.assertEqual(profile.points[1].relative_energy, EnergyValue(12.55018948, "kcal_mol"))
+
+    def test_auto_energy_source_rejects_ambiguous_channel(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            path=("node-a",),
+        )
+
+        result = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (_object("object-a", -100.0, thermochemistry={"electronic": EnergyValue(-99.9, "hartree")}),),
+            _options(),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIsNotNone(result.error)
+        assert result.error is not None
+        self.assertEqual(result.error.code, "ambiguous_energy_channel")
+        self.assertEqual(result.error.target, "energy_options.energy_key")
+        self.assertEqual(result.error.details["energy_source"], "auto")
+
+    def test_explicit_energy_source_missing_key_includes_source_details(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            path=("node-a",),
+        )
+
+        result = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (_object("object-a", -100.0),),
+            replace(_options(), energy_key="gibbs", energy_source="thermochemistry"),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIsNotNone(result.error)
+        assert result.error is not None
+        self.assertEqual(result.error.code, "missing_energy")
+        self.assertEqual(result.error.target, "node-a")
+        self.assertEqual(result.error.details["object_id"], "object-a")
+        self.assertEqual(result.error.details["energy_source"], "thermochemistry")
+
+    def test_composition_coefficients_scale_node_total_energy(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            ReactionNode(
+                "node-combo",
+                "species",
+                "A + 2B",
+                composition=(
+                    ReactionNodeCompositionTerm("object-a", 1.0),
+                    ReactionNodeCompositionTerm("object-b", 2.0),
+                ),
+            ),
+            path=("node-a", "node-combo"),
+        )
+
+        result = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (_object("object-a", 1.0, unit="kcal_mol"), _object("object-b", 2.0, unit="kcal_mol")),
+            _options(),
+        )
+
+        self.assertTrue(result.ok, result.error)
+        profile = result.value
+        assert profile is not None
+        self.assertEqual(profile.points[1].relative_energy, EnergyValue(4.0, "kcal_mol"))
+
+    def test_fractional_negative_and_duplicate_composition_terms_are_ordered_terms(self) -> None:
+        graph = _graph(
+            ReactionNode("node-zero", "species", "Zero", ("object-zero",)),
+            ReactionNode(
+                "node-expression",
+                "species",
+                "Expression",
+                composition=(
+                    ReactionNodeCompositionTerm("object-a", 0.5),
+                    ReactionNodeCompositionTerm("object-b", -1.0),
+                    ReactionNodeCompositionTerm("object-a", 2.0),
+                ),
+            ),
+            path=("node-zero", "node-expression"),
+        )
+
+        result = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (
+                _object("object-zero", 0.0, unit="kcal_mol"),
+                _object("object-a", 4.0, unit="kcal_mol"),
+                _object("object-b", 3.0, unit="kcal_mol"),
+            ),
+            _options(),
+        )
+
+        self.assertTrue(result.ok, result.error)
+        profile = result.value
+        assert profile is not None
+        self.assertEqual(profile.points[1].relative_energy, EnergyValue(7.0, "kcal_mol"))
+
+    def test_explicit_thermochemistry_source_combines_with_composition_coefficients(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            ReactionNode(
+                "node-combo",
+                "species",
+                "A + 2B",
+                composition=(
+                    ReactionNodeCompositionTerm("object-a", 1.0),
+                    ReactionNodeCompositionTerm("object-b", 2.0),
+                ),
+            ),
+            path=("node-a", "node-combo"),
+        )
+
+        result = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (
+                _object("object-a", 0.0, unit="kcal_mol", thermochemistry={"gibbs": EnergyValue(1.0, "kcal_mol")}),
+                _object("object-b", 0.0, unit="kcal_mol", thermochemistry={"gibbs": EnergyValue(2.0, "kcal_mol")}),
+            ),
+            replace(_options(), energy_key="gibbs", energy_source="thermochemistry"),
+        )
+
+        self.assertTrue(result.ok, result.error)
+        profile = result.value
+        assert profile is not None
+        self.assertEqual(profile.points[1].relative_energy, EnergyValue(4.0, "kcal_mol"))
+
+    def test_corrections_are_scaled_by_composition_coefficients_when_enabled(self) -> None:
+        graph = _graph(
+            ReactionNode("node-zero", "species", "Zero", ("object-zero",)),
+            ReactionNode(
+                "node-corrected",
+                "species",
+                "Corrected",
+                composition=(ReactionNodeCompositionTerm("object-a", 2.0),),
+            ),
+            path=("node-zero", "node-corrected"),
+        )
+
+        result = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (
+                _object("object-zero", 0.0, unit="kcal_mol"),
+                _object(
+                    "object-a",
+                    1.0,
+                    unit="kcal_mol",
+                    corrections=(_correction("corr-a", EnergyValue(0.5, "kcal_mol")),),
+                ),
+            ),
+            replace(_options(), include_corrections=True),
+        )
+
+        self.assertTrue(result.ok, result.error)
+        profile = result.value
+        assert profile is not None
+        self.assertEqual(profile.points[1].relative_energy, EnergyValue(3.0, "kcal_mol"))
+
+    def test_correction_policy_filters_by_kind_and_id(self) -> None:
+        graph = _graph(
+            ReactionNode("node-zero", "species", "Zero", ("object-zero",)),
+            ReactionNode("node-corrected", "species", "Corrected", ("object-a",)),
+            path=("node-zero", "node-corrected"),
+        )
+        object_a = _object(
+            "object-a",
+            1.0,
+            unit="kcal_mol",
+            corrections=(
+                _correction("corr-solv", EnergyValue(0.5, "kcal_mol"), kind="solvation"),
+                _correction("corr-res", EnergyValue(2.0, "kcal_mol"), kind="resonance"),
+            ),
+        )
+
+        kinds = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (_object("object-zero", 0.0, unit="kcal_mol"), object_a),
+            replace(
+                _options(),
+                include_corrections=True,
+                correction_policy=CorrectionPolicy(mode="kinds", kinds=("solvation",)),
+            ),
+        )
+        ids = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (_object("object-zero", 0.0, unit="kcal_mol"), object_a),
+            replace(
+                _options(),
+                include_corrections=True,
+                correction_policy=CorrectionPolicy(mode="ids", ids=("corr-res",)),
+            ),
+        )
+        none = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (_object("object-zero", 0.0, unit="kcal_mol"), object_a),
+            replace(
+                _options(),
+                include_corrections=True,
+                correction_policy=CorrectionPolicy(mode="none"),
+            ),
+        )
+
+        self.assertTrue(kinds.ok, kinds.error)
+        self.assertTrue(ids.ok, ids.error)
+        self.assertTrue(none.ok, none.error)
+        self.assertEqual(kinds.value.points[1].relative_energy, EnergyValue(1.5, "kcal_mol"))  # type: ignore[union-attr]
+        self.assertEqual(ids.value.points[1].relative_energy, EnergyValue(3.0, "kcal_mol"))  # type: ignore[union-attr]
+        self.assertEqual(none.value.points[1].relative_energy, EnergyValue(1.0, "kcal_mol"))  # type: ignore[union-attr]
+
+    def test_correction_policy_requires_include_corrections(self) -> None:
+        graph = _graph(
+            ReactionNode("node-a", "species", "A", ("object-a",)),
+            path=("node-a",),
+        )
+
+        result = EnergyProfileEngine().compute_profile(
+            PROJECT_ID,
+            graph,
+            "path-main",
+            (_object("object-a", 1.0, unit="kcal_mol"),),
+            replace(
+                _options(),
+                include_corrections=False,
+                correction_policy=CorrectionPolicy(mode="all"),
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIsNotNone(result.error)
+        assert result.error is not None
+        self.assertEqual(result.error.code, "invalid_input")
+        self.assertEqual(result.error.target, "energy_options.correction_policy")
+
     def test_annotation_and_group_nodes_are_missing_energy_points(self) -> None:
         annotation_graph = _graph(
             ReactionNode("node-a", "species", "A", ("object-a",)),
@@ -332,30 +653,40 @@ def _object(
     energy: float,
     unit: EnergyUnit = "hartree",
     corrections: tuple[Correction, ...] = (),
+    thermochemistry: dict[str, EnergyValue] | None = None,
 ) -> ChemicalObject:
     return ChemicalObject(
         id=object_id,
         label=object_id,
         energies={"electronic": EnergyValue(energy, unit)},
+        thermochemistry=thermochemistry or {},
         source_file_id="raw-a",
         corrections=corrections,
         provenance=_provenance(),
     )
 
 
-def _object_without_energy(object_id: str) -> ChemicalObject:
+def _object_without_energy(
+    object_id: str,
+    thermochemistry: dict[str, EnergyValue] | None = None,
+) -> ChemicalObject:
     return ChemicalObject(
         id=object_id,
         label=object_id,
+        thermochemistry=thermochemistry or {},
         source_file_id="raw-a",
         provenance=_provenance(),
     )
 
 
-def _correction(correction_id: str, energy: EnergyValue) -> Correction:
+def _correction(
+    correction_id: str,
+    energy: EnergyValue,
+    kind: str = "manual",
+) -> Correction:
     return Correction(
         id=correction_id,
-        kind="manual",
+        kind=kind,  # type: ignore[arg-type]
         energy=energy,
         created_at="2026-05-04T00:00:00Z",
     )

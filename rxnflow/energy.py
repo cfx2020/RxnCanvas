@@ -6,9 +6,11 @@ from dataclasses import replace
 from typing import TypeVar
 
 from .constants import HARTREE_TO_KCAL_MOL, KCAL_MOL_TO_KJ_MOL
+from .energy_channels import resolve_energy_channel, validate_energy_source
 from .errors import RxnFlowError, RxnFlowWarning
 from .models import (
     ChemicalObject,
+    Correction,
     ID,
     EnergyOptions,
     EnergyPoint,
@@ -166,7 +168,7 @@ def compute_fixture_profile(
 
     return ok(
         EnergyProfile(
-            id=_profile_id(path.id, options.energy_key),
+            id=_profile_id(path.id, options),
             graph_id=graph.id,
             path_id=path.id,
             options=options,
@@ -209,15 +211,11 @@ def _node_energy_kcal(
                 target=node_id,
             )
         )
-    energy = obj.energies.get(options.energy_key)
-    if energy is None:
-        return err(
-            RxnFlowError(
-                code="missing_energy",
-                message=f"Energy key '{options.energy_key}' is missing for {node_id}.",
-                target=node_id,
-            )
-        )
+    energy_result = resolve_energy_channel(obj, options.energy_key, options.energy_source)
+    if not energy_result.ok or energy_result.value is None:
+        assert energy_result.error is not None
+        return err(_node_scoped_energy_error(energy_result.error, node_id))
+    energy = energy_result.value
     return _to_kcal_mol(energy, node_id)
 
 
@@ -240,6 +238,9 @@ def _validate_profile_inputs(
         )
     if not options.energy_key:
         return _invalid_input("Energy key is required.", "energy_options.energy_key")
+    source_error = validate_energy_source(options.energy_source, "energy_options.energy_source")
+    if source_error is not None:
+        return err(source_error)
     return ok(None)
 
 
@@ -262,46 +263,87 @@ def _node_total_energy(
     node = node_by_id.get(node_id)
     if node is None:
         return _graph_invalid(f"Path references missing node '{node_id}'.", node_id)
-    if not node.chemical_object_ids:
+    if not node.composition:
         return _missing_energy(
             f"Node '{node.id}' does not reference chemical objects for energy calculation.",
             node.id,
         )
 
     total = 0.0
-    for object_id in node.chemical_object_ids:
-        obj = object_by_id.get(object_id)
+    for term in node.composition:
+        obj = object_by_id.get(term.object_id)
         if obj is None:
             return _graph_invalid(
-                f"Node '{node.id}' references missing chemical object '{object_id}'.",
+                f"Node '{node.id}' references missing chemical object '{term.object_id}'.",
                 node.id,
             )
-        energy = obj.energies.get(options.energy_key)
-        if energy is None:
-            return _missing_energy(
-                f"Energy key '{options.energy_key}' is missing for {node.id}.",
-                node.id,
-                {"object_id": object_id, "energy_key": options.energy_key},
-            )
+        energy_result = resolve_energy_channel(obj, options.energy_key, options.energy_source)
+        if not energy_result.ok or energy_result.value is None:
+            assert energy_result.error is not None
+            return err(_node_scoped_energy_error(energy_result.error, node.id))
+        energy = energy_result.value
         converted = _to_output_unit(energy, options.output_unit, node.id)
         if not converted.ok or converted.value is None:
             assert converted.error is not None
             return err(converted.error)
-        total += converted.value
+        total += converted.value * term.coefficient
 
-        if options.include_corrections:
-            for correction in obj.corrections:
-                correction_energy = _to_output_unit(
-                    correction.energy,
-                    options.output_unit,
-                    correction.id,
-                )
-                if not correction_energy.ok or correction_energy.value is None:
-                    assert correction_energy.error is not None
-                    return err(correction_energy.error)
-                total += correction_energy.value
+        corrections = _included_corrections(obj.corrections, options)
+        if not corrections.ok or corrections.value is None:
+            assert corrections.error is not None
+            return err(corrections.error)
+        for correction in corrections.value:
+            correction_energy = _to_output_unit(
+                correction.energy,
+                options.output_unit,
+                correction.id,
+            )
+            if not correction_energy.ok or correction_energy.value is None:
+                assert correction_energy.error is not None
+                return err(correction_energy.error)
+            total += correction_energy.value * term.coefficient
 
     return ok(EnergyValue(round(total, 8), options.output_unit))
+
+
+def _included_corrections(
+    corrections: tuple[Correction, ...],
+    options: EnergyOptions,
+) -> Result[tuple[Correction, ...]]:
+    policy = options.correction_policy
+    if not options.include_corrections:
+        if policy is None or policy.mode == "none":
+            return ok(())
+        return _invalid_input(
+            "Correction policy requires include_corrections=True.",
+            "energy_options.correction_policy",
+        )
+    if policy is None:
+        return ok(corrections)
+    if policy.mode == "none":
+        return ok(())
+    if policy.mode == "all":
+        return ok(corrections)
+    if policy.mode == "kinds":
+        allowed = set(policy.kinds)
+        if not allowed:
+            return _invalid_input(
+                "Correction policy mode kinds requires at least one kind.",
+                "energy_options.correction_policy",
+            )
+        return ok(tuple(correction for correction in corrections if correction.kind in allowed))
+    if policy.mode == "ids":
+        allowed = set(policy.ids)
+        if not allowed:
+            return _invalid_input(
+                "Correction policy mode ids requires at least one id.",
+                "energy_options.correction_policy",
+            )
+        return ok(tuple(correction for correction in corrections if correction.id in allowed))
+    return _invalid_input(
+        "Correction policy mode is not supported.",
+        "energy_options.correction_policy",
+    )
 
 
 def _to_output_unit(
@@ -335,15 +377,34 @@ def _to_kcal_mol(energy: EnergyValue, target: str) -> Result[float]:
     )
 
 
-def _profile_id(path_id: str, energy_key: str) -> str:
+def _profile_id(path_id: str, options: EnergyOptions) -> str:
     path_slug = path_id.removeprefix("path-")
-    return f"profile-{path_slug}-{energy_key}"
+    source_slug = "" if options.energy_source == "auto" else f"-{options.energy_source}"
+    return f"profile-{path_slug}-{options.energy_key}{source_slug}"
 
 
 def _engine_profile_id(path_id: str, options: EnergyOptions) -> str:
     path_slug = path_id.removeprefix("path-")
     correction_slug = "corrected" if options.include_corrections else "raw"
-    return f"profile-{path_slug}-{options.energy_key}-{options.output_unit}-{correction_slug}"
+    source_slug = "" if options.energy_source == "auto" else f"-{options.energy_source}"
+    return f"profile-{path_slug}-{options.energy_key}{source_slug}-{options.output_unit}-{correction_slug}"
+
+
+def _node_scoped_energy_error(error: RxnFlowError, node_id: str) -> RxnFlowError:
+    if error.code == "ambiguous_energy_channel":
+        target = "energy_options.energy_key"
+    elif error.code == "invalid_input":
+        target = error.target
+    else:
+        target = node_id
+    details = dict(error.details)
+    details.setdefault("node_id", node_id)
+    return RxnFlowError(
+        code=error.code,
+        message=error.message,
+        target=target,
+        details=details,
+    )
 
 
 def _invalid_input(message: str, target: str) -> Result[T]:

@@ -1,0 +1,50 @@
+{
+  "fixture_id": "maple-opt-final-xyz-public-shape-synthetic-derived",
+  "object_count": 1,
+  "objects": [
+    {
+      "atom_count": 4,
+      "charge": null,
+      "elements": [
+        "C",
+        "O",
+        "H",
+        "H"
+      ],
+      "energies": {
+        "electronic": {
+          "reference": "Image 0  Energy = -112.4567890123 Hartree",
+          "unit": "hartree",
+          "value": -112.4567890123
+        }
+      },
+      "energy_keys": [
+        "electronic"
+      ],
+      "formula": null,
+      "geometry_sample": [
+        {
+          "element": "C",
+          "index": 0,
+          "unit": "angstrom",
+          "x": -0.18,
+          "y": 0.01,
+          "z": 0.12
+        }
+      ],
+      "label": "Image 0",
+      "method": null,
+      "spin_multiplicity": null,
+      "thermochemistry_keys": [],
+      "warning_codes": []
+    }
+  ],
+  "parse_ok": true,
+  "parser_id": "maple-output",
+  "provenance": {
+    "parser_id": "maple-output",
+    "parser_version": "0.1.0"
+  },
+  "schema_version": "parser-golden-v1",
+  "warning_codes": []
+}
