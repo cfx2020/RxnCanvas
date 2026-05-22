@@ -636,8 +636,10 @@ describe("WorkbenchShell", () => {
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a", "node-b"], edge_ids: [], path_ids: [] },
     }))
-    await waitFor(() => expect(nodeA).toHaveAttribute("aria-current", "true"))
-    expect(nodeB).toHaveAttribute("aria-current", "true")
+    await waitFor(() => {
+      expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true")
+      expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true")
+    })
     expect(within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })).toHaveTextContent("Select a graph node to edit composition.")
 
     fireEvent.click(nodeB, { shiftKey: true })
@@ -687,6 +689,108 @@ describe("WorkbenchShell", () => {
     await waitFor(() => expect(graphCanvas.querySelector(".graph-rubber-band")).not.toBeInTheDocument())
     expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true")
     expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true")
+  })
+
+  it("uses Delete and Backspace keys for the current graph selection without firing on empty selection", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    const removeCountBeforeEmptyDelete = transport.payloads.filter((payload) => payload.command === "workspace.remove").length
+
+    fireEvent.keyDown(surface, { key: "Delete" })
+
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.remove")).toHaveLength(removeCountBeforeEmptyDelete)
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
+    }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" }), { shiftKey: true })
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: ["edge-a-b"], path_ids: [] },
+    }))
+    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" })).toHaveClass("graph-edge-hitbox--selected"))
+
+    fireEvent.keyDown(surface, { key: "Backspace" })
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.remove")?.args).toMatchObject({
+      node_ids: ["node-a"],
+      edge_ids: ["edge-a-b"],
+      path_ids: [],
+    }))
+  })
+
+  it("clears click-driven connection state with Escape before the next node click", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: "Connect" })).toBeEnabled())
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Connect" }))
+    fireEvent.keyDown(surface, { key: "Escape" })
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: [], edge_ids: [], path_ids: [] },
+    }))
+    const connectCountBeforeNodeClick = transport.payloads.filter((payload) => payload.command === "workspace.connect").length
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-b"], edge_ids: [], path_ids: [] },
+    }))
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.connect")).toHaveLength(connectCountBeforeNodeClick)
+  })
+
+  it("nudges selected graph nodes with arrow keys and ignores graph shortcuts from editor inputs", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
+    }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }), { shiftKey: true })
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a", "node-b"], edge_ids: [], path_ids: [] },
+    }))
+    await waitFor(() => {
+      expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true")
+      expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true")
+    })
+    fireEvent.keyDown(surface, { key: "ArrowRight" })
+
+    await waitFor(() => expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(2))
+    const movePayloads = transport.payloads.filter((payload) => payload.command === "workspace.move_node")
+    expect(movePayloads.map((payload) => payload.args.node_id)).toEqual(["node-a", "node-b"])
+    expect(movePayloads.map((payload) => payload.args.position)).toEqual([[140, 160], [380, 160]])
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" }))
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: [], edge_ids: ["edge-a-b"], path_ids: [] },
+    }))
+    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" })).toHaveClass("graph-edge-hitbox--selected"))
+    fireEvent.keyDown(surface, { key: "ArrowLeft" })
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(2)
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
+    const removeCountBeforeInputDelete = transport.payloads.filter((payload) => payload.command === "workspace.remove").length
+    fireEvent.keyDown(within(editor).getByLabelText("Coef"), { key: "Delete" })
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.remove")).toHaveLength(removeCountBeforeInputDelete)
   })
 
   it("edits selected node composition through a Composition Draft before applying workspace.set_node_composition", async () => {

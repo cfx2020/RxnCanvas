@@ -27,6 +27,7 @@ import {
 } from "./exportArtifactPersistence"
 import {
   completeGraphEditorConnection,
+  clearGraphEditorSelection,
   endGraphEditorCanvasDrag,
   endGraphEditorRubberBand,
   initialGraphEditorInteractionState,
@@ -51,6 +52,7 @@ import {
   type GraphEditorSelectionMode,
 } from "./graphEditorInteractionState"
 import type { GraphLayoutPlan } from "./graphAutoLayout"
+import { graphNodePosition, moveGraphNodePosition } from "./graphNodeLayout"
 import type { GraphViewport } from "./graphViewport"
 import {
   createGraphPathOrderDraft,
@@ -58,7 +60,7 @@ import {
   type GraphPathOrderDraft,
   type GraphPathOrderMoveDirection,
 } from "./graphPathOrderDraft"
-import { GraphCanvas, type AddObjectNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type RemoveGraphItemsRequest } from "./GraphCanvas"
+import { GraphCanvas, type AddObjectNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type RemoveGraphItemsRequest } from "./GraphCanvas"
 import { ImportInbox } from "./ImportInbox"
 import {
   importPreviewArgsFromFiles,
@@ -714,6 +716,37 @@ export function WorkbenchShell({
     applyWorkspaceResponse(response)
   }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
 
+  const nudgeGraphNodes = useCallback(async (request: NudgeGraphNodesRequest) => {
+    const sessionId = workbenchState.sessionId
+    const nodes = workbenchState.workspace?.graph.nodes ?? []
+    if (!sessionId || request.nodeIds.length === 0) return
+    const byId = new Map(nodes.map((node) => [node.id, node]))
+    const moves = request.nodeIds
+      .map((nodeId) => {
+        const node = byId.get(nodeId)
+        if (!node) return null
+        return {
+          nodeId,
+          position: tuplePosition(moveGraphNodePosition(graphNodePosition(node), request.delta)),
+        }
+      })
+      .filter((move): move is MoveGraphNodeRequest => Boolean(move))
+    if (moves.length === 0) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    for (const move of moves) {
+      const response = await shellClient.run<WorkspaceCommandData>({
+        command: "workspace.move_node",
+        args: {
+          session_id: sessionId,
+          node_id: move.nodeId,
+          position: move.position,
+        },
+      })
+      applyWorkspaceResponse(response)
+      if (!response.ok || !response.data) return
+    }
+  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId, workbenchState.workspace?.graph.nodes])
+
   const applyGraphAutoLayout = useCallback(async (plan: GraphLayoutPlan) => {
     const sessionId = workbenchState.sessionId
     if (!sessionId) return
@@ -959,6 +992,16 @@ export function WorkbenchShell({
     })
     applyWorkspaceResponse(response)
   }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+
+  const clearGraphSelection = useCallback(() => {
+    setGraphEditorInteraction(clearGraphEditorSelection)
+    setEdgeLabelError(null)
+    setEdgeLabelDraft(initialEdgeLabelDraftState)
+    setCompositionError(null)
+    setCompositionDraft(initialCompositionDraftState)
+    setPathOrderDraft(null)
+    void selectGraphItems({ node_ids: [], edge_ids: [], path_ids: [] })
+  }, [selectGraphItems])
 
   const syncDraftsForGraphSelection = useCallback((selection: GraphEditorSelection) => {
     const workspace = workbenchState.workspace
@@ -1494,8 +1537,10 @@ export function WorkbenchShell({
             onOpenWorkspace={openWorkspace}
             onAddObjectNode={addObjectNode}
             onMoveNode={moveGraphNode}
+            onNudgeNodes={nudgeGraphNodes}
             onApplyAutoLayout={applyGraphAutoLayout}
             onRemoveGraphItems={removeGraphItems}
+            onClearSelection={clearGraphSelection}
             onSetViewport={setGraphViewport}
             onTogglePanMode={togglePanMode}
             onStartConnection={startConnection}
@@ -1607,6 +1652,10 @@ function isSingleGraphEditorPathSelection(selection: GraphEditorSelection): bool
   return selection.nodeIds.length === 0
     && selection.edgeIds.length === 0
     && selection.pathIds.length === 1
+}
+
+function tuplePosition(position: CanvasPoint): [number, number] {
+  return [position.x, position.y]
 }
 
 function energyOptionsForWorkspace(

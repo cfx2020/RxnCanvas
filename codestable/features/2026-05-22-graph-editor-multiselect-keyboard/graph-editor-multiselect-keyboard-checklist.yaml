@@ -12,7 +12,7 @@ steps:
 
   - action: "Keyboard And Nudge Orchestration：GraphCanvas scoped keydown 接入 Delete/Backspace/Escape/Arrow，WorkbenchShell 顺序执行 selected node nudge"
     exit_signal: "Delete/Backspace 发送 workspace.remove，Escape 发送空 workspace.select，Arrow 对 selected nodes 发送稳定 workspace.move_node 序列；输入框内按键不触发"
-    status: pending
+    status: done
 
   - action: "Verification And Scope Guard：跑 Web tests/build、必要 Python tests、浏览器桌面/窄屏验证"
     exit_signal: "多选、框选、删除、清空和 nudge 可用；node drag/direct edge/pan/drop/click fallback 不回退；scope grep 未新增 core/schema/autosave/energy/export 变更"

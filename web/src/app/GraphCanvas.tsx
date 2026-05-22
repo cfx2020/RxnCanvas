@@ -1,5 +1,5 @@
 import { useRef } from "react"
-import type { DragEvent, MouseEvent, PointerEvent } from "react"
+import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react"
 import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, XCircle, ZoomIn, ZoomOut } from "lucide-react"
 import type { ShellError } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
@@ -7,6 +7,7 @@ import type { CanvasPoint, GraphEditorInteractionState, GraphEditorSelectionMode
 import {
   graphEditorRubberBandRectangle,
   resolveGraphEditorDirectEdgeGesture,
+  resolveGraphEditorKeyboardIntent,
   resolveGraphEditorRubberBandNodeIds,
 } from "./graphEditorInteractionState"
 import { createGraphLayoutPlan, type GraphLayoutPlan, type GraphLayoutWarning } from "./graphAutoLayout"
@@ -49,6 +50,11 @@ export type RemoveGraphItemsRequest = {
   nodeIds: string[]
   edgeIds: string[]
   pathIds: string[]
+}
+
+export type NudgeGraphNodesRequest = {
+  nodeIds: string[]
+  delta: CanvasPoint
 }
 
 export type GraphAutoLayoutStatus = {
@@ -95,8 +101,10 @@ type GraphCanvasProps = {
   onOpenWorkspace: () => void
   onAddObjectNode: (request?: AddObjectNodeRequest) => void
   onMoveNode: (request: MoveGraphNodeRequest) => void
+  onNudgeNodes: (request: NudgeGraphNodesRequest) => void
   onApplyAutoLayout: (plan: GraphLayoutPlan) => void
   onRemoveGraphItems: (request: RemoveGraphItemsRequest) => void
+  onClearSelection: () => void
   onSetViewport: (viewport: GraphViewport) => void
   onTogglePanMode: () => void
   onStartConnection: () => void
@@ -146,8 +154,10 @@ export function GraphCanvas({
   onOpenWorkspace,
   onAddObjectNode,
   onMoveNode,
+  onNudgeNodes,
   onApplyAutoLayout,
   onRemoveGraphItems,
+  onClearSelection,
   onSetViewport,
   onTogglePanMode,
   onStartConnection,
@@ -216,6 +226,31 @@ export function GraphCanvas({
   const handleApplyAutoLayout = () => {
     if (!graph) return
     onApplyAutoLayout(createGraphLayoutPlan({ graph }))
+  }
+
+  const handleKeyboardIntent = (event: KeyboardEvent<HTMLElement>) => {
+    if (!canUseWorkspace || !isGraphKeyboardScopeTarget(event.target)) return
+    const intent = resolveGraphEditorKeyboardIntent(event)
+    if (!intent) return
+    event.preventDefault()
+    if (intent.kind === "delete-selection") {
+      if (!canRemoveSelection) return
+      onRemoveGraphItems({
+        nodeIds: interactionState.selection.nodeIds,
+        edgeIds: interactionState.selection.edgeIds,
+        pathIds: interactionState.selection.pathIds,
+      })
+      return
+    }
+    if (intent.kind === "clear-selection") {
+      onClearSelection()
+      return
+    }
+    if (interactionState.selection.nodeIds.length === 0) return
+    onNudgeNodes({
+      nodeIds: interactionState.selection.nodeIds,
+      delta: intent.delta,
+    })
   }
 
   const handleCanvasPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -420,7 +455,7 @@ export function GraphCanvas({
   }
 
   return (
-    <section className="graph-workspace" aria-label={t("graphCanvas.aria")}>
+    <section className="graph-workspace" aria-label={t("graphCanvas.aria")} onKeyDown={handleKeyboardIntent}>
       <div className="workspace-toolbar">
         <div>
           <p className="section-kicker">{t("graphCanvas.section")}</p>
@@ -509,6 +544,7 @@ export function GraphCanvas({
         <div
           className={`graph-canvas-surface ${panActive ? "graph-canvas-surface--pan" : ""}`}
           aria-label={t("graphCanvas.surface")}
+          tabIndex={canUseWorkspace ? 0 : undefined}
           onDragOver={handleObjectDragOver}
           onDrop={handleObjectDrop}
           onPointerDown={handleCanvasPointerDown}
@@ -690,6 +726,11 @@ function hasGraphObjectDragPayload(dataTransfer: DataTransfer): boolean {
 function isCanvasPanStartTarget(target: EventTarget): boolean {
   if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
   return !target.closest(".graph-node-card, .graph-edge-connect-handle, .graph-edge-hitbox, .graph-path-select")
+}
+
+function isGraphKeyboardScopeTarget(target: EventTarget): boolean {
+  if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
+  return Boolean(target.closest(".graph-canvas-surface, .graph-node-card, .graph-edge-hitbox, .graph-path-select"))
 }
 
 function canvasPositionFromDrop(event: DragEvent<HTMLDivElement>, viewport: GraphViewport): [number, number] {
