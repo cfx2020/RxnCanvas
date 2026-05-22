@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises"
+import { unzipSync, zipSync } from "fflate"
 import { expect, type Locator, type Page, type TestInfo } from "playwright/test"
 
 export type ConsoleIssue = {
@@ -110,6 +112,82 @@ export async function openBrowserProject(page: Page, name: string) {
   await expect(sidebar.getByRole("heading", { name })).toBeVisible()
   await expect(sidebar.getByText("Persisted", { exact: true })).toBeVisible()
   await expect(sidebar.getByText("Valid", { exact: true })).toBeVisible()
+}
+
+export type BrowserBundleDownload = {
+  path: string
+  entries: string[]
+}
+
+export type InvalidBundleSampleKind = "non_zip_bytes" | "missing_manifest" | "unsafe_entry"
+
+export async function exportProjectBundleDownload(page: Page): Promise<BrowserBundleDownload> {
+  const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
+  const downloadPromise = page.waitForEvent("download")
+  await sidebar.getByRole("button", { name: "Export Bundle" }).click()
+  const bundleDownload = await downloadPromise
+  await expect(sidebar.getByText("Bundle ready")).toBeVisible()
+  const bundlePath = await bundleDownload.path()
+  expect(bundlePath).toBeTruthy()
+  return {
+    path: bundlePath!,
+    entries: await downloadedBundleEntryNames(bundlePath!),
+  }
+}
+
+export async function importProjectBundleFile(page: Page, filePath: string) {
+  const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
+  await page.getByLabel("Select project bundle file").setInputFiles(filePath)
+  await expect(sidebar.getByText("Bundle imported")).toBeVisible()
+}
+
+export async function importInvalidProjectBundleSample(
+  page: Page,
+  kind: InvalidBundleSampleKind,
+) {
+  const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
+  await page.getByLabel("Select project bundle file").setInputFiles(invalidBundleSample(kind))
+  await expect(sidebar.getByText("invalid_bundle")).toBeVisible()
+}
+
+export async function downloadedBundleEntryNames(path: string): Promise<string[]> {
+  const bytes = await readFile(path)
+  return Object.keys(unzipSync(new Uint8Array(bytes))).sort()
+}
+
+export function expectBundleEntry(entries: string[], projectRelativePath: string) {
+  expect(entries.some((entry) => entry.endsWith(`/${projectRelativePath}`))).toBe(true)
+}
+
+function invalidBundleSample(kind: InvalidBundleSampleKind): {
+  name: string
+  mimeType: string
+  buffer: Buffer
+} {
+  if (kind === "non_zip_bytes") {
+    return {
+      name: "not-a-project.rxnflow.zip",
+      mimeType: "application/zip",
+      buffer: Buffer.from("not a zip"),
+    }
+  }
+  if (kind === "unsafe_entry") {
+    return {
+      name: "unsafe-entry.rxnflow.zip",
+      mimeType: "application/zip",
+      buffer: Buffer.from(zipSync({
+        "unsafe-root/.rxnflow/manifest.json": Buffer.from("{}"),
+        "unsafe-root/../outside.txt": Buffer.from("outside"),
+      })),
+    }
+  }
+  return {
+    name: "missing-manifest.rxnflow.zip",
+    mimeType: "application/zip",
+    buffer: Buffer.from(zipSync({
+      "broken-root/.rxnflow/state/project-content.json": Buffer.from("{}"),
+    })),
+  }
 }
 
 export async function runFixture(page: Page) {
@@ -232,7 +310,7 @@ export async function exerciseGraphViewportControls(page: Page) {
   await graphCanvas.getByRole("button", { name: "Fit" }).click()
   await expect.poll(async () => graphCanvas.getByLabel(/%$/).textContent()).not.toBe("120%")
 
-  await graphCanvas.getByRole("button", { name: "Reset" }).click()
+  await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
   await expect(graphCanvas.getByText("100%")).toBeVisible()
 
   const resetTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)

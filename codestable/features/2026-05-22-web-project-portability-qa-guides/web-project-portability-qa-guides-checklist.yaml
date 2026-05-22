@@ -4,23 +4,23 @@ created: 2026-05-22
 steps:
   - action: "QA helper alignment：复用现有 Playwright helper，必要时新增 bundle download/readback 与 invalid bundle sample helper"
     exit_signal: "helper 能从 UI 下载 .rxnflow.zip 并检查 entry paths，能生成至少两类坏 bundle 输入"
-    status: pending
+    status: done
 
   - action: "Fixture browser QA matrix：补 desktop/narrow Web bundle backup/restore 成功路径与错误 bundle 路径"
     exit_signal: "npm run test:e2e 覆盖 Import Bundle / Export Bundle 成功和 invalid bundle error，console clean、无水平溢出"
-    status: pending
+    status: done
 
   - action: "Local-http evidence：确认或增强 local-http bundle roundtrip 证据，避免只依赖 fixture runtime"
     exit_signal: "npm run test:e2e:local-http 仍覆盖 Open Bridge / Save Bridge / Export Bundle / Import Bundle / Open Bridge"
-    status: pending
+    status: done
 
   - action: "Guides update：更新用户指南和开发者指南，明确 Web 本地项目备份/恢复步骤、包含内容、错误 code、验证命令和非云同步边界"
     exit_signal: "指南不再只偏 CLI；grep 可找到 Web Import Bundle、Export Bundle、Open Bridge、Save Bridge Session、invalid_bundle 和 QA 命令"
-    status: pending
+    status: done
 
   - action: "Scope guards and verification：跑 unit/build/E2E、YAML 和 scope grep"
     exit_signal: "npm run test -- --run、npm run build、npm run test:e2e、npm run test:e2e:local-http 通过；未新增方案外能力"
-    status: pending
+    status: done
 
 checks:
   - item: "Portability QA Matrix / Invalid Bundle Samples / Web Backup/Restore Guide / Manual Portability Boundary / Guide Verification Hooks 术语落地"

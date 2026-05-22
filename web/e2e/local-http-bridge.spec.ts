@@ -1,12 +1,13 @@
 import { expect, test } from "playwright/test"
-import { readFile } from "node:fs/promises"
-import { unzipSync } from "fflate"
 import {
   attachViewportScreenshot,
   collectConsoleIssues,
   createAndSaveBrowserProject,
+  expectBundleEntry,
   expectConsoleClean,
   expectNoHorizontalOverflow,
+  exportProjectBundleDownload,
+  importProjectBundleFile,
   openWorkbench,
   resetWorkbenchStorage,
 } from "./workbench-helpers"
@@ -129,13 +130,8 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await sidebar.getByRole("button", { name: "Save Bridge" }).click()
     await expect(sidebar.getByText("Project content files are readable.")).toBeVisible()
 
-    const downloadPromise = page.waitForEvent("download")
-    await sidebar.getByRole("button", { name: "Export Bundle" }).click()
-    const bundleDownload = await downloadPromise
-    await expect(sidebar.getByText("Bundle ready")).toBeVisible()
-    const bundlePath = await bundleDownload.path()
-    expect(bundlePath).toBeTruthy()
-    const bundleEntries = await downloadedBundleEntryNames(bundlePath!)
+    const bundle = await exportProjectBundleDownload(page)
+    const bundleEntries = bundle.entries
     expectBundleEntry(bundleEntries, ".rxnflow/manifest.json")
     expectBundleEntry(bundleEntries, ".rxnflow/state/project-content.json")
     expectBundleEntry(bundleEntries, ".rxnflow/state/workspaces.json")
@@ -144,8 +140,7 @@ test.describe("RxnFlow local-http bridge E2E", () => {
 
     await page.reload({ waitUntil: "networkidle" })
     await openWorkbench(page)
-    await page.getByLabel("Select project bundle file").setInputFiles(bundlePath!)
-    await expect(sidebar.getByText("Bundle imported")).toBeVisible()
+    await importProjectBundleFile(page, bundle.path)
     await expect(sidebar.getByText("No project loaded")).toBeVisible()
     await sidebar.getByRole("button", { name: "Open Bridge" }).click()
     await expect(sidebar.getByText("Open", { exact: true })).toBeVisible()
@@ -156,12 +151,3 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await expectConsoleClean(consoleIssues)
   })
 })
-
-async function downloadedBundleEntryNames(path: string): Promise<string[]> {
-  const bytes = await readFile(path)
-  return Object.keys(unzipSync(new Uint8Array(bytes))).sort()
-}
-
-function expectBundleEntry(entries: string[], projectRelativePath: string) {
-  expect(entries.some((entry) => entry.endsWith(`/${projectRelativePath}`))).toBe(true)
-}
