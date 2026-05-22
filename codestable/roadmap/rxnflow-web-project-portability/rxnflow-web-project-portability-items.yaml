@@ -21,8 +21,8 @@ items:
   - slug: web-project-bundle-export
     description: 启用 Project Sidebar Export Bundle，把 active browser project 下载为 .rxnflow.zip，包含 .rxnflow/、inputs/raw/ 和 exports/
     depends_on: [web-project-bundle-archive-adapter]
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-05-22-web-project-bundle-export
     minimal_loop: false
     notes: export 只读取 Browser Project Repository 当前 bytes；不会偷偷调用 Save Bridge Session 或生成缺失 artifact bytes
 
