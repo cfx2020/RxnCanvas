@@ -16,109 +16,109 @@ steps:
 
   - action: "Verification And Scope Guard：跑 Web tests/build、必要 Python tests、浏览器桌面/窄屏验证"
     exit_signal: "多选、框选、删除、清空和 nudge 可用；node drag/direct edge/pan/drop/click fallback 不回退；scope grep 未新增 core/schema/autosave/energy/export 变更"
-    status: pending
+    status: done
 
 checks:
   - item: "Interaction helper 可 replace/add/toggle node/edge/path selection，去重并保持稳定顺序"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "toggle 已存在 item 会从 selection 移除；toggle 最后一个 item 可得到空 selection"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "prune 会清除失效 selected ids、rubber-band draft 和 dragging stale node references"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Rubber-band draft 可从 origin/current 计算 rectangle，并选择中心点落在 rectangle 内的 nodes"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "普通点击 node/edge/path 替换 selection，并发送对应 workspace.select"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Shift-click node/edge/path add/toggle selection，允许 mixed selection，并发送数组型 workspace.select"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "select mode 空白画布 drag 显示 rubber-band overlay；release 后发送 selected node ids；drag 过程中不发送 shell command"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "pan mode 空白拖动仍发送 workspace.set_viewport，不触发 rubber-band"
     source: 回归场景
-    status: pending
+    status: passed
 
   - item: "Edge Connect Handle direct gesture 仍可用，不被 rubber-band 或 Shift-click 误捕获"
     source: 回归场景
-    status: pending
+    status: passed
 
   - item: "Delete Selected button 和 Delete/Backspace 快捷键发送当前 selection 的 workspace.remove(node_ids, edge_ids, path_ids)"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Empty selection 下 Delete/Backspace 不发送 shell command"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Escape 发送空 workspace.select，并清理 pending edge / rubber-band draft"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Arrow keys 对 selected nodes 发送 workspace.move_node，edge/path selection 不产生 nudge command"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Nudge 时多个 selected nodes 按稳定顺序移动；失败时停止后续 move，不本地回滚 domain graph"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "焦点在 input/textarea/select/contenteditable 内时，Delete/Escape/Arrow 不触发 graph keyboard intent"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "多选或 mixed selection 时 Node Composition Editor、Edge Label Draft、Path Order Draft 不初始化可编辑 draft；单选行为保持"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Click-driven Connect fallback 只在恰好单个 node selected 时启用，direct edge gesture 不受影响"
     source: 回归场景
-    status: pending
+    status: passed
 
   - item: "不新增 Python core / Platform Shell command、GraphPatch op、Project Content schema、Browser Project Repository write、localStorage persistence、autosave、EnergyProfile 或 Report Export 变更"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "cd web && npm run test -- --run 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "cd web && npm run build 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "浏览器验证 http://127.0.0.1:5173/ 页面非空白、无 framework overlay、console clean；多选/框选/键盘在桌面/窄屏无明显重叠或水平溢出"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "不把 multi-select 做成前端本地 domain graph patch"
     source: 跨层纪律
-    status: pending
+    status: passed
 
   - item: "不新增 batch move / batch select shell command"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不把 node nudge 扩展成 undo/redo/history 或持久化操作日志"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不把 keyboard shortcuts 做成全局快捷键或拦截表单输入"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不把 rubber-band draft 写入 ShellResponse、Project Content、Browser Project Repository 或 localStorage"
     source: 范围守护
-    status: pending
+    status: passed
