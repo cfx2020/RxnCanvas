@@ -1,7 +1,7 @@
 ---
 doc_type: roadmap
 slug: rxnflow-parser-real-output-compatibility
-status: active
+status: completed
 created: 2026-05-21
 last_reviewed: 2026-05-22
 tags: [rxnflow, parser, real-output, maple, cclib, gaussian, orca, ase, extxyz]

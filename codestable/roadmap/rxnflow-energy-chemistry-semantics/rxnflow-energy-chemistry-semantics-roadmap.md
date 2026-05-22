@@ -1,7 +1,7 @@
 ---
 doc_type: roadmap
 slug: rxnflow-energy-chemistry-semantics
-status: active
+status: completed
 created: 2026-05-22
 last_reviewed: 2026-05-22
 tags: [rxnflow, energy, chemistry-semantics, stoichiometry, corrections, thermochemistry]

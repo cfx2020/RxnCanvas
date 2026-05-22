@@ -1,9 +1,9 @@
 ---
 doc_type: roadmap
 slug: rxnflow-report-export-quality
-status: active
+status: completed
 created: 2026-05-21
-last_reviewed: 2026-05-21
+last_reviewed: 2026-05-22
 tags: [rxnflow, report-export, energy-table, energy-diagram, cdxml, xlsx, png]
 related_requirements: [web-workbench-shell, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform, web-workbench]
