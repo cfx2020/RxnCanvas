@@ -1,4 +1,6 @@
 import { expect, test } from "playwright/test"
+import { readFile } from "node:fs/promises"
+import { unzipSync } from "fflate"
 import {
   attachViewportScreenshot,
   collectConsoleIssues,
@@ -101,4 +103,65 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await attachViewportScreenshot(page, testInfo, "local-http-bridge-smoke")
     await expectConsoleClean(consoleIssues)
   })
+
+  test("exports, imports, and opens a browser project bundle through the local HTTP bridge", async ({ page }, testInfo) => {
+    const consoleIssues = collectConsoleIssues(page)
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await openWorkbench(page)
+
+    const projectName = `Local HTTP Bundle ${Date.now()}`
+    await createAndSaveBrowserProject(page, projectName)
+
+    const importInbox = page.getByRole("region", { name: "Import Inbox" })
+    await importInbox.getByLabel("Select Files").setInputFiles({
+      name: "water.xyz",
+      mimeType: "chemical/x-xyz",
+      buffer: Buffer.from("2\nEnergy = -1.5 Hartree\nH 0 0 0\nH 0 0 0.74\n"),
+    })
+    await importInbox.getByLabel("Expected format").selectOption("xyz")
+    await importInbox.getByRole("button", { name: "Preview" }).click()
+    await expect(importInbox.getByText("Persisted raw input")).toBeVisible()
+    await expect(importInbox.getByText(/inputs\/raw\/[a-f0-9]{12}-water\.xyz/)).toBeVisible()
+
+    const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
+    await sidebar.getByRole("button", { name: "Open Bridge" }).click()
+    await expect(sidebar.getByText("Open", { exact: true })).toBeVisible()
+    await sidebar.getByRole("button", { name: "Save Bridge" }).click()
+    await expect(sidebar.getByText("Project content files are readable.")).toBeVisible()
+
+    const downloadPromise = page.waitForEvent("download")
+    await sidebar.getByRole("button", { name: "Export Bundle" }).click()
+    const bundleDownload = await downloadPromise
+    await expect(sidebar.getByText("Bundle ready")).toBeVisible()
+    const bundlePath = await bundleDownload.path()
+    expect(bundlePath).toBeTruthy()
+    const bundleEntries = await downloadedBundleEntryNames(bundlePath!)
+    expectBundleEntry(bundleEntries, ".rxnflow/manifest.json")
+    expectBundleEntry(bundleEntries, ".rxnflow/state/project-content.json")
+    expectBundleEntry(bundleEntries, ".rxnflow/state/workspaces.json")
+    expectBundleEntry(bundleEntries, ".rxnflow/state/reaction-graphs.json")
+    expect(bundleEntries.some((entry) => /\/inputs\/raw\/[a-f0-9]{12}-water\.xyz$/.test(entry))).toBe(true)
+
+    await page.reload({ waitUntil: "networkidle" })
+    await openWorkbench(page)
+    await page.getByLabel("Select project bundle file").setInputFiles(bundlePath!)
+    await expect(sidebar.getByText("Bundle imported")).toBeVisible()
+    await expect(sidebar.getByText("No project loaded")).toBeVisible()
+    await sidebar.getByRole("button", { name: "Open Bridge" }).click()
+    await expect(sidebar.getByText("Open", { exact: true })).toBeVisible()
+    await expect(page.getByText(projectName).first()).toBeVisible()
+
+    await expectNoHorizontalOverflow(page)
+    await attachViewportScreenshot(page, testInfo, "local-http-bundle-roundtrip")
+    await expectConsoleClean(consoleIssues)
+  })
 })
+
+async function downloadedBundleEntryNames(path: string): Promise<string[]> {
+  const bytes = await readFile(path)
+  return Object.keys(unzipSync(new Uint8Array(bytes))).sort()
+}
+
+function expectBundleEntry(entries: string[], projectRelativePath: string) {
+  expect(entries.some((entry) => entry.endsWith(`/${projectRelativePath}`))).toBe(true)
+}

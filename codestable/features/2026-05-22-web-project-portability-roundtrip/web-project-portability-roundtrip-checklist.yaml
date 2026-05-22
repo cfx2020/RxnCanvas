@@ -4,23 +4,23 @@ created: 2026-05-22
 steps:
   - action: "Roundtrip fixture evidence：建立测试用 bundle fixture 和导出 Blob/readback helper，复用 Browser Bundle Archive Adapter"
     exit_signal: "测试 helper 能生成含 Project Content state、inputs/raw/demo.xyz、exports/profile.png 的 .rxnflow.zip，并能读回 exported bundle entry paths"
-    status: pending
+    status: done
 
   - action: "Component roundtrip：补 WorkbenchShell test 覆盖 import → Open Bridge → workspace edit/report export → Save Bridge Session → repository probe"
     exit_signal: "断言 project.open / project.save_content payload 正确，Save Bridge 后 workspace state checksum 变化，raw/export objects 仍存在"
-    status: pending
+    status: done
 
   - action: "Bundle re-export readback：在 component 层点击 Export Bundle，捕获 Blob 并用 archive adapter 读回"
     exit_signal: "读回 entries 同时包含更新后的 .rxnflow/state/workspaces.json、.rxnflow/state/reaction-graphs.json、inputs/raw/demo.xyz 和 exports/profile.png 或新导出 artifact"
-    status: pending
+    status: done
 
   - action: "Local-http smoke：扩展 local-http Playwright，走真实 bridge 的 roundtrip 窄链路"
     exit_signal: "npm run test:e2e:local-http 通过，console clean、无水平溢出，UI 可见 imported project、Open Bridge、Save Bridge、Bundle ready"
-    status: pending
+    status: done
 
   - action: "Scope guards and verification：跑 Web unit/build/E2E，grep 确认没有新增 autosave/cloud/Python bundle command"
     exit_signal: "npm run test -- --run、npm run build、npm run test:e2e:local-http 通过；必要时 fixture E2E smoke 也通过"
-    status: pending
+    status: done
 
 checks:
   - item: "Portability Roundtrip Scenario / Imported Browser Project Session Restore / Explicit Bridge Sync Boundary / Repository-Core Session Parity Probe / Bundle Re-export Evidence / Roundtrip Browser QA 术语落地"

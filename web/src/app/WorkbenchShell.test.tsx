@@ -6,7 +6,11 @@ import { graphObjectDragMimeType } from "./graphObjectDragPayload"
 import { WorkbenchShell } from "./WorkbenchShell"
 import { I18nProvider, type SupportedLocale } from "./i18n"
 import { chemicalObjectsPath, exportArtifactsPath, projectContentIndexPath, reactionGraphsPath, workspacesPath } from "./projectContentBridge"
-import { createBrowserProjectBundleArchive, type BrowserProjectBundleEntry } from "./projectBundleArchive"
+import {
+  createBrowserProjectBundleArchive,
+  readBrowserProjectBundleArchive,
+  type BrowserProjectBundleEntry,
+} from "./projectBundleArchive"
 
 describe("WorkbenchShell", () => {
   it("renders a local-only workbench shell as the first screen", async () => {
@@ -436,9 +440,10 @@ describe("WorkbenchShell", () => {
     })
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Delete Selected" }))
 
-    const removePayload = transport.payloads.find((payload) => payload.command === "workspace.remove")
-    expect(removePayload?.args).toMatchObject({
-      node_ids: ["node-a"],
+    await waitFor(() => {
+      expect(lastPayload(transport, "workspace.remove")?.args).toMatchObject({
+        node_ids: ["node-a"],
+      })
     })
     await waitFor(() => expect(within(graphCanvas).queryByRole("button", { name: /node-a/i })).not.toBeInTheDocument())
     expect(within(graphCanvas).queryByRole("button", { name: "Edge Object A to Object B" })).not.toBeInTheDocument()
@@ -1373,6 +1378,107 @@ describe("WorkbenchShell", () => {
     expect(await repository.listProjects()).toHaveLength(1)
   })
 
+  it("roundtrips imported bundles through bridge save and bundle re-export", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const transport = new RecordingProjectBridgeTransport()
+    const importedFile = await createBundleFile({
+      rootName: "roundtrip-source.rxnflow",
+      fileName: "roundtrip-source.rxnflow.zip",
+      entries: await roundtripBundleEntries(),
+    })
+    const download = mockBrowserDownload()
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    try {
+      fireEvent.change(await screen.findByLabelText("Select project bundle file"), {
+        target: { files: [importedFile] },
+      })
+      expect(await screen.findByText("Bundle imported")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /roundtrip source/i })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByText("No project loaded")).toBeInTheDocument()
+
+      const importedProject = await onlyProjectNamed(repository, "Roundtrip Source")
+      const workspaceBeforeOpen = await readJsonObject(repository, importedProject.projectRef, workspacesPath)
+      expect(workspaceBeforeOpen.workspaces[0].viewport.zoom).toBe(1)
+      expect(await repository.exists(importedProject.projectRef, "inputs/raw/demo.xyz")).toBe(true)
+      expect(await repository.exists(importedProject.projectRef, "exports/profile.png")).toBe(true)
+      expect(transport.payloads.filter((payload) => payload.command === "project.open")).toHaveLength(0)
+
+      fireEvent.click(screen.getByRole("button", { name: "Open Bridge" }))
+      expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+      const openPayload = lastPayload(transport, "project.open")
+      expect(openPayload?.args).toMatchObject({ load_content: true })
+      expect(JSON.stringify(openPayload?.args.content_files)).toContain(workspacesPath)
+      expect(screen.getByText("Bridge session is open. Save Bridge Session first if you want recent shell changes in the bundle.")).toBeInTheDocument()
+
+      const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+      mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
+      fireEvent.click(within(graphCanvas).getByRole("button", { name: "Zoom In" }))
+      await waitFor(() => expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
+        viewport: { zoom: 1.2 },
+      }))
+
+      const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+      fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
+      expect(await within(exportPanel).findByText("exports/rxnflow-profile.png")).toBeInTheDocument()
+      expect(await repository.exists(importedProject.projectRef, "exports/rxnflow-profile.png")).toBe(true)
+      expect(transport.payloads.filter((payload) => payload.command === "project.save_content")).toHaveLength(0)
+
+      const workspaceBeforeSave = await readJsonObject(repository, importedProject.projectRef, workspacesPath)
+      expect(workspaceBeforeSave.workspaces[0].viewport.zoom).toBe(1)
+      fireEvent.click(screen.getByRole("button", { name: "Save Bridge" }))
+      await waitFor(() => expect(lastPayload(transport, "project.save_content")?.args).toMatchObject({
+        session_id: "session-fixture-web",
+        include_content_files: true,
+      }))
+      await waitFor(async () => {
+        const workspaceAfterSave = await readJsonObject(repository, importedProject.projectRef, workspacesPath)
+        expect(workspaceAfterSave.workspaces[0].viewport.zoom).toBe(1.2)
+      })
+      expect(await repository.exists(importedProject.projectRef, "inputs/raw/demo.xyz")).toBe(true)
+      expect(await repository.exists(importedProject.projectRef, "exports/profile.png")).toBe(true)
+      expect(await repository.exists(importedProject.projectRef, "exports/rxnflow-profile.png")).toBe(true)
+
+      fireEvent.click(screen.getByRole("button", { name: "Export Bundle" }))
+      expect(await screen.findByText("Bundle ready")).toBeInTheDocument()
+      const exportedBundle = await readCapturedBundle(download.blobs[0], "Roundtrip-Source.rxnflow.zip")
+      expect(exportedBundle.summary.rootName).toBe("Roundtrip-Source.rxnflow")
+      expect(exportedBundle.entries.map((entry) => entry.projectRelativePath)).toEqual(expect.arrayContaining([
+        ".rxnflow/manifest.json",
+        reactionGraphsPath,
+        workspacesPath,
+        "inputs/raw/demo.xyz",
+        "exports/profile.png",
+        "exports/rxnflow-profile.png",
+      ]))
+      const exportedWorkspace = JSON.parse(new TextDecoder().decode(
+        exportedBundle.entries.find((entry) => entry.projectRelativePath === workspacesPath)?.bytes,
+      ))
+      expect(exportedWorkspace.workspaces[0].viewport.zoom).toBe(1.2)
+
+      fireEvent.change(screen.getByLabelText("Select project bundle file"), {
+        target: {
+          files: [
+            new File([download.blobs[0]], "Roundtrip-Source.rxnflow.zip", { type: "application/zip" }),
+          ],
+        },
+      })
+      await waitFor(async () => expect(await repository.listProjects()).toHaveLength(2))
+      const reimportedProject = (await repository.listProjects())
+        .find((project) => project.projectRef !== importedProject.projectRef)
+      expect(reimportedProject?.projectRef).toMatch(/^browser-project:/)
+      expect(await repository.exists(reimportedProject?.projectRef ?? "", "inputs/raw/demo.xyz")).toBe(true)
+      expect(await repository.exists(reimportedProject?.projectRef ?? "", "exports/rxnflow-profile.png")).toBe(true)
+      fireEvent.click(screen.getByRole("button", { name: "Open Bridge" }))
+      expect(await within(graphCanvas).findByText("120%")).toBeInTheDocument()
+
+      expect(transport.payloads.filter((payload) => payload.command === "project.import_bundle")).toHaveLength(0)
+      expect(transport.payloads.filter((payload) => payload.command === "project.export_bundle")).toHaveLength(0)
+    } finally {
+      download.restore()
+    }
+  })
+
   it("shows bundle export errors without creating an object URL", async () => {
     const repository = new MemoryBrowserProjectRepository()
     await repository.createProject({ name: "Missing Bundle Content" })
@@ -1522,13 +1628,20 @@ function mockBrowserDownload() {
   const originalCreateObjectURL = URL.createObjectURL
   const originalRevokeObjectURL = URL.revokeObjectURL
   const originalClick = HTMLAnchorElement.prototype.click
-  const createObjectURL = vi.fn(() => "blob:rxnflow-bundle")
+  const blobs: Blob[] = []
+  const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+    if (blob instanceof Blob) {
+      blobs.push(blob)
+    }
+    return "blob:rxnflow-bundle"
+  })
   const revokeObjectURL = vi.fn()
   const click = vi.fn()
   URL.createObjectURL = createObjectURL
   URL.revokeObjectURL = revokeObjectURL
   HTMLAnchorElement.prototype.click = click
   return {
+    blobs,
     createObjectURL,
     revokeObjectURL,
     click,
@@ -1538,6 +1651,155 @@ function mockBrowserDownload() {
       HTMLAnchorElement.prototype.click = originalClick
     },
   }
+}
+
+async function onlyProjectNamed(
+  repository: MemoryBrowserProjectRepository,
+  name: string,
+) {
+  const projects = await repository.listProjects()
+  const matches = projects.filter((project) => project.name === name)
+  expect(matches).toHaveLength(1)
+  return matches[0]
+}
+
+async function readJsonObject(
+  repository: MemoryBrowserProjectRepository,
+  projectRef: string,
+  path: string,
+) {
+  const object = await repository.readObject(projectRef, path)
+  return JSON.parse(new TextDecoder().decode(object.bytes))
+}
+
+async function readCapturedBundle(blob: Blob, bundleName: string) {
+  const result = await readBrowserProjectBundleArchive({
+    bundleName,
+    bytes: new Uint8Array(await blob.arrayBuffer()) as Uint8Array<ArrayBuffer>,
+  })
+  if (!result.ok) {
+    throw new Error(result.error.message)
+  }
+  return result
+}
+
+async function roundtripBundleEntries(): Promise<Record<string, string>> {
+  const encoder = new TextEncoder()
+  const chemicalObjects = jsonText({
+    schema_version: "chemical-objects-v1",
+    project_id: "project-roundtrip-source",
+    objects: [],
+  })
+  const reactionGraphs = jsonText({
+    schema_version: "reaction-graphs-v1",
+    project_id: "project-roundtrip-source",
+    graphs: [
+      {
+        id: "graph-roundtrip-source",
+        project_id: "project-roundtrip-source",
+        nodes: [
+          { id: "node-a", kind: "species", label: "Imported A", chemical_object_ids: ["object-a"], composition: [{ object_id: "object-a", coefficient: 1, role: "species", label: "Fixture A" }], position: [120, 160], metadata: {} },
+          { id: "node-b", kind: "species", label: "Imported B", chemical_object_ids: ["object-b"], composition: [{ object_id: "object-b", coefficient: 1, role: "species", label: "Fixture B" }], position: [360, 160], metadata: {} },
+        ],
+        edges: [
+          { id: "edge-a-b", from_node: "node-a", to_node: "node-b", label: null, metadata: {} },
+        ],
+        paths: [
+          { id: "path-a-b", label: "Imported path", node_ids: ["node-a", "node-b"] },
+        ],
+      },
+    ],
+  })
+  const workspaces = jsonText({
+    schema_version: "workspaces-v1",
+    project_id: "project-roundtrip-source",
+    workspaces: [
+      {
+        workspace_id: "workspace-roundtrip-source",
+        project_id: "project-roundtrip-source",
+        graph_id: "graph-roundtrip-source",
+        selection: { node_ids: [], edge_ids: [], path_ids: [] },
+        viewport: { x: 0, y: 0, zoom: 1 },
+        active_path_id: "path-a-b",
+        updated_at: "2026-05-05T00:00:00Z",
+      },
+    ],
+  })
+  const energyProfiles = jsonText({
+    schema_version: "energy-profiles-v1",
+    project_id: "project-roundtrip-source",
+    profiles: [],
+  })
+  const importLedger = jsonText({
+    schema_version: "import-ledger-v1",
+    project_id: "project-roundtrip-source",
+    batches: [],
+  })
+  const exportArtifacts = jsonText({
+    schema_version: "export-artifacts-v1",
+    project_id: "project-roundtrip-source",
+    artifacts: [
+      {
+        id: "artifact-profile-existing",
+        format: "png",
+        path: "exports/profile.png",
+        checksum: await checksumBrowserStorageBytes(encoder.encode("png") as Uint8Array<ArrayBuffer>),
+        metadata: {},
+        created_at: "2026-05-05T00:00:00Z",
+      },
+    ],
+  })
+  const sectionTexts = [
+    [chemicalObjectsPath, "chemical_objects", chemicalObjects],
+    [reactionGraphsPath, "reaction_graphs", reactionGraphs],
+    [workspacesPath, "workspaces", workspaces],
+    [".rxnflow/state/energy-profiles.json", "energy_profiles", energyProfiles],
+    [".rxnflow/state/import-ledger.json", "import_ledger", importLedger],
+    [exportArtifactsPath, "export_artifacts", exportArtifacts],
+  ] as const
+
+  return {
+    ".rxnflow/manifest.json": jsonText({
+      id: "project-roundtrip-source",
+      name: "Roundtrip Source",
+      schema_version: "project-v1",
+      resources: [
+        {
+          id: "raw-demo",
+          kind: "raw_file",
+          path: "inputs/raw/demo.xyz",
+          checksum: await checksumBrowserStorageBytes(encoder.encode("2\nDemo\n") as Uint8Array<ArrayBuffer>),
+          metadata: {
+            source_name: "demo.xyz",
+            byte_size: 7,
+          },
+        },
+      ],
+    }),
+    ".rxnflow/state/project-content.json": jsonText({
+      schema_version: "project-content-v1",
+      project_id: "project-roundtrip-source",
+      updated_at: "2026-05-05T00:00:00Z",
+      files: await Promise.all(sectionTexts.map(async ([path, kind, text]) => ({
+        kind,
+        path,
+        checksum: await checksumBrowserStorageBytes(encoder.encode(text) as Uint8Array<ArrayBuffer>),
+        updated_at: "2026-05-05T00:00:00Z",
+      }))),
+    }),
+    [chemicalObjectsPath]: chemicalObjects,
+    [reactionGraphsPath]: reactionGraphs,
+    [workspacesPath]: workspaces,
+    ".rxnflow/state/energy-profiles.json": energyProfiles,
+    ".rxnflow/state/import-ledger.json": importLedger,
+    [exportArtifactsPath]: exportArtifacts,
+    "inputs/raw/demo.xyz": "2\nDemo\n",
+    "exports/profile.png": "png",
+  }
+}
+
+function jsonText(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`
 }
 
 async function createProjectWithContent(
