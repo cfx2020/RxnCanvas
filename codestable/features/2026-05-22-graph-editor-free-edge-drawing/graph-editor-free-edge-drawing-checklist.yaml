@@ -16,89 +16,89 @@ steps:
 
   - action: "Verification And Scope Guard：跑 Web tests/build、必要 Python tests、浏览器桌面/窄屏验证"
     exit_signal: "direct edge drag 可用，release 空白/同 node 不发 command；无 console error/overlay/水平溢出；scope grep 未新增 core command/schema/autosave/energy/export 变更"
-    status: pending
+    status: done
 
 checks:
   - item: "Interaction helper 可创建 source=\"pointer\" 的 pending edge draft，记录 source node 和 pointer graph position"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "Pointer move 更新 pending edge preview position，不修改 domain graph"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "Pointer move / release 可识别合法 target node，并把 targetNodeId 记录在 pending draft"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "Pointer release 到另一个 node 时发送 workspace.connect(from_node_id, to_node_id)"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "workspace.connect 成功后新 edge 只由 ShellResponse workspace projection 出现在 GraphCanvas"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "Pointer release 到空白区域不发送 workspace.connect，pending draft 被清空"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "Pointer release 到同一 source node 不发送 workspace.connect，pending draft 被清空或显示 no-op"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "Source node 在 gesture 期间从 projection 消失时，不发送 command，pending draft 被 prune"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "Node body drag 仍发送 workspace.move_node，不误触发 edge drawing"
     source: 回归场景
-    status: pending
+    status: done
 
   - item: "Pan mode empty canvas drag 仍发送 workspace.set_viewport，不误触发 edge drawing"
     source: 回归场景
-    status: pending
+    status: done
 
   - item: "Object Registry drag/drop 仍发送 workspace.add_node(position)，不误触发 edge drawing"
     source: 回归场景
-    status: pending
+    status: done
 
   - item: "既有 click-driven Connect fallback 仍可用：选中 source -> Connect -> 点击 target 创建 edge"
     source: 回归场景
-    status: pending
+    status: done
 
   - item: "Direct gesture 不创建 edge label；创建后如需 label，仍选中 edge 使用 Edge Label Draft"
     source: 范围守护
-    status: pending
+    status: done
 
   - item: "不新增 Python core / Platform Shell command、GraphPatch op、Project Content schema、Browser Project Repository write、localStorage persistence、autosave、EnergyProfile 或 Report Export 变更"
     source: 范围守护
-    status: pending
+    status: done
 
   - item: "cd web && npm run test -- --run 通过"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "cd web && npm run build 通过"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "浏览器验证 http://127.0.0.1:5173/ 页面非空白、无 framework overlay、console clean；direct edge gesture 在桌面/窄屏无明显重叠或水平溢出"
     source: 验收场景
-    status: pending
+    status: done
 
   - item: "不把 direct edge drawing 实现成前端本地 append edge"
     source: 跨层纪律
-    status: pending
+    status: done
 
   - item: "不把 direct edge drawing 扩展成 endpoint reconnect、edge label prompt、reaction condition editor、multi-select、undo/redo 或 minimap"
     source: 范围守护
-    status: pending
+    status: done
 
   - item: "不删除 Connect button / click fallback"
     source: 范围守护
-    status: pending
+    status: done
 
   - item: "不把 Pending Edge Draft 写入 ShellResponse、Project Content、Browser Project Repository 或 localStorage"
     source: 范围守护
-    status: pending
+    status: done
