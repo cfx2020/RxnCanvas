@@ -4,7 +4,7 @@ slug: core-platform
 status: current
 created: 2026-05-02
 last_reviewed: 2026-05-22
-tags: [core, fixture, domain-model, energy-profile, energy-channel-catalog, energy-profile-persistence, import-workflow, graph-editor-workspace, graph-editor-node-layout, graph-editor-edge-path-editing, graph-editor-workspace-persistence, workspace-move-node, workspace-remove, workspace-remove-path, workspace-select, report-export, platform-shell, cli, local-http-shell-bridge, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
+tags: [core, fixture, domain-model, energy-profile, energy-channel-catalog, energy-profile-persistence, import-workflow, graph-editor-workspace, graph-editor-node-layout, graph-editor-edge-path-editing, graph-editor-edge-label, graph-editor-workspace-persistence, workspace-move-node, workspace-remove, workspace-remove-path, workspace-update-edge, workspace-select, report-export, platform-shell, cli, local-http-shell-bridge, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
 ---
 
 # Core Platform
@@ -76,8 +76,9 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 4. 在 workspace state 中维护 CanvasViewport、WorkspaceSelection 和 active_path_id，不写入 ReactionGraph。
 5. 从当前 graph 派生 NetworkPreview，包含 nodes、edges、paths、active path、disconnected node diagnostics 和 warnings。
 6. remove_items 支持按 node_ids / edge_ids / path_ids 删除 graph item；删除 node 时复用 ReactionGraphService cascade，相关 edge 和包含该 node 的 path 会由 graph projection 消失；删除 edge 保留 nodes 并重新派生 disconnected diagnostics；删除 path 只移除 ReactionPath，保留 path 上的 nodes / edges，并由 workspace projection 修剪 active_path_id 和 selection。
-7. 支持列出和恢复项目内 WorkspaceSnapshot，恢复时保留 selection、viewport、active_path_id 和 updated_at，并重新派生 Object Palette / NetworkPreview。
-8. `select` 接收 node/edge/path id 集合，校验引用必须存在于当前 graph；空 selection 合法，用于清空选择。删除 node/edge 或 apply graph patches 后会修剪失效 selection，最终 selection 通过 workspace projection 返回给端侧。
+7. update_edge 支持按 edge id 更新已有 ReactionEdge 的 label 和可选 metadata；label 为空字符串或全空白时归一化为 `None`，workspace 层不暴露 from_node/to_node 修改，端点重连留给后续功能。
+8. 支持列出和恢复项目内 WorkspaceSnapshot，恢复时保留 selection、viewport、active_path_id 和 updated_at，并重新派生 Object Palette / NetworkPreview。
+9. `select` 接收 node/edge/path id 集合，校验引用必须存在于当前 graph；空 selection 合法，用于清空选择。删除 node/edge 或 apply graph patches 后会修剪失效 selection，最终 selection 通过 workspace projection 返回给端侧。
 
 第八类是 Energy Engine：
 
@@ -103,7 +104,7 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 
 1. 通过 ShellCommand、ShellResponse、ShellArtifact 和 PlatformSession 定义端侧 JSON-safe 命令协议。
 2. 通过 AppKernel 集中装配 ProjectStore、ProjectContentStore、ProjectBundleService、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
-3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`registry.apply_correction`、`workspace.open`、`workspace.add_node`、`workspace.set_node_composition`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.set_path`、`energy.compute`、`export.profile` 和 `workbench.snapshot`。
+3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`registry.apply_correction`、`workspace.open`、`workspace.add_node`、`workspace.set_node_composition`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.update_edge`、`workspace.set_path`、`energy.compute`、`export.profile` 和 `workbench.snapshot`。
 4. 通过 `python3 -m rxnflow.cli` 提供标准库 CLI 入口，支持 fixture、project create/load/open、project export-bundle/import-bundle 和 import preview 的 JSON 输出与错误 exit code；CLI project open 支持默认恢复 content 和 `--manifest-only`。
 5. 通过 handle_platform_payload 提供纯 Python dict adapter，供未来 Web route 或 desktop bridge 复用。
 6. 通过 `workbench.snapshot` 提供当前 Platform Session 的只读 Workbench Snapshot，汇总 project/session active ids、counts、objects、import batches、active workspace、active profile、runtime artifacts、persisted export artifact records 和 warnings；该命令不创建 session、不保存项目、不重新 parse/import/register/compute/export。
@@ -209,6 +210,7 @@ GraphEditorWorkspaceService
 ├── move_node(project_id, workspace_id, node_id, position)
 ├── remove_items(project_id, workspace_id, node_ids, edge_ids)
 ├── connect_nodes(project_id, workspace_id, from_node_id, to_node_id)
+├── update_edge(project_id, workspace_id, edge_id, label, metadata?)
 ├── set_active_path(project_id, workspace_id, path_id, node_ids)
 ├── apply_patches(project_id, workspace_id, GraphPatch[])
 ├── select(project_id, workspace_id, WorkspaceSelection)
@@ -296,7 +298,7 @@ ProjectBundleService
 - `rxnflow.import_workflow`：ImportRegistryWorkflow 和 ImportBatch / ImportItem / ParsePreview / ImportSelection 状态协议，串联 raw file resource、解析预览、确认登记和 batch restore。
 - `rxnflow.import_ledger_codec`：`import-ledger-v1` section 的 ImportBatch / ImportItem / ParsePreview 序列化、反序列化和字段校验，覆盖 draft/provenance、registered ids、warnings 和 errors。
 - `rxnflow.graph`：fixture graph 构造；通用 ReactionGraphService 的项目内图谱创建、GraphPatch 应用、路径列表、graph snapshot/restore 和 node/object/edge/path 引用校验。
-- `rxnflow.workspace`：GraphEditorWorkspaceService 和 CanvasViewport / WorkspaceSelection / ObjectPaletteItem / NetworkPreview / WorkspaceSnapshot / NodePlacement 协议，串联 graph patch、对象面板、workspace-only 状态、网络预览和 workspace snapshot/restore。
+- `rxnflow.workspace`：GraphEditorWorkspaceService 和 CanvasViewport / WorkspaceSelection / ObjectPaletteItem / NetworkPreview / WorkspaceSnapshot / NodePlacement 协议，串联 graph patch、对象面板、workspace-only 状态、网络预览、edge label 更新和 workspace snapshot/restore。
 - `rxnflow.graph_workspace_codec`：`reaction-graphs-v1` 和 `workspaces-v1` sections 的 ReactionGraph / WorkspaceSnapshot 序列化、反序列化、引用校验和 derived palette/preview 构造边界。
 - `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、EnergyExpression 物化、单位转换、correction inclusion 和缺失点诊断。
 - `rxnflow.energy_profile_codec`：`energy-profiles-v1` section 的 EnergyProfile / EnergyOptions / EnergyPoint / EnergyExpression / RxnFlowWarning 序列化、反序列化、字段校验、graph/path/node sequence 引用校验，以及 expression node/source/kind/unit/coefficient/missing 语义校验。
@@ -454,7 +456,7 @@ Reaction Graph 当前使用以下稳定协议：
 
 Graph Editor Workspace 当前使用以下稳定协议：
 
-- GraphEditorWorkspaceService 入口：`open_workspace(project_id, graph_id, label, objects)`、`add_node(project_id, workspace_id, placement)`、`set_node_composition(project_id, workspace_id, node_id, composition)`、`move_node(project_id, workspace_id, node_id, position)`、`remove_items(project_id, workspace_id, node_ids=(), edge_ids=(), path_ids=())`、`connect_nodes(project_id, workspace_id, from_node_id, to_node_id)`、`set_active_path(project_id, workspace_id, path_id, node_ids)`、`apply_patches(project_id, workspace_id, patches)`、`select(project_id, workspace_id, selection)`、`set_viewport(project_id, workspace_id, viewport)`、`snapshot(project_id, workspace_id)`、`list_workspaces(project_id)`、`restore_workspaces(project_id, workspaces, objects=(), replace=False)`
+- GraphEditorWorkspaceService 入口：`open_workspace(project_id, graph_id, label, objects)`、`add_node(project_id, workspace_id, placement)`、`set_node_composition(project_id, workspace_id, node_id, composition)`、`move_node(project_id, workspace_id, node_id, position)`、`remove_items(project_id, workspace_id, node_ids=(), edge_ids=(), path_ids=())`、`connect_nodes(project_id, workspace_id, from_node_id, to_node_id)`、`update_edge(project_id, workspace_id, edge_id, label, metadata=None)`、`set_active_path(project_id, workspace_id, path_id, node_ids)`、`apply_patches(project_id, workspace_id, patches)`、`select(project_id, workspace_id, selection)`、`set_viewport(project_id, workspace_id, viewport)`、`snapshot(project_id, workspace_id)`、`list_workspaces(project_id)`、`restore_workspaces(project_id, workspaces, objects=(), replace=False)`
 - CanvasViewport：`x`、`y`、`zoom`
 - WorkspaceSelection：`node_ids`、`edge_ids`、`path_ids`
 - ObjectPaletteItem：`object_id`、`label`、`formula`、`charge`、`spin_multiplicity`、`method`、`source_file_id`、`energy_keys`
@@ -462,7 +464,7 @@ Graph Editor Workspace 当前使用以下稳定协议：
 - WorkspaceSnapshot：`workspace_id`、`project_id`、`graph`、`palette`、`selection`、`viewport`、`active_path_id`、`preview`、可选 `updated_at`
 - NetworkPreview：`graph_id`、`active_path_id`、`nodes`、`edges`、`paths`、`disconnected_node_ids`、`warnings`
 - Object Palette 来源：调用方传入的 ChemicalObject，以及 ImportRegistryWorkflow 中已 `registered` 且能由 ChemicalRegistry.get_object 解析的 registered object ids
-- graph 结构修改：统一通过 ReactionGraphService.apply_patch；`set_node_composition` 用 `GraphPatch("update_node", patch={"composition": terms})` 替换节点组成，失败时不写回 graph；`move_node` 只用 `GraphPatch("update_node", patch={"position": position})` 更新 `ReactionNode.position`，不修改 ChemicalObject、edge、path、selection 或 viewport；`remove_items` 只删除 graph node/edge/path，不删除 ChemicalObject 或 Project Content，node remove 的 edge/path cascade 来自 ReactionGraphService，path remove 不删除 node/edge；`select` 只替换 workspace-only `WorkspaceSelection`，未知 node/edge/path 返回 `graph_invalid`，删除 graph item 或 apply patches 后会修剪失效 selection；`set_viewport` 只替换 workspace-only `CanvasViewport`，不触发 GraphPatch，不修改 nodes/edges/paths、selection 或 active path；selection、viewport 和 active_path_id 保留在 workspace-only 内存 state
+- graph 结构修改：统一通过 ReactionGraphService.apply_patch；`set_node_composition` 用 `GraphPatch("update_node", patch={"composition": terms})` 替换节点组成，失败时不写回 graph；`move_node` 只用 `GraphPatch("update_node", patch={"position": position})` 更新 `ReactionNode.position`，不修改 ChemicalObject、edge、path、selection 或 viewport；`remove_items` 只删除 graph node/edge/path，不删除 ChemicalObject 或 Project Content，node remove 的 edge/path cascade 来自 ReactionGraphService，path remove 不删除 node/edge；`update_edge` 只用 `GraphPatch("update_edge", patch={"label": label, "metadata": metadata?})` 更新已有 edge label/metadata，`None` 表示清空 label，且不传 from_node/to_node；`select` 只替换 workspace-only `WorkspaceSelection`，未知 node/edge/path 返回 `graph_invalid`，删除 graph item 或 apply patches 后会修剪失效 selection；`set_viewport` 只替换 workspace-only `CanvasViewport`，不触发 GraphPatch，不修改 nodes/edges/paths、selection 或 active path；selection、viewport 和 active_path_id 保留在 workspace-only 内存 state
 - NetworkPreview 只表达结构预览与诊断，不包含真实 canvas render、自动布局或能量曲线数据
 - restore 行为：从已恢复的 ReactionGraphService 读取 graph，重建 workspace-only state；Object Palette 和 NetworkPreview 重新派生，不从持久化 JSON 读取缓存
 
@@ -517,6 +519,7 @@ Platform Shell 当前使用以下稳定协议：
 - Workspace Remove：`workspace.remove(session_id, node_ids?, edge_ids?, path_ids?)` 要求至少提供一个 node、edge 或 path id；空 selection 返回 `invalid_input target=selection`，未知 node/edge/path 透传 `graph_invalid target=node_id|edge_id|path_id`，成功后返回 workspace graph projection；删除 node 的 edge/path cascade 由 core projection 表达，删除 edge 不删除 nodes，删除 path 不删除 nodes/edges；active path 和 selection 由 workspace projection 修剪
 - Workspace Select：`workspace.select(session_id, selection={node_ids?, edge_ids?, path_ids?})` 接受当前 graph 内存在的 node/edge/path id；空 selection 合法并清空选择，缺失 selection 返回 `invalid_input target=selection`，未知引用返回 `graph_invalid target=node_id|edge_id|path_id`，成功后返回包含相同 `selection` 的 workspace projection
 - Workspace Set Viewport：`workspace.set_viewport(session_id, viewport={x,y,zoom})` 要求 `x`、`y`、`zoom` 均为 finite number 且 `zoom > 0`；缺失或非法 viewport 返回 `invalid_input target=viewport`，非正 zoom 返回 `invalid_input target=viewport.zoom`；成功后返回 workspace projection 中的 viewport，不修改 workspace graph nodes/edges/paths
+- Workspace Update Edge：`workspace.update_edge(session_id, edge_id, label?, metadata?)` 要求 edge id 非空，`label` 为 string 或 null，且 label 与 metadata 至少提供一个；空字符串或全空白 label 归一化为 `null`，未知 edge 返回 `graph_invalid target=edge_id`，非法 label 返回 `invalid_input target=edge_label`；成功后返回 workspace graph projection，不修改 from_node/to_node，不自动保存 Project Content，不调用 energy/export
 - artifact bytes 策略：默认不内联 bytes；`include_bytes=True` 时 ShellArtifact 使用 base64 字符串并记录 `metadata.encoding = "base64"`
 - JSON 投影边界：response dict 不包含 dataclass、Path、tuple 或 bytes
 - Web runtime boundary：Web UI 只通过 Shell Client / Shell Payload 调用 core；当前 `web/` app shell 已落地 `in-process-test` fixture transport 和 `http-api` local bridge transport；`http-api` 默认不启用，需通过 Vite env 切到 `local-http`
@@ -588,7 +591,7 @@ Project Bundle 使用以下稳定协议：
 - `invalid_input`：ReactionGraphService 中 project id 为空、graph id 不存在、GraphPatch 缺少必须 payload 或 patch 字段不支持。
 - `invalid_input`：ReactionGraphService 或 Graph section codec 中 ReactionNode composition term 缺少 object_id，coefficient 不是数字、为 0 或非有限数，或新 JSON 中 `chemical_object_ids` 与 composition object_id 投影不一致。
 - `invalid_input`：ReactionGraphService restore 中 graph id/project_id 无效、重复 graph/node/edge/path id 或与既有 graph 冲突。
-- `invalid_input`：GraphEditorWorkspaceService 中 project id 为空、workspace id 不存在、workspace/project 不匹配、绑定 graph 失败，或 remove selection 为空。
+- `invalid_input`：GraphEditorWorkspaceService 中 project id 为空、workspace id 不存在、workspace/project 不匹配、绑定 graph 失败、remove selection 为空，或 update edge payload 缺少 label/metadata。
 - `invalid_input`：GraphEditorWorkspaceService restore 中 workspace id/project_id/graph_id 无效、重复 workspace id、selection/active_path 引用缺失或 viewport zoom 非正数。
 - `invalid_input`：EnergyProfileEngine 中 project id 为空、energy key 为空、output unit 不支持或 EnergyValue unit 不支持。
 - `invalid_input`：ReportExportService 中 project id 为空、formats 为空、请求格式不支持、PNG/CDXML 缺少 EnergyProfile、XLSX 缺少 profile/object/table rows，或 basename 不是安全文件名。
@@ -611,7 +614,7 @@ Project Bundle 使用以下稳定协议：
 - `internal_error`：Project Content Store 本地 backend 读、写、删、列文件时遇到文件系统 I/O 失败。
 - `graph_invalid`：node、edge、path 或 object 引用不存在，graph patch 重复 id，或 species / transition_state 节点缺少 composition / ChemicalObject 引用。
 - `graph_invalid`：Graph section codec 或 ReactionGraphService restore 中 graph node/object/edge/path 引用不完整，或 species / transition_state 节点缺少 composition / ChemicalObject 引用。
-- `graph_invalid`：GraphEditorWorkspaceService 的 add/connect/path 操作透传 ReactionGraphService 的 graph 引用错误或 object 引用错误。
+- `graph_invalid`：GraphEditorWorkspaceService 的 add/connect/update edge/path 操作透传 ReactionGraphService 的 graph 引用错误或 object 引用错误。
 - `graph_invalid`：EnergyProfileEngine 中 selected path 不存在、baseline 不在 path 中、path 引用缺失 node 或 node 引用缺失 ChemicalObject。
 - `missing_energy`：请求的 energy key 在对应 ChemicalObject 中不存在。
 
@@ -631,7 +634,7 @@ ImportRegistryWorkflow restore 直接恢复 batch map，不重新复制 raw file
 
 ReactionGraphService 按顺序应用 patch；同一批 patches 中途失败时不写回 graph state。重复 set 同一 path id 会覆盖旧 path，add node/edge 遇到重复 id 返回 `graph_invalid`。`restore_graphs` 直接恢复 materialized graph state，不回放 GraphPatch。
 
-GraphEditorWorkspaceService 的 graph edit 操作失败时不更新 workspace graph 或 active_path_id。`restore_workspaces` 从已恢复 graph state 重建 workspace-only state，不保存或读取 palette/preview 缓存。NetworkPreview 中 disconnected nodes 属于 warning/diagnostics，不使 snapshot 失败。
+GraphEditorWorkspaceService 的 graph edit 操作失败时不更新 workspace graph 或 active_path_id。`update_edge` 使用已有 GraphPatch update_edge 能力但只暴露 label / metadata 更新，不允许 workspace caller 改 from_node/to_node；端点重连需要另行设计。`restore_workspaces` 从已恢复 graph state 重建 workspace-only state，不保存或读取 palette/preview 缓存。NetworkPreview 中 disconnected nodes 属于 warning/diagnostics，不使 snapshot 失败。
 
 EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返回的 EnergyProfile.options 会记录实际 baseline node、energy key、output unit 和 correction inclusion。
 
@@ -653,7 +656,7 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - Correction 是 additive energy correction 的记录；正负号由用户输入值表达，是否参与能量计算由后续 Energy Engine 显式控制。
 - ReactionGraphService 不调用 Chemical Registry、Parser Plugin、Project Store、Energy Engine 或 Export Service；它只接收 object id 集合作为引用校验输入。
 - GraphEditorWorkspaceService 可以调用 ReactionGraphService、ImportRegistryWorkflow.list_batches 和 ChemicalRegistry.get_object；它不调用 ParserRegistry、ProjectStore.add_raw_file、ImportRegistryWorkflow.import_files、ImportRegistryWorkflow.confirm_import、EnergyProfileEngine 或 Export Service。
-- GraphEditorWorkspaceService 不新增 UI 组件、Web route、CLI 命令、桌面窗口、canvas 渲染、拖拽事件、自动布局、edge label 编辑、化学计量系数、自动路径搜索或化学合理性判定；path 删除只作为既有 `remove_items` graph item 删除协议的一类 id 暴露。
+- GraphEditorWorkspaceService 不新增 UI 组件、Web route、CLI 命令、桌面窗口、canvas 渲染、拖拽事件、自动布局、edge endpoint reconnect、化学计量系数、自动路径搜索或化学合理性判定；path 删除只作为既有 `remove_items` graph item 删除协议的一类 id 暴露，edge label 更新只作为已有 edge 的 label/metadata 更新协议暴露。
 - GraphEditorWorkspaceService 不直接写项目文件、不修改 Project Content Store、不持久化 ChemicalObject、EnergyProfile 或 export artifact；WorkspaceSnapshot、CanvasViewport、WorkspaceSelection 和 active_path_id 的长期保存由 ProjectContentStore 的 `workspaces-v1` section 负责。
 - EnergyProfileEngine 不调用 Project Store、Parser Registry、Parser Plugins、ChemicalRegistry.apply_correction、ReactionGraphService.apply_patch 或 Export Service。
 - EnergyProfileEngine 只读取传入的 ReactionGraph 和 ChemicalObject 集合，不登记对象、不修改 graph、不追加 correction、不写 `.rxnflow/manifest.json`。

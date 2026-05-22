@@ -21,7 +21,7 @@ items:
   - slug: graph-editor-edge-label-edit
     description: 新增 edge label draft 和 workspace edge update command，让 selected edge 可编辑 label
     depends_on: []
-    status: in-progress
+    status: done
     feature: 2026-05-22-graph-editor-edge-label-edit
     minimal_loop: false
     notes: 首轮只承诺 label 更新；空字符串 label 归一化为 null；不改变 from_node 或 to_node

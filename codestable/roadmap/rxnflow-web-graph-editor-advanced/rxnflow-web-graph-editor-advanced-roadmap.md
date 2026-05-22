@@ -286,8 +286,9 @@ type GraphEditorHistoryEntry = {
 3. **graph-editor-edge-label-edit**：新增 edge label draft 和 workspace edge update command，让 selected edge 可编辑 label。
    - 所属模块：Edge Detail Adapter
    - 依赖：无
-   - 状态：in-progress
+   - 状态：done
    - 对应 feature：`2026-05-22-graph-editor-edge-label-edit`
+   - 备注：已落地 `GraphEditorWorkspaceService.update_edge`、Platform Shell / fixture `workspace.update_edge` 和 Graph Canvas Edge Label Draft；label 清空归一化为 `null`，可见 label 只来自 ShellResponse projection，不改变 edge from_node/to_node。
 4. **graph-editor-free-edge-drawing**：新增从节点拖到节点的直接连线手势，保留 click-driven connect fallback。
    - 所属模块：Direct Edge Gesture
    - 依赖：`graph-editor-edge-label-edit`
@@ -318,14 +319,14 @@ type GraphEditorHistoryEntry = {
 
 先做 `graph-editor-auto-layout`，因为它不需要新 core command 或 schema，就能立刻改善画布可读性，也能为后续 minimap 和 history 提供可逆布局操作样本。
 
-`graph-editor-path-delete` 已完成，下一步可推进 `graph-editor-edge-label-edit`，补齐 edge detail 的编辑入口和 shell contract。`graph-editor-free-edge-drawing` 依赖 edge label 的命令语义稳定后再做，这样拖线创建边时可选择是否带 label。`graph-editor-multiselect-keyboard` 现在可复用已落地的 node/edge/path remove contract。`graph-editor-wheel-minimap` 可在 auto layout 后推进。最后用 `graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
+`graph-editor-path-delete` 和 `graph-editor-edge-label-edit` 已完成，下一步可推进 `graph-editor-free-edge-drawing`，复用已稳定的 edge label/update 语义和 click-driven connect fallback。`graph-editor-multiselect-keyboard` 现在可复用已落地的 node/edge/path remove contract。`graph-editor-wheel-minimap` 可在 auto layout 后推进。最后用 `graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
 
 技术依赖之外的产品优先级不由本 roadmap 替用户决定；如果用户更想先补 edge label 或 wheel/minimap，可以在不违反依赖的前提下调整启动顺序。
 
 ## 7. 观察项
 
 - Core `ReactionGraphService`、`GraphEditorWorkspaceService.remove_items`、Platform Shell、fixture transport 和 Web `workspace.remove` 当前已经暴露 `path_ids` path 删除协议；后续多选/键盘删除可复用同一 node/edge/path selection contract。
-- Core `ReactionGraphService` 当前已经支持 `update_edge` patch，但 Web/Shell 还没有专门的 `workspace.update_edge` command。
+- Core `ReactionGraphService` 当前已经支持 `update_edge` patch，`GraphEditorWorkspaceService`、Platform Shell、fixture transport 和 Web GraphCanvas 已暴露 label-only `workspace.update_edge` command；后续 free edge drawing 只能复用该 label/update 语义，不应把端点重连塞进 `workspace.update_edge`。
 - 当前 GraphCanvas 的 edge hit target 是 HTML button，适合继续承载 edge selection 和 label edit；自由拖线仍需要补 pointer draft 和可访问 fallback。
 - Auto layout 若未来要服务 CLI/agent，可把纯计算 helper 移到共享 TypeScript-independent 或 Python core；本 roadmap 首轮只承诺 Web helper，避免让 core domain 依赖 UI layout 假设。
 - Undo/redo 是高风险扩展点；首轮只覆盖可逆 UI/workspace 操作，不碰 destructive delete、Project Content history、CRDT 或协作。
