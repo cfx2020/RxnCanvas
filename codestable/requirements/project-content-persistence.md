@@ -18,7 +18,7 @@ tags: [project, persistence, restore, local-storage, import-ledger, energy-profi
 - 作为一个用 agent 搭反应图的人，我希望对象、图谱和画布工作状态能落在项目目录里，方便下次继续编辑。
 - 作为一个比较反应路径能量的人，我希望已计算的 EnergyProfile、缺失点和 warnings 能跟项目一起保存，方便下次直接查看或导出，而不是重新计算后才知道当时的结果。
 - 作为一个反复导出报告的人，我希望已经写入项目 `exports/` 下的 PNG、CDXML、XLSX 导出文件能被项目索引记住格式、路径、checksum 和 metadata，方便下次打开项目时知道有哪些可复用报告 artifact。
-- 作为一个长期维护项目文件的人，我希望系统能告诉我项目内容文件是否缺失、checksum 是否不一致、引用是否断掉，而不是等到加载失败时才逐个排查。
+- 作为一个长期维护项目文件的人，我希望系统能告诉我项目内容文件是否缺失、checksum 是否不一致、引用是否断掉，反应节点组成或能量表达式是否损坏，而不是等到加载失败时才逐个排查。
 - 作为一个先用本地项目验证流程的人，我希望保存的数据是普通项目文件，能被测试、备份和后续 Web/桌面壳层复用。
 - 作为一个用 CLI 或 agent 继续项目的人，我希望打开项目时能恢复已保存的对象、导入记录、图谱、workspace、energy profile 和导出索引，并且能把当前 session 再保存回项目内容文件。
 - 作为一个没有云同步的早期用户，我希望能把项目导出为一个 `.rxnflow.zip` 包并在另一处导入，作为自己负责的备份或手动同步方式。
@@ -32,7 +32,7 @@ RxnFlow 的核心流程会产生很多中间状态：已解析但待确认的分
 
 ## 怎么解决
 
-系统把项目内容保存到项目目录的状态文件中。用户或端侧壳层可以在合适时机保存当前 snapshot，再从这些文件加载对象、图谱、workspace、导入 ledger、已计算 energy profile 和 export artifact index。Platform Shell 通过 `project.open` 打开项目：默认先校验项目内容，再把 snapshot 恢复到 ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService 和 session content collections；`project.open(load_content=false)` 或 CLI `--manifest-only` 只打开 manifest。Platform Shell 通过 `project.save_content(session_id)` 把当前 session content collections 写回 ProjectContentStore。导入预览会保留足够的信息，让待确认条目在恢复后仍然可以继续确认；energy profile 会保留当时的 options、points、missing reason 和 warnings，并在加载时校验 graph/path 引用；export artifact index 会记录 `exports/...` 项目相对路径、format、checksum、metadata 和 created_at，但不把导出 bytes 写进 JSON。系统还可以生成项目内容验证报告，检查 state section、schema、path、checksum、跨对象引用和已登记导出文件的存在性/checksum，把问题汇总成 warning 或 error。
+系统把项目内容保存到项目目录的状态文件中。用户或端侧壳层可以在合适时机保存当前 snapshot，再从这些文件加载对象、图谱、workspace、导入 ledger、已计算 energy profile 和 export artifact index。Platform Shell 通过 `project.open` 打开项目：默认先校验项目内容，再把 snapshot 恢复到 ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService 和 session content collections；`project.open(load_content=false)` 或 CLI `--manifest-only` 只打开 manifest。Platform Shell 通过 `project.save_content(session_id)` 把当前 session content collections 写回 ProjectContentStore。导入预览会保留足够的信息，让待确认条目在恢复后仍然可以继续确认；reaction graph 会保留节点 composition 和兼容的 `chemical_object_ids` 投影，旧项目缺 composition 时按 coefficient 1 加载；energy profile 会保留当时的 options、points、missing reason、warnings 和可选 expression，旧项目缺 expression 时按空值加载，并在加载时校验 graph/path 引用、composition 投影和 expression node/source/kind/unit/coefficient/missing 语义；export artifact index 会记录 `exports/...` 项目相对路径、format、checksum、metadata 和 created_at，但不把导出 bytes 写进 JSON。系统还可以生成项目内容验证报告，检查 state section、schema、path、checksum、跨对象引用、composition/expression 语义和已登记导出文件的存在性/checksum，把问题汇总成 warning 或 error。
 
 系统还提供 Project Bundle 导入/导出，把项目目录中的 `.rxnflow/`、`inputs/raw/` 和 `exports/` 打包成 `.rxnflow.zip`。导出和导入在 content index 存在时都会先运行 Project Content Validation；validation error 会阻止输出最终 bundle 或落地导入项目。导入采用 non-overwrite 语义，目标项目已存在时失败，不覆盖、不合并、不自动改名。Project Bundle 是用户手动备份/同步路径，不是云存储。
 
@@ -53,7 +53,8 @@ Web Workbench Report Export Panel 已能在 active browser project 下把 `expor
 - 它不在加载时自动重新计算 EnergyProfile，也不根据当前 ChemicalObject energy/corrections 自动修复 stale profile。
 - 它可以只读校验已经登记的 export artifact 文件是否存在、checksum 是否匹配；但不生成、复制、移动、删除或修复 export artifact 文件本身，也不把 ExportArtifact bytes 写入 Project Content JSON。
 - 它不会自动修复损坏的 state 文件、断开的引用、错误 checksum 或不兼容 schema；验证报告只负责指出问题。
-- 它当前只支持 `project-content-v1` 的 no-op migration plan，不做真实 schema migration。
+- 它不会为了兼容旧项目而补写缺失的 composition 或 expression 字段；旧缺字段合法加载，新字段损坏才报告错误。
+- 它当前只支持 `project-content-v1` 的 no-op migration plan；legacy/new energy semantics optional fields 不需要迁移，不做真实 schema migration。
 - 它不会在 project open 时部分恢复 validation error 的内容；有 error 时返回结构化错误。
 - 它不会在 project open 时重新解析 raw files、重新确认 import、重新计算 EnergyProfile 或重新导出报告。
 - 它不会把当前 CLI 命令进程里的 session 跨命令保存；CLI 只暴露 project open，不暴露 project save-content。
@@ -70,6 +71,7 @@ Web Workbench Report Export Panel 已能在 active browser project 下把 `expor
 
 ## 变更日志
 
+- 2026-05-22：补充 reaction graph composition 与 energy profile expression 的 Project Content Validation / migration plan 边界：旧缺字段合法，新字段语义错误可报告，v1 仍 no-op migration。
 - 2026-05-14：补充项目内容验证报告、export artifact checksum 深校验和 migration plan 边界。
 - 2026-05-14：补充 Platform Shell `project.open` / `project.save_content` 恢复与保存入口、CLI project open，以及 runtime ShellArtifact 转 ExportArtifactRecord 的 `exports/...` 边界。
 - 2026-05-14：补充 `.rxnflow.zip` Project Bundle 导入/导出能力，用于本地备份和早期 Web 无云同步。

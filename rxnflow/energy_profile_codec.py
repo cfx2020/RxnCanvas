@@ -28,6 +28,12 @@ SUPPORTED_PROFILE_UNITS = frozenset({"kcal_mol", "kj_mol"})
 SUPPORTED_EXPRESSION_UNITS = frozenset({"hartree", "kcal_mol", "kj_mol"})
 
 
+class _ExpressionDecodeError(ValueError):
+    def __init__(self, message: str, target: str) -> None:
+        super().__init__(message)
+        self.target = target
+
+
 def energy_profiles_section_to_dict(
     project_id: ID,
     profiles: tuple[EnergyProfile, ...],
@@ -354,6 +360,8 @@ def _point_from_dict(
                 target=target,
             )
         )
+    except _ExpressionDecodeError as exc:
+        return err(RxnFlowError("invalid_input", str(exc), target=exc.target))
     except (TypeError, ValueError) as exc:
         return err(RxnFlowError("invalid_input", str(exc), target=f"{target}.expression"))
     validation = _validate_point(point, options, target)
@@ -448,13 +456,13 @@ def _expression_from_value(value: Any, target: str) -> EnergyExpression | None:
     if value is None:
         return None
     if not isinstance(value, dict):
-        raise ValueError(f"{target} must be an object when present")
+        raise _ExpressionDecodeError("Energy expression must be an object when present.", target)
     if not isinstance(value.get("terms", []), list):
-        raise ValueError(f"{target}.terms must be a list")
+        raise _ExpressionDecodeError("Energy expression terms must be a list.", f"{target}.terms")
     if not isinstance(value.get("corrections", []), list):
-        raise ValueError(f"{target}.corrections must be a list")
+        raise _ExpressionDecodeError("Energy expression corrections must be a list.", f"{target}.corrections")
     if not isinstance(value.get("missing", []), list):
-        raise ValueError(f"{target}.missing must be a list")
+        raise _ExpressionDecodeError("Energy expression missing diagnostics must be a list.", f"{target}.missing")
     total_value = value.get("total")
     total = None
     if total_value is not None:
@@ -467,17 +475,17 @@ def _expression_from_value(value: Any, target: str) -> EnergyExpression | None:
             for index, item in enumerate(value.get("corrections", []))
         ),
         total=total,
-        missing=tuple(_missing_from_value(item) for item in value.get("missing", [])),
+        missing=tuple(_missing_from_value(item, f"{target}.missing[{index}]") for index, item in enumerate(value.get("missing", []))),
     )
 
 
 def _energy_component_from_value(value: Any, target: str) -> EnergyComponent:
     if not isinstance(value, dict):
-        raise ValueError(f"{target} must be an object")
+        raise _ExpressionDecodeError("Energy component must be an object.", target)
     coefficient = _coefficient_from_value(value.get("coefficient"), f"{target}.coefficient")
     energy_source = value.get("energy_source")
     if energy_source not in {"energies", "thermochemistry"}:
-        raise ValueError(f"{target}.energy_source must be energies or thermochemistry")
+        raise _ExpressionDecodeError("Energy component energy_source must be energies or thermochemistry.", f"{target}.energy_source")
     return EnergyComponent(
         object_id=str(value.get("object_id") or ""),
         object_label=value.get("object_label") if value.get("object_label") is None else str(value.get("object_label")),
@@ -492,11 +500,11 @@ def _energy_component_from_value(value: Any, target: str) -> EnergyComponent:
 
 def _correction_component_from_value(value: Any, target: str) -> CorrectionComponent:
     if not isinstance(value, dict):
-        raise ValueError(f"{target} must be an object")
+        raise _ExpressionDecodeError("Correction component must be an object.", target)
     coefficient = _coefficient_from_value(value.get("coefficient"), f"{target}.coefficient")
     kind = value.get("kind")
     if kind not in {"resonance", "solvation", "manual"}:
-        raise ValueError(f"{target}.kind is unsupported")
+        raise _ExpressionDecodeError("Correction component kind is unsupported.", f"{target}.kind")
     return CorrectionComponent(
         object_id=str(value.get("object_id") or ""),
         correction_id=str(value.get("correction_id") or ""),
@@ -508,9 +516,9 @@ def _correction_component_from_value(value: Any, target: str) -> CorrectionCompo
     )
 
 
-def _missing_from_value(value: Any) -> EnergyExpressionMissing:
+def _missing_from_value(value: Any, target: str) -> EnergyExpressionMissing:
     if not isinstance(value, dict):
-        raise ValueError("Expression missing entry must be an object")
+        raise _ExpressionDecodeError("Expression missing entry must be an object.", target)
     return EnergyExpressionMissing(
         code=str(value.get("code") or ""),
         message=str(value.get("message") or ""),
@@ -522,17 +530,17 @@ def _missing_from_value(value: Any) -> EnergyExpressionMissing:
 
 def _expression_energy_value_from_value(value: Any, target: str) -> EnergyValue:
     if not isinstance(value, dict):
-        raise ValueError(f"{target} must include value and unit")
+        raise _ExpressionDecodeError("Energy expression value must include value and unit.", target)
     if "value" not in value or "unit" not in value:
-        raise ValueError(f"{target} must include value and unit")
+        raise _ExpressionDecodeError("Energy expression value must include value and unit.", target)
     if value["unit"] not in SUPPORTED_EXPRESSION_UNITS:
-        raise ValueError(f"{target}.unit is unsupported")
+        raise _ExpressionDecodeError("Energy expression unit is unsupported.", f"{target}.unit")
     try:
         numeric_value = float(value["value"])
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{target}.value is invalid: {exc}") from exc
+        raise _ExpressionDecodeError(f"Energy expression value is invalid: {exc}.", f"{target}.value") from exc
     if not math.isfinite(numeric_value):
-        raise ValueError(f"{target}.value must be finite")
+        raise _ExpressionDecodeError("Energy expression value must be finite.", f"{target}.value")
     return EnergyValue(numeric_value, value["unit"], reference=value.get("reference"))
 
 
@@ -540,9 +548,9 @@ def _coefficient_from_value(value: Any, target: str) -> float:
     try:
         coefficient = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{target} must be numeric") from exc
+        raise _ExpressionDecodeError("Energy expression coefficient must be numeric.", target) from exc
     if not math.isfinite(coefficient):
-        raise ValueError(f"{target} must be finite")
+        raise _ExpressionDecodeError("Energy expression coefficient must be finite.", target)
     return coefficient
 
 
@@ -718,6 +726,9 @@ def _validate_point(point: EnergyPoint, options: EnergyOptions, target: str) -> 
 
     has_absolute = point.absolute_energy is not None
     has_relative = point.relative_energy is not None
+    expression_error = _validate_expression(point, options, target)
+    if expression_error is not None:
+        return expression_error
     if point.missing_reason is not None:
         if has_absolute or has_relative:
             return RxnFlowError(
@@ -746,6 +757,151 @@ def _validate_point(point: EnergyPoint, options: EnergyOptions, target: str) -> 
             "Energy profile relative_energy unit must match output_unit.",
             target=f"{target}.relative_energy.unit",
         )
+    return None
+
+
+def _validate_expression(point: EnergyPoint, options: EnergyOptions, target: str) -> RxnFlowError | None:
+    expression = point.expression
+    if expression is None:
+        return None
+    expression_target = f"{target}.expression"
+    if expression.node_id != point.node_id:
+        return RxnFlowError(
+            "invalid_input",
+            "Energy expression node_id must match point node_id.",
+            target=f"{expression_target}.node_id",
+        )
+    for index, term in enumerate(expression.terms):
+        component_error = _validate_energy_component(term, options, f"{expression_target}.terms[{index}]")
+        if component_error is not None:
+            return component_error
+    for index, correction in enumerate(expression.corrections):
+        correction_error = _validate_correction_component(
+            correction,
+            options,
+            f"{expression_target}.corrections[{index}]",
+        )
+        if correction_error is not None:
+            return correction_error
+    if expression.total is None:
+        if point.missing_reason is None:
+            return RxnFlowError(
+                "invalid_input",
+                "Energy expression total is required for non-missing profile points.",
+                target=f"{expression_target}.total",
+            )
+        if not expression.missing:
+            return RxnFlowError(
+                "invalid_input",
+                "Missing energy expression requires missing diagnostics.",
+                target=f"{expression_target}.missing",
+            )
+    else:
+        if expression.total.unit != options.output_unit:
+            return RxnFlowError(
+                "invalid_input",
+                "Energy expression total unit must match output_unit.",
+                target=f"{expression_target}.total.unit",
+            )
+        if point.missing_reason is not None:
+            return RxnFlowError(
+                "invalid_input",
+                "Missing energy profile point cannot include expression total.",
+                target=f"{expression_target}.total",
+            )
+    for index, missing in enumerate(expression.missing):
+        missing_error = _validate_expression_missing(missing, f"{expression_target}.missing[{index}]")
+        if missing_error is not None:
+            return missing_error
+    return None
+
+
+def _validate_energy_component(component: EnergyComponent, options: EnergyOptions, target: str) -> RxnFlowError | None:
+    if not component.object_id:
+        return RxnFlowError("invalid_input", "Energy component object_id is required.", target=f"{target}.object_id")
+    if not component.energy_key:
+        return RxnFlowError("invalid_input", "Energy component energy_key is required.", target=f"{target}.energy_key")
+    if component.energy_source not in {"energies", "thermochemistry"}:
+        return RxnFlowError(
+            "invalid_input",
+            "Energy component energy_source is unsupported.",
+            target=f"{target}.energy_source",
+        )
+    coefficient_error = _validate_expression_coefficient(component.coefficient, f"{target}.coefficient")
+    if coefficient_error is not None:
+        return coefficient_error
+    return _validate_expression_energy_units(
+        raw=component.raw_energy,
+        converted=component.converted_energy,
+        contribution=component.contribution,
+        output_unit=options.output_unit,
+        target=target,
+    )
+
+
+def _validate_correction_component(
+    component: CorrectionComponent,
+    options: EnergyOptions,
+    target: str,
+) -> RxnFlowError | None:
+    if not component.object_id:
+        return RxnFlowError("invalid_input", "Correction component object_id is required.", target=f"{target}.object_id")
+    if not component.correction_id:
+        return RxnFlowError("invalid_input", "Correction component correction_id is required.", target=f"{target}.correction_id")
+    if component.kind not in {"resonance", "solvation", "manual"}:
+        return RxnFlowError("invalid_input", "Correction component kind is unsupported.", target=f"{target}.kind")
+    coefficient_error = _validate_expression_coefficient(component.coefficient, f"{target}.coefficient")
+    if coefficient_error is not None:
+        return coefficient_error
+    return _validate_expression_energy_units(
+        raw=component.raw_energy,
+        converted=component.converted_energy,
+        contribution=component.contribution,
+        output_unit=options.output_unit,
+        target=target,
+    )
+
+
+def _validate_expression_coefficient(value: float, target: str) -> RxnFlowError | None:
+    if not isinstance(value, (int, float)) or not math.isfinite(float(value)) or float(value) == 0:
+        return RxnFlowError(
+            "invalid_input",
+            "Energy expression coefficient must be a non-zero finite number.",
+            target=target,
+        )
+    return None
+
+
+def _validate_expression_energy_units(
+    *,
+    raw: EnergyValue,
+    converted: EnergyValue,
+    contribution: EnergyValue,
+    output_unit: str,
+    target: str,
+) -> RxnFlowError | None:
+    if raw.unit not in SUPPORTED_EXPRESSION_UNITS:
+        return RxnFlowError("invalid_input", "Energy expression raw_energy unit is unsupported.", target=f"{target}.raw_energy.unit")
+    if converted.unit != output_unit:
+        return RxnFlowError(
+            "invalid_input",
+            "Energy expression converted_energy unit must match output_unit.",
+            target=f"{target}.converted_energy.unit",
+        )
+    if contribution.unit != output_unit:
+        return RxnFlowError(
+            "invalid_input",
+            "Energy expression contribution unit must match output_unit.",
+            target=f"{target}.contribution.unit",
+        )
+    return None
+
+
+def _validate_expression_missing(missing: EnergyExpressionMissing, target: str) -> RxnFlowError | None:
+    if not missing.code:
+        return RxnFlowError("invalid_input", "Energy expression missing code is required.", target=f"{target}.code")
+    if not missing.message:
+        return RxnFlowError("invalid_input", "Energy expression missing message is required.", target=f"{target}.message")
     return None
 
 

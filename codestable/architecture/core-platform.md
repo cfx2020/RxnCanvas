@@ -121,11 +121,11 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 6. 通过 `reaction-graphs-v1` codec 保存和加载真实 ReactionGraph、ReactionNode、ReactionEdge 和 ReactionPath，并校验 object/node/edge/path 引用。
 7. 通过 `workspaces-v1` codec 保存和加载 workspace-only 状态，workspace 的 Object Palette 和 NetworkPreview 在加载后从 ChemicalObject / ReactionGraph 派生。
 8. 通过 `import-ledger-v1` codec 保存和加载 ImportBatch、ImportItem、ParsePreview、registered ids、warnings 和 errors。
-9. 通过 `energy-profiles-v1` codec 保存和加载已计算 EnergyProfile、EnergyOptions、EnergyPoint、可选 EnergyExpression、missing reason 和 warnings；options 保存 `energy_source`，旧 JSON 缺字段时按 `auto` 加载，旧 point 缺 `expression` 时按 null 加载，并校验 profile 与 loaded ReactionGraph / ReactionPath 的引用一致性。
+9. 通过 `energy-profiles-v1` codec 保存和加载已计算 EnergyProfile、EnergyOptions、EnergyPoint、可选 EnergyExpression、missing reason 和 warnings；options 保存 `energy_source`，旧 JSON 缺字段时按 `auto` 加载，旧 point 缺 `expression` 时按 null 加载，并校验 profile 与 loaded ReactionGraph / ReactionPath 的引用一致性以及 expression node/source/kind/unit/coefficient/missing 语义。
 10. 通过 `export-artifacts-v1` codec 保存和加载 ExportArtifactRecord 索引，记录导出文件的项目相对 path、format、checksum、metadata 和 created_at，不保存 artifact bytes。
 11. 通过 ProjectContentValidationIssue / ProjectContentValidationReport 聚合 `.rxnflow/state/` index、section bytes checksum、section codec、跨 section 引用和 export artifact file checksum 的只读验证结果。
-12. 通过 ProjectContentValidator 和 ProjectContentStore.validate_project 生成 validation report；内容不一致进入 report issues，backend internal I/O failure 仍返回 Result error。
-13. 通过 ProjectContentMigrationPlan 和 ProjectContentStore.migration_plan 提供显式 schema migration plan；当前 `project-content-v1 -> project-content-v1` 为 no-op，未知 source/target 返回 unsupported issue，load_snapshot 不做 silent migration。
+12. 通过 ProjectContentValidator 和 ProjectContentStore.validate_project 生成 validation report；内容不一致进入 report issues，backend internal I/O failure 仍返回 Result error；reaction graph composition 投影/系数/对象引用错误和 energy profile expression node/source/kind/unit/coefficient/missing 错误继续以 `section_decode_error` 暴露。
+13. 通过 ProjectContentMigrationPlan 和 ProjectContentStore.migration_plan 提供显式 schema migration plan；当前 `project-content-v1 -> project-content-v1` 为 no-op，legacy no-composition / no-expression 与新 energy semantics optional fields 都不需要 migration，未知 source/target 返回 unsupported issue，load_snapshot 不做 silent migration。
 
 第十二类是 Project Bundle：
 
@@ -299,7 +299,7 @@ ProjectBundleService
 - `rxnflow.workspace`：GraphEditorWorkspaceService 和 CanvasViewport / WorkspaceSelection / ObjectPaletteItem / NetworkPreview / WorkspaceSnapshot / NodePlacement 协议，串联 graph patch、对象面板、workspace-only 状态、网络预览和 workspace snapshot/restore。
 - `rxnflow.graph_workspace_codec`：`reaction-graphs-v1` 和 `workspaces-v1` sections 的 ReactionGraph / WorkspaceSnapshot 序列化、反序列化、引用校验和 derived palette/preview 构造边界。
 - `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、EnergyExpression 物化、单位转换、correction inclusion 和缺失点诊断。
-- `rxnflow.energy_profile_codec`：`energy-profiles-v1` section 的 EnergyProfile / EnergyOptions / EnergyPoint / EnergyExpression / RxnFlowWarning 序列化、反序列化、字段校验和 graph/path/node sequence 引用校验。
+- `rxnflow.energy_profile_codec`：`energy-profiles-v1` section 的 EnergyProfile / EnergyOptions / EnergyPoint / EnergyExpression / RxnFlowWarning 序列化、反序列化、字段校验、graph/path/node sequence 引用校验，以及 expression node/source/kind/unit/coefficient/missing 语义校验。
 - `rxnflow.export`：ExportRequest / ExportArtifact / ExportArtifactRecord / EnergyTableColumn / EnergyTableRow / EnergyDiagramRoute 协议，以及 ReportExportService 的 PNG、CDXML、XLSX bytes-first 导出编排；Energy Table Contract 当前包含 `ENERGY_TABLE_SCHEMA_VERSION`、列 key 查询 helper 和样表 header normalization helper。`docs/dev/report-export-artifacts.md` 是该模块的开发者使用指南。
 - `rxnflow.export_artifact_codec`：`export-artifacts-v1` section 的 ExportArtifactRecord 序列化、反序列化、format/path/checksum/metadata 校验和重复 id/path 检查。
 - `rxnflow.platform`：ShellCommand / ShellResponse / ShellArtifact / PlatformSession / AppKernel / PlatformShellService / handle_platform_payload，提供端侧薄壳层命令协议和 JSON 投影。
@@ -387,6 +387,7 @@ Project Content Store 使用以下稳定目录与 index 协议：
 - `reaction-graphs.json` 当前 schema version：`reaction-graphs-v1`
 - `reaction-graphs-v1` 保存 ReactionGraph 的 `id`、`project_id`、`nodes`、`edges` 和 `paths`
 - ReactionNode 保存 `id`、`kind`、`label`、`composition`、`chemical_object_ids`、`position` 和 `metadata`；`composition` 是权威节点组成字段，每个 term 保存 `object_id`、非零有限 `coefficient`、可选 `role`、可选 `label` 和 `metadata`；`chemical_object_ids` 是按 composition object_id 首次出现顺序去重得到的兼容投影。旧数据只有 `chemical_object_ids` 时加载为 coefficient 1 的 composition；node 只引用 ChemicalObject id，不复制 ChemicalObject 内容
+- ReactionGraph section validation 会把新 JSON 中 `composition` 与 `chemical_object_ids` 投影不一致、非法 coefficient 或缺失 ChemicalObject 引用作为 section codec 错误暴露；旧 graph node 缺 `composition` 但有 `chemical_object_ids` 合法
 - ReactionEdge 保存 `id`、`from_node`、`to_node`、`label` 和 `metadata`
 - ReactionPath 保存 `id`、`label` 和有序 `node_ids`
 - `workspaces.json` 当前 schema version：`workspaces-v1`
@@ -398,7 +399,7 @@ Project Content Store 使用以下稳定目录与 index 协议：
 - Stored EnergyPoint 保存 `node_id`、`label`、`absolute_energy`、`relative_energy`、`missing_reason` 和可选 `expression`
 - Stored EnergyExpression 保存 `node_id`、`terms`、`corrections`、`total` 和 `missing`；terms 记录 object、coefficient、energy key/source、raw energy、converted energy 和 contribution，corrections 记录 object、correction id、kind、coefficient、raw energy、converted energy 和 contribution。`total`、converted energy 和 contribution 使用 profile output unit；raw energy 保留来源 unit。
 - EnergyPoint 的 absolute/relative energy 必须显式保存 `{value, unit, reference}`，unit 必须等于 options.output_unit；missing point 必须只有 missing_reason，不能混入 absolute/relative energy
-- Energy profile load/save 基于已加载 ReactionGraph 校验 graph_id、path_id、point node 顺序和 baseline_node_id；不重新调用 EnergyProfileEngine，不根据当前 ChemicalObject energy/corrections 自动刷新 profile。`expression` 是 `energy-profiles-v1` 下的可选字段，不升级 schema version；旧 profile 缺 expression 合法，新计算 profile 会填入 expression。
+- Energy profile load/save 基于已加载 ReactionGraph 校验 graph_id、path_id、point node 顺序和 baseline_node_id；存在 expression 时还会校验 expression.node_id 与 point.node_id 对齐、term/correction coefficient 非零有限、component source 为 `energies` 或 `thermochemistry`、correction kind 为 resonance/solvation/manual、converted/contribution/total unit 匹配 output unit、missing expression 必须带 diagnostics、missing point 不能带 expression total。不重新调用 EnergyProfileEngine，不根据当前 ChemicalObject energy/corrections 自动刷新 profile。`expression` 是 `energy-profiles-v1` 下的可选字段，不升级 schema version；旧 profile 缺 expression 合法，新计算 profile 会填入 expression。
 
 Parser Plugins 使用以下稳定协议：
 
@@ -540,8 +541,8 @@ Project Content Store 当前使用以下稳定协议：
 - Fixture snapshot helper：`project_content_snapshot_from_fixture(CoreFixtureResult)`
 - 当前 save workflow：校验 snapshot，通过 chemical object / graph / workspace / import ledger / energy profile / export artifact codec 序列化 JSON，先写 section files，汇总 checksum，再写 `project-content.json`
 - 当前 load workflow：先读 index，校验 `project-content-v1` 和 file path，再读 ChemicalObject section、校验 Import Ledger section、校验 ReactionGraph section、校验 EnergyProfile section、校验 ExportArtifact section、校验 Workspace section，并反序列化为 ProjectContentSnapshot
-- 当前 validate workflow：先读 index bytes，再校验 schema/project_id/files shape、section kind/path/checksum 和 canonical path，随后读取 section bytes 复算 checksum，复用现有 codecs 解码，读取 manifest raw resources 作为 source/raw_resource 锚点，最后读取 `exports/...` artifact bytes 并与 ExportArtifactRecord.checksum 比对
-- 当前 migration plan workflow：读取 index schema 后判断 target；`project-content-v1 -> project-content-v1` 返回 `needed=False` 和空 steps，未知 source/target 返回 error issue，不写任何项目文件
+- 当前 validate workflow：先读 index bytes，再校验 schema/project_id/files shape、section kind/path/checksum 和 canonical path，随后读取 section bytes 复算 checksum，复用现有 codecs 解码，读取 manifest raw resources 作为 source/raw_resource 锚点，校验 reaction graph composition 与 energy profile expression 语义，最后读取 `exports/...` artifact bytes 并与 ExportArtifactRecord.checksum 比对
+- 当前 migration plan workflow：读取 index schema 后判断 target；`project-content-v1 -> project-content-v1` 返回 `needed=False` 和空 steps，legacy/new energy semantics optional fields 不产生 migration steps，未知 source/target 返回 error issue，不写任何项目文件
 - Platform Session content collections：`objects`、`import_batches`、`reaction_graphs`、`workspaces`、`energy_profiles`、`export_artifact_records` 和运行时 `artifacts`；同时保留 active `graph`、`workspace`、`profile` 供既有命令继续操作
 - Platform restore workflow：`project.open(load_content=True)` 先加载 manifest，再 `validate_project`；validation error 返回 `project_content_invalid`，validation 通过后 `load_snapshot`，并按 ChemicalRegistry.restore_objects → ImportRegistryWorkflow.restore_batches → ReactionGraphService.restore_graphs → GraphEditorWorkspaceService.restore_workspaces 顺序恢复，随后把 energy profiles/export artifact records 写入 session 并返回 restored summary
 - Platform manifest-only workflow：`project.load` 和 `project.open(load_content=False)` 只创建 manifest-only session，object/graph/workspace/profile/artifact counts 均为 0，不访问 Project Content
@@ -596,11 +597,12 @@ Project Bundle 使用以下稳定协议：
 - `storage_quota_exceeded`：BrowserLocalProjectStorageBackend 中写入或替换对象会超过 quota_bytes，失败写入不部分覆盖已有对象。
 - `invalid_input`：Project Bundle 中 bundle path 后缀不是 `.rxnflow.zip`、bundle 文件缺失、destination_dir 缺失/不是目录、目标项目已存在，或 conflict_policy 不是 `fail_if_exists`。
 - `invalid_bundle`：Project Bundle zip 损坏、entry path 不安全、包含多 root、缺少 `.rxnflow/manifest.json`、包含 `__MACOSX` 或包含 allowed roots 外文件。
-- Validation Report issue：Project Content Validation 中 index schema/project_id/files shape 错误、unsafe path、duplicate kind/path、canonical path mismatch、section 缺失、section checksum mismatch、bad section JSON、section codec 错误、missing source/raw resource、missing export artifact、artifact checksum mismatch 或 export metadata ref 缺失会进入 ValidationIssue；error issue 使 report.ok 为 false，warning 不阻止 report 生成。
+- Validation Report issue：Project Content Validation 中 index schema/project_id/files shape 错误、unsafe path、duplicate kind/path、canonical path mismatch、section 缺失、section checksum mismatch、bad section JSON、section codec 错误、reaction graph composition 语义错误、energy profile expression 语义错误、missing source/raw resource、missing export artifact、artifact checksum mismatch 或 export metadata ref 缺失会进入 ValidationIssue；error issue 使 report.ok 为 false，warning 不阻止 report 生成。
 - `invalid_input`：ChemicalObject section codec 中 `chemical-objects-v1` schema 不兼容、project id 不匹配、object id/source_file_id 缺失、energy 缺 value/unit、unit 不支持、重复 object id、重复 registry_fingerprint 冲突、重复 correction id 冲突。
-- `invalid_input`：Graph / Workspace section codec 中 `reaction-graphs-v1` 或 `workspaces-v1` schema 不兼容、project id 不匹配、字段 shape 错误、重复 graph/workspace/node/edge/path id、node composition shape 错误、workspace selection/active_path 引用缺失或 viewport 非法。
+- `invalid_input`：Graph / Workspace section codec 中 `reaction-graphs-v1` 或 `workspaces-v1` schema 不兼容、project id 不匹配、字段 shape 错误、重复 graph/workspace/node/edge/path id、node composition shape 错误、composition 与 `chemical_object_ids` 投影不一致、非法 composition coefficient、workspace selection/active_path 引用缺失或 viewport 非法。
 - `invalid_input`：Import Ledger section codec 中 `import-ledger-v1` schema 不兼容、project id 不匹配、重复 batch/item id、非法 status、preview object_count 不一致、preview/provenance parser 信息不一致、registered_object_ids 引用缺失 ChemicalObject、warnings/error shape 错误。
 - `invalid_input`：Export Artifact section codec 中 `export-artifacts-v1` schema 不兼容、project id 不匹配、artifacts 不是 list、record 不是 object、重复 artifact id/path、format 不支持、path 不在 `exports/` 下、checksum 不是 `sha256:<64 hex>` 或 metadata 非 JSON-safe object。
+- `invalid_input`：Energy Profile section codec 中 expression.node_id 与 point.node_id 不一致、expression term/correction coefficient 为 0 或非有限数、component source/correction kind 不支持、converted/contribution/total unit 与 output_unit 不一致、non-missing point 缺 expression total、missing point 带 expression total，或 missing expression 缺 diagnostics。
 - `unsupported_format`：没有插件支持、置信度不足或插件选择歧义。
 - `parse_failed`：XYZ/MAPLE/cclib/ASE adapter 无法解析输入或字段映射失败。
 - `export_failed`：ReportExportService 中 writer 依赖缺失、destination_dir 不存在/不是目录，或 artifact 写入失败。
@@ -617,7 +619,7 @@ Project Bundle 使用以下稳定协议：
 
 Project Store 不兼容 schema 不做 silent migration；当前只支持 `project-v1`。Manifest resource path 不允许绝对路径、空路径、`.` 或包含 `..`。
 
-Project Content Store 不兼容 schema 不做 silent migration；当前只支持 `project-content-v1`。Project content path 不允许绝对路径、空路径、`.`、包含 `..` 或反斜杠。保存时先写 section files，再写 index；load 时 index 缺失、section 缺失、坏 JSON 或 schema 不兼容均返回结构化错误，不自动生成空 snapshot。validation 是只读聚合报告，不自动修复 checksum/path/project_id/ref 错误；migration_plan 当前只做 no-op/unsupported 判断，不写文件。
+Project Content Store 不兼容 schema 不做 silent migration；当前只支持 `project-content-v1`。Project content path 不允许绝对路径、空路径、`.`、包含 `..` 或反斜杠。保存时先写 section files，再写 index；load 时 index 缺失、section 缺失、坏 JSON 或 schema 不兼容均返回结构化错误，不自动生成空 snapshot。validation 是只读聚合报告，不自动修复 checksum/path/project_id/ref、composition 或 expression 错误；migration_plan 当前只做 no-op/unsupported 判断，`project-content-v1` 的 legacy/new energy semantics optional fields 不需要迁移，也不写文件。
 
 Chemical Registry 重复登记同一 ParseResult 时返回既有对象，不追加重复 ChemicalObject。重复提交同 id 且内容相同的 Correction 时幂等返回；同 id 不同内容返回 `invalid_input`。
 
@@ -669,7 +671,7 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - Project Content Store 不修改 `.rxnflow/manifest.json`，不新增 ProjectResource，不读取、复制、删除或解析 `inputs/raw/` 文件。
 - Project Content Store 不调用 ParserRegistry、ImportRegistryWorkflow、ChemicalRegistry.register、ReactionGraphService.apply_patch、EnergyProfileEngine 或 ReportExportService。
 - Project Content Store 本身不实现浏览器 IndexedDB/OPFS API、云存储、数据库、CLI/Web/desktop command、真实 schema migration、增量保存、并发锁、冲突合并或 bundle zip 读写；浏览器本地核心协议替身由 BrowserLocalProjectStorageBackend 提供，project bundle 由 ProjectBundleService 编排。
-- Project Content Validation 不自动修复或重写 project-content index、section JSON、manifest、raw files 或 export files，不删除 orphan files，不重新 parse raw files、不重新 register objects、不重新 compute profile、不重新 export reports。
+- Project Content Validation 不自动修复或重写 project-content index、section JSON、manifest、raw files 或 export files，不补写缺失 composition/expression，不删除 orphan files，不重新 parse raw files、不重新 register objects、不重新 compute profile、不重新 export reports。
 - Project Content Store 当前保存/加载 ChemicalObject、ReactionGraph、WorkspaceSnapshot、ImportBatch/ParsePreview、EnergyProfile 和 ExportArtifact index 长期 sections。
 - BrowserLocalProjectStorageBackend 不保存到磁盘、不提供跨浏览器/跨设备同步、不新增 Platform Shell/CLI/Web route/桌面入口，也不调用 parser/import/registry/graph/energy/export/bundle 服务。
 - Browser Project Repository 当前未实现真实 JS/TS adapter；Web MVP 第一版的项目内容 authority 由未来浏览器本地仓储和 `.rxnflow.zip` bundle 共同承担，不由 serverless filesystem 承担。

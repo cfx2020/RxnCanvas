@@ -1,0 +1,96 @@
+feature: 2026-05-22-energy-semantics-project-content-migration
+created: 2026-05-22
+
+steps:
+  - action: "验证基线盘点：用现有 ProjectContentStore 测试构造合法 legacy/new energy semantics project"
+    exit_signal: "测试能证明 legacy no-composition/no-expression validation 无 error"
+    status: done
+
+  - action: "Composition validation：补 graph section / ProjectContentValidator 覆盖 projection mismatch、非法 coefficient 和 missing object"
+    exit_signal: "坏 reaction-graphs section 在 validation report 中产生 section_decode_error，target 指向 composition/object 投影相关位置"
+    status: done
+
+  - action: "Expression validation：补 energy profile expression node/energy/unit/source/kind/missing 语义校验"
+    exit_signal: "坏 energy-profiles section 在 validation report 中产生可定位 issue，合法 expression 仍 round-trip"
+    status: done
+
+  - action: "Migration plan/no-mutation：补 no-op plan、unsupported source/target、validation/plan 不写文件的 energy semantics 场景"
+    exit_signal: "tracked file bytes 前后不变，plan.needed=false"
+    status: done
+
+  - action: "回归验证：跑 focused persistence/validation tests 与全量 Python"
+    exit_signal: "相关测试和 python3 -m unittest discover 通过，准备进入 acceptance"
+    status: done
+
+checks:
+  - item: "Energy Semantics Project Content Compatibility / Semantic Content Validation / Energy Semantics Migration Plan 术语落地"
+    source: 名词契约
+    status: passed
+
+  - item: "ProjectContentValidationIssue 继续作为 validation 输出，不新增 report 类型"
+    source: 名词契约
+    status: passed
+
+  - item: "旧 no-composition / no-expression 数据 validation 合法且加载不丢节点/profile point"
+    source: 验收场景
+    status: passed
+
+  - item: "新 composition 与 chemical_object_ids 投影一致时 validation 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "composition projection mismatch、非法 coefficient、missing object 进入 validation issue"
+    source: 验收场景
+    status: passed
+
+  - item: "合法 expression validation 通过并保留 raw/converted/contribution 单位语义"
+    source: 验收场景
+    status: passed
+
+  - item: "expression node mismatch、非法 source/kind/unit/coefficient、missing/total 矛盾进入 validation issue"
+    source: 验收场景
+    status: passed
+
+  - item: "profile graph/path/node 顺序错位仍按既有 graph_invalid 语义进入 validation issue"
+    source: 验收场景
+    status: passed
+
+  - item: "migration_plan 对 v1 legacy/new energy semantics 返回 needed=false、无 steps、无 issues"
+    source: 验收场景
+    status: passed
+
+  - item: "unsupported migration target/source 仍返回 error issue"
+    source: 验收场景
+    status: passed
+
+  - item: "validate_project 和 migration_plan 不修改 project files"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Project Content Validation 复用 section codec，不维护第二套 schema parser"
+    source: 编排骨架
+    status: passed
+
+  - item: "Project Shell project.open validation error 语义不变，不做部分恢复"
+    source: 跨层纪律
+    status: passed
+
+  - item: "不升级 project-content-v1 / reaction-graphs-v1 / energy-profiles-v1 schema version"
+    source: 范围守护
+    status: passed
+
+  - item: "不写真实迁移器、不改写旧项目文件、不补写缺失字段"
+    source: 范围守护
+    status: passed
+
+  - item: "不重新计算 EnergyProfile 或修复 stale profile"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 Web Project Sidebar 深校验 UI"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 parser/import/export writer 或 EnergyProfileEngine 业务规则"
+    source: 范围守护
+    status: passed

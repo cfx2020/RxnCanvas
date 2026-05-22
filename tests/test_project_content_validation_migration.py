@@ -26,6 +26,7 @@ from rxnflow.content_store import (
     ProjectContentValidationReport,
     StorageObject,
     _json_bytes,
+    _project_content_index_from_dict,
     _project_content_index_to_dict,
     project_content_snapshot_from_fixture,
 )
@@ -311,6 +312,170 @@ class ProjectContentValidationMigrationTest(unittest.TestCase):
             assert import_ref is not None
             self.assertIn("section_decode_error", {issue.code for issue in import_ref.issues})
 
+    def test_validate_project_accepts_legacy_energy_semantics_optional_fields(self) -> None:
+        fixture = run_core_fixture_vertical_slice()
+        self.assertTrue(fixture.ok, fixture.error)
+        assert fixture.value is not None
+        snapshot = project_content_snapshot_from_fixture(fixture.value)
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "demo.rxnflow"
+            ProjectStore().create_project("demo", root)
+            saved = ProjectContentStore().save_snapshot(root, snapshot)
+            self.assertTrue(saved.ok, saved.error)
+
+            graph_section = _read_json(root / REACTION_GRAPHS_PATH)
+            del graph_section["graphs"][0]["nodes"][0]["composition"]  # type: ignore[index]
+            _write_section_and_refresh_index(root, REACTION_GRAPHS_PATH, graph_section)
+
+            profile_section = _read_json(root / ENERGY_PROFILES_PATH)
+            del profile_section["profiles"][0]["points"][0]["expression"]  # type: ignore[index]
+            _write_section_and_refresh_index(root, ENERGY_PROFILES_PATH, profile_section)
+
+            report = ProjectContentStore().validate_project(root).value
+            loaded = ProjectContentStore().load_snapshot(root)
+
+        assert report is not None
+        self.assertTrue(report.ok, report.issues)
+        self.assertNotIn("section_decode_error", {issue.code for issue in report.issues})
+        self.assertTrue(loaded.ok, loaded.error)
+        assert loaded.value is not None
+        graph_node = loaded.value.reaction_graphs[0].nodes[0]
+        self.assertEqual(graph_node.composition[0].object_id, graph_node.chemical_object_ids[0])
+        self.assertEqual(graph_node.composition[0].coefficient, 1.0)
+        self.assertIsNone(loaded.value.energy_profiles[0].points[0].expression)
+
+    def test_validate_project_reports_composition_semantics_errors(self) -> None:
+        fixture = run_core_fixture_vertical_slice()
+        self.assertTrue(fixture.ok, fixture.error)
+        assert fixture.value is not None
+        snapshot = project_content_snapshot_from_fixture(fixture.value)
+
+        cases = (
+            (
+                "projection-mismatch",
+                lambda section: section["graphs"][0]["nodes"][0].update({"chemical_object_ids": []}),  # type: ignore[index,union-attr]
+                "profiles[0].graph_id",
+                "graphs[0].nodes[0].chemical_object_ids",
+            ),
+            (
+                "zero-coefficient",
+                lambda section: section["graphs"][0]["nodes"][0]["composition"][0].update({"coefficient": 0}),  # type: ignore[index,union-attr]
+                "graphs[0].nodes[0].composition",
+                "graphs[0].nodes[0].composition",
+            ),
+            (
+                "missing-object",
+                lambda section: section["graphs"][0]["nodes"][0].update(
+                    {
+                        "chemical_object_ids": ["object-missing"],
+                        "composition": [{"object_id": "object-missing", "coefficient": 1.0}],
+                    }
+                ),  # type: ignore[index,union-attr]
+                "profiles[0].graph_id",
+                "object_id",
+            ),
+        )
+
+        for label, mutate, _legacy_target, expected_target in cases:
+            with self.subTest(label=label):
+                with TemporaryDirectory() as tmp:
+                    root = Path(tmp) / "demo.rxnflow"
+                    ProjectStore().create_project("demo", root)
+                    saved = ProjectContentStore().save_snapshot(root, snapshot)
+                    self.assertTrue(saved.ok, saved.error)
+
+                    graph_section = _read_json(root / REACTION_GRAPHS_PATH)
+                    mutate(graph_section)
+                    _write_section_and_refresh_index(root, REACTION_GRAPHS_PATH, graph_section)
+
+                    report = ProjectContentStore().validate_project(root).value
+
+                assert report is not None
+                self.assertFalse(report.ok)
+                section_issues = [issue for issue in report.issues if issue.code == "section_decode_error"]
+                self.assertTrue(section_issues)
+                self.assertEqual(section_issues[0].target, expected_target)
+
+    def test_validate_project_reports_expression_semantics_errors(self) -> None:
+        fixture = run_core_fixture_vertical_slice()
+        self.assertTrue(fixture.ok, fixture.error)
+        assert fixture.value is not None
+        snapshot = project_content_snapshot_from_fixture(fixture.value)
+
+        cases = (
+            (
+                "node-mismatch",
+                lambda point: point["expression"].update({"node_id": "node-missing"}),
+                "profiles[0].points[0].expression.node_id",
+            ),
+            (
+                "bad-source",
+                lambda point: point["expression"]["terms"][0].update({"energy_source": "bad-source"}),
+                "profiles[0].points[0].expression.terms[0].energy_source",
+            ),
+            (
+                "bad-correction-kind",
+                lambda point: point["expression"]["corrections"].append(
+                    {
+                        "object_id": "object-a",
+                        "correction_id": "corr-a",
+                        "kind": "bad-kind",
+                        "coefficient": 1,
+                        "raw_energy": {"value": 1, "unit": "kcal_mol", "reference": None},
+                        "converted_energy": {"value": 1, "unit": "kcal_mol", "reference": None},
+                        "contribution": {"value": 1, "unit": "kcal_mol", "reference": None},
+                    }
+                ),
+                "profiles[0].points[0].expression.corrections[0].kind",
+            ),
+            (
+                "zero-coefficient",
+                lambda point: point["expression"]["terms"][0].update({"coefficient": 0}),
+                "profiles[0].points[0].expression.terms[0].coefficient",
+            ),
+            (
+                "converted-unit-mismatch",
+                lambda point: point["expression"]["terms"][0]["converted_energy"].update({"unit": "hartree"}),
+                "profiles[0].points[0].expression.terms[0].converted_energy.unit",
+            ),
+            (
+                "total-unit-mismatch",
+                lambda point: point["expression"]["total"].update({"unit": "hartree"}),
+                "profiles[0].points[0].expression.total.unit",
+            ),
+            (
+                "missing-with-total",
+                lambda point: point.update({"missing_reason": "missing_energy", "absolute_energy": None, "relative_energy": None}),
+                "profiles[0].points[0].expression.total",
+            ),
+            (
+                "non-missing-without-total",
+                lambda point: point["expression"].update({"total": None}),
+                "profiles[0].points[0].expression.total",
+            ),
+        )
+
+        for label, mutate_point, expected_target in cases:
+            with self.subTest(label=label):
+                with TemporaryDirectory() as tmp:
+                    root = Path(tmp) / "demo.rxnflow"
+                    ProjectStore().create_project("demo", root)
+                    saved = ProjectContentStore().save_snapshot(root, snapshot)
+                    self.assertTrue(saved.ok, saved.error)
+
+                    profile_section = _read_json(root / ENERGY_PROFILES_PATH)
+                    mutate_point(profile_section["profiles"][0]["points"][0])  # type: ignore[index]
+                    _write_section_and_refresh_index(root, ENERGY_PROFILES_PATH, profile_section)
+
+                    report = ProjectContentStore().validate_project(root).value
+
+                assert report is not None
+                self.assertFalse(report.ok)
+                section_issues = [issue for issue in report.issues if issue.code == "section_decode_error"]
+                self.assertTrue(section_issues)
+                self.assertEqual(section_issues[0].target, expected_target)
+
     def test_validate_project_deep_checks_export_artifacts(self) -> None:
         record = ExportArtifactRecord(
             id="artifact-main",
@@ -348,37 +513,62 @@ class ProjectContentValidationMigrationTest(unittest.TestCase):
             self.assertIn("section_decode_error", {issue.code for issue in bad_record.issues})
 
     def test_validate_project_and_migration_plan_do_not_modify_project_files(self) -> None:
-        with TemporaryDirectory() as tmp:
-            root = Path(tmp) / "demo.rxnflow"
-            ProjectStore().create_project("demo", root)
-            source = Path(tmp) / "raw.log"
-            source.write_text("raw content", encoding="utf-8")
-            raw = ProjectStore().add_raw_file(root, source)
-            self.assertTrue(raw.ok, raw.error)
-            artifact_payload = b"artifact-bytes"
-            artifact_path = root / "exports" / "main-route.png"
-            artifact_path.parent.mkdir(parents=True, exist_ok=True)
-            artifact_path.write_bytes(artifact_payload)
-            snapshot = ProjectContentSnapshot(
+        fixture = run_core_fixture_vertical_slice()
+        self.assertTrue(fixture.ok, fixture.error)
+        assert fixture.value is not None
+        fixture_snapshot = project_content_snapshot_from_fixture(fixture.value)
+
+        snapshots = (
+            ProjectContentSnapshot(
                 project_id="project-a",
                 export_artifacts=(
                     ExportArtifactRecord(
                         id="artifact-main",
                         format="png",
                         path="exports/main-route.png",
-                        checksum=_checksum(artifact_payload),
+                        checksum=_checksum(b"artifact-bytes"),
                     ),
                 ),
-            )
-            saved = ProjectContentStore().save_snapshot(root, snapshot)
-            self.assertTrue(saved.ok, saved.error)
-            before = _tracked_file_bytes(root)
+            ),
+            fixture_snapshot,
+        )
 
-            ProjectContentStore().validate_project(root)
-            ProjectContentStore().migration_plan(root)
+        for snapshot in snapshots:
+            with self.subTest(project_id=snapshot.project_id, has_energy=bool(snapshot.energy_profiles)):
+                with TemporaryDirectory() as tmp:
+                    root = Path(tmp) / "demo.rxnflow"
+                    ProjectStore().create_project("demo", root)
+                    source = Path(tmp) / "raw.log"
+                    source.write_text("raw content", encoding="utf-8")
+                    raw = ProjectStore().add_raw_file(root, source)
+                    self.assertTrue(raw.ok, raw.error)
+                    artifact_path = root / "exports" / "main-route.png"
+                    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+                    artifact_path.write_bytes(b"artifact-bytes")
+                    saved = ProjectContentStore().save_snapshot(root, snapshot)
+                    self.assertTrue(saved.ok, saved.error)
 
-            after = _tracked_file_bytes(root)
-        self.assertEqual(after, before)
+                    if snapshot.energy_profiles:
+                        graph_section = _read_json(root / REACTION_GRAPHS_PATH)
+                        del graph_section["graphs"][0]["nodes"][0]["composition"]  # type: ignore[index]
+                        _write_section_and_refresh_index(root, REACTION_GRAPHS_PATH, graph_section)
+                        profile_section = _read_json(root / ENERGY_PROFILES_PATH)
+                        del profile_section["profiles"][0]["points"][0]["expression"]  # type: ignore[index]
+                        _write_section_and_refresh_index(root, ENERGY_PROFILES_PATH, profile_section)
+
+                    before = _tracked_file_bytes(root)
+
+                    report = ProjectContentStore().validate_project(root).value
+                    plan = ProjectContentStore().migration_plan(root).value
+
+                    after = _tracked_file_bytes(root)
+
+                assert report is not None
+                assert plan is not None
+                self.assertFalse(plan.needed)
+                self.assertEqual(plan.steps, ())
+                self.assertEqual(plan.issues, ())
+                self.assertEqual(after, before)
 
     def test_validate_project_is_stable_and_internal_io_remains_result_error(self) -> None:
         snapshot = ProjectContentSnapshot(project_id="project-a")
@@ -439,6 +629,36 @@ def _read_json(path: Path) -> dict[str, object]:
 def _tracked_file_bytes(root: Path) -> dict[str, bytes]:
     paths = tuple(sorted(path for path in root.rglob("*") if path.is_file()))
     return {path.relative_to(root).as_posix(): path.read_bytes() for path in paths}
+
+
+def _write_section_and_refresh_index(root: Path, section_path: str, section: dict[str, object]) -> None:
+    payload = _json_bytes(section)
+    (root / section_path).write_bytes(payload)
+
+    index_data = _read_json(root / PROJECT_CONTENT_INDEX_PATH)
+    parsed_index = _project_content_index_from_dict(index_data, PROJECT_CONTENT_INDEX_PATH)
+    assert parsed_index.ok, parsed_index.error
+    assert parsed_index.value is not None
+    updated_files = []
+    for file in parsed_index.value.files:
+        if file.path == section_path:
+            updated_files.append(
+                ProjectContentFile(
+                    kind=file.kind,
+                    path=file.path,
+                    checksum=_checksum(payload),
+                    updated_at=file.updated_at,
+                )
+            )
+        else:
+            updated_files.append(file)
+    updated_index = ProjectContentIndex(
+        schema_version=parsed_index.value.schema_version,
+        project_id=parsed_index.value.project_id,
+        updated_at=parsed_index.value.updated_at,
+        files=tuple(updated_files),
+    )
+    (root / PROJECT_CONTENT_INDEX_PATH).write_bytes(_json_bytes(_project_content_index_to_dict(updated_index)))
 
 
 def _checksum(payload: bytes) -> str:

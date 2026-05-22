@@ -410,9 +410,9 @@ energy-profiles-v1 point:
 6. **energy-semantics-project-content-migration** — 为 reaction graph composition 和 profile expression 补持久化验证、兼容加载和 migration plan 说明。
    - 所属模块：Project Content Migration
    - 依赖：`reaction-node-stoichiometry-contract`、`energy-profile-provenance-details`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：若前面 feature 已局部落地持久化，本条负责补全 validation 和文档化迁移边界。
+   - 状态：done
+   - 对应 feature：`2026-05-22-energy-semantics-project-content-migration`
+   - 备注：已落地 Project Content Validation 对 reaction-graphs-v1 composition 投影/系数/引用和 energy-profiles-v1 expression node/source/kind/unit/coefficient/missing 语义的只读校验；legacy no-composition/no-expression 数据合法，migration_plan 对 v1 energy semantics 保持 needed=false 且不写文件；未升级 schema、不写迁移器、不重算 profile、不新增 Web 深校验 UI。
 
 7. **web-energy-semantics-controls** — 在 Web 中补节点组成编辑、energy channel selector、correction policy options 和 i18n 文案。
    - 所属模块：Web Workbench Integration
