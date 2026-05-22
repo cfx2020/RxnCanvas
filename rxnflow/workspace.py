@@ -269,6 +269,27 @@ class GraphEditorWorkspaceService:
         )
         return self._apply_graph_patches(state, (GraphPatch("add_edge", edge=edge),))
 
+    def update_edge(
+        self,
+        project_id: ID,
+        workspace_id: ID,
+        edge_id: ID,
+        label: str | None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Result[WorkspaceSnapshot]:
+        state_result = self._get_state(project_id, workspace_id)
+        if not state_result.ok or state_result.value is None:
+            assert state_result.error is not None
+            return err(state_result.error)
+        state = state_result.value
+        patch: dict[str, Any] = {"label": label}
+        if metadata is not None:
+            patch["metadata"] = dict(metadata)
+        return self._apply_graph_patches(
+            state,
+            (GraphPatch("update_edge", id=edge_id, patch=patch),),
+        )
+
     def move_node(
         self,
         project_id: ID,

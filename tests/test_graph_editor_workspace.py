@@ -258,6 +258,73 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
         self.assertEqual(result.error.code, "graph_invalid")
         self.assertEqual(after, before)
 
+    def test_update_edge_label_preserves_endpoints_and_selection(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
+        reactant = _add_species(workspace, workspace_id, "R", "object-r")
+        product = _add_species(workspace, workspace_id, "P", "object-p")
+        connected = workspace.connect_nodes(PROJECT_ID, workspace_id, reactant.id, product.id)
+        self.assertTrue(connected.ok, connected.error)
+        edge_id = connected.value.graph.edges[0].id  # type: ignore[union-attr]
+        workspace.select(PROJECT_ID, workspace_id, WorkspaceSelection(edge_ids=(edge_id,)))
+
+        updated = workspace.update_edge(
+            PROJECT_ID,
+            workspace_id,
+            edge_id,
+            label="TS search",
+            metadata={"condition": "screening"},
+        )
+
+        self.assertTrue(updated.ok, updated.error)
+        snapshot = updated.value
+        assert snapshot is not None
+        edge = snapshot.graph.edges[0]
+        self.assertEqual(edge.id, edge_id)
+        self.assertEqual(edge.from_node, reactant.id)
+        self.assertEqual(edge.to_node, product.id)
+        self.assertEqual(edge.label, "TS search")
+        self.assertEqual(edge.metadata, {"condition": "screening"})
+        self.assertEqual(snapshot.selection.edge_ids, (edge_id,))
+
+    def test_update_edge_label_can_clear_label(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
+        reactant = _add_species(workspace, workspace_id, "R", "object-r")
+        product = _add_species(workspace, workspace_id, "P", "object-p")
+        connected = workspace.connect_nodes(
+            PROJECT_ID,
+            workspace_id,
+            reactant.id,
+            product.id,
+            label="forward",
+        )
+        self.assertTrue(connected.ok, connected.error)
+        edge_id = connected.value.graph.edges[0].id  # type: ignore[union-attr]
+
+        cleared = workspace.update_edge(PROJECT_ID, workspace_id, edge_id, label=None)
+
+        self.assertTrue(cleared.ok, cleared.error)
+        edge = cleared.value.graph.edges[0]  # type: ignore[union-attr]
+        self.assertIsNone(edge.label)
+        self.assertEqual(edge.from_node, reactant.id)
+        self.assertEqual(edge.to_node, product.id)
+
+    def test_update_missing_edge_returns_graph_invalid_without_state_change(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
+        reactant = _add_species(workspace, workspace_id, "R", "object-r")
+        product = _add_species(workspace, workspace_id, "P", "object-p")
+        workspace.connect_nodes(PROJECT_ID, workspace_id, reactant.id, product.id)
+        before = workspace.snapshot(PROJECT_ID, workspace_id).value.graph
+
+        updated = workspace.update_edge(PROJECT_ID, workspace_id, "edge-missing", label="missing")
+        after = workspace.snapshot(PROJECT_ID, workspace_id).value.graph
+
+        self.assertFalse(updated.ok)
+        self.assertIsNotNone(updated.error)
+        assert updated.error is not None
+        self.assertEqual(updated.error.code, "graph_invalid")
+        self.assertEqual(updated.error.target, "edge-missing")
+        self.assertEqual(after, before)
+
     def test_multiple_active_paths_are_kept_for_branch_preview(self) -> None:
         workspace, workspace_id = _workspace_with_objects(
             _object("object-r"),

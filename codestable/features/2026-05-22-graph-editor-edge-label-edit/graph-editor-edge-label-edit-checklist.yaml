@@ -4,7 +4,7 @@ created: 2026-05-22
 steps:
   - action: "Core Workspace Edge Update Contract：新增 workspace update_edge method，限制只更新 label / 可选 metadata，并补 core workspace tests"
     exit_signal: "label set/clear 成功；unknown edge 返回 graph_invalid；from_node/to_node 不变化"
-    status: pending
+    status: done
 
   - action: "Platform Shell And Fixture Contract：新增 workspace.update_edge shell handler、fixture transport command、Shell DTO 类型和 tests"
     exit_signal: "真实 shell 与 fixture 都能 update / clear edge label，错误 target 一致，JSON-safe projection 保持"
