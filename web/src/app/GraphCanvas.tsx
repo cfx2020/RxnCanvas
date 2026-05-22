@@ -1,6 +1,6 @@
 import { useRef } from "react"
 import type { DragEvent, PointerEvent } from "react"
-import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, ZoomIn, ZoomOut } from "lucide-react"
+import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, XCircle, ZoomIn, ZoomOut } from "lucide-react"
 import type { ShellError } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
 import type { CanvasPoint, GraphEditorInteractionState } from "./graphEditorInteractionState"
@@ -27,6 +27,7 @@ import {
 } from "./graphViewport"
 import type { GraphPathOrderDraft } from "./graphPathOrderDraft"
 import type { CompositionDraftRow, CompositionDraftState } from "./compositionDraftState"
+import type { EdgeLabelDraftState } from "./edgeLabelDraftState"
 import { useI18n } from "./i18n"
 
 export type AddObjectNodeRequest = {
@@ -57,6 +58,9 @@ type GraphCanvasProps = {
   interactionState: GraphEditorInteractionState
   autoLayoutStatus?: GraphAutoLayoutStatus
   pathOrderDraft: GraphPathOrderDraft | null
+  edgeLabelDraft: EdgeLabelDraftState
+  edgeLabelPending: boolean
+  edgeLabelError: ShellError | null
   compositionDraft: CompositionDraftState
   compositionPending: boolean
   compositionError: ShellError | null
@@ -65,6 +69,10 @@ type GraphCanvasProps = {
   onSelectPath: (pathId: string, nodeIds: string[]) => void
   onMovePathDraftNode: (nodeId: string, direction: "up" | "down") => void
   onApplyPathOrderDraft: () => void
+  onEdgeLabelDraftChange: (label: string) => void
+  onResetEdgeLabelDraft: () => void
+  onClearEdgeLabelDraft: () => void
+  onApplyEdgeLabelDraft: () => void
   onStartNodeDrag: (nodeId: string, origin: CanvasPoint) => void
   onUpdateNodeDrag: (current: CanvasPoint) => void
   onEndNodeDrag: () => void
@@ -93,6 +101,9 @@ export function GraphCanvas({
   interactionState,
   autoLayoutStatus,
   pathOrderDraft,
+  edgeLabelDraft,
+  edgeLabelPending,
+  edgeLabelError,
   compositionDraft,
   compositionPending,
   compositionError,
@@ -101,6 +112,10 @@ export function GraphCanvas({
   onSelectPath,
   onMovePathDraftNode,
   onApplyPathOrderDraft,
+  onEdgeLabelDraftChange,
+  onResetEdgeLabelDraft,
+  onClearEdgeLabelDraft,
+  onApplyEdgeLabelDraft,
   onStartNodeDrag,
   onUpdateNodeDrag,
   onEndNodeDrag,
@@ -134,6 +149,9 @@ export function GraphCanvas({
   const activeObject = state.objects.find((object) => object.id === activeObjectId) ?? state.objects[0]
   const selectedNodeId = interactionState.selection.nodeIds[0]
   const selectedEdgeId = interactionState.selection.edgeIds[0]
+  const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId)
+  const selectedEdgeSource = selectedEdge ? nodes.find((node) => node.id === edgeSource(selectedEdge)) : undefined
+  const selectedEdgeTarget = selectedEdge ? nodes.find((node) => node.id === edgeTarget(selectedEdge)) : undefined
   const selectedPathId = interactionState.selection.pathIds[0]
   const pendingConnectionFromId = interactionState.pendingEdge?.fromNodeId
   const viewport = normalizeGraphViewport(workspace?.viewport)
@@ -438,6 +456,18 @@ export function GraphCanvas({
             </div>
           </dl>
           <PreviewValue label={t("graphCanvas.activePath")} value={workspace?.active_path_id} />
+          <EdgeLabelEditor
+            edge={selectedEdge}
+            sourceLabel={selectedEdgeSource?.label}
+            targetLabel={selectedEdgeTarget?.label}
+            draft={edgeLabelDraft}
+            pending={edgeLabelPending}
+            error={edgeLabelError}
+            onDraftChange={onEdgeLabelDraftChange}
+            onReset={onResetEdgeLabelDraft}
+            onClear={onClearEdgeLabelDraft}
+            onApply={onApplyEdgeLabelDraft}
+          />
           <PathList
             paths={paths}
             activePathId={workspace?.active_path_id}
@@ -660,13 +690,14 @@ function GraphEdgeLayer({
     if (!source || !target) return null
     const from = graphNodePosition(source)
     const to = graphNodePosition(target)
-    return { id: edge.id, from, to, sourceLabel: source.label, targetLabel: target.label }
+    return { id: edge.id, from, to, sourceLabel: source.label, targetLabel: target.label, label: edge.label ?? null }
   }).filter(Boolean) as Array<{
     id: string
     from: { x: number; y: number }
     to: { x: number; y: number }
     sourceLabel: string
     targetLabel: string
+    label: string | null
   }>
 
   return (
@@ -686,6 +717,15 @@ function GraphEdgeLayer({
               cy={(segment.to.y / graphNodeLayoutBounds.height) * 100}
               r="1.5"
             />
+            {segment.label ? (
+              <text
+                className="graph-edge-svg-label"
+                x={(((segment.from.x + segment.to.x) / 2) / graphNodeLayoutBounds.width) * 100}
+                y={(((segment.from.y + segment.to.y) / 2) / graphNodeLayoutBounds.height) * 100}
+              >
+                {segment.label}
+              </text>
+            ) : null}
           </g>
         ))}
       </svg>
@@ -695,7 +735,7 @@ function GraphEdgeLayer({
           <button
             key={segment.id}
             type="button"
-            aria-label={`Edge ${segment.sourceLabel} to ${segment.targetLabel}`}
+            aria-label={`Edge ${segment.sourceLabel} to ${segment.targetLabel}${segment.label ? `: ${segment.label}` : ""}`}
             className={`graph-edge-hitbox ${selected ? "graph-edge-hitbox--selected" : ""}`}
             style={edgeHitboxStyle(segment.from, segment.to)}
             onClick={(event) => {
@@ -706,6 +746,96 @@ function GraphEdgeLayer({
         )
       })}
     </div>
+  )
+}
+
+function EdgeLabelEditor({
+  edge,
+  sourceLabel,
+  targetLabel,
+  draft,
+  pending,
+  error,
+  onDraftChange,
+  onReset,
+  onClear,
+  onApply,
+}: {
+  edge?: GraphEdgeSummary
+  sourceLabel?: string
+  targetLabel?: string
+  draft: EdgeLabelDraftState
+  pending: boolean
+  error: ShellError | null
+  onDraftChange: (label: string) => void
+  onReset: () => void
+  onClear: () => void
+  onApply: () => void
+}) {
+  const { t } = useI18n()
+  const disabled = !edge || !draft.edgeId || pending
+  return (
+    <form
+      className="edge-label-editor"
+      aria-label={t("edgeLabelEditor.aria")}
+      onSubmit={(event) => {
+        event.preventDefault()
+        onApply()
+      }}
+    >
+      <div className="edge-label-editor-header">
+        <div>
+          <span>{t("edgeLabelEditor.title")}</span>
+          <code>{edge?.id ?? t("graphCanvas.none")}</code>
+        </div>
+        <small>{draft.dirty ? t("edgeLabelEditor.dirty") : t("edgeLabelEditor.clean")}</small>
+      </div>
+
+      {edge ? (
+        <>
+          <p className="edge-label-route">
+            <code>{sourceLabel ?? edgeSource(edge)}</code>
+            <span>{t("edgeLabelEditor.to")}</span>
+            <code>{targetLabel ?? edgeTarget(edge)}</code>
+          </p>
+          <label>
+            <span>{t("edgeLabelEditor.label")}</span>
+            <input
+              type="text"
+              value={draft.label}
+              onChange={(event) => onDraftChange(event.currentTarget.value)}
+              disabled={disabled}
+              placeholder={t("edgeLabelEditor.placeholder")}
+            />
+          </label>
+        </>
+      ) : (
+        <p className="muted">{t("edgeLabelEditor.empty")}</p>
+      )}
+
+      {error ? (
+        <p className="edge-label-error">
+          <code>{error.code}</code>
+          <span>{error.message}</span>
+          {error.target ? <small>{error.target}</small> : null}
+        </p>
+      ) : null}
+
+      <div className="edge-label-command-row">
+        <button type="button" onClick={onClear} disabled={disabled || !draft.label}>
+          <XCircle size={15} />
+          <span>{t("edgeLabelEditor.clear")}</span>
+        </button>
+        <button type="button" onClick={onReset} disabled={disabled || !draft.dirty}>
+          <RotateCcw size={15} />
+          <span>{t("edgeLabelEditor.reset")}</span>
+        </button>
+        <button type="submit" disabled={disabled || !draft.dirty}>
+          <Check size={15} />
+          <span>{pending ? t("edgeLabelEditor.applying") : t("edgeLabelEditor.apply")}</span>
+        </button>
+      </div>
+    </form>
   )
 }
 

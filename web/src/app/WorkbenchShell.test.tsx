@@ -479,6 +479,50 @@ describe("WorkbenchShell", () => {
     expect(within(graphCanvas).getAllByText("node-b").length).toBeGreaterThan(0)
   })
 
+  it("edits selected graph edge labels through an Edge Label Draft", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const edge = within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" })
+
+    fireEvent.click(edge)
+    const editor = await within(graphCanvas).findByRole("form", { name: "Edge Label Editor" })
+    expect(within(editor).getByText("edge-a-b")).toBeInTheDocument()
+    expect(within(editor).getByLabelText("Label")).toHaveValue("")
+    await waitFor(() => expect(within(editor).getByRole("button", { name: "Apply" })).toBeDisabled())
+
+    fireEvent.change(within(editor).getByLabelText("Label"), { target: { value: "TS search" } })
+
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.update_edge")).toHaveLength(0)
+    expect(within(graphCanvas).queryByRole("button", { name: "Edge Object A to Object B: TS search" })).not.toBeInTheDocument()
+    await waitFor(() => expect(within(editor).getByRole("button", { name: "Apply" })).toBeEnabled())
+    fireEvent.click(within(editor).getByRole("button", { name: "Apply" }))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.update_edge")?.args).toMatchObject({
+      edge_id: "edge-a-b",
+      label: "TS search",
+    }))
+    expect(await within(graphCanvas).findByRole("button", { name: "Edge Object A to Object B: TS search" })).toBeInTheDocument()
+    expect(within(editor).getByText("Synced")).toBeInTheDocument()
+    expect(within(editor).getByLabelText("Label")).toHaveValue("TS search")
+
+    fireEvent.click(within(editor).getByRole("button", { name: "Clear" }))
+    expect(within(editor).getByText("Draft")).toBeInTheDocument()
+    await waitFor(() => expect(within(editor).getByRole("button", { name: "Apply" })).toBeEnabled())
+    fireEvent.click(within(editor).getByRole("button", { name: "Apply" }))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.update_edge")?.args).toMatchObject({
+      edge_id: "edge-a-b",
+      label: null,
+    }))
+    expect(await within(graphCanvas).findByRole("button", { name: "Edge Object A to Object B" })).toBeInTheDocument()
+    expect(within(graphCanvas).queryByRole("button", { name: "Edge Object A to Object B: TS search" })).not.toBeInTheDocument()
+    expect(within(editor).getByLabelText("Label")).toHaveValue("")
+  })
+
   it("deletes selected graph paths without removing nodes or edges", async () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))

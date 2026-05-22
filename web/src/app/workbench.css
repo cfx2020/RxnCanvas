@@ -1286,6 +1286,19 @@ button {
   vector-effect: non-scaling-stroke;
 }
 
+.graph-edge-svg-label {
+  fill: var(--ink);
+  paint-order: stroke;
+  stroke: var(--paper);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  font-size: 3.2px;
+  font-weight: 900;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
 .graph-edge-hitbox {
   position: absolute;
   width: 28px;
@@ -1529,6 +1542,138 @@ button {
   border-left: 4px solid var(--amber);
   background: rgba(194, 119, 42, 0.1);
   padding: 8px;
+}
+
+.edge-label-editor {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.edge-label-editor-header {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.edge-label-editor-header div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.edge-label-editor-header span,
+.edge-label-editor label span {
+  color: var(--sage);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.edge-label-editor-header code,
+.edge-label-route code {
+  color: var(--blueprint);
+  overflow-wrap: anywhere;
+}
+
+.edge-label-editor-header small {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(39, 89, 106, 0.18);
+  background: rgba(39, 89, 106, 0.08);
+  color: var(--blueprint);
+  padding: 0 7px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.edge-label-route {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  border: 1px solid rgba(31, 33, 29, 0.1);
+  background: rgba(255, 250, 240, 0.76);
+  padding: 7px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.edge-label-route span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.edge-label-editor label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.edge-label-editor input {
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0 8px;
+  font-size: 0.8rem;
+}
+
+.edge-label-command-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.edge-label-command-row button {
+  min-width: 0;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.edge-label-command-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.edge-label-command-row button[type="submit"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.edge-label-error {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 7px;
+  border-left: 4px solid var(--oxide);
+  background: rgba(141, 53, 39, 0.1);
+  color: var(--oxide);
+  padding: 8px;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.edge-label-error code,
+.edge-label-error span,
+.edge-label-error small {
+  overflow-wrap: anywhere;
 }
 
 .composition-editor {
@@ -2560,6 +2705,8 @@ button {
   .import-controls,
   .import-command-row,
   .composition-command-row,
+  .edge-label-command-row,
+  .edge-label-route,
   .composition-row,
   .energy-command-row,
   .report-export-command-row,

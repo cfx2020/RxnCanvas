@@ -13,6 +13,14 @@ import {
 } from "./compositionDraftState"
 import { EnergyProfilePanel, type EnergyPanelOptions } from "./EnergyProfilePanel"
 import {
+  clearEdgeLabelDraft,
+  edgeLabelDraftFromSelectedEdge,
+  initialEdgeLabelDraftState,
+  reconcileEdgeLabelDraft,
+  updateEdgeLabelDraft,
+  type EdgeLabelDraftState,
+} from "./edgeLabelDraftState"
+import {
   applyArtifactPersistenceResults,
   persistExportArtifacts,
   type ExportArtifactPersistenceResult,
@@ -112,6 +120,11 @@ export function WorkbenchShell({
   )
   const [autoLayoutStatus, setAutoLayoutStatus] = useState<GraphAutoLayoutStatus>({ state: "idle" })
   const [pathOrderDraft, setPathOrderDraft] = useState<GraphPathOrderDraft | null>(null)
+  const [edgeLabelDraft, setEdgeLabelDraft] = useState<EdgeLabelDraftState>(
+    initialEdgeLabelDraftState,
+  )
+  const [edgeLabelPending, setEdgeLabelPending] = useState(false)
+  const [edgeLabelError, setEdgeLabelError] = useState<ShellError | null>(null)
   const [compositionDraft, setCompositionDraft] = useState<CompositionDraftState>(
     initialCompositionDraftState,
   )
@@ -186,6 +199,12 @@ export function WorkbenchShell({
   }, [workbenchState.workspace])
 
   useEffect(() => {
+    setEdgeLabelDraft((current) => reconcileEdgeLabelDraft(current, workbenchState.workspace))
+    setEdgeLabelError((current) => {
+      if (!current) return current
+      const selectedEdgeId = workbenchState.workspace?.selection?.edge_ids[0]
+      return selectedEdgeId ? current : null
+    })
     setCompositionDraft((current) => reconcileCompositionDraft(current, workbenchState.workspace))
     setCompositionError((current) => {
       if (!current) return current
@@ -841,6 +860,53 @@ export function WorkbenchShell({
     applyWorkspaceResponse(response)
   }, [applyWorkspaceResponse, compositionDraft, shellClient, workbenchState.sessionId])
 
+  const updateGraphEdgeLabelDraft = useCallback((label: string) => {
+    setEdgeLabelError(null)
+    setEdgeLabelDraft((current) => updateEdgeLabelDraft(current, label))
+  }, [])
+
+  const resetGraphEdgeLabelDraft = useCallback(() => {
+    setEdgeLabelError(null)
+    setEdgeLabelDraft(edgeLabelDraftFromSelectedEdge(workbenchState.workspace))
+  }, [workbenchState.workspace])
+
+  const clearGraphEdgeLabelDraft = useCallback(() => {
+    setEdgeLabelError(null)
+    setEdgeLabelDraft((current) => clearEdgeLabelDraft(current))
+  }, [])
+
+  const applyGraphEdgeLabelDraft = useCallback(async () => {
+    const sessionId = workbenchState.sessionId
+    const edgeId = edgeLabelDraft.edgeId
+    if (!sessionId || !edgeId) return
+    setEdgeLabelPending(true)
+    setEdgeLabelError(null)
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const label = edgeLabelDraft.label.trim() ? edgeLabelDraft.label : null
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.update_edge",
+      args: {
+        session_id: sessionId,
+        edge_id: edgeId,
+        label,
+      },
+    })
+    setEdgeLabelPending(false)
+    if (!response.ok || !response.data) {
+      const error = response.error ?? shellError("invalid_input", "Workspace command did not return data.", "workspace.update_edge")
+      setEdgeLabelError(error)
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error,
+      }))
+      return
+    }
+    setEdgeLabelDraft(edgeLabelDraftFromSelectedEdge(response.data.workspace))
+    applyWorkspaceResponse(response)
+  }, [applyWorkspaceResponse, edgeLabelDraft, shellClient, workbenchState.sessionId])
+
   const removeGraphItems = useCallback(async (request: RemoveGraphItemsRequest) => {
     const sessionId = workbenchState.sessionId
     if (!sessionId || (request.nodeIds.length === 0 && request.edgeIds.length === 0 && request.pathIds.length === 0)) return
@@ -902,6 +968,7 @@ export function WorkbenchShell({
 
   const selectGraphEdge = useCallback((edgeId: string) => {
     setGraphEditorInteraction((current) => selectGraphEditorEdge(current, edgeId))
+    setEdgeLabelError(null)
     void selectGraphItems({ node_ids: [], edge_ids: [edgeId], path_ids: [] })
   }, [selectGraphItems])
 
@@ -1299,6 +1366,9 @@ export function WorkbenchShell({
             interactionState={graphEditorInteraction}
             autoLayoutStatus={autoLayoutStatus}
             pathOrderDraft={pathOrderDraft}
+            edgeLabelDraft={edgeLabelDraft}
+            edgeLabelPending={edgeLabelPending}
+            edgeLabelError={edgeLabelError}
             compositionDraft={compositionDraft}
             compositionPending={compositionPending}
             compositionError={compositionError}
@@ -1307,6 +1377,10 @@ export function WorkbenchShell({
             onSelectPath={selectGraphPath}
             onMovePathDraftNode={movePathDraftNode}
             onApplyPathOrderDraft={applyPathOrderDraft}
+            onEdgeLabelDraftChange={updateGraphEdgeLabelDraft}
+            onResetEdgeLabelDraft={resetGraphEdgeLabelDraft}
+            onClearEdgeLabelDraft={clearGraphEdgeLabelDraft}
+            onApplyEdgeLabelDraft={applyGraphEdgeLabelDraft}
             onStartNodeDrag={startNodeDrag}
             onUpdateNodeDrag={updateNodeDrag}
             onEndNodeDrag={endNodeDrag}

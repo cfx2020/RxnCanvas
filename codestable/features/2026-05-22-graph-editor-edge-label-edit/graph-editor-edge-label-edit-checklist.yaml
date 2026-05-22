@@ -12,97 +12,97 @@ steps:
 
   - action: "Web Edge Label Draft Entry：GraphCanvas / WorkbenchShell 增加 selected edge draft UI、Apply/Reset/clear 编排和 component tests"
     exit_signal: "选中 edge 后 draft 初始化；编辑不立即改可见 graph；Apply 发送 workspace.update_edge，ShellResponse 后 label 可见且 draft clean"
-    status: pending
+    status: done
 
   - action: "Verification And Scope Guard：跑 Python 单测、Web tests/build 和浏览器主链路"
     exit_signal: "测试通过；浏览器桌面/窄屏可编辑 edge label、清空 label，无 overlay/console error/水平溢出；scope grep 未新增 endpoint reconnect、schema、autosave、energy/report 变更"
-    status: pending
+    status: done
 
 checks:
   - item: "GraphEditorWorkspaceService.update_edge(edge_id, label=\"TS search\") 更新 edge label，保持 from_node / to_node 不变"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "update_edge(edge_id, label=None) 清空 edge label"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "unknown edge id 返回 graph_invalid target=edge_id，state 不变化"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Platform Shell workspace.update_edge 接受 string label 并返回 command=workspace.update_edge 的 workspace projection"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Platform Shell 对空字符串 / whitespace label 返回 label 为 null 的 projection"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Platform Shell 缺失 edge id 返回 invalid_input target=edge_id"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Platform Shell 非 string / null label 返回 invalid_input target=edge_label"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "fixture transport workspace.update_edge 支持 set / clear / missing edge，与真实 shell error target 对齐"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Web GraphCanvas 选中 edge 后显示 Edge Label Draft，并从 selected edge label 初始化"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Web 修改 draft label 前，edge 可见 label 仍来自旧 ShellResponse projection"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Web Apply 后发送 workspace.update_edge(edge_id, label)，成功后 edge hitbox / selected edge detail 显示新 label"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Web 清空 label 后发送 label=null 或空白归一化，成功后 UI 显示无 label"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "切换 selected edge 或 edge 被删除后，draft 不保留 stale edge id"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "不新增 GraphPatch op、Project Content schema、Browser Project Repository write、localStorage persistence、autosave 或第三方库"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不改变 workspace.connect、workspace.remove、workspace.set_path、node/path delete、EnergyProfile 或 Report Export 行为"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "python3 -m unittest discover 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "cd web && npm run test -- --run 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "cd web && npm run build 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "浏览器验证页面非空白、无 framework overlay、console clean；edge label edit 在桌面/窄屏无明显重叠或水平溢出"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "不把 edge label edit 做成前端本地 patch workspace.graph.edges"
     source: 跨层纪律
-    status: pending
+    status: passed
 
   - item: "不把 edge label edit 扩展成 edge endpoint reconnect、free edge drawing、结构化反应条件编辑或能量 profile 重算"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不把 label draft 写入 localStorage、Browser Project Repository 或 Project Content，除非用户显式 Save Bridge Session 保存已投影的 graph state"
     source: 范围守护
-    status: pending
+    status: passed
