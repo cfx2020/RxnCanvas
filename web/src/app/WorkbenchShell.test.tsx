@@ -87,7 +87,7 @@ describe("WorkbenchShell", () => {
     expect(screen.getAllByText("profile-a-b-electronic").length).toBeGreaterThan(0)
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     expect(within(energyPanel).getByText("Energy curve")).toBeInTheDocument()
-    expect(within(energyPanel).getByText("Relative energy")).toBeInTheDocument()
+    expect(within(energyPanel).getAllByText("Relative energy").length).toBeGreaterThan(0)
     expect(within(energyPanel).getByText("Expression details")).toBeInTheDocument()
     expect(within(energyPanel).getAllByText("Composition terms").length).toBeGreaterThan(0)
     expect(within(energyPanel).getAllByText("electronic · energies").length).toBeGreaterThan(0)
@@ -579,6 +579,9 @@ describe("WorkbenchShell", () => {
     const missingRow = rows.find((row) => row.textContent?.includes("node-web-3"))
     expect(missingRow?.textContent).toContain("missing_energy")
     expect(missingRow?.textContent).not.toContain("-5.2")
+    expect(within(energyPanel).getAllByText("Missing").length).toBeGreaterThan(0)
+    const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+    expect(within(exportPanel).getByText("1 missing, exported as missing")).toBeInTheDocument()
   })
 
   it("renders invalid shell command errors with the error code visible", async () => {
@@ -609,6 +612,28 @@ describe("WorkbenchShell", () => {
     expect(screen.getAllByText("corrections_empty").length).toBeGreaterThan(0)
     expect(within(energyPanel).getByText("Expression details")).toBeInTheDocument()
     expect(within(energyPanel).getAllByText("-51.882").length).toBeGreaterThan(0)
+  })
+
+  it("selects graph nodes from interactive energy curve points", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+
+    expect(within(energyPanel).getByLabelText(/Object A node-a/)).toHaveAttribute("tabindex", "0")
+    fireEvent.click(within(energyPanel).getByLabelText(/Object B node-b/))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-b"], edge_ids: [], path_ids: [] },
+    }))
+    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true"))
+    const pointDetail = within(energyPanel).getByLabelText("Point detail")
+    expect(within(pointDetail).getByText("Object B")).toBeInTheDocument()
+    expect(within(pointDetail).getByText("node-b")).toBeInTheDocument()
+    expect(within(pointDetail).getAllByText("-12.4 kcal_mol").length).toBeGreaterThan(0)
   })
 
   it("maps correction policy none, all, kinds, and ids to energy.compute args", async () => {
@@ -709,6 +734,9 @@ describe("WorkbenchShell", () => {
     expect(within(exportPanel).getByLabelText("cdxml")).toBeChecked()
     expect(within(exportPanel).getByLabelText("xlsx")).toBeChecked()
     expect(within(exportPanel).getByLabelText("Include bytes")).toBeChecked()
+    expect(within(exportPanel).getByText("Export readiness")).toBeInTheDocument()
+    expect(within(exportPanel).getByText("Not browser-local persisted")).toBeInTheDocument()
+    expect(within(exportPanel).getByText("CDXML only; no CDX")).toBeInTheDocument()
 
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
@@ -770,6 +798,7 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
     fireEvent.click(within(exportPanel).getByLabelText("Include bytes"))
+    expect(within(exportPanel).getByText("Runtime metadata only")).toBeInTheDocument()
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
     expect(await within(exportPanel).findByText("artifact-png-rxnflow-profile")).toBeInTheDocument()
@@ -879,7 +908,7 @@ describe("WorkbenchShell", () => {
       ],
       strict: false,
     })
-    expect(screen.getByText("Inline bytes")).toBeInTheDocument()
+    expect(screen.getAllByText("Inline bytes").length).toBeGreaterThan(0)
   })
 
   it("shows oversized import payload errors before shell preview commands", async () => {
@@ -1120,7 +1149,7 @@ describe("WorkbenchShell", () => {
     expect(screen.getAllByText("missing_section").length).toBeGreaterThan(0)
     expect(screen.getByText("water.xyz")).toBeInTheDocument()
     const energyPanel = screen.getByRole("region", { name: "能量剖面面板" })
-    expect(within(energyPanel).getByText("相对能量")).toBeInTheDocument()
+    expect(within(energyPanel).getAllByText("相对能量").length).toBeGreaterThan(0)
     expect(within(energyPanel).getByText("表达式明细")).toBeInTheDocument()
     expect(within(energyPanel).getByRole("button", { name: "计算" })).toBeEnabled()
     const exportPanel = screen.getByRole("region", { name: "报告导出面板" })

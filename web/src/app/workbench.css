@@ -1710,11 +1710,158 @@ button {
   stroke-width: 1;
 }
 
+.energy-curve-point {
+  cursor: pointer;
+  outline: none;
+}
+
+.energy-curve-point circle:first-of-type {
+  transition: r 120ms ease, fill 120ms ease, stroke-width 120ms ease;
+}
+
+.energy-curve-point:focus-visible circle:first-of-type,
+.energy-curve-point:hover circle:first-of-type,
+.energy-curve-point--selected circle:first-of-type {
+  fill: var(--blueprint);
+  stroke-width: 2;
+}
+
+.energy-curve-point--missing circle:first-of-type {
+  fill: var(--paper);
+  stroke: var(--oxide);
+  stroke-dasharray: 2 2;
+}
+
+.energy-curve-point--correction circle:first-of-type {
+  fill: var(--amber);
+}
+
+.energy-curve-correction-ring {
+  fill: none;
+  stroke: var(--sage);
+  stroke-width: 1.3;
+  stroke-dasharray: 3 2;
+}
+
 .energy-curve-preview text {
   fill: var(--ink);
   font-size: 9px;
   font-weight: 800;
   text-anchor: middle;
+}
+
+.energy-curve-legend {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.energy-curve-legend span,
+.energy-point-row-button {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.energy-curve-legend span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.energy-point-marker {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--amber);
+}
+
+.energy-point-marker--missing {
+  border-color: var(--oxide);
+  background: var(--paper);
+  box-shadow: inset 0 0 0 2px rgba(141, 53, 39, 0.16);
+}
+
+.energy-point-marker--correction {
+  outline: 2px solid rgba(83, 98, 74, 0.38);
+  outline-offset: 2px;
+}
+
+.energy-point-marker--selected {
+  background: var(--blueprint);
+}
+
+.curve-point-detail {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(39, 89, 106, 0.2);
+  background: rgba(39, 89, 106, 0.08);
+  padding: 10px;
+}
+
+.curve-point-detail header {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.curve-point-detail header span {
+  grid-column: 1 / -1;
+  color: var(--sage);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.curve-point-detail header strong,
+.curve-point-detail header code,
+.curve-point-detail dd {
+  overflow-wrap: anywhere;
+}
+
+.curve-point-detail header strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.curve-point-detail header code {
+  color: var(--blueprint);
+  font-weight: 900;
+}
+
+.curve-point-detail dl {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.curve-point-detail div {
+  min-width: 0;
+  border: 1px solid rgba(31, 33, 29, 0.1);
+  background: rgba(255, 255, 255, 0.42);
+  padding: 7px;
+}
+
+.curve-point-detail dt {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.71rem;
+  font-weight: 800;
+}
+
+.curve-point-detail dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .energy-table-wrap {
@@ -1724,7 +1871,7 @@ button {
 
 .energy-table {
   width: 100%;
-  min-width: 520px;
+  min-width: 610px;
   border-collapse: collapse;
   font-size: 0.78rem;
 }
@@ -1742,6 +1889,26 @@ button {
   background: rgba(39, 89, 106, 0.08);
   color: var(--sage);
   font-weight: 900;
+}
+
+.energy-table-row--selected td {
+  background: rgba(39, 89, 106, 0.08);
+}
+
+.energy-point-row-button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--blueprint);
+  padding: 0;
+  font: inherit;
+  font-weight: 900;
+  text-align: left;
+}
+
+.energy-point-row-button:focus-visible {
+  outline: 2px solid var(--blueprint);
+  outline-offset: 2px;
 }
 
 .energy-warning-list {
@@ -1946,6 +2113,58 @@ button {
 .report-export-command-row button:disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+.export-readiness-panel {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(31, 33, 29, 0.12);
+  background: rgba(255, 255, 255, 0.36);
+  padding: 10px;
+}
+
+.export-readiness-panel > strong {
+  color: var(--sage);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.export-readiness-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(96px, 0.7fr) minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  margin: 0;
+  border-left: 4px solid rgba(31, 33, 29, 0.18);
+  background: rgba(250, 248, 241, 0.7);
+  padding: 7px;
+  font-size: 0.76rem;
+}
+
+.export-readiness-row--ok {
+  border-left-color: var(--sage);
+}
+
+.export-readiness-row--info {
+  border-left-color: var(--blueprint);
+}
+
+.export-readiness-row--warn {
+  border-left-color: var(--amber);
+}
+
+.export-readiness-row span {
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.export-readiness-row code {
+  color: var(--ink);
+  font-family: inherit;
+  font-weight: 900;
+  overflow-wrap: anywhere;
 }
 
 .report-export-empty {
@@ -2208,6 +2427,7 @@ button {
 	  .import-error,
 	  .object-warning-list div,
 	  .correction-error,
+	  .export-readiness-row,
 	  .artifact-metadata p {
 	    grid-template-columns: auto minmax(0, 1fr);
 	  }
@@ -2220,6 +2440,8 @@ button {
 	  .object-warning-list code,
 	  .correction-error span,
 	  .correction-error code,
+	  .export-readiness-row span,
+	  .export-readiness-row code,
 	  .artifact-metadata code,
 	  .artifact-metadata span {
 	    grid-column: 1 / -1;

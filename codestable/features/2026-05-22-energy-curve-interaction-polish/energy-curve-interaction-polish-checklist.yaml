@@ -4,23 +4,23 @@ created: 2026-05-22
 steps:
   - action: "Curve Point State 与 Status 派生：从 normalized points 派生 missing/correction/selected 状态，建立 active/pinned point UI-only state"
     exit_signal: "component tests 能看到有效点、missing 点、correction 点的状态文案/marker，切换 profile 后不保留 stale point"
-    status: pending
+    status: done
 
   - action: "Interactive Curve 与 Detail Panel：让曲线点和表格行可 hover/focus/click，并展示 Curve Point Detail"
     exit_signal: "测试能点击 curve/table point 后显示 label/node/energy 或 missing reason、term/correction count"
-    status: pending
+    status: done
 
   - action: "Profile Node Linkage：WorkbenchShell 接上 onSelectProfilePoint，通过 workspace.select 选中 Graph Canvas node"
     exit_signal: "点击 profile point 后 shell payload 为 workspace.select(node_ids=[...])，Graph Canvas node selected"
-    status: pending
+    status: done
 
   - action: "Export Readiness Summary：ReportExportPanel 根据 profile/options/browser project 状态显示 missing/correction/bytes/persistence/CDXML 边界摘要"
     exit_signal: "测试覆盖 missing point warning、include bytes off、无 active browser project 和正常 ready 状态"
-    status: pending
+    status: done
 
   - action: "I18n/Responsive/Browser QA：补双语文案、CSS 和桌面/窄屏浏览器验证"
     exit_signal: "npm run test、npm run build 通过；浏览器桌面/窄屏无重叠、无水平溢出，curve marker/detail/readiness 可见"
-    status: pending
+    status: done
 
 checks:
   - item: "Energy Curve Point / Curve Point Detail / Curve Point Marker / Profile Node Linkage / Export Readiness 术语落地"

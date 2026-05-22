@@ -759,6 +759,10 @@ export function WorkbenchShell({
     applyWorkspaceResponse(response)
   }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
 
+  const selectEnergyProfilePoint = useCallback((nodeId: string) => {
+    void selectGraphItems({ node_ids: [nodeId], edge_ids: [], path_ids: [] })
+  }, [selectGraphItems])
+
   const togglePanMode = useCallback(() => {
     setGraphEditorInteraction((current) => setGraphEditorMode(
       current,
@@ -1191,6 +1195,7 @@ export function WorkbenchShell({
         <InspectorPanel
           state={workbenchState}
           activeObjectId={activeObjectId}
+          hasActiveBrowserProject={Boolean(projectSidebarState.activeProject)}
           correctionPending={correctionPending}
           correctionError={correctionError}
           energyPanelOptions={energyPanelOptions}
@@ -1203,6 +1208,7 @@ export function WorkbenchShell({
           onRunReportExport={runReportExport}
           onRunFixture={runFixture}
           onRunInvalidCommand={runInvalidCommand}
+          onSelectEnergyProfilePoint={selectEnergyProfilePoint}
         />
       </main>
     </div>
@@ -1326,6 +1332,7 @@ type StateProps = {
 type InspectorPanelProps = {
   state: WorkbenchDomainState
   activeObjectId?: string
+  hasActiveBrowserProject: boolean
   correctionPending: boolean
   correctionError: ShellError | null
   energyPanelOptions: EnergyPanelOptions
@@ -1338,11 +1345,13 @@ type InspectorPanelProps = {
   onRunReportExport: () => void
   onRunFixture: () => void
   onRunInvalidCommand: () => void
+  onSelectEnergyProfilePoint: (nodeId: string) => void
 }
 
 function InspectorPanel({
   state,
   activeObjectId,
+  hasActiveBrowserProject,
   correctionPending,
   correctionError,
   energyPanelOptions,
@@ -1355,6 +1364,7 @@ function InspectorPanel({
   onRunReportExport,
   onRunFixture,
   onRunInvalidCommand,
+  onSelectEnergyProfilePoint,
 }: InspectorPanelProps) {
   const { t } = useI18n()
 
@@ -1395,15 +1405,19 @@ function InspectorPanel({
         options={energyPanelOptions}
         disabled={!state.sessionId || !energyPanelOptions.pathId && !state.workspace?.active_path_id && !state.workspace?.graph.paths[0]?.id}
         warnings={state.warnings}
+        selectedNodeId={state.workspace?.selection?.node_ids[0] ?? null}
         onOptionsChange={onEnergyOptionsChange}
         onCompute={onRunEnergyCompute}
+        onSelectProfilePoint={onSelectEnergyProfilePoint}
       />
 
       <ReportExportPanel
         artifacts={state.artifacts}
+        profile={state.profile}
         options={reportExportOptions}
         disabled={!state.sessionId || !state.profile}
         warnings={state.warnings}
+        hasActiveBrowserProject={Boolean(state.sessionId && hasActiveBrowserProject)}
         onOptionsChange={onReportExportOptionsChange}
         onExport={onRunReportExport}
       />

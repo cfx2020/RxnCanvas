@@ -1,5 +1,5 @@
 import { Download, FileArchive } from "lucide-react"
-import type { ExportFormat, ShellWarning, WorkbenchArtifactSummary } from "../shell"
+import type { EnergyProfileSummary, ExportFormat, ShellWarning, WorkbenchArtifactSummary } from "../shell"
 import { useI18n } from "./i18n"
 
 export type ReportExportOptions = {
@@ -11,25 +11,39 @@ export type ReportExportOptions = {
 
 type ReportExportPanelProps = {
   artifacts: WorkbenchArtifactSummary[]
+  profile?: EnergyProfileSummary
   options: ReportExportOptions
   disabled: boolean
   warnings: ShellWarning[]
+  hasActiveBrowserProject: boolean
   onOptionsChange: (options: ReportExportOptions) => void
   onExport: () => void
 }
 
 const exportFormats: ExportFormat[] = ["png", "cdxml", "xlsx"]
 
+type ExportReadinessSummary = {
+  hasProfile: boolean
+  missingPointCount: number
+  correctionPointCount: number
+  includeBytes: boolean
+  hasActiveBrowserProject: boolean
+  formats: ExportFormat[]
+}
+
 export function ReportExportPanel({
   artifacts,
+  profile,
   options,
   disabled,
   warnings,
+  hasActiveBrowserProject,
   onOptionsChange,
   onExport,
 }: ReportExportPanelProps) {
   const { t } = useI18n()
   const exportDisabled = disabled || options.formats.length === 0
+  const readiness = exportReadinessFromProfile(profile, options, hasActiveBrowserProject)
 
   return (
     <section className="report-export-panel" aria-label={t("reportExport.aria")}>
@@ -100,6 +114,8 @@ export function ReportExportPanel({
         </button>
       </div>
 
+      <ExportReadinessPanel readiness={readiness} />
+
       {artifacts.length > 0 ? (
         <ArtifactList artifacts={artifacts} basename={options.basename} />
       ) : (
@@ -123,6 +139,68 @@ export function ReportExportPanel({
         </div>
       ) : null}
     </section>
+  )
+}
+
+function ExportReadinessPanel({ readiness }: { readiness: ExportReadinessSummary }) {
+  const { t } = useI18n()
+  const rows = [
+    {
+      key: "profile",
+      level: readiness.hasProfile ? "ok" : "warn",
+      label: t("reportExport.readiness.profile"),
+      value: readiness.hasProfile ? t("reportExport.readiness.ready") : t("reportExport.readiness.noProfile"),
+    },
+    {
+      key: "missing",
+      level: readiness.missingPointCount > 0 ? "warn" : "ok",
+      label: t("reportExport.readiness.missing"),
+      value: readiness.missingPointCount > 0
+        ? t("reportExport.readiness.missingCount", { count: readiness.missingPointCount })
+        : t("reportExport.readiness.noMissing"),
+    },
+    {
+      key: "corrections",
+      level: readiness.correctionPointCount > 0 ? "info" : "ok",
+      label: t("reportExport.readiness.corrections"),
+      value: readiness.correctionPointCount > 0
+        ? t("reportExport.readiness.correctionCount", { count: readiness.correctionPointCount })
+        : t("reportExport.readiness.noCorrections"),
+    },
+    {
+      key: "bytes",
+      level: readiness.includeBytes ? "ok" : "warn",
+      label: t("reportExport.readiness.bytes"),
+      value: readiness.includeBytes ? t("reportExport.readiness.bytesIncluded") : t("reportExport.readiness.bytesOff"),
+    },
+    {
+      key: "persistence",
+      level: readiness.hasActiveBrowserProject && readiness.includeBytes ? "ok" : "info",
+      label: t("reportExport.readiness.persistence"),
+      value: readiness.hasActiveBrowserProject
+        ? t("reportExport.readiness.browserProject")
+        : t("reportExport.readiness.noBrowserProject"),
+    },
+    {
+      key: "cdxml",
+      level: readiness.formats.includes("cdxml") ? "info" : "ok",
+      label: t("reportExport.readiness.chemdraw"),
+      value: readiness.formats.includes("cdxml")
+        ? t("reportExport.readiness.cdxmlOnly")
+        : t("reportExport.readiness.noCdxml"),
+    },
+  ]
+
+  return (
+    <div className="export-readiness-panel" aria-label={t("reportExport.readiness")}>
+      <strong>{t("reportExport.readiness")}</strong>
+      {rows.map((row) => (
+        <p key={row.key} className={`export-readiness-row export-readiness-row--${row.level}`}>
+          <span>{row.label}</span>
+          <code>{row.value}</code>
+        </p>
+      ))}
+    </div>
   )
 }
 
@@ -213,4 +291,19 @@ function mimeType(format: string): string {
   if (format === "cdxml") return "chemical/x-cdxml"
   if (format === "xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   return "application/octet-stream"
+}
+
+function exportReadinessFromProfile(
+  profile: EnergyProfileSummary | undefined,
+  options: ReportExportOptions,
+  hasActiveBrowserProject: boolean,
+): ExportReadinessSummary {
+  return {
+    hasProfile: Boolean(profile),
+    missingPointCount: profile?.points.filter((point) => Boolean(point.missing_reason)).length ?? 0,
+    correctionPointCount: profile?.points.filter((point) => Boolean(point.expression?.corrections.length)).length ?? 0,
+    includeBytes: options.includeBytes,
+    hasActiveBrowserProject,
+    formats: options.formats,
+  }
 }
