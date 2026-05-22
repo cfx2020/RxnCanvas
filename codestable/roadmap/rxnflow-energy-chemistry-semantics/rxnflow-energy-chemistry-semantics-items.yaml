@@ -61,7 +61,7 @@ items:
   - slug: energy-curve-interaction-polish
     description: 强化能量曲线交互，显示 point tooltip、missing/correction 标记、选中节点联动和导出一致性检查
     depends_on: [web-energy-semantics-controls]
-    status: in-progress
+    status: done
     feature: 2026-05-22-energy-curve-interaction-polish
     minimal_loop: false
-    notes: 偏体验收尾，不作为前置化学语义能力
+    notes: 已落地 Energy Curve Point marker、Curve Point Detail、keyboard/click point interaction、missing/correction/selected 状态、曲线点/表格行通过 workspace.select 联动 Graph Canvas selected node、Report Export Readiness、双语文案和桌面/窄屏浏览器 QA；不前端重算能量、不保存 point UI state、不新增 shell command/schema/export format/chart dependency 或导出 writer 改动

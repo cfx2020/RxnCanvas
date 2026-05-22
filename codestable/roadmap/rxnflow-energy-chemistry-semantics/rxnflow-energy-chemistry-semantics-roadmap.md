@@ -424,9 +424,9 @@ energy-profiles-v1 point:
 8. **energy-curve-interaction-polish** — 强化能量曲线交互，显示 point tooltip、missing/correction 标记、选中节点联动和导出一致性检查。
    - 所属模块：Web Workbench Integration / Profile Provenance Projection
    - 依赖：`web-energy-semantics-controls`
-   - 状态：in-progress
+   - 状态：done
    - 对应 feature：`2026-05-22-energy-curve-interaction-polish`
-   - 备注：偏体验收尾，不作为前置化学语义能力。
+   - 备注：已落地 Energy Curve Point marker、Curve Point Detail、keyboard/click point interaction、missing/correction/selected 状态、曲线点/表格行通过 `workspace.select` 联动 Graph Canvas selected node、Report Export Readiness、双语文案和桌面/窄屏浏览器 QA；不前端重算能量、不保存 point UI state、不新增 shell command/schema/export format/chart dependency 或导出 writer 改动。
 
 **最小闭环**：第 1 条 `reaction-node-stoichiometry-contract` 做完后，用户/agent 能在一个 reaction node 中表达 `A + 2B`，保存并重新打开后仍能看到 composition，旧单对象节点仍按 coefficient 1 计算。
 
