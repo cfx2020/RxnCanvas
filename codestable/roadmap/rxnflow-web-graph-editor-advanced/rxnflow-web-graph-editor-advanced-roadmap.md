@@ -182,16 +182,17 @@ type WorkspaceUpdateEdgeArgs = {
 ```ts
 type PendingEdgeDraft = {
   fromNodeId: string
-  pointerGraphPosition: [number, number]
+  pointerGraphPosition?: { x: number; y: number } | null
   targetNodeId?: string | null
-  label?: string | null
+  source: "click" | "pointer"
 }
 ```
 
 **约束**：
 
 - Pending edge draft 不进入 ShellResponse、Project Content、Browser Project Repository 或 localStorage。
-- 只有 pointer release 到合法 target node 时才发送 `workspace.connect(from_node_id, to_node_id, label?)`。
+- 只有 pointer release 到合法 target node 时才发送 `workspace.connect(from_node_id, to_node_id)`。
+- 创建 edge 不携带 label prompt；edge label 仍由 Edge Label Draft 在创建后编辑。
 - source 和 target 相同、target 不存在或 graph 已没有 source 时，UI 清空 draft 并显示可恢复错误或 no-op，不创建 edge。
 - 既有 click-driven connect fallback 不能被删除，除非后续 feature 明确替代并补无鼠标可访问路径。
 
@@ -292,8 +293,9 @@ type GraphEditorHistoryEntry = {
 4. **graph-editor-free-edge-drawing**：新增从节点拖到节点的直接连线手势，保留 click-driven connect fallback。
    - 所属模块：Direct Edge Gesture
    - 依赖：`graph-editor-edge-label-edit`
-   - 状态：planned
-   - 对应 feature：无
+   - 状态：done
+   - 对应 feature：`2026-05-22-graph-editor-free-edge-drawing`
+   - 备注：已落地节点 Edge Connect Handle、`source="pointer"` Pending Edge Draft、GraphEdgeLayer transient preview line 和 shared `connectGraphNodes` 编排；release 到合法 target 才发送既有 `workspace.connect(from_node_id, to_node_id)`，不本地 append edge，不在创建时弹 label prompt。
 5. **graph-editor-multiselect-keyboard**：支持多选、框选、Delete、Escape 和 selected node nudge，并复用 Workspace Selection 数组协议。
    - 所属模块：Selection Keyboard Model
    - 依赖：`graph-editor-path-delete`
@@ -319,14 +321,14 @@ type GraphEditorHistoryEntry = {
 
 先做 `graph-editor-auto-layout`，因为它不需要新 core command 或 schema，就能立刻改善画布可读性，也能为后续 minimap 和 history 提供可逆布局操作样本。
 
-`graph-editor-path-delete` 和 `graph-editor-edge-label-edit` 已完成，下一步可推进 `graph-editor-free-edge-drawing`，复用已稳定的 edge label/update 语义和 click-driven connect fallback。`graph-editor-multiselect-keyboard` 现在可复用已落地的 node/edge/path remove contract。`graph-editor-wheel-minimap` 可在 auto layout 后推进。最后用 `graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
+`graph-editor-path-delete`、`graph-editor-edge-label-edit` 和 `graph-editor-free-edge-drawing` 已完成。下一步可推进 `graph-editor-multiselect-keyboard`，复用已落地的 node/edge/path remove contract、Workspace Selection projection 和 click/direct connect 边界；也可以推进 `graph-editor-wheel-minimap`，它已具备 auto layout 和 viewport helper 基础。最后用 `graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
 
 技术依赖之外的产品优先级不由本 roadmap 替用户决定；如果用户更想先补 edge label 或 wheel/minimap，可以在不违反依赖的前提下调整启动顺序。
 
 ## 7. 观察项
 
 - Core `ReactionGraphService`、`GraphEditorWorkspaceService.remove_items`、Platform Shell、fixture transport 和 Web `workspace.remove` 当前已经暴露 `path_ids` path 删除协议；后续多选/键盘删除可复用同一 node/edge/path selection contract。
-- Core `ReactionGraphService` 当前已经支持 `update_edge` patch，`GraphEditorWorkspaceService`、Platform Shell、fixture transport 和 Web GraphCanvas 已暴露 label-only `workspace.update_edge` command；后续 free edge drawing 只能复用该 label/update 语义，不应把端点重连塞进 `workspace.update_edge`。
-- 当前 GraphCanvas 的 edge hit target 是 HTML button，适合继续承载 edge selection 和 label edit；自由拖线仍需要补 pointer draft 和可访问 fallback。
+- Core `ReactionGraphService` 当前已经支持 `update_edge` patch，`GraphEditorWorkspaceService`、Platform Shell、fixture transport 和 Web GraphCanvas 已暴露 label-only `workspace.update_edge` command；Direct Edge Gesture 已独立复用 `workspace.connect`，后续端点重连不应塞进 `workspace.update_edge`。
+- 当前 GraphCanvas 的 edge hit target 是 HTML button，继续承载 edge selection 和 label edit；直接拖线已通过 node Edge Connect Handle 和 Pending Edge Draft 落地，后续剩余编辑手感主要是 endpoint reconnect、多选/键盘、wheel/minimap 和 history。
 - Auto layout 若未来要服务 CLI/agent，可把纯计算 helper 移到共享 TypeScript-independent 或 Python core；本 roadmap 首轮只承诺 Web helper，避免让 core domain 依赖 UI layout 假设。
 - Undo/redo 是高风险扩展点；首轮只覆盖可逆 UI/workspace 操作，不碰 destructive delete、Project Content history、CRDT 或协作。

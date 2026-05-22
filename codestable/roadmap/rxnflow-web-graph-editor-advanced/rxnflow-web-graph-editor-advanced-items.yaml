@@ -29,10 +29,10 @@ items:
   - slug: graph-editor-free-edge-drawing
     description: 新增从节点拖到节点的直接连线手势，保留 click-driven connect fallback
     depends_on: [graph-editor-edge-label-edit]
-    status: in-progress
+    status: done
     feature: 2026-05-22-graph-editor-free-edge-drawing
     minimal_loop: false
-    notes: Pending edge draft 是 UI-only；只有 release 到合法 target node 才发送 workspace.connect
+    notes: 已落地 Edge Connect Handle、pending preview line 和共享 workspace.connect 编排；不本地 append edge，不在创建时弹 label prompt
 
   - slug: graph-editor-multiselect-keyboard
     description: 支持多选、框选、Delete、Escape 和 selected node nudge，并复用 Workspace Selection 数组协议
