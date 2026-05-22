@@ -1,0 +1,100 @@
+feature: 2026-05-22-web-project-bundle-archive-adapter
+created: 2026-05-22
+
+steps:
+  - action: "Zip dependency boundary：安装 fflate，建立 archive adapter module 和最小 typed result/error shape"
+    exit_signal: "Web build/test 可解析依赖；grep 只有 adapter/tests import fflate"
+    status: pending
+
+  - action: "Path safety parity：实现 bundle root、entry name、project-relative path、allowed roots、duplicate entry 和 export skip rules"
+    exit_signal: "tests 覆盖 absolute/backslash/dotdot/dot/empty/root file/multi-root/__MACOSX/outside roots/inputs 非 raw/duplicate"
+    status: pending
+
+  - action: "Archive writer：从 safe entries 生成 .rxnflow.zip bytes、固定排序/mtime、checksum 和 summary"
+    exit_signal: "manifest + raw + export entries 生成单 root archive；同输入重复输出 checksum 稳定；.DS_Store 和 __MACOSX 被跳过"
+    status: pending
+
+  - action: "Archive reader：从 zip bytes 读取 safe project-relative entries，校验 manifest present，并提取 shallow summary"
+    exit_signal: "roundtrip tests 返回 .rxnflow/manifest.json、inputs/raw/...、exports/... entries，entry checksum/fileCount/byteSize 正确"
+    status: pending
+
+  - action: "Scope guards and verification：证明没有启用 UI/repository writer/shell bridge，并跑 Web test/build"
+    exit_signal: "npm run test -- --run、npm run build 通过；scope grep 确认无 file picker/download/object URL/sidebar action 接入"
+    status: pending
+
+checks:
+  - item: "Browser Bundle Archive Adapter / Browser Project Bundle Entry / Bundle Root / Bundle Entry Safety / Browser Project Bundle Summary / Zip Dependency Boundary 术语落地"
+    source: 名词契约
+    status: pending
+
+  - item: "输入 manifest、Project Content state、inputs/raw/water.xyz 和 exports/profile.png entries，writer 生成单 Bundle Root 下的 .rxnflow.zip bytes"
+    source: 验收场景
+    status: pending
+
+  - item: "同一输入重复 writer，输出 checksum 保持稳定"
+    source: 验收场景
+    status: pending
+
+  - item: "writer 跳过 .DS_Store 和包含 __MACOSX segment 的 export-only metadata entry"
+    source: 验收场景
+    status: pending
+
+  - item: "writer 拒绝空 root、含 / 或 \\ 的 root、root 为 . / .. / __MACOSX"
+    source: 验收场景
+    status: pending
+
+  - item: "writer 拒绝 absolute path、backslash、empty segment、.、..、allowed roots 外文件、root file 和 inputs/cache/..."
+    source: 验收场景
+    status: pending
+
+  - item: "reader 能读取 writer 生成的 archive，返回 project-relative entries、entry checksum、bundle checksum、fileCount 和 byteSize"
+    source: 验收场景
+    status: pending
+
+  - item: "reader 从 manifest.json 提取 project id/name 到 summary，manifest JSON 异常有 structured error 或明确 validation 状态"
+    source: 验收场景
+    status: pending
+
+  - item: "reader 拒绝 multi-root、missing manifest、duplicate entry、absolute path、backslash、.、..、root file、__MACOSX、allowed roots 外 entry 和 inputs/ 非 raw entry"
+    source: 验收场景
+    status: pending
+
+  - item: "symlink entry 按 fflate metadata 能力拒绝或明确记录 Web 不创建 filesystem symlink 的限制"
+    source: 验收场景
+    status: pending
+
+  - item: "fflate 只在 archive adapter module/tests 中被 import"
+    source: 依赖边界
+    status: pending
+
+  - item: "Project Sidebar bundle actions 保持 disabled/unavailable"
+    source: 范围守护
+    status: pending
+
+  - item: "不触发 file picker、download、object URL 或 repository import/export write"
+    source: 范围守护
+    status: pending
+
+  - item: "不改 Python ProjectBundleService、Platform Shell bundle commands、CLI 或 core Project Content validation"
+    source: 范围守护
+    status: pending
+
+  - item: "不创建 browser-local project，不写 Browser Project Repository"
+    source: 范围守护
+    status: pending
+
+  - item: "不调用 local-http bridge 或 Shell command"
+    source: 范围守护
+    status: pending
+
+  - item: "不实现 cloud/OPFS/chunking/Worker/Service Worker"
+    source: 范围守护
+    status: pending
+
+  - item: "不把 manifest shallow parse 当作 Project Content deep validation"
+    source: 范围守护
+    status: pending
+
+  - item: "npm run test -- --run 和 npm run build 通过"
+    source: 验证
+    status: pending
