@@ -28,20 +28,27 @@ import {
 import {
   completeGraphEditorConnection,
   endGraphEditorCanvasDrag,
+  endGraphEditorRubberBand,
   initialGraphEditorInteractionState,
   pruneGraphEditorInteractionState,
   clearGraphEditorPendingEdge,
   resolveGraphEditorDirectEdgeGesture,
   selectGraphEditorEdge,
   selectGraphEditorNode,
+  selectGraphEditorNodes,
   selectGraphEditorPath,
   setGraphEditorMode,
   startGraphEditorCanvasDrag,
   startGraphEditorConnection,
   startGraphEditorPointerEdge,
+  startGraphEditorRubberBand,
   updateGraphEditorCanvasDrag,
   updateGraphEditorPointerEdge,
+  updateGraphEditorRubberBand,
   type CanvasPoint,
+  type GraphEditorInteractionState,
+  type GraphEditorSelection,
+  type GraphEditorSelectionMode,
 } from "./graphEditorInteractionState"
 import type { GraphLayoutPlan } from "./graphAutoLayout"
 import type { GraphViewport } from "./graphViewport"
@@ -206,14 +213,12 @@ export function WorkbenchShell({
     setEdgeLabelDraft((current) => reconcileEdgeLabelDraft(current, workbenchState.workspace))
     setEdgeLabelError((current) => {
       if (!current) return current
-      const selectedEdgeId = workbenchState.workspace?.selection?.edge_ids[0]
-      return selectedEdgeId ? current : null
+      return isSingleEdgeSelection(workbenchState.workspace?.selection) ? current : null
     })
     setCompositionDraft((current) => reconcileCompositionDraft(current, workbenchState.workspace))
     setCompositionError((current) => {
       if (!current) return current
-      const selectedNodeId = workbenchState.workspace?.selection?.node_ids[0]
-      return selectedNodeId ? current : null
+      return isSingleNodeSelection(workbenchState.workspace?.selection) ? current : null
     })
   }, [workbenchState.workspace])
 
@@ -233,11 +238,11 @@ export function WorkbenchShell({
         pathIds: selection.path_ids,
       },
     }))
-    if (selection.path_ids[0]) {
+    if (isSinglePathSelection(selection)) {
       const path = workspace.graph.paths.find((item) => item.id === selection.path_ids[0])
       setPathOrderDraft(path ? createGraphPathOrderDraft(path.id, path.node_ids) : null)
     } else {
-      setPathOrderDraft((current) => current && workspace.graph.paths.some((path) => path.id === current.pathId) ? current : null)
+      setPathOrderDraft(null)
     }
   }, [workbenchState.workspace])
 
@@ -955,6 +960,26 @@ export function WorkbenchShell({
     applyWorkspaceResponse(response)
   }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
 
+  const syncDraftsForGraphSelection = useCallback((selection: GraphEditorSelection) => {
+    const workspace = workbenchState.workspace
+    const nextWorkspace = workspace
+      ? {
+        ...workspace,
+        selection: workspaceSelectionFromGraphEditorSelection(selection),
+      }
+      : undefined
+    setEdgeLabelError(null)
+    setEdgeLabelDraft(edgeLabelDraftFromSelectedEdge(nextWorkspace))
+    setCompositionError(null)
+    setCompositionDraft(compositionDraftFromSelectedNode(nextWorkspace))
+    if (isSingleGraphEditorPathSelection(selection) && workspace) {
+      const path = workspace.graph.paths.find((item) => item.id === selection.pathIds[0])
+      setPathOrderDraft(path ? createGraphPathOrderDraft(path.id, path.node_ids) : null)
+    } else {
+      setPathOrderDraft(null)
+    }
+  }, [workbenchState.workspace])
+
   const selectEnergyProfilePoint = useCallback((nodeId: string) => {
     void selectGraphItems({ node_ids: [nodeId], edge_ids: [], path_ids: [] })
   }, [selectGraphItems])
@@ -970,17 +995,50 @@ export function WorkbenchShell({
     setGraphEditorInteraction(startGraphEditorConnection)
   }, [])
 
-  const selectGraphEdge = useCallback((edgeId: string) => {
-    setGraphEditorInteraction((current) => selectGraphEditorEdge(current, edgeId))
-    setEdgeLabelError(null)
-    void selectGraphItems({ node_ids: [], edge_ids: [edgeId], path_ids: [] })
-  }, [selectGraphItems])
+  const startRubberBand = useCallback((origin: CanvasPoint, mode: "replace" | "add") => {
+    setGraphEditorInteraction((current) => startGraphEditorRubberBand(current, origin, mode))
+  }, [])
 
-  const selectGraphPath = useCallback((pathId: string, nodeIds: string[]) => {
-    setGraphEditorInteraction((current) => selectGraphEditorPath(current, pathId))
-    setPathOrderDraft(createGraphPathOrderDraft(pathId, nodeIds))
-    void selectGraphItems({ node_ids: [], edge_ids: [], path_ids: [pathId] })
-  }, [selectGraphItems])
+  const updateRubberBand = useCallback((currentPoint: CanvasPoint) => {
+    setGraphEditorInteraction((current) => updateGraphEditorRubberBand(current, currentPoint))
+  }, [])
+
+  const endRubberBand = useCallback((nodeIds: string[], mode: "replace" | "add") => {
+    const base = graphEditorInteractionWithWorkspaceSelection(
+      graphEditorInteraction,
+      workbenchState.workspace?.selection,
+    )
+    const nextInteraction = endGraphEditorRubberBand(selectGraphEditorNodes(base, nodeIds, mode))
+    setGraphEditorInteraction(nextInteraction)
+    syncDraftsForGraphSelection(nextInteraction.selection)
+    void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection))
+  }, [graphEditorInteraction, selectGraphItems, syncDraftsForGraphSelection, workbenchState.workspace?.selection])
+
+  const cancelRubberBand = useCallback(() => {
+    setGraphEditorInteraction(endGraphEditorRubberBand)
+  }, [])
+
+  const selectGraphEdge = useCallback((edgeId: string, mode: GraphEditorSelectionMode = "replace") => {
+    const base = graphEditorInteractionWithWorkspaceSelection(
+      graphEditorInteraction,
+      workbenchState.workspace?.selection,
+    )
+    const nextInteraction = selectGraphEditorEdge(base, edgeId, mode)
+    setGraphEditorInteraction(nextInteraction)
+    syncDraftsForGraphSelection(nextInteraction.selection)
+    void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection))
+  }, [graphEditorInteraction, selectGraphItems, syncDraftsForGraphSelection, workbenchState.workspace?.selection])
+
+  const selectGraphPath = useCallback((pathId: string, _nodeIds: string[], mode: GraphEditorSelectionMode = "replace") => {
+    const base = graphEditorInteractionWithWorkspaceSelection(
+      graphEditorInteraction,
+      workbenchState.workspace?.selection,
+    )
+    const nextInteraction = selectGraphEditorPath(base, pathId, mode)
+    setGraphEditorInteraction(nextInteraction)
+    syncDraftsForGraphSelection(nextInteraction.selection)
+    void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection))
+  }, [graphEditorInteraction, selectGraphItems, syncDraftsForGraphSelection, workbenchState.workspace?.selection])
 
   const movePathDraftNode = useCallback((nodeId: string, direction: GraphPathOrderMoveDirection) => {
     setPathOrderDraft((current) => current ? moveGraphPathDraftNode(current, nodeId, direction) : current)
@@ -1018,25 +1076,24 @@ export function WorkbenchShell({
   }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
 
   const selectGraphNode = useCallback(
-    async (nodeId: string) => {
+    async (nodeId: string, mode: GraphEditorSelectionMode = "replace") => {
       const pendingConnectionFromId = graphEditorInteraction.pendingEdge?.fromNodeId
-      if (graphEditorInteraction.pendingEdge?.source === "click" && pendingConnectionFromId && pendingConnectionFromId !== nodeId) {
+      if (mode === "replace" && graphEditorInteraction.pendingEdge?.source === "click" && pendingConnectionFromId && pendingConnectionFromId !== nodeId) {
         setGraphEditorInteraction((current) => completeGraphEditorConnection(current, nodeId))
         await connectGraphNodes(pendingConnectionFromId, nodeId)
         return
       }
-      setGraphEditorInteraction((current) => selectGraphEditorNode(current, nodeId))
-      const nextWorkspace = workbenchState.workspace
-        ? {
-          ...workbenchState.workspace,
-          selection: { node_ids: [nodeId], edge_ids: [], path_ids: [] },
-        }
-        : undefined
-      setCompositionError(null)
-      setCompositionDraft(compositionDraftFromSelectedNode(nextWorkspace))
-      void selectGraphItems({ node_ids: [nodeId], edge_ids: [], path_ids: [] })
+      const base = graphEditorInteractionWithWorkspaceSelection(
+        graphEditorInteraction,
+        workbenchState.workspace?.selection,
+      )
+      const selectableBase = mode === "replace" ? base : clearGraphEditorPendingEdge(base)
+      const nextInteraction = selectGraphEditorNode(selectableBase, nodeId, mode)
+      setGraphEditorInteraction(nextInteraction)
+      syncDraftsForGraphSelection(nextInteraction.selection)
+      void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection))
     },
-    [connectGraphNodes, graphEditorInteraction.pendingEdge, selectGraphItems, workbenchState.workspace],
+    [connectGraphNodes, graphEditorInteraction, selectGraphItems, syncDraftsForGraphSelection, workbenchState.workspace?.selection],
   )
 
   const startPointerEdge = useCallback((nodeId: string, position: CanvasPoint) => {
@@ -1426,6 +1483,10 @@ export function WorkbenchShell({
             onStartCanvasDrag={startCanvasDrag}
             onUpdateCanvasDrag={updateCanvasDrag}
             onEndCanvasDrag={endCanvasDrag}
+            onStartRubberBand={startRubberBand}
+            onUpdateRubberBand={updateRubberBand}
+            onEndRubberBand={endRubberBand}
+            onCancelRubberBand={cancelRubberBand}
             onStartPointerEdge={startPointerEdge}
             onUpdatePointerEdge={updatePointerEdge}
             onEndPointerEdge={endPointerEdge}
@@ -1492,6 +1553,60 @@ function replaceWorkbenchObject(
 
 function shellError(code: string, message: string, target: string): ShellError {
   return { code, message, target }
+}
+
+function workspaceSelectionFromGraphEditorSelection(
+  selection: GraphEditorSelection,
+): WorkspaceSelectionSummary {
+  return {
+    node_ids: selection.nodeIds,
+    edge_ids: selection.edgeIds,
+    path_ids: selection.pathIds,
+  }
+}
+
+function graphEditorSelectionFromWorkspaceSelection(
+  selection: WorkspaceSelectionSummary | null | undefined,
+): GraphEditorSelection {
+  return {
+    nodeIds: selection?.node_ids ?? [],
+    edgeIds: selection?.edge_ids ?? [],
+    pathIds: selection?.path_ids ?? [],
+  }
+}
+
+function graphEditorInteractionWithWorkspaceSelection(
+  interaction: GraphEditorInteractionState,
+  selection: WorkspaceSelectionSummary | null | undefined,
+): GraphEditorInteractionState {
+  return {
+    ...interaction,
+    selection: graphEditorSelectionFromWorkspaceSelection(selection),
+  }
+}
+
+function isSingleNodeSelection(selection: WorkspaceSelectionSummary | null | undefined): boolean {
+  return (selection?.node_ids.length ?? 0) === 1
+    && (selection?.edge_ids.length ?? 0) === 0
+    && (selection?.path_ids.length ?? 0) === 0
+}
+
+function isSingleEdgeSelection(selection: WorkspaceSelectionSummary | null | undefined): boolean {
+  return (selection?.node_ids.length ?? 0) === 0
+    && (selection?.edge_ids.length ?? 0) === 1
+    && (selection?.path_ids.length ?? 0) === 0
+}
+
+function isSinglePathSelection(selection: WorkspaceSelectionSummary | null | undefined): boolean {
+  return (selection?.node_ids.length ?? 0) === 0
+    && (selection?.edge_ids.length ?? 0) === 0
+    && (selection?.path_ids.length ?? 0) === 1
+}
+
+function isSingleGraphEditorPathSelection(selection: GraphEditorSelection): boolean {
+  return selection.nodeIds.length === 0
+    && selection.edgeIds.length === 0
+    && selection.pathIds.length === 1
 }
 
 function energyOptionsForWorkspace(

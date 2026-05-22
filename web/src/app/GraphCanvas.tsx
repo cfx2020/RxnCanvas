@@ -1,10 +1,14 @@
 import { useRef } from "react"
-import type { DragEvent, PointerEvent } from "react"
+import type { DragEvent, MouseEvent, PointerEvent } from "react"
 import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, XCircle, ZoomIn, ZoomOut } from "lucide-react"
 import type { ShellError } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
-import type { CanvasPoint, GraphEditorInteractionState, PendingEdgeDraft } from "./graphEditorInteractionState"
-import { resolveGraphEditorDirectEdgeGesture } from "./graphEditorInteractionState"
+import type { CanvasPoint, GraphEditorInteractionState, GraphEditorSelectionMode, PendingEdgeDraft } from "./graphEditorInteractionState"
+import {
+  graphEditorRubberBandRectangle,
+  resolveGraphEditorDirectEdgeGesture,
+  resolveGraphEditorRubberBandNodeIds,
+} from "./graphEditorInteractionState"
 import { createGraphLayoutPlan, type GraphLayoutPlan, type GraphLayoutWarning } from "./graphAutoLayout"
 import { graphObjectDragMimeType, parseGraphObjectDragPayload } from "./graphObjectDragPayload"
 import {
@@ -65,9 +69,9 @@ type GraphCanvasProps = {
   compositionDraft: CompositionDraftState
   compositionPending: boolean
   compositionError: ShellError | null
-  onSelectNode: (nodeId: string) => void
-  onSelectEdge: (edgeId: string) => void
-  onSelectPath: (pathId: string, nodeIds: string[]) => void
+  onSelectNode: (nodeId: string, mode?: GraphEditorSelectionMode) => void
+  onSelectEdge: (edgeId: string, mode?: GraphEditorSelectionMode) => void
+  onSelectPath: (pathId: string, nodeIds: string[], mode?: GraphEditorSelectionMode) => void
   onMovePathDraftNode: (nodeId: string, direction: "up" | "down") => void
   onApplyPathOrderDraft: () => void
   onEdgeLabelDraftChange: (label: string) => void
@@ -80,6 +84,10 @@ type GraphCanvasProps = {
   onStartCanvasDrag: (origin: CanvasPoint) => void
   onUpdateCanvasDrag: (current: CanvasPoint) => void
   onEndCanvasDrag: () => void
+  onStartRubberBand: (origin: CanvasPoint, mode: "replace" | "add") => void
+  onUpdateRubberBand: (current: CanvasPoint) => void
+  onEndRubberBand: (nodeIds: string[], mode: "replace" | "add") => void
+  onCancelRubberBand: () => void
   onStartPointerEdge: (nodeId: string, position: CanvasPoint) => void
   onUpdatePointerEdge: (position: CanvasPoint, targetNodeId: string | null) => void
   onEndPointerEdge: (targetNodeId: string | null) => void
@@ -127,6 +135,10 @@ export function GraphCanvas({
   onStartCanvasDrag,
   onUpdateCanvasDrag,
   onEndCanvasDrag,
+  onStartRubberBand,
+  onUpdateRubberBand,
+  onEndRubberBand,
+  onCancelRubberBand,
   onStartPointerEdge,
   onUpdatePointerEdge,
   onEndPointerEdge,
@@ -149,6 +161,7 @@ export function GraphCanvas({
   const { t } = useI18n()
   const nodeDragRef = useRef<NodeDragSession | null>(null)
   const canvasDragRef = useRef<CanvasDragSession | null>(null)
+  const rubberBandRef = useRef<RubberBandSession | null>(null)
   const edgeDragRef = useRef<EdgeDragSession | null>(null)
   const ignoreNextNodeClickRef = useRef<string | null>(null)
   const workspace = state.workspace
@@ -157,12 +170,21 @@ export function GraphCanvas({
   const edges = graph?.edges ?? []
   const paths = graph?.paths ?? []
   const activeObject = state.objects.find((object) => object.id === activeObjectId) ?? state.objects[0]
-  const selectedNodeId = interactionState.selection.nodeIds[0]
-  const selectedEdgeId = interactionState.selection.edgeIds[0]
+  const selectionSize = interactionState.selection.nodeIds.length
+    + interactionState.selection.edgeIds.length
+    + interactionState.selection.pathIds.length
+  const singleSelectedNodeId = selectionSize === 1 ? interactionState.selection.nodeIds[0] : undefined
+  const singleSelectedEdgeId = selectionSize === 1 ? interactionState.selection.edgeIds[0] : undefined
+  const singleSelectedPathId = selectionSize === 1 ? interactionState.selection.pathIds[0] : undefined
+  const selectedNodeIds = new Set(interactionState.selection.nodeIds)
+  const selectedEdgeIds = new Set(interactionState.selection.edgeIds)
+  const selectedPathIds = new Set(interactionState.selection.pathIds)
+  const selectedNodeId = singleSelectedNodeId
+  const selectedEdgeId = singleSelectedEdgeId
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId)
   const selectedEdgeSource = selectedEdge ? nodes.find((node) => node.id === edgeSource(selectedEdge)) : undefined
   const selectedEdgeTarget = selectedEdge ? nodes.find((node) => node.id === edgeTarget(selectedEdge)) : undefined
-  const selectedPathId = interactionState.selection.pathIds[0]
+  const selectedPathId = singleSelectedPathId
   const pendingConnectionFromId = interactionState.pendingEdge?.fromNodeId
   const graphReferences = {
     nodeIds: nodes.map((node) => node.id),
@@ -176,11 +198,12 @@ export function GraphCanvas({
   const panActive = interactionState.mode === "pan"
   const canUseWorkspace = Boolean(state.sessionId)
   const canAddNode = canUseWorkspace && Boolean(activeObject)
-  const canConnect = Boolean(selectedNodeId)
+  const canConnect = Boolean(singleSelectedNodeId)
   const canSetPath = nodes.length > 1
-  const canRemoveSelection = Boolean(selectedNodeId || selectedEdgeId || selectedPathId)
+  const canRemoveSelection = selectionSize > 0
   const canApplyLayout = canUseWorkspace && nodes.length > 0 && autoLayoutStatus?.state !== "applying"
   const dropEnabled = canUseWorkspace && state.objects.length > 0
+  const rubberBandRectangle = rubberBandRectangleFromInteractionState(interactionState)
 
   const handleZoom = (direction: "in" | "out") => {
     onSetViewport(zoomGraphViewport(viewport, direction))
@@ -196,11 +219,21 @@ export function GraphCanvas({
   }
 
   const handleCanvasPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (!canUseWorkspace || !panActive || event.button !== 0 || !isCanvasPanStartTarget(event.target)) return
+    if (!canUseWorkspace || event.button !== 0 || !isCanvasPanStartTarget(event.target)) return
     const origin = graphPointFromClientPoint(event.currentTarget, event.clientX, event.clientY, viewport)
-    canvasDragRef.current = {
-      origin,
-      dragging: false,
+    if (panActive) {
+      canvasDragRef.current = {
+        origin,
+        dragging: false,
+      }
+    } else if (interactionState.mode === "select" && nodes.length > 0) {
+      rubberBandRef.current = {
+        origin,
+        dragging: false,
+        mode: event.shiftKey ? "add" : "replace",
+      }
+    } else {
+      return
     }
     if (typeof event.currentTarget.setPointerCapture === "function") {
       event.currentTarget.setPointerCapture(event.pointerId)
@@ -208,6 +241,18 @@ export function GraphCanvas({
   }
 
   const handleCanvasPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const rubberBand = rubberBandRef.current
+    if (rubberBand) {
+      const current = graphPointFromClientPoint(event.currentTarget, event.clientX, event.clientY, viewport)
+      if (!rubberBand.dragging && pointerDistance(rubberBand.origin, current) < 4) return
+      if (!rubberBand.dragging) {
+        rubberBand.dragging = true
+        onStartRubberBand(rubberBand.origin, rubberBand.mode)
+      }
+      onUpdateRubberBand(current)
+      event.preventDefault()
+      return
+    }
     const drag = canvasDragRef.current
     if (!drag) return
     const current = graphPointFromClientPoint(event.currentTarget, event.clientX, event.clientY, viewport)
@@ -221,6 +266,19 @@ export function GraphCanvas({
   }
 
   const handleCanvasPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const rubberBand = rubberBandRef.current
+    if (rubberBand) {
+      const current = graphPointFromClientPoint(event.currentTarget, event.clientX, event.clientY, viewport)
+      rubberBandRef.current = null
+      if (rubberBand.dragging) {
+        onEndRubberBand(
+          nodeIdsInRubberBand(interactionState, nodes, rubberBand.origin, current, rubberBand.mode),
+          rubberBand.mode,
+        )
+        event.preventDefault()
+      }
+      return
+    }
     const drag = canvasDragRef.current
     if (!drag) return
     const current = graphPointFromClientPoint(event.currentTarget, event.clientX, event.clientY, viewport)
@@ -237,8 +295,11 @@ export function GraphCanvas({
 
   const handleCanvasPointerCancel = () => {
     const drag = canvasDragRef.current
+    const rubberBand = rubberBandRef.current
     canvasDragRef.current = null
+    rubberBandRef.current = null
     if (drag?.dragging) onEndCanvasDrag()
+    if (rubberBand?.dragging) onCancelRubberBand()
   }
 
   const handleObjectDragOver = (event: DragEvent<HTMLDivElement>) => {
@@ -305,12 +366,12 @@ export function GraphCanvas({
     }
   }
 
-  const handleNodeClick = (nodeId: string) => {
+  const handleNodeClick = (nodeId: string, event: MouseEvent<HTMLButtonElement>) => {
     if (ignoreNextNodeClickRef.current === nodeId) {
       ignoreNextNodeClickRef.current = null
       return
     }
-    onSelectNode(nodeId)
+    onSelectNode(nodeId, selectionModeFromMouseEvent(event))
   }
 
   const handleNodePointerCancel = (node: GraphNodeSummary) => {
@@ -467,17 +528,24 @@ export function GraphCanvas({
                 <GraphEdgeLayer
                   nodes={nodes}
                   edges={edges}
-                  selectedEdgeId={selectedEdgeId}
+                  selectedEdgeIds={selectedEdgeIds}
                   pendingEdge={interactionState.pendingEdge}
                   onSelectEdge={onSelectEdge}
                 />
+                {rubberBandRectangle ? (
+                  <div
+                    className="graph-rubber-band"
+                    aria-hidden="true"
+                    style={rubberBandStyle(rubberBandRectangle)}
+                  />
+                ) : null}
                 <div className="graph-node-layer">
                   {nodes.map((node) => (
                     <GraphNodeButton
                       key={node.id}
                       node={node}
                       object={objectForNode(node, state.objects)}
-                      selected={node.id === selectedNodeId}
+                      selected={selectedNodeIds.has(node.id)}
                       pending={node.id === pendingConnectionFromId}
                       pendingTarget={node.id === pendingDirectEdgeTargetId}
                       activePath={isNodeInActivePath(node.id, workspace?.active_path_id, paths)}
@@ -532,7 +600,8 @@ export function GraphCanvas({
           <PathList
             paths={paths}
             activePathId={workspace?.active_path_id}
-            selectedPathId={interactionState.selection.pathIds[0]}
+            selectedPathId={selectedPathId}
+            selectedPathIds={selectedPathIds}
             pathOrderDraft={pathOrderDraft}
             onSelectPath={onSelectPath}
             onMovePathDraftNode={onMovePathDraftNode}
@@ -604,6 +673,12 @@ type CanvasDragSession = {
   dragging: boolean
 }
 
+type RubberBandSession = {
+  origin: CanvasPoint
+  dragging: boolean
+  mode: "replace" | "add"
+}
+
 type EdgeDragSession = {
   fromNodeId: string
 }
@@ -614,7 +689,7 @@ function hasGraphObjectDragPayload(dataTransfer: DataTransfer): boolean {
 
 function isCanvasPanStartTarget(target: EventTarget): boolean {
   if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
-  return !target.closest(".graph-node-card, .graph-edge-connect-handle, .graph-edge-hitbox")
+  return !target.closest(".graph-node-card, .graph-edge-connect-handle, .graph-edge-hitbox, .graph-path-select")
 }
 
 function canvasPositionFromDrop(event: DragEvent<HTMLDivElement>, viewport: GraphViewport): [number, number] {
@@ -662,6 +737,43 @@ function surfaceSizeFromElement(element: HTMLElement | null): GraphSurfaceSize {
   }
 }
 
+function selectionModeFromMouseEvent(event: MouseEvent<HTMLElement>): GraphEditorSelectionMode {
+  return event.shiftKey ? "toggle" : "replace"
+}
+
+function rubberBandRectangleFromInteractionState(
+  interactionState: GraphEditorInteractionState,
+): ReturnType<typeof graphEditorRubberBandRectangle> | null {
+  const dragging = interactionState.dragging
+  if (!dragging || dragging.kind !== "rubber-band") return null
+  return graphEditorRubberBandRectangle(dragging.origin, dragging.current)
+}
+
+function rubberBandStyle(rectangle: ReturnType<typeof graphEditorRubberBandRectangle>) {
+  return {
+    left: `${(rectangle.left / graphNodeLayoutBounds.width) * 100}%`,
+    top: `${(rectangle.top / graphNodeLayoutBounds.height) * 100}%`,
+    width: `${((rectangle.right - rectangle.left) / graphNodeLayoutBounds.width) * 100}%`,
+    height: `${((rectangle.bottom - rectangle.top) / graphNodeLayoutBounds.height) * 100}%`,
+  }
+}
+
+function nodeIdsInRubberBand(
+  interactionState: GraphEditorInteractionState,
+  nodes: GraphNodeSummary[],
+  origin: CanvasPoint,
+  current: CanvasPoint,
+  mode: "replace" | "add",
+): string[] {
+  return resolveGraphEditorRubberBandNodeIds(
+    {
+      ...interactionState,
+      dragging: { kind: "rubber-band", origin, current, mode },
+    },
+    nodes.map((node) => ({ id: node.id, position: graphNodePosition(node) })),
+  )
+}
+
 function GraphNodeButton({
   node,
   object,
@@ -697,7 +809,7 @@ function GraphNodeButton({
   onEdgeHandlePointerMove: (event: PointerEvent<HTMLButtonElement>) => void
   onEdgeHandlePointerUp: (event: PointerEvent<HTMLButtonElement>) => void
   onEdgeHandlePointerCancel: () => void
-  onClick: (nodeId: string) => void
+  onClick: (nodeId: string, event: MouseEvent<HTMLButtonElement>) => void
 }) {
   const { t } = useI18n()
   const position = graphNodeCssPosition(draggingPosition ?? graphNodePosition(node))
@@ -718,7 +830,7 @@ function GraphNodeButton({
         onPointerMove={(event) => onPointerMove(node, event)}
         onPointerUp={(event) => onPointerUp(node, event)}
         onPointerCancel={() => onPointerCancel(node)}
-        onClick={() => onClick(node.id)}
+        onClick={(event) => onClick(node.id, event)}
         aria-current={selected ? "true" : undefined}
       >
         <span>{node.label}</span>
@@ -770,15 +882,15 @@ function isDraggingNode(interactionState: GraphEditorInteractionState, nodeId: s
 function GraphEdgeLayer({
   nodes,
   edges,
-  selectedEdgeId,
+  selectedEdgeIds,
   pendingEdge,
   onSelectEdge,
 }: {
   nodes: GraphNodeSummary[]
   edges: GraphEdgeSummary[]
-  selectedEdgeId?: string
+  selectedEdgeIds: Set<string>
   pendingEdge?: PendingEdgeDraft | null
-  onSelectEdge: (edgeId: string) => void
+  onSelectEdge: (edgeId: string, mode?: GraphEditorSelectionMode) => void
 }) {
   const segments = edges.map((edge) => {
     const source = nodes.find((node) => node.id === edgeSource(edge))
@@ -818,7 +930,7 @@ function GraphEdgeLayer({
           </g>
         ) : null}
         {segments.map((segment) => (
-          <g key={segment.id} className={segment.id === selectedEdgeId ? "graph-edge--selected" : ""}>
+          <g key={segment.id} className={selectedEdgeIds.has(segment.id) ? "graph-edge--selected" : ""}>
             <line
               className="graph-edge-line"
               x1={(segment.from.x / graphNodeLayoutBounds.width) * 100}
@@ -844,7 +956,7 @@ function GraphEdgeLayer({
         ))}
       </svg>
       {segments.map((segment) => {
-        const selected = segment.id === selectedEdgeId
+        const selected = selectedEdgeIds.has(segment.id)
         return (
           <button
             key={segment.id}
@@ -854,7 +966,7 @@ function GraphEdgeLayer({
             style={edgeHitboxStyle(segment.from, segment.to)}
             onClick={(event) => {
               event.stopPropagation()
-              onSelectEdge(segment.id)
+              onSelectEdge(segment.id, selectionModeFromMouseEvent(event))
             }}
           />
         )
@@ -1013,6 +1125,7 @@ function PathList({
   paths,
   activePathId,
   selectedPathId,
+  selectedPathIds,
   pathOrderDraft,
   onSelectPath,
   onMovePathDraftNode,
@@ -1021,8 +1134,9 @@ function PathList({
   paths: GraphPathSummary[]
   activePathId?: string | null
   selectedPathId?: string
+  selectedPathIds: Set<string>
   pathOrderDraft: GraphPathOrderDraft | null
-  onSelectPath: (pathId: string, nodeIds: string[]) => void
+  onSelectPath: (pathId: string, nodeIds: string[], mode?: GraphEditorSelectionMode) => void
   onMovePathDraftNode: (nodeId: string, direction: "up" | "down") => void
   onApplyPathOrderDraft: () => void
 }) {
@@ -1033,21 +1147,22 @@ function PathList({
   return (
     <ul className="graph-path-list" aria-label={t("graphCanvas.pathList")}>
       {paths.map((path) => {
-        const selected = path.id === selectedPathId
-        const draftNodeIds = selected && pathOrderDraft?.pathId === path.id ? pathOrderDraft.nodeIds : path.node_ids
+        const selected = selectedPathIds.has(path.id)
+        const singleSelected = selectedPathId === path.id
+        const draftNodeIds = singleSelected && pathOrderDraft?.pathId === path.id ? pathOrderDraft.nodeIds : path.node_ids
         return (
           <li key={path.id} className={`${path.id === activePathId ? "graph-path-list--active" : ""} ${selected ? "graph-path-list--selected" : ""}`}>
             <button
               type="button"
               className="graph-path-select"
               aria-label={`Select path ${path.label ?? path.id}`}
-              onClick={() => onSelectPath(path.id, path.node_ids)}
+              onClick={(event) => onSelectPath(path.id, path.node_ids, selectionModeFromMouseEvent(event))}
             >
               <strong>{path.label ?? path.id}</strong>
               <code>{path.id}</code>
               <span>{path.node_ids.join(" -> ")}</span>
             </button>
-            {selected ? (
+            {singleSelected ? (
               <div className="graph-path-draft" aria-label={t("graphCanvas.pathOrderDraft")}>
                 <ol>
                   {draftNodeIds.map((nodeId, index) => (

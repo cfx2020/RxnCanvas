@@ -15,7 +15,7 @@ export const initialEdgeLabelDraftState: EdgeLabelDraftState = {
 export function edgeLabelDraftFromSelectedEdge(
   workspace: WorkspaceSummary | undefined,
 ): EdgeLabelDraftState {
-  const selectedEdgeId = workspace?.selection?.edge_ids[0] ?? null
+  const selectedEdgeId = singleSelectedEdgeId(workspace)
   if (!workspace || !selectedEdgeId) return initialEdgeLabelDraftState
   const edge = workspace.graph.edges.find((item) => item.id === selectedEdgeId)
   return edge ? edgeLabelDraftFromEdge(edge) : initialEdgeLabelDraftState
@@ -33,7 +33,7 @@ export function reconcileEdgeLabelDraft(
   current: EdgeLabelDraftState,
   workspace: WorkspaceSummary | undefined,
 ): EdgeLabelDraftState {
-  const selectedEdgeId = workspace?.selection?.edge_ids[0] ?? null
+  const selectedEdgeId = singleSelectedEdgeId(workspace)
   if (!workspace || !selectedEdgeId) return initialEdgeLabelDraftState
   const edge = workspace.graph.edges.find((item) => item.id === selectedEdgeId)
   if (!edge) return initialEdgeLabelDraftState
@@ -66,4 +66,13 @@ function edgeLabelDraftEquals(
   return left.edgeId === right.edgeId
     && left.label === right.label
     && left.dirty === right.dirty
+}
+
+function singleSelectedEdgeId(workspace: WorkspaceSummary | undefined): string | null {
+  const selection = workspace?.selection
+  if (!selection) return null
+  if (selection.node_ids.length !== 0 || selection.edge_ids.length !== 1 || selection.path_ids.length !== 0) {
+    return null
+  }
+  return selection.edge_ids[0]
 }

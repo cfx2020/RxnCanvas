@@ -13,6 +13,7 @@ import {
   resolveGraphEditorRubberBandNodeIds,
   selectGraphEditorEdge,
   selectGraphEditorNode,
+  selectGraphEditorNodes,
   selectGraphEditorPath,
   setGraphEditorMode,
   startGraphEditorCanvasDrag,
@@ -94,6 +95,27 @@ describe("graphEditorInteractionState", () => {
       nodeIds: [],
       edgeIds: [],
       pathIds: [],
+    })
+  })
+
+  it("selects rubber-band node groups with replace or add semantics", () => {
+    const mixed = selectGraphEditorPath(
+      selectGraphEditorEdge(selectGraphEditorNode(initialGraphEditorInteractionState, "node-a"), "edge-a-b", "add"),
+      "path-a-b",
+      "add",
+    )
+    const replaced = selectGraphEditorNodes(mixed, ["node-b", "node-c", "node-b"], "replace")
+    const added = selectGraphEditorNodes(mixed, ["node-b", "node-a"], "add")
+
+    expect(replaced.selection).toEqual({
+      nodeIds: ["node-b", "node-c"],
+      edgeIds: [],
+      pathIds: [],
+    })
+    expect(added.selection).toEqual({
+      nodeIds: ["node-a", "node-b"],
+      edgeIds: ["edge-a-b"],
+      pathIds: ["path-a-b"],
     })
   })
 

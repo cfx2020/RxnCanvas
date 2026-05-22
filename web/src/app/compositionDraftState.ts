@@ -22,7 +22,7 @@ export const initialCompositionDraftState: CompositionDraftState = {
 export function compositionDraftFromSelectedNode(
   workspace: WorkspaceSummary | undefined,
 ): CompositionDraftState {
-  const selectedNodeId = workspace?.selection?.node_ids[0] ?? null
+  const selectedNodeId = singleSelectedNodeId(workspace)
   if (!workspace || !selectedNodeId) return initialCompositionDraftState
   const node = workspace.graph.nodes.find((item) => item.id === selectedNodeId)
   if (!node) return initialCompositionDraftState
@@ -41,7 +41,7 @@ export function reconcileCompositionDraft(
   current: CompositionDraftState,
   workspace: WorkspaceSummary | undefined,
 ): CompositionDraftState {
-  const selectedNodeId = workspace?.selection?.node_ids[0] ?? null
+  const selectedNodeId = singleSelectedNodeId(workspace)
   if (!workspace || !selectedNodeId) return initialCompositionDraftState
   const node = workspace.graph.nodes.find((item) => item.id === selectedNodeId)
   if (!node) return initialCompositionDraftState
@@ -118,6 +118,15 @@ function compositionRowsFromNode(node: GraphNodeSummary): CompositionDraftRow[] 
     ? node.composition
     : compositionFromObjectIds(node.chemical_object_ids ?? [])
   return composition.map(compositionRowFromTerm)
+}
+
+function singleSelectedNodeId(workspace: WorkspaceSummary | undefined): string | null {
+  const selection = workspace?.selection
+  if (!selection) return null
+  if (selection.node_ids.length !== 1 || selection.edge_ids.length !== 0 || selection.path_ids.length !== 0) {
+    return null
+  }
+  return selection.node_ids[0]
 }
 
 function compositionFromObjectIds(objectIds: string[]): ReactionNodeCompositionTermSummary[] {

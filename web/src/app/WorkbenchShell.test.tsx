@@ -616,6 +616,79 @@ describe("WorkbenchShell", () => {
     expect(within(graphCanvas).getByText("No paths")).toBeInTheDocument()
   })
 
+  it("selects graph items with replace and Shift toggle semantics while guarding single-item drafts", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
+    const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
+
+    fireEvent.click(nodeA)
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
+    }))
+    expect(within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })).toHaveTextContent("node-a")
+
+    fireEvent.click(nodeB, { shiftKey: true })
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a", "node-b"], edge_ids: [], path_ids: [] },
+    }))
+    await waitFor(() => expect(nodeA).toHaveAttribute("aria-current", "true"))
+    expect(nodeB).toHaveAttribute("aria-current", "true")
+    expect(within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })).toHaveTextContent("Select a graph node to edit composition.")
+
+    fireEvent.click(nodeB, { shiftKey: true })
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
+    }))
+    await waitFor(() => expect(nodeB).not.toHaveAttribute("aria-current", "true"))
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" }), { shiftKey: true })
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: ["edge-a-b"], path_ids: [] },
+    }))
+    expect(within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })).toHaveTextContent("Select a graph node to edit composition.")
+    expect(within(graphCanvas).getByRole("form", { name: "Edge Label Editor" })).toHaveTextContent("Select an edge to edit its label.")
+    expect(within(graphCanvas).getByRole("button", { name: "Connect" })).toBeDisabled()
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }), { shiftKey: true })
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: ["edge-a-b"], path_ids: ["path-a-b"] },
+    }))
+    expect(within(graphCanvas).queryByLabelText("Path order draft")).not.toBeInTheDocument()
+    expect(within(graphCanvas).getByRole("button", { name: "Delete Selected" })).toBeEnabled()
+  })
+
+  it("rubber-bands graph nodes after pointer release without shell commands during drag", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+    const selectCountBeforeDrag = transport.payloads.filter((payload) => payload.command === "workspace.select").length
+
+    fireEvent.pointerDown(surface, { button: 0, clientX: 80, clientY: 100, pointerId: 12 })
+    fireEvent.pointerMove(surface, { button: 0, clientX: 400, clientY: 220, pointerId: 12 })
+
+    expect(graphCanvas.querySelector(".graph-rubber-band")).toBeInTheDocument()
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.select")).toHaveLength(selectCountBeforeDrag)
+
+    fireEvent.pointerUp(surface, { button: 0, clientX: 400, clientY: 220, pointerId: 12 })
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a", "node-b"], edge_ids: [], path_ids: [] },
+    }))
+    await waitFor(() => expect(graphCanvas.querySelector(".graph-rubber-band")).not.toBeInTheDocument())
+    expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true")
+    expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true")
+  })
+
   it("edits selected node composition through a Composition Draft before applying workspace.set_node_composition", async () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))

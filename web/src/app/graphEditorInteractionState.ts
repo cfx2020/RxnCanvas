@@ -121,6 +121,25 @@ export function selectGraphEditorPath(
   }
 }
 
+export function selectGraphEditorNodes(
+  state: GraphEditorInteractionState,
+  nodeIds: string[],
+  mode: "replace" | "add" = "replace",
+): GraphEditorInteractionState {
+  const uniqueNodeIds = uniqueIds(nodeIds)
+  const selection = mode === "replace"
+    ? { nodeIds: uniqueNodeIds, edgeIds: [], pathIds: [] }
+    : {
+      ...state.selection,
+      nodeIds: uniqueIds([...state.selection.nodeIds, ...uniqueNodeIds]),
+    }
+  return {
+    ...clearGraphEditorPendingEdge(state),
+    dragging: state.dragging?.kind === "rubber-band" ? null : state.dragging ?? null,
+    selection,
+  }
+}
+
 export function clearGraphEditorSelection(
   state: GraphEditorInteractionState,
 ): GraphEditorInteractionState {
@@ -441,6 +460,10 @@ function updateSelectionIds(
   const exists = ids.includes(targetId)
   if (mode === "add") return exists ? ids : [...ids, targetId]
   return exists ? ids.filter((id) => id !== targetId) : [...ids, targetId]
+}
+
+function uniqueIds(ids: string[]): string[] {
+  return Array.from(new Set(ids.filter(Boolean)))
 }
 
 function pointInRectangle(point: CanvasPoint, rectangle: GraphEditorSelectionRectangle): boolean {

@@ -8,7 +8,7 @@ steps:
 
   - action: "GraphCanvas Multi-select UI：接入 Shift-click node/edge/path、rubber-band node selection、多选视觉和 single-item editor guard"
     exit_signal: "component tests 证明普通点击 replace，Shift-click add/toggle，框选多个 node 后只发送 workspace.select，multi selection 不误开单 item draft"
-    status: pending
+    status: done
 
   - action: "Keyboard And Nudge Orchestration：GraphCanvas scoped keydown 接入 Delete/Backspace/Escape/Arrow，WorkbenchShell 顺序执行 selected node nudge"
     exit_signal: "Delete/Backspace 发送 workspace.remove，Escape 发送空 workspace.select，Arrow 对 selected nodes 发送稳定 workspace.move_node 序列；输入框内按键不触发"
