@@ -13,8 +13,8 @@ items:
   - slug: graph-editor-path-delete
     description: 扩展 workspace.remove 支持 path_ids，让 selected path 可删除，并由 ShellResponse 修剪 active path 和 selection
     depends_on: []
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-05-22-graph-editor-path-delete
     minimal_loop: false
     notes: 删除 path 不删除 node 或 edge；删除 node 时仍由 core cascade 移除包含该 node 的 path
 
