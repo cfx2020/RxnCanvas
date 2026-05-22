@@ -1,11 +1,12 @@
 import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import { BrowserProjectRepositoryError, MemoryBrowserProjectRepository } from "../repository"
+import { BrowserProjectRepositoryError, checksumBrowserStorageBytes, MemoryBrowserProjectRepository } from "../repository"
 import { ShellClient, fixtureTransport, type ShellCommandPayload, type ShellResponse, type ShellRuntimeInfo, type ShellTransport } from "../shell"
 import { graphObjectDragMimeType } from "./graphObjectDragPayload"
 import { WorkbenchShell } from "./WorkbenchShell"
 import { I18nProvider, type SupportedLocale } from "./i18n"
 import { chemicalObjectsPath, exportArtifactsPath, projectContentIndexPath, reactionGraphsPath, workspacesPath } from "./projectContentBridge"
+import { createBrowserProjectBundleArchive, type BrowserProjectBundleEntry } from "./projectBundleArchive"
 
 describe("WorkbenchShell", () => {
   it("renders a local-only workbench shell as the first screen", async () => {
@@ -503,10 +504,11 @@ describe("WorkbenchShell", () => {
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
-    expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { path_ids: ["path-a-b"] },
-    })
+    }))
     const setPathCountBeforeDraftApply = transport.payloads.filter((payload) => payload.command === "workspace.set_path").length
+    await waitFor(() => expect(within(graphCanvas).getAllByRole("button", { name: "Up" }).length).toBeGreaterThan(1))
     fireEvent.click(within(graphCanvas).getAllByRole("button", { name: "Up" })[1])
 
     expect(transport.payloads.filter((payload) => payload.command === "workspace.set_path")).toHaveLength(setPathCountBeforeDraftApply)
@@ -1272,14 +1274,103 @@ describe("WorkbenchShell", () => {
     }
   })
 
-  it("keeps bundle import disabled while export is active", async () => {
+  it("keeps bundle export disabled until a project is active while import is available", async () => {
     renderWorkbench()
 
     expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Import Bundle" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Import Bundle" })).toBeEnabled()
     expect(screen.getByRole("button", { name: "Export Bundle" })).toBeDisabled()
-    expect(screen.getByText(/Bundle import will be enabled/)).toBeInTheDocument()
+    expect(screen.getByText(/Import creates a new browser-local project/)).toBeInTheDocument()
     expect(screen.getByText(/Export downloads the current browser-local repository bytes/)).toBeInTheDocument()
+  })
+
+  it("imports a project bundle into a new active browser project without shell calls", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const existing = await createProjectWithContent(repository, "Existing Project")
+    const transport = new RecordingProjectBridgeTransport()
+    const file = await createBundleFile({
+      rootName: "imported-root.rxnflow",
+      fileName: "imported-root.rxnflow.zip",
+      entries: {
+        ".rxnflow/manifest.json": JSON.stringify({
+          id: "project-imported",
+          name: "Imported Bundle",
+          schema_version: "project-v1",
+          resources: [],
+        }),
+        ".rxnflow/state/project-content.json": JSON.stringify({
+          schema_version: "project-content-v1",
+          project_id: "project-imported",
+          updated_at: "2026-05-05T00:00:00Z",
+          files: [],
+        }),
+        "inputs/raw/demo.xyz": "2\nDemo\n",
+        "exports/profile.png": "png",
+      },
+    })
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    expect(await screen.findByRole("button", { name: /existing project/i })).toBeInTheDocument()
+    const input = screen.getByLabelText("Select project bundle file")
+    fireEvent.change(input, { target: { files: [file] } })
+
+    expect(await screen.findByText("Bundle imported")).toBeInTheDocument()
+    expect(screen.getByText(/Imported Bundle · 4 files/)).toBeInTheDocument()
+    expect(screen.getByText("imported-root.rxnflow")).toBeInTheDocument()
+    expect(screen.getAllByText(/sha256:[a-f0-9]{64}/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole("button", { name: /imported bundle/i })).toHaveAttribute("aria-current", "true")
+    expect(screen.getByText("Project content files are readable.")).toBeInTheDocument()
+    expect(screen.getByText("No project loaded")).toBeInTheDocument()
+
+    const projects = await repository.listProjects()
+    expect(projects.map((project) => project.name)).toEqual(["Existing Project", "Imported Bundle"])
+    const imported = projects.find((project) => project.name === "Imported Bundle")
+    expect(imported?.projectRef).not.toBe(existing.projectRef)
+    await expect(repository.exists(existing.projectRef, "inputs/raw/demo.xyz")).resolves.toBe(false)
+    await expect(repository.exists(imported?.projectRef ?? "", "inputs/raw/demo.xyz")).resolves.toBe(true)
+    expect(transport.payloads.filter((payload) => payload.command === "project.open")).toHaveLength(0)
+    expect(transport.payloads.filter((payload) => payload.command === "project.import_bundle")).toHaveLength(0)
+    expect(transport.payloads.filter((payload) => payload.command === "project.save_content")).toHaveLength(0)
+  })
+
+  it("shows bundle import errors without creating a project", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    renderWorkbench(repository)
+
+    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Select project bundle file"), {
+      target: { files: [new File(["not a zip"], "bad.rxnflow.zip", { type: "application/zip" })] },
+    })
+
+    expect(await screen.findByText("invalid_bundle")).toBeInTheDocument()
+    expect(screen.getByText("Project bundle is not a valid zip file.")).toBeInTheDocument()
+    expect(screen.getByText("zip_entry")).toBeInTheDocument()
+    expect(await repository.listProjects()).toHaveLength(0)
+  })
+
+  it("shows partial import risk when bundle object writes fail", async () => {
+    const repository = new FailingBundleImportProjectRepository()
+    const file = await createBundleFile({
+      rootName: "partial.rxnflow",
+      fileName: "partial.rxnflow.zip",
+      entries: {
+        ".rxnflow/manifest.json": '{"id":"project-partial","name":"Partial Bundle","schema_version":"project-v1"}',
+        ".rxnflow/state/project-content.json": "{}",
+        "inputs/raw/demo.xyz": "2\nDemo\n",
+      },
+    })
+    renderWorkbench(repository)
+
+    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Select project bundle file"), {
+      target: { files: [file] },
+    })
+
+    expect(await screen.findByText("storage_failed")).toBeInTheDocument()
+    expect(screen.getByText("Browser local storage quota would be exceeded.")).toBeInTheDocument()
+    expect(screen.getByText("inputs/raw/demo.xyz")).toBeInTheDocument()
+    expect(screen.getByText(/Partial import risk: 2 files were written to browser-project:/)).toBeInTheDocument()
+    expect(await repository.listProjects()).toHaveLength(1)
   })
 
   it("shows bundle export errors without creating an object URL", async () => {
@@ -1468,6 +1559,34 @@ async function createProjectWithContent(
   return state.activeProject
 }
 
+async function createBundleFile(input: {
+  rootName: string
+  fileName: string
+  entries: Record<string, string>
+}) {
+  const entries = await Promise.all(Object.entries(input.entries).map(([path, text]) => bundleEntry(path, text)))
+  const archive = await createBrowserProjectBundleArchive({
+    rootName: input.rootName,
+    bundleName: input.fileName,
+    entries,
+  })
+  if (!archive.ok) {
+    throw new Error(archive.error.message)
+  }
+  return new File([archive.bytes], input.fileName, { type: "application/zip" })
+}
+
+async function bundleEntry(path: string, text: string): Promise<BrowserProjectBundleEntry> {
+  const bytes = new TextEncoder().encode(text) as Uint8Array<ArrayBuffer>
+  return {
+    name: path.split("/").at(-1) ?? path,
+    projectRelativePath: path,
+    bytes,
+    byteSize: bytes.byteLength,
+    checksum: await checksumBrowserStorageBytes(bytes) as `sha256:${string}`,
+  }
+}
+
 class RecordingImportPreviewTransport implements ShellTransport {
   kind = "http-api" as const
   payloads: ShellCommandPayload<string>[] = []
@@ -1566,6 +1685,19 @@ class FailingRawInputProjectRepository extends MemoryBrowserProjectRepository {
         code: "storage_quota_exceeded",
         message: "Browser local storage quota would be exceeded.",
         target: "inputs/raw",
+      })
+    }
+    return super.writeObject(projectRef, object)
+  }
+}
+
+class FailingBundleImportProjectRepository extends MemoryBrowserProjectRepository {
+  async writeObject(projectRef: string, object: Parameters<MemoryBrowserProjectRepository["writeObject"]>[1]) {
+    if (object.path.startsWith("inputs/raw/")) {
+      throw new BrowserProjectRepositoryError({
+        code: "storage_failed",
+        message: "Browser local storage quota would be exceeded.",
+        target: "quota",
       })
     }
     return super.writeObject(projectRef, object)

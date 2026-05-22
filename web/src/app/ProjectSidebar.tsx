@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react"
+import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react"
 import {
   Boxes,
   CheckCircle2,
@@ -17,12 +17,14 @@ import { browserProjectBackendId } from "../repository"
 import type { WorkbenchDomainState } from "./workbenchState"
 import type { ProjectSidebarState } from "./projectSidebarState"
 import type { ExportBundleStatus } from "./projectBundleExport"
+import type { ImportBundleStatus } from "./projectBundleImport"
 import { useI18n } from "./i18n"
 
 type ProjectSidebarProps = {
   state: ProjectSidebarState
   workbenchState: WorkbenchDomainState
   exportBundleStatus: ExportBundleStatus
+  importBundleStatus: ImportBundleStatus
   onRefreshProjects: () => Promise<void>
   onCreateProject: (name: string) => Promise<ProjectSidebarState>
   onOpenProject: (projectRef: string) => Promise<void>
@@ -30,12 +32,14 @@ type ProjectSidebarProps = {
   onOpenBridgeSession: () => Promise<void>
   onSaveBridgeSession: () => Promise<void>
   onExportBundle: () => Promise<void>
+  onImportBundleFileSelected: (file: File) => Promise<void>
 }
 
 export function ProjectSidebar({
   state,
   workbenchState,
   exportBundleStatus,
+  importBundleStatus,
   onRefreshProjects,
   onCreateProject,
   onOpenProject,
@@ -43,11 +47,14 @@ export function ProjectSidebar({
   onOpenBridgeSession,
   onSaveBridgeSession,
   onExportBundle,
+  onImportBundleFileSelected,
 }: ProjectSidebarProps) {
   const { t } = useI18n()
   const [projectName, setProjectName] = useState("")
+  const importInputRef = useRef<HTMLInputElement | null>(null)
   const isBusy = state.status === "loading"
   const isExporting = exportBundleStatus.state === "exporting"
+  const isImporting = importBundleStatus.state === "importing"
 
   const handleCreateProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -55,6 +62,13 @@ export function ProjectSidebar({
     if (nextState.status === "ready") {
       setProjectName("")
     }
+  }
+
+  const handleImportBundleChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ""
+    if (!file) return
+    await onImportBundleFileSelected(file)
   }
 
   return (
@@ -187,25 +201,36 @@ export function ProjectSidebar({
           <button
             type="button"
             className="sidebar-command-button sidebar-command-button--secondary"
-            disabled
+            onClick={() => importInputRef.current?.click()}
+            disabled={isBusy || isImporting || isExporting}
           >
             <Upload size={16} />
             <span>{t("projectSidebar.importBundle")}</span>
           </button>
+          <input
+            ref={importInputRef}
+            className="visually-hidden"
+            type="file"
+            accept=".rxnflow.zip,application/zip"
+            aria-label={t("projectSidebar.importBundleFileInput")}
+            onChange={handleImportBundleChange}
+            disabled={isBusy || isImporting || isExporting}
+          />
           <button
             type="button"
             className="sidebar-command-button sidebar-command-button--secondary"
             onClick={onExportBundle}
-            disabled={isBusy || isExporting || !state.activeProject}
+            disabled={isBusy || isExporting || isImporting || !state.activeProject}
           >
             <Download size={16} />
             <span>{t("projectSidebar.exportBundle")}</span>
           </button>
         </div>
-        <p className="bundle-unavailable-message">{t("projectSidebar.importBundleUnavailable")}</p>
+        <p className="bundle-unavailable-message">{t("projectSidebar.bundleImportIdle")}</p>
         {state.bridge.state === "open" ? (
           <p className="bundle-hint-message">{t("projectSidebar.bundleSaveBridgeHint")}</p>
         ) : null}
+        <BundleImportStatusView status={importBundleStatus} />
         <BundleExportStatusView status={exportBundleStatus} />
       </section>
 
@@ -225,6 +250,56 @@ export function ProjectSidebar({
         />
       </section>
     </aside>
+  )
+}
+
+type BundleImportStatusViewProps = {
+  status: ImportBundleStatus
+}
+
+function BundleImportStatusView({ status }: BundleImportStatusViewProps) {
+  const { t } = useI18n()
+  if (status.state === "idle") {
+    return null
+  }
+  if (status.state === "importing") {
+    return (
+      <p className="bundle-status-message bundle-status-message--active">
+        {t("projectSidebar.bundleImporting", { fileName: status.fileName })}
+      </p>
+    )
+  }
+  if (status.state === "error") {
+    return (
+      <div className="sidebar-error" role="alert">
+        <strong>{status.error.code}</strong>
+        <span>{status.error.message}</span>
+        {status.error.target ? <small>{status.error.target}</small> : null}
+        {status.error.details?.partialProjectRef ? (
+          <small>
+            {t("projectSidebar.bundleImportPartialRisk", {
+              projectRef: status.error.details.partialProjectRef,
+              writtenCount: status.error.details.writtenCount ?? 0,
+            })}
+          </small>
+        ) : null}
+      </div>
+    )
+  }
+  return (
+    <div className="bundle-summary bundle-summary--import" role="status">
+      <strong>{t("projectSidebar.bundleImportSuccess")}</strong>
+      <span>
+        {t("projectSidebar.bundleImportSummary", {
+          projectName: status.project.name,
+          fileCount: status.summary.fileCount,
+          byteSize: formatBundleByteSize(status.summary.byteSize),
+          receiptCount: status.receiptCount,
+        })}
+      </span>
+      <small>{status.summary.rootName}</small>
+      <code>{status.summary.checksum}</code>
+    </div>
   )
 }
 

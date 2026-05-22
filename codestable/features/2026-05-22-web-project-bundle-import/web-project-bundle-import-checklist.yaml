@@ -4,23 +4,23 @@ created: 2026-05-22
 steps:
   - action: "Import action contract：新增 import action helper，定义 request/result/error/status、file bytes 读取和 project name fallback"
     exit_signal: "unit tests 覆盖 manifest name、rootName/fileName fallback、invalid/zip error mapping 和 conflictPolicy guard"
-    status: pending
+    status: done
 
   - action: "Repository writer bridge：把 archive entries 写入新 Browser Project Repository project，补 metadata mapping、receipt collection 和 storage failure partial risk"
     exit_signal: "safe bundle 导入后 repository 中存在 .rxnflow/manifest.json、state、raw、export objects；非法 bundle 不创建 project；写入失败返回 partialProjectRef/writtenCount"
-    status: pending
+    status: done
 
   - action: "Sidebar UI wiring：ProjectSidebar 接收 import props，启用 Import Bundle file picker，展示 importing/success/error/partial risk，并保持 Export Bundle 正常"
     exit_signal: "component tests 能选择 .rxnflow.zip 并看到 imported project、fileCount/checksum/receiptCount；错误 code/message/target 可见"
-    status: pending
+    status: done
 
   - action: "WorkbenchShell active project refresh：导入成功后刷新 Project Sidebar 并打开新 project，执行 shallow validation；不改 WorkbenchDomainState、不 Open Bridge"
     exit_signal: "测试确认 active project 是 imported project，Workbench snapshot 不被导入动作覆盖，project.open / project.import_bundle 未调用"
-    status: pending
+    status: done
 
   - action: "Scope guards and verification：补 i18n/CSS，跑 Web test/build 和浏览器桌面/窄屏验证"
     exit_signal: "npm run test -- --run、npm run build、desktop + narrow browser smoke 通过；grep 确认不调用 Shell bundle/open/save，不写 active project，不引入 cloud/OPFS/Worker"
-    status: pending
+    status: done
 
 checks:
   - item: "Browser Bundle Import Action / Import Bundle Status / Bundle Import File Picker / Create New Project Policy / Import Write Receipts / Partial Import Risk 术语落地"

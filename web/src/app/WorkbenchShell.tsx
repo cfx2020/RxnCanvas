@@ -50,6 +50,11 @@ import {
 import { ObjectRegistryPanel, type ApplyCorrectionRequest } from "./ObjectRegistryPanel"
 import { persistImportFilesAsRawInputs } from "./rawInputPersistence"
 import { exportBrowserProjectBundle, type ExportBundleStatus } from "./projectBundleExport"
+import {
+  browserProjectBundleImportConflictPolicy,
+  importBrowserProjectBundle,
+  type ImportBundleStatus,
+} from "./projectBundleImport"
 import { createProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
 import {
   contentFilesToShellPayload,
@@ -94,6 +99,7 @@ export function WorkbenchShell({
     initialProjectSidebarState,
   )
   const [exportBundleStatus, setExportBundleStatus] = useState<ExportBundleStatus>({ state: "idle" })
+  const [importBundleStatus, setImportBundleStatus] = useState<ImportBundleStatus>({ state: "idle" })
   const [importInboxState, setImportInboxState] = useState<ImportInboxState>(
     initialImportInboxState,
   )
@@ -420,6 +426,33 @@ export function WorkbenchShell({
       summary: result.summary,
     })
   }, [projectRepository])
+
+  const importSidebarBundleFile = useCallback(async (file: File) => {
+    setImportBundleStatus({ state: "importing", fileName: file.name })
+    const result = await importBrowserProjectBundle(projectRepository, {
+      file,
+      conflictPolicy: browserProjectBundleImportConflictPolicy,
+    })
+    if (!result.ok) {
+      setImportBundleStatus({ state: "error", error: result.error })
+      return
+    }
+
+    const loadingState: ProjectSidebarState = {
+      ...projectSidebarStateRef.current,
+      status: "loading",
+      error: undefined,
+    }
+    replaceProjectSidebarState(loadingState)
+    const nextState = await openProject(projectRepository, loadingState, result.project.projectRef)
+    replaceProjectSidebarState(nextState)
+    setImportBundleStatus({
+      state: "success",
+      project: nextState.activeProject ?? result.project,
+      summary: result.summary,
+      receiptCount: result.receipts.length,
+    })
+  }, [projectRepository, replaceProjectSidebarState])
 
   const runFixture = useCallback(async () => {
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
@@ -1170,6 +1203,7 @@ export function WorkbenchShell({
           state={projectSidebarState}
           workbenchState={workbenchState}
           exportBundleStatus={exportBundleStatus}
+          importBundleStatus={importBundleStatus}
           onRefreshProjects={refreshProjectSidebar}
           onCreateProject={createSidebarProject}
           onOpenProject={openSidebarProject}
@@ -1177,6 +1211,7 @@ export function WorkbenchShell({
           onOpenBridgeSession={openSidebarBridgeSession}
           onSaveBridgeSession={saveSidebarBridgeSession}
           onExportBundle={exportSidebarBundle}
+          onImportBundleFileSelected={importSidebarBundleFile}
         />
         <div className="workspace-column">
           <ImportInbox
