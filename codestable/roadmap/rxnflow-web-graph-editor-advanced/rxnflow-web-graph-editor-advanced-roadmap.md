@@ -274,9 +274,9 @@ type GraphEditorHistoryEntry = {
 1. **graph-editor-auto-layout**：新增确定性 auto layout plan 和 Apply Layout 入口，将当前 graph nodes 整理到固定虚拟画布坐标，并可选 fit viewport。
    - 所属模块：Layout Planner
    - 依赖：无
-   - 状态：planned
-   - 对应 feature：无
-   - 备注：最小闭环；不新增 shell command，不改 Project Content schema，不做 edge rerouting。
+   - 状态：done
+   - 对应 feature：`2026-05-22-graph-editor-auto-layout`
+   - 备注：已落地 Web-side `GraphLayoutPlan`、Apply Layout 入口、顺序 `workspace.move_node` 和可选 `workspace.set_viewport` fit；不新增 shell command，不改 Project Content schema，不做 edge rerouting。
 2. **graph-editor-path-delete**：扩展 `workspace.remove` 支持 `path_ids`，让 selected path 可删除，并由 ShellResponse 修剪 active path 和 selection。
    - 所属模块：Path Lifecycle Adapter
    - 依赖：无

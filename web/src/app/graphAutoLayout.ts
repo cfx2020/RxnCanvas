@@ -27,6 +27,7 @@ export type GraphLayoutPlan = {
 
 export type GraphLayoutPlanInput = {
   graph: GraphSummary
+  viewport?: GraphViewport | null
   fitAfterLayout?: boolean
 }
 

@@ -5,7 +5,7 @@ items:
   - slug: graph-editor-auto-layout
     description: 新增确定性 auto layout plan 和 Apply Layout 入口，将当前 graph nodes 整理到固定虚拟画布坐标，并可选 fit viewport
     depends_on: []
-    status: in-progress
+    status: done
     feature: 2026-05-22-graph-editor-auto-layout
     minimal_loop: true
     notes: 不新增 shell command，不改 Project Content schema，不做 edge rerouting；可见 position 更新必须来自 ShellResponse workspace projection
