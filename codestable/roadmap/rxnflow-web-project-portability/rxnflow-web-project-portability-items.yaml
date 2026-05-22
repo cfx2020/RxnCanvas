@@ -29,8 +29,8 @@ items:
   - slug: web-project-bundle-import
     description: 启用 Project Sidebar Import Bundle，从安全 .rxnflow.zip 创建新的 browser-local project 并写入 bundle entries
     depends_on: [web-project-bundle-archive-adapter]
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-05-22-web-project-bundle-import
     minimal_loop: false
     notes: Web import 第一版总是创建新 browser-local project，不覆盖、不合并、不自动 Open Bridge
 

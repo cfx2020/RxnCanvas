@@ -1,0 +1,108 @@
+feature: 2026-05-22-web-project-bundle-import
+created: 2026-05-22
+
+steps:
+  - action: "Import action contract：新增 import action helper，定义 request/result/error/status、file bytes 读取和 project name fallback"
+    exit_signal: "unit tests 覆盖 manifest name、rootName/fileName fallback、invalid/zip error mapping 和 conflictPolicy guard"
+    status: pending
+
+  - action: "Repository writer bridge：把 archive entries 写入新 Browser Project Repository project，补 metadata mapping、receipt collection 和 storage failure partial risk"
+    exit_signal: "safe bundle 导入后 repository 中存在 .rxnflow/manifest.json、state、raw、export objects；非法 bundle 不创建 project；写入失败返回 partialProjectRef/writtenCount"
+    status: pending
+
+  - action: "Sidebar UI wiring：ProjectSidebar 接收 import props，启用 Import Bundle file picker，展示 importing/success/error/partial risk，并保持 Export Bundle 正常"
+    exit_signal: "component tests 能选择 .rxnflow.zip 并看到 imported project、fileCount/checksum/receiptCount；错误 code/message/target 可见"
+    status: pending
+
+  - action: "WorkbenchShell active project refresh：导入成功后刷新 Project Sidebar 并打开新 project，执行 shallow validation；不改 WorkbenchDomainState、不 Open Bridge"
+    exit_signal: "测试确认 active project 是 imported project，Workbench snapshot 不被导入动作覆盖，project.open / project.import_bundle 未调用"
+    status: pending
+
+  - action: "Scope guards and verification：补 i18n/CSS，跑 Web test/build 和浏览器桌面/窄屏验证"
+    exit_signal: "npm run test -- --run、npm run build、desktop + narrow browser smoke 通过；grep 确认不调用 Shell bundle/open/save，不写 active project，不引入 cloud/OPFS/Worker"
+    status: pending
+
+checks:
+  - item: "Browser Bundle Import Action / Import Bundle Status / Bundle Import File Picker / Create New Project Policy / Import Write Receipts / Partial Import Risk 术语落地"
+    source: 名词契约
+    status: pending
+
+  - item: "选择含 manifest、Project Content state、inputs/raw/demo.xyz 和 exports/profile.png 的 .rxnflow.zip 后，创建新 browser-local project、写入 safe entries、激活新 project 并展示 summary"
+    source: 验收场景
+    status: pending
+
+  - item: "导入后的 repository object paths 不包含 bundle root 前缀，只包含 .rxnflow/、inputs/raw/ 和 exports/ project-relative bytes"
+    source: 验收场景
+    status: pending
+
+  - item: "project name 优先使用 manifest name；manifest 缺 name 时使用 bundle root；root 不适合显示时使用 file name fallback"
+    source: 验收场景
+    status: pending
+
+  - item: "用户取消 file picker 时保持 idle，不创建 project、不写 repository"
+    source: 验收场景
+    status: pending
+
+  - item: "非 zip、坏 zip、multi-root、missing manifest、unsafe path、inputs 非 raw、duplicate 或 symlink bundle 返回 invalid_bundle 或 zip_failed，且不创建 project"
+    source: 验收场景
+    status: pending
+
+  - item: "repository createProject 失败时返回 storage_failed，不写 object，错误 code/message/target 可见"
+    source: 验收场景
+    status: pending
+
+  - item: "repository writeObject 中途失败时返回 storage_failed，展示 partial import risk、partialProjectRef 和 writtenCount；不自动删除已写 objects"
+    source: 验收场景
+    status: pending
+
+  - item: "Import Bundle 成功不调用 ShellClient.run、Python project.import_bundle、project.open、project.save_content 或 local-http bridge"
+    source: 范围守护
+    status: pending
+
+  - item: "Import Bundle 不覆盖当前 active project；已有 active project objects 保持不变，新 projectRef 不同"
+    source: 验收场景
+    status: pending
+
+  - item: "导入成功后不自动 Open Bridge；bridge state 为 idle，用户可显式点击 Open Bridge"
+    source: 验收场景
+    status: pending
+
+  - item: "Export Bundle 仍可用；Import/Export busy 状态互相禁用，summary/error 不互相覆盖"
+    source: 编排骨架
+    status: pending
+
+  - item: "新增 i18n key 在 en-US / zh-CN 中完全一致；中英文导入状态文案均可渲染"
+    source: i18n
+    status: pending
+
+  - item: "Sidebar bundle section 在桌面与窄屏浏览器里 file picker button、summary、error/partial 文本不重叠"
+    source: UI 验证
+    status: pending
+
+  - item: "不覆盖、合并、改名已有 project，不写当前 active project，不做 roundtrip QA"
+    source: 范围守护
+    status: pending
+
+  - item: "不自动 Open Bridge，不调用 Shell command 或 Python bundle service"
+    source: 范围守护
+    status: pending
+
+  - item: "不重新解析 raw files、不登记对象、不计算能量、不生成报告 artifact"
+    source: 范围守护
+    status: pending
+
+  - item: "不做 Project Content deep validation、schema migration 或自动修复"
+    source: 范围守护
+    status: pending
+
+  - item: "不实现 cloud/OPFS/chunking/Worker/Service Worker/repository transaction API"
+    source: 范围守护
+    status: pending
+
+  - item: "不改变 archive adapter allowed roots、安全路径或核心 .rxnflow.zip 语义"
+    source: 范围守护
+    status: pending
+
+  - item: "npm run test -- --run 和 npm run build 通过"
+    source: 验证
+    status: pending
