@@ -417,9 +417,9 @@ energy-profiles-v1 point:
 7. **web-energy-semantics-controls** — 在 Web 中补节点组成编辑、energy channel selector、correction policy options 和 i18n 文案。
    - 所属模块：Web Workbench Integration
    - 依赖：`energy-channel-catalog`、`correction-command-and-ui`、`energy-profile-provenance-details`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：不在前端重算能量，只操作 Shell DTO。
+   - 状态：done
+   - 对应 feature：`2026-05-22-web-energy-semantics-controls`
+   - 备注：已落地 Node Composition Editor、Composition Draft、`workspace.set_node_composition` UI handler、Energy Channel Selector、`energy_source` args、Correction Policy Controls none/all/kinds/ids、fixture expression projection、双语文案、桌面/窄屏浏览器 QA；不在前端重算能量、不写 Project Content/localStorage、不新增 schema 或导出格式。
 
 8. **energy-curve-interaction-polish** — 强化能量曲线交互，显示 point tooltip、missing/correction 标记、选中节点联动和导出一致性检查。
    - 所属模块：Web Workbench Integration / Profile Provenance Projection
@@ -441,4 +441,4 @@ energy-profiles-v1 point:
 - 当前 architecture 已明确 Energy Engine 的多对象节点仍是隐含系数 1；本 roadmap 完成后需要由 feature acceptance 回写为 composition coefficient 语义。
 - Parser support matrix 中 Gaussian/ORCA/MAPLE thermochemistry 多数仍是 unsupported/reference-only；energy channel catalog 只定义选择机制，不代表 parser 已能稳定产出这些字段。
 - Report Export 的 Energy Table 已有 `ggas/gsol` 等列口径；本 roadmap 后续需要检查 profile expression 与 workbook 字段口径是否一致。
-- Web Object Registry 的 Correction Entry Form 已可追加 manual/solvation/resonance correction；后续仍需要在 `web-energy-semantics-controls` 中补 correction policy options 和更完整的 energy semantics 控件，但不把对象面板扩展成完整对象编辑器。
+- Web Object Registry 的 Correction Entry Form 已可追加 manual/solvation/resonance correction；`web-energy-semantics-controls` 已把 correction policy options、energy channel selector 和 selected-node composition editor 接入 Web Workbench，但对象面板仍不是完整对象编辑器。

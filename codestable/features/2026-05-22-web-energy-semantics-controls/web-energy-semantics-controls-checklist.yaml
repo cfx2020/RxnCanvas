@@ -25,92 +25,92 @@ steps:
 checks:
   - item: "Node Composition Editor / Composition Draft / Energy Channel Selector / Correction Policy Controls 术语落地"
     source: 名词契约
-    status: pending
+    status: passed
 
   - item: "Composition Draft 是 UI-only state，不写 Project Content/localStorage"
     source: 跨层纪律
-    status: pending
+    status: passed
 
   - item: "EnergyPanelOptions 支持 energySource、correctionPolicyMode、correctionKinds、correctionIds"
     source: 名词契约
-    status: pending
+    status: passed
 
   - item: "选中 graph node 后 Node Composition Editor 显示当前 object id、coefficient、role 和 Apply/Reset controls"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "编辑 selected node composition 为 object-a * 1 + object-b * 2 后调用 workspace.set_node_composition"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "非法 coefficient / shell error 不本地写 graph，UI 显示 code/message/target"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "删除 selected node 或切换 workspace 后 Composition Draft 不保留 stale node id"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Energy Channel Selector 显示 Object Summary energy_channels 的 key/source/unit"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "选择 thermochemistry channel 后 Compute 发送 energy_source=thermochemistry 和对应 energy_key"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "自定义 energy key fallback 可提交，由 shell 决定 missing/invalid"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Correction policy none/all/kinds/ids 映射 include_corrections 与 correction_policy args"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Compute 成功后 Energy Expression Details 展示 composition coefficient、energy source 和 correction contribution"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "新增静态文案进入 zh-CN / en-US，动态 id/key/source/unit/code 不翻译"
     source: i18n
-    status: pending
+    status: passed
 
   - item: "桌面浏览器 composition editor、energy options、expression details 无文字重叠"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "窄屏浏览器 composition rows、channel selector、policy controls 不造成页面整体水平溢出"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Graph Canvas selected-node inspector 挂入点可完整卸载"
     source: 挂载点
-    status: pending
+    status: passed
 
   - item: "WorkbenchShell composition draft / set_node_composition handler 挂入点可完整卸载"
     source: 挂载点
-    status: pending
+    status: passed
 
   - item: "Energy Profile Panel options 挂入点可完整卸载"
     source: 挂载点
-    status: pending
+    status: passed
 
   - item: "不新增 Python shell command、Project Content schema、Browser Project Repository schema 或 Web storage key"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不在 Web 代码里 import Python core、EnergyProfileEngine、ProjectContentValidator 或 parser modules"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不调用 project.save_content、Browser Project Repository write 或 localStorage 来保存 draft/options"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不新增图表库、ChemDraw/CDXML 导出逻辑、报告导出格式或 cloud/account SDK"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不把 missing energy / invalid composition 在前端自动修复为默认值"
     source: 范围守护
-    status: pending
+    status: passed

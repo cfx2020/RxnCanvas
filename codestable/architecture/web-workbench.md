@@ -5,7 +5,7 @@ status: current
 created: 2026-05-16
 last_reviewed: 2026-05-22
 implements: [web-workbench-shell, project-content-persistence]
-tags: [web, workbench, shell-client, react, vite, local-first, indexeddb, browser-storage, i18n, import-inbox, object-registry, graph-canvas, graph-editor-interaction-state, graph-object-drop, graph-node-layout, graph-edge-path-editing, graph-viewport-controls, graph-editor-workspace-persistence, energy-profile, report-export, export-artifact-persistence, local-http-shell-bridge, http-api-transport, e2e, bridge-qa]
+tags: [web, workbench, shell-client, react, vite, local-first, indexeddb, browser-storage, i18n, import-inbox, object-registry, graph-canvas, graph-editor-interaction-state, graph-object-drop, graph-node-layout, graph-edge-path-editing, graph-viewport-controls, graph-editor-workspace-persistence, node-composition, energy-semantics, energy-profile, report-export, export-artifact-persistence, local-http-shell-bridge, http-api-transport, e2e, bridge-qa]
 ---
 
 # Web Workbench
@@ -14,7 +14,7 @@ tags: [web, workbench, shell-client, react, vite, local-first, indexeddb, browse
 
 RxnFlow 当前已有独立 `web/` 前端工程，用于承载 Web Workbench MVP 的第一屏 app shell。该工程使用 React + TypeScript + Vite + npm，提供 `dev`、`build`、`test`、`test:e2e` 和 `test:e2e:local-http` scripts。
 
-当前 Web Workbench 已落地浏览器端壳层、只读工作台状态投影、真实浏览器本地项目仓储、第一版项目侧边栏、Web i18n 基础、Import Inbox UI、Object Registry Panel、Graph Canvas MVP、Graph Editor Interaction State、Graph Object Drop、Graph Node Layout、Graph Edge/Path Editing、Graph Canvas Viewport Controls、Graph Editor Workspace Persistence、Energy Profile Panel 和 Report Export Panel：
+当前 Web Workbench 已落地浏览器端壳层、只读工作台状态投影、真实浏览器本地项目仓储、第一版项目侧边栏、Web i18n 基础、Import Inbox UI、Object Registry Panel、Graph Canvas MVP、Graph Editor Interaction State、Graph Object Drop、Graph Node Layout、Graph Edge/Path Editing、Graph Canvas Viewport Controls、Graph Editor Workspace Persistence、Node Composition Editor、Energy Semantics Controls、Energy Profile Panel 和 Report Export Panel：
 
 1. 浏览器入口 `web/index.html` 挂载 React app。
 2. `App` 通过 `createConfiguredShellRuntime(import.meta.env)` 创建前端 `ShellClient`，默认接入 `in-process-test` fixture transport；当 `VITE_RXNFLOW_SHELL_TRANSPORT=local-http` 时接入 `http-api` transport，并调用 `VITE_RXNFLOW_SHELL_ENDPOINT` 指向的本地 HTTP shell bridge。
@@ -36,7 +36,7 @@ RxnFlow 当前已有独立 `web/` 前端工程，用于承载 Web Workbench MVP 
 17. `WorkbenchShell` 维护 `activeObjectId` UI-only state；objects 更新后保留仍存在的 active object，否则自动选择第一个对象，selection 不进入 ShellResponse、Project Content 或 core workspace。
 18. Correction Entry Form 对 active object 提交 `registry.apply_correction`，支持 manual/solvation/resonance、value/unit/reference/id/note 输入；成功后 `WorkbenchShell` 只用 ShellResponse object summary 替换 `WorkbenchDomainState.objects` 中的对象，失败时显示 ShellError code/message/target，不本地 append correction。
 19. 中间工作区新增 `GraphCanvas`，从 `WorkbenchDomainState.workspace.graph` 渲染节点、边、路径、active path 和 Network Preview，并显示 disconnected node diagnostics。
-20. Graph Canvas 通过 `ShellClient` 调用 fixture `workspace.open`、`workspace.add_node`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.set_path`；成功后只使用 ShellResponse 返回的 workspace projection 更新 `WorkbenchDomainState`。
+20. Graph Canvas 通过 `ShellClient` 调用 fixture `workspace.open`、`workspace.add_node`、`workspace.set_node_composition`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.set_path`；成功后只使用 ShellResponse 返回的 workspace projection 更新 `WorkbenchDomainState`。
 20. Graph Canvas 支持 click-driven 添加已登记对象节点、从 Object Registry 拖入已登记对象创建节点、拖动已有 graph node 重新布局、选择源节点后连接目标节点、选择 edge 后删除、选择 node 后删除、选择 path 后调整 Path Order Draft 并应用到 existing path；node/edge/path selection 会提交 `workspace.select` 并从 `WorkspaceSummary.selection` 恢复，pending edge、path draft、transient node dragging 和 transient canvas dragging 仍由 UI-only state 承载。
 21. Graph Object Drop 使用 `application/x-rxnflow-graph-object` payload，只接受 `kind=registered-object` 且 object id 存在于 `WorkbenchDomainState.objects` 的拖拽；drop 位置映射为 `workspace.add_node(position)`，可见节点仍来自 ShellResponse workspace projection。
 22. Graph Node Layout 使用固定虚拟画布 `600 x 360` 和 `20` grid；已有节点 pointer drag release 后发送 fixture/local-http `workspace.move_node(node_id, position)`，成功后只用 ShellResponse workspace projection 更新可见 node position；拖动中只显示 transient style。
@@ -44,9 +44,10 @@ RxnFlow 当前已有独立 `web/` 前端工程，用于承载 Web Workbench MVP 
 24. Path Order Draft 只在选中 path 时初始化于当前 `path.node_ids`，上移/下移仅改 UI draft；点击 Apply Path Order 后才发送 `workspace.set_path(path_id, node_ids)`，成功后 active path 与 path list 来自 ShellResponse workspace projection。
 25. Graph Canvas Viewport Controls 第一版提供 Pan、Zoom In、Zoom Out、Fit 和 Reset；`workspace.viewport` 由 ShellResponse projection 提供，Web 只生成 viewport intent 并发送 `workspace.set_viewport`。`graphViewport.ts` 统一处理 `600 x 360` 虚拟画布下的 viewport fallback、zoom clamp、screen/graph 坐标换算、CSS transform、zoom、pan、fit 和 reset；object drop、node drag 和 pan drag 共用该换算。
 26. Graph Editor Workspace Persistence 复用现有 Project Content `reaction-graphs-v1` 和 `workspaces-v1`：node positions 保存在 `ReactionGraph.nodes[].position`，viewport、selection 和 active path 保存在 `WorkspaceSnapshot`。选择 node/edge/path 后 Web 发送 `workspace.select`；Project Sidebar 显式 Save Bridge Session 返回的 content files 会包含当前 graph/workspace 状态，Open Bridge / restored snapshot 后 GraphCanvas 恢复 node position、viewport、selected node/edge/path 和 active path。
-27. Graph Canvas 当前不实现自动布局、碰撞避让、缩放/平移自动持久化、拖动实时写盘、undo/redo、多选框选、键盘 nudging、path delete、自由绘线、edge label 编辑、minimap、wheel/pinch 或项目自动保存。
-27. 右侧 inspector 新增 `EnergyProfilePanel`，基于 workspace active path 或用户选择 path 调用 fixture `energy.compute`，展示 profile summary、relative energy table、missing reason、warnings、Energy Expression Details 和基础 SVG curve。
-28. `EnergyProfilePanel` 支持 `output_unit`、`include_corrections`、`energy_key` 和 `baseline_node_id` UI options；这些 options 只在点击 Compute 时映射为 Shell command args，不写入 Project Content 或 Browser Project Repository。
+27. Node Composition Editor 挂在 Graph Canvas 的 Network Preview 侧区；选中 graph node 后从 ShellResponse `GraphNodeSummary.composition` 初始化 Composition Draft，支持 object、coefficient、role、label rows 和 add/remove/reset/apply。Apply 成功后调用 `workspace.set_node_composition` 并只用返回的 workspace projection 重建 draft。
+28. Graph Canvas 当前不实现自动布局、碰撞避让、缩放/平移自动持久化、拖动实时写盘、undo/redo、多选框选、键盘 nudging、path delete、自由绘线、edge label 编辑、minimap、wheel/pinch 或项目自动保存。
+29. 右侧 inspector 新增 `EnergyProfilePanel`，基于 workspace active path 或用户选择 path 调用 fixture `energy.compute`，展示 profile summary、relative energy table、missing reason、warnings、Energy Expression Details 和基础 SVG curve。
+30. `EnergyProfilePanel` 支持 `output_unit`、`energy_key`、`energy_source`、`baseline_node_id` 和 correction policy UI options；Energy Channel Selector 从 `objects[].energy_channels` 汇总 key/source/unit 候选，同时保留自定义 key fallback。Correction Policy Controls 把 none/all/kinds/ids 映射为 `include_corrections` 和 `correction_policy` shell args。这些 options 只在点击 Compute 时映射为 Shell command args，不写入 Project Content 或 Browser Project Repository。
 29. `energy.compute` 成功后 `WorkbenchShell` 只更新 `WorkbenchDomainState.profile`、`active.profileId` 和 `counts.profiles`；失败时显示 ShellError code/message/target，不直接 mutate graph/object/import state。
 30. Energy curve preview 跳过缺失 relative energy 的 point，missing point 在表格中显示 `missing_reason` 和 warning，不补 0。
 31. 右侧 inspector 新增 `ReportExportPanel`，基于当前 `WorkbenchDomainState.profile` 调用 fixture `export.profile`，提供 PNG/CDXML/XLSX format selection、include bytes、basename 和 title UI options。
@@ -103,6 +104,7 @@ web/
         ├── graphViewport.ts
         ├── graphObjectDragPayload.ts
         ├── graphPathOrderDraft.ts
+        ├── compositionDraftState.ts
         ├── EnergyProfilePanel.tsx
         ├── ReportExportPanel.tsx
         ├── ImportInbox.tsx
@@ -120,17 +122,18 @@ web/
 - `web/src/shell/ShellClient.ts`：负责 request id 填充、transport 调用和 response normalization。
 - `web/src/shell/httpTransport.ts`：实现 `http-api` ShellTransport，通过 `fetch` POST JSON-safe Shell payload 到 local bridge endpoint；fetch/network/invalid JSON/malformed response 失败时返回 `transport_unavailable` ShellResponse。
 - `web/src/shell/runtime.ts`：读取 Vite env 并创建 configured runtime；默认 `fixture`，`VITE_RXNFLOW_SHELL_TRANSPORT=local-http` 时使用 `createHttpShellTransport`，endpoint 默认 `http://127.0.0.1:8765/api/shell`。
-- `web/src/shell/fixtureTransport.ts`：默认 fixture runtime transport，支持 `fixture.run`、`workbench.snapshot`、fixture `import.preview`、fixture `import.register_all`、fixture `workspace.open/add_node/move_node/remove/select/set_viewport/connect/set_path` command projection、fixture `energy.compute`、fixture `export.profile` 和 unknown command 错误路径；fixture Project Content open/save 会序列化并恢复当前 `chemical-objects-v1`、`reaction-graphs-v1` 和 `workspaces-v1` 状态，workspace/energy/export command state 只服务 Web UI 编排测试。
+- `web/src/shell/fixtureTransport.ts`：默认 fixture runtime transport，支持 `fixture.run`、`workbench.snapshot`、fixture `import.preview`、fixture `import.register_all`、fixture `workspace.open/add_node/set_node_composition/move_node/remove/select/set_viewport/connect/set_path` command projection、fixture `energy.compute`、fixture `export.profile` 和 unknown command 错误路径；fixture Project Content open/save 会序列化并恢复当前 `chemical-objects-v1`、`reaction-graphs-v1` 和 `workspaces-v1` 状态，workspace/energy/export command state 只服务 Web UI 编排测试。
 - `web/src/app/workbenchState.ts`：定义 `WorkbenchDomainState`、`WorkbenchUiState` 和 `projectWorkbenchSnapshot`，把 `workbench.snapshot` 的 `ShellResponse` 投影为 UI 可读 domain state，保存 command status、session/project/active ids、objects/imports/workspace/profile/artifact summaries、counts、warnings 和 error。
 - `web/src/app/App.tsx`：装配 configured `ShellClient`、RuntimeInfo 和 `BrowserProjectRepository`，把它们传入 Workbench shell。
-- `web/src/app/WorkbenchShell.tsx`：渲染 Web app shell 第一屏，包括 local-only indicator、runtime indicator、command button、Project Sidebar、Import Inbox、Graph Canvas、Object Registry Panel、Energy Profile Panel、Report Export Panel、summary panels；同时维护 Project Sidebar state、Import Inbox state、active object UI state、Graph Editor Interaction State、Path Order Draft、energy panel options 和 report export options，并把 create/open/save/refresh 编排到 repository，把 bridge open/save、preview/register、workspace open/add/move/remove/select/set_viewport/connect/path commands、`energy.compute`、`export.profile` 和 browser-local artifact persistence 编排到 ShellClient / Browser Project Repository。Graph Editor Interaction State 的 selection 会跟随 `WorkspaceSummary.selection` 恢复，旧 workspace projection 缺失 selection 时只做本地 prune，不主动补选第一个 node。
-- `web/src/app/GraphCanvas.tsx`：图谱画布 MVP UI，展示 workspace graph nodes/edges/paths、active path、preview counts、disconnected diagnostics、click-driven graph commands、registered object drop target、已有 node pointer drag move producer、edge selection/delete、path order draft controls，以及 Pan/Zoom/Fit/Reset viewport toolbar 和 viewport-transformed content layer。
+- `web/src/app/WorkbenchShell.tsx`：渲染 Web app shell 第一屏，包括 local-only indicator、runtime indicator、command button、Project Sidebar、Import Inbox、Graph Canvas、Object Registry Panel、Energy Profile Panel、Report Export Panel、summary panels；同时维护 Project Sidebar state、Import Inbox state、active object UI state、Graph Editor Interaction State、Path Order Draft、Composition Draft、energy panel options 和 report export options，并把 create/open/save/refresh 编排到 repository，把 bridge open/save、preview/register、workspace open/add/set_node_composition/move/remove/select/set_viewport/connect/path commands、`energy.compute`、`export.profile` 和 browser-local artifact persistence 编排到 ShellClient / Browser Project Repository。Graph Editor Interaction State 的 selection 会跟随 `WorkspaceSummary.selection` 恢复，旧 workspace projection 缺失 selection 时只做本地 prune，不主动补选第一个 node。
+- `web/src/app/GraphCanvas.tsx`：图谱画布 MVP UI，展示 workspace graph nodes/edges/paths、active path、preview counts、disconnected diagnostics、click-driven graph commands、registered object drop target、Node Composition Editor、已有 node pointer drag move producer、edge selection/delete、path order draft controls，以及 Pan/Zoom/Fit/Reset viewport toolbar 和 viewport-transformed content layer。
 - `web/src/app/graphEditorInteractionState.ts`：定义 Web Graph Canvas 的交互状态，包含 mode、selection、hover、dragging 和 pending edge，并提供 node/edge/path select、node/canvas dragging、start/complete/clear/prune 纯函数；其中 selection 可由 `WorkspaceSummary.selection` 恢复，其余 hover、dragging、pending edge 和 toolbar/pan 中间态不进入 ShellResponse、Project Content、Browser Project Repository 或 core workspace。
 - `web/src/app/graphNodeLayout.ts`：定义 Graph Node Layout 固定虚拟坐标、fallback node position、CSS percent 映射、snap、clamp 和 pointer delta move helper；它只服务 Web canvas layout，不是 viewport/persistence schema。
 - `web/src/app/graphViewport.ts`：定义 Graph Canvas Viewport helper，提供 `CanvasViewportSummary` fallback、`0.35..2.5` zoom clamp、screen/graph 坐标换算、CSS transform、zoom、pan、fit 和 reset helper；它只生成 viewport intent，不保存 Project Content。
 - `web/src/app/graphObjectDragPayload.ts`：定义 Graph Object Drop 的 `application/x-rxnflow-graph-object` MIME type、`GraphObjectDragPayload`、serialize/parse helpers；payload 只承载 `kind`、`objectId`、`label`。
 - `web/src/app/graphPathOrderDraft.ts`：定义 Path Order Draft helper，用于从 existing path 初始化 ordered node ids、上移/下移节点和判断 draft 是否变化；draft 只服务 Web UI，不进入 Shell DTO 或 Project Content。
-- `web/src/app/EnergyProfilePanel.tsx`：能量面板 UI，展示 command options、profile summary、relative energy table、missing reason、warnings、Energy Expression Details 和基础 SVG curve；只消费 ShellResponse profile projection。
+- `web/src/app/compositionDraftState.ts`：定义 Composition Draft UI-only state helper，从 selected graph node 的 `composition` 或旧 `chemical_object_ids` 初始化 rows，提供 reconcile、row update/add/remove 和 dirty 判定；它不保存 Project Content，也不直接调用 Shell。
+- `web/src/app/EnergyProfilePanel.tsx`：能量面板 UI，展示 command options、Energy Channel Selector、Correction Policy Controls、profile summary、relative energy table、missing reason、warnings、Energy Expression Details 和基础 SVG curve；只消费 ShellResponse profile projection。
 - `web/src/app/ReportExportPanel.tsx`：报告导出面板 UI，展示 format selection、include bytes、basename/title、artifact list、metadata、warnings、inline download link、persisted state 和 checksum；只消费 ShellResponse artifact projection 与 Workbench persisted summary。
 - `web/src/app/exportArtifactPersistence.ts`：Web Export Artifact Persistence helper，负责把 `ShellArtifact.bytes_base64` 解码写入 Browser Project Repository `exports/...`，upsert `export-artifacts-v1` records，并更新 Project Content index 中 export artifact section checksum。
 - `web/src/app/ProjectSidebar.tsx`：左侧项目入口 UI，展示 browser-local project list、active browser project、local-only/backend badges、persistence/validation/bridge/checksum、repository error、Save Content、Open Bridge、Save Bridge 和 disabled Project Bundle actions。
@@ -168,6 +171,8 @@ web/
 - Graph Canvas graph 结构变化只来自 `ShellClient` response；`WorkbenchShell` 不直接 patch `workspace.graph.nodes` / `edges` / `paths`。
 - Graph Canvas 的 node/edge/path selection 通过 `workspace.select` 进入 core / fixture workspace state，并以 ShellResponse `WorkspaceSummary.selection` 为权威投影；workspace projection 更新后会清理失效的 node/edge/path 引用。
 - Graph Canvas 的 mode、hover、dragging、pending edge、Path Order Draft、viewport intent、transient pan drag 和 toolbar state 仍是 UI-only state，不写入 Project Content、Browser Project Repository、localStorage 或 ShellResponse。
+- Composition Draft 是 Web UI-only state：选中 node 后从 ShellResponse `GraphNodeSummary.composition` 初始化，编辑期间不修改 `WorkbenchDomainState.workspace.graph`，Apply 成功后才通过 `workspace.set_node_composition` 返回的 workspace projection 刷新 node composition 和兼容 `chemical_object_ids`。删除 selected node、切换 workspace 或 workspace projection 更新时会 prune/reconcile stale draft。
+- Node Composition Editor 只替换 selected graph node 的 composition rows；基础 coefficient guard 只阻止 0、NaN、Infinity 等明显非法输入，shell error 仍以 code/message/target 显示。Web 不从分子式配平、不做电荷/元素守恒校验，也不把 missing/invalid composition 自动修复成默认值。
 - Graph Canvas 删除 node/edge 只通过 `workspace.remove`；node 删除后的 edge/path cascade 必须来自 ShellResponse workspace projection，前端不自行推断。
 - Workspace selection restore/save 只通过 Project Sidebar 的显式 Open Bridge / Save Bridge Session 闭环发生；Web 不引入 browser-local graph layout schema，也不使用 localStorage 保存图谱布局或选择。
 - Path Order Draft 是 UI-only state；调整期间不修改 `WorkbenchDomainState.workspace.graph.paths`，只有 Apply 成功后的 ShellResponse 才更新 path order 和 active path projection。
@@ -179,7 +184,9 @@ web/
 - Graph Object Drop 只接受 Object Registry 已登记对象产生的 `registered-object` payload；malformed payload、wrong kind、unknown object id、Import Inbox pending/failed item、raw resource、parser preview item 和浏览器文件都不能直接创建 graph node。
 - Fixture `workspace.connect` 对同一 node pair 幂等；缺失 node 返回 `graph_invalid` / `target=node_id`。
 - Energy Profile Panel 只通过 `energy.compute` 获取 profile projection，不从 graph/object energy keys 在前端重算相对能量、校正项、expression 或单位换算。
-- Energy Panel options 是 UI-only state；`path_id` 默认跟随 `workspace.active_path_id`，`baseline_node_id` 只能来自当前 path node ids 或留空。
+- Energy Panel options 是 UI-only state；`path_id` 默认跟随 `workspace.active_path_id`，`baseline_node_id` 只能来自当前 path node ids 或留空，`energy_source` 支持 `auto` / `energies` / `thermochemistry`，correction policy 支持 `none` / `all` / `kinds` / `ids`。
+- Energy Channel Selector 候选来自当前 `WorkbenchDomainState.objects[].energy_channels` 的汇总 projection，显示 key/source/unit/object count；用户仍可输入自定义 energy key。候选缺失或 path-level partial/missing channel 不在前端修复，由 shell/core 返回 missing/invalid/ambiguous diagnostics。
+- Correction Policy Controls 直接映射 shell args：`none` 发送 `include_corrections=false` 与 `{mode:"none"}`；`all/kinds/ids` 发送 `include_corrections=true` 与对应 `correction_policy`。ids 输入第一版按逗号/空白切分，不检查每个 id 是否存在于 path node。
 - Energy compute 成功只替换 `WorkbenchDomainState.profile` 并更新 `active.profileId` / `counts.profiles`；不调用 `project.save_content`，不写 Browser Project Repository，不保存 Project Content。
 - Energy Expression Details 逐点展示 Shell DTO 中的 terms、corrections、total 和 missing diagnostics；旧 profile 没有 expression 时该区域自然为空，不从 graph/object state 推断。
 - Energy point 缺失时必须显示 `missing_reason` 和 warning；如 Shell DTO 带 missing expression details，则 details 区展示缺失 code/object/key/source/message；基础 SVG curve 只绘制有 relative energy 的点，不把 missing point 当作 0。
@@ -249,7 +256,10 @@ web/
 - WorkbenchShell component tests 覆盖 click node 仍选择且不发 move command、drag `node-b` 后发送 `workspace.move_node(node-b, [420, 220])` 并按 ShellResponse 新 position 更新样式。
 - WorkbenchShell component tests 覆盖 edge selection/delete 发送 `workspace.remove(edge_ids=[edge-a-b])`、node selection/delete 发送 `workspace.remove(node_ids=[node-a])` 并使用 ShellResponse cascade、Path Order Draft Apply 前不发 `workspace.set_path`、Apply 后发送 `workspace.set_path(path-a-b, [node-b, node-a])`。
 - WorkbenchShell component tests 覆盖 GraphCanvas Zoom In/Out、Fit、Reset 和 Pan mode empty-surface drag 发送 `workspace.set_viewport`；node drag 不触发 pan viewport command，zoom 后 object drop / node drag release 仍提交 graph coordinates。
-- WorkbenchShell component tests 覆盖 Energy Profile Panel 首屏空态、Compute disabled、Fixture profile table/curve、`kj_mol` compute、`corrections_empty` warning、中文静态文案，以及 imported object missing energy 不补 0。
+- Composition Draft helper tests 覆盖从 selected node composition 初始化、旧 `chemical_object_ids` fallback、workspace 切换/删除后 prune stale draft，以及 row update/add/remove dirty state。
+- WorkbenchShell component tests 覆盖 Node Composition Editor：选中 graph node 后从 ShellResponse composition 显示 rows，编辑 `object-a + 2*object-b` 后提交 `workspace.set_node_composition` payload，非法 coefficient 本地显示 `invalid_input` 且不发送 shell command。
+- WorkbenchShell component tests 覆盖 Energy Profile Panel 首屏空态、Compute disabled、Fixture profile table/curve、`kj_mol` compute、Energy Channel Selector 选择 `thermochemistry:gibbs` 后发送 `energy_source=thermochemistry`、Correction Policy Controls 的 none/all/kinds/ids 映射、`corrections_empty` warning、中文静态文案，以及 imported object missing energy 不补 0。
+- WorkbenchShell component tests 覆盖 composition edits 后 Energy Expression Details 显示 coefficient 和 energy source，并由 fixture expression projection 反映 selected node composition。
 - ShellClient tests 覆盖 fixture `export.profile` JSON-safe artifact projection、PNG/CDXML/XLSX 多格式、inline bytes、include bytes disabled 和 missing formats `invalid_input` error。
 - ShellClient tests 覆盖 `http-api` transport 的 endpoint missing、fetch failure、malformed response、HTTP non-ok shell error 穿透和 HTTP non-ok ok-response normalization。
 - WorkbenchShell component tests 覆盖 Report Export Panel 首屏空态、Export disabled、默认 PNG/CDXML/XLSX 与 include bytes、成功导出 3 个 artifacts、writer metadata、`energy-table-v1` schema metadata、CDXML/XLSX download MIME、artifact count、CDXML warning、active browser project 下写入 `exports/...` 与 `export-artifacts-v1`、repository 写失败 warning/runtime artifact 保留、include bytes disabled 无下载链接/不写 repository 和中文静态文案。用户操作指南见 `docs/user/report-export-artifacts.md`。
@@ -300,5 +310,7 @@ web/
 - Report Export Verification 验证 fixture/local-http 路径：PNG/CDXML/XLSX 三个 artifact、3 个 Download link、CDXML `chemical/x-cdxml` MIME、XLSX spreadsheet MIME、fixture/真实 writer ids、`energy-table-v1` schema metadata、`chemdraw_cdxml_only` warning、browser-local persisted checksum、unsupported `cdx` 不写 repository、include-bytes-off 和 persistence failure warning。
 - Browser 插件在 `http://127.0.0.1:5173/` 桌面中文界面验证 Report Export surface：artifact cards 为 3、download links 为 3、CDXML/XLSX data URL 前缀正确、`energy-table-v1` 和 `chemdraw_cdxml_only` 可见、Vite overlay 为 0、console clean、无水平溢出；窄屏交互因当前 in-app Browser 自动化不稳定，以 Playwright E2E `390x840` 为验收 fallback。
 - 浏览器窄屏 viewport `390x840` 验证 Project Sidebar 和 locale switcher
+- Browser 插件在 `http://127.0.0.1:5173/` 桌面 viewport `1280x900` 验证 Web Energy Semantics Controls：运行 Fixture、选择 `node-a`、通过 Node Composition Editor 增加 `object-b` coefficient 2、Apply 后 node card 显示 `object-a + 2*object-b`，选择 `thermochemistry:gibbs` 和 correction policy ids 后 Compute 显示 `profile-path-a-b-gibbs-thermochemistry-kcal_mol`，Energy Expression Details 显示 `系数 2` 与 `gibbs · thermochemistry`，页面无水平溢出且 console error 为 0。
+- Browser 插件在窄屏 viewport `390x900` 验证同一状态下 composition rows 宽度 314px、energy options 单列 `314px`、policy controls 和 expression details 可见，`documentElement.scrollWidth=390`，无整体水平溢出。
 
 桌面和窄屏验证均确认页面可用、无水平溢出；窄屏采用纵向堆叠布局。受当前 in-app Browser 自动化输入限制，浏览器内 create form 输入无法稳定自动填充；create flow 由 Testing Library component test 覆盖。

@@ -53,10 +53,10 @@ items:
   - slug: web-energy-semantics-controls
     description: 在 Web 中补节点组成编辑、energy channel selector、correction policy options 和 i18n 文案
     depends_on: [energy-channel-catalog, correction-command-and-ui, energy-profile-provenance-details]
-    status: in-progress
+    status: done
     feature: 2026-05-22-web-energy-semantics-controls
     minimal_loop: false
-    notes: 不在前端重算能量，只操作 Shell DTO
+    notes: 已落地 Node Composition Editor、Composition Draft、workspace.set_node_composition UI handler、Energy Channel Selector、energy_source args、Correction Policy Controls none/all/kinds/ids、fixture expression projection、双语文案、桌面/窄屏浏览器 QA；不在前端重算能量、不写 Project Content/localStorage、不新增 schema 或导出格式
 
   - slug: energy-curve-interaction-polish
     description: 强化能量曲线交互，显示 point tooltip、missing/correction 标记、选中节点联动和导出一致性检查
