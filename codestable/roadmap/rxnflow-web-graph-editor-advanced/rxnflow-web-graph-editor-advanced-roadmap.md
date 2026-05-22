@@ -280,8 +280,9 @@ type GraphEditorHistoryEntry = {
 2. **graph-editor-path-delete**：扩展 `workspace.remove` 支持 `path_ids`，让 selected path 可删除，并由 ShellResponse 修剪 active path 和 selection。
    - 所属模块：Path Lifecycle Adapter
    - 依赖：无
-   - 状态：planned
-   - 对应 feature：无
+   - 状态：done
+   - 对应 feature：`2026-05-22-graph-editor-path-delete`
+   - 备注：已落地 `GraphEditorWorkspaceService.remove_items(path_ids)`、Platform Shell / fixture `workspace.remove(path_ids)` 和 Graph Canvas Delete Selected selected path 删除；删除 path 不删除 node/edge，active path 和 selection 由 ShellResponse projection 修剪。
 3. **graph-editor-edge-label-edit**：新增 edge label draft 和 workspace edge update command，让 selected edge 可编辑 label。
    - 所属模块：Edge Detail Adapter
    - 依赖：无
@@ -317,13 +318,13 @@ type GraphEditorHistoryEntry = {
 
 先做 `graph-editor-auto-layout`，因为它不需要新 core command 或 schema，就能立刻改善画布可读性，也能为后续 minimap 和 history 提供可逆布局操作样本。
 
-随后可以并行推进 `graph-editor-path-delete` 和 `graph-editor-edge-label-edit`：二者都是小而明确的 shell contract 扩展，分别补齐 path 生命周期和 edge 详情。`graph-editor-free-edge-drawing` 依赖 edge label 的命令语义稳定后再做，这样拖线创建边时可选择是否带 label。`graph-editor-multiselect-keyboard` 依赖 path delete，确保 Delete selection 一开始就能统一处理 node/edge/path。`graph-editor-wheel-minimap` 可在 auto layout 后推进。最后用 `graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
+`graph-editor-path-delete` 已完成，下一步可推进 `graph-editor-edge-label-edit`，补齐 edge detail 的编辑入口和 shell contract。`graph-editor-free-edge-drawing` 依赖 edge label 的命令语义稳定后再做，这样拖线创建边时可选择是否带 label。`graph-editor-multiselect-keyboard` 现在可复用已落地的 node/edge/path remove contract。`graph-editor-wheel-minimap` 可在 auto layout 后推进。最后用 `graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
 
-技术依赖之外的产品优先级不由本 roadmap 替用户决定；如果用户更想先补 path delete 或 edge label，可以在不违反依赖的前提下调整启动顺序。
+技术依赖之外的产品优先级不由本 roadmap 替用户决定；如果用户更想先补 edge label 或 wheel/minimap，可以在不违反依赖的前提下调整启动顺序。
 
 ## 7. 观察项
 
-- Core `ReactionGraphService` 当前已经支持 `GraphPatch("remove", id=path_id)` 删除 path，但 `GraphEditorWorkspaceService.remove_items`、Platform Shell 和 Web `workspace.remove` 还没有暴露 `path_ids`。
+- Core `ReactionGraphService`、`GraphEditorWorkspaceService.remove_items`、Platform Shell、fixture transport 和 Web `workspace.remove` 当前已经暴露 `path_ids` path 删除协议；后续多选/键盘删除可复用同一 node/edge/path selection contract。
 - Core `ReactionGraphService` 当前已经支持 `update_edge` patch，但 Web/Shell 还没有专门的 `workspace.update_edge` command。
 - 当前 GraphCanvas 的 edge hit target 是 HTML button，适合继续承载 edge selection 和 label edit；自由拖线仍需要补 pointer draft 和可访问 fallback。
 - Auto layout 若未来要服务 CLI/agent，可把纯计算 helper 移到共享 TypeScript-independent 或 Python core；本 roadmap 首轮只承诺 Web helper，避免让 core domain 依赖 UI layout 假设。

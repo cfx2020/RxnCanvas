@@ -13,10 +13,10 @@ items:
   - slug: graph-editor-path-delete
     description: 扩展 workspace.remove 支持 path_ids，让 selected path 可删除，并由 ShellResponse 修剪 active path 和 selection
     depends_on: []
-    status: in-progress
+    status: done
     feature: 2026-05-22-graph-editor-path-delete
     minimal_loop: false
-    notes: 删除 path 不删除 node 或 edge；删除 node 时仍由 core cascade 移除包含该 node 的 path
+    notes: 已落地 workspace.remove(path_ids) core/shell/fixture/Web 链路；删除 path 不删除 node 或 edge；删除 node 时仍由 core cascade 移除包含该 node 的 path
 
   - slug: graph-editor-edge-label-edit
     description: 新增 edge label draft 和 workspace edge update command，让 selected edge 可编辑 label

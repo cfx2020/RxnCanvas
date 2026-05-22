@@ -21,80 +21,80 @@ steps:
 checks:
   - item: "GraphEditorWorkspaceService.remove_items(path_ids=(path_id,)) 删除 path 后，graph nodes 和 edges 保留"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "删除 active path 后，WorkspaceSnapshot.active_path_id 为 None，selection.path_ids 被修剪为空"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "删除非 active path 不改变仍存在的 active path"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "同时传入 node/edge/path ids 时，node 删除 cascade 与显式 path delete 不产生重复 missing error"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "空 remove args 返回 invalid_input target=selection"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "unknown path id 返回 graph_invalid target=path_id，且 state 不变化"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Platform Shell workspace.remove 接受 path_ids 并返回 command=workspace.remove 的 workspace projection"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "fixture transport workspace.remove 接受 path_ids，删除 path 后 path list / active path / selection projection 更新"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Web GraphCanvas 选中 path 后 Delete Selected 启用并发送 workspace.remove(path_ids=[selected])"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Web 删除 selected path 后 PathList 不再显示该 path，Network Preview path count 更新，node/edge 仍显示"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Energy panel 不直接处理删除动作；active path 消失后的显示只来自 workspace projection"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不新增 workspace.delete_path、GraphPatch op、Project Content schema、Browser Project Repository write、localStorage persistence、autosave 或第三方库"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不删除 path 上的 nodes / edges，不改变 node/edge delete 现有行为"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "python3 -m unittest discover 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "cd web && npm run test -- --run 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "cd web && npm run build 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "浏览器验证页面非空白、无 framework overlay、console clean；选中 path 删除后桌面/窄屏无明显重叠或水平溢出"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "不把 path delete 做成前端本地过滤 workspace.graph.paths"
     source: 跨层纪律
-    status: pending
+    status: passed
 
   - item: "不把 path delete 描述为反应路径搜索、能量 profile 删除或自动机理推断"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不把 path delete 状态写入 localStorage、Browser Project Repository 或 Project Content，除非用户显式 Save Bridge Session"
     source: 范围守护
-    status: pending
+    status: passed
