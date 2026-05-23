@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react"
-import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, XCircle, ZoomIn, ZoomOut } from "lucide-react"
+import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, Redo2, RotateCcw, Route, Trash2, Undo2, XCircle, ZoomIn, ZoomOut } from "lucide-react"
 import type { ShellError } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
 import type { CanvasPoint, GraphEditorInteractionState, GraphEditorSelectionMode, PendingEdgeDraft } from "./graphEditorInteractionState"
@@ -70,11 +70,21 @@ export type GraphAutoLayoutStatus = {
   warnings?: GraphLayoutWarning[]
 }
 
+export type GraphHistoryControls = {
+  canUndo: boolean
+  canRedo: boolean
+  undoLabel?: string | null
+  redoLabel?: string | null
+  running?: "undo" | "redo" | null
+  error?: ShellError | null
+}
+
 type GraphCanvasProps = {
   state: WorkbenchDomainState
   activeObjectId?: string
   interactionState: GraphEditorInteractionState
   autoLayoutStatus?: GraphAutoLayoutStatus
+  historyControls: GraphHistoryControls
   pathOrderDraft: GraphPathOrderDraft | null
   edgeLabelDraft: EdgeLabelDraftState
   edgeLabelPending: boolean
@@ -109,6 +119,8 @@ type GraphCanvasProps = {
   onAddObjectNode: (request?: AddObjectNodeRequest) => void
   onMoveNode: (request: MoveGraphNodeRequest) => void
   onNudgeNodes: (request: NudgeGraphNodesRequest) => void
+  onUndoHistory: () => void
+  onRedoHistory: () => void
   onApplyAutoLayout: (plan: GraphLayoutPlan) => void
   onRemoveGraphItems: (request: RemoveGraphItemsRequest) => void
   onClearSelection: () => void
@@ -128,6 +140,7 @@ export function GraphCanvas({
   activeObjectId,
   interactionState,
   autoLayoutStatus,
+  historyControls,
   pathOrderDraft,
   edgeLabelDraft,
   edgeLabelPending,
@@ -162,6 +175,8 @@ export function GraphCanvas({
   onAddObjectNode,
   onMoveNode,
   onNudgeNodes,
+  onUndoHistory,
+  onRedoHistory,
   onApplyAutoLayout,
   onRemoveGraphItems,
   onClearSelection,
@@ -243,6 +258,14 @@ export function GraphCanvas({
     const intent = resolveGraphEditorKeyboardIntent(event)
     if (!intent) return
     event.preventDefault()
+    if (intent.kind === "undo-history") {
+      onUndoHistory()
+      return
+    }
+    if (intent.kind === "redo-history") {
+      onRedoHistory()
+      return
+    }
     if (intent.kind === "delete-selection") {
       if (!canRemoveSelection) return
       onRemoveGraphItems({
@@ -587,8 +610,27 @@ export function GraphCanvas({
       {autoLayoutStatus && autoLayoutStatus.state !== "idle" ? (
         <LayoutStatus status={autoLayoutStatus} />
       ) : null}
+      <HistoryStatus controls={historyControls} />
 
       <div className="graph-viewport-bar" aria-label={t("graphCanvas.viewportControls")}>
+        <button
+          type="button"
+          onClick={onUndoHistory}
+          disabled={!canUseWorkspace || !historyControls.canUndo || Boolean(historyControls.running)}
+          title={historyControls.undoLabel ? t("graphCanvas.undoWithLabel", { label: historyControls.undoLabel }) : t("graphCanvas.undo")}
+        >
+          <Undo2 size={16} />
+          <span>{t("graphCanvas.undo")}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onRedoHistory}
+          disabled={!canUseWorkspace || !historyControls.canRedo || Boolean(historyControls.running)}
+          title={historyControls.redoLabel ? t("graphCanvas.redoWithLabel", { label: historyControls.redoLabel }) : t("graphCanvas.redo")}
+        >
+          <Redo2 size={16} />
+          <span>{t("graphCanvas.redo")}</span>
+        </button>
         <button
           type="button"
           onClick={onTogglePanMode}
@@ -757,6 +799,26 @@ export function GraphCanvas({
         </aside>
       </div>
     </section>
+  )
+}
+
+function HistoryStatus({ controls }: { controls: GraphHistoryControls }) {
+  const { t } = useI18n()
+  if (controls.error) {
+    return (
+      <div className="graph-history-status graph-history-status--error" role="alert">
+        <strong>{t("graphCanvas.historyError")}</strong>
+        <span>{controls.error.message}</span>
+        {controls.error.target ? <small>{controls.error.target}</small> : null}
+      </div>
+    )
+  }
+  if (!controls.running) return null
+  return (
+    <div className="graph-history-status">
+      <strong>{controls.running === "undo" ? t("graphCanvas.undoing") : t("graphCanvas.redoing")}</strong>
+      <span>{controls.running === "undo" ? controls.undoLabel : controls.redoLabel}</span>
+    </div>
   )
 }
 

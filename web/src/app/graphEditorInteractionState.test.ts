@@ -306,6 +306,9 @@ describe("graphEditorInteractionState", () => {
       delta: { x: 0, y: -20 },
     })
     expect(resolveGraphEditorKeyboardIntent({ key: "ArrowRight", metaKey: true })).toBeNull()
+    expect(resolveGraphEditorKeyboardIntent({ key: "z", metaKey: true })).toEqual({ kind: "undo-history" })
+    expect(resolveGraphEditorKeyboardIntent({ key: "Z", metaKey: true, shiftKey: true })).toEqual({ kind: "redo-history" })
+    expect(resolveGraphEditorKeyboardIntent({ key: "y", ctrlKey: true })).toEqual({ kind: "redo-history" })
     expect(resolveGraphEditorKeyboardIntent({ key: "Enter" })).toBeNull()
   })
 
@@ -318,6 +321,7 @@ describe("graphEditorInteractionState", () => {
     expect(resolveGraphEditorKeyboardIntent({ key: "Delete", target: input })).toBeNull()
     expect(resolveGraphEditorKeyboardIntent({ key: "Escape", target: textarea })).toBeNull()
     expect(resolveGraphEditorKeyboardIntent({ key: "ArrowDown", target: editor })).toBeNull()
+    expect(resolveGraphEditorKeyboardIntent({ key: "z", metaKey: true, target: input })).toBeNull()
   })
 
   it("prunes stale selection, hover, pending edge, and dragging node references", () => {

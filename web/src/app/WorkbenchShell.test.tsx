@@ -389,6 +389,175 @@ describe("WorkbenchShell", () => {
     expect(minimap.querySelector(".graph-minimap-window--draft")).not.toBeInTheDocument()
   })
 
+  it("undoes and redoes graph viewport edits through history controls", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
+
+    expect(within(graphCanvas).getByRole("button", { name: "Undo" })).toBeDisabled()
+    expect(within(graphCanvas).getByRole("button", { name: "Redo" })).toBeDisabled()
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Zoom In" }))
+    await within(graphCanvas).findByLabelText("120%")
+    expect(within(graphCanvas).getByRole("button", { name: "Undo" })).toBeEnabled()
+    expect(within(graphCanvas).getByRole("button", { name: "Undo" })).toHaveAttribute("title", "Undo Viewport")
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Undo" }))
+
+    await within(graphCanvas).findByLabelText("100%")
+    expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
+      viewport: { x: 0, y: 0, zoom: 1 },
+    })
+    expect(within(graphCanvas).getByRole("button", { name: "Redo" })).toBeEnabled()
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Redo" }))
+
+    await within(graphCanvas).findByLabelText("120%")
+    expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
+      viewport: { x: 50, y: 30, zoom: 1.2 },
+    })
+  })
+
+  it("undoes and redoes graph selection without recording energy panel point selection", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
+    }))
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Undo" }))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: [], edge_ids: [], path_ids: [] },
+    }))
+    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).not.toHaveAttribute("aria-current", "true"))
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Redo" }))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
+    }))
+    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true"))
+
+    const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
+    fireEvent.click(within(energyPanel).getByLabelText(/Object B node-b/))
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-b"], edge_ids: [], path_ids: [] },
+    }))
+    expect(within(graphCanvas).getByRole("button", { name: "Undo" })).toBeDisabled()
+  })
+
+  it("undoes and redoes selected node nudges through move_node replay", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
+    }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }), { shiftKey: true })
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a", "node-b"], edge_ids: [], path_ids: [] },
+    }))
+    await waitFor(() => {
+      expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true")
+      expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true")
+    })
+
+    fireEvent.keyDown(surface, { key: "ArrowRight" })
+
+    await waitFor(() => expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(2))
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node").map((payload) => payload.args.position)).toEqual([
+      [140, 160],
+      [380, 160],
+    ])
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Undo" }))
+
+    await waitFor(() => expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(4))
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node").slice(-2).map((payload) => payload.args.position)).toEqual([
+      [120, 160],
+      [360, 160],
+    ])
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Redo" }))
+
+    await waitFor(() => expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(6))
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node").slice(-2).map((payload) => payload.args.position)).toEqual([
+      [140, 160],
+      [380, 160],
+    ])
+  })
+
+  it("undoes graph auto layout positions and viewport fit", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Apply Layout" }))
+    await within(graphCanvas).findByText("Layout applied")
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(2)
+    expect(lastPayload(transport, "workspace.set_viewport")?.args.viewport).toMatchObject({
+      zoom: expect.any(Number),
+    })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Undo" }))
+
+    await waitFor(() => expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(4))
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node").slice(-2).map((payload) => payload.args)).toMatchObject([
+      { node_id: "node-a", position: [120, 160] },
+      { node_id: "node-b", position: [360, 160] },
+    ])
+    expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
+      viewport: { x: 0, y: 0, zoom: 1 },
+    })
+    expect(await within(graphCanvas).findByLabelText("100%")).toBeInTheDocument()
+  })
+
+  it("clears graph history after destructive graph edits", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Zoom In" }))
+    await within(graphCanvas).findByLabelText("120%")
+    expect(within(graphCanvas).getByRole("button", { name: "Undo" })).toBeEnabled()
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" }))
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: [], edge_ids: ["edge-a-b"], path_ids: [] },
+    }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Delete Selected" }))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.remove")?.args).toMatchObject({
+      edge_ids: ["edge-a-b"],
+    }))
+    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: "Undo" })).toBeDisabled())
+    expect(within(graphCanvas).getByRole("button", { name: "Redo" })).toBeDisabled()
+  })
+
   it("moves graph nodes through workspace.move_node while keeping click selection", async () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))

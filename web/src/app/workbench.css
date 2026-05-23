@@ -482,6 +482,7 @@ button {
 }
 
 .workspace-column {
+  align-self: start;
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(360px, 1fr);
@@ -1088,7 +1089,8 @@ button {
 
 .graph-workspace {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: start;
+  grid-auto-rows: auto;
   min-height: 520px;
 }
 
@@ -1178,9 +1180,39 @@ button {
   background: rgba(82, 123, 75, 0.1);
 }
 
+.graph-history-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 10px;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(39, 89, 106, 0.08);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.graph-history-status strong {
+  color: var(--blueprint);
+}
+
+.graph-history-status span,
+.graph-history-status small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.graph-history-status--error {
+  background: rgba(166, 61, 42, 0.1);
+}
+
+.graph-history-status--error strong {
+  color: var(--oxide);
+}
+
 .graph-viewport-bar {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(62px, 0.65fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(62px, 0.65fr) repeat(3, minmax(0, 1fr));
   gap: 8px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--line);

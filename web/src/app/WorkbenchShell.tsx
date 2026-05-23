@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AlertTriangle, Play } from "lucide-react"
 import { BrowserProjectRepositoryError, type BrowserProjectRepository } from "../repository"
-import type { EnergyComputeData, ExportProfileData, FixtureRunData, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, JsonObject, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary } from "../shell"
+import type { EnergyComputeData, ExportProfileData, FixtureRunData, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, JsonObject, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary, WorkspaceSummary } from "../shell"
 import {
   addCompositionDraftRow,
   compositionDraftFromSelectedNode,
@@ -51,9 +51,26 @@ import {
   type GraphEditorSelection,
   type GraphEditorSelectionMode,
 } from "./graphEditorInteractionState"
+import {
+  clearGraphEditorHistory,
+  completeGraphEditorHistoryReplay,
+  failGraphEditorHistoryReplay,
+  graphEditorHistoryReplayLabel,
+  graphEditorHistoryViewportTargetForReplay,
+  initialGraphEditorHistoryState,
+  peekGraphEditorHistoryEntry,
+  pushGraphEditorHistoryEntry,
+  snapshotGraphEditorNodePositions,
+  snapshotGraphEditorSelection,
+  staleGraphEditorHistoryReference,
+  startGraphEditorHistoryReplay,
+  type GraphEditorHistoryEntry,
+  type GraphEditorHistoryNodeEntry,
+  type GraphEditorHistoryState,
+} from "./graphEditorHistory"
 import type { GraphLayoutPlan } from "./graphAutoLayout"
 import { graphNodePosition, moveGraphNodePosition } from "./graphNodeLayout"
-import type { GraphViewport } from "./graphViewport"
+import { normalizeGraphViewport, type GraphViewport } from "./graphViewport"
 import {
   createGraphPathOrderDraft,
   moveGraphPathDraftNode,
@@ -131,6 +148,9 @@ export function WorkbenchShell({
   const [graphEditorInteraction, setGraphEditorInteraction] = useState(
     initialGraphEditorInteractionState,
   )
+  const [graphEditorHistory, setGraphEditorHistory] = useState<GraphEditorHistoryState>(
+    initialGraphEditorHistoryState,
+  )
   const [autoLayoutStatus, setAutoLayoutStatus] = useState<GraphAutoLayoutStatus>({ state: "idle" })
   const [pathOrderDraft, setPathOrderDraft] = useState<GraphPathOrderDraft | null>(null)
   const [edgeLabelDraft, setEdgeLabelDraft] = useState<EdgeLabelDraftState>(
@@ -160,6 +180,59 @@ export function WorkbenchShell({
     title: "Relative energy profile",
   })
   const projectSidebarStateRef = useRef<ProjectSidebarState>(initialProjectSidebarState)
+  const workbenchStateRef = useRef<WorkbenchDomainState>(initialWorkbenchDomainState)
+  const graphEditorHistoryRef = useRef<GraphEditorHistoryState>(initialGraphEditorHistoryState)
+  const graphEditorHistoryCounterRef = useRef(0)
+  const graphEditorHistoryScopeRef = useRef("")
+
+  useEffect(() => {
+    workbenchStateRef.current = workbenchState
+  }, [workbenchState])
+
+  const replaceGraphEditorHistory = useCallback((nextState: GraphEditorHistoryState) => {
+    graphEditorHistoryRef.current = nextState
+    setGraphEditorHistory(nextState)
+  }, [])
+
+  const updateGraphEditorHistory = useCallback((updater: (state: GraphEditorHistoryState) => GraphEditorHistoryState) => {
+    replaceGraphEditorHistory(updater(graphEditorHistoryRef.current))
+  }, [replaceGraphEditorHistory])
+
+  const resetGraphEditorHistory = useCallback(() => {
+    updateGraphEditorHistory(clearGraphEditorHistory)
+  }, [updateGraphEditorHistory])
+
+  const nextGraphEditorHistoryEntryId = useCallback((kind: string) => {
+    graphEditorHistoryCounterRef.current += 1
+    return `graph-history-${kind}-${graphEditorHistoryCounterRef.current}`
+  }, [])
+
+  const pushGraphEditorHistory = useCallback((entry: GraphEditorHistoryEntry) => {
+    updateGraphEditorHistory((current) => pushGraphEditorHistoryEntry(current, entry))
+  }, [updateGraphEditorHistory])
+
+  useEffect(() => {
+    graphEditorHistoryRef.current = graphEditorHistory
+  }, [graphEditorHistory])
+
+  useEffect(() => {
+    const workspace = workbenchState.workspace
+    const scope = [
+      workbenchState.sessionId ?? "",
+      workspace?.workspace_id ?? workbenchState.active.workspaceId ?? "",
+      workspace?.graph.id ?? workbenchState.active.graphId ?? "",
+    ].join(":")
+    if (graphEditorHistoryScopeRef.current && graphEditorHistoryScopeRef.current !== scope) {
+      resetGraphEditorHistory()
+    }
+    graphEditorHistoryScopeRef.current = scope
+  }, [
+    resetGraphEditorHistory,
+    workbenchState.active.graphId,
+    workbenchState.active.workspaceId,
+    workbenchState.sessionId,
+    workbenchState.workspace,
+  ])
 
   const replaceProjectSidebarState = useCallback((nextState: ProjectSidebarState) => {
     projectSidebarStateRef.current = nextState
@@ -378,6 +451,7 @@ export function WorkbenchShell({
       command: "workbench.snapshot",
       args: { session_id: response.data.session_id },
     })
+    resetGraphEditorHistory()
     setWorkbenchState(projectWorkbenchSnapshot(snapshot))
     const sessionId = String(response.data.session_id)
     const nextState: ProjectSidebarState = {
@@ -391,7 +465,7 @@ export function WorkbenchShell({
       error: undefined,
     }
     replaceProjectSidebarState(nextState)
-  }, [projectRepository, replaceProjectSidebarState, shellClient])
+  }, [projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient])
 
   const saveSidebarBridgeSession = useCallback(async () => {
     const activeProject = projectSidebarStateRef.current.activeProject
@@ -512,8 +586,9 @@ export function WorkbenchShell({
         session_id: fixtureResponse.data.session_id,
       },
     })
+    resetGraphEditorHistory()
     setWorkbenchState(projectWorkbenchSnapshot(snapshotResponse))
-  }, [shellClient])
+  }, [resetGraphEditorHistory, shellClient])
 
   const runInvalidCommand = useCallback(async () => {
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
@@ -614,7 +689,10 @@ export function WorkbenchShell({
       },
     })
     applyWorkspaceResponse(response)
-  }, [activeObjectId, applyWorkspaceResponse, shellClient, workbenchState.objects, workbenchState.sessionId, workbenchState.workspace])
+    if (response.ok && response.data) {
+      resetGraphEditorHistory()
+    }
+  }, [activeObjectId, applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.objects, workbenchState.sessionId, workbenchState.workspace])
 
   const applyCorrection = useCallback(async (request: ApplyCorrectionRequest) => {
     const sessionId = workbenchState.sessionId
@@ -714,12 +792,17 @@ export function WorkbenchShell({
       },
     })
     applyWorkspaceResponse(response)
-  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+    if (response.ok && response.data) {
+      resetGraphEditorHistory()
+    }
+  }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
 
   const nudgeGraphNodes = useCallback(async (request: NudgeGraphNodesRequest) => {
     const sessionId = workbenchState.sessionId
-    const nodes = workbenchState.workspace?.graph.nodes ?? []
+    const workspace = workbenchState.workspace
+    const nodes = workspace?.graph.nodes ?? []
     if (!sessionId || request.nodeIds.length === 0) return
+    const before = snapshotGraphEditorNodePositions(nodes, request.nodeIds)
     const byId = new Map(nodes.map((node) => [node.id, node]))
     const moves = request.nodeIds
       .map((nodeId) => {
@@ -733,6 +816,7 @@ export function WorkbenchShell({
       .filter((move): move is MoveGraphNodeRequest => Boolean(move))
     if (moves.length === 0) return
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    let latestWorkspace: WorkspaceSummary | null = null
     for (const move of moves) {
       const response = await shellClient.run<WorkspaceCommandData>({
         command: "workspace.move_node",
@@ -744,11 +828,22 @@ export function WorkbenchShell({
       })
       applyWorkspaceResponse(response)
       if (!response.ok || !response.data) return
+      latestWorkspace = response.data.workspace
     }
-  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId, workbenchState.workspace?.graph.nodes])
+    const after = snapshotGraphEditorNodePositions(latestWorkspace?.graph.nodes ?? [], before.map((item) => item.nodeId))
+    pushGraphEditorHistory({
+      id: nextGraphEditorHistoryEntryId("nudge"),
+      kind: "nudge",
+      label: t("graphCanvas.history.nudge"),
+      before,
+      after,
+      createdAt: new Date().toISOString(),
+    })
+  }, [applyWorkspaceResponse, nextGraphEditorHistoryEntryId, pushGraphEditorHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const applyGraphAutoLayout = useCallback(async (plan: GraphLayoutPlan) => {
     const sessionId = workbenchState.sessionId
+    const workspace = workbenchState.workspace
     if (!sessionId) return
     if (plan.changedNodeIds.length === 0) {
       setAutoLayoutStatus({
@@ -758,6 +853,8 @@ export function WorkbenchShell({
       })
       return
     }
+    const before = snapshotGraphEditorNodePositions(workspace?.graph.nodes ?? [], plan.changedNodeIds)
+    const beforeViewport = normalizeGraphViewport(workspace?.viewport)
 
     setAutoLayoutStatus({
       state: "applying",
@@ -765,6 +862,7 @@ export function WorkbenchShell({
       warnings: plan.warnings,
     })
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    let latestWorkspace: WorkspaceSummary | null = null
 
     for (const nodeId of plan.changedNodeIds) {
       const position = plan.nodePositions[nodeId]
@@ -786,6 +884,7 @@ export function WorkbenchShell({
         })
         return
       }
+      latestWorkspace = response.data.workspace
     }
 
     if (plan.viewportIntent) {
@@ -805,14 +904,26 @@ export function WorkbenchShell({
         })
         return
       }
+      latestWorkspace = response.data.workspace
     }
 
+    const after = snapshotGraphEditorNodePositions(latestWorkspace?.graph.nodes ?? [], before.map((item) => item.nodeId))
+    pushGraphEditorHistory({
+      id: nextGraphEditorHistoryEntryId("layout"),
+      kind: "layout",
+      label: t("graphCanvas.history.layout"),
+      before,
+      after,
+      beforeViewport,
+      afterViewport: plan.viewportIntent ? normalizeGraphViewport(latestWorkspace?.viewport) : null,
+      createdAt: new Date().toISOString(),
+    })
     setAutoLayoutStatus({
       state: "success",
       message: `${plan.changedNodeIds.length} nodes moved with ${plan.strategy}.`,
       warnings: plan.warnings,
     })
-  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+  }, [applyWorkspaceResponse, nextGraphEditorHistoryEntryId, pushGraphEditorHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const updateNodeCompositionDraft = useCallback((
     index: number,
@@ -900,7 +1011,8 @@ export function WorkbenchShell({
     }
     setCompositionDraft(compositionDraftFromSelectedNode(response.data.workspace))
     applyWorkspaceResponse(response)
-  }, [applyWorkspaceResponse, compositionDraft, shellClient, workbenchState.sessionId])
+    resetGraphEditorHistory()
+  }, [applyWorkspaceResponse, compositionDraft, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
 
   const updateGraphEdgeLabelDraft = useCallback((label: string) => {
     setEdgeLabelError(null)
@@ -947,7 +1059,8 @@ export function WorkbenchShell({
     }
     setEdgeLabelDraft(edgeLabelDraftFromSelectedEdge(response.data.workspace))
     applyWorkspaceResponse(response)
-  }, [applyWorkspaceResponse, edgeLabelDraft, shellClient, workbenchState.sessionId])
+    resetGraphEditorHistory()
+  }, [applyWorkspaceResponse, edgeLabelDraft, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
 
   const removeGraphItems = useCallback(async (request: RemoveGraphItemsRequest) => {
     const sessionId = workbenchState.sessionId
@@ -963,11 +1076,15 @@ export function WorkbenchShell({
       },
     })
     applyWorkspaceResponse(response)
-  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+    if (response.ok && response.data) {
+      resetGraphEditorHistory()
+    }
+  }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
 
   const setGraphViewport = useCallback(async (viewport: GraphViewport) => {
     const sessionId = workbenchState.sessionId
     if (!sessionId) return
+    const before = normalizeGraphViewport(workbenchState.workspace?.viewport)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.set_viewport",
@@ -977,11 +1094,25 @@ export function WorkbenchShell({
       },
     })
     applyWorkspaceResponse(response)
-  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+    if (response.ok && response.data) {
+      pushGraphEditorHistory({
+        id: nextGraphEditorHistoryEntryId("viewport"),
+        kind: "viewport",
+        label: t("graphCanvas.history.viewport"),
+        before,
+        after: normalizeGraphViewport(response.data.workspace.viewport),
+        createdAt: new Date().toISOString(),
+      })
+    }
+  }, [applyWorkspaceResponse, nextGraphEditorHistoryEntryId, pushGraphEditorHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace?.viewport])
 
-  const selectGraphItems = useCallback(async (selection: WorkspaceSelectionSummary) => {
+  const selectGraphItems = useCallback(async (
+    selection: WorkspaceSelectionSummary,
+    options: { recordHistory?: boolean } = {},
+  ) => {
     const sessionId = workbenchState.sessionId
     if (!sessionId) return
+    const before = snapshotGraphEditorSelection(workbenchState.workspace?.selection)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.select",
@@ -991,7 +1122,59 @@ export function WorkbenchShell({
       },
     })
     applyWorkspaceResponse(response)
-  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+    if (options.recordHistory && response.ok && response.data) {
+      pushGraphEditorHistory({
+        id: nextGraphEditorHistoryEntryId("selection"),
+        kind: "selection",
+        label: t("graphCanvas.history.selection"),
+        before,
+        after: snapshotGraphEditorSelection(response.data.workspace.selection),
+        createdAt: new Date().toISOString(),
+      })
+    }
+  }, [applyWorkspaceResponse, nextGraphEditorHistoryEntryId, pushGraphEditorHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace?.selection])
+
+  const replayGraphEditorHistory = useCallback(async (direction: "undo" | "redo") => {
+    const sessionId = workbenchStateRef.current.sessionId
+    const workspace = workbenchStateRef.current.workspace
+    const entry = peekGraphEditorHistoryEntry(graphEditorHistoryRef.current, direction)
+    if (!sessionId || !workspace || !entry || graphEditorHistoryRef.current.running) return
+    const staleTarget = staleGraphEditorHistoryReference(entry, {
+      nodeIds: workspace.graph.nodes.map((node) => node.id),
+      edgeIds: workspace.graph.edges.map((edge) => edge.id),
+      pathIds: workspace.graph.paths.map((path) => path.id),
+    })
+    if (staleTarget) {
+      updateGraphEditorHistory((current) => failGraphEditorHistoryReplay(current, shellError(
+        "graph_history_stale",
+        "History entry references graph items that no longer exist.",
+        staleTarget,
+      )))
+      return
+    }
+
+    updateGraphEditorHistory((current) => startGraphEditorHistoryReplay(current, direction))
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const replayResult = await replayGraphEditorHistoryEntry({
+      entry,
+      direction,
+      sessionId,
+      shellClient,
+      applyWorkspaceResponse,
+    })
+    if (!replayResult.ok) {
+      const error = replayResult.error ?? shellError("invalid_input", "Graph history replay failed.", "graph.history")
+      updateGraphEditorHistory((current) => failGraphEditorHistoryReplay(current, error))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        error,
+      }))
+      return
+    }
+
+    updateGraphEditorHistory((current) => completeGraphEditorHistoryReplay(current, direction))
+  }, [applyWorkspaceResponse, shellClient, updateGraphEditorHistory])
 
   const clearGraphSelection = useCallback(() => {
     setGraphEditorInteraction(clearGraphEditorSelection)
@@ -1000,7 +1183,7 @@ export function WorkbenchShell({
     setCompositionError(null)
     setCompositionDraft(initialCompositionDraftState)
     setPathOrderDraft(null)
-    void selectGraphItems({ node_ids: [], edge_ids: [], path_ids: [] })
+    void selectGraphItems({ node_ids: [], edge_ids: [], path_ids: [] }, { recordHistory: true })
   }, [selectGraphItems])
 
   const syncDraftsForGraphSelection = useCallback((selection: GraphEditorSelection) => {
@@ -1024,8 +1207,9 @@ export function WorkbenchShell({
   }, [workbenchState.workspace])
 
   const selectEnergyProfilePoint = useCallback((nodeId: string) => {
+    resetGraphEditorHistory()
     void selectGraphItems({ node_ids: [nodeId], edge_ids: [], path_ids: [] })
-  }, [selectGraphItems])
+  }, [resetGraphEditorHistory, selectGraphItems])
 
   const togglePanMode = useCallback(() => {
     setGraphEditorInteraction((current) => setGraphEditorMode(
@@ -1054,7 +1238,7 @@ export function WorkbenchShell({
     const nextInteraction = endGraphEditorRubberBand(selectGraphEditorNodes(base, nodeIds, mode))
     setGraphEditorInteraction(nextInteraction)
     syncDraftsForGraphSelection(nextInteraction.selection)
-    void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection))
+    void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection), { recordHistory: true })
   }, [graphEditorInteraction, selectGraphItems, syncDraftsForGraphSelection, workbenchState.workspace?.selection])
 
   const cancelRubberBand = useCallback(() => {
@@ -1069,7 +1253,7 @@ export function WorkbenchShell({
     const nextInteraction = selectGraphEditorEdge(base, edgeId, mode)
     setGraphEditorInteraction(nextInteraction)
     syncDraftsForGraphSelection(nextInteraction.selection)
-    void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection))
+    void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection), { recordHistory: true })
   }, [graphEditorInteraction, selectGraphItems, syncDraftsForGraphSelection, workbenchState.workspace?.selection])
 
   const selectGraphPath = useCallback((pathId: string, _nodeIds: string[], mode: GraphEditorSelectionMode = "replace") => {
@@ -1080,7 +1264,7 @@ export function WorkbenchShell({
     const nextInteraction = selectGraphEditorPath(base, pathId, mode)
     setGraphEditorInteraction(nextInteraction)
     syncDraftsForGraphSelection(nextInteraction.selection)
-    void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection))
+    void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection), { recordHistory: true })
   }, [graphEditorInteraction, selectGraphItems, syncDraftsForGraphSelection, workbenchState.workspace?.selection])
 
   const movePathDraftNode = useCallback((nodeId: string, direction: GraphPathOrderMoveDirection) => {
@@ -1101,7 +1285,10 @@ export function WorkbenchShell({
       },
     })
     applyWorkspaceResponse(response)
-  }, [applyWorkspaceResponse, pathOrderDraft, shellClient, workbenchState.sessionId])
+    if (response.ok && response.data) {
+      resetGraphEditorHistory()
+    }
+  }, [applyWorkspaceResponse, pathOrderDraft, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
 
   const connectGraphNodes = useCallback(async (fromNodeId: string, toNodeId: string) => {
     const sessionId = workbenchState.sessionId
@@ -1116,7 +1303,10 @@ export function WorkbenchShell({
       },
     })
     applyWorkspaceResponse(response)
-  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
+    if (response.ok && response.data) {
+      resetGraphEditorHistory()
+    }
+  }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
 
   const selectGraphNode = useCallback(
     async (nodeId: string, mode: GraphEditorSelectionMode = "replace") => {
@@ -1134,7 +1324,7 @@ export function WorkbenchShell({
       const nextInteraction = selectGraphEditorNode(selectableBase, nodeId, mode)
       setGraphEditorInteraction(nextInteraction)
       syncDraftsForGraphSelection(nextInteraction.selection)
-      void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection))
+      void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection), { recordHistory: true })
     },
     [connectGraphNodes, graphEditorInteraction, selectGraphItems, syncDraftsForGraphSelection, workbenchState.workspace?.selection],
   )
@@ -1183,7 +1373,10 @@ export function WorkbenchShell({
       },
     })
     applyWorkspaceResponse(response)
-  }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId, workbenchState.workspace])
+    if (response.ok && response.data) {
+      resetGraphEditorHistory()
+    }
+  }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId, workbenchState.workspace])
 
   const runEnergyCompute = useCallback(async () => {
     const sessionId = workbenchState.sessionId
@@ -1504,6 +1697,14 @@ export function WorkbenchShell({
             activeObjectId={activeObjectId}
             interactionState={graphEditorInteraction}
             autoLayoutStatus={autoLayoutStatus}
+            historyControls={{
+              canUndo: graphEditorHistory.undo.length > 0,
+              canRedo: graphEditorHistory.redo.length > 0,
+              undoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "undo"),
+              redoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "redo"),
+              running: graphEditorHistory.running,
+              error: graphEditorHistory.error,
+            }}
             pathOrderDraft={pathOrderDraft}
             edgeLabelDraft={edgeLabelDraft}
             edgeLabelPending={edgeLabelPending}
@@ -1538,6 +1739,8 @@ export function WorkbenchShell({
             onAddObjectNode={addObjectNode}
             onMoveNode={moveGraphNode}
             onNudgeNodes={nudgeGraphNodes}
+            onUndoHistory={() => void replayGraphEditorHistory("undo")}
+            onRedoHistory={() => void replayGraphEditorHistory("redo")}
             onApplyAutoLayout={applyGraphAutoLayout}
             onRemoveGraphItems={removeGraphItems}
             onClearSelection={clearGraphSelection}
@@ -1628,6 +1831,82 @@ function graphEditorInteractionWithWorkspaceSelection(
     ...interaction,
     selection: graphEditorSelectionFromWorkspaceSelection(selection),
   }
+}
+
+async function replayGraphEditorHistoryEntry({
+  entry,
+  direction,
+  sessionId,
+  shellClient,
+  applyWorkspaceResponse,
+}: {
+  entry: GraphEditorHistoryEntry
+  direction: "undo" | "redo"
+  sessionId: string
+  shellClient: ShellClient
+  applyWorkspaceResponse: (response: Awaited<ReturnType<ShellClient["run"]>>) => void
+}): Promise<{ ok: true } | { ok: false; error?: ShellError | null }> {
+  if (entry.kind === "viewport") {
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_viewport",
+      args: {
+        session_id: sessionId,
+        viewport: direction === "undo" ? entry.before : entry.after,
+      },
+    })
+    applyWorkspaceResponse(response)
+    return response.ok && response.data ? { ok: true } : { ok: false, error: response.error }
+  }
+
+  if (entry.kind === "selection") {
+    const target = direction === "undo" ? entry.before : entry.after
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.select",
+      args: {
+        session_id: sessionId,
+        selection: workspaceSelectionFromGraphEditorSelection({
+          nodeIds: target.nodeIds,
+          edgeIds: target.edgeIds,
+          pathIds: target.pathIds,
+        }),
+      },
+    })
+    applyWorkspaceResponse(response)
+    return response.ok && response.data ? { ok: true } : { ok: false, error: response.error }
+  }
+
+  const target = (direction === "undo" ? entry.before : entry.after) as GraphEditorHistoryNodeEntry["before"]
+  for (const snapshot of target) {
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.move_node",
+      args: {
+        session_id: sessionId,
+        node_id: snapshot.nodeId,
+        position: snapshot.position,
+      },
+    })
+    applyWorkspaceResponse(response)
+    if (!response.ok || !response.data) {
+      return { ok: false, error: response.error }
+    }
+  }
+
+  const viewportTarget = graphEditorHistoryViewportTargetForReplay(entry, direction)
+  if (viewportTarget) {
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_viewport",
+      args: {
+        session_id: sessionId,
+        viewport: viewportTarget,
+      },
+    })
+    applyWorkspaceResponse(response)
+    if (!response.ok || !response.data) {
+      return { ok: false, error: response.error }
+    }
+  }
+
+  return { ok: true }
 }
 
 function isSingleNodeSelection(selection: WorkspaceSelectionSummary | null | undefined): boolean {

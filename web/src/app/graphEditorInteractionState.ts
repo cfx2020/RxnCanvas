@@ -44,6 +44,8 @@ export type GraphEditorKeyboardIntent =
   | { kind: "delete-selection" }
   | { kind: "clear-selection" }
   | { kind: "nudge-selection"; delta: CanvasPoint }
+  | { kind: "undo-history" }
+  | { kind: "redo-history" }
 
 export type GraphEditorRubberBandNode = {
   id: string
@@ -366,9 +368,17 @@ export function resolveGraphEditorKeyboardIntent(
     altKey?: boolean
     ctrlKey?: boolean
     metaKey?: boolean
+    shiftKey?: boolean
   },
 ): GraphEditorKeyboardIntent | null {
-  if (event.altKey || event.ctrlKey || event.metaKey || isEditableKeyboardTarget(event.target)) return null
+  if (event.altKey || isEditableKeyboardTarget(event.target)) return null
+  if (event.ctrlKey || event.metaKey) {
+    const key = event.key.toLowerCase()
+    if (key === "z" && event.shiftKey) return { kind: "redo-history" }
+    if (key === "z") return { kind: "undo-history" }
+    if (key === "y" && event.ctrlKey) return { kind: "redo-history" }
+    return null
+  }
   switch (event.key) {
     case "Delete":
     case "Backspace":

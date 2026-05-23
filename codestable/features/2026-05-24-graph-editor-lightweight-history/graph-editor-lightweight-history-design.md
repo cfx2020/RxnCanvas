@@ -169,7 +169,7 @@ flowchart TD
 
 - `WorkbenchShell` 新增 `graphEditorHistory` state 和 `historyStateRef` / `workbenchStateRef` 这类必要 refs，避免 async command replay 捕获旧 projection。
 - `setGraphViewport` 在成功后比较 before/after viewport，并 push `kind="viewport"` entry。
-- GraphCanvas selection 调用路径为 `selectGraphItems` 增加可选 history options；Energy Profile point selection 不记录 history。
+- GraphCanvas selection 调用路径为 `selectGraphItems` 增加可选 history options；Energy Profile point selection 不记录 history，并清空 graph editor history，避免外部联动选择后 Undo 回滚到用户没意识到的旧图谱选择。
 - `nudgeGraphNodes` 在成功移动所有 nodes 后 push `kind="nudge"` entry；before/after 来自命令前节点位置和最终 workspace projection。
 - `applyGraphAutoLayout` 在所有 node moves 与可选 viewport fit 均成功后 push `kind="layout"` entry；layout no-op 不入栈。
 - destructive / unsupported graph edits 成功后调用 `clearGraphEditorHistory`。
@@ -217,7 +217,7 @@ flowchart TD
 6. Auto layout 成功后产生 `kind=layout` entry；Undo/Redo 恢复节点位置，并在 entry 带 viewport 时恢复 viewport。
 7. Auto layout no-op、失败的 move 或失败的 viewport fit 不产生 history entry。
 8. Delete selected node/edge/path 成功后不产生 undo entry，并清空已有 history。
-9. Add node、connect edge、path order apply、edge label apply、node composition apply 成功后清空 history 或保持不入栈，不提供误导性 undo。
+9. Add node、connect edge、path order apply、edge label apply、node composition apply 和 Energy Profile point selection 成功后清空 history 或保持不入栈，不提供误导性 undo。
 10. session/project/workspace 切换、Fixture Run 或 Open Bridge 后 history 清空。
 11. Undo/Redo replay 前发现 entry 引用 stale node/edge/path 时，不发送 shell command，显示 history stale error，entry 保持在原 stack。
 12. Replay 期间 Undo/Redo buttons disabled；replay 成功才移动 entry 到 opposite stack。
