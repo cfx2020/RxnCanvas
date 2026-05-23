@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react"
 import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, RotateCcw, Route, Trash2, XCircle, ZoomIn, ZoomOut } from "lucide-react"
 import type { ShellError } from "../shell"
@@ -21,13 +21,20 @@ import {
   type GraphNodeLayoutPosition,
 } from "./graphNodeLayout"
 import {
+  createGraphMinimapGeometry,
   fitGraphViewportToNodes,
+  graphPointFromMinimapPoint,
+  graphViewportFromMinimapCenter,
+  graphViewportFromMinimapPoint,
   graphViewportCssTransform,
   normalizeGraphViewport,
   panGraphViewport,
   resetGraphViewport,
   screenPointToGraphPoint,
+  zoomGraphViewportAtScreenPoint,
   zoomGraphViewport,
+  type GraphMinimapGeometry,
+  type GraphMinimapRect,
   type GraphSurfaceSize,
   type GraphViewport,
 } from "./graphViewport"
@@ -173,6 +180,9 @@ export function GraphCanvas({
   const canvasDragRef = useRef<CanvasDragSession | null>(null)
   const rubberBandRef = useRef<RubberBandSession | null>(null)
   const edgeDragRef = useRef<EdgeDragSession | null>(null)
+  const minimapDragRef = useRef<MinimapDragSession | null>(null)
+  const canvasSurfaceRef = useRef<HTMLDivElement | null>(null)
+  const [minimapDrag, setMinimapDrag] = useState<MinimapDragSession | null>(null)
   const ignoreNextNodeClickRef = useRef<string | null>(null)
   const workspace = state.workspace
   const graph = workspace?.graph
@@ -252,6 +262,28 @@ export function GraphCanvas({
       delta: intent.delta,
     })
   }
+
+  const handleCanvasWheel = (event: WheelEvent) => {
+    const surface = canvasSurfaceRef.current
+    if (!surface) return
+    if (!event.target || !canUseWorkspace || nodes.length === 0 || !isCanvasViewportInputTarget(event.target)) return
+    const surfacePoint = surfacePointFromClientPoint(surface, event.clientX, event.clientY)
+    event.preventDefault()
+    onSetViewport(zoomGraphViewportAtScreenPoint(
+      viewport,
+      surfaceSizeFromElement(surface),
+      surfacePoint,
+      event.deltaY,
+      { ctrlOrMeta: event.ctrlKey || event.metaKey },
+    ))
+  }
+
+  useEffect(() => {
+    const surface = canvasSurfaceRef.current
+    if (!surface) return undefined
+    surface.addEventListener("wheel", handleCanvasWheel, { passive: false })
+    return () => surface.removeEventListener("wheel", handleCanvasWheel)
+  })
 
   const handleCanvasPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (!canUseWorkspace || event.button !== 0 || !isCanvasPanStartTarget(event.target)) return
@@ -335,6 +367,60 @@ export function GraphCanvas({
     rubberBandRef.current = null
     if (drag?.dragging) onEndCanvasDrag()
     if (rubberBand?.dragging) onCancelRubberBand()
+  }
+
+  const setMinimapDragSession = (session: MinimapDragSession | null) => {
+    minimapDragRef.current = session
+    setMinimapDrag(session)
+  }
+
+  const handleMinimapPointerDown = (
+    event: PointerEvent<HTMLDivElement>,
+    geometry: GraphMinimapGeometry,
+  ) => {
+    if (!canUseWorkspace || event.button !== 0) return
+    event.stopPropagation()
+    const current = minimapPointFromClientPoint(event.currentTarget, event.clientX, event.clientY)
+    const center = graphPointFromMinimapPoint(current, geometry)
+    setMinimapDragSession({
+      origin: current,
+      current,
+      geometry,
+      center,
+      dragging: false,
+    })
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+    event.preventDefault()
+  }
+
+  const handleMinimapPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = minimapDragRef.current
+    if (!drag) return
+    event.stopPropagation()
+    const current = minimapPointFromClientPoint(event.currentTarget, event.clientX, event.clientY)
+    setMinimapDragSession({
+      ...drag,
+      current,
+      center: graphPointFromMinimapPoint(current, drag.geometry),
+      dragging: drag.dragging || pointerDistance(drag.origin, current) >= 3,
+    })
+    event.preventDefault()
+  }
+
+  const handleMinimapPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = minimapDragRef.current
+    if (!drag) return
+    event.stopPropagation()
+    const current = minimapPointFromClientPoint(event.currentTarget, event.clientX, event.clientY)
+    setMinimapDragSession(null)
+    onSetViewport(graphViewportFromMinimapPoint(viewport, current, drag.geometry))
+    event.preventDefault()
+  }
+
+  const handleMinimapPointerCancel = () => {
+    setMinimapDragSession(null)
   }
 
   const handleObjectDragOver = (event: DragEvent<HTMLDivElement>) => {
@@ -540,8 +626,21 @@ export function GraphCanvas({
         </button>
       </div>
 
+      <GraphMinimap
+        nodes={nodes}
+        viewport={viewport}
+        zoomPercent={zoomPercent}
+        canUseWorkspace={canUseWorkspace}
+        drag={minimapDrag}
+        onPointerDown={handleMinimapPointerDown}
+        onPointerMove={handleMinimapPointerMove}
+        onPointerUp={handleMinimapPointerUp}
+        onPointerCancel={handleMinimapPointerCancel}
+      />
+
       <div className="graph-canvas-layout">
         <div
+          ref={canvasSurfaceRef}
           className={`graph-canvas-surface ${panActive ? "graph-canvas-surface--pan" : ""}`}
           aria-label={t("graphCanvas.surface")}
           tabIndex={canUseWorkspace ? 0 : undefined}
@@ -719,6 +818,87 @@ type EdgeDragSession = {
   fromNodeId: string
 }
 
+type MinimapDragSession = {
+  origin: CanvasPoint
+  current: CanvasPoint
+  geometry: GraphMinimapGeometry
+  center: CanvasPoint
+  dragging: boolean
+}
+
+function GraphMinimap({
+  nodes,
+  viewport,
+  zoomPercent,
+  canUseWorkspace,
+  drag,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}: {
+  nodes: GraphNodeSummary[]
+  viewport: GraphViewport
+  zoomPercent: number
+  canUseWorkspace: boolean
+  drag: MinimapDragSession | null
+  onPointerDown: (event: PointerEvent<HTMLDivElement>, geometry: GraphMinimapGeometry) => void
+  onPointerMove: (event: PointerEvent<HTMLDivElement>) => void
+  onPointerUp: (event: PointerEvent<HTMLDivElement>) => void
+  onPointerCancel: () => void
+}) {
+  const { t } = useI18n()
+  const geometry = createGraphMinimapGeometry(nodes, viewport, graphMinimapSize)
+  if (!geometry) return null
+  const draftWindow = drag
+    ? graphMinimapViewportWindow(graphViewportFromMinimapCenter(viewport, drag.center), drag.geometry)
+    : null
+
+  return (
+    <div className="graph-minimap-panel" aria-label={t("graphCanvas.minimapAria")}>
+      <div className="graph-minimap-header">
+        <strong>{t("graphCanvas.minimap")}</strong>
+        <output aria-label={t("graphCanvas.minimapZoomAria", { value: zoomPercent })}>
+          {t("graphCanvas.minimapZoomValue", { value: zoomPercent })}
+        </output>
+      </div>
+      <div
+        className="graph-minimap"
+        role="button"
+        aria-label={t("graphCanvas.minimapNavigate")}
+        tabIndex={canUseWorkspace ? 0 : undefined}
+        data-testid="graph-minimap"
+        onPointerDown={(event) => onPointerDown(event, geometry)}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+      >
+        <div className="graph-minimap-bounds" style={minimapBoundsStyle(geometry)} />
+        {geometry.nodes.map((node) => (
+          <span
+            key={node.id}
+            className="graph-minimap-node"
+            style={{ left: `${node.x}px`, top: `${node.y}px` }}
+            aria-hidden="true"
+          />
+        ))}
+        <div
+          className="graph-minimap-window"
+          style={minimapRectStyle(geometry.viewportWindow)}
+          aria-hidden="true"
+        />
+        {draftWindow ? (
+          <div
+            className="graph-minimap-window graph-minimap-window--draft"
+            style={minimapRectStyle(draftWindow)}
+            aria-hidden="true"
+          />
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function hasGraphObjectDragPayload(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes(graphObjectDragMimeType)
 }
@@ -731,6 +911,11 @@ function isCanvasPanStartTarget(target: EventTarget): boolean {
 function isGraphKeyboardScopeTarget(target: EventTarget): boolean {
   if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
   return Boolean(target.closest(".graph-canvas-surface, .graph-node-card, .graph-edge-hitbox, .graph-path-select"))
+}
+
+function isCanvasViewportInputTarget(target: EventTarget): boolean {
+  if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
+  return Boolean(target.closest(".graph-canvas-surface"))
 }
 
 function canvasPositionFromDrop(event: DragEvent<HTMLDivElement>, viewport: GraphViewport): [number, number] {
@@ -764,6 +949,19 @@ function graphPointFromClientPoint(
   return screenPointToGraphPoint(surfacePoint, surfaceSizeFromElement(surface), viewport)
 }
 
+function surfacePointFromClientPoint(
+  surface: HTMLElement,
+  clientX: number,
+  clientY: number,
+): GraphNodeLayoutPosition {
+  const rect = surface.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return { x: clientX, y: clientY }
+  return {
+    x: clamp(clientX - rect.left, 0, rect.width),
+    y: clamp(clientY - rect.top, 0, rect.height),
+  }
+}
+
 function surfaceSizeFromElement(element: HTMLElement | null): GraphSurfaceSize {
   const rect = element?.getBoundingClientRect()
   if (!rect || rect.width <= 0 || rect.height <= 0) {
@@ -776,6 +974,55 @@ function surfaceSizeFromElement(element: HTMLElement | null): GraphSurfaceSize {
     width: rect.width,
     height: rect.height,
   }
+}
+
+const graphMinimapSize = {
+  width: 180,
+  height: 108,
+}
+
+function minimapPointFromClientPoint(
+  element: HTMLElement,
+  clientX: number,
+  clientY: number,
+): CanvasPoint {
+  const rect = element.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return { x: clientX, y: clientY }
+  return {
+    x: clamp(((clientX - rect.left) / rect.width) * graphMinimapSize.width, 0, graphMinimapSize.width),
+    y: clamp(((clientY - rect.top) / rect.height) * graphMinimapSize.height, 0, graphMinimapSize.height),
+  }
+}
+
+function graphMinimapViewportWindow(
+  viewport: GraphViewport,
+  geometry: GraphMinimapGeometry,
+): GraphMinimapRect {
+  return {
+    left: viewport.x * geometry.scale + geometry.offset.x,
+    top: viewport.y * geometry.scale + geometry.offset.y,
+    width: (graphNodeLayoutBounds.width / viewport.zoom) * geometry.scale,
+    height: (graphNodeLayoutBounds.height / viewport.zoom) * geometry.scale,
+  }
+}
+
+function minimapRectStyle(rect: GraphMinimapRect) {
+  return {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+  }
+}
+
+function minimapBoundsStyle(geometry: GraphMinimapGeometry) {
+  const bounds = geometry.graphBounds
+  return minimapRectStyle({
+    left: bounds.left * geometry.scale + geometry.offset.x,
+    top: bounds.top * geometry.scale + geometry.offset.y,
+    width: (bounds.right - bounds.left) * geometry.scale,
+    height: (bounds.bottom - bounds.top) * geometry.scale,
+  })
 }
 
 function selectionModeFromMouseEvent(event: MouseEvent<HTMLElement>): GraphEditorSelectionMode {

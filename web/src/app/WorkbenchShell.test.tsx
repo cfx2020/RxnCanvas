@@ -300,6 +300,95 @@ describe("WorkbenchShell", () => {
     })
   })
 
+  it("zooms graph viewport from scoped wheel input without hijacking outside scroll", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+
+    fireEvent.wheel(surface, { deltaY: -100, clientX: 300, clientY: 180 })
+
+    await within(graphCanvas).findByLabelText("110%")
+    expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
+      viewport: {
+        x: expect.closeTo(27.2727, 4),
+        y: expect.closeTo(16.3636, 4),
+        zoom: expect.closeTo(1.1, 6),
+      },
+    })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Reset" }))
+    await within(graphCanvas).findByLabelText("100%")
+    fireEvent.wheel(surface, { deltaY: -100, clientX: 300, clientY: 180, ctrlKey: true })
+
+    await within(graphCanvas).findByLabelText("120%")
+    expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
+      viewport: {
+        x: expect.closeTo(50, 6),
+        y: expect.closeTo(30, 6),
+        zoom: expect.closeTo(1.2, 6),
+      },
+    })
+
+    const viewportCommandCount = transport.payloads.filter((payload) => payload.command === "workspace.set_viewport").length
+    fireEvent.wheel(graphCanvas, { deltaY: -100, clientX: 300, clientY: 180 })
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.set_viewport")).toHaveLength(viewportCommandCount)
+  })
+
+  it("ignores wheel viewport input before a workspace is available", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    const graphCanvas = await screen.findByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+
+    fireEvent.wheel(surface, { deltaY: -100, clientX: 300, clientY: 180 })
+
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.set_viewport")).toHaveLength(0)
+  })
+
+  it("navigates graph viewport from minimap click and drag release", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const minimapPanel = within(graphCanvas).getByLabelText("Graph minimap")
+    const minimap = within(minimapPanel).getByRole("button", { name: "Navigate graph minimap" })
+    mockCanvasSurfaceRect(minimap, 180, 108)
+
+    expect(within(minimapPanel).getByLabelText("Minimap zoom 100%")).toBeInTheDocument()
+    expect(minimap.querySelectorAll(".graph-minimap-node")).toHaveLength(2)
+    expect(minimap.querySelector(".graph-minimap-window")).toBeInTheDocument()
+
+    const viewportCountBeforeClick = transport.payloads.filter((payload) => payload.command === "workspace.set_viewport").length
+    fireEvent.pointerDown(minimap, { button: 0, clientX: 90, clientY: 54, pointerId: 21 })
+    fireEvent.pointerUp(minimap, { button: 0, clientX: 90, clientY: 54, pointerId: 21 })
+
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.set_viewport")).toHaveLength(viewportCountBeforeClick + 1)
+    const clickViewport = lastPayload(transport, "workspace.set_viewport")?.args.viewport as { x: number; y: number; zoom: number }
+    expect(clickViewport.zoom).toBe(1)
+    expect(Number.isFinite(clickViewport.x)).toBe(true)
+    expect(Number.isFinite(clickViewport.y)).toBe(true)
+
+    const viewportCountBeforeDrag = transport.payloads.filter((payload) => payload.command === "workspace.set_viewport").length
+    fireEvent.pointerDown(minimap, { button: 0, clientX: 80, clientY: 48, pointerId: 22 })
+    fireEvent.pointerMove(minimap, { button: 0, clientX: 110, clientY: 68, pointerId: 22 })
+    expect(minimap.querySelector(".graph-minimap-window--draft")).toBeInTheDocument()
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.set_viewport")).toHaveLength(viewportCountBeforeDrag)
+
+    fireEvent.pointerUp(minimap, { button: 0, clientX: 110, clientY: 68, pointerId: 22 })
+
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.set_viewport")).toHaveLength(viewportCountBeforeDrag + 1)
+    expect(minimap.querySelector(".graph-minimap-window--draft")).not.toBeInTheDocument()
+  })
+
   it("moves graph nodes through workspace.move_node while keeping click selection", async () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
@@ -802,8 +891,11 @@ describe("WorkbenchShell", () => {
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
+    }))
     const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
-    expect(within(editor).getByDisplayValue("1")).toBeInTheDocument()
+    expect(await within(editor).findByDisplayValue("1")).toBeInTheDocument()
     fireEvent.click(within(editor).getByRole("button", { name: "Add" }))
     const objectSelects = within(editor).getAllByLabelText("Object")
     const coefficientInputs = within(editor).getAllByLabelText("Coef")

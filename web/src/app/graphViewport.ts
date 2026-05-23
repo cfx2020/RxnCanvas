@@ -17,6 +17,33 @@ export type GraphSurfaceSize = {
   height: number
 }
 
+export type ViewportInputIntent =
+  | { kind: "wheel-zoom"; anchor: GraphNodeLayoutPosition; deltaY: number; ctrlOrMeta?: boolean }
+  | { kind: "minimap-center"; center: GraphNodeLayoutPosition }
+  | { kind: "minimap-drag"; center: GraphNodeLayoutPosition }
+
+export type GraphMinimapBounds = {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+export type GraphMinimapRect = {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export type GraphMinimapGeometry = {
+  scale: number
+  offset: GraphNodeLayoutPosition
+  graphBounds: GraphMinimapBounds
+  viewportWindow: GraphMinimapRect
+  nodes: Array<{ id: string; x: number; y: number }>
+}
+
 export const defaultGraphViewport: GraphViewport = {
   x: 0,
   y: 0,
@@ -92,6 +119,27 @@ export function zoomGraphViewport(
   }
 }
 
+export function zoomGraphViewportAtScreenPoint(
+  viewport: GraphViewport,
+  surfaceSize: GraphSurfaceSize,
+  anchor: GraphNodeLayoutPosition,
+  deltaY: number,
+  options: { ctrlOrMeta?: boolean } = {},
+): GraphViewport {
+  const normalized = normalizeGraphViewport(viewport)
+  if (!Number.isFinite(deltaY) || deltaY === 0) return normalized
+  const size = normalizeSurfaceSize(surfaceSize)
+  const screenAnchor = clampPointToSurface(anchor, size)
+  const graphAnchor = screenPointToGraphPoint(screenAnchor, size, normalized)
+  const factor = options.ctrlOrMeta ? 1.2 : 1.1
+  const zoom = clampGraphViewportZoom(normalized.zoom * (deltaY < 0 ? factor : 1 / factor))
+  return {
+    x: graphAnchor.x - (screenAnchor.x / size.width) * graphNodeLayoutBounds.width / zoom,
+    y: graphAnchor.y - (screenAnchor.y / size.height) * graphNodeLayoutBounds.height / zoom,
+    zoom,
+  }
+}
+
 export function panGraphViewport(
   viewport: GraphViewport,
   delta: GraphNodeLayoutPosition,
@@ -139,6 +187,74 @@ export function resetGraphViewport(): GraphViewport {
   return defaultGraphViewport
 }
 
+export function createGraphMinimapGeometry(
+  nodes: GraphNodeSummary[],
+  viewport: GraphViewport,
+  minimapSize: GraphSurfaceSize,
+): GraphMinimapGeometry | null {
+  if (nodes.length === 0) return null
+  const size = normalizeSurfaceSize(minimapSize)
+  const normalized = normalizeGraphViewport(viewport)
+  const graphBounds = graphMinimapBoundsForNodesAndViewport(nodes, normalized)
+  const graphWidth = Math.max(1, graphBounds.right - graphBounds.left)
+  const graphHeight = Math.max(1, graphBounds.bottom - graphBounds.top)
+  const padding = Math.min(12, Math.max(6, Math.min(size.width, size.height) * 0.08))
+  const innerWidth = Math.max(1, size.width - padding * 2)
+  const innerHeight = Math.max(1, size.height - padding * 2)
+  const scale = Math.min(innerWidth / graphWidth, innerHeight / graphHeight)
+  const drawnWidth = graphWidth * scale
+  const drawnHeight = graphHeight * scale
+  const offset = {
+    x: (size.width - drawnWidth) / 2 - graphBounds.left * scale,
+    y: (size.height - drawnHeight) / 2 - graphBounds.top * scale,
+  }
+  return {
+    scale,
+    offset,
+    graphBounds,
+    viewportWindow: graphMinimapViewportWindow(normalized, scale, offset),
+    nodes: nodes.map((node) => {
+      const position = graphNodePosition(node)
+      return {
+        id: node.id,
+        x: position.x * scale + offset.x,
+        y: position.y * scale + offset.y,
+      }
+    }),
+  }
+}
+
+export function graphPointFromMinimapPoint(
+  point: GraphNodeLayoutPosition,
+  geometry: GraphMinimapGeometry,
+): GraphNodeLayoutPosition {
+  const scale = Number.isFinite(geometry.scale) && geometry.scale > 0 ? geometry.scale : 1
+  return {
+    x: (point.x - geometry.offset.x) / scale,
+    y: (point.y - geometry.offset.y) / scale,
+  }
+}
+
+export function graphViewportFromMinimapCenter(
+  viewport: GraphViewport,
+  center: GraphNodeLayoutPosition,
+): GraphViewport {
+  const normalized = normalizeGraphViewport(viewport)
+  return {
+    x: center.x - graphNodeLayoutBounds.width / (2 * normalized.zoom),
+    y: center.y - graphNodeLayoutBounds.height / (2 * normalized.zoom),
+    zoom: normalized.zoom,
+  }
+}
+
+export function graphViewportFromMinimapPoint(
+  viewport: GraphViewport,
+  point: GraphNodeLayoutPosition,
+  geometry: GraphMinimapGeometry,
+): GraphViewport {
+  return graphViewportFromMinimapCenter(viewport, graphPointFromMinimapPoint(point, geometry))
+}
+
 export function clampGraphViewportZoom(zoom: number): number {
   if (!Number.isFinite(zoom) || zoom <= 0) return defaultGraphViewport.zoom
   return Math.min(graphViewportZoomBounds.max, Math.max(graphViewportZoomBounds.min, zoom))
@@ -164,6 +280,54 @@ function normalizeSurfaceSize(surfaceSize: GraphSurfaceSize): GraphSurfaceSize {
     width: graphNodeLayoutBounds.width,
     height: graphNodeLayoutBounds.height,
   }
+}
+
+function clampPointToSurface(
+  point: GraphNodeLayoutPosition,
+  surfaceSize: GraphSurfaceSize,
+): GraphNodeLayoutPosition {
+  return {
+    x: clamp(point.x, 0, surfaceSize.width),
+    y: clamp(point.y, 0, surfaceSize.height),
+  }
+}
+
+function graphMinimapBoundsForNodesAndViewport(
+  nodes: GraphNodeSummary[],
+  viewport: GraphViewport,
+): GraphMinimapBounds {
+  const positions = nodes.map((node) => graphNodePosition(node))
+  const visibleBounds = {
+    left: viewport.x,
+    top: viewport.y,
+    right: viewport.x + graphNodeLayoutBounds.width / viewport.zoom,
+    bottom: viewport.y + graphNodeLayoutBounds.height / viewport.zoom,
+  }
+  const nodePadding = 48
+  return {
+    left: Math.min(...positions.map((position) => position.x), visibleBounds.left) - nodePadding,
+    top: Math.min(...positions.map((position) => position.y), visibleBounds.top) - nodePadding,
+    right: Math.max(...positions.map((position) => position.x), visibleBounds.right) + nodePadding,
+    bottom: Math.max(...positions.map((position) => position.y), visibleBounds.bottom) + nodePadding,
+  }
+}
+
+function graphMinimapViewportWindow(
+  viewport: GraphViewport,
+  scale: number,
+  offset: GraphNodeLayoutPosition,
+): GraphMinimapRect {
+  return {
+    left: viewport.x * scale + offset.x,
+    top: viewport.y * scale + offset.y,
+    width: (graphNodeLayoutBounds.width / viewport.zoom) * scale,
+    height: (graphNodeLayoutBounds.height / viewport.zoom) * scale,
+  }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min
+  return Math.min(max, Math.max(min, value))
 }
 
 function roundViewportNumber(value: number): number {

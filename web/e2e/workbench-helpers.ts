@@ -303,15 +303,110 @@ export async function exerciseGraphViewportControls(page: Page) {
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
   const surface = graphCanvas.getByLabel("Graph canvas surface")
   const viewportLayer = graphCanvas.locator(".graph-viewport-layer")
+  const viewportZoomOutput = graphCanvas.locator(".graph-viewport-bar output")
+  const minimap = graphCanvas.getByTestId("graph-minimap")
 
   await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
-  await expect(graphCanvas.getByText("120%")).toBeVisible()
+  await expect(viewportZoomOutput).toHaveText("120%")
 
   await graphCanvas.getByRole("button", { name: "Fit" }).click()
-  await expect.poll(async () => graphCanvas.getByLabel(/%$/).textContent()).not.toBe("120%")
+  await expect.poll(async () => viewportZoomOutput.textContent()).not.toBe("120%")
 
   await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
-  await expect(graphCanvas.getByText("100%")).toBeVisible()
+  await expect(viewportZoomOutput).toHaveText("100%")
+
+  await expect(graphCanvas.locator(".graph-minimap-panel")).toBeVisible()
+  await expect(minimap).toBeVisible()
+  await expect.poll(async () => minimap.locator(".graph-minimap-node").count()).toBeGreaterThanOrEqual(2)
+  await expect(minimap.locator(".graph-minimap-window")).toBeVisible()
+
+  const beforeWheelTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
+  const surfaceBox = await surface.boundingBox()
+  expect(surfaceBox).not.toBeNull()
+  await surface.evaluate((element, point) => {
+    element.dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      clientX: point.clientX,
+      clientY: point.clientY,
+      deltaY: -180,
+    }))
+  }, {
+    clientX: surfaceBox!.x + surfaceBox!.width * 0.5,
+    clientY: surfaceBox!.y + surfaceBox!.height * 0.5,
+  })
+  await expect(viewportZoomOutput).toHaveText("110%")
+  await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(beforeWheelTransform)
+
+  const beforeMinimapTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
+  const minimapBox = await minimap.boundingBox()
+  expect(minimapBox).not.toBeNull()
+  await minimap.click({
+    position: {
+      x: minimapBox!.width * 0.72,
+      y: minimapBox!.height * 0.58,
+    },
+  })
+  await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(beforeMinimapTransform)
+
+  const beforeMinimapDragTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
+  await minimap.evaluate((element, points) => {
+    const target = element as HTMLElement & { setPointerCapture?: (pointerId: number) => void }
+    const rect = target.getBoundingClientRect()
+    const start = {
+      x: rect.left + rect.width * points.start.xRatio,
+      y: rect.top + rect.height * points.start.yRatio,
+    }
+    const end = {
+      x: rect.left + rect.width * points.end.xRatio,
+      y: rect.top + rect.height * points.end.yRatio,
+    }
+    const pointerId = 93
+    const originalSetPointerCapture = target.setPointerCapture
+    target.setPointerCapture = () => undefined
+    const dispatchPointer = (type: string, clientX: number, clientY: number, buttons: number) => {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        buttons,
+        clientX,
+        clientY,
+      }))
+    }
+
+    try {
+      dispatchPointer("pointerdown", start.x, start.y, 1)
+      dispatchPointer("pointermove", (start.x + end.x) / 2, (start.y + end.y) / 2, 1)
+      dispatchPointer("pointermove", end.x, end.y, 1)
+    } finally {
+      target.setPointerCapture = originalSetPointerCapture
+    }
+  }, {
+    start: { xRatio: 0.3, yRatio: 0.38 },
+    end: { xRatio: 0.62, yRatio: 0.63 },
+  })
+  await expect(minimap.locator(".graph-minimap-window--draft")).toBeVisible()
+  await minimap.evaluate((element, point) => {
+    const target = element as HTMLElement
+    const rect = target.getBoundingClientRect()
+    target.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 93,
+      pointerType: "mouse",
+      isPrimary: true,
+      button: 0,
+      buttons: 0,
+      clientX: rect.left + rect.width * point.xRatio,
+      clientY: rect.top + rect.height * point.yRatio,
+    }))
+  }, { xRatio: 0.62, yRatio: 0.63 })
+  await expect(minimap.locator(".graph-minimap-window--draft")).toHaveCount(0)
+  await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(beforeMinimapDragTransform)
 
   const resetTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
   await graphCanvas.getByRole("button", { name: "Pan" }).click()
@@ -360,8 +455,10 @@ export async function exerciseGraphViewportControls(page: Page) {
   await graphCanvas.getByRole("button", { name: "Pan" }).click()
   await expect(graphCanvas.getByRole("button", { name: "Pan" })).toHaveAttribute("aria-pressed", "false")
 
+  await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
+  await expect(viewportZoomOutput).toHaveText("100%")
   await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
-  await expect(graphCanvas.getByText("120%")).toBeVisible()
+  await expect(viewportZoomOutput).toHaveText("120%")
 }
 
 export async function reorderFixturePathToReverse(page: Page) {
@@ -395,7 +492,7 @@ export async function saveReloadAndRestoreGraphWorkspace(page: Page, projectName
   await openBrowserProject(page, projectName)
   await sidebar.getByRole("button", { name: "Open Bridge" }).click()
 
-  await expect(graphCanvas.getByText("120%")).toBeVisible()
+  await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("120%")
   await expect(graphCanvas.getByText("node-b -> node-a")).toBeVisible()
   await expect(graphCanvas.getByText("Active path").locator("..")).toContainText("path-a-b")
   await expect(graphCanvas.getByRole("button", { name: /Select path .*path-a-b/ })).toBeVisible()

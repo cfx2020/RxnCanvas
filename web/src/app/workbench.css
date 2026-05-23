@@ -1214,6 +1214,83 @@ button {
   color: var(--blueprint) !important;
 }
 
+.graph-minimap-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 250, 240, 0.5);
+}
+
+.graph-minimap-header {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.graph-minimap-header strong,
+.graph-minimap-header output {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.graph-minimap {
+  position: relative;
+  width: 180px;
+  height: 108px;
+  justify-self: end;
+  overflow: hidden;
+  border: 1px solid rgba(31, 33, 29, 0.18);
+  background:
+    linear-gradient(90deg, rgba(39, 89, 106, 0.1) 1px, transparent 1px),
+    linear-gradient(rgba(39, 89, 106, 0.1) 1px, transparent 1px),
+    var(--paper);
+  background-size: 18px 18px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.graph-minimap:focus-visible {
+  outline: 2px solid var(--blueprint);
+  outline-offset: 2px;
+}
+
+.graph-minimap-bounds {
+  position: absolute;
+  border: 1px solid rgba(31, 33, 29, 0.18);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.graph-minimap-node {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--ink);
+  background: var(--amber);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.graph-minimap-window {
+  position: absolute;
+  border: 2px solid var(--blueprint);
+  background: rgba(39, 89, 106, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 250, 240, 0.82);
+  pointer-events: none;
+}
+
+.graph-minimap-window--draft {
+  border-style: dashed;
+  background: rgba(82, 123, 75, 0.16);
+}
+
 .graph-canvas-layout {
   min-height: 0;
   display: grid;
@@ -2777,8 +2854,14 @@ button {
   .import-preview-grid,
   .graph-command-bar,
   .graph-viewport-bar,
+  .graph-minimap-panel,
   .network-preview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .graph-minimap {
+    justify-self: start;
+    width: min(180px, 100%);
   }
 
 	  .warning-row,
