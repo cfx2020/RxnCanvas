@@ -3,8 +3,8 @@ doc_type: roadmap
 slug: rxnflow-web-graph-editor-advanced
 status: active
 created: 2026-05-22
-last_reviewed: 2026-05-22
-tags: [rxnflow, web, graph-editor, advanced-editing, auto-layout, path-editing, edge-label, keyboard, viewport]
+last_reviewed: 2026-05-24
+tags: [rxnflow, web, graph-editor, advanced-editing, auto-layout, path-editing, edge-label, keyboard, viewport, wheel, minimap]
 related_requirements: [web-workbench-shell, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform, web-workbench]
 ---
@@ -305,8 +305,9 @@ type GraphEditorHistoryEntry = {
 6. **graph-editor-wheel-minimap**：补 wheel/pinch zoom 和 minimap navigation，继续通过 `workspace.set_viewport` 更新 viewport。
    - 所属模块：Viewport Navigation Layer
    - 依赖：`graph-editor-auto-layout`
-   - 状态：planned
-   - 对应 feature：无
+   - 状态：done
+   - 对应 feature：`2026-05-22-graph-editor-wheel-minimap`
+   - 备注：已落地 graph surface wheel zoom、ctrl/meta wheel pinch-like zoom、Graph Minimap node dots / viewport window / zoom percent、click navigation 和 drag draft；只通过 `workspace.set_viewport` 生效，不新增 schema、history、autosave 或 minimap persistence。
 7. **graph-editor-lightweight-history**：为 layout、viewport、selection 和 nudge 提供 bounded runtime undo/redo，不持久化、不覆盖 destructive delete。
    - 所属模块：Local Reversible History
    - 依赖：`graph-editor-auto-layout`, `graph-editor-multiselect-keyboard`, `graph-editor-wheel-minimap`
@@ -322,7 +323,7 @@ type GraphEditorHistoryEntry = {
 
 先做 `graph-editor-auto-layout`，因为它不需要新 core command 或 schema，就能立刻改善画布可读性，也能为后续 minimap 和 history 提供可逆布局操作样本。
 
-`graph-editor-path-delete`、`graph-editor-edge-label-edit`、`graph-editor-free-edge-drawing` 和 `graph-editor-multiselect-keyboard` 已完成。下一步可推进 `graph-editor-wheel-minimap`，它已具备 auto layout、viewport helper 和多选键盘边界基础。最后用 `graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
+`graph-editor-path-delete`、`graph-editor-edge-label-edit`、`graph-editor-free-edge-drawing`、`graph-editor-multiselect-keyboard` 和 `graph-editor-wheel-minimap` 已完成。下一步可推进 `graph-editor-lightweight-history`，它已具备 auto layout、viewport helper、selection/nudge 和 wheel/minimap viewport intent 边界基础。最后用 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
 
 技术依赖之外的产品优先级不由本 roadmap 替用户决定；如果用户更想先补 edge label 或 wheel/minimap，可以在不违反依赖的前提下调整启动顺序。
 
@@ -330,7 +331,8 @@ type GraphEditorHistoryEntry = {
 
 - Core `ReactionGraphService`、`GraphEditorWorkspaceService.remove_items`、Platform Shell、fixture transport 和 Web `workspace.remove` 当前已经暴露 `path_ids` path 删除协议；后续多选/键盘删除可复用同一 node/edge/path selection contract。
 - Core `ReactionGraphService` 当前已经支持 `update_edge` patch，`GraphEditorWorkspaceService`、Platform Shell、fixture transport 和 Web GraphCanvas 已暴露 label-only `workspace.update_edge` command；Direct Edge Gesture 已独立复用 `workspace.connect`，后续端点重连不应塞进 `workspace.update_edge`。
-- 当前 GraphCanvas 的 edge hit target 是 HTML button，继续承载 edge selection 和 label edit；直接拖线已通过 node Edge Connect Handle 和 Pending Edge Draft 落地，多选/键盘已通过 Workspace Selection arrays 与 scoped keyboard intent 落地，后续剩余编辑手感主要是 endpoint reconnect、wheel/minimap 和 history。
+- 当前 GraphCanvas 的 edge hit target 是 HTML button，继续承载 edge selection 和 label edit；直接拖线已通过 node Edge Connect Handle 和 Pending Edge Draft 落地，多选/键盘已通过 Workspace Selection arrays 与 scoped keyboard intent 落地，wheel/minimap 已通过 Viewport Navigation Layer 和 `workspace.set_viewport` 落地；后续剩余编辑手感主要是 endpoint reconnect 和 history。
 - 多选/键盘已复用 Workspace Selection arrays、`workspace.remove` 和 `workspace.move_node` 落地；后续 lightweight history 可把 selection / nudge 作为可逆样本，但仍不应把 history stack 持久化。
+- Wheel/minimap 已复用现有 `workspace.set_viewport` 和 `graphViewport.ts` helper 落地；后续 lightweight history 可把 viewport intent 作为可逆样本，但仍不应把 minimap drag draft、wheel delta 或 history stack 持久化。
 - Auto layout 若未来要服务 CLI/agent，可把纯计算 helper 移到共享 TypeScript-independent 或 Python core；本 roadmap 首轮只承诺 Web helper，避免让 core domain 依赖 UI layout 假设。
 - Undo/redo 是高风险扩展点；首轮只覆盖可逆 UI/workspace 操作，不碰 destructive delete、Project Content history、CRDT 或协作。

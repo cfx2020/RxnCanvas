@@ -21,96 +21,96 @@ steps:
 checks:
   - item: "Viewport helper 对 wheel delta 生成 zoom intent，zoom 始终在 0.35..2.5 内"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "Wheel zoom 以 pointer anchor 为中心，缩放后 anchor 对应 graph point 尽量保持在同一 screen point"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "Minimap geometry 可从 nodes、current viewport 和 minimap size 派生 node dots、graph bounds 和 viewport window"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "Minimap center mapping 保留 current zoom，只改变 viewport x/y"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "Graph surface 内 wheel 发送一次 workspace.set_viewport；payload 只包含 viewport"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "Graph surface 外 wheel 不发送 shell command"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "no session / no workspace / no nodes 时 wheel 不发送 shell command"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "ctrl/meta wheel 或 pinch-like wheel path 不绕过 zoom clamp"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "现有 Zoom In/Out、Fit、Reset buttons 仍发送 workspace.set_viewport"
     source: 回归场景
-    status: done
+    status: passed
 
   - item: "Pan mode pointer drag 仍发送 workspace.set_viewport，不被 wheel/minimap 改坏"
     source: 回归场景
-    status: done
+    status: passed
 
   - item: "Node drag、rubber-band selection、direct edge gesture 和 object drop 坐标换算不回退"
     source: 回归场景
-    status: done
+    status: passed
 
   - item: "Minimap 显示 node dots、viewport window 和 zoom percent"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "点击 minimap graph 区域发送一次 workspace.set_viewport，viewport center 对应点击 graph point"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "拖动 minimap viewport window 时显示 transient draft，drag 过程中不发送 shell command，release 后发送一次"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "Minimap 在窄屏布局中不造成页面级水平溢出，控件文字不重叠"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "不新增 Python core / Platform Shell command、Project Content schema、Browser Project Repository write、localStorage persistence、autosave、history stack、EnergyProfile 或 Report Export 变更"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "cd web && npm run test -- --run 通过"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "cd web && npm run build 通过"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "浏览器验证开发服务页面非空白、无 framework overlay、console clean；desktop/narrow 验证 wheel/minimap/viewport controls 无明显重叠或水平溢出"
     source: 验收场景
-    status: done
+    status: passed
 
   - item: "不把 viewport intent 做成前端本地 domain state patch"
     source: 跨层纪律
-    status: done
+    status: passed
 
   - item: "不新增 workspace.zoom、workspace.minimap 或 batch viewport command"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "不把 minimap drag draft / geometry / wheel delta 写入 ShellResponse、Project Content、Browser Project Repository 或 localStorage"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "不让 graph surface 外 wheel 阻止页面滚动"
     source: 范围守护
-    status: done
+    status: passed
 
   - item: "不引入第三方 minimap / diagramming dependency"
     source: 范围守护
-    status: done
+    status: passed
