@@ -311,8 +311,9 @@ type GraphEditorHistoryEntry = {
 7. **graph-editor-lightweight-history**：为 layout、viewport、selection 和 nudge 提供 bounded runtime undo/redo，不持久化、不覆盖 destructive delete。
    - 所属模块：Local Reversible History
    - 依赖：`graph-editor-auto-layout`, `graph-editor-multiselect-keyboard`, `graph-editor-wheel-minimap`
-   - 状态：in-progress
+   - 状态：done
    - 对应 feature：`2026-05-24-graph-editor-lightweight-history`
+   - 备注：已落地 Graph Editor History runtime-only stack、Undo/Redo controls、graph scoped `Ctrl/Cmd+Z` / redo shortcuts、viewport/selection/nudge/layout replay 和 unsupported edits clear；replay 复用既有 workspace commands，不写 Project Content、Browser Project Repository、ShellResponse 或 localStorage。
 8. **graph-editor-advanced-e2e-qa**：补高级图谱编辑桌面/窄屏 E2E、local-http shell contract smoke 和用户/开发者说明。
    - 所属模块：Advanced Graph Editor QA Harness
    - 依赖：`graph-editor-free-edge-drawing`, `graph-editor-lightweight-history`
@@ -323,7 +324,7 @@ type GraphEditorHistoryEntry = {
 
 先做 `graph-editor-auto-layout`，因为它不需要新 core command 或 schema，就能立刻改善画布可读性，也能为后续 minimap 和 history 提供可逆布局操作样本。
 
-`graph-editor-path-delete`、`graph-editor-edge-label-edit`、`graph-editor-free-edge-drawing`、`graph-editor-multiselect-keyboard` 和 `graph-editor-wheel-minimap` 已完成。下一步可推进 `graph-editor-lightweight-history`，它已具备 auto layout、viewport helper、selection/nudge 和 wheel/minimap viewport intent 边界基础。最后用 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
+`graph-editor-path-delete`、`graph-editor-edge-label-edit`、`graph-editor-free-edge-drawing`、`graph-editor-multiselect-keyboard`、`graph-editor-wheel-minimap` 和 `graph-editor-lightweight-history` 已完成。下一步用 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
 
 技术依赖之外的产品优先级不由本 roadmap 替用户决定；如果用户更想先补 edge label 或 wheel/minimap，可以在不违反依赖的前提下调整启动顺序。
 
@@ -331,8 +332,8 @@ type GraphEditorHistoryEntry = {
 
 - Core `ReactionGraphService`、`GraphEditorWorkspaceService.remove_items`、Platform Shell、fixture transport 和 Web `workspace.remove` 当前已经暴露 `path_ids` path 删除协议；后续多选/键盘删除可复用同一 node/edge/path selection contract。
 - Core `ReactionGraphService` 当前已经支持 `update_edge` patch，`GraphEditorWorkspaceService`、Platform Shell、fixture transport 和 Web GraphCanvas 已暴露 label-only `workspace.update_edge` command；Direct Edge Gesture 已独立复用 `workspace.connect`，后续端点重连不应塞进 `workspace.update_edge`。
-- 当前 GraphCanvas 的 edge hit target 是 HTML button，继续承载 edge selection 和 label edit；直接拖线已通过 node Edge Connect Handle 和 Pending Edge Draft 落地，多选/键盘已通过 Workspace Selection arrays 与 scoped keyboard intent 落地，wheel/minimap 已通过 Viewport Navigation Layer 和 `workspace.set_viewport` 落地；后续剩余编辑手感主要是 endpoint reconnect 和 history。
-- 多选/键盘已复用 Workspace Selection arrays、`workspace.remove` 和 `workspace.move_node` 落地；后续 lightweight history 可把 selection / nudge 作为可逆样本，但仍不应把 history stack 持久化。
-- Wheel/minimap 已复用现有 `workspace.set_viewport` 和 `graphViewport.ts` helper 落地；后续 lightweight history 可把 viewport intent 作为可逆样本，但仍不应把 minimap drag draft、wheel delta 或 history stack 持久化。
+- 当前 GraphCanvas 的 edge hit target 是 HTML button，继续承载 edge selection 和 label edit；直接拖线已通过 node Edge Connect Handle 和 Pending Edge Draft 落地，多选/键盘已通过 Workspace Selection arrays 与 scoped keyboard intent 落地，wheel/minimap 已通过 Viewport Navigation Layer 和 `workspace.set_viewport` 落地，lightweight history 已通过 runtime-only stack 与既有 workspace command replay 落地；后续剩余编辑手感主要是 endpoint reconnect 和更完整的 E2E 回归矩阵。
+- 多选/键盘已复用 Workspace Selection arrays、`workspace.remove` 和 `workspace.move_node` 落地；lightweight history 只把 selection / nudge 作为可逆样本，不把 delete 或 mixed semantic edit 编造成 inverse command。
+- Wheel/minimap 已复用现有 `workspace.set_viewport` 和 `graphViewport.ts` helper 落地；lightweight history 只记录成功 viewport projection，不持久化 minimap drag draft、wheel delta 或 history stack。
 - Auto layout 若未来要服务 CLI/agent，可把纯计算 helper 移到共享 TypeScript-independent 或 Python core；本 roadmap 首轮只承诺 Web helper，避免让 core domain 依赖 UI layout 假设。
-- Undo/redo 是高风险扩展点；首轮只覆盖可逆 UI/workspace 操作，不碰 destructive delete、Project Content history、CRDT 或协作。
+- Undo/redo 仍是高风险扩展点；当前首轮只覆盖可逆 UI/workspace 操作，不碰 destructive delete、Project Content history、cross reload undo、CRDT 或协作。

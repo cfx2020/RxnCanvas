@@ -53,10 +53,10 @@ items:
   - slug: graph-editor-lightweight-history
     description: 为 layout、viewport、selection 和 nudge 提供 bounded runtime undo/redo，不持久化、不覆盖 destructive delete
     depends_on: [graph-editor-auto-layout, graph-editor-multiselect-keyboard, graph-editor-wheel-minimap]
-    status: in-progress
+    status: done
     feature: 2026-05-24-graph-editor-lightweight-history
     minimal_loop: false
-    notes: History stack 不写 Project Content、Browser Project Repository、ShellResponse 或 localStorage；首轮最多覆盖可逆操作
+    notes: 已落地 Graph Editor History runtime-only stack、Undo/Redo controls 和 graph scoped shortcuts；只覆盖 layout、viewport、selection、selected node nudge，replay 复用既有 workspace commands，不写 Project Content、Browser Project Repository、ShellResponse 或 localStorage
 
   - slug: graph-editor-advanced-e2e-qa
     description: 补高级图谱编辑桌面/窄屏 E2E、local-http shell contract smoke 和用户/开发者说明
