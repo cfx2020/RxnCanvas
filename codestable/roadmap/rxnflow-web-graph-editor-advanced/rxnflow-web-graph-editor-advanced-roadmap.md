@@ -4,7 +4,7 @@ slug: rxnflow-web-graph-editor-advanced
 status: active
 created: 2026-05-22
 last_reviewed: 2026-05-24
-tags: [rxnflow, web, graph-editor, advanced-editing, auto-layout, path-editing, edge-label, keyboard, viewport, wheel, minimap]
+tags: [rxnflow, web, graph-editor, advanced-editing, auto-layout, path-editing, edge-label, keyboard, viewport, wheel, minimap, history]
 related_requirements: [web-workbench-shell, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform, web-workbench]
 ---
@@ -311,8 +311,8 @@ type GraphEditorHistoryEntry = {
 7. **graph-editor-lightweight-history**：为 layout、viewport、selection 和 nudge 提供 bounded runtime undo/redo，不持久化、不覆盖 destructive delete。
    - 所属模块：Local Reversible History
    - 依赖：`graph-editor-auto-layout`, `graph-editor-multiselect-keyboard`, `graph-editor-wheel-minimap`
-   - 状态：planned
-   - 对应 feature：无
+   - 状态：in-progress
+   - 对应 feature：`2026-05-24-graph-editor-lightweight-history`
 8. **graph-editor-advanced-e2e-qa**：补高级图谱编辑桌面/窄屏 E2E、local-http shell contract smoke 和用户/开发者说明。
    - 所属模块：Advanced Graph Editor QA Harness
    - 依赖：`graph-editor-free-edge-drawing`, `graph-editor-lightweight-history`

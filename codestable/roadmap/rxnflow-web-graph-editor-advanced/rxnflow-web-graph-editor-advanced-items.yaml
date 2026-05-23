@@ -53,8 +53,8 @@ items:
   - slug: graph-editor-lightweight-history
     description: 为 layout、viewport、selection 和 nudge 提供 bounded runtime undo/redo，不持久化、不覆盖 destructive delete
     depends_on: [graph-editor-auto-layout, graph-editor-multiselect-keyboard, graph-editor-wheel-minimap]
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-05-24-graph-editor-lightweight-history
     minimal_loop: false
     notes: History stack 不写 Project Content、Browser Project Repository、ShellResponse 或 localStorage；首轮最多覆盖可逆操作
 
