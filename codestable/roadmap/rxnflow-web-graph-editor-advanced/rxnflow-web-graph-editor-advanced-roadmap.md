@@ -317,14 +317,15 @@ type GraphEditorHistoryEntry = {
 8. **graph-editor-advanced-e2e-qa**：补高级图谱编辑桌面/窄屏 E2E、local-http shell contract smoke 和用户/开发者说明。
    - 所属模块：Advanced Graph Editor QA Harness
    - 依赖：`graph-editor-free-edge-drawing`, `graph-editor-lightweight-history`
-   - 状态：planned
-   - 对应 feature：无
+   - 状态：done
+   - 对应 feature：`2026-05-24-graph-editor-advanced-e2e-qa`
+   - 备注：已落地默认 fixture desktop advanced graph matrix、narrow graph advanced controls、local-http bridge smoke 边界和开发者 QA 指南；复杂 graph gestures 保持在 fixture E2E，local-http 只守真实 bridge 主链路。
 
 ## 6. 排期思路
 
 先做 `graph-editor-auto-layout`，因为它不需要新 core command 或 schema，就能立刻改善画布可读性，也能为后续 minimap 和 history 提供可逆布局操作样本。
 
-`graph-editor-path-delete`、`graph-editor-edge-label-edit`、`graph-editor-free-edge-drawing`、`graph-editor-multiselect-keyboard`、`graph-editor-wheel-minimap` 和 `graph-editor-lightweight-history` 已完成。下一步用 `graph-editor-advanced-e2e-qa` 收束高频编辑体验与回归矩阵。
+`graph-editor-path-delete`、`graph-editor-edge-label-edit`、`graph-editor-free-edge-drawing`、`graph-editor-multiselect-keyboard`、`graph-editor-wheel-minimap`、`graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 已完成。高级图谱编辑 roadmap 当前已经收束到可重复桌面/窄屏 E2E 与 local-http smoke 边界。
 
 技术依赖之外的产品优先级不由本 roadmap 替用户决定；如果用户更想先补 edge label 或 wheel/minimap，可以在不违反依赖的前提下调整启动顺序。
 
@@ -332,7 +333,7 @@ type GraphEditorHistoryEntry = {
 
 - Core `ReactionGraphService`、`GraphEditorWorkspaceService.remove_items`、Platform Shell、fixture transport 和 Web `workspace.remove` 当前已经暴露 `path_ids` path 删除协议；后续多选/键盘删除可复用同一 node/edge/path selection contract。
 - Core `ReactionGraphService` 当前已经支持 `update_edge` patch，`GraphEditorWorkspaceService`、Platform Shell、fixture transport 和 Web GraphCanvas 已暴露 label-only `workspace.update_edge` command；Direct Edge Gesture 已独立复用 `workspace.connect`，后续端点重连不应塞进 `workspace.update_edge`。
-- 当前 GraphCanvas 的 edge hit target 是 HTML button，继续承载 edge selection 和 label edit；直接拖线已通过 node Edge Connect Handle 和 Pending Edge Draft 落地，多选/键盘已通过 Workspace Selection arrays 与 scoped keyboard intent 落地，wheel/minimap 已通过 Viewport Navigation Layer 和 `workspace.set_viewport` 落地，lightweight history 已通过 runtime-only stack 与既有 workspace command replay 落地；后续剩余编辑手感主要是 endpoint reconnect 和更完整的 E2E 回归矩阵。
+- 当前 GraphCanvas 的 edge hit target 是 HTML button，继续承载 edge selection 和 label edit；直接拖线已通过 node Edge Connect Handle 和 Pending Edge Draft 落地，多选/键盘已通过 Workspace Selection arrays 与 scoped keyboard intent 落地，wheel/minimap 已通过 Viewport Navigation Layer 和 `workspace.set_viewport` 落地，lightweight history 已通过 runtime-only stack 与既有 workspace command replay 落地；高级 E2E QA 已覆盖 desktop advanced graph matrix、narrow advanced controls、console clean、no horizontal overflow 和 Save/Open Bridge restore。后续剩余编辑手感主要是 endpoint reconnect、edge rerouting 和更细的视觉/可用性迭代。
 - 多选/键盘已复用 Workspace Selection arrays、`workspace.remove` 和 `workspace.move_node` 落地；lightweight history 只把 selection / nudge 作为可逆样本，不把 delete 或 mixed semantic edit 编造成 inverse command。
 - Wheel/minimap 已复用现有 `workspace.set_viewport` 和 `graphViewport.ts` helper 落地；lightweight history 只记录成功 viewport projection，不持久化 minimap drag draft、wheel delta 或 history stack。
 - Auto layout 若未来要服务 CLI/agent，可把纯计算 helper 移到共享 TypeScript-independent 或 Python core；本 roadmap 首轮只承诺 Web helper，避免让 core domain 依赖 UI layout 假设。

@@ -61,7 +61,7 @@ items:
   - slug: graph-editor-advanced-e2e-qa
     description: 补高级图谱编辑桌面/窄屏 E2E、local-http shell contract smoke 和用户/开发者说明
     depends_on: [graph-editor-free-edge-drawing, graph-editor-lightweight-history]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-24-graph-editor-advanced-e2e-qa
     minimal_loop: false
-    notes: fixture E2E 覆盖复杂手势；local-http smoke 只覆盖 shell contract 主链路
+    notes: 已落地 fixture desktop advanced graph matrix、narrow advanced controls、local-http bridge smoke 边界和开发者 QA 指南；local-http 不复制复杂 graph gestures

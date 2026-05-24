@@ -159,19 +159,22 @@ export function fitGraphViewportToNodes(
   surfaceSize: GraphSurfaceSize,
 ): GraphViewport {
   if (nodes.length === 0) return defaultGraphViewport
-  normalizeSurfaceSize(surfaceSize)
+  const size = normalizeSurfaceSize(surfaceSize)
   const positions = nodes.map((node) => graphNodePosition(node))
   const minX = Math.min(...positions.map((position) => position.x))
   const maxX = Math.max(...positions.map((position) => position.x))
   const minY = Math.min(...positions.map((position) => position.y))
   const maxY = Math.max(...positions.map((position) => position.y))
-  const padding = 48
+  const padding = 120
   const width = Math.max(1, maxX - minX + padding * 2)
   const height = Math.max(1, maxY - minY + padding * 2)
+  const viewportAspect = size.width / size.height
+  const graphAspect = graphNodeLayoutBounds.width / graphNodeLayoutBounds.height
+  const responsiveFitScale = Math.min(1, viewportAspect / graphAspect)
   const zoom = clampGraphViewportZoom(Math.min(
     graphNodeLayoutBounds.width / width,
     graphNodeLayoutBounds.height / height,
-  ))
+  ) * responsiveFitScale)
   const center = {
     x: (minX + maxX) / 2,
     y: (minY + maxY) / 2,

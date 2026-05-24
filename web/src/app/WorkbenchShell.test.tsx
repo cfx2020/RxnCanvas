@@ -739,13 +739,13 @@ describe("WorkbenchShell", () => {
     await within(graphCanvas).findByText("Layout applied")
     const movePayloads = transport.payloads.filter((payload) => payload.command === "workspace.move_node")
     expect(movePayloads.map((payload) => payload.args.node_id)).toEqual(["node-a", "node-b"])
-    expect(movePayloads.map((payload) => payload.args.position)).toEqual([[80, 180], [520, 180]])
+    expect(movePayloads.map((payload) => payload.args.position)).toEqual([[120, 180], [480, 180]])
     const viewportPayload = lastPayload(transport, "workspace.set_viewport")
     expect(viewportPayload?.args.viewport).toMatchObject({
       zoom: expect.any(Number),
     })
     expect(nodeShell(await within(graphCanvas).findByRole("button", { name: /node-a/i }))).toHaveStyle({
-      left: "13.333333333333334%",
+      left: "20%",
     })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Apply Layout" }))

@@ -125,7 +125,7 @@ function positionsFromLayers(
   }
   const sortedLayers = [...layerGroups.keys()].sort((a, b) => a - b)
   const maxLayer = Math.max(0, ...sortedLayers)
-  const xPadding = 80
+  const xPadding = 120
   const yPadding = 72
   const positions: Record<string, GraphNodeLayoutPosition> = {}
 

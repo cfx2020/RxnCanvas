@@ -1,0 +1,72 @@
+---
+doc_type: dev-guide
+slug: graph-editor-e2e-qa
+component: web-graph-editor
+status: current
+summary: Web Graph Editor 高级交互的 Playwright QA 命令、覆盖范围和输出边界
+tags: [web, graph-editor, e2e, playwright, local-http]
+last_reviewed: 2026-05-24
+---
+
+# Graph Editor E2E QA
+
+## 什么时候跑
+
+改动 Graph Canvas、graph viewport、edge/path editing、selection keyboard、history、Project Content bridge restore 或 Web layout 时，至少跑默认 fixture E2E：
+
+```bash
+cd web && npm run test:e2e
+```
+
+如果改动 local HTTP transport、Python bridge、project open/save、import preview、energy compute 或 export projection，再跑 local-http smoke：
+
+```bash
+cd web && npm run test:e2e:local-http
+```
+
+`RXNFLOW_E2E_PYTHON=/path/to/python3 npm run test:e2e:local-http` 可显式指定带导出依赖的解释器。
+
+## 默认 fixture 覆盖什么
+
+`web/e2e/workbench-journey.spec.ts` 使用 fixture runtime，不依赖 Python bridge。它覆盖：
+
+- desktop `1280x720` workbench journey：project、import、graph、energy、report export。
+- desktop graph editor matrix：object drag/drop、node drag、Apply Layout、path delete、edge label edit、direct edge drawing、rubber-band multi-select delete、keyboard nudge、Undo/Redo、wheel/minimap、Save/Open Bridge restore。
+- narrow `390x840` workbench flow：graph、energy、report export 主链路。
+- narrow graph advanced controls：layout/history/viewport/minimap/edge label/path list/network preview 可达，无水平溢出。
+- framework overlay absent、console clean、screenshot attachment。
+
+默认 fixture E2E 证明 Web UI 编排与 ShellResponse projection 消费，不证明真实 Gaussian/ORCA/MAPLE/XYZ/extxyz 解析质量。
+
+## local-http 覆盖什么
+
+`web/e2e/local-http-bridge.spec.ts` 独立启动本地 Python bridge 和 Vite local-http runtime。它只覆盖 bridge 主链路：
+
+- runtime badge 与 endpoint。
+- browser project create/open/save bridge。
+- 小文件 inline parser preview。
+- graph add/connect/set path 主流程。
+- energy compute。
+- PNG/CDXML/XLSX export projection 与 browser-local artifact persistence。
+- bundle export/import/open bridge roundtrip。
+
+不要把复杂 graph gesture matrix 复制进 local-http E2E；那会把浏览器手势波动和 Python bridge dependency 绑在一起。
+
+## 输出边界
+
+Playwright 产物只写入 gitignored 目录：
+
+- `web/test-results/`
+- `web/test-results-local-http/`
+- `web/playwright-report/`
+- `web/playwright-report-local-http/`
+
+这些 screenshot、trace 和 HTML report 不进入 Project Content、Browser Project Repository、`.rxnflow.zip` bundle 或报告导出索引。
+
+## 维护规则
+
+- helper 名称描述用户动作，例如 `editFixtureEdgeLabel`、`rubberBandDeleteTemporaryNodes`，不要暴露 React 内部函数名。
+- 优先使用 role、label、button text 和可访问区域；pointer / wheel / drag 这类输入可用局部 DOM event helper。
+- 测试只通过 UI 触发 Shell command，不直接 mutate `WorkbenchDomainState`、IndexedDB bytes、Project Content files 或 ShellResponse。
+- 断言用户可观察结果：node/edge/path 可见、Network Preview 数量、edge label、viewport zoom/transform、active path、Save/Open Bridge 后恢复。
+- E2E 不为测试便利新增生产按钮或测试专用 UI。

@@ -1,13 +1,17 @@
 import { expect, test } from "playwright/test"
 import {
   attachViewportScreenshot,
+  applyAutoLayoutAndReplayHistory,
   buildImportedWaterPath,
   collectConsoleIssues,
   computeMissingEnergyProfile,
+  createAndDeleteTemporaryGraphPath,
   createAndSaveBrowserProject,
-  deleteFixtureEdge,
+  drawTemporaryEdgeWithPointer,
   dragGraphNode,
   dragRegisteredObjectToGraphCanvas,
+  editFixtureEdgeLabel,
+  exerciseNarrowGraphAdvancedControls,
   exerciseGraphViewportControls,
   expectBundleEntry,
   expectConsoleClean,
@@ -22,10 +26,12 @@ import {
   openBrowserProject,
   openWorkbench,
   previewAndRegisterImport,
+  rubberBandDeleteTemporaryNodes,
   reorderFixturePathToReverse,
   resetWorkbenchStorage,
   runFixture,
   saveReloadAndRestoreGraphWorkspace,
+  nudgeFixtureNodeWithHistory,
 } from "./workbench-helpers"
 
 test.describe("RxnFlow Web Workbench E2E", () => {
@@ -63,7 +69,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await expectConsoleClean(consoleIssues)
   })
 
-  test("desktop graph editor matrix covers drag, edit, viewport, and bridge restore", async ({ page }, testInfo) => {
+  test("desktop graph editor matrix covers advanced editing and bridge restore", async ({ page }, testInfo) => {
     const consoleIssues = collectConsoleIssues(page)
     await page.setViewportSize({ width: 1280, height: 720 })
     await openWorkbench(page)
@@ -71,6 +77,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     const projectName = `Graph Matrix ${Date.now()}`
     await createAndSaveBrowserProject(page, projectName)
     await runFixture(page)
+    await nudgeFixtureNodeWithHistory(page)
 
     await dragRegisteredObjectToGraphCanvas(page, {
       objectName: /object b/i,
@@ -83,8 +90,12 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await expect(graphCanvas.getByText("object-b").first()).toBeVisible()
 
     await dragGraphNode(page, /node-b/i, { x: 88, y: 58 })
+    await applyAutoLayoutAndReplayHistory(page)
+    await createAndDeleteTemporaryGraphPath(page)
+    await editFixtureEdgeLabel(page, "TS scan")
+    await drawTemporaryEdgeWithPointer(page)
+    await rubberBandDeleteTemporaryNodes(page)
     await reorderFixturePathToReverse(page)
-    await deleteFixtureEdge(page)
     await exerciseGraphViewportControls(page)
     await saveReloadAndRestoreGraphWorkspace(page, projectName)
 
@@ -162,9 +173,9 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await expect(graphCanvas.getByText("path-web-main").first()).toBeVisible()
 
     await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
-    await expect(graphCanvas.getByText("120%")).toBeVisible()
+    await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("120%")
     await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
-    await expect(graphCanvas.getByText("100%")).toBeVisible()
+    await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("100%")
     await expect(graphCanvas.getByLabel("Network Preview")).toBeVisible()
 
     await energyPanel.getByRole("button", { name: "Compute" }).click()
@@ -178,6 +189,20 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)
     await attachViewportScreenshot(page, testInfo, "narrow-workbench-flow")
+    await expectConsoleClean(consoleIssues)
+  })
+
+  test("narrow graph editor keeps advanced controls reachable", async ({ page }, testInfo) => {
+    const consoleIssues = collectConsoleIssues(page)
+    await page.setViewportSize({ width: 390, height: 840 })
+    await openWorkbench(page)
+    await runFixture(page)
+
+    await exerciseNarrowGraphAdvancedControls(page)
+
+    await expectNoFrameworkOverlay(page)
+    await expectNoHorizontalOverflow(page)
+    await attachViewportScreenshot(page, testInfo, "narrow-graph-editor-advanced")
     await expectConsoleClean(consoleIssues)
   })
 })

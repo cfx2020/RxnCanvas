@@ -299,12 +299,127 @@ export async function dragGraphNode(
   }).toBeGreaterThan(8)
 }
 
+export async function applyAutoLayoutAndReplayHistory(page: Page) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  const viewportLayer = graphCanvas.locator(".graph-viewport-layer")
+  const beforeTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
+
+  await graphCanvas.getByRole("button", { name: "Apply Layout" }).click()
+  await expect(graphCanvas.getByText("Layout applied")).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Undo" })).toHaveAttribute("title", "Undo Layout")
+  await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(beforeTransform)
+  await expect(graphNodeById(graphCanvas, "node-b")).toBeVisible()
+  const afterLayoutTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
+
+  await graphCanvas.getByRole("button", { name: "Undo" }).click()
+  await expect(graphCanvas.getByRole("button", { name: "Redo" })).toBeEnabled()
+  await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(afterLayoutTransform)
+  await expect(graphNodeById(graphCanvas, "node-b")).toBeVisible()
+
+  await graphCanvas.getByRole("button", { name: "Redo" }).click()
+  await expect(graphCanvas.getByRole("button", { name: "Undo" })).toBeEnabled()
+  await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).toBe(afterLayoutTransform)
+  await expect(graphNodeById(graphCanvas, "node-b")).toBeVisible()
+}
+
+export async function createAndDeleteTemporaryGraphPath(page: Page) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  const preview = graphCanvas.getByLabel("Network Preview")
+
+  await graphCanvas.getByRole("button", { name: "Set Path" }).click()
+  await expect(graphCanvas.getByText("path-web-main").first()).toBeVisible()
+  await expect(preview.locator("dd").nth(2)).toHaveText("2")
+
+  await graphCanvas.getByRole("button", { name: "Select path Canvas path" }).click()
+  await graphCanvas.getByRole("button", { name: "Delete Selected" }).click()
+
+  await expect(graphCanvas.getByRole("button", { name: "Select path Canvas path" })).toHaveCount(0)
+  await expect(preview.locator("dd").nth(2)).toHaveText("1")
+  await expect(graphCanvas.getByText("Active path").locator("..")).toContainText("none")
+  await expect(graphCanvas.getByRole("button", { name: "Select path Fixture path" })).toBeVisible()
+}
+
+export async function editFixtureEdgeLabel(page: Page, label: string) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  await graphCanvas.getByRole("button", { name: "Edge Object A to Object B" }).click()
+
+  const editor = graphCanvas.getByRole("form", { name: "Edge Label Editor" })
+  await expect(editor).toBeVisible()
+  await editor.getByLabel("Label").fill(label)
+  await editor.getByRole("button", { name: "Apply" }).click()
+
+  await expect(editor.getByLabel("Label")).toHaveValue(label)
+  await expect(graphCanvas.getByRole("button", { name: `Edge Object A to Object B: ${label}` })).toBeVisible()
+  await expect(graphCanvas.getByText(label).first()).toBeVisible()
+}
+
+export async function drawTemporaryEdgeWithPointer(page: Page) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  const preview = graphCanvas.getByLabel("Network Preview")
+
+  await drawGraphEdgeWithPointer(page, graphCanvas, "node-b", "node-web-3")
+
+  await expect(preview.locator("dd").nth(1)).toHaveText("2")
+  await expect(graphCanvas.getByText("No disconnected nodes")).toBeVisible()
+}
+
+export async function rubberBandDeleteTemporaryNodes(page: Page) {
+  await dragRegisteredObjectToGraphCanvas(page, {
+    objectName: /object a/i,
+    objectId: "object-a",
+    label: "Object A",
+    target: { xRatio: 0.78, yRatio: 0.72 },
+  })
+
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  const preview = graphCanvas.getByLabel("Network Preview")
+  await expect(graphNodeById(graphCanvas, "node-web-4")).toBeVisible()
+  await expect(preview.locator("dd").nth(0)).toHaveText("4")
+
+  await rubberBandSelectGraphNodes(graphCanvas, ["node-web-3", "node-web-4"])
+
+  await expect(graphNodeById(graphCanvas, "node-web-3")).toHaveAttribute("aria-current", "true")
+  await expect(graphNodeById(graphCanvas, "node-web-4")).toHaveAttribute("aria-current", "true")
+
+  await graphCanvas.getByRole("button", { name: "Delete Selected" }).click()
+  await expect(graphNodeById(graphCanvas, "node-web-3")).toHaveCount(0)
+  await expect(graphNodeById(graphCanvas, "node-web-4")).toHaveCount(0)
+  await expect(preview.locator("dd").nth(0)).toHaveText("2")
+  await expect(preview.locator("dd").nth(1)).toHaveText("1")
+  await expect(graphCanvas.getByText("No disconnected nodes")).toBeVisible()
+}
+
+export async function nudgeFixtureNodeWithHistory(page: Page) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  const node = graphNodeById(graphCanvas, "node-b")
+  await clickGraphNodeById(graphCanvas, "node-b")
+  await expect(node).toHaveAttribute("aria-current", "true")
+  await node.focus()
+
+  const before = await visibleBox(node)
+  await page.keyboard.press("ArrowRight")
+  await expect.poll(async () => boxDelta(node, before)).toBeGreaterThan(8)
+
+  await graphCanvas.getByRole("button", { name: "Undo" }).click()
+  await expect(graphCanvas.getByRole("button", { name: "Redo" })).toBeEnabled()
+  await expect(node).toHaveAttribute("aria-current", "true")
+  await expect(node).toBeVisible()
+
+  await graphCanvas.getByRole("button", { name: "Redo" }).click()
+  await expect(graphCanvas.getByRole("button", { name: "Undo" })).toBeEnabled()
+  await expect(node).toHaveAttribute("aria-current", "true")
+  await expect(node).toBeVisible()
+}
+
 export async function exerciseGraphViewportControls(page: Page) {
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
   const surface = graphCanvas.getByLabel("Graph canvas surface")
   const viewportLayer = graphCanvas.locator(".graph-viewport-layer")
   const viewportZoomOutput = graphCanvas.locator(".graph-viewport-bar output")
   const minimap = graphCanvas.getByTestId("graph-minimap")
+
+  await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
+  await expect(viewportZoomOutput).toHaveText("100%")
 
   await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
   await expect(viewportZoomOutput).toHaveText("120%")
@@ -459,11 +574,17 @@ export async function exerciseGraphViewportControls(page: Page) {
   await expect(viewportZoomOutput).toHaveText("100%")
   await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
   await expect(viewportZoomOutput).toHaveText("120%")
+
+  await graphCanvas.getByRole("button", { name: "Undo" }).click()
+  await expect(viewportZoomOutput).toHaveText("100%")
+  await expect(graphCanvas.getByRole("button", { name: "Redo" })).toBeEnabled()
+  await graphCanvas.getByRole("button", { name: "Redo" }).click()
+  await expect(viewportZoomOutput).toHaveText("120%")
 }
 
 export async function reorderFixturePathToReverse(page: Page) {
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
-  await graphCanvas.getByRole("button", { name: "Select path Fixture path" }).click()
+  await selectGraphPathById(graphCanvas, "path-a-b")
   const draft = graphCanvas.getByLabel("Path order draft")
   await draft.getByRole("button", { name: "Up" }).last().click()
   await draft.getByRole("button", { name: "Apply Path Order" }).click()
@@ -484,6 +605,8 @@ export async function saveReloadAndRestoreGraphWorkspace(page: Page, projectName
   const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
 
+  await selectGraphPathById(graphCanvas, "path-a-b")
+
   await sidebar.getByRole("button", { name: "Save Bridge" }).click()
   await expect(sidebar.getByText("Project content files are readable.")).toBeVisible()
 
@@ -496,6 +619,48 @@ export async function saveReloadAndRestoreGraphWorkspace(page: Page, projectName
   await expect(graphCanvas.getByText("node-b -> node-a")).toBeVisible()
   await expect(graphCanvas.getByText("Active path").locator("..")).toContainText("path-a-b")
   await expect(graphCanvas.getByRole("button", { name: /Select path .*path-a-b/ })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Edge Object A to Object B: TS scan" })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Undo" })).toBeDisabled()
+  await expect(graphCanvas.getByRole("button", { name: "Redo" })).toBeDisabled()
+}
+
+export async function exerciseNarrowGraphAdvancedControls(page: Page) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  await expect(graphCanvas).toBeVisible()
+  await graphCanvas.scrollIntoViewIfNeeded()
+
+  await expect(graphCanvas.getByRole("button", { name: "Apply Layout" })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Undo" })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Redo" })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Pan" })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Zoom In" })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Zoom Out" })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Fit" })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Reset", exact: true })).toBeVisible()
+
+  await graphCanvas.getByRole("button", { name: "Apply Layout" }).click()
+  await expect(graphCanvas.getByText("Layout applied")).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Undo" })).toBeEnabled()
+  await graphCanvas.getByRole("button", { name: "Undo" }).click()
+  await expect(graphCanvas.getByRole("button", { name: "Redo" })).toBeEnabled()
+  await graphCanvas.getByRole("button", { name: "Redo" }).click()
+
+  await expect(graphCanvas.locator(".graph-minimap-panel")).toBeVisible()
+  await expect(graphCanvas.getByTestId("graph-minimap")).toBeVisible()
+  await expect(graphCanvas.getByLabel("Network Preview")).toBeVisible()
+  await expect(graphCanvas.getByLabel("Graph paths")).toBeVisible()
+
+  await graphCanvas.getByRole("button", { name: /Edge Object A to Object B/ }).click()
+  const editor = graphCanvas.getByRole("form", { name: "Edge Label Editor" })
+  await expect(editor).toBeVisible()
+  await expect(editor.getByLabel("Label")).toBeVisible()
+
+  await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
+  await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("100%")
+  await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
+  await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("120%")
+  await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
+  await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("100%")
 }
 
 export async function previewAndRegisterImport(page: Page) {
@@ -582,4 +747,154 @@ export async function exportWithoutInlineBytes(page: Page) {
   await expect(exportPanel.getByText("artifact-png-rxnflow-profile")).toBeVisible()
   await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(0)
   await expect(exportPanel.getByText("Download unavailable")).toHaveCount(3)
+}
+
+function graphNodeById(graphCanvas: Locator, nodeId: string): Locator {
+  return graphCanvas.getByRole("button", { name: new RegExp(`\\b${escapeRegExp(nodeId)}\\b`, "i") }).first()
+}
+
+async function selectGraphPathById(graphCanvas: Locator, pathId: string) {
+  const pathButton = graphCanvas
+    .getByLabel("Graph paths")
+    .locator("li", { hasText: pathId })
+    .getByRole("button")
+    .first()
+  await expect(pathButton).toBeVisible()
+  await pathButton.click()
+}
+
+async function clickGraphNodeById(graphCanvas: Locator, nodeId: string) {
+  const node = graphNodeById(graphCanvas, nodeId)
+  await expect(node).toBeVisible()
+  await node.evaluate((element) => {
+    element.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    }))
+  })
+}
+
+async function visibleBox(locator: Locator): Promise<NonNullable<Awaited<ReturnType<Locator["boundingBox"]>>>> {
+  await expect(locator).toBeVisible()
+  const box = await locator.boundingBox()
+  expect(box).not.toBeNull()
+  return box!
+}
+
+async function boxDelta(
+  locator: Locator,
+  before: NonNullable<Awaited<ReturnType<Locator["boundingBox"]>>>,
+): Promise<number> {
+  const after = await locator.boundingBox()
+  if (!after) return 0
+  return boxDistance(after, before)
+}
+
+function boxDistance(
+  left: NonNullable<Awaited<ReturnType<Locator["boundingBox"]>>>,
+  right: NonNullable<Awaited<ReturnType<Locator["boundingBox"]>>>,
+): number {
+  return Math.abs(left.x - right.x) + Math.abs(left.y - right.y)
+}
+
+async function drawGraphEdgeWithPointer(
+  page: Page,
+  graphCanvas: Locator,
+  fromNodeId: string,
+  toNodeId: string,
+) {
+  const handle = graphCanvas.locator(`.graph-edge-connect-handle[data-graph-node-id="${fromNodeId}"]`).first()
+  const targetNode = graphNodeById(graphCanvas, toNodeId)
+  const sourceBox = await visibleBox(handle)
+  const targetBox = await visibleBox(targetNode)
+  const start = {
+    x: sourceBox.x + sourceBox.width / 2,
+    y: sourceBox.y + sourceBox.height / 2,
+  }
+  const end = {
+    x: targetBox.x + targetBox.width / 2,
+    y: targetBox.y + targetBox.height / 2,
+  }
+
+  await page.mouse.move(start.x, start.y)
+  await dispatchEdgeHandlePointer(handle, "pointerdown", start, 1)
+  await expect(graphCanvas.locator(".graph-edge-pending")).toBeVisible()
+  await dispatchEdgeHandlePointer(handle, "pointermove", {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2,
+  }, 1)
+  await dispatchEdgeHandlePointer(handle, "pointermove", end, 1)
+  await dispatchEdgeHandlePointer(handle, "pointerup", end, 0)
+}
+
+async function dispatchEdgeHandlePointer(
+  handle: Locator,
+  type: "pointerdown" | "pointermove" | "pointerup",
+  point: { x: number; y: number },
+  buttons: number,
+) {
+  await handle.evaluate((element, eventInit) => {
+    const target = element as HTMLElement & { setPointerCapture?: (pointerId: number) => void }
+    const originalSetPointerCapture = target.setPointerCapture
+    target.setPointerCapture = () => undefined
+    try {
+      target.dispatchEvent(new PointerEvent(eventInit.type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 94,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        buttons: eventInit.buttons,
+        clientX: eventInit.x,
+        clientY: eventInit.y,
+      }))
+    } finally {
+      target.setPointerCapture = originalSetPointerCapture
+    }
+  }, { type, x: point.x, y: point.y, buttons })
+}
+
+async function rubberBandSelectGraphNodes(graphCanvas: Locator, nodeIds: string[]) {
+  const surface = graphCanvas.getByLabel("Graph canvas surface")
+  const nodes = await Promise.all(nodeIds.map((nodeId) => visibleBox(graphNodeById(graphCanvas, nodeId))))
+  const surfaceBox = await visibleBox(surface)
+  const left = Math.max(surfaceBox.x + 2, Math.min(...nodes.map((box) => box.x)) - 18)
+  const top = Math.max(surfaceBox.y + 2, Math.min(...nodes.map((box) => box.y)) - 18)
+  const right = Math.min(surfaceBox.x + surfaceBox.width - 2, Math.max(...nodes.map((box) => box.x + box.width)) + 18)
+  const bottom = Math.min(surfaceBox.y + surfaceBox.height - 2, Math.max(...nodes.map((box) => box.y + box.height)) + 18)
+
+  await surface.evaluate((element, rect) => {
+    const target = element as HTMLElement & { setPointerCapture?: (pointerId: number) => void }
+    const pointerId = 95
+    const originalSetPointerCapture = target.setPointerCapture
+    target.setPointerCapture = () => undefined
+    const dispatchPointer = (type: string, clientX: number, clientY: number, buttons: number) => {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        buttons,
+        clientX,
+        clientY,
+      }))
+    }
+
+    try {
+      dispatchPointer("pointerdown", rect.left, rect.top, 1)
+      dispatchPointer("pointermove", (rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2, 1)
+      dispatchPointer("pointermove", rect.right, rect.bottom, 1)
+      dispatchPointer("pointerup", rect.right, rect.bottom, 0)
+    } finally {
+      target.setPointerCapture = originalSetPointerCapture
+    }
+  }, { left, top, right, bottom })
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
