@@ -28,6 +28,11 @@ import type {
   WorkspaceSelectionSummary,
   WorkspaceSummary,
 } from "./types"
+import {
+  exportFormatCapability,
+  isSupportedExportFormat,
+  writerIdForExportFormat,
+} from "../app/exportFormatCapabilities"
 
 export type FixtureRunData = JsonObject & {
   command: "fixture.run"
@@ -825,7 +830,7 @@ function exportFormatsFromArgs(args: JsonObject): ExportFormat[] {
       : []
   const formats: ExportFormat[] = []
   for (const value of rawFormats) {
-    if ((value === "png" || value === "cdxml" || value === "xlsx") && !formats.includes(value)) {
+    if (typeof value === "string" && isSupportedExportFormat(value) && !formats.includes(value)) {
       formats.push(value)
     }
   }
@@ -839,6 +844,7 @@ function fixtureArtifact(
   includeBytes: boolean,
 ): ShellArtifact {
   const bytes = fixtureArtifactBytes(format, basename, title)
+  const capability = exportFormatCapability(format)
   return {
     id: `artifact-${format}-${basename}`,
     format,
@@ -850,8 +856,12 @@ function fixtureArtifact(
       profile_id: fixtureProfile.id,
       graph_id: fixtureProfile.graph_id,
       path_id: fixtureProfile.path_id,
-      writer_id: fixtureWriterId(format),
+      writer_id: writerIdForExportFormat(format, true),
       byte_size: atobLength(bytes),
+      extension: capability?.extension ?? format,
+      mime_type: capability?.mimeType ?? "application/octet-stream",
+      artifact_kind: capability?.artifactKind ?? "unknown",
+      format_status: capability?.status ?? "unsupported",
       encoding: includeBytes ? "base64" : null,
       ...(format === "xlsx"
         ? {
@@ -1140,12 +1150,6 @@ async function sha256Text(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
   const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
   return `sha256:${hex}`
-}
-
-function fixtureWriterId(format: ExportFormat): string {
-  if (format === "png") return "fixture-png-energy-plot-v1"
-  if (format === "cdxml") return "fixture-cdxml-energy-v1"
-  return "fixture-xlsx-energy-table-v1"
 }
 
 function btoaAscii(value: string): string {

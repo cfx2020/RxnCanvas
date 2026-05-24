@@ -25,6 +25,7 @@ import {
   persistExportArtifacts,
   type ExportArtifactPersistenceResult,
 } from "./exportArtifactPersistence"
+import { reportExportFormats } from "./exportFormatCapabilities"
 import {
   completeGraphEditorConnection,
   clearGraphEditorSelection,
@@ -174,7 +175,7 @@ export function WorkbenchShell({
     correctionIds: "",
   })
   const [reportExportOptions, setReportExportOptions] = useState<ReportExportOptions>({
-    formats: ["png", "cdxml", "xlsx"],
+    formats: reportExportFormats(),
     includeBytes: true,
     basename: "rxnflow-profile",
     title: "Relative energy profile",

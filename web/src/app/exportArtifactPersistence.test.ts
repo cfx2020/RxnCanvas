@@ -36,6 +36,7 @@ describe("export artifact persistence", () => {
         kind: "export_artifact",
         artifact_id: "artifact-png-rxnflow-profile",
         format: "png",
+        mime_type: "image/png",
       }),
     })
     const indexObject = await repository.readObject(project.projectRef, exportArtifactsPath)
@@ -166,6 +167,26 @@ function fixtureArtifacts(): ShellArtifact[] {
 }
 
 function fixtureArtifact(format: "png" | "cdxml" | "xlsx"): ShellArtifact {
+  const metadataByFormat = {
+    png: {
+      mime_type: "image/png",
+      extension: "png",
+      artifact_kind: "energy_diagram",
+      format_status: "supported",
+    },
+    cdxml: {
+      mime_type: "chemical/x-cdxml",
+      extension: "cdxml",
+      artifact_kind: "energy_diagram",
+      format_status: "supported",
+    },
+    xlsx: {
+      mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      extension: "xlsx",
+      artifact_kind: "energy_table",
+      format_status: "supported",
+    },
+  } satisfies Record<"png" | "cdxml" | "xlsx", Record<string, string>>
   return {
     id: `artifact-${format}-rxnflow-profile`,
     format,
@@ -176,6 +197,7 @@ function fixtureArtifact(format: "png" | "cdxml" | "xlsx"): ShellArtifact {
       graph_id: "graph-a-b",
       path_id: "path-a-b",
       writer_id: `fixture-${format}`,
+      ...metadataByFormat[format],
     },
   }
 }

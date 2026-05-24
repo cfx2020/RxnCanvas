@@ -3,18 +3,18 @@ doc_type: dev-guide
 slug: report-export-artifacts
 component: report-export-guides
 status: current
-summary: 如何生成、投影和持久化 RxnFlow PNG/CDXML/XLSX 报告导出 artifacts
+summary: 如何生成、投影和持久化 RxnFlow 报告导出 artifacts
 tags: [report-export, artifacts, cdxml, xlsx, platform-shell, web]
-last_reviewed: 2026-05-21
+last_reviewed: 2026-05-24
 ---
 
 # Report Export Artifacts
 
 ## 概述
 
-RxnFlow 报告导出当前支持三种 artifact：PNG 能量图、ChemDraw/CDXML 能量图和 XLSX 能量表工作簿。核心层负责生成 bytes 或写入目标目录，Platform Shell 负责把 artifact 投影成 JSON-safe response，Web 工作台只展示、下载和在 browser-local project 下持久化已有 inline bytes。
+RxnFlow 报告导出当前可执行三种 artifact：PNG 能量图、ChemDraw/CDXML 能量图和 XLSX 能量表工作簿。核心层负责生成 bytes 或写入目标目录，Platform Shell 负责把 artifact 投影成 JSON-safe response，Web 工作台只展示、下载和在 browser-local project 下持久化已有 inline bytes。
 
-这份指南面向贡献者和集成方。它说明当前 API、字段、路径和边界，不覆盖未来组合报告、CSV、CDX 或报告预览。
+这份指南面向贡献者和集成方。它说明当前 API、字段、路径、格式能力矩阵和边界，不覆盖未来组合报告、CSV writer、CDX writer 或报告预览。
 
 ## 前置依赖
 
@@ -93,15 +93,24 @@ assert response.ok, response.error
 | `ExportArtifact` | 核心运行时结果，可含 bytes 或本地 path；不是长期项目内容。 |
 | `ShellArtifact` | Platform Shell JSON-safe 投影；`include_bytes=true` 时用 `bytes_base64` 承载 inline bytes。 |
 | `ExportArtifactRecord` | Project Content 中的长期索引记录，只保存 id、format、`exports/...` path、checksum、metadata 和 created_at。 |
-| Browser Export Object | Web Browser Project Repository 中的 `exports/{basename}.{format}` bytes object。 |
+| Browser Export Object | Web Browser Project Repository 中的 `exports/{basename}.{extension}` bytes object。 |
+| Export Format Capability | 导出格式能力记录，包含 format、extension、MIME、writer、artifact kind、inline/persistence/default 状态和 supported/unsupported 状态。 |
 
-当前 `ExportFormat` 只允许：
+当前 supported `ExportFormat` 只允许：
 
 - `png`
 - `cdxml`
 - `xlsx`
 
-其他格式，包括 `csv` 和 `cdx`，当前返回 `invalid_input target=formats`。
+能力矩阵还记录后续格式入口，但它们当前不可执行：
+
+| format | status | extension | MIME | 说明 |
+|---|---|---|---|---|
+| `csv` | unsupported | `.csv` | `text/csv` | CSV writer 规划中，当前请求仍返回 `invalid_input target=formats`。 |
+| `svg` | experimental | `.svg` | `image/svg+xml` | Graph snapshot / diagram 方向的后续入口，当前没有 writer。 |
+| `pdf` | unsupported | `.pdf` | `application/pdf` | PDF writer 依赖和渲染边界尚未决定。 |
+| `pptx` | unsupported | `.pptx` | PowerPoint MIME | PPTX writer 依赖和 slide contract 尚未决定。 |
+| `cdx` | unsupported | `.cdx` | `chemical/x-cdx` | ChemDraw CDX binary writer/converter 尚不可用。 |
 
 ## 接口参考
 
@@ -156,6 +165,10 @@ assert columns["structure_name"].label == "Structure"
 - `path_id`
 - `object_count`
 - `format`
+- `extension`
+- `mime_type`
+- `artifact_kind`
+- `format_status`
 - `bytes_length`
 - `writer_id`
 - `title`
@@ -228,7 +241,7 @@ exports/{basename}.xlsx
 
 - 当前不支持 `.cdx` binary。CDXML 是 XML 格式，可由 ChemDraw 打开和编辑能量图对象；它不是 ChemDraw 二进制 CDX。
 - 当前 CDXML 只生成能量图对象，不生成 molecule-level CDXML、反应式结构、bond/atom 语义或 ChemDraw 编辑器。
-- 当前不支持 CSV、PDF、PPTX、SVG、DOCX、HTML report 或组合报告。
+- 当前不支持 CSV、PDF、PPTX、SVG、DOCX、HTML report 或组合报告；CSV/SVG/PDF/PPTX/CDX 只在 Export Format Capability 中记录为后续或 unsupported 状态。
 - XLSX workbook 不读取用户私有模板；Energy Table 缺失字段留空。
 - Web Report Export Panel 不调用 `project.save_content`，也不自动创建 Python filesystem artifact。
 - Browser Project Repository 是 local-only，不是云备份。跨设备迁移仍依赖 `.rxnflow.zip` 手动备份路线。

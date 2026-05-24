@@ -14,6 +14,7 @@ from rxnflow import run_core_fixture_vertical_slice
 from rxnflow.errors import RxnFlowWarning
 from rxnflow.export import (
     ALLOWED_EXPORT_FORMATS,
+    EXPORT_FORMAT_CAPABILITIES,
     ENERGY_TABLE_COLUMNS,
     ENERGY_TABLE_SCHEMA_VERSION,
     PNG_SIGNATURE,
@@ -27,7 +28,10 @@ from rxnflow.export import (
     build_energy_diagram_route,
     build_energy_table_rows,
     energy_table_columns_by_key,
+    export_format_capabilities_by_format,
+    export_format_capability,
     normalize_energy_table_header,
+    supported_export_formats,
 )
 from rxnflow.models import (
     ChemicalObject,
@@ -47,6 +51,7 @@ PROJECT_ID = "project-a"
 class ReportExportBaselineTest(unittest.TestCase):
     def test_export_contracts_and_input_validation(self) -> None:
         self.assertEqual(ALLOWED_EXPORT_FORMATS, frozenset(("png", "cdxml", "xlsx")))
+        self.assertEqual(supported_export_formats(), ALLOWED_EXPORT_FORMATS)
         self.assertEqual(ENERGY_TABLE_SCHEMA_VERSION, "energy-table-v1")
         self.assertEqual(ENERGY_TABLE_COLUMNS[0].key, "structure_name")
         self.assertEqual(ENERGY_TABLE_COLUMNS[0].label, "Structure")
@@ -66,6 +71,31 @@ class ReportExportBaselineTest(unittest.TestCase):
         self.assertEqual(artifact.metadata["format"], "png")
         self.assertEqual(route.states[0].label, "A")
         self.assertEqual(CdxmlDiagramOptions().state_line_span, 54.0)
+
+        capabilities = export_format_capabilities_by_format()
+        self.assertEqual(
+            set(capabilities),
+            {"png", "cdxml", "xlsx", "csv", "svg", "pdf", "pptx", "cdx"},
+        )
+        self.assertEqual([capability.format for capability in EXPORT_FORMAT_CAPABILITIES], [
+            "png",
+            "cdxml",
+            "xlsx",
+            "csv",
+            "svg",
+            "pdf",
+            "pptx",
+            "cdx",
+        ])
+        self.assertEqual(capabilities["png"].mime_type, "image/png")
+        self.assertEqual(capabilities["cdxml"].extension, "cdxml")
+        self.assertEqual(capabilities["xlsx"].artifact_kind, "energy_table")
+        self.assertTrue(capabilities["xlsx"].supports_browser_persistence)
+        self.assertEqual(capabilities["csv"].status, "unsupported")
+        self.assertFalse(capabilities["csv"].web_default_enabled)
+        self.assertEqual(capabilities["svg"].status, "experimental")
+        self.assertEqual(capabilities["cdx"].unsupported_reason, "ChemDraw CDX binary writer/converter is not available.")
+        self.assertIs(export_format_capability("missing"), None)
 
         service = ReportExportService()
         self.assert_error(service.export("", request), "invalid_input", "project_id")
@@ -156,6 +186,13 @@ class ReportExportBaselineTest(unittest.TestCase):
                 self.assertEqual(artifact.metadata["format"], artifact.format)
                 self.assertEqual(artifact.metadata["bytes_length"], len(artifact.bytes or b""))
                 self.assertIn("writer_id", artifact.metadata)
+                self.assertEqual(artifact.metadata["extension"], artifact.format)
+                self.assertEqual(artifact.metadata["artifact_kind"], "energy_diagram")
+                self.assertEqual(artifact.metadata["format_status"], "supported")
+                if artifact.format == "png":
+                    self.assertEqual(artifact.metadata["mime_type"], "image/png")
+                if artifact.format == "cdxml":
+                    self.assertEqual(artifact.metadata["mime_type"], "chemical/x-cdxml")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             bad_basename = service.export(
@@ -266,6 +303,10 @@ class ReportExportBaselineTest(unittest.TestCase):
         self.assertEqual(artifact.format, "xlsx")
         self.assertEqual(artifact.bytes[:2], b"PK")  # type: ignore[index]
         self.assertEqual(artifact.metadata["writer_id"], "xlsxwriter-energy-workbook-v1")
+        self.assertEqual(artifact.metadata["extension"], "xlsx")
+        self.assertEqual(artifact.metadata["mime_type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.assertEqual(artifact.metadata["artifact_kind"], "energy_table")
+        self.assertEqual(artifact.metadata["format_status"], "supported")
         self.assertEqual(artifact.metadata["energy_table_schema_version"], ENERGY_TABLE_SCHEMA_VERSION)
         self.assertEqual(artifact.metadata["energy_table_column_count"], len(ENERGY_TABLE_COLUMNS))
 

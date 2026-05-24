@@ -120,6 +120,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Energy Expression Details：Web Energy Profile Panel 中逐点显示 EnergyExpression 的只读明细区；它只展示 ShellResponse profile projection，不在前端重算能量。
 - Energy Profile Persistence：Project Content 中的 `energy-profiles-v1` section，保存已计算 EnergyProfile、EnergyOptions、EnergyPoint、可选 EnergyExpression、missing reason 和 warnings；EnergyOptions 持久化 `energy_source`，旧 profile 缺失该字段时按 `auto` 读取，旧 point 缺失 `expression` 时按 null 读取；加载时校验 graph/path/node 顺序和 expression node/source/kind/unit/coefficient/missing 语义，但不重新计算。
 - Report Export：面向发布或复用的标准化导出结果，初期目标包括 PNG、ChemDraw/CDXML 与 Excel 能量表格。
+- Export Format Capability：核心层导出格式能力记录，描述 format、extension、MIME、writer、artifact kind、inline/browser persistence/Web 默认状态、supported/experimental/unsupported 状态和 unsupported reason；当前 supported set 仍只有 `png`、`cdxml`、`xlsx`，`csv`、`svg`、`pdf`、`pptx`、`cdx` 只作为后续/unsupported capability 记录。
 - Report Export Service：核心层报告导出编排服务，消费已加载 graph/profile/object/table_rows，返回 ExportArtifact bytes 或写入指定目录。
 - Export Artifact：`ReportExportService` 的运行时导出结果，可包含 bytes 或当前进程输出路径，不作为长期项目内容直接保存。
 - Export Artifact Record：Project Content 中的长期导出索引记录，保存 id、format、`exports/...` 项目相对 path、sha256 checksum、metadata 和 created_at，不保存 bytes。
@@ -217,11 +218,13 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - `energy-profiles-v1` 中的 options 保存 `output_unit`、`include_corrections`、`energy_key`、`energy_source`、可选 `correction_policy` 和可空 baseline；旧 JSON 缺 `energy_source` 时加载为 `auto`，缺 `correction_policy` 时加载为 null。point energy 必须是 `{value, unit, reference}` 对象，unit 必须匹配 EnergyOptions.output_unit；missing point 必须只有 missing_reason，不允许混入 absolute/relative energy。point.expression 是同一 v1 schema 下的可选字段，不升级 schema version；旧 profile 没有 expression 合法，新计算 profile 包含 expression。
 - `energy-profiles-v1` 加载时基于已加载 ReactionGraph 校验 graph_id、path_id、points[].node_id 顺序和 baseline_node_id；引用缺失或顺序错位返回结构化错误。存在 expression 时还会校验 expression.node_id 与 point.node_id 对齐、component source/kind 合法、coefficient 非零有限、converted/contribution/total unit 匹配 output unit，以及 missing/total 与 point missing_reason 不矛盾。
 - Report Export Service 当前只消费调用方传入的已加载对象，不从 Project Store 读取 graph/profile，也不写 manifest 或登记 ProjectResource。
-- Report Export Service 当前支持 `png`、`cdxml` 和 `xlsx` 三种 ExportFormat；其他格式返回 `invalid_input`。
+- Report Export Service 当前通过 Export Format Capability 维护导出格式状态、MIME、extension、writer id、artifact kind、inline/browser persistence 和 Web default 口径；`ALLOWED_EXPORT_FORMATS` 从 capability 中的 supported set 派生。
+- Report Export Service 当前支持 `png`、`cdxml` 和 `xlsx` 三种 ExportFormat；`csv`、`svg`、`pdf`、`pptx`、`cdx` 已有 capability 记录但不进入 supported set，请求时仍返回 `invalid_input target=formats`，details.supported 只列当前可执行格式。
 - XLSX 导出当前生成 structure-first 的 `Energy Table`，并可附加 `Energy Profile` 和 `Warnings` sheet；Energy Table Contract 当前带 `energy-table-v1` schema metadata、稳定列 key 查询和样表 header mapping；XLSX workbook 使用 title、group header row、column label row、autofilter、freeze pane、按列类型设置的列宽，并始终写 `Export Metadata` sheet；模型中没有的 basis function、Shermo/Whitesides 校正、entropy 原始列等字段留空或由调用方 table_rows 提供，不补 0。
 - PNG 和 CDXML 导出共用 Energy Diagram Route 的 padded energy bounds 和 state anchors；missing point 保留断点和 warning，不编造相对能量，也不生成假 state line。
 - CDXML 当前只生成可编辑能量图对象，包括带 document/page/group 属性的 CDXML root、state line、connector、label、relative value、axis、fonttable 和 colortable；generated object id 单文档唯一，group/graphic/arrow/text 均带 `Z`，graphic/arrow/text 带稳定 BoundingBox / LineWidth / justification 属性；不生成分子结构级 CDXML、generic reaction scheme 或 CDX，`cdx` 请求仍返回 `invalid_input target=formats`。
-- Report Export 当前有开发者指南 `docs/dev/report-export-artifacts.md` 和用户指南 `docs/user/report-export-artifacts.md`，分别说明 core/Shell/Web artifact contract、Energy Table 字段口径、Web 导出操作、CDXML/CDX 边界和 `exports/...` 保存路径。
+- Report Export 运行时 artifact metadata 当前包含 `extension`、`mime_type`、`artifact_kind` 和 `format_status`，Web download MIME、fixture writer metadata 和 browser persistence guard 使用同一格式能力口径。
+- Report Export 当前有开发者指南 `docs/dev/report-export-artifacts.md` 和用户指南 `docs/user/report-export-artifacts.md`，分别说明 core/Shell/Web artifact contract、Export Format Capability、Energy Table 字段口径、Web 导出操作、CDXML/CDX 边界和 `exports/...` 保存路径。
 - Project Bundle 当前有用户指南 `docs/user/project-bundle-backup.md` 和开发者指南 `docs/dev/project-bundle-import-export.md`，覆盖 Web Project Sidebar 与 CLI 两条备份/恢复路径、导出前 Save Bridge / 导入后 Open Bridge 的手动顺序、Web archive adapter 边界、错误 bundle 样例和 QA 命令。
 - PNG/XLSX writer 依赖 Pillow / XlsxWriter，但依赖在 adapter 内延迟 import，缺失时返回 `export_failed`。
 - ExportArtifactRecord 与运行时 ExportArtifact 分离；长期索引只保存项目相对 path、format、checksum、metadata 和 created_at，不保存 ExportArtifact.bytes 或运行时绝对 path。

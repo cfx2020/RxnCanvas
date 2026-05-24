@@ -5,8 +5,8 @@ items:
   - slug: export-format-capability-matrix
     description: 建立导出格式能力表，统一 core/Shell/Web/docs 对 png/cdxml/xlsx/csv/svg/pdf/pptx/cdx 的状态、MIME、扩展名和 persistence guard
     depends_on: []
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-24-export-format-capability-matrix
     minimal_loop: true
     notes: 最小闭环；先把格式能力口径集中，后续新增 CSV/SVG/PDF/PPTX/CDX 不再各端散改白名单
 

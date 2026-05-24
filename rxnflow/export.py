@@ -22,11 +22,147 @@ from .result import Result, err, ok
 
 
 ExportFormat = Literal["png", "cdxml", "xlsx"]
+ExportFormatStatus = Literal["supported", "experimental", "unsupported"]
 
-ALLOWED_EXPORT_FORMATS: frozenset[str] = frozenset(("png", "cdxml", "xlsx"))
 ENERGY_TABLE_SCHEMA_VERSION = "energy-table-v1"
 EXPORT_CREATED_AT = "2026-05-05T00:00:00Z"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+@dataclass(frozen=True)
+class ExportFormatCapability:
+    format: str
+    extension: str
+    mime_type: str
+    writer_id: str | None
+    artifact_kind: str
+    supports_inline_bytes: bool
+    supports_browser_persistence: bool
+    web_default_enabled: bool
+    status: ExportFormatStatus
+    unsupported_reason: str | None = None
+
+
+EXPORT_FORMAT_CAPABILITIES: tuple[ExportFormatCapability, ...] = (
+    ExportFormatCapability(
+        "png",
+        "png",
+        "image/png",
+        "pillow-energy-plot-v1",
+        "energy_diagram",
+        True,
+        True,
+        True,
+        "supported",
+    ),
+    ExportFormatCapability(
+        "cdxml",
+        "cdxml",
+        "chemical/x-cdxml",
+        "rxnflow-cdxml-energy-v1",
+        "energy_diagram",
+        True,
+        True,
+        True,
+        "supported",
+    ),
+    ExportFormatCapability(
+        "xlsx",
+        "xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xlsxwriter-energy-workbook-v1",
+        "energy_table",
+        True,
+        True,
+        True,
+        "supported",
+    ),
+    ExportFormatCapability(
+        "csv",
+        "csv",
+        "text/csv",
+        None,
+        "energy_table",
+        True,
+        False,
+        False,
+        "unsupported",
+        "CSV writer is planned but not implemented.",
+    ),
+    ExportFormatCapability(
+        "svg",
+        "svg",
+        "image/svg+xml",
+        None,
+        "graph_snapshot",
+        True,
+        False,
+        False,
+        "experimental",
+        "SVG graph snapshot contract is planned but not implemented.",
+    ),
+    ExportFormatCapability(
+        "pdf",
+        "pdf",
+        "application/pdf",
+        None,
+        "report_document",
+        True,
+        False,
+        False,
+        "unsupported",
+        "PDF writer dependency and rendering boundary are not decided.",
+    ),
+    ExportFormatCapability(
+        "pptx",
+        "pptx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        None,
+        "report_document",
+        True,
+        False,
+        False,
+        "unsupported",
+        "PPTX writer dependency and slide contract are not decided.",
+    ),
+    ExportFormatCapability(
+        "cdx",
+        "cdx",
+        "chemical/x-cdx",
+        None,
+        "external_conversion",
+        False,
+        False,
+        False,
+        "unsupported",
+        "ChemDraw CDX binary writer/converter is not available.",
+    ),
+)
+
+
+def export_format_capabilities_by_format() -> dict[str, ExportFormatCapability]:
+    """Return all known report export format capabilities keyed by format id."""
+
+    return {capability.format: capability for capability in EXPORT_FORMAT_CAPABILITIES}
+
+
+def export_format_capability(format_id: str) -> ExportFormatCapability | None:
+    """Return a known export format capability, including unsupported future formats."""
+
+    return export_format_capabilities_by_format().get(format_id)
+
+
+def supported_export_formats() -> frozenset[str]:
+    """Return currently executable report export formats."""
+
+    return frozenset(
+        capability.format
+        for capability in EXPORT_FORMAT_CAPABILITIES
+        if capability.status == "supported"
+    )
+
+
+ALLOWED_EXPORT_FORMATS: frozenset[str] = supported_export_formats()
 
 
 @dataclass(frozen=True)
@@ -1108,6 +1244,7 @@ def _artifact_metadata(
     basename: str,
     byte_length: int,
 ) -> dict[str, Any]:
+    capability = export_format_capability(rendered.format)
     metadata = {
         "project_id": project_id,
         "graph_id": request.graph.id if request.graph is not None else _profile_graph_id(request),
@@ -1121,6 +1258,15 @@ def _artifact_metadata(
         "basename": basename,
         "warnings": tuple(warning.code for warning in rendered.warnings),
     }
+    if capability is not None:
+        metadata.update(
+            {
+                "extension": capability.extension,
+                "mime_type": capability.mime_type,
+                "artifact_kind": capability.artifact_kind,
+                "format_status": capability.status,
+            }
+        )
     if rendered.format == "xlsx":
         metadata["energy_table_schema_version"] = ENERGY_TABLE_SCHEMA_VERSION
         metadata["energy_table_column_count"] = len(ENERGY_TABLE_COLUMNS)

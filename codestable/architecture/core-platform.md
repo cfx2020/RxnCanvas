@@ -98,7 +98,8 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 3. 使用 structure-first 的 Energy Table，第一列固定为结构名称；缺失字段留空或保留 missing reason。
 4. PNG 和 CDXML 共用 Energy Diagram Route；missing point 形成断点和 warning，不编造相对能量。
 5. 支持 bytes-only 返回，也支持写入已有 destination_dir 并返回 artifact.path。
-6. 通过 `docs/dev/report-export-artifacts.md` 和 `docs/user/report-export-artifacts.md` 记录开发者 API、Web 操作、PNG/CDXML/XLSX 格式用途、CDXML/CDX 边界、Energy Table 字段口径和 `exports/...` artifact 保存路径。
+6. 通过 Export Format Capability 记录 `png/cdxml/xlsx/csv/svg/pdf/pptx/cdx` 的 extension、MIME、writer、artifact kind、inline/browser persistence、Web 默认状态和 supported/experimental/unsupported 状态；当前可执行 supported set 仍只有 `png/cdxml/xlsx`。
+7. 通过 `docs/dev/report-export-artifacts.md` 和 `docs/user/report-export-artifacts.md` 记录开发者 API、Web 操作、PNG/CDXML/XLSX 格式用途、Export Format Capability、CDXML/CDX 边界、Energy Table 字段口径和 `exports/...` artifact 保存路径。
 
 第十类是 Platform Shell：
 
@@ -302,7 +303,7 @@ ProjectBundleService
 - `rxnflow.graph_workspace_codec`：`reaction-graphs-v1` 和 `workspaces-v1` sections 的 ReactionGraph / WorkspaceSnapshot 序列化、反序列化、引用校验和 derived palette/preview 构造边界。
 - `rxnflow.energy`：fixture energy profile 计算；通用 EnergyProfileEngine 的 path 选择、baseline 解析、节点总能量、EnergyExpression 物化、单位转换、correction inclusion 和缺失点诊断。
 - `rxnflow.energy_profile_codec`：`energy-profiles-v1` section 的 EnergyProfile / EnergyOptions / EnergyPoint / EnergyExpression / RxnFlowWarning 序列化、反序列化、字段校验、graph/path/node sequence 引用校验，以及 expression node/source/kind/unit/coefficient/missing 语义校验。
-- `rxnflow.export`：ExportRequest / ExportArtifact / ExportArtifactRecord / EnergyTableColumn / EnergyTableRow / EnergyDiagramRoute 协议，以及 ReportExportService 的 PNG、CDXML、XLSX bytes-first 导出编排；Energy Table Contract 当前包含 `ENERGY_TABLE_SCHEMA_VERSION`、列 key 查询 helper 和样表 header normalization helper。`docs/dev/report-export-artifacts.md` 是该模块的开发者使用指南。
+- `rxnflow.export`：ExportRequest / ExportArtifact / ExportArtifactRecord / ExportFormatCapability / EnergyTableColumn / EnergyTableRow / EnergyDiagramRoute 协议，以及 ReportExportService 的 PNG、CDXML、XLSX bytes-first 导出编排；`ALLOWED_EXPORT_FORMATS` 从 Export Format Capability 的 supported set 派生，artifact metadata 会补 `extension`、`mime_type`、`artifact_kind` 和 `format_status`。Energy Table Contract 当前包含 `ENERGY_TABLE_SCHEMA_VERSION`、列 key 查询 helper 和样表 header normalization helper。`docs/dev/report-export-artifacts.md` 是该模块的开发者使用指南。
 - `rxnflow.export_artifact_codec`：`export-artifacts-v1` section 的 ExportArtifactRecord 序列化、反序列化、format/path/checksum/metadata 校验和重复 id/path 检查。
 - `rxnflow.platform`：ShellCommand / ShellResponse / ShellArtifact / PlatformSession / AppKernel / PlatformShellService / handle_platform_payload，提供端侧薄壳层命令协议和 JSON 投影。
 - `rxnflow.content_store`：ProjectContentIndex / ProjectContentFile / ProjectContentSnapshot / ProjectContentValidationIssue / ProjectContentValidationReport / ProjectContentMigrationPlan / ProjectStorageBackend / LocalProjectStorageBackend / ProjectContentValidator / ProjectContentStore，以及 fixture snapshot 的 `.rxnflow/state/` 保存、加载、只读验证和 migration plan 闭环。
@@ -483,10 +484,13 @@ Energy Engine 当前使用以下稳定协议：
 Report Export 当前使用以下稳定协议：
 
 - ExportFormat：`png`、`cdxml`、`xlsx`
+- ExportFormatCapability：记录已知格式的 `format`、`extension`、`mime_type`、`writer_id`、`artifact_kind`、`supports_inline_bytes`、`supports_browser_persistence`、`web_default_enabled`、`status` 和 `unsupported_reason`；当前 capability table 包含 `png/cdxml/xlsx/csv/svg/pdf/pptx/cdx`
+- supported export formats：由 capability table 中 `status="supported"` 的格式派生，当前仍只有 `png/cdxml/xlsx`；`csv`、`pdf`、`pptx`、`cdx` 当前为 unsupported，`svg` 当前为 experimental 但没有 writer
 - ReportExportService 入口：`export(project_id, request)`
 - ExportRequest：`formats`、`graph`、`profile`、`objects`、`table_rows`、`destination_dir`、`basename`、`title`、`options`
 - ExportArtifact：`id`、`format`、`path`、`bytes`、`created_at`、`metadata`
 - ExportArtifactRecord：`id`、`format`、项目相对 `path`、`checksum`、`created_at`、`metadata`
+- ExportArtifact metadata：所有当前 supported writer 输出都会包含 `writer_id`、`bytes_length`、`extension`、`mime_type`、`artifact_kind` 和 `format_status`，供 Shell/Web 下载、持久化和文档口径复用
 - Energy Table Contract：schema version 当前为 `energy-table-v1`；第一列语义为 `structure_name`，默认列覆盖 Egas、Ggas、Ggas+1M、Ggas(shermo)、Ggas(shermo+1M)、Esol、Gsol、basis function 占位、relative energy 和 missing reason；所有列可通过 `energy_table_columns_by_key()` 按 stable key 查询；XLSX 主表使用 title、group header row、column label row、autofilter、freeze pane 和按列类型设置的列宽
 - Workbook Header Mapping：`normalize_energy_table_header()` 可把用户样表常见表头如 `Egas`、`basis function`、`Ggas+1M`、`Ggas(shermo+1M)`、`Esol`、`Gsol` 映射为 Energy Table column key；`Sgau/Swhit/RT` 等 entropy 原始列当前返回 `None`，不被自动推断为能量列
 - Energy Diagram Route：从 EnergyProfile.points 派生 state label、relative value、unit、missing reason、padded energy bounds 和 state anchors；PNG/CDXML 共用这些 bounds/anchors，missing point 不生成 y 或 state line anchors
@@ -665,7 +669,7 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - ReportExportService 当前不新增 UI 组件、Web route、CLI 命令、桌面保存面板、真实报告预览、graph canvas screenshot、Excel chart、公式、宏或模板。
 - ReportExportService 的 Energy Table Contract 不读取用户 workbook 原文件；basis function、Shermo/Whitesides 或 entropy 原始字段当前只可由调用方 `table_rows` 显式提供，缺失值保持 blank/absent，不补 0。
 - ReportExportService 当前不从 3D geometry 自动推断 bonds，不生成 molecule-level CDXML，不生成 generic reaction scheme CDXML，不生成 CDX；`cdx` 请求仍按 unsupported format 返回 `invalid_input target=formats`。
-- ReportExportService 当前不实现 PDF、PPTX、SVG、CSV、JSON、SDF、MOL 或批量目录导出。
+- ReportExportService 当前不实现 CSV/SVG/PDF/PPTX/CDX writer，也不把这些格式加入 supported set；它们只作为 Export Format Capability 的后续或 unsupported/experimental 记录存在。ReportExportService 当前也不实现 JSON、SDF、MOL 或批量目录导出。
 - PlatformShellService 可以调用 ProjectStore、ProjectBundleService、ImportRegistryWorkflow、ChemicalRegistry、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService；它不复制 parser 字段映射、registry fingerprint、GraphPatch 语义、energy 计算规则、export writer 能力或 bundle zip 复制逻辑。
 - `registry.apply_correction` 是 PlatformShellService 暴露 ChemicalRegistry append-only correction 能力的薄命令层；它不修改 parser 输出、不重写 ChemicalObject 原始 `energies` / `thermochemistry` / provenance，不调用 graph/workspace/export，也不触发 `project.save_content`。
 - `workbench.snapshot` 只是 PlatformShellService 的只读投影命令，不调用 ParserRegistry、ImportRegistryWorkflow.confirm_import、ReactionGraphService.apply_patch、EnergyProfileEngine.compute_profile、ReportExportService.export 或 ProjectContentStore.save_snapshot。

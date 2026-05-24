@@ -288,7 +288,7 @@ class ReportSection:
 
 ## 5. 子 feature 清单
 
-1. `export-format-capability-matrix`：建立导出格式能力表，统一 core/Shell/Web/docs 对 png/cdxml/xlsx/csv/svg/pdf/pptx/cdx 的状态、MIME、扩展名和 persistence guard。最小闭环。
+1. `export-format-capability-matrix`：done。已建立导出格式能力表，统一 core/Shell/Web/docs 对 png/cdxml/xlsx/csv/svg/pdf/pptx/cdx 的状态、MIME、扩展名和 persistence guard。最小闭环已完成，当前 supported set 仍只有 png/cdxml/xlsx。
 2. `export-csv-energy-table`：复用 `energy-table-v1` 输出 CSV artifact，接通 Shell/Web download/persistence，并补 table/schema/docs 回归。
 3. `export-graph-snapshot-svg`：从 graph/workspace projection 生成报告用 SVG graph snapshot artifact，覆盖 escaping、空图、active path 和 viewport bounds。
 4. `web-report-preview-panel`：新增 Web 报告预览面板或 Report Export Panel preview mode，汇总 graph/profile/table/artifact readiness 与 warnings，覆盖桌面/窄屏。
@@ -300,7 +300,7 @@ class ReportSection:
 
 技术依赖顺序建议如下：
 
-1. 先做 `export-format-capability-matrix`，因为后续每个格式都要改同一组白名单和 metadata。
+1. `export-format-capability-matrix` 已完成；后续每个格式应从现有 capability table、artifact metadata 和 Web helper 继续扩展。
 2. 再做 `export-csv-energy-table`，它复用现有 table contract，风险最低，能快速补上用户常见数据交换需求。
 3. 然后做 `export-graph-snapshot-svg`，让组合报告具备图谱资产，而不是只导出能量曲线和表格。
 4. 接着做 `web-report-preview-panel`，把已有 artifact readiness 和 graph/profile summary 变成可验收的预览体验。
@@ -309,7 +309,7 @@ class ReportSection:
 
 ## 7. 观察项
 
-- 当前 `rxnflow.export.ExportFormat` 是 `Literal["png", "cdxml", "xlsx"]`，Web `ExportFormat` 和 `exportArtifactPersistence` 也只允许这三种格式。新增 CSV/SVG 时必须跨 core/Shell/Web 同步，不能只改 writer。
+- 当前 `rxnflow.export.ExportFormat` 和 Web `ExportFormat` 仍是 `Literal["png", "cdxml", "xlsx"]`，但 core/Web 已有 Export Format Capability 表记录 `csv/svg/pdf/pptx/cdx` 的后续/unsupported 边界。新增 CSV/SVG 时必须先更新 capability status、writer、metadata、tests 和文档，再进入 Web checkbox/persistence。
 - 图谱快照有两条路线：projection-based SVG renderer 更适合测试、CLI 和多端；DOM capture 更贴近 Web 当前视觉但会绑定浏览器状态。首轮建议优先 projection-based contract。
 - PDF/PPTX 很可能需要额外依赖或浏览器渲染链，必须在 feature 中明确本地/CI/Vercel 的可用边界。
 - CDX 仍应保持谨慎。当前 CDXML 已能服务 ChemDraw 可编辑能量图；CDX binary 或转换链不应在没有 license/平台/测试策略时开放为 supported。

@@ -7,12 +7,11 @@ import {
   exportArtifactsPath,
   projectContentIndexPath,
 } from "./projectContentBridge"
+import { extensionForExportFormat, supportsBrowserPersistence } from "./exportFormatCapabilities"
 
 const exportArtifactsSchemaVersion = "export-artifacts-v1" as const
 const exportArtifactCreatedAt = "2026-05-05T00:00:00Z" as const
 const projectContentTime = "2026-05-05T00:00:00Z" as const
-const supportedExportFormats = new Set(["png", "cdxml", "xlsx"])
-
 export type BrowserPersistedArtifactRecord = JsonObject & {
   id: string
   format: "png" | "cdxml" | "xlsx"
@@ -276,7 +275,7 @@ function skippedArtifact(
 
 function exportPathForArtifact(artifact: ShellArtifact, basename: string): `exports/${string}` {
   const safeBasename = safePathSegment(basename || artifact.id || "rxnflow-export")
-  const safeFormat = safePathSegment(artifact.format)
+  const safeFormat = safePathSegment(extensionForExportFormat(artifact.format))
   return `exports/${safeBasename}.${safeFormat}`
 }
 
@@ -294,7 +293,7 @@ function safePathSegment(value: string): string {
 }
 
 function isSupportedFormat(format: string): format is BrowserPersistedArtifactRecord["format"] {
-  return supportedExportFormats.has(format)
+  return supportsBrowserPersistence(format)
 }
 
 function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {

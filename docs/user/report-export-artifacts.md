@@ -3,16 +3,16 @@ doc_type: user-guide
 slug: report-export-artifacts
 component: report-export-guides
 status: current
-summary: 如何在 RxnFlow Web 工作台导出 PNG、CDXML 和 XLSX 报告 artifacts
+summary: 如何在 RxnFlow Web 工作台导出报告 artifacts
 tags: [report-export, web-workbench, cdxml, xlsx, local-first]
-last_reviewed: 2026-05-21
+last_reviewed: 2026-05-24
 ---
 
 # 导出 PNG、CDXML 和 XLSX 报告文件
 
 ## 功能简介
 
-RxnFlow Web 工作台可以把当前能量剖面导出为三类文件：PNG 能量图、ChemDraw 可打开的 CDXML 能量图，以及 XLSX 能量表工作簿。导出结果会显示在 Report Export 面板中，带有下载入口、metadata、warnings、保存状态和 checksum。
+RxnFlow Web 工作台当前可以把当前能量剖面导出为三类文件：PNG 能量图、ChemDraw 可打开的 CDXML 能量图，以及 XLSX 能量表工作簿。导出结果会显示在 Report Export 面板中，带有下载入口、metadata、warnings、保存状态和 checksum。
 
 当前导出是本地优先能力。浏览器项目中的 `exports/...` 文件保存在当前浏览器本地仓储中，不是云同步。
 
@@ -48,6 +48,8 @@ RxnFlow Web 工作台可以把当前能量剖面导出为三类文件：PNG 能�
 | PNG | 快速放进文档、汇报或聊天中查看能量图。 | 位图，不适合在 ChemDraw 中编辑对象。 |
 | CDXML | 用 ChemDraw 打开和编辑能量图线条、文字等图形对象。 | 当前是 `.cdxml` XML 文件，不是 `.cdx` 二进制文件；不包含分子结构编辑语义。 |
 | XLSX | 查看结构优先的能量表、Energy Profile 和 warnings。 | 当前不套用你的私有 Excel 模板；缺失字段留空，不自动补 0。 |
+
+RxnFlow 内部已经记录了 CSV、SVG、PDF、PPTX 和 CDX 的格式能力边界，但这些格式当前不会出现在 Web 导出勾选项里，也不会生成文件。
 
 ## 保存位置
 
@@ -91,7 +93,7 @@ A: 不会。当前 Web 工作台是 local-only。浏览器清数据、profile �
 
 Q: 能导出 CSV、PDF、PPTX、SVG 或完整报告吗？
 
-A: 当前不能。首轮只支持 PNG、CDXML 和 XLSX。CSV、CDX、PDF/PPTX/SVG 和组合报告都属于后续独立功能。
+A: 当前不能。当前可执行导出仍只有 PNG、CDXML 和 XLSX。CSV、SVG、PDF、PPTX、CDX 和组合报告都属于后续独立功能；其中 CSV、SVG、PDF、PPTX 和 CDX 已有内部格式能力记录，用来保证后续扩展时不会各端口径不一致。
 
 ## 相关功能
 

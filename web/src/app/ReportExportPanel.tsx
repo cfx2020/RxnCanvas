@@ -1,5 +1,6 @@
 import { Download, FileArchive } from "lucide-react"
 import type { EnergyProfileSummary, ExportFormat, ShellWarning, WorkbenchArtifactSummary } from "../shell"
+import { extensionForExportFormat, mimeTypeForExportFormat, reportExportFormats } from "./exportFormatCapabilities"
 import { useI18n } from "./i18n"
 
 export type ReportExportOptions = {
@@ -19,8 +20,6 @@ type ReportExportPanelProps = {
   onOptionsChange: (options: ReportExportOptions) => void
   onExport: () => void
 }
-
-const exportFormats: ExportFormat[] = ["png", "cdxml", "xlsx"]
 
 type ExportReadinessSummary = {
   hasProfile: boolean
@@ -56,7 +55,7 @@ export function ReportExportPanel({
       </div>
 
       <div className="export-format-grid" aria-label={t("reportExport.formats")}>
-        {exportFormats.map((format) => (
+        {reportExportFormats().map((format) => (
           <label key={format} className="export-format-option">
             <input
               type="checkbox"
@@ -212,7 +211,7 @@ function ArtifactList({ artifacts, basename }: { artifacts: WorkbenchArtifactSum
       {artifacts.map((artifact) => {
         const fileName = downloadFileName(artifact, basename)
         const downloadHref = typeof artifact.bytes_base64 === "string"
-          ? `data:${mimeType(artifact.format)};base64,${artifact.bytes_base64}`
+          ? `data:${mimeTypeForExportFormat(artifact.format)};base64,${artifact.bytes_base64}`
           : undefined
         return (
           <article key={artifact.id} className="artifact-card">
@@ -283,14 +282,7 @@ function formatMetadataValue(value: unknown): string {
 
 function downloadFileName(artifact: WorkbenchArtifactSummary, basename: string): string {
   const safeBasename = basename.trim() || "rxnflow-export"
-  return `${safeBasename}.${artifact.format}`
-}
-
-function mimeType(format: string): string {
-  if (format === "png") return "image/png"
-  if (format === "cdxml") return "chemical/x-cdxml"
-  if (format === "xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  return "application/octet-stream"
+  return `${safeBasename}.${extensionForExportFormat(artifact.format)}`
 }
 
 function exportReadinessFromProfile(

@@ -975,7 +975,22 @@ describe("ShellClient", () => {
       title: "Fixture Export",
       profile_id: "profile-a-b-electronic",
       writer_id: "fixture-png-energy-plot-v1",
+      extension: "png",
+      mime_type: "image/png",
+      artifact_kind: "energy_diagram",
+      format_status: "supported",
       encoding: "base64",
+    })
+    expect(response.artifacts[1].metadata).toMatchObject({
+      writer_id: "fixture-cdxml-energy-v1",
+      mime_type: "chemical/x-cdxml",
+      extension: "cdxml",
+    })
+    expect(response.artifacts[2].metadata).toMatchObject({
+      writer_id: "fixture-xlsx-energy-table-v1",
+      mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      extension: "xlsx",
+      artifact_kind: "energy_table",
     })
     expect(response.warnings[0].code).toBe("chemdraw_cdxml_only")
     expect(() => JSON.stringify(response)).not.toThrow()
