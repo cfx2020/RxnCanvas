@@ -51,6 +51,36 @@ class ExportArtifactIndexPersistenceTest(unittest.TestCase):
         self.assertTrue(restored.ok, restored.error)
         self.assertEqual(restored.value, (record,))
 
+    def test_csv_record_round_trips_without_schema_upgrade(self) -> None:
+        record = ExportArtifactRecord(
+            id="artifact-csv",
+            format="csv",
+            path="exports/profile.csv",
+            checksum=f"sha256:{'b' * 64}",
+            created_at="2026-05-07T00:00:00Z",
+            metadata={
+                "profile_id": "profile-main",
+                "writer_id": "python-csv-energy-table-v1",
+                "mime_type": "text/csv",
+                "extension": "csv",
+                "energy_table_schema_version": "energy-table-v1",
+            },
+        )
+
+        section = export_artifacts_section_to_dict(PROJECT_ID, (record,))
+
+        self.assertTrue(section.ok, section.error)
+        payload = section.value
+        assert payload is not None
+        self.assertEqual(payload["schema_version"], EXPORT_ARTIFACTS_SCHEMA_VERSION)
+        self.assertEqual(payload["artifacts"][0]["format"], "csv")
+        self.assertEqual(payload["artifacts"][0]["path"], "exports/profile.csv")
+
+        restored = export_artifacts_section_from_dict(PROJECT_ID, payload)
+
+        self.assertTrue(restored.ok, restored.error)
+        self.assertEqual(restored.value, (record,))
+
     def test_content_store_persists_export_artifact_index_with_stable_checksum(self) -> None:
         record = _record()
         snapshot = ProjectContentSnapshot(project_id=PROJECT_ID, export_artifacts=(record,))

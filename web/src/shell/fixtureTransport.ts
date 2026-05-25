@@ -863,10 +863,11 @@ function fixtureArtifact(
       artifact_kind: capability?.artifactKind ?? "unknown",
       format_status: capability?.status ?? "unsupported",
       encoding: includeBytes ? "base64" : null,
-      ...(format === "xlsx"
+      ...(format === "xlsx" || format === "csv"
         ? {
           energy_table_schema_version: "energy-table-v1",
           energy_table_column_count: 20,
+          energy_table_row_count: 2,
         }
         : {}),
     },

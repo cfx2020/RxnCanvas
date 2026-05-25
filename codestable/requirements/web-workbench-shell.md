@@ -48,9 +48,9 @@ tags: [web, workbench, local-first, shell-client, project-sidebar, indexeddb, i1
 - 作为一个从能量曲线定位图谱的用户，我希望点击曲线点或表格行后，中间图谱画布能选中同一个 graph node，而不是手动在画布里重新找。
 - 作为一个需要比较 electronic energy 和 thermochemistry 的用户，我希望能在能量面板里明确选择 energy channel 和来源 section，而不是只能手输一个模糊的 key。
 - 作为一个需要管理校正项口径的用户，我希望能按 none/all/kinds/ids 选择 correction policy，而不是只有一个笼统的 include corrections 开关。
-- 作为一个已经得到能量剖面的用户，我希望能从 Web 工作台直接导出 PNG、CDXML 和 XLSX artifacts，并在浏览器里看到导出结果、metadata、warnings 和可用下载入口。
+- 作为一个已经得到能量剖面的用户，我希望能从 Web 工作台直接导出 PNG、CDXML、XLSX 和 CSV artifacts，并在浏览器里看到导出结果、metadata、warnings 和可用下载入口。
 - 作为一个导出报告前做检查的用户，我希望导出面板提前告诉我当前 profile 是否有 missing point、是否包含 correction marker、include bytes 是否关闭、当前结果是否会 browser-local persisted，以及 ChemDraw 当前只支持 CDXML 不支持 CDX。
-- 作为一个使用浏览器本地项目的用户，我希望导出的 PNG、CDXML 和 XLSX artifacts 在当前 browser-local project 下有 `exports/...` 路径、persisted 状态和 checksum，而不是刷新页面后只剩一次性的下载链接。
+- 作为一个使用浏览器本地项目的用户，我希望导出的 PNG、CDXML、XLSX 和 CSV artifacts 在当前 browser-local project 下有 `exports/...` 路径、persisted 状态和 checksum，而不是刷新页面后只剩一次性的下载链接。
 - 作为一个继续迭代 Web 工作台的人，我希望有一条可重复的真实浏览器回归命令，能覆盖桌面/窄屏主流程、图谱编辑关键手势和布局健康，而不是每次靠临时脚本或人工目测。
 - 作为一个继续推进 local-http bridge 的开发者，我希望 fixture E2E 和 local-http E2E 分开运行，既能保留不依赖 Python bridge 的默认 UI 回归，也能用独立命令验证真实 bridge 主链路。
 
@@ -89,11 +89,11 @@ RxnFlow 的核心流程已经能在无界面的状态下跑通，但用户很难
 - 当前 Energy Profile Panel 可选择来自对象摘要的 energy channel、手输自定义 energy key，并选择 none/all/kinds/ids correction policy；它不在前端重新计算相对能量、校正项、expression 或单位换算，显示值、warnings、missing reason、curve point marker 和 expression details 都来自 ShellResponse profile projection。
 - 当前 Energy Profile Panel 的曲线点详情和 active/pinned point 是 UI-only 状态；不会保存到 Project Content、Browser Project Repository 或 localStorage。missing point 不补 0、不连入有效 polyline；correction marker 只基于 `expression.corrections.length`。
 - 当前 Energy Profile Panel 点击曲线点或表格行只通过 `workspace.select` 联动 Graph Canvas selected node，不直接修改 graph/path/profile 或节点组成。
-- 当前 Energy Profile Panel 不直接保存 profile，也不生成 PNG/CDXML/XLSX artifact；profile 持久化由显式 Save Bridge Session 将当前 session content 写回 Browser Project Repository。
+- 当前 Energy Profile Panel 不直接保存 profile，也不生成 PNG/CDXML/XLSX/CSV artifact；profile 持久化由显式 Save Bridge Session 将当前 session content 写回 Browser Project Repository。
 - 当前 Report Export Panel 只处理 ShellResponse 返回的 runtime artifacts；active browser project 下会写 Browser Project Repository `exports/...` object 和 `export-artifacts-v1` browser-local index，并显示 persisted path 与 checksum，但不创建 Python filesystem artifact，也不自动调用 Save Bridge Session。
 - 当前 Report Export Panel 显示 Export Readiness 静态摘要；missing point、include bytes 关闭、没有 active browser project 和 CDXML-only 都只是导出前提示，不改变导出按钮可用性和 `export.profile` 行为。
-- 当前 Report Export Panel 不在前端生成 PNG/CDXML/XLSX bytes；download link 只在 `bytes_base64` 存在时启用，include bytes 关闭时只显示 artifact metadata 和不可下载状态。当前 fixture/local-http 回归已固定 CDXML/XLSX download MIME、writer metadata、`energy-table-v1` schema metadata 和 browser-local checksum。
-- 当前 Report Export Panel 不实现 file picker、File System Access API、OPFS、JSZip、云存储、账号系统、报告预览、ChemDraw 编辑器、CDX、PDF、PPTX、SVG 或 CSV。
+- 当前 Report Export Panel 不在前端生成 PNG/CDXML/XLSX/CSV bytes；download link 只在 `bytes_base64` 存在时启用，include bytes 关闭时只显示 artifact metadata 和不可下载状态。当前 fixture/local-http 回归已固定 CDXML/XLSX/CSV download MIME、writer metadata、`energy-table-v1` schema metadata 和 browser-local checksum。
+- 当前 Report Export Panel 不实现 file picker、File System Access API、OPFS、JSZip、云存储、账号系统、报告预览、ChemDraw 编辑器、CDX、PDF、PPTX 或 SVG。
 - 当前 Report Export Panel 的 artifact id、format、path、metadata key/value、warning/error code 原样显示，不进入 i18n 翻译。用户操作说明见 `docs/user/report-export-artifacts.md`。
 - 当前 Graph Canvas 使用 ShellClient workspace commands 验证 UI 编排；默认 fixture transport，local-http 模式可调用本地 Python bridge；项目内容保存/恢复通过 Project Sidebar 的显式 Open Bridge / Save Bridge Session 完成。
 - 当前 E2E QA Harness 分为 fixture flow 和 local-http bridge smoke。默认 `npm run test:e2e` 不接真实 Python bridge，负责桌面/窄屏 UI 编排、advanced graph editor matrix、narrow advanced controls、console clean 和 no horizontal overflow；`npm run test:e2e:local-http` 只验证本机 bridge 主链路、小文件 parser preview、energy compute、report export writer projection 和 bundle roundtrip，不复制复杂 graph gesture matrix，也不声明真实 Gaussian/ORCA/MAPLE/XYZ/extxyz 完整解析支持。

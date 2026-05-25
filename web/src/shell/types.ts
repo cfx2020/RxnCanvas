@@ -346,7 +346,7 @@ export type EnergyComputeData = JsonObject & {
   profile: EnergyProfileSummary
 }
 
-export type ExportFormat = "png" | "cdxml" | "xlsx"
+export type ExportFormat = "png" | "cdxml" | "xlsx" | "csv"
 
 export type ExportProfileData = JsonObject & {
   command: "export.profile"
@@ -387,7 +387,7 @@ export type WorkbenchSnapshotData = JsonObject & {
 
 export type ShellArtifact = {
   id: string
-  format: "png" | "cdxml" | "xlsx" | string
+  format: ExportFormat | string
   path?: string | null
   bytes_base64?: string | null
   metadata: JsonObject

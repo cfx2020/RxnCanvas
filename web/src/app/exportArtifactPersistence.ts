@@ -14,7 +14,7 @@ const exportArtifactCreatedAt = "2026-05-05T00:00:00Z" as const
 const projectContentTime = "2026-05-05T00:00:00Z" as const
 export type BrowserPersistedArtifactRecord = JsonObject & {
   id: string
-  format: "png" | "cdxml" | "xlsx"
+  format: "png" | "cdxml" | "xlsx" | "csv"
   path: `exports/${string}`
   checksum: string
   created_at: string

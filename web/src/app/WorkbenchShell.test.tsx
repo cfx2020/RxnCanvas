@@ -1343,6 +1343,7 @@ describe("WorkbenchShell", () => {
     expect(within(exportPanel).getByLabelText("png")).toBeChecked()
     expect(within(exportPanel).getByLabelText("cdxml")).toBeChecked()
     expect(within(exportPanel).getByLabelText("xlsx")).toBeChecked()
+    expect(within(exportPanel).getByLabelText("csv")).toBeChecked()
     expect(within(exportPanel).getByLabelText("Include bytes")).toBeChecked()
     expect(within(exportPanel).getByText("Export readiness")).toBeInTheDocument()
     expect(within(exportPanel).getByText("Not browser-local persisted")).toBeInTheDocument()
@@ -1353,20 +1354,24 @@ describe("WorkbenchShell", () => {
     expect(await within(exportPanel).findByText("artifact-png-rxnflow-profile")).toBeInTheDocument()
     expect(within(exportPanel).getByText("artifact-cdxml-rxnflow-profile")).toBeInTheDocument()
     expect(within(exportPanel).getByText("artifact-xlsx-rxnflow-profile")).toBeInTheDocument()
+    expect(within(exportPanel).getByText("artifact-csv-rxnflow-profile")).toBeInTheDocument()
     expect(within(exportPanel).getByText("fixture-png-energy-plot-v1")).toBeInTheDocument()
     expect(within(exportPanel).getByText("fixture-cdxml-energy-v1")).toBeInTheDocument()
     expect(within(exportPanel).getByText("fixture-xlsx-energy-table-v1")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("energy_table_schema_version")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("energy-table-v1")).toBeInTheDocument()
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(3)
+    expect(within(exportPanel).getByText("fixture-csv-energy-table-v1")).toBeInTheDocument()
+    expect(within(exportPanel).getAllByText("energy_table_schema_version")).toHaveLength(2)
+    expect(within(exportPanel).getAllByText("energy-table-v1")).toHaveLength(2)
+    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(4)
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[0]).toHaveAttribute("download", "rxnflow-profile.png")
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[0].getAttribute("href")).toMatch(/^data:image\/png;base64,/)
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[1]).toHaveAttribute("download", "rxnflow-profile.cdxml")
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[1].getAttribute("href")).toMatch(/^data:chemical\/x-cdxml;base64,/)
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[2]).toHaveAttribute("download", "rxnflow-profile.xlsx")
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[2].getAttribute("href")).toMatch(/^data:application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet;base64,/)
+    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[3]).toHaveAttribute("download", "rxnflow-profile.csv")
+    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[3].getAttribute("href")).toMatch(/^data:text\/csv;base64,/)
     expect(screen.getAllByText("chemdraw_cdxml_only").length).toBeGreaterThan(0)
-    expect(screen.getByText("3 artifacts indexed")).toBeInTheDocument()
+    expect(screen.getByText("4 artifacts indexed")).toBeInTheDocument()
   })
 
   it("persists exported inline artifacts into the active browser project", async () => {
@@ -1384,15 +1389,21 @@ describe("WorkbenchShell", () => {
     expect(await within(exportPanel).findByText("exports/rxnflow-profile.png")).toBeInTheDocument()
     expect(within(exportPanel).getByText("exports/rxnflow-profile.cdxml")).toBeInTheDocument()
     expect(within(exportPanel).getByText("exports/rxnflow-profile.xlsx")).toBeInTheDocument()
-    expect(within(exportPanel).getAllByText("Yes").length).toBeGreaterThanOrEqual(3)
-    expect(within(exportPanel).getAllByText(/sha256:[a-f0-9]{64}/i).length).toBeGreaterThanOrEqual(3)
+    expect(within(exportPanel).getByText("exports/rxnflow-profile.csv")).toBeInTheDocument()
+    expect(within(exportPanel).getAllByText("Yes").length).toBeGreaterThanOrEqual(4)
+    expect(within(exportPanel).getAllByText(/sha256:[a-f0-9]{64}/i).length).toBeGreaterThanOrEqual(4)
     const [project] = await repository.listProjects()
     await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.png")).resolves.toBe(true)
     const exportIndex = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, exportArtifactsPath)).bytes))
-    expect(exportIndex.artifacts).toHaveLength(3)
+    expect(exportIndex.artifacts).toHaveLength(4)
     expect(exportIndex.artifacts[0]).toMatchObject({
       id: "artifact-cdxml-rxnflow-profile",
       path: "exports/rxnflow-profile.cdxml",
+      checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+    })
+    expect(exportIndex.artifacts[1]).toMatchObject({
+      id: "artifact-csv-rxnflow-profile",
+      path: "exports/rxnflow-profile.csv",
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
     expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
@@ -1413,7 +1424,7 @@ describe("WorkbenchShell", () => {
 
     expect(await within(exportPanel).findByText("artifact-png-rxnflow-profile")).toBeInTheDocument()
     expect(within(exportPanel).queryByRole("link", { name: "Download" })).not.toBeInTheDocument()
-    expect(within(exportPanel).getAllByText("Download unavailable")).toHaveLength(3)
+    expect(within(exportPanel).getAllByText("Download unavailable")).toHaveLength(4)
     const [project] = await repository.listProjects()
     await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.png")).resolves.toBe(false)
     const exportIndex = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, exportArtifactsPath)).bytes))
@@ -1432,8 +1443,8 @@ describe("WorkbenchShell", () => {
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
     expect(await within(exportPanel).findByText("artifact-png-rxnflow-profile")).toBeInTheDocument()
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(3)
-    expect(within(exportPanel).getAllByText("No").length).toBeGreaterThanOrEqual(3)
+    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(4)
+    expect(within(exportPanel).getAllByText("No").length).toBeGreaterThanOrEqual(4)
     expect(screen.getAllByText("artifact_persistence_failed").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Browser local storage quota would be exceeded.").length).toBeGreaterThan(0)
     expect(screen.getAllByText("exports").length).toBeGreaterThan(0)

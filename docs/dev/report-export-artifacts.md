@@ -4,7 +4,7 @@ slug: report-export-artifacts
 component: report-export-guides
 status: current
 summary: 如何生成、投影和持久化 RxnFlow 报告导出 artifacts
-tags: [report-export, artifacts, cdxml, xlsx, platform-shell, web]
+tags: [report-export, artifacts, cdxml, xlsx, csv, platform-shell, web]
 last_reviewed: 2026-05-24
 ---
 
@@ -12,15 +12,15 @@ last_reviewed: 2026-05-24
 
 ## 概述
 
-RxnFlow 报告导出当前可执行三种 artifact：PNG 能量图、ChemDraw/CDXML 能量图和 XLSX 能量表工作簿。核心层负责生成 bytes 或写入目标目录，Platform Shell 负责把 artifact 投影成 JSON-safe response，Web 工作台只展示、下载和在 browser-local project 下持久化已有 inline bytes。
+RxnFlow 报告导出当前可执行四种 artifact：PNG 能量图、ChemDraw/CDXML 能量图、XLSX 能量表工作簿和 CSV 能量表。核心层负责生成 bytes 或写入目标目录，Platform Shell 负责把 artifact 投影成 JSON-safe response，Web 工作台只展示、下载和在 browser-local project 下持久化已有 inline bytes。
 
-这份指南面向贡献者和集成方。它说明当前 API、字段、路径、格式能力矩阵和边界，不覆盖未来组合报告、CSV writer、CDX writer 或报告预览。
+这份指南面向贡献者和集成方。它说明当前 API、字段、路径、格式能力矩阵和边界，不覆盖未来组合报告、CDX writer 或报告预览。
 
 ## 前置依赖
 
-- PNG writer 依赖 Pillow，XLSX writer 依赖 XlsxWriter；依赖在 writer 内延迟 import，缺失时返回 `export_failed target=dependency`。
+- PNG writer 依赖 Pillow，XLSX writer 依赖 XlsxWriter；CSV writer 使用 Python 标准库；外部依赖在 writer 内延迟 import，缺失时返回 `export_failed target=dependency`。
 - PNG 和 CDXML 导出需要 `EnergyProfile`。
-- XLSX 导出至少需要 `EnergyProfile`、`ChemicalObject` 或显式 `EnergyTableRow`。
+- XLSX 和 CSV 导出至少需要 `EnergyProfile`、`ChemicalObject` 或显式 `EnergyTableRow`。
 - Web download 和 browser-local persistence 需要 Shell artifact 带 `bytes_base64`，也就是 `include_bytes=true`。
 
 ## 快速上手
@@ -34,7 +34,7 @@ service = ReportExportService()
 result = service.export(
     "project-id",
     ExportRequest(
-        formats=("png", "cdxml", "xlsx"),
+        formats=("png", "cdxml", "xlsx", "csv"),
         profile=profile,
         objects=objects,
         basename="rxnflow-profile",
@@ -55,7 +55,7 @@ project_path = Path("/path/to/project")
 result = ReportExportService().export(
     "project-id",
     ExportRequest(
-        formats=("png", "cdxml", "xlsx"),
+        formats=("png", "cdxml", "xlsx", "csv"),
         profile=profile,
         objects=objects,
         destination_dir=project_path / "exports",
@@ -75,7 +75,7 @@ response = service.run(
         "export.profile",
         {
             "session_id": session_id,
-            "formats": ["png", "cdxml", "xlsx"],
+            "formats": ["png", "cdxml", "xlsx", "csv"],
             "include_bytes": True,
             "basename": "rxnflow-profile",
             "title": "Relative energy profile",
@@ -101,12 +101,12 @@ assert response.ok, response.error
 - `png`
 - `cdxml`
 - `xlsx`
+- `csv`
 
 能力矩阵还记录后续格式入口，但它们当前不可执行：
 
 | format | status | extension | MIME | 说明 |
 |---|---|---|---|---|
-| `csv` | unsupported | `.csv` | `text/csv` | CSV writer 规划中，当前请求仍返回 `invalid_input target=formats`。 |
 | `svg` | experimental | `.svg` | `image/svg+xml` | Graph snapshot / diagram 方向的后续入口，当前没有 writer。 |
 | `pdf` | unsupported | `.pdf` | `application/pdf` | PDF writer 依赖和渲染边界尚未决定。 |
 | `pptx` | unsupported | `.pptx` | PowerPoint MIME | PPTX writer 依赖和 slide contract 尚未决定。 |
@@ -118,9 +118,9 @@ assert response.ok, response.error
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `formats` | `tuple[str, ...]` | 需要导出的格式，当前仅支持 `png`、`cdxml`、`xlsx`。 |
-| `profile` | `EnergyProfile | None` | PNG/CDXML 必需；XLSX 可用来写 Energy Profile sheet。 |
-| `objects` | `tuple[ChemicalObject, ...]` | XLSX energy table 的对象来源之一。 |
+| `formats` | `tuple[str, ...]` | 需要导出的格式，当前支持 `png`、`cdxml`、`xlsx`、`csv`。 |
+| `profile` | `EnergyProfile | None` | PNG/CDXML 必需；XLSX 可用来写 Energy Profile sheet；CSV 可用来补 profile relative 字段。 |
+| `objects` | `tuple[ChemicalObject, ...]` | XLSX/CSV energy table 的对象来源之一。 |
 | `table_rows` | `tuple[EnergyTableRow, ...]` | 显式表格行，适合传入 basis function、shermo/Whitesides 等 parser 尚未结构化字段。 |
 | `destination_dir` | `str | Path | None` | 存在时写出 `{basename}.{format}` 文件；不存在时只返回 bytes。 |
 | `basename` | `str | None` | 文件名主体；必须是安全文件名。 |
@@ -175,16 +175,18 @@ assert columns["structure_name"].label == "Structure"
 - `basename`
 - `warnings`
 
-XLSX 额外包含：
+XLSX 和 CSV 额外包含：
 
 - `energy_table_schema_version`
 - `energy_table_column_count`
+- `energy_table_row_count`
 
 当前 writer ids：
 
 - PNG：`pillow-energy-plot-v1`
 - CDXML：`rxnflow-cdxml-energy-v1`
 - XLSX：`xlsxwriter-energy-workbook-v1`
+- CSV：`python-csv-energy-table-v1`
 
 ## 常见场景
 
@@ -205,7 +207,7 @@ manual_row = EnergyTableRow(
 )
 
 request = ExportRequest(
-    formats=("xlsx",),
+    formats=("xlsx", "csv"),
     profile=profile,
     table_rows=(manual_row,),
 )
@@ -221,7 +223,7 @@ Platform Shell 的 `export.profile` 默认不内联 bytes。Web 下载和 browse
 {"include_bytes": True}
 ```
 
-Shell artifact 会得到 `bytes_base64`；Web 再把它变成 data URL download link。Web 不在浏览器里生成 PNG/CDXML/XLSX bytes。
+Shell artifact 会得到 `bytes_base64`；Web 再把它变成 data URL download link。Web 不在浏览器里生成 PNG/CDXML/XLSX/CSV bytes。
 
 ### 让项目内容索引记录导出文件
 
@@ -233,6 +235,7 @@ Web browser-local persistence 的路径固定为：
 exports/{basename}.png
 exports/{basename}.cdxml
 exports/{basename}.xlsx
+exports/{basename}.csv
 ```
 
 同一 id 或 path 重复写入时 upsert，不创建历史版本。
@@ -241,8 +244,9 @@ exports/{basename}.xlsx
 
 - 当前不支持 `.cdx` binary。CDXML 是 XML 格式，可由 ChemDraw 打开和编辑能量图对象；它不是 ChemDraw 二进制 CDX。
 - 当前 CDXML 只生成能量图对象，不生成 molecule-level CDXML、反应式结构、bond/atom 语义或 ChemDraw 编辑器。
-- 当前不支持 CSV、PDF、PPTX、SVG、DOCX、HTML report 或组合报告；CSV/SVG/PDF/PPTX/CDX 只在 Export Format Capability 中记录为后续或 unsupported 状态。
+- 当前不支持 PDF、PPTX、SVG、DOCX、HTML report 或组合报告；SVG/PDF/PPTX/CDX 只在 Export Format Capability 中记录为后续或 unsupported/experimental 状态。
 - XLSX workbook 不读取用户私有模板；Energy Table 缺失字段留空。
+- CSV 是 UTF-8 单表 artifact，不包含公式、多 sheet、样式或用户私有模板；Energy Table 缺失字段写为空 cell。
 - Web Report Export Panel 不调用 `project.save_content`，也不自动创建 Python filesystem artifact。
 - Browser Project Repository 是 local-only，不是云备份。跨设备迁移仍依赖 `.rxnflow.zip` 手动备份路线。
 

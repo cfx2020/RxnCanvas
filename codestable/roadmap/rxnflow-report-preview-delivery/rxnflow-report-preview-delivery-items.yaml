@@ -13,8 +13,8 @@ items:
   - slug: export-csv-energy-table
     description: 复用 energy-table-v1 输出 CSV artifact，接通 Shell/Web download/persistence，并补 table/schema/docs 回归
     depends_on: [export-format-capability-matrix]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-24-export-csv-energy-table
     minimal_loop: false
     notes: CSV 必须共用 EnergyTableColumn/EnergyTableRow，不新增独立字段清单；第一列仍为 structure name
 

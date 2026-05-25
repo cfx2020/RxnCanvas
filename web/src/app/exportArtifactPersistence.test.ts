@@ -21,14 +21,14 @@ describe("export artifact persistence", () => {
       basename: "rxnflow-profile",
     })
 
-    expect(first).toHaveLength(3)
+    expect(first).toHaveLength(4)
     expect(first[0]).toMatchObject({
       artifactId: "artifact-png-rxnflow-profile",
       persisted: true,
       path: "exports/rxnflow-profile.png",
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
-    expect(second).toHaveLength(3)
+    expect(second).toHaveLength(4)
     await expect(repository.readObject(project.projectRef, "exports/rxnflow-profile.png")).resolves.toMatchObject({
       path: "exports/rxnflow-profile.png",
       checksum: first[0].checksum,
@@ -41,13 +41,22 @@ describe("export artifact persistence", () => {
     })
     const indexObject = await repository.readObject(project.projectRef, exportArtifactsPath)
     const index = JSON.parse(new TextDecoder().decode(indexObject.bytes))
-    expect(index.artifacts).toHaveLength(3)
+    expect(index.artifacts).toHaveLength(4)
     expect(index.artifacts[0]).toMatchObject({
       id: "artifact-cdxml-rxnflow-profile",
       format: "cdxml",
       path: "exports/rxnflow-profile.cdxml",
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       metadata: expect.objectContaining({ profile_id: "profile-a-b-electronic" }),
+    })
+    expect(index.artifacts[1]).toMatchObject({
+      id: "artifact-csv-rxnflow-profile",
+      format: "csv",
+      path: "exports/rxnflow-profile.csv",
+      metadata: expect.objectContaining({
+        mime_type: "text/csv",
+        energy_table_schema_version: "energy-table-v1",
+      }),
     })
     const contentIndex = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, projectContentIndexPath)).bytes))
     expect(contentIndex.files.find((file: { path: string }) => file.path === exportArtifactsPath)).toMatchObject({
@@ -138,6 +147,10 @@ describe("export artifact persistence", () => {
         id: "artifact-xlsx-rxnflow-profile",
         persisted: false,
       }),
+      expect.objectContaining({
+        id: "artifact-csv-rxnflow-profile",
+        persisted: false,
+      }),
     ])
   })
 
@@ -163,10 +176,11 @@ function fixtureArtifacts(): ShellArtifact[] {
     fixtureArtifact("png"),
     fixtureArtifact("cdxml"),
     fixtureArtifact("xlsx"),
+    fixtureArtifact("csv"),
   ]
 }
 
-function fixtureArtifact(format: "png" | "cdxml" | "xlsx"): ShellArtifact {
+function fixtureArtifact(format: "png" | "cdxml" | "xlsx" | "csv"): ShellArtifact {
   const metadataByFormat = {
     png: {
       mime_type: "image/png",
@@ -186,7 +200,14 @@ function fixtureArtifact(format: "png" | "cdxml" | "xlsx"): ShellArtifact {
       artifact_kind: "energy_table",
       format_status: "supported",
     },
-  } satisfies Record<"png" | "cdxml" | "xlsx", Record<string, string>>
+    csv: {
+      mime_type: "text/csv",
+      extension: "csv",
+      artifact_kind: "energy_table",
+      format_status: "supported",
+      energy_table_schema_version: "energy-table-v1",
+    },
+  } satisfies Record<"png" | "cdxml" | "xlsx" | "csv", Record<string, string>>
   return {
     id: `artifact-${format}-rxnflow-profile`,
     format,

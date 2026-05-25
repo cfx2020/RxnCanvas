@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from io import BytesIO
+from io import BytesIO, StringIO
 import builtins
+import csv
 import struct
 import tempfile
 import unittest
@@ -50,7 +51,7 @@ PROJECT_ID = "project-a"
 
 class ReportExportBaselineTest(unittest.TestCase):
     def test_export_contracts_and_input_validation(self) -> None:
-        self.assertEqual(ALLOWED_EXPORT_FORMATS, frozenset(("png", "cdxml", "xlsx")))
+        self.assertEqual(ALLOWED_EXPORT_FORMATS, frozenset(("png", "cdxml", "xlsx", "csv")))
         self.assertEqual(supported_export_formats(), ALLOWED_EXPORT_FORMATS)
         self.assertEqual(ENERGY_TABLE_SCHEMA_VERSION, "energy-table-v1")
         self.assertEqual(ENERGY_TABLE_COLUMNS[0].key, "structure_name")
@@ -91,8 +92,10 @@ class ReportExportBaselineTest(unittest.TestCase):
         self.assertEqual(capabilities["cdxml"].extension, "cdxml")
         self.assertEqual(capabilities["xlsx"].artifact_kind, "energy_table")
         self.assertTrue(capabilities["xlsx"].supports_browser_persistence)
-        self.assertEqual(capabilities["csv"].status, "unsupported")
-        self.assertFalse(capabilities["csv"].web_default_enabled)
+        self.assertEqual(capabilities["csv"].status, "supported")
+        self.assertTrue(capabilities["csv"].supports_browser_persistence)
+        self.assertTrue(capabilities["csv"].web_default_enabled)
+        self.assertEqual(capabilities["csv"].writer_id, "python-csv-energy-table-v1")
         self.assertEqual(capabilities["svg"].status, "experimental")
         self.assertEqual(capabilities["cdx"].unsupported_reason, "ChemDraw CDX binary writer/converter is not available.")
         self.assertIs(export_format_capability("missing"), None)
@@ -119,12 +122,18 @@ class ReportExportBaselineTest(unittest.TestCase):
             "invalid_input",
             "request",
         )
-        for export_format in ("cdx", "csv"):
+        for export_format in ("cdx", "pdf", "pptx"):
             self.assert_error(
                 service.export(PROJECT_ID, ExportRequest(formats=(export_format,), profile=_profile())),
                 "invalid_input",
                 "formats",
             )
+
+        self.assert_error(
+            service.export(PROJECT_ID, ExportRequest(formats=("csv",))),
+            "invalid_input",
+            "request",
+        )
 
     def test_energy_table_header_mapping_covers_user_workbook_headers(self) -> None:
         self.assertEqual(normalize_energy_table_header("Egas", context="hartree"), "egas_hartree")
@@ -355,6 +364,81 @@ class ReportExportBaselineTest(unittest.TestCase):
         self.assertIn("<pane", sheet_xml)
         self.assertIn('state="frozen"', sheet_xml)
         self.assertIn("<cols>", sheet_xml)
+
+    def test_csv_writer_outputs_energy_table_contract_without_inventing_values(self) -> None:
+        service = ReportExportService()
+        profile = _profile(missing=True)
+        table_row = EnergyTableRow(
+            "manual, row",
+            {
+                "gas_basis_functions": 256,
+                "ggas_shermo_hartree": -200.123456789012,
+                "relative_unit": "kcal_mol",
+                "missing_reason": None,
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = service.export(
+                PROJECT_ID,
+                ExportRequest(
+                    formats=("csv",),
+                    table_rows=(table_row,),
+                    profile=profile,
+                    destination_dir=temp_dir,
+                    basename="main-route",
+                    title="Energy CSV",
+                ),
+            )
+
+            self.assertTrue(result.ok, result.error)
+            artifact = result.value[0]  # type: ignore[index]
+            self.assertEqual(artifact.format, "csv")
+            self.assertEqual(artifact.path, str(Path(temp_dir, "main-route.csv")))
+            self.assertTrue(Path(temp_dir, "main-route.csv").is_file())
+            self.assertEqual(artifact.metadata["writer_id"], "python-csv-energy-table-v1")
+            self.assertEqual(artifact.metadata["extension"], "csv")
+            self.assertEqual(artifact.metadata["mime_type"], "text/csv")
+            self.assertEqual(artifact.metadata["artifact_kind"], "energy_table")
+            self.assertEqual(artifact.metadata["format_status"], "supported")
+            self.assertEqual(artifact.metadata["energy_table_schema_version"], ENERGY_TABLE_SCHEMA_VERSION)
+            self.assertEqual(artifact.metadata["energy_table_column_count"], len(ENERGY_TABLE_COLUMNS))
+            self.assertEqual(artifact.metadata["energy_table_row_count"], 1)
+
+            decoded = (artifact.bytes or b"").decode("utf-8")
+            parsed = list(csv.reader(StringIO(decoded)))
+            self.assertEqual(parsed[0], [column.label for column in ENERGY_TABLE_COLUMNS])
+            self.assertEqual(parsed[1][0], "manual, row")
+            self.assertEqual(parsed[1][3], "256")
+            self.assertEqual(parsed[1][8], "-200.123456789")
+            self.assertEqual(parsed[1][18], "kcal_mol")
+            self.assertEqual(parsed[1][19], "")
+            self.assertNotIn("NA", decoded)
+
+    def test_csv_and_xlsx_share_energy_table_metadata_and_request_order(self) -> None:
+        service = ReportExportService()
+        result = service.export(
+            PROJECT_ID,
+            ExportRequest(
+                formats=("csv", "xlsx"),
+                objects=(
+                    _object("object-a", "A", electronic=EnergyValue(-100.0, "hartree")),
+                    _object("object-b", "B", electronic=EnergyValue(-99.98, "hartree")),
+                ),
+                table_rows=(EnergyTableRow("template-row", {"gas_basis_functions": 256}),),
+                profile=_profile(),
+                basename="energy-table",
+            ),
+        )
+
+        self.assertTrue(result.ok, result.error)
+        artifacts = result.value
+        assert artifacts is not None
+        self.assertEqual([artifact.format for artifact in artifacts], ["csv", "xlsx"])
+        for artifact in artifacts:
+            self.assertEqual(artifact.metadata["energy_table_schema_version"], ENERGY_TABLE_SCHEMA_VERSION)
+            self.assertEqual(artifact.metadata["energy_table_column_count"], len(ENERGY_TABLE_COLUMNS))
+            self.assertEqual(artifact.metadata["energy_table_row_count"], 3)
 
     def test_xlsx_warning_sheet_is_omitted_without_warnings(self) -> None:
         service = ReportExportService()

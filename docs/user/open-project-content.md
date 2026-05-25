@@ -60,4 +60,4 @@ A: 只有保存 session 时，位于当前项目 `exports/` 目录下的 runtime
 ## 相关功能
 
 - 项目内容验证：打开项目时会先校验 `.rxnflow/state/`。
-- 报告导出：导出的 PNG、CDXML、XLSX 文件应放在项目 `exports/` 目录下，便于后续登记和校验。
+- 报告导出：导出的 PNG、CDXML、XLSX、CSV 文件应放在项目 `exports/` 目录下，便于后续登记和校验。

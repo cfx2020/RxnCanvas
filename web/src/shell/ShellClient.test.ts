@@ -957,7 +957,7 @@ describe("ShellClient", () => {
       command: "export.profile",
       args: {
         session_id: fixtureResponse.data?.session_id ?? "",
-        formats: ["png", "cdxml", "xlsx"],
+        formats: ["png", "cdxml", "xlsx", "csv"],
         include_bytes: true,
         basename: "fixture-export",
         title: "Fixture Export",
@@ -966,8 +966,8 @@ describe("ShellClient", () => {
 
     expect(response.ok).toBe(true)
     expect(response.data?.command).toBe("export.profile")
-    expect(response.data?.artifact_count).toBe(3)
-    expect(response.artifacts.map((artifact) => artifact.format)).toEqual(["png", "cdxml", "xlsx"])
+    expect(response.data?.artifact_count).toBe(4)
+    expect(response.artifacts.map((artifact) => artifact.format)).toEqual(["png", "cdxml", "xlsx", "csv"])
     expect(response.artifacts[0].id).toBe("artifact-png-fixture-export")
     expect(response.artifacts[0].bytes_base64).toEqual(expect.any(String))
     expect(response.artifacts[0].metadata).toMatchObject({
@@ -991,6 +991,14 @@ describe("ShellClient", () => {
       mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       extension: "xlsx",
       artifact_kind: "energy_table",
+    })
+    expect(response.artifacts[3].metadata).toMatchObject({
+      writer_id: "fixture-csv-energy-table-v1",
+      mime_type: "text/csv",
+      extension: "csv",
+      artifact_kind: "energy_table",
+      energy_table_schema_version: "energy-table-v1",
+      energy_table_row_count: 2,
     })
     expect(response.warnings[0].code).toBe("chemdraw_cdxml_only")
     expect(() => JSON.stringify(response)).not.toThrow()

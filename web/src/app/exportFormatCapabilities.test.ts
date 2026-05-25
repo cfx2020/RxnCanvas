@@ -22,14 +22,16 @@ describe("export format capabilities", () => {
       "pptx",
       "cdx",
     ])
-    expect(supportedExportFormats()).toEqual(["png", "cdxml", "xlsx"])
-    expect(reportExportFormats()).toEqual(["png", "cdxml", "xlsx"])
+    expect(supportedExportFormats()).toEqual(["png", "cdxml", "xlsx", "csv"])
+    expect(reportExportFormats()).toEqual(["png", "cdxml", "xlsx", "csv"])
     expect(exportFormatCapability("csv")).toMatchObject({
       extension: "csv",
       mimeType: "text/csv",
-      status: "unsupported",
-      supportsBrowserPersistence: false,
-      webDefaultEnabled: false,
+      writerId: "python-csv-energy-table-v1",
+      fixtureWriterId: "fixture-csv-energy-table-v1",
+      status: "supported",
+      supportsBrowserPersistence: true,
+      webDefaultEnabled: true,
     })
     expect(exportFormatCapability("svg")).toMatchObject({
       status: "experimental",
@@ -45,7 +47,9 @@ describe("export format capabilities", () => {
     expect(extensionForExportFormat("unknown")).toBe("unknown")
     expect(writerIdForExportFormat("cdxml")).toBe("rxnflow-cdxml-energy-v1")
     expect(writerIdForExportFormat("cdxml", true)).toBe("fixture-cdxml-energy-v1")
+    expect(writerIdForExportFormat("csv")).toBe("python-csv-energy-table-v1")
+    expect(writerIdForExportFormat("csv", true)).toBe("fixture-csv-energy-table-v1")
     expect(supportsBrowserPersistence("xlsx")).toBe(true)
-    expect(supportsBrowserPersistence("csv")).toBe(false)
+    expect(supportsBrowserPersistence("csv")).toBe(true)
   })
 })

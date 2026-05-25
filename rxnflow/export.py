@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass, field, replace
-from io import BytesIO
+from io import BytesIO, StringIO
 import hashlib
 from pathlib import Path
 from typing import Any, Literal
@@ -21,7 +22,7 @@ from .models import (
 from .result import Result, err, ok
 
 
-ExportFormat = Literal["png", "cdxml", "xlsx"]
+ExportFormat = Literal["png", "cdxml", "xlsx", "csv"]
 ExportFormatStatus = Literal["supported", "experimental", "unsupported"]
 
 ENERGY_TABLE_SCHEMA_VERSION = "energy-table-v1"
@@ -81,13 +82,12 @@ EXPORT_FORMAT_CAPABILITIES: tuple[ExportFormatCapability, ...] = (
         "csv",
         "csv",
         "text/csv",
-        None,
+        "python-csv-energy-table-v1",
         "energy_table",
         True,
-        False,
-        False,
-        "unsupported",
-        "CSV writer is planned but not implemented.",
+        True,
+        True,
+        "supported",
     ),
     ExportFormatCapability(
         "svg",
@@ -505,14 +505,15 @@ def _validate_export_request(project_id: str, request: ExportRequest) -> RxnFlow
                 target="profile",
             )
         if (
-            export_format == "xlsx"
+            export_format in ("xlsx", "csv")
             and request.profile is None
             and not request.objects
             and not request.table_rows
         ):
+            label = str(export_format).upper()
             return RxnFlowError(
                 "invalid_input",
-                "XLSX export requires an EnergyProfile, ChemicalObject rows, or table rows.",
+                f"{label} export requires an EnergyProfile, ChemicalObject rows, or table rows.",
                 target="request",
             )
     return None
@@ -571,6 +572,12 @@ def _render_format(export_format: str, request: ExportRequest) -> Result[_Render
             artifact_bytes = _render_xlsx(rows, request.profile, request.title)
             warnings = _energy_table_warnings(rows, request.profile)
             return ok(_RenderedArtifact("xlsx", artifact_bytes, "xlsxwriter-energy-workbook-v1", warnings))
+
+        if export_format == "csv":
+            rows = build_energy_table_rows(request.objects, request.profile, request.table_rows)
+            artifact_bytes = _render_csv(rows)
+            warnings = _energy_table_warnings(rows, request.profile)
+            return ok(_RenderedArtifact("csv", artifact_bytes, "python-csv-energy-table-v1", warnings))
     except ImportError as exc:
         return err(
             RxnFlowError(
@@ -632,6 +639,24 @@ def _render_xlsx(
 
     workbook.close()
     return output.getvalue()
+
+
+def _render_csv(rows: tuple[EnergyTableRow, ...]) -> bytes:
+    output = StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(tuple(column.label for column in ENERGY_TABLE_COLUMNS))
+    for table_row in rows:
+        writer.writerow(
+            tuple(
+                _csv_cell_value(
+                    table_row.structure_name
+                    if column.key == "structure_name"
+                    else table_row.values.get(column.key)
+                )
+                for column in ENERGY_TABLE_COLUMNS
+            )
+        )
+    return output.getvalue().encode("utf-8")
 
 
 def _write_energy_table_sheet(
@@ -1046,6 +1071,18 @@ def _write_cell(
         sheet.write(row, column, str(value), text_format)
 
 
+def _csv_cell_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return f"{value:.12g}"
+    return str(value)
+
+
 def _normalize_table_header_token(value: str) -> str:
     replacements = {
         "（": "(",
@@ -1267,9 +1304,11 @@ def _artifact_metadata(
                 "format_status": capability.status,
             }
         )
-    if rendered.format == "xlsx":
+    if rendered.format in ("xlsx", "csv"):
+        rows = build_energy_table_rows(request.objects, request.profile, request.table_rows)
         metadata["energy_table_schema_version"] = ENERGY_TABLE_SCHEMA_VERSION
         metadata["energy_table_column_count"] = len(ENERGY_TABLE_COLUMNS)
+        metadata["energy_table_row_count"] = len(rows)
     return metadata
 
 
