@@ -22,6 +22,7 @@ from tests.parser_fixture_harness import (
     load_parser_source_inventory,
     load_parser_support_matrix,
     project_parser_fixture_snapshot,
+    summarize_cclib_public_candidate_resolution,
     summarize_maple_public_candidate_resolution,
     verify_parser_public_candidate_bytes,
 )
@@ -56,7 +57,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         inventory = load_parser_source_inventory(SOURCE_INVENTORY)
         matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
 
-        self.assertEqual(len(matrix.entries), 16)
+        self.assertEqual(len(matrix.entries), 17)
         self.assertEqual(matrix.covered_fixture_ids(), {fixture.id for fixture in manifest.fixtures})
         self.assertIn("missing_section", matrix.diagnostics.warning_codes)
         self.assertIn("unit_assumed", matrix.diagnostics.warning_codes)
@@ -69,6 +70,12 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         maple_sum = _matrix_entry_by_id(matrix, "maple-sum-reference")
         self.assertEqual(maple_sum.source_ids, ("maple-dev-example",))
         self.assertEqual(maple_sum.reference_file_ids, ("maple-frequency-summary-reference",))
+        cclib_reference = _matrix_entry_by_id(matrix, "cclib-gaussian-orca-reference")
+        self.assertEqual(cclib_reference.source_ids, ("cclib-data-gaussian-orca",))
+        self.assertEqual(
+            cclib_reference.reference_file_ids,
+            ("cclib-gaussian16-water-nbo-out", "cclib-orca50-benzene-opt-log"),
+        )
         extxyz = _matrix_entry_by_id(matrix, "ase-extxyz-synthetic")
         self.assertEqual(extxyz.source_ids, ("ase-extxyz-project-authored",))
 
@@ -494,6 +501,193 @@ class ParserFixtureHarnessTest(unittest.TestCase):
                 fixture = _fixture_by_id(manifest, fixture_id)
                 self.assertEqual(fixture.source.kind, "synthetic")
                 self.assertIn("synthetic-derived", fixture.tags)
+
+    def test_cclib_public_resolution_summary_classifies_current_source_files(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        summary = summarize_cclib_public_candidate_resolution(inventory, ledger, matrix)
+
+        self.assertEqual(summary.source_id, "cclib-data-gaussian-orca")
+        self.assertEqual(
+            summary.gaussian_candidate_file_ids,
+            ("cclib-gaussian16-water-log", "cclib-gaussian16-co-pbe-log"),
+        )
+        self.assertEqual(
+            summary.orca_candidate_file_ids,
+            ("cclib-orca50-1038-output", "cclib-orca60-1618-output"),
+        )
+        self.assertEqual(
+            summary.reference_file_ids,
+            ("cclib-gaussian16-water-nbo-out", "cclib-orca50-benzene-opt-log"),
+        )
+        self.assertEqual(summary.promoted_file_ids, ())
+        self.assertEqual(
+            summary.blocked_candidate_file_ids,
+            summary.gaussian_candidate_file_ids + summary.orca_candidate_file_ids,
+        )
+        self.assertEqual(summary.unresolved_file_ids, ())
+
+        cclib_source = inventory.source_by_id("cclib-data-gaussian-orca")
+        self.assertEqual(
+            set(summary.gaussian_candidate_file_ids)
+            | set(summary.orca_candidate_file_ids)
+            | set(summary.reference_file_ids),
+            {file.id for file in cclib_source.files},
+        )
+        self.assertEqual(
+            set(summary.fallback_fixture_ids),
+            {
+                "gaussian-sp-water-synthetic-minimal",
+                "gaussian-sp-public-shape-synthetic-derived",
+                "orca-sp-water-synthetic-minimal",
+                "orca-sp-public-shape-synthetic-derived",
+            },
+        )
+        for fixture_id in summary.fallback_fixture_ids:
+            with self.subTest(fixture=fixture_id):
+                self.assertEqual(_fixture_by_id(manifest, fixture_id).source.kind, "synthetic")
+
+    def test_cclib_public_resolution_summary_exposes_ledger_and_inventory_inconsistencies(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        with self.assertRaisesRegex(AssertionError, "program=cclib-data"):
+            summarize_cclib_public_candidate_resolution(
+                inventory,
+                ledger,
+                matrix,
+                source_id="maple-dev-example",
+            )
+
+        candidate_without_fallback = _replace_decision(
+            ledger,
+            "cclib-gaussian16-water-log",
+            fallback_fixture_ids=(),
+        )
+        summary = summarize_cclib_public_candidate_resolution(
+            inventory,
+            candidate_without_fallback,
+            matrix,
+        )
+        self.assertIn("cclib-gaussian16-water-log", summary.unresolved_file_ids)
+
+        reference_without_self_anchor = _replace_decision(
+            ledger,
+            "cclib-gaussian16-water-nbo-out",
+            reference_file_ids=(),
+        )
+        summary = summarize_cclib_public_candidate_resolution(
+            inventory,
+            reference_without_self_anchor,
+            matrix,
+        )
+        self.assertIn("cclib-gaussian16-water-nbo-out", summary.unresolved_file_ids)
+
+        cclib_source = inventory.source_by_id("cclib-data-gaussian-orca")
+        mutated_files = tuple(
+            replace(file, format="molpro-output")
+            if file.id == "cclib-orca50-1038-output"
+            else file
+            for file in cclib_source.files
+        )
+        mutated_inventory = replace(
+            inventory,
+            sources=tuple(
+                replace(source, files=mutated_files) if source.id == cclib_source.id else source
+                for source in inventory.sources
+            ),
+        )
+        summary = summarize_cclib_public_candidate_resolution(mutated_inventory, ledger, matrix)
+        self.assertIn("cclib-orca50-1038-output", summary.unresolved_file_ids)
+
+        missing_decision = ledger.__class__(
+            root=ledger.root,
+            decisions=tuple(
+                decision
+                for decision in ledger.decisions
+                if decision.file_id != "cclib-orca60-1618-output"
+            ),
+        )
+        summary = summarize_cclib_public_candidate_resolution(inventory, missing_decision, matrix)
+        self.assertIn("cclib-orca60-1618-output", summary.unresolved_file_ids)
+
+    def test_cclib_public_resolution_fetch_requests_are_ready_without_fetching(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        cclib_source = inventory.source_by_id("cclib-data-gaussian-orca")
+        candidate_file_ids = tuple(file.id for file in cclib_source.files_by_policy("candidate"))
+
+        self.assertEqual(
+            candidate_file_ids,
+            (
+                "cclib-gaussian16-water-log",
+                "cclib-gaussian16-co-pbe-log",
+                "cclib-orca50-1038-output",
+                "cclib-orca60-1618-output",
+            ),
+        )
+        before_files = _parser_fixture_file_snapshot()
+        for file_id in candidate_file_ids:
+            with self.subTest(file=file_id):
+                request = build_parser_public_candidate_fetch_request(
+                    inventory,
+                    "cclib-data-gaussian-orca",
+                    file_id,
+                )
+                source_file = inventory.file_by_id(file_id)
+                self.assertEqual(request.url, "https://github.com/cclib/cclib-data")
+                self.assertEqual(request.commit_or_version, cclib_source.commit)
+                self.assertEqual(request.upstream_path, source_file.path)
+                self.assertEqual(request.expected_sha256, source_file.sha256)
+                self.assertEqual(request.expected_size_bytes, source_file.size_bytes)
+        self.assertEqual(_parser_fixture_file_snapshot(), before_files)
+
+    def test_cclib_public_resolution_support_matrix_keeps_public_originals_non_executable(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
+        cclib_source = inventory.source_by_id("cclib-data-gaussian-orca")
+        cclib_reference_ids = {file.id for file in cclib_source.files_by_policy("reference-only")}
+
+        gaussian = _matrix_entry_by_id(matrix, "gaussian-log-cclib-synthetic")
+        self.assertEqual(gaussian.status, "partial")
+        self.assertEqual(
+            gaussian.candidate_file_ids,
+            ("cclib-gaussian16-water-log", "cclib-gaussian16-co-pbe-log"),
+        )
+        for fixture_id in gaussian.fixture_ids:
+            with self.subTest(fixture=fixture_id):
+                self.assertEqual(_fixture_by_id(manifest, fixture_id).source.kind, "synthetic")
+
+        orca = _matrix_entry_by_id(matrix, "orca-output-cclib-synthetic")
+        self.assertEqual(orca.status, "partial")
+        self.assertEqual(
+            orca.candidate_file_ids,
+            ("cclib-orca50-1038-output", "cclib-orca60-1618-output"),
+        )
+        for fixture_id in orca.fixture_ids:
+            with self.subTest(fixture=fixture_id):
+                self.assertEqual(_fixture_by_id(manifest, fixture_id).source.kind, "synthetic")
+
+        reference = _matrix_entry_by_id(matrix, "cclib-gaussian-orca-reference")
+        self.assertEqual(reference.status, "reference-only")
+        self.assertEqual(reference.fixture_ids, ())
+        self.assertEqual(reference.candidate_file_ids, ())
+        self.assertEqual(set(reference.reference_file_ids), cclib_reference_ids)
+        self.assertEqual(reference.fields["nbo_sections"], "reference-only")
+        self.assertEqual(reference.fields["optimization_details"], "reference-only")
 
     def test_public_fixture_decision_ledger_loads_and_covers_source_inventory(self) -> None:
         manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
@@ -1631,6 +1825,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
             (
                 inspect.getsource(build_parser_public_candidate_fetch_request),
                 inspect.getsource(verify_parser_public_candidate_bytes),
+                inspect.getsource(summarize_cclib_public_candidate_resolution),
                 inspect.getsource(summarize_maple_public_candidate_resolution),
             )
         )

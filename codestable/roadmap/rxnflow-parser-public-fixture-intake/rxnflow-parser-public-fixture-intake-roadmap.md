@@ -265,16 +265,16 @@ source:
 3. **maple-public-candidate-resolution**：对 MAPLE sp/opt/path/frequency/MD/scan candidates/reference files 做逐项 decision，能 promotion 的生成 fixture，不能 promotion 的写明 synthetic-only/reference-only fallback。
    - 所属模块：MAPLE Candidate Resolver
    - 依赖：parser-public-fixture-decision-ledger, parser-public-candidate-fetch-verify
-   - 状态：in-progress
+   - 状态：done
    - 对应 feature：2026-06-02-maple-public-candidate-resolution
-   - 备注：方案已起草；当前无 MAPLE originals promoted，先用测试侧 resolution summary/guards 固定 blocked/reference-only/fallback 口径，不生成 ReactionPath、TS candidate 或 path topology。
+   - 备注：已落地测试侧 MAPLE resolution summary/guards；当前无 MAPLE originals promoted，3 个 candidate 全 blocked，14 个 reference-only anchors 全覆盖，public originals 未进入 executable fixture ids，不生成 ReactionPath、TS candidate 或 path topology。
 
 4. **cclib-public-candidate-resolution**：复核 cclib-data Gaussian/ORCA candidates 的许可证与 hash，决定是否 promotion；不能 promotion 时固定 synthetic-derived fallback 口径。
    - 所属模块：cclib-data Candidate Resolver
    - 依赖：parser-public-fixture-decision-ledger, parser-public-candidate-fetch-verify
-   - 状态：planned
-   - 对应 feature：null
-   - 备注：只覆盖 cclib adapter projection，不新增 thermochemistry/NBO/SCF deep fields。
+   - 状态：in-progress
+   - 对应 feature：2026-06-02-cclib-public-candidate-resolution
+   - 备注：方案已起草；当前预期无 cclib-data originals promoted，用测试侧 resolution summary/guards 固定 Gaussian/ORCA blocked/reference-only/fallback 口径，不新增 thermochemistry/NBO/SCF deep fields。
 
 5. **extxyz-public-variant-intake**：建立公开或用户授权 extxyz 样例 intake 流程，并选择少量真实变体补 fixture 或 known_limits。
    - 所属模块：extxyz External Variant Intake

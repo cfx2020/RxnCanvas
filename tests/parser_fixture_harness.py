@@ -281,6 +281,18 @@ class ParserMaplePublicResolutionSummary:
     unresolved_file_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ParserCclibPublicResolutionSummary:
+    source_id: str
+    gaussian_candidate_file_ids: tuple[str, ...]
+    orca_candidate_file_ids: tuple[str, ...]
+    reference_file_ids: tuple[str, ...]
+    promoted_file_ids: tuple[str, ...]
+    blocked_candidate_file_ids: tuple[str, ...]
+    fallback_fixture_ids: tuple[str, ...]
+    unresolved_file_ids: tuple[str, ...]
+
+
 def load_parser_fixture_manifest(path: Path) -> ParserFixtureManifest:
     root = path.parent
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -525,6 +537,80 @@ def summarize_maple_public_candidate_resolution(
     return ParserMaplePublicResolutionSummary(
         source_id=source.id,
         candidate_file_ids=candidate_file_ids,
+        reference_file_ids=reference_file_ids,
+        promoted_file_ids=tuple(promoted_file_ids),
+        blocked_candidate_file_ids=tuple(blocked_candidate_file_ids),
+        fallback_fixture_ids=tuple(sorted(fallback_fixture_ids)),
+        unresolved_file_ids=tuple(dict.fromkeys(unresolved_file_ids)),
+    )
+
+
+def summarize_cclib_public_candidate_resolution(
+    source_inventory: ParserSourceInventory,
+    decision_ledger: ParserPublicFixtureDecisionLedger,
+    support_matrix: ParserSupportMatrix,
+    *,
+    source_id: str = "cclib-data-gaussian-orca",
+) -> ParserCclibPublicResolutionSummary:
+    source = source_inventory.source_by_id(source_id)
+    if source.program != "cclib-data":
+        raise AssertionError(
+            f"Parser cclib-data public resolution source {source_id} must have program=cclib-data."
+        )
+
+    gaussian_candidate_file_ids = tuple(
+        file.id
+        for file in source.files_by_policy("candidate")
+        if file.format == "gaussian-log"
+    )
+    orca_candidate_file_ids = tuple(
+        file.id
+        for file in source.files_by_policy("candidate")
+        if file.format == "orca-output"
+    )
+    known_candidate_file_ids = set(gaussian_candidate_file_ids) | set(orca_candidate_file_ids)
+    reference_file_ids = tuple(file.id for file in source.files_by_policy("reference-only"))
+    source_file_ids = {file.id for file in source.files}
+    unresolved_file_ids: list[str] = []
+    promoted_file_ids: list[str] = []
+    blocked_candidate_file_ids: list[str] = []
+    fallback_fixture_ids: set[str] = set()
+
+    for file in source.files:
+        try:
+            decision = decision_ledger.decision_for(source.id, file.id)
+        except AssertionError:
+            unresolved_file_ids.append(file.id)
+            continue
+
+        if file.fixture_policy == "candidate":
+            if file.id not in known_candidate_file_ids:
+                unresolved_file_ids.append(file.id)
+            if decision.decision == "allowed" and decision.promotion == "promoted":
+                promoted_file_ids.append(file.id)
+            else:
+                blocked_candidate_file_ids.append(file.id)
+                if not decision.fallback_fixture_ids:
+                    unresolved_file_ids.append(file.id)
+            fallback_fixture_ids.update(decision.fallback_fixture_ids)
+        elif file.fixture_policy == "reference-only":
+            if decision.decision != "reference-only" or decision.promotion != "not-applicable":
+                unresolved_file_ids.append(file.id)
+            if file.id not in decision.reference_file_ids:
+                unresolved_file_ids.append(file.id)
+            fallback_fixture_ids.update(decision.fallback_fixture_ids)
+        else:
+            unresolved_file_ids.append(file.id)
+
+    support_source_file_ids = _support_matrix_file_ids_for_source(support_matrix, source.id)
+    missing_in_support = source_file_ids - support_source_file_ids
+    if missing_in_support:
+        unresolved_file_ids.extend(sorted(missing_in_support))
+
+    return ParserCclibPublicResolutionSummary(
+        source_id=source.id,
+        gaussian_candidate_file_ids=gaussian_candidate_file_ids,
+        orca_candidate_file_ids=orca_candidate_file_ids,
         reference_file_ids=reference_file_ids,
         promoted_file_ids=tuple(promoted_file_ids),
         blocked_candidate_file_ids=tuple(blocked_candidate_file_ids),

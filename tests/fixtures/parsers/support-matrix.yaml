@@ -447,3 +447,28 @@ entries:
       - Executable fixtures are project-authored synthetic and synthetic-derived shape fixtures; cclib-data public ORCA originals remain unvendored.
       - cclib-data license and redistribution status remain review-required before vendoring.
       - Real ORCA versions, job types and SCF convergence details are not declared.
+
+  - id: cclib-gaussian-orca-reference
+    program: cclib-data
+    formats: [gaussian-log, orca-output]
+    tasks: [opt]
+    versions: [cclib-data-2149daf306ebcca0f3946a41f222d04ae0e83329-reference]
+    parser_id: reference-only
+    status: reference-only
+    fields:
+      nbo_sections: reference-only
+      optimization_details: reference-only
+      thermochemistry: reference-only
+      scf_convergence: reference-only
+    source_ids:
+      - cclib-data-gaussian-orca
+    candidate_file_ids: []
+    fixture_ids: []
+    reference_file_ids:
+      - cclib-gaussian16-water-nbo-out
+      - cclib-orca50-benzene-opt-log
+    observed_warning_codes: []
+    observed_error_codes: []
+    known_limits:
+      - cclib-data NBO and larger optimization outputs are reference-only; they are not parsed, vendored or declared supported.
+      - cclib-data public originals remain review-required and unvendored.

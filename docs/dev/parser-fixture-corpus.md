@@ -140,6 +140,25 @@ MAPLE Candidate Resolution 是 `maple-dev-example` source 的当前逐文件结�
 - 如果后续用户或上游许可证证据允许 promotion，必须另起 promotion feature 更新 decision ledger、manifest source metadata、fixture file、snapshot 和 support matrix。
 - 不能把 Candidate Fetch Verify 成功当成 MAPLE 文件可再分发或可进入 corpus 的依据。
 
+## cclib-data Candidate Resolution
+
+cclib-data Candidate Resolution 是 `cclib-data-gaussian-orca` source 的当前逐文件结论汇总。它从 source inventory、public fixture decision ledger 和 support matrix 派生，不新增第二份 cclib-data 决策表。测试侧 helper `summarize_cclib_public_candidate_resolution` 会分别汇总 Gaussian candidates、ORCA candidates、reference-only files、promoted files、blocked candidates、fallback fixtures 和 unresolved files。
+
+当前结论：
+
+- `cclib-gaussian16-water-log`、`cclib-gaussian16-co-pbe-log`、`cclib-orca50-1038-output`、`cclib-orca60-1618-output` 都仍是 `needs-permission/blocked`，没有 promoted cclib-data public original。
+- 四个 cclib-data candidates 只通过项目内 Gaussian/ORCA synthetic 或 synthetic-derived fallback 保持 executable parser coverage。
+- `cclib-gaussian16-water-nbo-out` 和 `cclib-orca50-benzene-opt-log` 保持 `reference-only/not-applicable`，只作为 NBO/large optimization reference anchor。
+- support matrix 中 cclib-data public originals 不得进入 `fixture_ids`；`fixture_ids` 只能指向 manifest 中的项目内 synthetic 或 synthetic-derived fixtures。
+- cclib-data 官方安装文档和 Debian package/source metadata 均把 `cclib-data` logfiles/test data 放入 non-free/review-required 语境；该证据不能自动转化为可再分发 fixture。
+
+维护规则：
+
+- summary 的 `unresolved_file_ids` 必须为空；缺 decision、candidate 无 fallback、reference-only 无自身 anchor、未知 candidate format 或 support matrix 漏挂 source file 都应由 focused tests 暴露。
+- Candidate Fetch Verify 可以证明 4 个 cclib-data candidate 的 URL/path/hash/size request 可构造，但 helper 不 fetch、不写文件，也不构成 promotion 证据。
+- 如果后续用户、Debian/cclib 维护者或上游许可证证据允许 promotion，必须另起 promotion feature 更新 decision ledger、manifest source metadata、fixture file、snapshot 和 support matrix。
+- 不要把 NBO、thermochemistry、SCF convergence、large optimization reference-only outputs 描述成当前 cclib adapter supported fields。
+
 ## Public Fixture Decision Ledger
 
 `public-fixture-decisions.yaml` 是 source inventory 和 executable fixture corpus 之间的人工决策层。它不保存外部原始文件，也不代表 parser runtime 支持；它只回答一个问题：当前登记的 source file 是否能进入 executable fixture corpus，如果不能，用哪个项目内 fixture 或 reference anchor 继续证明 parser 行为边界。
