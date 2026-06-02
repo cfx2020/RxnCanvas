@@ -251,9 +251,9 @@ source:
 1. **parser-public-fixture-decision-ledger**：新增 public fixture decision ledger，记录 MAPLE/cclib/extxyz 候选文件的 evidence、decision、promotion 状态和 fallback。
    - 所属模块：Public Fixture Decision Ledger
    - 依赖：无
-   - 状态：planned
-   - 对应 feature：null
-   - 备注：最小闭环；先建立 gate，避免 review-required source 被误 vendor。
+   - 状态：done
+   - 对应 feature：2026-06-02-parser-public-fixture-decision-ledger
+   - 备注：最小闭环已完成；`public-fixture-decisions.yaml` 覆盖当前 source inventory 全部 file ids，先建立 gate，避免 review-required source 被误 vendor。
 
 2. **parser-public-candidate-fetch-verify**：提供 dev-only fetch/hash verify workflow，按 `sources.yaml` 的 source_id/file_id 拉取候选并校验 sha256。
    - 所属模块：Candidate Fetch Verify

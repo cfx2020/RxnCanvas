@@ -14,6 +14,7 @@ from rxnflow.parsers.maple import MapleOutputPlugin
 from tests.parser_fixture_harness import (
     assert_parser_fixture_snapshot,
     load_parser_fixture_manifest,
+    load_parser_public_fixture_decisions,
     load_parser_source_inventory,
     load_parser_support_matrix,
     project_parser_fixture_snapshot,
@@ -21,6 +22,7 @@ from tests.parser_fixture_harness import (
 
 
 FIXTURE_MANIFEST = Path("tests/fixtures/parsers/manifest.yaml")
+PUBLIC_FIXTURE_DECISIONS = Path("tests/fixtures/parsers/public-fixture-decisions.yaml")
 SUPPORT_MATRIX = Path("tests/fixtures/parsers/support-matrix.yaml")
 SOURCE_INVENTORY = Path("tests/fixtures/parsers/sources.yaml")
 
@@ -180,6 +182,89 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         candidate_ids = {file.id for file in inventory.files_by_policy("candidate")}
         self.assertIn("maple-sp-output-example", candidate_ids)
         self.assertIn("cclib-orca50-1038-output", candidate_ids)
+
+    def test_public_fixture_decision_ledger_loads_and_covers_source_inventory(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        source_file_keys = {
+            (source.id, file.id)
+            for source in inventory.sources
+            for file in source.files
+        }
+        self.assertEqual(ledger.source_file_keys(), source_file_keys)
+        maple_sp = ledger.decision_for("maple-dev-example", "maple-sp-output-example")
+        self.assertEqual(maple_sp.decision, "needs-permission")
+        self.assertEqual(maple_sp.promotion, "blocked")
+        self.assertEqual(
+            maple_sp.id,
+            ledger.decision_by_id("maple-dev-example:maple-sp-output-example").id,
+        )
+        self.assertTrue(maple_sp.evidence)
+        self.assertEqual(maple_sp.fallback_fixture_ids, ("maple-sp-public-shape-synthetic-derived",))
+
+    def test_public_fixture_decision_ledger_blocks_maple_and_cclib_candidates(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        for source_id in ("maple-dev-example", "cclib-data-gaussian-orca"):
+            source = inventory.source_by_id(source_id)
+            for file in source.files_by_policy("candidate"):
+                with self.subTest(file=file.id):
+                    decision = ledger.decision_for(source.id, file.id)
+                    self.assertNotEqual(decision.decision, "allowed")
+                    self.assertNotEqual(decision.promotion, "promoted")
+                    self.assertEqual(decision.decision, "needs-permission")
+                    self.assertEqual(decision.promotion, "blocked")
+                    self.assertTrue(decision.reason)
+                    self.assertTrue(decision.fallback_fixture_ids or decision.reference_file_ids)
+
+    def test_public_fixture_decision_ledger_keeps_reference_files_unpromoted(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        for source in inventory.sources:
+            for file in source.files_by_policy("reference-only"):
+                with self.subTest(file=file.id):
+                    decision = ledger.decision_for(source.id, file.id)
+                    self.assertEqual(decision.decision, "reference-only")
+                    self.assertEqual(decision.promotion, "not-applicable")
+                    self.assertEqual(decision.reference_file_ids, (file.id,))
+                    self.assertTrue(decision.reason)
+
+    def test_public_fixture_decision_ledger_allows_project_authored_extxyz(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        ase = inventory.source_by_id("ase-extxyz-project-authored")
+        for file in ase.files_by_policy("vendored"):
+            with self.subTest(file=file.id):
+                decision = ledger.decision_for(ase.id, file.id)
+                self.assertEqual(decision.decision, "allowed")
+                self.assertEqual(decision.promotion, "promoted")
+                self.assertIn("not a third-party public original", decision.reason)
+                self.assertTrue(decision.fallback_fixture_ids)
 
     def test_vendored_third_party_source_metadata_loads_when_complete(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -848,6 +933,17 @@ class ParserFixtureHarnessTest(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, "schema_version"):
                 load_parser_source_inventory(path)
 
+    def test_public_fixture_decision_loader_rejects_bad_schema_version(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(
+                _public_fixture_decisions_yaml(schema_version="parser-public-fixture-decisions-v2"),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AssertionError, "schema_version"):
+                load_parser_public_fixture_decisions(path)
+
     def test_source_inventory_loader_rejects_unknown_policy(self) -> None:
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "sources.yaml"
@@ -980,6 +1076,138 @@ class ParserFixtureHarnessTest(unittest.TestCase):
 
             with self.assertRaisesRegex(AssertionError, "reference-only"):
                 load_parser_support_matrix(path, manifest, source_inventory=inventory)
+
+    def test_public_fixture_decision_loader_rejects_unknown_source_id(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(_public_fixture_decisions_yaml(source_id="unknown-source"), encoding="utf-8")
+
+            with self.assertRaisesRegex(AssertionError, "source not found|source inventory source not found"):
+                load_parser_public_fixture_decisions(path, source_inventory=inventory)
+
+    def test_public_fixture_decision_loader_rejects_unknown_file_id(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(_public_fixture_decisions_yaml(file_id="unknown-file"), encoding="utf-8")
+
+            with self.assertRaisesRegex(AssertionError, "unknown file id"):
+                load_parser_public_fixture_decisions(path, source_inventory=inventory)
+
+    def test_public_fixture_decision_loader_rejects_file_source_mismatch(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(
+                _public_fixture_decisions_yaml(
+                    source_id="maple-dev-example",
+                    file_id="cclib-orca50-1038-output",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AssertionError, "does not belong to source"):
+                load_parser_public_fixture_decisions(path, source_inventory=inventory)
+
+    def test_public_fixture_decision_loader_rejects_unknown_fallback_fixture_id(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(_public_fixture_decisions_yaml(fallback_fixture_id="unknown-fixture"), encoding="utf-8")
+
+            with self.assertRaisesRegex(AssertionError, "unknown fallback fixture ids"):
+                load_parser_public_fixture_decisions(path, manifest=manifest)
+
+    def test_public_fixture_decision_loader_rejects_unknown_reference_file_id(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(
+                _public_fixture_decisions_yaml(
+                    decision="reference-only",
+                    promotion="not-applicable",
+                    fallback_fixture_id="",
+                    reference_file_id="unknown-reference",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(AssertionError):
+                load_parser_public_fixture_decisions(path, source_inventory=inventory)
+
+    def test_public_fixture_decision_loader_rejects_non_reference_file_anchor(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(
+                _public_fixture_decisions_yaml(
+                    decision="reference-only",
+                    promotion="not-applicable",
+                    fallback_fixture_id="",
+                    reference_file_id="maple-sp-output-example",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AssertionError, "reference-only"):
+                load_parser_public_fixture_decisions(path, source_inventory=inventory)
+
+    def test_public_fixture_decision_loader_rejects_unknown_decision_and_promotion(self) -> None:
+        cases = {
+            "decision": {"decision": "maybe"},
+            "promotion": {"promotion": "maybe"},
+        }
+        for name, kwargs in cases.items():
+            with self.subTest(name=name), TemporaryDirectory() as tmp:
+                path = Path(tmp) / "public-fixture-decisions.yaml"
+                path.write_text(_public_fixture_decisions_yaml(**kwargs), encoding="utf-8")
+
+                with self.assertRaisesRegex(AssertionError, f"unsupported {name}"):
+                    load_parser_public_fixture_decisions(path)
+
+    def test_public_fixture_decision_loader_rejects_promoted_without_allowed(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(
+                _public_fixture_decisions_yaml(decision="needs-permission", promotion="promoted"),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AssertionError, "promoted requires decision=allowed"):
+                load_parser_public_fixture_decisions(path)
+
+    def test_public_fixture_decision_loader_rejects_blocked_without_anchor(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(
+                _public_fixture_decisions_yaml(
+                    decision="needs-permission",
+                    promotion="blocked",
+                    fallback_fixture_id="",
+                    reference_file_id="",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AssertionError, "fallback/reference"):
+                load_parser_public_fixture_decisions(path)
+
+    def test_public_fixture_decision_loader_rejects_synthetic_only_without_fallback(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "public-fixture-decisions.yaml"
+            path.write_text(
+                _public_fixture_decisions_yaml(
+                    decision="synthetic-only",
+                    promotion="blocked",
+                    fallback_fixture_id="",
+                    reference_file_id="maple-frequency-summary-reference",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AssertionError, "synthetic-only requires fallback_fixture_ids"):
+                load_parser_public_fixture_decisions(path)
 
     def test_support_matrix_loader_rejects_undefined_diagnostic_code(self) -> None:
         manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
@@ -1253,6 +1481,38 @@ def _support_matrix_yaml(
         f"    observed_warning_codes: [{warning_code}]\n"
         "    observed_error_codes: []\n"
         "    known_limits: [fixture]\n"
+    )
+
+
+def _public_fixture_decisions_yaml(
+    *,
+    schema_version: str = "parser-public-fixture-decisions-v1",
+    source_id: str = "maple-dev-example",
+    file_id: str = "maple-sp-output-example",
+    decision: str = "needs-permission",
+    promotion: str = "blocked",
+    fallback_fixture_id: str = "maple-sp-public-shape-synthetic-derived",
+    reference_file_id: str = "",
+) -> str:
+    fallback_fixture_ids = f"[{fallback_fixture_id}]" if fallback_fixture_id else "[]"
+    reference_file_ids = f"[{reference_file_id}]" if reference_file_id else "[]"
+    return (
+        f"schema_version: {schema_version}\n"
+        "decisions:\n"
+        f"  - id: {source_id}:{file_id}\n"
+        f"    source_id: {source_id}\n"
+        f"    file_id: {file_id}\n"
+        "    checked_at: \"2026-06-02\"\n"
+        "    evidence:\n"
+        "      - kind: source-inventory\n"
+        "        ref: tests/fixtures/parsers/sources.yaml\n"
+        "        note: fixture\n"
+        f"    decision: {decision}\n"
+        f"    promotion: {promotion}\n"
+        "    reason: fixture\n"
+        f"    fallback_fixture_ids: {fallback_fixture_ids}\n"
+        f"    reference_file_ids: {reference_file_ids}\n"
+        "    reviewer: agent\n"
     )
 
 

@@ -5,7 +5,7 @@ items:
   - slug: parser-public-fixture-decision-ledger
     description: 新增 public fixture decision ledger，记录 MAPLE/cclib/extxyz 候选文件的 evidence、decision、promotion 状态和 fallback
     depends_on: []
-    status: in-progress
+    status: done
     feature: 2026-06-02-parser-public-fixture-decision-ledger
     minimal_loop: true
     notes: 最小闭环；先建立 gate，避免 review-required source 被误 vendor
@@ -13,8 +13,8 @@ items:
   - slug: parser-public-candidate-fetch-verify
     description: 提供 dev-only fetch/hash verify workflow，按 sources.yaml 的 source_id/file_id 拉取候选并校验 sha256
     depends_on: [parser-public-fixture-decision-ledger]
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-06-02-parser-public-candidate-fetch-verify
     minimal_loop: false
     notes: 普通测试不访问网络；只用于人工或可选 CI 复核 source inventory
 

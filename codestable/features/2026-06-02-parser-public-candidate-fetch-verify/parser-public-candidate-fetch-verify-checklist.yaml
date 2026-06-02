@@ -1,0 +1,100 @@
+feature: 2026-06-02-parser-public-candidate-fetch-verify
+created: 2026-06-02
+
+steps:
+  - action: "Fetch request contract：定义 request/result dataclass 和从 source inventory 构造 request 的 helper"
+    exit_signal: "unknown source/file、missing URL/tracking info、malformed hash 有 focused tests"
+    status: pending
+
+  - action: "Hash/size verify：实现 bytes 校验 helper，输出 structured result"
+    exit_signal: "match、sha mismatch、size mismatch 都能产生可观察 result，且不写文件"
+    status: pending
+
+  - action: "Docs and no-network guard：更新 developer guide 并补 scope tests"
+    exit_signal: "docs 明确 dev-only/no-network/no auto vendor；focused tests 和 git diff --check 通过"
+    status: pending
+
+checks:
+  - item: "能从 sources.yaml 中已知 source_id + file_id 构造 ParserPublicCandidateFetchRequest"
+    source: 验收场景
+    status: pending
+
+  - item: "request 包含 source url、file upstream path、commit/version/branch tracking info、expected sha256 和 expected size"
+    source: 验收场景
+    status: pending
+
+  - item: "unknown source id 被拒绝"
+    source: 验收场景
+    status: pending
+
+  - item: "unknown file id 被拒绝"
+    source: 验收场景
+    status: pending
+
+  - item: "file id 属于其他 source 时被拒绝"
+    source: 验收场景
+    status: pending
+
+  - item: "缺少 source URL 或缺少 commit/version/branch tracking info 时被拒绝"
+    source: 验收场景
+    status: pending
+
+  - item: "malformed inventory sha256 被拒绝或不能进入 request"
+    source: 验收场景
+    status: pending
+
+  - item: "matching bytes 产生 ok=True，actual sha256 和 size 与 expected 对齐"
+    source: 验收场景
+    status: pending
+
+  - item: "sha mismatch 产生 ok=False，保留 expected/actual sha256，不修改 inventory"
+    source: 验收场景
+    status: pending
+
+  - item: "size mismatch 产生 ok=False，保留 expected/actual size，不修改 inventory"
+    source: 验收场景
+    status: pending
+
+  - item: "helper 不访问网络、不写文件、不写 fixture corpus"
+    source: 验收场景
+    status: pending
+
+  - item: "Docs 明确 fetch verify 是 dev-only，普通 unit tests 不访问网络，输出只能写临时目录或显式 artifact，不自动 vendor"
+    source: 验收场景
+    status: pending
+
+  - item: "Scope guard 证明未新增 MAPLE/cclib-data third-party files，未改 manifest/support matrix/snapshots"
+    source: 验收场景
+    status: pending
+
+  - item: "不 vendor MAPLE、cclib-data、ASE examples 或任何新的第三方 public output 文件"
+    source: 范围守护
+    status: pending
+
+  - item: "不把 fetched 文件写入 tests/fixtures/parsers/files/"
+    source: 范围守护
+    status: pending
+
+  - item: "不修改 manifest、snapshot、support matrix fixture ids 或 parser support 状态"
+    source: 范围守护
+    status: pending
+
+  - item: "不改变 decision ledger 中任何 decision/promotion"
+    source: 范围守护
+    status: pending
+
+  - item: "不让普通 tests 访问网络"
+    source: 范围守护
+    status: pending
+
+  - item: "不运行外部计算任务"
+    source: 范围守护
+    status: pending
+
+  - item: "不修改 parser runtime、ImportRegistryWorkflow、Platform Shell、Web UI 或报告导出"
+    source: 范围守护
+    status: pending
+
+  - item: "不把 fetch 成功描述为可再分发或可 promotion"
+    source: 范围守护
+    status: pending

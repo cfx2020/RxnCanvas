@@ -5,7 +5,7 @@ component: parser-fixture-corpus
 status: current
 summary: 如何添加、校验和维护 RxnFlow parser fixture corpus
 tags: [parser, fixture-corpus, testing, diagnostics]
-last_reviewed: 2026-05-16
+last_reviewed: 2026-06-02
 ---
 
 # Parser Fixture Corpus
@@ -30,6 +30,7 @@ corpus 位于 `tests/fixtures/parsers/`：
 ```text
 tests/fixtures/parsers/
 ├── manifest.yaml
+├── public-fixture-decisions.yaml
 ├── sources.yaml
 ├── support-matrix.yaml
 ├── files/
@@ -45,6 +46,7 @@ tests/fixtures/parsers/
 ## 目录结构
 
 - `manifest.yaml`：fixture 清单。每条记录一个稳定 `id`，并声明 `program`、`format`、`task`、`parser_id`、输入文件、来源元数据、`parse_options`、`expected_snapshot`、数值容差、`support_status`、标签和说明。
+- `public-fixture-decisions.yaml`：public fixture decision ledger。它逐个 `source_id + file_id` 记录 evidence、decision、promotion、fallback 和 reviewer，作为后续是否允许 promotion / vendor 原件的 gate。
 - `sources.yaml`：真实/公开输出接入前的 source inventory。它记录 MAPLE、cclib-data、ASE extxyz 等来源的 URL、commit/version、license、默认再分发状态、候选/reference-only 文件、`size_bytes`、`sha256` 和 `fixture_policy`。它不表示文件已经进入 executable corpus。
 - `support-matrix.yaml`：支持矩阵和 diagnostic catalog。它说明当前 corpus 覆盖的程序、格式、任务、字段状态、fixture ids、已观察 warning/error code 和 `known_limits`。
 - `files/`：可提交的 parser 输入文件。只有确认可再分发并完成脱敏的文件可以放进这里。
@@ -81,6 +83,49 @@ parser_intent: maple-output
 | `rejected` | 明确不适合后续使用，例如许可证、体积或隐私风险 |
 
 `review-required` 来源不得自动进入 `files/`。后续若要 vendor 第三方文件，必须另起 feature 更新 manifest/source metadata，并说明为什么该单个文件可再分发。
+
+## Public Fixture Decision Ledger
+
+`public-fixture-decisions.yaml` 是 source inventory 和 executable fixture corpus 之间的人工决策层。它不保存外部原始文件，也不代表 parser runtime 支持；它只回答一个问题：当前登记的 source file 是否能进入 executable fixture corpus，如果不能，用哪个项目内 fixture 或 reference anchor 继续证明 parser 行为边界。
+
+当前 schema version 是 `parser-public-fixture-decisions-v1`。每条 decision 绑定一个 `source_id + file_id`：
+
+```yaml
+id: maple-dev-example:maple-sp-output-example
+source_id: maple-dev-example
+file_id: maple-sp-output-example
+checked_at: "2026-06-02"
+evidence:
+  - kind: source-inventory
+    ref: tests/fixtures/parsers/sources.yaml
+    note: "MAPLE source redistributable_default is review-required."
+decision: needs-permission
+promotion: blocked
+reason: "Redistribution boundary is not clear enough to vendor the original MAPLE output."
+fallback_fixture_ids: [maple-sp-public-shape-synthetic-derived]
+reference_file_ids: []
+reviewer: agent
+```
+
+`decision` 只能使用：
+
+| Decision | 含义 |
+|---|---|
+| `allowed` | 证据足以允许该文件进入 corpus；只有它能搭配 `promotion: promoted` |
+| `needs-permission` | 需要用户、作者、许可证或维护者复核后才可能 vendor |
+| `rejected` | 明确不进入 corpus |
+| `synthetic-only` | 原件不进入 corpus，只保留项目内 synthetic / synthetic-derived coverage |
+| `reference-only` | 只作为格式或任务参考，不进入 executable fixture |
+
+`promotion` 只能使用 `promoted`、`blocked` 或 `not-applicable`。`promotion: promoted` 必须搭配 `decision: allowed`；`promotion: blocked` 必须写明 `reason`，并至少提供一个 `fallback_fixture_ids` 或 `reference_file_ids`。`reference_file_ids` 必须指向 `sources.yaml` 中 `fixture_policy: reference-only` 的 file id；`fallback_fixture_ids` 必须指向 `manifest.yaml` 中已存在的 executable fixture id。
+
+维护规则：
+
+- 普通测试只读取本地 YAML，不访问网络、GitHub clone 或用户本机临时目录。
+- `review-required`、`needs-permission`、`reference-only`、`synthetic-only` 和 `rejected` 都不得被描述为已经 vendor 或 supported。
+- MAPLE / cclib-data 原始 public outputs 只有在 decision 变成 `allowed/promoted` 并另起 promotion feature 更新 manifest/source metadata 后，才可以进入 `files/`。
+- ASE extxyz 当前 project-authored vendored fixtures 可以记录为 `allowed/promoted`，但 reason 必须说明它们不是第三方 public original。
+- decision ledger 不修改 parser runtime、ImportRegistryWorkflow、Platform Shell、Web UI 或报告导出；这些能力边界仍由 manifest、support matrix、snapshot 和 import preview regression 证明。
 
 ## 来源策略与脱敏
 
@@ -282,6 +327,12 @@ python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/support-
 python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/sources.yaml --yaml-only
 ```
 
+校验 public fixture decision ledger：
+
+```bash
+python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/public-fixture-decisions.yaml --yaml-only
+```
+
 运行 parser fixture harness：
 
 ```bash
@@ -311,6 +362,7 @@ python3 codestable/tools/validate-yaml.py --file codestable/features/2026-05-16-
 - 不提交未脱敏的真实 Gaussian、ORCA、MAPLE、ASE 或其他计算输出。
 - 不提交 `.DS_Store`、checkpoint、大型二进制、许可证文件、账号信息或机器环境 dump。
 - 不把 `sources.yaml` 中的 `candidate` 或 `reference-only` 条目当成已进入 corpus 的 executable fixture。
+- 不绕过 `public-fixture-decisions.yaml` 把 review-required public original 放进 `files/`。
 - 不把 synthetic / reference-only corpus 描述成真实程序版本完整支持。
 - 不让 parser 直接依赖 ProjectStore、Registry、ReactionGraph、EnergyProfile 或 ExportArtifact。
 - 不在普通测试中自动重写 snapshot。

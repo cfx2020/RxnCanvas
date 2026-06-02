@@ -14,8 +14,17 @@ from rxnflow.result import Result
 
 PARSER_FIXTURE_SCHEMA_VERSION = "parser-fixtures-v1"
 PARSER_GOLDEN_SCHEMA_VERSION = "parser-golden-v1"
+PARSER_PUBLIC_FIXTURE_DECISIONS_SCHEMA_VERSION = "parser-public-fixture-decisions-v1"
 PARSER_SUPPORT_MATRIX_SCHEMA_VERSION = "parser-support-matrix-v1"
 PARSER_SOURCE_INVENTORY_SCHEMA_VERSION = "parser-source-inventory-v1"
+PUBLIC_FIXTURE_DECISIONS = {
+    "allowed",
+    "needs-permission",
+    "rejected",
+    "synthetic-only",
+    "reference-only",
+}
+PUBLIC_FIXTURE_PROMOTIONS = {"promoted", "blocked", "not-applicable"}
 PARSER_SOURCE_FIXTURE_POLICIES = {"candidate", "vendored", "reference-only", "rejected"}
 SUPPORT_MATRIX_ENTRY_STATUSES = {"supported", "partial", "unsupported", "candidate", "reference-only"}
 SUPPORT_MATRIX_FIELD_STATUSES = {
@@ -189,6 +198,51 @@ class ParserSourceInventory:
         raise AssertionError(f"Parser source inventory file not found: {file_id}")
 
 
+@dataclass(frozen=True)
+class ParserPublicFixtureDecisionEvidence:
+    kind: str
+    ref: str
+    note: str
+
+
+@dataclass(frozen=True)
+class ParserPublicFixtureDecision:
+    id: str
+    source_id: str
+    file_id: str
+    checked_at: str
+    evidence: tuple[ParserPublicFixtureDecisionEvidence, ...]
+    decision: str
+    promotion: str
+    reason: str
+    fallback_fixture_ids: tuple[str, ...]
+    reference_file_ids: tuple[str, ...]
+    reviewer: str
+
+
+@dataclass(frozen=True)
+class ParserPublicFixtureDecisionLedger:
+    root: Path
+    decisions: tuple[ParserPublicFixtureDecision, ...]
+
+    def decision_by_id(self, decision_id: str) -> ParserPublicFixtureDecision:
+        for decision in self.decisions:
+            if decision.id == decision_id:
+                return decision
+        raise AssertionError(f"Parser public fixture decision not found: {decision_id}")
+
+    def decision_for(self, source_id: str, file_id: str) -> ParserPublicFixtureDecision:
+        for decision in self.decisions:
+            if decision.source_id == source_id and decision.file_id == file_id:
+                return decision
+        raise AssertionError(
+            f"Parser public fixture decision not found for source/file: {source_id}/{file_id}"
+        )
+
+    def source_file_keys(self) -> set[tuple[str, str]]:
+        return {(decision.source_id, decision.file_id) for decision in self.decisions}
+
+
 def load_parser_fixture_manifest(path: Path) -> ParserFixtureManifest:
     root = path.parent
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -301,6 +355,44 @@ def load_parser_source_inventory(path: Path) -> ParserSourceInventory:
     return ParserSourceInventory(root=root, sources=tuple(sources))
 
 
+def load_parser_public_fixture_decisions(
+    path: Path,
+    *,
+    source_inventory: ParserSourceInventory | None = None,
+    manifest: ParserFixtureManifest | None = None,
+) -> ParserPublicFixtureDecisionLedger:
+    root = path.parent
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise AssertionError("Parser public fixture decision ledger must be a mapping.")
+    if payload.get("schema_version") != PARSER_PUBLIC_FIXTURE_DECISIONS_SCHEMA_VERSION:
+        raise AssertionError("Unsupported parser public fixture decision ledger schema_version.")
+    raw_decisions = payload.get("decisions")
+    if not isinstance(raw_decisions, list) or not raw_decisions:
+        raise AssertionError("Parser public fixture decision ledger must contain a non-empty decisions list.")
+
+    manifest_ids = {fixture.id for fixture in manifest.fixtures} if manifest is not None else set()
+    seen_ids: set[str] = set()
+    seen_source_files: set[tuple[str, str]] = set()
+    decisions: list[ParserPublicFixtureDecision] = []
+    for raw_decision in raw_decisions:
+        if not isinstance(raw_decision, dict):
+            raise AssertionError("Each parser public fixture decision must be a mapping.")
+        decision = _parse_public_fixture_decision(raw_decision, source_inventory, manifest_ids)
+        if decision.id in seen_ids:
+            raise AssertionError(f"Duplicate parser public fixture decision id: {decision.id}")
+        seen_ids.add(decision.id)
+        source_file_key = (decision.source_id, decision.file_id)
+        if source_file_key in seen_source_files:
+            raise AssertionError(
+                f"Duplicate parser public fixture decision source/file: {decision.source_id}/{decision.file_id}"
+            )
+        seen_source_files.add(source_file_key)
+        decisions.append(decision)
+
+    return ParserPublicFixtureDecisionLedger(root=root, decisions=tuple(decisions))
+
+
 def load_parser_support_matrix(
     path: Path,
     manifest: ParserFixtureManifest | None = None,
@@ -343,6 +435,112 @@ def load_parser_support_matrix(
                 f"Parser support matrix does not cover fixture ids: {sorted(missing)}"
             )
     return matrix
+
+
+def _parse_public_fixture_decision(
+    raw_decision: dict[str, Any],
+    source_inventory: ParserSourceInventory | None,
+    manifest_ids: set[str],
+) -> ParserPublicFixtureDecision:
+    decision_id = _required_str(raw_decision, "id")
+    source_id = _required_str(raw_decision, "source_id")
+    file_id = _required_str(raw_decision, "file_id")
+    decision_state = _required_str(raw_decision, "decision")
+    if decision_state not in PUBLIC_FIXTURE_DECISIONS:
+        raise AssertionError(
+            f"Parser public fixture decision {decision_id} has unsupported decision: {decision_state}"
+        )
+
+    promotion = _required_str(raw_decision, "promotion")
+    if promotion not in PUBLIC_FIXTURE_PROMOTIONS:
+        raise AssertionError(
+            f"Parser public fixture decision {decision_id} has unsupported promotion: {promotion}"
+        )
+
+    fallback_fixture_ids = _required_str_tuple(raw_decision, "fallback_fixture_ids", allow_empty=True)
+    reference_file_ids = _required_str_tuple(raw_decision, "reference_file_ids", allow_empty=True)
+    reason = _required_str(raw_decision, "reason")
+
+    if promotion == "promoted" and decision_state != "allowed":
+        raise AssertionError(
+            f"Parser public fixture decision {decision_id} promotion=promoted requires decision=allowed."
+        )
+    if promotion == "blocked" and (not reason or not (fallback_fixture_ids or reference_file_ids)):
+        raise AssertionError(
+            f"Parser public fixture decision {decision_id} promotion=blocked requires reason and fallback/reference."
+        )
+    if decision_state == "reference-only" and promotion not in {"blocked", "not-applicable"}:
+        raise AssertionError(
+            f"Parser public fixture decision {decision_id} decision=reference-only cannot be promoted."
+        )
+    if decision_state == "reference-only" and not reference_file_ids:
+        raise AssertionError(
+            f"Parser public fixture decision {decision_id} decision=reference-only requires reference_file_ids."
+        )
+    if decision_state == "synthetic-only" and not fallback_fixture_ids:
+        raise AssertionError(
+            f"Parser public fixture decision {decision_id} decision=synthetic-only requires fallback_fixture_ids."
+        )
+
+    if manifest_ids:
+        unknown_fallbacks = set(fallback_fixture_ids) - manifest_ids
+        if unknown_fallbacks:
+            raise AssertionError(
+                f"Parser public fixture decision {decision_id} references unknown fallback fixture ids: {sorted(unknown_fallbacks)}"
+            )
+
+    if source_inventory is not None:
+        source = source_inventory.source_by_id(source_id)
+        if file_id not in {file.id for file in source.files}:
+            if file_id in source_inventory.file_ids():
+                raise AssertionError(
+                    f"Parser public fixture decision {decision_id} file {file_id} does not belong to source {source_id}."
+                )
+            raise AssertionError(
+                f"Parser public fixture decision {decision_id} references unknown file id: {file_id}"
+            )
+        for reference_file_id in reference_file_ids:
+            reference_file = source_inventory.file_by_id(reference_file_id)
+            if reference_file.fixture_policy != "reference-only":
+                raise AssertionError(
+                    f"Parser public fixture decision {decision_id} reference_file_ids must point to reference-only files: {reference_file_id}"
+                )
+
+    return ParserPublicFixtureDecision(
+        id=decision_id,
+        source_id=source_id,
+        file_id=file_id,
+        checked_at=_required_str(raw_decision, "checked_at"),
+        evidence=_parse_public_fixture_decision_evidence(raw_decision.get("evidence"), decision_id),
+        decision=decision_state,
+        promotion=promotion,
+        reason=reason,
+        fallback_fixture_ids=fallback_fixture_ids,
+        reference_file_ids=reference_file_ids,
+        reviewer=_required_str(raw_decision, "reviewer"),
+    )
+
+
+def _parse_public_fixture_decision_evidence(
+    raw_evidence: Any,
+    decision_id: str,
+) -> tuple[ParserPublicFixtureDecisionEvidence, ...]:
+    if not isinstance(raw_evidence, list) or not raw_evidence:
+        raise AssertionError(
+            f"Parser public fixture decision {decision_id} evidence must be a non-empty list."
+        )
+    evidence_items: list[ParserPublicFixtureDecisionEvidence] = []
+    for raw_item in raw_evidence:
+        if not isinstance(raw_item, dict):
+            raise AssertionError(f"Parser public fixture decision {decision_id} evidence must contain mappings.")
+        evidence_items.append(
+            ParserPublicFixtureDecisionEvidence(
+                kind=_required_str(raw_item, "kind"),
+                ref=_required_str(raw_item, "ref"),
+                note=_required_str(raw_item, "note"),
+            )
+        )
+    return tuple(evidence_items)
 
 
 def _parse_source_inventory_file(
