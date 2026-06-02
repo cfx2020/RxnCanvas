@@ -62,7 +62,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await exportFixtureProfile(page)
     await exportWithoutInlineBytes(page)
 
-    await expect(page.getByText("3 artifacts indexed")).toBeVisible()
+    await expect(page.getByText("5 artifacts indexed")).toBeVisible()
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)
     await attachViewportScreenshot(page, testInfo, "desktop-report-export")
@@ -182,9 +182,12 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await expect(energyPanel.getByText("profile-path-web-main-electronic-kcal_mol").first()).toBeVisible()
     await expect(energyPanel.getByText("Energy curve")).toBeVisible()
 
-    await exportPanel.getByRole("button", { name: "Export" }).click()
+    await exportPanel.getByRole("button", { name: "Export mode" }).click()
+    await exportPanel.getByRole("button", { name: "Export", exact: true }).click()
     await expect(exportPanel.getByText("artifact-png-rxnflow-profile")).toBeVisible()
-    await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(3)
+    await expect(exportPanel.getByText("artifact-csv-rxnflow-profile")).toBeVisible()
+    await expect(exportPanel.getByText("artifact-svg-rxnflow-profile")).toBeVisible()
+    await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(5)
 
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)

@@ -1,7 +1,7 @@
 ---
 doc_type: roadmap
 slug: rxnflow-report-preview-delivery
-status: active
+status: completed
 created: 2026-05-24
 last_reviewed: 2026-06-02
 tags: [rxnflow, report-export, report-preview, csv, svg, graph-snapshot, report-composer, delivery-formats]
@@ -303,7 +303,7 @@ class ReportSection:
 4. `web-report-preview-panel`：done。已在 Report Export Panel 内新增 Preview mode，汇总 graph/profile/table/artifact readiness 与 warnings，并通过桌面/窄屏验收。
 5. `report-composer-manifest`：done。已定义 `ReportDocument` / `ReportSection` / `ReportAsset` manifest，组合当前 energy diagram、table、graph snapshot 和 artifact metadata，且 `ReportAsset` 只保存 JSON-safe artifact reference，不持有 bytes。
 6. `delivery-format-boundary-spike`：done。已调研并固定 PDF/PPTX/CDX 的依赖、运行位置、错误码和 unsupported UI 口径，并明确已落地 SVG graph snapshot 在组合报告中的复用边界；未开放 PDF/PPTX/CDX writer。
-7. `report-preview-delivery-qa-guides`：收口 unit/component/E2E、用户指南和开发者指南，说明 CSV、graph snapshot、report preview、composer manifest 和暂不支持格式边界。
+7. `report-preview-delivery-qa-guides`：done。已收口 unit/component/E2E、用户指南和开发者指南，固定 CSV、graph snapshot、report preview、composer manifest、browser-local persistence、bundle roundtrip 和暂不支持格式边界。
 
 ## 6. 排期 / 推进顺序
 
@@ -315,7 +315,7 @@ class ReportSection:
 4. `web-report-preview-panel` 已完成，把已有 artifact readiness 和 graph/profile summary 变成可验收的预览体验。
 5. `report-composer-manifest` 已完成，为 HTML/PDF/PPTX 等文档级导出建立共同中间层。
 6. `delivery-format-boundary-spike` 已完成，PDF/PPTX/CDX 继续保持 unsupported，未开放格式请求为 `invalid_input target=formats`，已开放 writer 缺依赖才使用 `export_failed target=dependency`。
-7. 下一步做 `report-preview-delivery-qa-guides`，把报告预览交付路线的测试、文档和 bundle/persistence 回归收口。
+7. `report-preview-delivery-qa-guides` 已完成，报告预览交付路线的测试、文档和 bundle/persistence 回归已收口。本 roadmap 首轮完成。
 
 ## 7. 观察项
 

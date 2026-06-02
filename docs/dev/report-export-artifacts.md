@@ -334,6 +334,39 @@ Readiness 规则：
 - graph snapshot：读取 SVG artifact metadata 中的 `artifact_kind=graph_snapshot`；没有 artifact 时不做 DOM/canvas capture 或 graph layout。
 - artifact reuse list：只展示现有 artifact 的 format、id、persisted、hasInlineBytes、path 和 checksum。
 
+## Report Preview Delivery QA Matrix
+
+报告预览交付路线的回归证据分散在 core、Web helper 和 Playwright 中。改动相关模块时按风险选择命令，不需要每次都跑完整矩阵。
+
+| 风险 | 推荐检查 | 覆盖信号 |
+|---|---|---|
+| Export format capability / unsupported boundary | `python3 -m unittest tests.test_report_export_baseline`；`cd web && npm run test -- exportFormatCapabilities.test.ts exportArtifactPersistence.test.ts` | `png/cdxml/xlsx/csv/svg` 是 supported set；`pdf/pptx/cdx` 只保留 unsupported capability，不进入 Web 默认格式或 browser persistence。 |
+| CSV energy table | `python3 -m unittest tests.test_report_export_baseline`；`cd web && npm run test -- exportArtifactPersistence.test.ts` | CSV 使用 `energy-table-v1`，第一列是 `structure_name`，MIME 为 `text/csv`，browser-local path 为 `exports/{basename}.csv`。 |
+| SVG graph snapshot | `python3 -m unittest tests.test_report_export_baseline`；`cd web && npm run test -- exportArtifactPersistence.test.ts reportPreviewModel.test.ts` | SVG metadata 为 `artifact_kind=graph_snapshot`，MIME 为 `image/svg+xml`，不含 remote resource、script 或 `foreignObject`，Preview 只读取 artifact metadata。 |
+| Report Preview model | `cd web && npm run test -- reportPreviewModel.test.ts WorkbenchShell.test.tsx` | Preview mode 显示 graph/profile summary、energy table readiness、graph snapshot readiness、artifact reuse 和 warnings；不生成 bytes、不保存项目。 |
+| Report Composer Manifest | `python3 -m unittest tests.test_report_manifest` | `ReportDocument` / `ReportAsset` 是 JSON-safe manifest/reference；`ReportAsset` 不含 bytes，缺失资产用 unavailable section 和 warnings 表达。 |
+| Download MIME / file names | `cd web && npm run test -- WorkbenchShell.test.tsx ShellClient.test.ts`；`cd web && npm run test:e2e` | Download link 使用 capability table 的 extension 和 MIME；fixture E2E 覆盖 PNG/CDXML/XLSX/CSV/SVG 五个 download link。 |
+| Browser-local persistence | `cd web && npm run test -- exportArtifactPersistence.test.ts WorkbenchShell.test.tsx`；`cd web && npm run test:e2e` | 带 inline bytes 的 supported artifacts 写入 `exports/...` 和 `export-artifacts-v1`；unsupported formats 不写 object 或 record。 |
+| Bundle roundtrip | `cd web && npm run test:e2e`；`cd web && npm run test:e2e:local-http` | `.rxnflow.zip` 只包含 `.rxnflow/`、`inputs/raw/` 和 `exports/` repository bytes；import 后需要显式 Open Bridge 恢复 session。 |
+| Narrow preview/export layout | `cd web && npm run test:e2e` | `390x840` 下 Report Export / Preview 主链路可达，无 document-level horizontal overflow，Playwright screenshot/trace 只进入 gitignored output。 |
+| Future delivery writer discipline | docs + scope grep | 新增 PDF/PPTX/HTML/CDX writer 前必须消费 `ReportDocument` / `ReportAsset`，并定义 extension、MIME、writer id、metadata、persistence path 和 warning semantics；不得从 Web DOM/state/screenshot 直接生成正式报告。 |
+
+基础命令：
+
+```bash
+python3 -m unittest tests.test_report_export_baseline tests.test_report_manifest
+cd web && npm run test -- exportFormatCapabilities.test.ts exportArtifactPersistence.test.ts reportPreviewModel.test.ts WorkbenchShell.test.tsx ShellClient.test.ts
+cd web && npm run build
+cd web && npm run test:e2e
+cd web && npm run test:e2e:local-http
+```
+
+`npm run test:e2e:local-http` 会启动真实本地 Python bridge。需要指定解释器时使用：
+
+```bash
+cd web && RXNFLOW_E2E_PYTHON=/path/to/python3 npm run test:e2e:local-http
+```
+
 ## 已知限制与注意事项
 
 - 当前不支持 `.cdx` binary。CDXML 是 XML 格式，可由 ChemDraw 打开和编辑能量图对象；它不是 ChemDraw 二进制 CDX。

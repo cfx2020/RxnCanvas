@@ -76,6 +76,17 @@ exports/rxnflow-profile.svg
 
 如果没有 active browser project，或关闭了 `Include bytes`，页面仍会显示 runtime artifact metadata，但不会写入 `exports/...`。
 
+### 备份和迁移
+
+浏览器本地 `exports/...` 不是云备份。要把已保存的导出文件和项目内容带到另一个浏览器或另一台机器，使用 Project Sidebar 的 `.rxnflow.zip` 项目包：
+
+1. 如果你已经通过 Open Bridge 修改过图谱、workspace、profile 或导出索引，先点击 `Save Bridge Session`。
+2. 点击 `Export Bundle` 下载 `.rxnflow.zip`。
+3. 在目标浏览器中点击 `Import Bundle` 导入。
+4. 导入后点击 `Open Bridge`，把包里的 Project Content 恢复为当前 core session。
+
+项目包只包含 `.rxnflow/`、`inputs/raw/` 和 `exports/`。它不会自动同步云端，不包含未保存的 bridge session，也不包含项目根目录外的临时文件。
+
 ## Preview 状态含义
 
 | 状态 | 含义 |

@@ -53,7 +53,7 @@ items:
   - slug: report-preview-delivery-qa-guides
     description: 收口 unit/component/E2E、用户指南和开发者指南，说明 CSV、graph snapshot、report preview、composer manifest 和暂不支持格式边界
     depends_on: [web-report-preview-panel, report-composer-manifest, delivery-format-boundary-spike]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-02-report-preview-delivery-qa-guides
     minimal_loop: false
     notes: 覆盖 browser-local persistence、download MIME、bundle roundtrip、窄屏预览、unsupported format messaging 和文档入口

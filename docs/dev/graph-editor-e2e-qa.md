@@ -34,6 +34,7 @@ cd web && npm run test:e2e:local-http
 - desktop graph editor matrix：object drag/drop、node drag、Apply Layout、path delete、edge label edit、direct edge drawing、rubber-band multi-select delete、keyboard nudge、Undo/Redo、wheel/minimap、Save/Open Bridge restore。
 - narrow `390x840` workbench flow：graph、energy、report export 主链路。
 - narrow graph advanced controls：layout/history/viewport/minimap/edge label/path list/network preview 可达，无水平溢出。
+- report delivery：Report Export / Preview 覆盖 PNG、CDXML、XLSX、CSV 和 SVG 五个 supported artifacts 的 download link、writer metadata、browser-local persisted path/checksum，以及 include bytes 关闭时的不可下载状态。
 - framework overlay absent、console clean、screenshot attachment。
 
 默认 fixture E2E 证明 Web UI 编排与 ShellResponse projection 消费，不证明真实 Gaussian/ORCA/MAPLE/XYZ/extxyz 解析质量。
@@ -47,7 +48,7 @@ cd web && npm run test:e2e:local-http
 - 小文件 inline parser preview。
 - graph add/connect/set path 主流程。
 - energy compute。
-- PNG/CDXML/XLSX/CSV/SVG export projection 与 browser-local artifact persistence。
+- PNG/CDXML/XLSX/CSV/SVG export projection、download MIME、writer metadata 与 browser-local artifact persistence。
 - bundle export/import/open bridge roundtrip。
 
 不要把复杂 graph gesture matrix 复制进 local-http E2E；那会把浏览器手势波动和 Python bridge dependency 绑在一起。

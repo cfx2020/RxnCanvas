@@ -717,36 +717,58 @@ export async function computeMissingEnergyProfile(page: Page) {
 
 export async function exportFixtureProfile(page: Page) {
   const exportPanel = page.getByRole("region", { name: "Report Export Panel" })
-  await exportPanel.getByRole("button", { name: "Export" }).click()
+  await openReportExportMode(exportPanel)
+  await exportPanel.getByRole("button", { name: "Export", exact: true }).click()
   await expect(exportPanel.getByText("artifact-png-rxnflow-profile")).toBeVisible()
   await expect(exportPanel.getByText("artifact-cdxml-rxnflow-profile")).toBeVisible()
   await expect(exportPanel.getByText("artifact-xlsx-rxnflow-profile")).toBeVisible()
+  await expect(exportPanel.getByText("artifact-csv-rxnflow-profile")).toBeVisible()
+  await expect(exportPanel.getByText("artifact-svg-rxnflow-profile")).toBeVisible()
   await expect(exportPanel.getByText("exports/rxnflow-profile.png")).toBeVisible()
   await expect(exportPanel.getByText("exports/rxnflow-profile.cdxml")).toBeVisible()
   await expect(exportPanel.getByText("exports/rxnflow-profile.xlsx")).toBeVisible()
+  await expect(exportPanel.getByText("exports/rxnflow-profile.csv")).toBeVisible()
+  await expect(exportPanel.getByText("exports/rxnflow-profile.svg")).toBeVisible()
   await expect(exportPanel.getByText("fixture-png-energy-plot-v1")).toBeVisible()
   await expect(exportPanel.getByText("fixture-cdxml-energy-v1")).toBeVisible()
   await expect(exportPanel.getByText("fixture-xlsx-energy-table-v1")).toBeVisible()
-  await expect(exportPanel.getByText("energy_table_schema_version")).toBeVisible()
-  await expect(exportPanel.getByText("energy-table-v1", { exact: true })).toBeVisible()
+  await expect(exportPanel.getByText("fixture-csv-energy-table-v1")).toBeVisible()
+  await expect(exportPanel.getByText("fixture-svg-graph-snapshot-v1")).toBeVisible()
+  await expect(exportPanel.getByText("energy_table_schema_version").first()).toBeVisible()
+  await expect(exportPanel.getByText("artifact_kind").first()).toBeVisible()
+  await expect(exportPanel.getByText("graph_snapshot")).toBeVisible()
+  await expect(exportPanel.getByText("energy-table-v1", { exact: true }).first()).toBeVisible()
   await expect(exportPanel.getByText(/^sha256:[a-f0-9]{64}$/).first()).toBeVisible()
   await expect(exportPanel.getByText("Yes").first()).toBeVisible()
-  await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(3)
+  await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(5)
   await expect(exportPanel.getByRole("link", { name: "Download" }).first()).toHaveAttribute("download", "rxnflow-profile.png")
+  await expect(exportPanel.getByRole("link", { name: "Download" }).first()).toHaveAttribute("href", /^data:image\/png;base64,/)
   await expect(exportPanel.getByRole("link", { name: "Download" }).nth(1)).toHaveAttribute("download", "rxnflow-profile.cdxml")
   await expect(exportPanel.getByRole("link", { name: "Download" }).nth(1)).toHaveAttribute("href", /^data:chemical\/x-cdxml;base64,/)
   await expect(exportPanel.getByRole("link", { name: "Download" }).nth(2)).toHaveAttribute("download", "rxnflow-profile.xlsx")
   await expect(exportPanel.getByRole("link", { name: "Download" }).nth(2)).toHaveAttribute("href", /^data:application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet;base64,/)
+  await expect(exportPanel.getByRole("link", { name: "Download" }).nth(3)).toHaveAttribute("download", "rxnflow-profile.csv")
+  await expect(exportPanel.getByRole("link", { name: "Download" }).nth(3)).toHaveAttribute("href", /^data:text\/csv;base64,/)
+  await expect(exportPanel.getByRole("link", { name: "Download" }).nth(4)).toHaveAttribute("download", "rxnflow-profile.svg")
+  await expect(exportPanel.getByRole("link", { name: "Download" }).nth(4)).toHaveAttribute("href", /^data:image\/svg\+xml;base64,/)
   await expect(page.getByText("chemdraw_cdxml_only").first()).toBeVisible()
 }
 
 export async function exportWithoutInlineBytes(page: Page) {
   const exportPanel = page.getByRole("region", { name: "Report Export Panel" })
+  await openReportExportMode(exportPanel)
   await exportPanel.getByLabel("Include bytes").uncheck()
-  await exportPanel.getByRole("button", { name: "Export" }).click()
+  await exportPanel.getByRole("button", { name: "Export", exact: true }).click()
   await expect(exportPanel.getByText("artifact-png-rxnflow-profile")).toBeVisible()
   await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(0)
-  await expect(exportPanel.getByText("Download unavailable")).toHaveCount(3)
+  await expect(exportPanel.getByText("Download unavailable")).toHaveCount(5)
+}
+
+async function openReportExportMode(exportPanel: Locator) {
+  const exportModeButton = exportPanel.getByRole("button", { name: "Export mode" })
+  if (await exportModeButton.getAttribute("aria-pressed") !== "true") {
+    await exportModeButton.click()
+  }
 }
 
 function graphNodeById(graphCanvas: Locator, nodeId: string): Locator {
