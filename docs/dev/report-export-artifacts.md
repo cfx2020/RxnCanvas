@@ -5,7 +5,7 @@ component: report-export-guides
 status: current
 summary: 如何生成、组合、投影和持久化 RxnFlow 报告导出 artifacts
 tags: [report-export, artifacts, report-document, cdxml, xlsx, csv, svg, platform-shell, web]
-last_reviewed: 2026-06-01
+last_reviewed: 2026-06-02
 ---
 
 # Report Export Artifacts
@@ -138,6 +138,19 @@ document = result.value
 | `pdf` | unsupported | `.pdf` | `application/pdf` | PDF writer 依赖和渲染边界尚未决定。 |
 | `pptx` | unsupported | `.pptx` | PowerPoint MIME | PPTX writer 依赖和 slide contract 尚未决定。 |
 | `cdx` | unsupported | `.cdx` | `chemical/x-cdx` | ChemDraw CDX binary writer/converter 尚不可用。 |
+
+### Delivery Format Boundary
+
+PDF、PPTX 和 CDX 当前只是 capability table 中的 unsupported delivery boundary，不是可执行 writer。请求这些格式仍返回 `invalid_input target=formats`，`details.supported` 只列 `png`、`cdxml`、`xlsx`、`csv` 和 `svg`。只有当未来某个 delivery writer 已经进入 supported set、但运行时依赖缺失时，才使用 `export_failed target=dependency`。
+
+未来开放文档级 writer 时必须先消费 `ReportDocument` / `ReportAsset`，并补齐 extension、MIME、`writer_id`、metadata、persistence path 和 warning semantics。不要从 Web preview DOM、React state、Browser Blob 或 graph canvas screenshot 直接生成正式报告文件。
+
+| format | 当前边界 | 未来进入条件 |
+|---|---|---|
+| `pdf` | unsupported `report_document`。候选路线包括 `ReportDocument -> HTML/print layout -> Playwright/WeasyPrint` 或 direct PDF layout。 | 明确运行位置、本地/CI/Vercel 依赖策略、纸张尺寸、分页、字体、asset embedding 和可验证/可跳过规则。 |
+| `pptx` | unsupported `report_document`。python-pptx 可作为候选，但当前没有 slide contract。 | 明确 slide size、章节到 slide 的映射、editable table/image/diagram 策略、SVG rasterization/embedding 和依赖缺失 fallback。 |
+| `cdx` | unsupported `external_conversion`。当前 ChemDraw 路径是 CDXML，不是 CDX binary。 | 需要可靠 writer/converter、license、平台可用性、conversion 输入输出、失败 fallback 和 ChemDraw 兼容回归。 |
+| `svg` | supported `graph_snapshot` asset，可被后续 writer 引用。 | 继续保持 valid XML/SVG，无远程资源、script、`foreignObject` 或 Web transient state。 |
 
 ## 接口参考
 
@@ -326,7 +339,7 @@ Readiness 规则：
 - 当前不支持 `.cdx` binary。CDXML 是 XML 格式，可由 ChemDraw 打开和编辑能量图对象；它不是 ChemDraw 二进制 CDX。
 - 当前 CDXML 只生成能量图对象，不生成 molecule-level CDXML、反应式结构、bond/atom 语义或 ChemDraw 编辑器。
 - SVG graph snapshot 是 core projection，不是 Web DOM/canvas screenshot；它不包含 hover、pending edge、rubber-band、minimap draft、history stack、远程资源、script 或 `foreignObject`。
-- 当前不支持 PDF、PPTX、DOCX、HTML report 或 CDX writer；PDF/PPTX/CDX 只在 Export Format Capability 中记录为 unsupported 状态。`ReportDocument` 是内部 manifest，不等于用户可下载的完整报告文件。
+- 当前不支持 PDF、PPTX、DOCX、HTML report 或 CDX writer；PDF/PPTX/CDX 只在 Export Format Capability 中记录为 unsupported 状态。`ReportDocument` 是内部 manifest，不等于用户可下载的完整报告文件。未开放格式是 `invalid_input target=formats`；已开放 writer 的依赖缺失才是 `export_failed target=dependency`。
 - XLSX workbook 不读取用户私有模板；Energy Table 缺失字段留空。
 - CSV 是 UTF-8 单表 artifact，不包含公式、多 sheet、样式或用户私有模板；Energy Table 缺失字段写为空 cell。
 - Web Report Export Panel 不调用 `project.save_content`，也不自动创建 Python filesystem artifact。

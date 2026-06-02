@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-report-preview-delivery
 status: active
 created: 2026-05-24
-last_reviewed: 2026-06-01
+last_reviewed: 2026-06-02
 tags: [rxnflow, report-export, report-preview, csv, svg, graph-snapshot, report-composer, delivery-formats]
 related_requirements: [web-workbench-shell, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform, web-workbench]
@@ -26,7 +26,7 @@ RxnFlow 当前已完成第一轮报告导出质量路线：核心层可从已有
 - Graph snapshot artifact：从保存后的 graph/workspace projection 生成可报告复用的图谱快照，优先 SVG，后续可按需 rasterize。
 - Report preview model：在 Web 中把当前 profile、energy table summary、graph snapshot 和 artifact readiness 组合成可扫描预览，不在前端重算领域数据。
 - Report composer manifest：定义组合报告的 section/block/asset manifest，让 HTML/PDF/PPTX 等后续 writer 共用同一结构。
-- Delivery format boundary：明确 PDF、PPTX 和 CDX 的进入条件、依赖策略和不支持时的 UI/错误码；SVG graph snapshot 已作为 supported artifact 落地，后续只处理它在组合报告中的复用边界。
+- Delivery format boundary：已明确 PDF、PPTX 和 CDX 的进入条件、依赖策略和不支持时的 UI/错误码；SVG graph snapshot 已作为 supported artifact 落地，后续只处理它在组合报告中的复用边界。
 - Docs / QA：同步开发者指南、用户指南、unit tests 和 Playwright 覆盖，固定下载、持久化、窄屏预览和 bundle roundtrip 行为。
 
 ### 明确不做
@@ -302,7 +302,7 @@ class ReportSection:
 3. `export-graph-snapshot-svg`：done。从 graph/workspace projection 生成报告用 SVG graph snapshot artifact，覆盖 escaping、空图、active path 和 viewport bounds。
 4. `web-report-preview-panel`：done。已在 Report Export Panel 内新增 Preview mode，汇总 graph/profile/table/artifact readiness 与 warnings，并通过桌面/窄屏验收。
 5. `report-composer-manifest`：done。已定义 `ReportDocument` / `ReportSection` / `ReportAsset` manifest，组合当前 energy diagram、table、graph snapshot 和 artifact metadata，且 `ReportAsset` 只保存 JSON-safe artifact reference，不持有 bytes。
-6. `delivery-format-boundary-spike`：调研并固定 PDF/PPTX/CDX 的依赖、运行位置、错误码和 unsupported UI 口径，并明确已落地 SVG graph snapshot 在组合报告中的复用边界。
+6. `delivery-format-boundary-spike`：done。已调研并固定 PDF/PPTX/CDX 的依赖、运行位置、错误码和 unsupported UI 口径，并明确已落地 SVG graph snapshot 在组合报告中的复用边界；未开放 PDF/PPTX/CDX writer。
 7. `report-preview-delivery-qa-guides`：收口 unit/component/E2E、用户指南和开发者指南，说明 CSV、graph snapshot、report preview、composer manifest 和暂不支持格式边界。
 
 ## 6. 排期 / 推进顺序
@@ -314,7 +314,8 @@ class ReportSection:
 3. `export-graph-snapshot-svg` 已完成，让组合报告具备图谱资产，而不是只导出能量曲线和表格。
 4. `web-report-preview-panel` 已完成，把已有 artifact readiness 和 graph/profile summary 变成可验收的预览体验。
 5. `report-composer-manifest` 已完成，为 HTML/PDF/PPTX 等文档级导出建立共同中间层。
-6. 下一步做 `delivery-format-boundary-spike` 和 `report-preview-delivery-qa-guides`，把高风险格式和文档回归收口。
+6. `delivery-format-boundary-spike` 已完成，PDF/PPTX/CDX 继续保持 unsupported，未开放格式请求为 `invalid_input target=formats`，已开放 writer 缺依赖才使用 `export_failed target=dependency`。
+7. 下一步做 `report-preview-delivery-qa-guides`，把报告预览交付路线的测试、文档和 bundle/persistence 回归收口。
 
 ## 7. 观察项
 

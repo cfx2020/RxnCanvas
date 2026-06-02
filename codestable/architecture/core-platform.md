@@ -3,7 +3,7 @@ doc_type: architecture
 slug: core-platform
 status: current
 created: 2026-05-02
-last_reviewed: 2026-05-25
+last_reviewed: 2026-06-02
 tags: [core, fixture, domain-model, energy-profile, energy-channel-catalog, energy-profile-persistence, import-workflow, graph-editor-workspace, graph-editor-node-layout, graph-editor-edge-path-editing, graph-editor-edge-label, graph-editor-workspace-persistence, workspace-move-node, workspace-remove, workspace-remove-path, workspace-update-edge, workspace-select, report-export, platform-shell, cli, local-http-shell-bridge, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
 ---
 
@@ -497,6 +497,7 @@ Report Export 当前使用以下稳定协议：
 - ReportDocument：`id`、`project_id`、`title`、`created_at`、`sections`、`assets`、`metadata`、`warnings`
 - ReportSection：`id`、`title`、`kind`、`asset_ids`、`data`；section kind 当前固定为 `summary`、`graph`、`energy_profile`、`energy_table`、`artifacts`、`warnings`
 - ReportAsset：`id`、`kind`、`format`、`source_artifact_id`、可选 `path` / `checksum`、JSON-safe `metadata`；不包含 bytes
+- Delivery Format Boundary：PDF/PPTX/CDX 当前只作为 unsupported capability 和文档边界存在。未来 delivery writer 必须从 ReportDocument / ReportAsset 输入开始，并定义 extension、MIME、writer_id、metadata、persistence path 和 warning semantics；未开放格式请求返回 `invalid_input target=formats`，已开放 writer 缺运行时依赖才返回 `export_failed target=dependency`
 - ReportDocument 序列化：`report_document_to_dict()` 返回 JSON-safe dict；非有限数字、非字符串 metadata key 或 Python object 以 `invalid_input` 返回
 - Energy Table Contract：schema version 当前为 `energy-table-v1`；第一列语义为 `structure_name`，默认列覆盖 Egas、Ggas、Ggas+1M、Ggas(shermo)、Ggas(shermo+1M)、Esol、Gsol、basis function 占位、relative energy 和 missing reason；所有列可通过 `energy_table_columns_by_key()` 按 stable key 查询；XLSX 主表使用 title、group header row、column label row、autofilter、freeze pane 和按列类型设置的列宽；CSV 使用同一列顺序和 label 输出 UTF-8 单表
 - Workbook Header Mapping：`normalize_energy_table_header()` 可把用户样表常见表头如 `Egas`、`basis function`、`Ggas+1M`、`Ggas(shermo+1M)`、`Esol`、`Gsol` 映射为 Energy Table column key；`Sgau/Swhit/RT` 等 entropy 原始列当前返回 `None`，不被自动推断为能量列
@@ -679,7 +680,7 @@ PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空�
 - ReportComposerService 不生成 PDF/PPTX/HTML/CDX 或 PNG/CDXML/XLSX/CSV/SVG bytes，不写 Project Content section，不暴露 Shell command，不保存 Browser Repository 或 localStorage。
 - ReportExportService 的 Energy Table Contract 不读取用户 workbook 原文件；basis function、Shermo/Whitesides 或 entropy 原始字段当前只可由调用方 `table_rows` 显式提供，缺失值保持 blank/absent，不补 0。
 - ReportExportService 当前不从 3D geometry 自动推断 bonds，不生成 molecule-level CDXML，不生成 generic reaction scheme CDXML，不生成 CDX；`cdx` 请求仍按 unsupported format 返回 `invalid_input target=formats`。
-- ReportExportService 当前不实现 PDF/PPTX/CDX writer，也不把这些格式加入 supported set；它们只作为 Export Format Capability 的 unsupported 记录存在。ReportExportService 当前也不实现 JSON、SDF、MOL 或批量目录导出。
+- ReportExportService 当前不实现 PDF/PPTX/CDX writer，也不把这些格式加入 supported set；它们只作为 Export Format Capability 的 unsupported 记录和 Delivery Format Boundary 存在。PDF 需先明确页面排版与 renderer 依赖，PPTX 需先明确 slide size 与 editable object 策略，CDX 需先明确可靠 writer/converter、license、平台和回归测试。ReportExportService 当前也不实现 JSON、SDF、MOL 或批量目录导出。
 - PlatformShellService 可以调用 ProjectStore、ProjectBundleService、ImportRegistryWorkflow、ChemicalRegistry、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService；它不复制 parser 字段映射、registry fingerprint、GraphPatch 语义、energy 计算规则、export writer 能力或 bundle zip 复制逻辑。
 - `registry.apply_correction` 是 PlatformShellService 暴露 ChemicalRegistry append-only correction 能力的薄命令层；它不修改 parser 输出、不重写 ChemicalObject 原始 `energies` / `thermochemistry` / provenance，不调用 graph/workspace/export，也不触发 `project.save_content`。
 - `workbench.snapshot` 只是 PlatformShellService 的只读投影命令，不调用 ParserRegistry、ImportRegistryWorkflow.confirm_import、ReactionGraphService.apply_patch、EnergyProfileEngine.compute_profile、ReportExportService.export 或 ProjectContentStore.save_snapshot。

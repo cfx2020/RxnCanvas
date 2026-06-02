@@ -102,6 +102,18 @@ class ReportExportBaselineTest(unittest.TestCase):
         self.assertEqual(capabilities["svg"].writer_id, "python-svg-graph-snapshot-v1")
         self.assertTrue(capabilities["svg"].supports_browser_persistence)
         self.assertTrue(capabilities["svg"].web_default_enabled)
+        for future_format in ("pdf", "pptx", "cdx"):
+            capability = capabilities[future_format]
+            self.assertEqual(capability.status, "unsupported")
+            self.assertIsNone(capability.writer_id)
+            self.assertFalse(capability.supports_browser_persistence)
+            self.assertFalse(capability.web_default_enabled)
+            self.assertIsNotNone(capability.unsupported_reason)
+        self.assertEqual(capabilities["pdf"].artifact_kind, "report_document")
+        self.assertEqual(capabilities["pptx"].artifact_kind, "report_document")
+        self.assertEqual(capabilities["cdx"].artifact_kind, "external_conversion")
+        self.assertIn("dependency", capabilities["pdf"].unsupported_reason or "")
+        self.assertIn("slide contract", capabilities["pptx"].unsupported_reason or "")
         self.assertEqual(capabilities["cdx"].unsupported_reason, "ChemDraw CDX binary writer/converter is not available.")
         self.assertIs(export_format_capability("missing"), None)
 
@@ -133,11 +145,13 @@ class ReportExportBaselineTest(unittest.TestCase):
             "graph",
         )
         for export_format in ("cdx", "pdf", "pptx"):
-            self.assert_error(
-                service.export(PROJECT_ID, ExportRequest(formats=(export_format,), profile=_profile())),
-                "invalid_input",
-                "formats",
+            unsupported_result = service.export(
+                PROJECT_ID,
+                ExportRequest(formats=(export_format,), profile=_profile()),
             )
+            self.assert_error(unsupported_result, "invalid_input", "formats")
+            self.assertEqual(unsupported_result.error.details["format"], export_format)  # type: ignore[union-attr]
+            self.assertEqual(unsupported_result.error.details["supported"], sorted(ALLOWED_EXPORT_FORMATS))  # type: ignore[union-attr]
 
         self.assert_error(
             service.export(PROJECT_ID, ExportRequest(formats=("csv",))),

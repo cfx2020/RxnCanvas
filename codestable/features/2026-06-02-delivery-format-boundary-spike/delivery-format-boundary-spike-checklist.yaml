@@ -1,0 +1,57 @@
+feature: 2026-06-02-delivery-format-boundary-spike
+created: 2026-06-02
+
+steps:
+  - action: "Boundary design：确认 PDF/PPTX/CDX 继续 unsupported、SVG 只作为 graph snapshot asset 复用"
+    exit_signal: "设计中列出每个格式的 runtime/dependency/error/web visibility 边界，frontmatter status=approved"
+    status: done
+  - action: "Capability/doc contract：补 capability reason、developer/user docs 和 architecture 文案，不开放新 writer"
+    exit_signal: "文档能回答为什么当前不能导 PDF/PPTX/CDX，以及以后开放要满足什么"
+    status: done
+  - action: "Guard tests：补 core/Web tests，固定 supported set、unsupported request error、Web default formats 和 persistence skip"
+    exit_signal: "请求 pdf/pptx/cdx 仍为 invalid_input target=formats；Web helper 不把它们列入默认或 persistence"
+    status: done
+  - action: "SVG reuse checks：补文档或测试确认 SVG graph snapshot 不含 remote resource/script/foreignObject，未来 writer 只引用 artifact"
+    exit_signal: "已有 SVG XML/security 边界在 delivery 文档和测试中可追溯"
+    status: done
+  - action: "Implementation sync：回写 architecture、roadmap 现状说明并运行相关验证"
+    exit_signal: "architecture/roadmap 说明当前为 in-progress boundary feature，YAML 校验和相关 tests 通过"
+    status: done
+
+checks:
+  - item: "capability table 包含 pdf/pptx/cdx 记录，但 supported_export_formats 仍只包含 png/cdxml/xlsx/csv/svg"
+    source: 验收场景
+    status: passed
+  - item: "core 请求 pdf/pptx/cdx 返回 invalid_input target=formats，details.supported 不包含它们"
+    source: 验收场景
+    status: passed
+  - item: "Web reportExportFormats 默认不包含 pdf/pptx/cdx"
+    source: 验收场景
+    status: passed
+  - item: "Web persistence 收到 unsupported pdf/pptx/cdx artifact projection 时不写 exports/...，不写 export-artifacts-v1 record"
+    source: 验收场景
+    status: passed
+  - item: "开发者文档说明 PDF/PPTX/CDX 的候选依赖、当前不支持原因、未来进入条件和 dependency error 语义"
+    source: 验收场景
+    status: passed
+  - item: "用户文档 FAQ 说明当前可导出 PNG/CDXML/XLSX/CSV/SVG，CDXML 是当前 ChemDraw 路径，PDF/PPTX/CDX 暂不可下载"
+    source: 验收场景
+    status: passed
+  - item: "后续 writer feature 必须从 ReportDocument / ReportAsset 输入开始，并定义 extension、MIME、writer_id、metadata、persistence path 和 warning semantics"
+    source: 验收场景
+    status: passed
+  - item: "不新增任何 PDF/PPTX/CDX bytes writer"
+    source: 范围守护
+    status: passed
+  - item: "不新增 PDF/PPTX/CDX Web checkbox、download link 或 browser persistence"
+    source: 范围守护
+    status: passed
+  - item: "不引入新的运行时依赖或外部转换工具"
+    source: 范围守护
+    status: passed
+  - item: "不把 HTML preview screenshot 当作 PDF/PPTX 的正式报告输出"
+    source: 范围守护
+    status: passed
+  - item: "不降低或替换现有 CDXML writer；CDXML 仍是 ChemDraw 当前可用交付格式"
+    source: 范围守护
+    status: passed

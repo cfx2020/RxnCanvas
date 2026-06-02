@@ -106,21 +106,22 @@ describe("export artifact persistence", () => {
     const project = await repository.createProject({ name: "Unsupported" })
     await ensureEmptyProjectContent(repository, project)
 
-    const results = await persistExportArtifacts(repository, project.projectRef, [
-      {
-        ...fixtureArtifact("png"),
-        id: "artifact-cdx-rxnflow-profile",
-        format: "cdx",
-      },
-    ], { basename: "rxnflow-profile" })
+    const unsupportedFormats = ["pdf", "pptx", "cdx"]
+    const results = await persistExportArtifacts(repository, project.projectRef, unsupportedFormats.map((format) => ({
+      ...fixtureArtifact("png"),
+      id: `artifact-${format}-rxnflow-profile`,
+      format,
+    })), { basename: "rxnflow-profile" })
 
-    expect(results).toEqual([
+    expect(results).toEqual(unsupportedFormats.map((format) =>
       expect.objectContaining({
-        artifactId: "artifact-cdx-rxnflow-profile",
+        artifactId: `artifact-${format}-rxnflow-profile`,
         persisted: false,
         error: expect.objectContaining({ code: "unsupported_format", target: "format" }),
       }),
-    ])
+    ))
+    await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.pdf")).resolves.toBe(false)
+    await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.pptx")).resolves.toBe(false)
     await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.cdx")).resolves.toBe(false)
     const index = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, exportArtifactsPath)).bytes))
     expect(index.artifacts).toHaveLength(0)

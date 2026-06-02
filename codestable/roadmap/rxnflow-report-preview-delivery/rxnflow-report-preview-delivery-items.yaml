@@ -45,8 +45,8 @@ items:
   - slug: delivery-format-boundary-spike
     description: 调研并固定 PDF/PPTX/CDX 的依赖、运行位置、错误码和 unsupported UI 口径，并明确已落地 SVG graph snapshot 在组合报告中的复用边界
     depends_on: [report-composer-manifest]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-02-delivery-format-boundary-spike
     minimal_loop: false
     notes: SVG graph snapshot 已 supported；CDX 在没有可靠 writer/converter、license、平台可用性和测试策略前保持 unsupported
 

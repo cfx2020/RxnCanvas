@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 创建日期：2026-05-01
-> 最近更新：2026-06-01
+> 最近更新：2026-06-02
 
 ## 1. 项目简介
 
@@ -131,6 +131,8 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - ReportDocument：组合报告 manifest，包含 project/title、固定 section 顺序、ReportAsset references、metadata 和 warnings，供后续 delivery writer 共用。
 - ReportSection：ReportDocument 内的章节描述，当前固定为 summary、graph、energy_profile、energy_table、artifacts、warnings 六类。
 - ReportAsset：ReportDocument 内的 JSON-safe artifact 引用，只保存 source artifact id、format、kind、path/checksum/metadata，不保存 bytes；runtime bytes 仍属于 ExportArtifact 或 `exports/...` 文件。
+- Delivery Format Boundary：`ReportDocument` / `ReportAsset` 进入 PDF、PPTX、CDX 等交付格式前的依赖、运行位置、错误语义和 QA 准入边界；当前只记录边界，不开放这些 writer。
+- Delivery Writer：未来从 `ReportDocument` 生成完整报告文件的 writer；当前没有 PDF/PPTX/CDX delivery writer，后续 writer 不得直接读取 Web state 或截图。
 - Energy Table：以结构名称为第一列的结构能量表，当前契约版本为 `energy-table-v1`，供 XLSX workbook 和 CSV artifact 复用。
 - Workbook Header Mapping：报告导出层对用户样表常见表头的归一化 helper，例如 `Egas`、`basis function`、`Ggas+1M`、`Ggas(shermo+1M)`、`Esol`、`Gsol`；entropy 原始列当前不自动映射。
 - Energy Diagram Route：从 EnergyProfile 派生的导出中间结构，供 PNG energy plot 和 CDXML energy diagram 共用。
@@ -227,7 +229,7 @@ RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与
 - Report Export Service 当前通过 Export Format Capability 维护导出格式状态、MIME、extension、writer id、artifact kind、inline/browser persistence 和 Web default 口径；`ALLOWED_EXPORT_FORMATS` 从 capability 中的 supported set 派生。
 - Report Export Service 当前支持 `png`、`cdxml`、`xlsx`、`csv` 和 `svg` 五种 ExportFormat；`svg` 是 workspace/graph projection 生成的 graph snapshot，`pdf`、`pptx`、`cdx` 已有 capability 记录但不进入 supported set，请求时仍返回 `invalid_input target=formats`，details.supported 只列当前可执行格式。
 - Report Composer Manifest 当前由 `rxnflow.report_manifest` 提供，生成 JSON-safe `ReportDocument`，section 顺序为 summary、graph、energy_profile、energy_table、artifacts、warnings；缺少 graph snapshot 或 energy table 时保留 unavailable section 和 warning，不伪造 asset。
-- Report Composer Manifest 只引用已有 artifact，不保存 bytes、不写 Project Content、不暴露 Shell command；后续 HTML/PDF/PPTX writer 必须先消费 ReportDocument，不直接读取 Web state。
+- Report Composer Manifest 只引用已有 artifact，不保存 bytes、不写 Project Content、不暴露 Shell command；后续 HTML/PDF/PPTX writer 必须先消费 ReportDocument，不直接读取 Web state。PDF/PPTX/CDX 当前仍是 delivery format boundary，未开放格式请求为 `invalid_input target=formats`；已开放 writer 的运行时依赖缺失才使用 `export_failed target=dependency`。
 - XLSX/CSV 导出当前生成 structure-first 的 `Energy Table`；XLSX 可附加 `Energy Profile` 和 `Warnings` sheet。Energy Table Contract 当前带 `energy-table-v1` schema metadata、稳定列 key 查询和样表 header mapping；XLSX workbook 使用 title、group header row、column label row、autofilter、freeze pane、按列类型设置的列宽，并始终写 `Export Metadata` sheet；CSV 使用同一列顺序和 labels 输出 UTF-8 单表。模型中没有的 basis function、Shermo/Whitesides 校正、entropy 原始列等字段留空或由调用方 table_rows 提供，不补 0。
 - PNG 和 CDXML 导出共用 Energy Diagram Route 的 padded energy bounds 和 state anchors；missing point 保留断点和 warning，不编造相对能量，也不生成假 state line。
 - CDXML 当前只生成可编辑能量图对象，包括带 document/page/group 属性的 CDXML root、state line、connector、label、relative value、axis、fonttable 和 colortable；generated object id 单文档唯一，group/graphic/arrow/text 均带 `Z`，graphic/arrow/text 带稳定 BoundingBox / LineWidth / justification 属性；不生成分子结构级 CDXML、generic reaction scheme 或 CDX，`cdx` 请求仍返回 `invalid_input target=formats`。

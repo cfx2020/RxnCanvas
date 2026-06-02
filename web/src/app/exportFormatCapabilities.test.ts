@@ -44,6 +44,27 @@ describe("export format capabilities", () => {
     expect(exportFormatCapability("cdx")?.unsupportedReason).toContain("CDX binary")
   })
 
+  it("keeps PDF, PPTX, and CDX as unsupported delivery boundaries", () => {
+    for (const format of ["pdf", "pptx", "cdx"]) {
+      expect(exportFormatCapability(format)).toMatchObject({
+        format,
+        writerId: null,
+        fixtureWriterId: null,
+        supportsBrowserPersistence: false,
+        webDefaultEnabled: false,
+        status: "unsupported",
+      })
+      expect(supportsBrowserPersistence(format)).toBe(false)
+    }
+
+    expect(reportExportFormats()).not.toContain("pdf")
+    expect(reportExportFormats()).not.toContain("pptx")
+    expect(reportExportFormats()).not.toContain("cdx")
+    expect(exportFormatCapability("pdf")?.artifactKind).toBe("report_document")
+    expect(exportFormatCapability("pptx")?.artifactKind).toBe("report_document")
+    expect(exportFormatCapability("cdx")?.artifactKind).toBe("external_conversion")
+  })
+
   it("provides MIME, extension, writer id, and persistence guards", () => {
     expect(mimeTypeForExportFormat("png")).toBe("image/png")
     expect(mimeTypeForExportFormat("unknown")).toBe("application/octet-stream")

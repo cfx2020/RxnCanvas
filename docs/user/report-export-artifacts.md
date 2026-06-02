@@ -5,7 +5,7 @@ component: report-export-guides
 status: current
 summary: 如何在 RxnFlow Web 工作台导出报告 artifacts
 tags: [report-export, web-workbench, cdxml, xlsx, csv, svg, local-first]
-last_reviewed: 2026-06-01
+last_reviewed: 2026-06-02
 ---
 
 # 导出 PNG、CDXML、XLSX、CSV 和 SVG 报告文件
@@ -58,7 +58,7 @@ RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为�
 | CSV | 把结构优先的能量表交给脚本、表格软件或其他数据流程。 | UTF-8 单表 CSV；没有公式、多 sheet、样式或私有模板；缺失字段为空 cell。 |
 | SVG | 保存当前反应图谱的 graph snapshot，适合放入报告、网页或矢量编辑流程。 | 由 core 根据 graph/workspace 投影生成，不是 Web 画布截图；包含节点、边、active path、selection 和 viewport metadata，不包含 hover 或拖拽中的临时状态。 |
 
-RxnFlow 内部仍记录了 PDF、PPTX 和 CDX 的格式能力边界，但这些格式当前不会出现在 Web 导出勾选项里，也不会生成文件。
+RxnFlow 内部仍记录了 PDF、PPTX 和 CDX 的格式能力边界，但这些格式当前不会出现在 Web 导出勾选项里，也不会生成文件。后续若开放 PDF/PPTX，会先基于内部 `ReportDocument` manifest 做 writer，而不是把当前网页预览截图直接当作正式报告。
 
 ## 保存位置
 
@@ -103,7 +103,7 @@ A: checksum 是文件内容的 sha256 指纹，用于判断保存后的 artifact
 
 Q: CDXML 和 CDX 有什么区别？
 
-A: CDXML 是 XML 格式，当前 RxnFlow 支持导出 `.cdxml`。CDX 是 ChemDraw 的二进制格式，当前不支持。需要 CDX 时，先在 ChemDraw 中打开 CDXML，再由 ChemDraw 另存为 CDX。
+A: CDXML 是 XML 格式，当前 RxnFlow 支持导出 `.cdxml`。CDX 是 ChemDraw 的二进制格式，当前不支持，也不会出现在 Web 导出勾选项里。需要 CDX 时，先在 ChemDraw 中打开 CDXML，再由 ChemDraw 另存为 CDX。
 
 Q: XLSX 第一列是什么？
 
@@ -123,7 +123,7 @@ A: 可以。SVG 是 graph snapshot artifact，反映当前 workspace graph、act
 
 Q: 能导出 PDF、PPTX、CDX 或完整报告吗？
 
-A: 当前不能。当前可执行导出是 PNG、CDXML、XLSX、CSV 和 SVG。内部已经有组合报告 manifest 用来约束后续 PDF/PPTX/HTML 等 writer，但它不是用户可下载的完整报告文件；PDF、PPTX 和 CDX 仍属于后续独立功能。
+A: 当前不能。当前可执行导出是 PNG、CDXML、XLSX、CSV 和 SVG。内部已经有组合报告 manifest 用来约束后续 PDF/PPTX/HTML 等 writer，但它不是用户可下载的完整报告文件；PDF、PPTX 和 CDX 仍属于后续独立功能。PDF/PPTX 需要先明确排版和依赖策略，CDX 需要可靠转换或 writer 后才会开放。
 
 ## 相关功能
 
