@@ -258,16 +258,16 @@ source:
 2. **parser-public-candidate-fetch-verify**：提供 dev-only fetch/hash verify workflow，按 `sources.yaml` 的 source_id/file_id 拉取候选并校验 sha256。
    - 所属模块：Candidate Fetch Verify
    - 依赖：parser-public-fixture-decision-ledger
-   - 状态：planned
-   - 对应 feature：null
-   - 备注：普通测试不访问网络；只用于人工/可选 CI 复核 source inventory。
+   - 状态：done
+   - 对应 feature：2026-06-02-parser-public-candidate-fetch-verify
+   - 备注：已落地 dev-only request/result helper；普通测试不访问网络、不写 fixture corpus，只复核调用方提供 bytes 是否匹配 source inventory。
 
 3. **maple-public-candidate-resolution**：对 MAPLE sp/opt/path/frequency/MD/scan candidates/reference files 做逐项 decision，能 promotion 的生成 fixture，不能 promotion 的写明 synthetic-only/reference-only fallback。
    - 所属模块：MAPLE Candidate Resolver
    - 依赖：parser-public-fixture-decision-ledger, parser-public-candidate-fetch-verify
-   - 状态：planned
-   - 对应 feature：null
-   - 备注：不得在本 feature 中生成 ReactionPath、TS candidate 或 path topology。
+   - 状态：in-progress
+   - 对应 feature：2026-06-02-maple-public-candidate-resolution
+   - 备注：方案已起草；当前无 MAPLE originals promoted，先用测试侧 resolution summary/guards 固定 blocked/reference-only/fallback 口径，不生成 ReactionPath、TS candidate 或 path topology。
 
 4. **cclib-public-candidate-resolution**：复核 cclib-data Gaussian/ORCA candidates 的许可证与 hash，决定是否 promotion；不能 promotion 时固定 synthetic-derived fallback 口径。
    - 所属模块：cclib-data Candidate Resolver

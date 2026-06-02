@@ -84,6 +84,62 @@ parser_intent: maple-output
 
 `review-required` 来源不得自动进入 `files/`。后续若要 vendor 第三方文件，必须另起 feature 更新 manifest/source metadata，并说明为什么该单个文件可再分发。
 
+## Candidate Fetch Verify
+
+Candidate Fetch Verify 是 source inventory 的 dev-only 复核入口，用于把 `sources.yaml` 里登记的公开候选文件转换成可校验的 request，并对开发者或 agent 已经拿到的 bytes 做 `sha256` 和 `size_bytes` 复核。它只证明“这批 bytes 是否匹配 inventory”，不证明许可证允许再分发，也不证明该文件可以 promotion。
+
+当前 helper 位于 `tests/parser_fixture_harness.py`：
+
+```python
+from pathlib import Path
+
+from tests.parser_fixture_harness import (
+    build_parser_public_candidate_fetch_request,
+    load_parser_source_inventory,
+    verify_parser_public_candidate_bytes,
+)
+
+inventory = load_parser_source_inventory(Path("tests/fixtures/parsers/sources.yaml"))
+request = build_parser_public_candidate_fetch_request(
+    inventory,
+    "maple-dev-example",
+    "maple-sp-output-example",
+)
+result = verify_parser_public_candidate_bytes(
+    request,
+    b"...already fetched or locally supplied bytes...",
+    fetched_at="2026-06-02T00:00:00Z",
+)
+```
+
+维护规则：
+
+- 普通 unit tests 不访问网络，不 clone GitHub，也不读取用户本机临时 checkout；测试只能使用本地 YAML 和 fake bytes。
+- `build_parser_public_candidate_fetch_request` 只读取 `ParserSourceInventory`，要求 source/file 存在、file 属于 source、source 有 URL，并至少有 `commit`、`version` 或 `branch` 之一作为 tracking info。
+- `verify_parser_public_candidate_bytes` 只接收已经提供的 bytes；helper 本身不 fetch、不写文件、不写 `tests/fixtures/parsers/files/`。
+- `ok=True` 只表示 actual sha256 和 actual size 都匹配 request 中的 expected 值。
+- sha 或 size mismatch 必须作为 structured result 暴露，保留 expected/actual 值；不要自动修改 `sources.yaml`、decision ledger、manifest、support matrix 或 snapshot。
+- 后续如果新增显式 dev command 或 provider，可以把真实网络读取、local checkout 读取和 Explicit Artifact 写入放在 helper 外层，但默认仍只能写临时目录或用户显式指定的 artifact 目录，不能自动 vendor。
+- promotion 仍必须先查 `public-fixture-decisions.yaml`；fetch verify 成功不能被描述为文件已可再分发、已进入 corpus 或已 supported。
+
+## MAPLE Candidate Resolution
+
+MAPLE Candidate Resolution 是 `maple-dev-example` source 的当前逐文件结论汇总。它从 source inventory、public fixture decision ledger 和 support matrix 派生，不新增第二份 MAPLE 决策表。测试侧 helper `summarize_maple_public_candidate_resolution` 会汇总 candidate files、reference-only files、promoted files、blocked candidates、fallback fixtures 和 unresolved files。
+
+当前结论：
+
+- `maple-sp-output-example`、`maple-opt-output-example`、`maple-opt-final-xyz-example` 都仍是 `needs-permission/blocked`，没有 promoted MAPLE public original。
+- 三个 MAPLE candidates 只通过项目内 synthetic / synthetic-derived fallback 保持 executable parser coverage。
+- scan、path、AutoNEB tree、MD、frequency 和 `.sum` artifacts 保持 `reference-only/not-applicable`，只作为 reference anchor。
+- support matrix 中 MAPLE public originals 不得进入 `fixture_ids`；`fixture_ids` 只能指向 manifest 中的项目内 synthetic 或 synthetic-derived fixtures。
+- MAPLE path-family fallback 只证明 `.xyz` frame comment / Hartree energy 可以生成 frame-level `ChemicalObjectDraft`，不声明 ReactionPath、path topology、direction、TS candidate、frequency、MD 或 scan semantics。
+
+维护规则：
+
+- summary 的 `unresolved_file_ids` 必须为空；缺 decision、candidate 无 fallback、reference-only 无自身 anchor 或 support matrix 漏挂 source file 都应由 focused tests 暴露。
+- 如果后续用户或上游许可证证据允许 promotion，必须另起 promotion feature 更新 decision ledger、manifest source metadata、fixture file、snapshot 和 support matrix。
+- 不能把 Candidate Fetch Verify 成功当成 MAPLE 文件可再分发或可进入 corpus 的依据。
+
 ## Public Fixture Decision Ledger
 
 `public-fixture-decisions.yaml` 是 source inventory 和 executable fixture corpus 之间的人工决策层。它不保存外部原始文件，也不代表 parser runtime 支持；它只回答一个问题：当前登记的 source file 是否能进入 executable fixture corpus，如果不能，用哪个项目内 fixture 或 reference anchor 继续证明 parser 行为边界。

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -243,6 +244,43 @@ class ParserPublicFixtureDecisionLedger:
         return {(decision.source_id, decision.file_id) for decision in self.decisions}
 
 
+@dataclass(frozen=True)
+class ParserPublicCandidateFetchRequest:
+    source_id: str
+    file_id: str
+    url: str
+    upstream_path: str
+    commit_or_version: str | None
+    expected_sha256: str
+    expected_size_bytes: int
+
+
+@dataclass(frozen=True)
+class ParserPublicCandidateFetchResult:
+    source_id: str
+    file_id: str
+    url: str
+    upstream_path: str
+    expected_sha256: str
+    actual_sha256: str | None
+    expected_size_bytes: int
+    actual_size_bytes: int | None
+    ok: bool
+    fetched_at: str
+    error: str | None
+
+
+@dataclass(frozen=True)
+class ParserMaplePublicResolutionSummary:
+    source_id: str
+    candidate_file_ids: tuple[str, ...]
+    reference_file_ids: tuple[str, ...]
+    promoted_file_ids: tuple[str, ...]
+    blocked_candidate_file_ids: tuple[str, ...]
+    fallback_fixture_ids: tuple[str, ...]
+    unresolved_file_ids: tuple[str, ...]
+
+
 def load_parser_fixture_manifest(path: Path) -> ParserFixtureManifest:
     root = path.parent
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -353,6 +391,159 @@ def load_parser_source_inventory(path: Path) -> ParserSourceInventory:
         )
 
     return ParserSourceInventory(root=root, sources=tuple(sources))
+
+
+def build_parser_public_candidate_fetch_request(
+    source_inventory: ParserSourceInventory,
+    source_id: str,
+    file_id: str,
+) -> ParserPublicCandidateFetchRequest:
+    source = source_inventory.source_by_id(source_id)
+    source_file_ids = {file.id for file in source.files}
+    if file_id not in source_file_ids:
+        if file_id in source_inventory.file_ids():
+            raise AssertionError(
+                f"Parser public candidate fetch file {file_id} does not belong to source {source_id}."
+            )
+        raise AssertionError(f"Parser public candidate fetch references unknown file id: {file_id}")
+
+    if not source.url:
+        raise AssertionError(f"Parser public candidate fetch source {source_id} is missing url.")
+    commit_or_version = source.commit or source.version or source.branch
+    if not commit_or_version:
+        raise AssertionError(
+            f"Parser public candidate fetch source {source_id} is missing commit/version/branch tracking info."
+        )
+
+    file = source_inventory.file_by_id(file_id)
+    if SHA256_PATTERN.fullmatch(file.sha256) is None:
+        raise AssertionError(f"Parser public candidate fetch file {file_id} has malformed sha256.")
+
+    return ParserPublicCandidateFetchRequest(
+        source_id=source_id,
+        file_id=file_id,
+        url=source.url,
+        upstream_path=file.path,
+        commit_or_version=commit_or_version,
+        expected_sha256=file.sha256,
+        expected_size_bytes=file.size_bytes,
+    )
+
+
+def verify_parser_public_candidate_bytes(
+    request: ParserPublicCandidateFetchRequest,
+    content: bytes,
+    *,
+    fetched_at: str,
+) -> ParserPublicCandidateFetchResult:
+    if SHA256_PATTERN.fullmatch(request.expected_sha256) is None:
+        raise AssertionError(
+            f"Parser public candidate fetch request {request.source_id}/{request.file_id} has malformed expected_sha256."
+        )
+    if request.expected_size_bytes <= 0:
+        raise AssertionError(
+            f"Parser public candidate fetch request {request.source_id}/{request.file_id} has invalid expected_size_bytes."
+        )
+    if not fetched_at:
+        raise AssertionError(
+            f"Parser public candidate fetch request {request.source_id}/{request.file_id} requires fetched_at."
+        )
+
+    actual_sha256 = "sha256:" + hashlib.sha256(content).hexdigest()
+    actual_size_bytes = len(content)
+    errors: list[str] = []
+    if actual_sha256 != request.expected_sha256:
+        errors.append("sha256_mismatch")
+    if actual_size_bytes != request.expected_size_bytes:
+        errors.append("size_mismatch")
+
+    return ParserPublicCandidateFetchResult(
+        source_id=request.source_id,
+        file_id=request.file_id,
+        url=request.url,
+        upstream_path=request.upstream_path,
+        expected_sha256=request.expected_sha256,
+        actual_sha256=actual_sha256,
+        expected_size_bytes=request.expected_size_bytes,
+        actual_size_bytes=actual_size_bytes,
+        ok=not errors,
+        fetched_at=fetched_at,
+        error=",".join(errors) if errors else None,
+    )
+
+
+def summarize_maple_public_candidate_resolution(
+    source_inventory: ParserSourceInventory,
+    decision_ledger: ParserPublicFixtureDecisionLedger,
+    support_matrix: ParserSupportMatrix,
+    *,
+    source_id: str = "maple-dev-example",
+) -> ParserMaplePublicResolutionSummary:
+    source = source_inventory.source_by_id(source_id)
+    if source.program != "maple":
+        raise AssertionError(
+            f"Parser MAPLE public resolution source {source_id} must have program=maple."
+        )
+
+    candidate_file_ids = tuple(file.id for file in source.files_by_policy("candidate"))
+    reference_file_ids = tuple(file.id for file in source.files_by_policy("reference-only"))
+    source_file_ids = {file.id for file in source.files}
+    unresolved_file_ids: list[str] = []
+    promoted_file_ids: list[str] = []
+    blocked_candidate_file_ids: list[str] = []
+    fallback_fixture_ids: set[str] = set()
+
+    for file in source.files:
+        try:
+            decision = decision_ledger.decision_for(source.id, file.id)
+        except AssertionError:
+            unresolved_file_ids.append(file.id)
+            continue
+
+        if file.fixture_policy == "candidate":
+            if decision.decision == "allowed" and decision.promotion == "promoted":
+                promoted_file_ids.append(file.id)
+            else:
+                blocked_candidate_file_ids.append(file.id)
+                if not decision.fallback_fixture_ids:
+                    unresolved_file_ids.append(file.id)
+            fallback_fixture_ids.update(decision.fallback_fixture_ids)
+        elif file.fixture_policy == "reference-only":
+            if decision.decision != "reference-only" or decision.promotion != "not-applicable":
+                unresolved_file_ids.append(file.id)
+            if file.id not in decision.reference_file_ids:
+                unresolved_file_ids.append(file.id)
+            fallback_fixture_ids.update(decision.fallback_fixture_ids)
+        else:
+            unresolved_file_ids.append(file.id)
+
+    support_source_file_ids = _support_matrix_file_ids_for_source(support_matrix, source.id)
+    missing_in_support = source_file_ids - support_source_file_ids
+    if missing_in_support:
+        unresolved_file_ids.extend(sorted(missing_in_support))
+
+    return ParserMaplePublicResolutionSummary(
+        source_id=source.id,
+        candidate_file_ids=candidate_file_ids,
+        reference_file_ids=reference_file_ids,
+        promoted_file_ids=tuple(promoted_file_ids),
+        blocked_candidate_file_ids=tuple(blocked_candidate_file_ids),
+        fallback_fixture_ids=tuple(sorted(fallback_fixture_ids)),
+        unresolved_file_ids=tuple(dict.fromkeys(unresolved_file_ids)),
+    )
+
+
+def _support_matrix_file_ids_for_source(
+    support_matrix: ParserSupportMatrix,
+    source_id: str,
+) -> set[str]:
+    file_ids: set[str] = set()
+    for entry in support_matrix.entries:
+        if source_id not in entry.source_ids:
+            continue
+        file_ids.update(entry.candidate_file_ids)
+        file_ids.update(entry.reference_file_ids)
+    return file_ids
 
 
 def load_parser_public_fixture_decisions(

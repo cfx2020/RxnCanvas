@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
+import hashlib
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 from tempfile import TemporaryDirectory
@@ -13,11 +16,14 @@ from rxnflow.parsers.maple import MapleOutputPlugin
 
 from tests.parser_fixture_harness import (
     assert_parser_fixture_snapshot,
+    build_parser_public_candidate_fetch_request,
     load_parser_fixture_manifest,
     load_parser_public_fixture_decisions,
     load_parser_source_inventory,
     load_parser_support_matrix,
     project_parser_fixture_snapshot,
+    summarize_maple_public_candidate_resolution,
+    verify_parser_public_candidate_bytes,
 )
 
 
@@ -182,6 +188,312 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         candidate_ids = {file.id for file in inventory.files_by_policy("candidate")}
         self.assertIn("maple-sp-output-example", candidate_ids)
         self.assertIn("cclib-orca50-1038-output", candidate_ids)
+
+    def test_public_candidate_fetch_request_builds_from_source_inventory(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+
+        request = build_parser_public_candidate_fetch_request(
+            inventory,
+            "maple-dev-example",
+            "maple-sp-output-example",
+        )
+
+        self.assertEqual(request.source_id, "maple-dev-example")
+        self.assertEqual(request.file_id, "maple-sp-output-example")
+        self.assertEqual(request.url, "https://github.com/ClickFF/MAPLE")
+        self.assertEqual(request.upstream_path, "example/sp/sp.out")
+        self.assertEqual(request.commit_or_version, "001636482646bca0d1e867fb257322d2a172cc86")
+        self.assertEqual(
+            request.expected_sha256,
+            "sha256:4fff4cc57b157df05ca028b7acc6c4d0fce68687b51ddd27dfbf6456de587d17",
+        )
+        self.assertEqual(request.expected_size_bytes, 4253)
+
+    def test_public_candidate_fetch_request_rejects_unknown_source_or_file(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+
+        with self.assertRaisesRegex(AssertionError, "source not found|source inventory source not found"):
+            build_parser_public_candidate_fetch_request(
+                inventory,
+                "unknown-source",
+                "maple-sp-output-example",
+            )
+        with self.assertRaisesRegex(AssertionError, "unknown file id"):
+            build_parser_public_candidate_fetch_request(
+                inventory,
+                "maple-dev-example",
+                "unknown-file",
+            )
+
+    def test_public_candidate_fetch_request_rejects_file_source_mismatch(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+
+        with self.assertRaisesRegex(AssertionError, "does not belong to source"):
+            build_parser_public_candidate_fetch_request(
+                inventory,
+                "maple-dev-example",
+                "cclib-orca50-1038-output",
+            )
+
+    def test_public_candidate_fetch_request_rejects_missing_url_or_tracking_info(self) -> None:
+        cases = {
+            "missing_url": {"url": "null"},
+            "missing_tracking": {"branch": "null", "commit": "null", "version": "null"},
+        }
+        for name, kwargs in cases.items():
+            with self.subTest(name=name), TemporaryDirectory() as tmp:
+                path = Path(tmp) / "sources.yaml"
+                path.write_text(_source_inventory_yaml(**kwargs), encoding="utf-8")
+                inventory = load_parser_source_inventory(path)
+
+                with self.assertRaisesRegex(AssertionError, "missing"):
+                    build_parser_public_candidate_fetch_request(inventory, "source", "file")
+
+    def test_public_candidate_fetch_request_rejects_malformed_inventory_sha256(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        source = inventory.source_by_id("maple-dev-example")
+        file = inventory.file_by_id("maple-sp-output-example")
+        mutated_source = replace(
+            source,
+            files=(replace(file, sha256="sha256:not-a-hash"),),
+        )
+        mutated_inventory = replace(inventory, sources=(mutated_source,))
+
+        with self.assertRaisesRegex(AssertionError, "malformed sha256"):
+            build_parser_public_candidate_fetch_request(
+                mutated_inventory,
+                "maple-dev-example",
+                "maple-sp-output-example",
+            )
+
+    def test_public_candidate_fetch_verify_accepts_matching_bytes(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        request = build_parser_public_candidate_fetch_request(
+            inventory,
+            "maple-dev-example",
+            "maple-sp-output-example",
+        )
+        content = b"verified candidate bytes\n"
+        expected_sha256 = "sha256:" + hashlib.sha256(content).hexdigest()
+        request = replace(
+            request,
+            expected_sha256=expected_sha256,
+            expected_size_bytes=len(content),
+        )
+
+        result = verify_parser_public_candidate_bytes(
+            request,
+            content,
+            fetched_at="2026-06-02T00:00:00Z",
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.error)
+        self.assertEqual(result.source_id, request.source_id)
+        self.assertEqual(result.file_id, request.file_id)
+        self.assertEqual(result.url, request.url)
+        self.assertEqual(result.upstream_path, request.upstream_path)
+        self.assertEqual(result.expected_sha256, expected_sha256)
+        self.assertEqual(result.actual_sha256, expected_sha256)
+        self.assertEqual(result.expected_size_bytes, len(content))
+        self.assertEqual(result.actual_size_bytes, len(content))
+        self.assertEqual(result.fetched_at, "2026-06-02T00:00:00Z")
+
+    def test_public_candidate_fetch_verify_reports_sha_mismatch_without_mutating_request(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        request = build_parser_public_candidate_fetch_request(
+            inventory,
+            "maple-dev-example",
+            "maple-sp-output-example",
+        )
+        content = b"verified candidate bytes\n"
+        original_sha256 = inventory.file_by_id("maple-sp-output-example").sha256
+        actual_sha256 = "sha256:" + hashlib.sha256(content).hexdigest()
+        request = replace(
+            request,
+            expected_sha256="sha256:" + "0" * 64,
+            expected_size_bytes=len(content),
+        )
+
+        result = verify_parser_public_candidate_bytes(
+            request,
+            content,
+            fetched_at="2026-06-02T00:00:00Z",
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "sha256_mismatch")
+        self.assertEqual(result.expected_sha256, "sha256:" + "0" * 64)
+        self.assertEqual(result.actual_sha256, actual_sha256)
+        self.assertEqual(request.expected_sha256, "sha256:" + "0" * 64)
+        self.assertEqual(inventory.file_by_id("maple-sp-output-example").sha256, original_sha256)
+
+    def test_public_candidate_fetch_verify_reports_size_mismatch_without_writing_files(self) -> None:
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        request = build_parser_public_candidate_fetch_request(
+            inventory,
+            "maple-dev-example",
+            "maple-sp-output-example",
+        )
+        content = b"verified candidate bytes\n"
+        expected_sha256 = "sha256:" + hashlib.sha256(content).hexdigest()
+        request = replace(
+            request,
+            expected_sha256=expected_sha256,
+            expected_size_bytes=len(content) + 1,
+        )
+        before_files = _parser_fixture_file_snapshot()
+
+        result = verify_parser_public_candidate_bytes(
+            request,
+            content,
+            fetched_at="2026-06-02T00:00:00Z",
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "size_mismatch")
+        self.assertEqual(result.expected_size_bytes, len(content) + 1)
+        self.assertEqual(result.actual_size_bytes, len(content))
+        self.assertEqual(_parser_fixture_file_snapshot(), before_files)
+
+    def test_maple_public_resolution_summary_classifies_current_source_files(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        summary = summarize_maple_public_candidate_resolution(inventory, ledger, matrix)
+
+        self.assertEqual(summary.source_id, "maple-dev-example")
+        self.assertEqual(
+            summary.candidate_file_ids,
+            ("maple-sp-output-example", "maple-opt-output-example", "maple-opt-final-xyz-example"),
+        )
+        self.assertEqual(len(summary.reference_file_ids), 14)
+        self.assertEqual(summary.promoted_file_ids, ())
+        self.assertEqual(summary.blocked_candidate_file_ids, summary.candidate_file_ids)
+        self.assertEqual(summary.unresolved_file_ids, ())
+
+        maple_source = inventory.source_by_id("maple-dev-example")
+        self.assertEqual(
+            set(summary.reference_file_ids),
+            {file.id for file in maple_source.files_by_policy("reference-only")},
+        )
+        self.assertEqual(
+            set(summary.candidate_file_ids) | set(summary.reference_file_ids),
+            {file.id for file in maple_source.files},
+        )
+        expected_fallbacks = {
+            "maple-sp-public-shape-synthetic-derived",
+            "maple-opt-synthetic-minimal",
+            "maple-opt-final-xyz-public-shape-synthetic-derived",
+            "maple-path-family-synthetic-derived",
+        }
+        self.assertEqual(set(summary.fallback_fixture_ids), expected_fallbacks)
+        for fixture_id in summary.fallback_fixture_ids:
+            with self.subTest(fixture=fixture_id):
+                fixture = _fixture_by_id(manifest, fixture_id)
+                self.assertEqual(fixture.source.kind, "synthetic")
+
+    def test_maple_public_resolution_summary_exposes_ledger_inconsistencies(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        with self.assertRaisesRegex(AssertionError, "program=maple"):
+            summarize_maple_public_candidate_resolution(
+                inventory,
+                ledger,
+                matrix,
+                source_id="cclib-data-gaussian-orca",
+            )
+
+        candidate_without_fallback = _replace_decision(
+            ledger,
+            "maple-sp-output-example",
+            fallback_fixture_ids=(),
+        )
+        summary = summarize_maple_public_candidate_resolution(
+            inventory,
+            candidate_without_fallback,
+            matrix,
+        )
+        self.assertIn("maple-sp-output-example", summary.unresolved_file_ids)
+
+        reference_without_self_anchor = _replace_decision(
+            ledger,
+            "maple-frequency-summary-reference",
+            reference_file_ids=(),
+        )
+        summary = summarize_maple_public_candidate_resolution(
+            inventory,
+            reference_without_self_anchor,
+            matrix,
+        )
+        self.assertIn("maple-frequency-summary-reference", summary.unresolved_file_ids)
+
+        missing_decision = ledger.__class__(
+            root=ledger.root,
+            decisions=tuple(
+                decision
+                for decision in ledger.decisions
+                if decision.file_id != "maple-opt-output-example"
+            ),
+        )
+        summary = summarize_maple_public_candidate_resolution(inventory, missing_decision, matrix)
+        self.assertIn("maple-opt-output-example", summary.unresolved_file_ids)
+
+    def test_maple_public_resolution_support_matrix_keeps_public_originals_non_executable(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
+
+        maple_source = inventory.source_by_id("maple-dev-example")
+        maple_candidate_ids = {file.id for file in maple_source.files_by_policy("candidate")}
+        maple_reference_ids = {file.id for file in maple_source.files_by_policy("reference-only")}
+
+        candidates = _matrix_entry_by_id(matrix, "maple-output-public-candidates")
+        self.assertEqual(candidates.status, "candidate")
+        self.assertEqual(set(candidates.candidate_file_ids), maple_candidate_ids)
+        self.assertEqual(candidates.fixture_ids, ())
+        self.assertEqual(candidates.reference_file_ids, ())
+
+        reference_entries = [
+            entry
+            for entry in matrix.entries
+            if "maple-dev-example" in entry.source_ids and entry.status == "reference-only"
+        ]
+        self.assertTrue(reference_entries)
+        matrix_reference_ids = set()
+        for entry in reference_entries:
+            with self.subTest(entry=entry.id):
+                self.assertEqual(entry.fixture_ids, ())
+                self.assertEqual(entry.candidate_file_ids, ())
+                self.assertTrue(set(entry.reference_file_ids).issubset(maple_reference_ids))
+                matrix_reference_ids.update(entry.reference_file_ids)
+        self.assertEqual(matrix_reference_ids, maple_reference_ids)
+
+        public_shape = _matrix_entry_by_id(matrix, "maple-public-shape-regression")
+        self.assertEqual(public_shape.status, "partial")
+        self.assertEqual(public_shape.source_ids, ("maple-dev-example",))
+        self.assertEqual(
+            set(public_shape.candidate_file_ids),
+            {"maple-sp-output-example", "maple-opt-final-xyz-example"},
+        )
+        for fixture_id in public_shape.fixture_ids:
+            with self.subTest(fixture=fixture_id):
+                fixture = _fixture_by_id(manifest, fixture_id)
+                self.assertEqual(fixture.source.kind, "synthetic")
+                self.assertIn("synthetic-derived", fixture.tags)
 
     def test_public_fixture_decision_ledger_loads_and_covers_source_inventory(self) -> None:
         manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
@@ -1302,12 +1614,39 @@ class ParserFixtureHarnessTest(unittest.TestCase):
             "PlatformShellService",
             "ProjectBundleService",
             "subprocess",
+            "requests",
+            "urllib",
+            "urlopen",
+            "socket",
+            "http.client",
         )
         for token in forbidden:
             self.assertNotIn(token, harness_source)
 
         parser_runtime_exports = Path("rxnflow/parsers/__init__.py").read_text(encoding="utf-8")
         self.assertNotIn("parser_fixture_harness", parser_runtime_exports)
+
+    def test_public_candidate_fetch_helpers_do_not_access_network_or_write_files(self) -> None:
+        helper_source = "\n".join(
+            (
+                inspect.getsource(build_parser_public_candidate_fetch_request),
+                inspect.getsource(verify_parser_public_candidate_bytes),
+                inspect.getsource(summarize_maple_public_candidate_resolution),
+            )
+        )
+        forbidden = (
+            "requests",
+            "urllib",
+            "urlopen",
+            "socket",
+            "http.client",
+            "subprocess",
+            "write_text",
+            "write_bytes",
+            "open(",
+        )
+        for token in forbidden:
+            self.assertNotIn(token, helper_source)
 
     def test_fixture_corpus_excludes_system_and_large_runtime_files(self) -> None:
         forbidden_suffixes = {".chk", ".gbw", ".hess", ".tmp", ".cache"}
@@ -1522,6 +1861,10 @@ def _source_inventory_yaml(
     fixture_policy: str = "candidate",
     sha256: str = "sha256:" + "0" * 64,
     file_path: str = "example/sp/sp.out",
+    url: str = "https://example.test/repo",
+    branch: str = "main",
+    commit: str = "abc123",
+    version: str = "null",
 ) -> str:
     return (
         f"schema_version: {schema_version}\n"
@@ -1529,10 +1872,10 @@ def _source_inventory_yaml(
         "  - id: source\n"
         "    program: maple\n"
         "    kind: upstream-git\n"
-        "    url: https://example.test/repo\n"
-        "    branch: main\n"
-        "    commit: abc123\n"
-        "    version: null\n"
+        f"    url: {url}\n"
+        f"    branch: {branch}\n"
+        f"    commit: {commit}\n"
+        f"    version: {version}\n"
         "    license: review-required\n"
         "    redistributable_default: review-required\n"
         "    local_reference_path: null\n"
@@ -1557,6 +1900,31 @@ def _fixture_by_id(manifest, fixture_id: str):
         if fixture.id == fixture_id:
             return fixture
     raise AssertionError(f"Fixture not found: {fixture_id}")
+
+
+def _parser_fixture_file_snapshot() -> tuple[tuple[str, int, str], ...]:
+    root = Path("tests/fixtures/parsers/files")
+    return tuple(
+        sorted(
+            (
+                str(path.relative_to(root)),
+                path.stat().st_size,
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+            )
+            for path in root.rglob("*")
+            if path.is_file()
+        )
+    )
+
+
+def _replace_decision(ledger, file_id: str, **kwargs):
+    return ledger.__class__(
+        root=ledger.root,
+        decisions=tuple(
+            replace(decision, **kwargs) if decision.file_id == file_id else decision
+            for decision in ledger.decisions
+        ),
+    )
 
 
 def _matrix_entry_by_id(matrix, entry_id: str):

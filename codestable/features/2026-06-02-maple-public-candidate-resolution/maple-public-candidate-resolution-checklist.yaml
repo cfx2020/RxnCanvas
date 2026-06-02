@@ -1,0 +1,100 @@
+feature: 2026-06-02-maple-public-candidate-resolution
+created: 2026-06-02
+
+steps:
+  - action: "Resolution summary contract：定义 MAPLE resolution summary dataclass/helper，从 inventory + decision ledger + support matrix 派生当前状态"
+    exit_signal: "summary 覆盖 maple-dev-example 全部 source file ids，并正确分类 3 个 candidate 与 14 个 reference-only files"
+    status: done
+
+  - action: "MAPLE resolution guards：补 focused tests，证明 candidates blocked with fallback、reference-only self anchors、promoted originals empty"
+    exit_signal: "缺 decision、candidate fallback 缺失、reference-only anchor 缺失或非 MAPLE source 会被拒绝/暴露"
+    status: done
+
+  - action: "Support matrix and docs guard：补 support matrix consistency tests 和 developer guide"
+    exit_signal: "MAPLE public originals 未进入 executable fixture ids；docs 明确当前无 promoted MAPLE originals、path/frequency/MD/scan 仍 reference-only；focused tests 和 git diff --check 通过"
+    status: done
+
+checks:
+  - item: "能从当前 sources.yaml / public-fixture-decisions.yaml / support-matrix.yaml 派生 ParserMaplePublicResolutionSummary"
+    source: 验收场景
+    status: passed
+
+  - item: "summary 覆盖 maple-dev-example 的全部 17 个 source file ids，无 missing/extra/unresolved"
+    source: 验收场景
+    status: passed
+
+  - item: "summary 中 candidate file ids 精确为 maple-sp-output-example、maple-opt-output-example、maple-opt-final-xyz-example"
+    source: 验收场景
+    status: passed
+
+  - item: "summary 中 promoted file ids 为空"
+    source: 验收场景
+    status: passed
+
+  - item: "每个 MAPLE candidate 当前都是 needs-permission/blocked，并带至少一个 fallback fixture"
+    source: 验收场景
+    status: passed
+
+  - item: "每个 MAPLE candidate fallback fixture 存在于 manifest，且 source.kind 为 synthetic"
+    source: 验收场景
+    status: passed
+
+  - item: "每个 MAPLE reference-only file 保持 reference-only/not-applicable，并以自身 file id 作为 reference anchor"
+    source: 验收场景
+    status: passed
+
+  - item: "path-family reference files 可以有 maple-path-family-synthetic-derived fallback，但不得被描述为 ReactionPath/topology support"
+    source: 验收场景
+    status: passed
+
+  - item: "support matrix 中 maple-output-public-candidates 仍为 candidate，fixture_ids 为空"
+    source: 验收场景
+    status: passed
+
+  - item: "support matrix 中 MAPLE reference entries 仍为 reference-only，fixture_ids 为空，reference file ids 与 source inventory 对齐"
+    source: 验收场景
+    status: passed
+
+  - item: "MAPLE public-shape executable coverage 仍只指向项目内 synthetic-derived fallback fixtures，不 vendor originals"
+    source: 验收场景
+    status: passed
+
+  - item: "Docs 明确 MAPLE resolution 当前结论：无 promoted public originals；candidate blocked pending permission；scan/path/MD/frequency remain reference-only"
+    source: 验收场景
+    status: passed
+
+  - item: "Scope guard 证明未新增 MAPLE third-party files，未改 MAPLE parser runtime、Import Workflow、Platform Shell、Web UI 或 report export"
+    source: 验收场景
+    status: passed
+
+  - item: "不 vendor ClickFF/MAPLE public originals"
+    source: 范围守护
+    status: passed
+
+  - item: "不把任何 MAPLE source file 改成 allowed/promoted"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 executable fixture、golden snapshot 或 support matrix fixture_ids 指向 MAPLE original"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 rxnflow.parsers.maple"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 path/frequency/MD/scan reference-only 文件声明为 supported"
+    source: 范围守护
+    status: passed
+
+  - item: "不运行外部 MAPLE 计算任务"
+    source: 范围守护
+    status: passed
+
+  - item: "不让普通 tests 访问网络"
+    source: 范围守护
+    status: passed
+
+  - item: "不修改 import workflow、Platform Shell、Web UI 或 report export"
+    source: 范围守护
+    status: passed

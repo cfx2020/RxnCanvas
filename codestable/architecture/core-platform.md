@@ -37,8 +37,9 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 5. 支持 MAPLE `.out` 基础字段和 MAPLE 风格多帧 `.xyz` energy 注释解析。
 6. 配套测试侧 Parser Fixture Harness，使用 `parser-source-inventory-v1` source inventory、`parser-public-fixture-decisions-v1` decision ledger、`parser-fixtures-v1` manifest、`parser-support-matrix-v1` support matrix、synthetic MAPLE sp/opt `.out`、MAPLE public-shape synthetic-derived `.out` / final `.xyz`、MAPLE path/path-family synthetic-derived `.xyz` partial、synthetic 与 public-shape synthetic-derived Gaussian/ORCA cclib fixtures、standard XYZ、ASE extxyz 单帧/多帧 project-authored variants、bad XYZ count 输入和 `parser-golden-v1` snapshot 验证 ParserRegistry 输出稳定性、fixture-backed 支持边界和 public fixture promotion gate。
 7. Parser Fixture Harness 校验 `vendored-third-party` source 的 upstream path/hash/size 条件必填，并在传入 source inventory / manifest 时校验 support matrix `source_ids` / `candidate_file_ids` / `reference_file_ids`，以及 public fixture decision ledger 的 source/file 归属、decision/promotion enum、fallback fixture id、reference-only anchor、`promoted`/`allowed` 和 `blocked`/fallback 组合。
-8. 配套 `docs/dev/parser-fixture-corpus.md` 开发者指南，说明新增样例、source policy、public fixture decision ledger、脱敏、snapshot 更新、support matrix / diagnostic codes、import preview regression 和 parser gap triage。
-9. 配套 `docs/user/parser-output-support.md` 用户指南，说明 fixture-backed parser 输出支持边界、warning/error 含义和贡献真实样例 checklist；不作为 runtime API 或真实软件版本认证。
+8. Parser Fixture Harness 提供 Candidate Fetch Verify request/result helper，可从 source inventory 的 `source_id + file_id` 构造 upstream URL/path/hash/size 复核请求，并对调用方提供的 bytes 返回 structured sha256/size verification result；helper 本身不访问网络、不写文件、不写 fixture corpus，不改变 decision ledger 或 promotion 状态。
+9. 配套 `docs/dev/parser-fixture-corpus.md` 开发者指南，说明新增样例、source policy、public fixture decision ledger、Candidate Fetch Verify、脱敏、snapshot 更新、support matrix / diagnostic codes、import preview regression 和 parser gap triage。
+10. 配套 `docs/user/parser-output-support.md` 用户指南，说明 fixture-backed parser 输出支持边界、warning/error 含义和贡献真实样例 checklist；不作为 runtime API 或真实软件版本认证。
 
 第四类是 Chemical Registry 基线：
 
@@ -179,11 +180,15 @@ ParserFixtureHarness (tests only)
 ├── tests/fixtures/parsers/snapshots/*.json success and expected-error snapshots
 ├── ParserFixtureManifest / ParserFixture test dataclasses
 ├── ParserPublicFixtureDecisionLedger / ParserPublicFixtureDecision test dataclasses
+├── ParserPublicCandidateFetchRequest / ParserPublicCandidateFetchResult test dataclasses
 ├── ParserSupportMatrix / ParserSupportMatrixEntry / ParserDiagnosticCatalog test dataclasses
+├── build_parser_public_candidate_fetch_request(source_inventory, source_id, file_id)
+├── verify_parser_public_candidate_bytes(request, bytes, fetched_at)
 ├── RawFile(path=fixture.file) + ParseOptions projection
 ├── ParserRegistry.default().parse
 ├── parser-golden-v1 snapshot assertion with energy/coordinate tolerances
 ├── parser-public-fixture-decisions-v1 validation for source/file links, fallback fixtures and promotion guards
+├── candidate fetch verify sha256/size result checks without network or file writes
 └── parser-support-matrix-v1 validation for fixture ids, field statuses, diagnostic codes and partial known_limits
 
 ChemicalRegistry
@@ -292,9 +297,9 @@ ProjectBundleService
 - `rxnflow.parsers.cclib_adapter`：Gaussian/ORCA 的 cclib adapter，把 cclib data 映射为 ChemicalObjectDraft。
 - `rxnflow.parsers.xyz`：标准 XYZ 解析和 ASE extxyz adapter。
 - `rxnflow.parsers.maple`：MAPLE `.out` 基础字段和 MAPLE 多帧 `.xyz` 解析。
-- `tests/parser_fixture_harness.py`：测试侧 parser fixture harness，读取 `tests/fixtures/parsers/manifest.yaml`、`sources.yaml`、`public-fixture-decisions.yaml` 和 `support-matrix.yaml`，构造 `RawFile` / `ParseOptions`，调用 `ParserRegistry` 并按 `parser-golden-v1` snapshot 比较成功解析和 expected-error 输出，同时校验 support matrix schema、fixture id 覆盖、diagnostic code 引用、partial known limits、public fixture decision schema、source/file 归属、fallback fixture id、reference-only anchor 和 promotion guard；不作为 runtime API。
+- `tests/parser_fixture_harness.py`：测试侧 parser fixture harness，读取 `tests/fixtures/parsers/manifest.yaml`、`sources.yaml`、`public-fixture-decisions.yaml` 和 `support-matrix.yaml`，构造 `RawFile` / `ParseOptions`，调用 `ParserRegistry` 并按 `parser-golden-v1` snapshot 比较成功解析和 expected-error 输出，同时校验 support matrix schema、fixture id 覆盖、diagnostic code 引用、partial known limits、public fixture decision schema、source/file 归属、fallback fixture id、reference-only anchor 和 promotion guard；它还提供 Candidate Fetch Verify request/result dataclass 和 helper，用 source inventory 构造 upstream URL/path/hash/size 复核请求，并对调用方提供的 bytes 做 sha256/size 校验；不作为 runtime API。
 - `tests/fixtures/parsers/`：parser fixture corpus，当前包含 `parser-source-inventory-v1` source inventory、`parser-public-fixture-decisions-v1` decision ledger、`parser-fixtures-v1` manifest、`parser-support-matrix-v1` support matrix、synthetic MAPLE sp/opt `.out`、MAPLE public-shape synthetic-derived `.out` / final `.xyz`、MAPLE path/path-family synthetic-derived `.xyz` partial、synthetic 与 public-shape synthetic-derived Gaussian/ORCA cclib fixtures、standard XYZ geometry-only、ASE extxyz energy/charge/spin、ASE extxyz missing energy、ASE extxyz multi-frame metadata/calculator-energy fallback 和 bad XYZ count 输入及其 golden snapshots；decision ledger 当前覆盖全部 source file ids，并阻止 MAPLE/cclib-data review-required candidates 被误标 promoted。
-- `docs/dev/parser-fixture-corpus.md`：开发者和 agent 维护指南，说明新增 fixture workflow、source policy、public fixture decision ledger、redaction checklist、snapshot update procedure、support matrix / diagnostic code 维护规则、import preview regression 和 parser gap triage；不作为 runtime API 或用户指南。
+- `docs/dev/parser-fixture-corpus.md`：开发者和 agent 维护指南，说明新增 fixture workflow、source policy、public fixture decision ledger、Candidate Fetch Verify dev-only/no-network/no-auto-vendor 边界、redaction checklist、snapshot update procedure、support matrix / diagnostic code 维护规则、import preview regression 和 parser gap triage；不作为 runtime API 或用户指南。
 - `docs/user/parser-output-support.md`：用户向 parser 输出支持边界指南，说明 supported/partial/candidate/reference-only/unsupported 状态、Gaussian/ORCA/MAPLE/XYZ/extxyz 当前 fixture-backed 字段、warning/error 含义和真实样例贡献要求；不作为 runtime API 或版本认证。
 - `tests/test_import_preview_parser_regression.py`：测试侧 import preview parser regression，使用 parser fixture corpus 驱动 `ImportRegistryWorkflow.import_files` 和 `PlatformShellService(import.preview)`，核对 Workflow Preview Projection / Shell Preview Projection 的 parser metadata、object_count、warnings、error code、raw_resource id/path/checksum 和 provenance linkage，并用 guard 证明 preview 不登记 ChemicalObject、不调用 graph/energy/export/bundle 服务；不作为 runtime API。
 - `rxnflow.registry`：fixture object draft 到 ChemicalObject 的登记和 provenance 附加；通用 ChemicalRegistry 的项目内对象登记、查询、fingerprint 幂等去重和 correction 追加。
