@@ -202,6 +202,52 @@ reviewer: agent
 - ASE extxyz 当前 project-authored vendored fixtures 可以记录为 `allowed/promoted`，但 reason 必须说明它们不是第三方 public original。
 - decision ledger 不修改 parser runtime、ImportRegistryWorkflow、Platform Shell、Web UI 或报告导出；这些能力边界仍由 manifest、support matrix、snapshot 和 import preview regression 证明。
 
+## Fixture Promotion Adapter
+
+Fixture Promotion Adapter 是测试侧的统一收口 helper。它从 source inventory、public fixture decision ledger、manifest、golden snapshot 和 support matrix 派生 promotion summary，用来回答两件事：
+
+- `allowed/promoted` decision 是否都有 executable fixture coverage。
+- manifest 中的 `vendored-third-party` / `user-redacted` fixture 是否都能追溯到 `allowed/promoted` decision。
+
+当前 helper 位于 `tests/parser_fixture_harness.py`：
+
+```python
+from pathlib import Path
+
+from tests.parser_fixture_harness import (
+    load_parser_fixture_manifest,
+    load_parser_public_fixture_decisions,
+    load_parser_source_inventory,
+    load_parser_support_matrix,
+    summarize_parser_public_fixture_promotion,
+)
+
+manifest = load_parser_fixture_manifest(Path("tests/fixtures/parsers/manifest.yaml"))
+inventory = load_parser_source_inventory(Path("tests/fixtures/parsers/sources.yaml"))
+ledger = load_parser_public_fixture_decisions(
+    Path("tests/fixtures/parsers/public-fixture-decisions.yaml"),
+    source_inventory=inventory,
+    manifest=manifest,
+)
+matrix = load_parser_support_matrix(
+    Path("tests/fixtures/parsers/support-matrix.yaml"),
+    manifest,
+    source_inventory=inventory,
+)
+summary = summarize_parser_public_fixture_promotion(inventory, ledger, manifest, matrix)
+```
+
+维护规则：
+
+- summary 的 `unresolved_decision_ids` 和 `unresolved_fixture_ids` 必须为空。
+- `source.kind: vendored-third-party` 必须写 `decision_id`，并且该 decision 必须是 `allowed/promoted`。
+- `vendored-third-party` 的 `source_path`、`source_sha256` 和 `source_size_bytes` 必须与 `sources.yaml` 中对应 file 的 path/hash/size 一致。
+- `source.kind: user-redacted` 也必须写 `decision_id`，`redistributable: true`，并在 `redaction` 与 decision evidence/reason 中说明授权和脱敏边界。
+- synthetic / synthetic-derived fallback fixture 不需要 `decision_id`，也不能因此被描述成 public original 已经 vendor。
+- 每个 promoted decision 的 fallback fixture 必须存在于 manifest，`support_status` 为 `supported` 或 `partial`，有 `parser-golden-v1` snapshot，并出现在 support matrix 的 `fixture_ids`。
+- `blocked`、`needs-permission`、`reference-only`、`synthetic-only` 和 `rejected` decision 不得被 source-gated executable fixture 引用。
+- Promotion Adapter 只读本地 YAML 和 snapshot，不 fetch、不写 fixture files、不自动更新 hash 或 snapshot。
+
 ## 来源策略与脱敏
 
 每个 fixture 都必须在 `manifest.yaml` 的 `source` 中记录来源元数据：

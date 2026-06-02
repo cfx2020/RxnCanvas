@@ -5,7 +5,7 @@ import hashlib
 import inspect
 from pathlib import Path
 from types import SimpleNamespace
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, mkdtemp
 import json
 import unittest
 
@@ -22,6 +22,7 @@ from tests.parser_fixture_harness import (
     load_parser_source_inventory,
     load_parser_support_matrix,
     project_parser_fixture_snapshot,
+    summarize_parser_public_fixture_promotion,
     summarize_cclib_public_candidate_resolution,
     summarize_extxyz_variant_intake,
     summarize_maple_public_candidate_resolution,
@@ -858,6 +859,116 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         summary = summarize_extxyz_variant_intake(inventory, missing_decision, manifest, matrix)
         self.assertIn("ase-extxyz-h2-missing-energy", summary.unresolved_file_ids)
 
+    def test_public_fixture_promotion_summary_covers_current_corpus(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        summary = summarize_parser_public_fixture_promotion(inventory, ledger, manifest, matrix)
+
+        self.assertEqual(
+            summary.promoted_decision_ids,
+            (
+                "ase-extxyz-project-authored:ase-extxyz-h2-energy-charge-spin",
+                "ase-extxyz-project-authored:ase-extxyz-h2-missing-energy",
+                "ase-extxyz-project-authored:ase-extxyz-multiframe-metadata-calculator-energy",
+                "ase-extxyz-project-authored:ase-extxyz-lattice-forces-stress",
+            ),
+        )
+        self.assertEqual(
+            summary.promoted_file_ids,
+            (
+                "ase-extxyz-h2-energy-charge-spin",
+                "ase-extxyz-h2-missing-energy",
+                "ase-extxyz-multiframe-metadata-calculator-energy",
+                "ase-extxyz-lattice-forces-stress",
+            ),
+        )
+        self.assertEqual(summary.source_gated_fixture_ids, ())
+        self.assertEqual(summary.unresolved_decision_ids, ())
+        self.assertEqual(summary.unresolved_fixture_ids, ())
+        self.assertEqual(
+            set(summary.covered_fixture_ids),
+            {
+                "extxyz-h2-energy-charge-spin",
+                "extxyz-h2-missing-energy",
+                "extxyz-multiframe-metadata-calculator-energy",
+                "extxyz-lattice-forces-stress",
+            },
+        )
+        self.assertEqual(set(summary.snapshot_fixture_ids), set(summary.covered_fixture_ids))
+        self.assertTrue(set(summary.covered_fixture_ids).issubset(set(summary.support_matrix_fixture_ids)))
+
+        maple_candidate_ids = {file.id for file in inventory.source_by_id("maple-dev-example").files_by_policy("candidate")}
+        cclib_candidate_ids = {file.id for file in inventory.source_by_id("cclib-data-gaussian-orca").files_by_policy("candidate")}
+        self.assertTrue(maple_candidate_ids.issubset(set(summary.blocked_file_ids)))
+        self.assertTrue(cclib_candidate_ids.issubset(set(summary.blocked_file_ids)))
+        self.assertIn("maple-frequency-summary-reference", summary.reference_only_file_ids)
+        self.assertIn("cclib-orca50-benzene-opt-log", summary.reference_only_file_ids)
+
+    def test_source_gated_fixture_promotion_summary_accepts_matching_metadata(self) -> None:
+        manifest, inventory, matrix, ledger = _source_gated_fixture_context()
+
+        summary = summarize_parser_public_fixture_promotion(inventory, ledger, manifest, matrix)
+
+        self.assertEqual(summary.promoted_decision_ids, ("source:file",))
+        self.assertEqual(summary.source_gated_fixture_ids, ("fixture",))
+        self.assertEqual(summary.covered_fixture_ids, ("fixture",))
+        self.assertEqual(summary.snapshot_fixture_ids, ("fixture",))
+        self.assertEqual(summary.unresolved_decision_ids, ())
+        self.assertEqual(summary.unresolved_fixture_ids, ())
+
+    def test_source_gated_fixture_promotion_summary_exposes_inconsistencies(self) -> None:
+        manifest, inventory, matrix, ledger = _source_gated_fixture_context()
+
+        blocked_ledger = _replace_decision(ledger, "file", decision="needs-permission", promotion="blocked")
+        summary = summarize_parser_public_fixture_promotion(inventory, blocked_ledger, manifest, matrix)
+        self.assertIn("source:file", summary.unresolved_decision_ids)
+        self.assertIn("fixture", summary.unresolved_fixture_ids)
+
+        unknown_decision_manifest, inventory, matrix, ledger = _source_gated_fixture_context(
+            decision_id="source:unknown-file",
+        )
+        summary = summarize_parser_public_fixture_promotion(
+            inventory,
+            ledger,
+            unknown_decision_manifest,
+            matrix,
+        )
+        self.assertIn("fixture", summary.unresolved_fixture_ids)
+
+        mismatched_manifest, inventory, matrix, ledger = _source_gated_fixture_context(
+            source_sha256="sha256:" + "9" * 64,
+        )
+        summary = summarize_parser_public_fixture_promotion(inventory, ledger, mismatched_manifest, matrix)
+        self.assertIn("fixture", summary.unresolved_fixture_ids)
+
+        missing_snapshot_manifest, inventory, matrix, ledger = _source_gated_fixture_context(write_snapshot=False)
+        summary = summarize_parser_public_fixture_promotion(
+            inventory,
+            ledger,
+            missing_snapshot_manifest,
+            matrix,
+        )
+        self.assertIn("fixture", summary.unresolved_fixture_ids)
+
+        matrix_without_fixture = replace(
+            matrix,
+            entries=tuple(replace(entry, fixture_ids=()) for entry in matrix.entries),
+        )
+        summary = summarize_parser_public_fixture_promotion(
+            inventory,
+            ledger,
+            manifest,
+            matrix_without_fixture,
+        )
+        self.assertIn("fixture", summary.unresolved_fixture_ids)
+
     def test_vendored_third_party_source_metadata_loads_when_complete(self) -> None:
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "manifest.yaml"
@@ -870,6 +981,18 @@ class ParserFixtureHarnessTest(unittest.TestCase):
             self.assertEqual(source.source_path, "upstream/file.out")
             self.assertEqual(source.source_sha256, "sha256:" + "1" * 64)
             self.assertEqual(source.source_size_bytes, 42)
+            self.assertEqual(source.decision_id, "source:file")
+
+    def test_loader_rejects_source_gated_fixture_missing_decision_id(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "manifest.yaml"
+            path.write_text(
+                _manifest_yaml(source_kind="vendored-third-party", decision_id="null"),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AssertionError, "decision_id"):
+                load_parser_fixture_manifest(path)
 
     def test_support_matrix_catalogs_snapshot_warning_and_error_codes(self) -> None:
         manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
@@ -1934,6 +2057,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
             (
                 inspect.getsource(build_parser_public_candidate_fetch_request),
                 inspect.getsource(verify_parser_public_candidate_bytes),
+                inspect.getsource(summarize_parser_public_fixture_promotion),
                 inspect.getsource(summarize_cclib_public_candidate_resolution),
                 inspect.getsource(summarize_extxyz_variant_intake),
                 inspect.getsource(summarize_maple_public_candidate_resolution),
@@ -2032,11 +2156,12 @@ def _manifest_yaml(
     source_path: str = "upstream/file.out",
     source_sha256: str = "sha256:" + "1" * 64,
     source_size_bytes: str = "42",
+    decision_id: str = "source:file",
 ) -> str:
     return (
         "schema_version: parser-fixtures-v1\n"
         "fixtures:\n"
-        f"{_fixture_yaml(fixture_id, file_path=file_path, snapshot_path=snapshot_path, redistributable=redistributable, status=status, source_kind=source_kind, source_path=source_path, source_sha256=source_sha256, source_size_bytes=source_size_bytes)}"
+        f"{_fixture_yaml(fixture_id, file_path=file_path, snapshot_path=snapshot_path, redistributable=redistributable, status=status, source_kind=source_kind, source_path=source_path, source_sha256=source_sha256, source_size_bytes=source_size_bytes, decision_id=decision_id)}"
     )
 
 
@@ -2051,6 +2176,7 @@ def _fixture_yaml(
     source_path: str = "upstream/file.out",
     source_sha256: str = "sha256:" + "1" * 64,
     source_size_bytes: str = "42",
+    decision_id: str = "source:file",
 ) -> str:
     extra_source = ""
     if source_kind == "vendored-third-party":
@@ -2058,6 +2184,7 @@ def _fixture_yaml(
             f"      source_path: {source_path}\n"
             f"      source_sha256: {source_sha256}\n"
             f"      source_size_bytes: {source_size_bytes}\n"
+            f"      decision_id: {decision_id}\n"
         )
     return (
         f"  - id: {fixture_id}\n"
@@ -2170,6 +2297,7 @@ def _source_inventory_yaml(
     branch: str = "main",
     commit: str = "abc123",
     version: str = "null",
+    size_bytes: str = "1",
 ) -> str:
     return (
         f"schema_version: {schema_version}\n"
@@ -2192,12 +2320,98 @@ def _source_inventory_yaml(
         f"        path: {file_path}\n"
         "        task: sp\n"
         "        format: maple-output\n"
-        "        size_bytes: 1\n"
+        f"        size_bytes: {size_bytes}\n"
         f"        sha256: {sha256}\n"
         f"        fixture_policy: {fixture_policy}\n"
         "        parser_intent: maple-output\n"
         "        notes: fixture\n"
     )
+
+
+def _source_gated_fixture_context(
+    *,
+    decision_id: str = "source:file",
+    source_sha256: str = "sha256:" + "1" * 64,
+    write_snapshot: bool = True,
+):
+    root = Path(mkdtemp(prefix="rxnflow-parser-promotion-"))
+    manifest_path = root / "manifest.yaml"
+    inventory_path = root / "sources.yaml"
+    decisions_path = root / "public-fixture-decisions.yaml"
+    support_path = root / "support-matrix.yaml"
+    file_path = root / "files/maple/file.out"
+    snapshot_path = root / "snapshots/file.json"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text("fixture\n", encoding="utf-8")
+    if write_snapshot:
+        snapshot_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "parser-golden-v1",
+                    "fixture_id": "fixture",
+                    "parser_id": "maple-output",
+                    "parse_ok": False,
+                    "error": {
+                        "code": "parse_failed",
+                        "message": "fixture",
+                        "target": "fixture",
+                    },
+                    "warning_codes": [],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    inventory_path.write_text(
+        _source_inventory_yaml(
+            fixture_policy="candidate",
+            sha256="sha256:" + "1" * 64,
+            file_path="upstream/file.out",
+            size_bytes="42",
+        ),
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        _manifest_yaml(
+            source_kind="vendored-third-party",
+            source_path="upstream/file.out",
+            source_sha256=source_sha256,
+            source_size_bytes="42",
+            decision_id=decision_id,
+        ),
+        encoding="utf-8",
+    )
+    support_path.write_text(
+        _support_matrix_yaml(
+            fixture_id="fixture",
+            source_id="source",
+            candidate_file_id="file",
+            reference_file_id="",
+        ),
+        encoding="utf-8",
+    )
+    decisions_path.write_text(
+        _public_fixture_decisions_yaml(
+            source_id="source",
+            file_id="file",
+            decision="allowed",
+            promotion="promoted",
+            fallback_fixture_id="fixture",
+        ),
+        encoding="utf-8",
+    )
+
+    manifest = load_parser_fixture_manifest(manifest_path)
+    inventory = load_parser_source_inventory(inventory_path)
+    ledger = load_parser_public_fixture_decisions(
+        decisions_path,
+        source_inventory=inventory,
+        manifest=manifest,
+    )
+    matrix = load_parser_support_matrix(support_path, manifest, source_inventory=inventory)
+    return manifest, inventory, matrix, ledger
 
 
 def _fixture_by_id(manifest, fixture_id: str):

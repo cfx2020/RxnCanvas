@@ -4,25 +4,25 @@ status: ready
 
 steps:
   - id: promotion-contract-skeleton
-    status: pending
+    status: done
     paradigm: contract
     description: 新增 promotion summary dataclass/helper 和 optional source decision_id 读取能力
     exit_signal: 当前 corpus 可派生 promotion summary，promoted/blocked/reference-only decisions 分类正确
 
   - id: cross-link-guards
-    status: pending
+    status: done
     paradigm: validation
     description: 校验 source-gated fixture 与 decision/source metadata/manifest/snapshot/support matrix 的关系
     exit_signal: 缺 decision_id、unknown decision、non-promoted decision、metadata mismatch、missing snapshot、missing support matrix coverage 都有 focused guard
 
   - id: current-corpus-regression
-    status: pending
+    status: done
     paradigm: regression
     description: 用当前 ledger 证明 extxyz promoted decisions 全覆盖，MAPLE/cclib blocked/reference-only decisions 不可执行
     exit_signal: promotion summary unresolved_decision_ids 与 unresolved_fixture_ids 均为空，普通 tests 不访问网络
 
   - id: docs-and-validation
-    status: pending
+    status: done
     paradigm: docs-validation
     description: 更新 developer guide 并运行 focused/full tests、YAML validation、scope diff
     exit_signal: tests.test_parser_fixture_harness、python3 -m unittest discover、相关 YAML validation 和 git diff --check 通过

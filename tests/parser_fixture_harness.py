@@ -49,6 +49,7 @@ class ParserFixtureSource:
     source_path: str | None
     source_sha256: str | None
     source_size_bytes: int | None
+    decision_id: str | None
 
 
 @dataclass(frozen=True)
@@ -301,6 +302,20 @@ class ParserExtxyzVariantIntakeSummary:
     executable_fixture_ids: tuple[str, ...]
     advanced_known_limit_fields: tuple[str, ...]
     unresolved_file_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ParserPublicFixturePromotionSummary:
+    promoted_decision_ids: tuple[str, ...]
+    promoted_file_ids: tuple[str, ...]
+    blocked_file_ids: tuple[str, ...]
+    reference_only_file_ids: tuple[str, ...]
+    source_gated_fixture_ids: tuple[str, ...]
+    covered_fixture_ids: tuple[str, ...]
+    snapshot_fixture_ids: tuple[str, ...]
+    support_matrix_fixture_ids: tuple[str, ...]
+    unresolved_decision_ids: tuple[str, ...]
+    unresolved_fixture_ids: tuple[str, ...]
 
 
 def load_parser_fixture_manifest(path: Path) -> ParserFixtureManifest:
@@ -682,6 +697,91 @@ def summarize_extxyz_variant_intake(
         executable_fixture_ids=tuple(sorted(support_fixture_ids)),
         advanced_known_limit_fields=tuple(sorted(advanced_known_limit_fields)),
         unresolved_file_ids=tuple(dict.fromkeys(unresolved_file_ids)),
+    )
+
+
+def summarize_parser_public_fixture_promotion(
+    source_inventory: ParserSourceInventory,
+    decision_ledger: ParserPublicFixtureDecisionLedger,
+    manifest: ParserFixtureManifest,
+    support_matrix: ParserSupportMatrix,
+) -> ParserPublicFixturePromotionSummary:
+    fixture_by_id = {fixture.id: fixture for fixture in manifest.fixtures}
+    support_fixture_ids = support_matrix.covered_fixture_ids()
+    promoted_decision_ids: list[str] = []
+    promoted_file_ids: list[str] = []
+    blocked_file_ids: list[str] = []
+    reference_only_file_ids: list[str] = []
+    source_gated_fixture_ids: list[str] = []
+    covered_fixture_ids: set[str] = set()
+    snapshot_fixture_ids: set[str] = set()
+    unresolved_decision_ids: list[str] = []
+    unresolved_fixture_ids: list[str] = []
+
+    for decision in decision_ledger.decisions:
+        if decision.promotion == "promoted":
+            promoted_decision_ids.append(decision.id)
+            promoted_file_ids.append(decision.file_id)
+            if decision.decision != "allowed":
+                unresolved_decision_ids.append(decision.id)
+            if not decision.fallback_fixture_ids:
+                unresolved_decision_ids.append(decision.id)
+            for fixture_id in decision.fallback_fixture_ids:
+                fixture = fixture_by_id.get(fixture_id)
+                if fixture is None:
+                    unresolved_decision_ids.append(decision.id)
+                    continue
+                covered_fixture_ids.add(fixture.id)
+                if fixture.support_status not in {"supported", "partial"}:
+                    unresolved_fixture_ids.append(fixture.id)
+                if fixture.id not in support_fixture_ids:
+                    unresolved_fixture_ids.append(fixture.id)
+                if _fixture_snapshot_matches(fixture):
+                    snapshot_fixture_ids.add(fixture.id)
+                else:
+                    unresolved_fixture_ids.append(fixture.id)
+        elif decision.promotion == "blocked":
+            blocked_file_ids.append(decision.file_id)
+        if decision.decision == "reference-only":
+            reference_only_file_ids.extend(decision.reference_file_ids or (decision.file_id,))
+
+    for fixture in manifest.fixtures:
+        if fixture.source.kind not in {"vendored-third-party", "user-redacted"}:
+            continue
+        source_gated_fixture_ids.append(fixture.id)
+        decision_id = fixture.source.decision_id
+        if not decision_id:
+            unresolved_fixture_ids.append(fixture.id)
+            continue
+        try:
+            decision = decision_ledger.decision_by_id(decision_id)
+        except AssertionError:
+            unresolved_fixture_ids.append(fixture.id)
+            continue
+        if decision.decision != "allowed" or decision.promotion != "promoted":
+            unresolved_fixture_ids.append(fixture.id)
+            unresolved_decision_ids.append(decision.id)
+            continue
+        if fixture.id not in decision.fallback_fixture_ids:
+            unresolved_fixture_ids.append(fixture.id)
+        if fixture.support_status not in {"supported", "partial"}:
+            unresolved_fixture_ids.append(fixture.id)
+        if fixture.id not in support_fixture_ids:
+            unresolved_fixture_ids.append(fixture.id)
+        if not _source_gated_fixture_matches_inventory(fixture, decision, source_inventory):
+            unresolved_fixture_ids.append(fixture.id)
+
+    return ParserPublicFixturePromotionSummary(
+        promoted_decision_ids=tuple(promoted_decision_ids),
+        promoted_file_ids=tuple(promoted_file_ids),
+        blocked_file_ids=tuple(blocked_file_ids),
+        reference_only_file_ids=tuple(reference_only_file_ids),
+        source_gated_fixture_ids=tuple(source_gated_fixture_ids),
+        covered_fixture_ids=tuple(sorted(covered_fixture_ids)),
+        snapshot_fixture_ids=tuple(sorted(snapshot_fixture_ids)),
+        support_matrix_fixture_ids=tuple(sorted(support_fixture_ids)),
+        unresolved_decision_ids=tuple(dict.fromkeys(unresolved_decision_ids)),
+        unresolved_fixture_ids=tuple(dict.fromkeys(unresolved_fixture_ids)),
     )
 
 
@@ -1122,6 +1222,7 @@ def _parse_source(raw_source: Any) -> ParserFixtureSource:
                 ("source_path", source_path),
                 ("source_sha256", source_sha256),
                 ("source_size_bytes", source_size_bytes),
+                ("decision_id", raw_source.get("decision_id")),
             )
             if value in (None, "")
         ]
@@ -1131,6 +1232,13 @@ def _parse_source(raw_source: Any) -> ParserFixtureSource:
             )
         if not redistributable:
             raise AssertionError("Parser fixture vendored-third-party source must be redistributable.")
+    if kind == "user-redacted":
+        if not raw_source.get("decision_id"):
+            raise AssertionError("Parser fixture user-redacted source missing required field: decision_id")
+        if not redistributable:
+            raise AssertionError("Parser fixture user-redacted source must be redistributable.")
+        if raw_source.get("redaction") in (None, "", "none"):
+            raise AssertionError("Parser fixture user-redacted source must describe redaction.")
     return ParserFixtureSource(
         kind=kind,
         url=raw_source.get("url"),
@@ -1141,6 +1249,45 @@ def _parse_source(raw_source: Any) -> ParserFixtureSource:
         source_path=source_path,
         source_sha256=source_sha256,
         source_size_bytes=source_size_bytes,
+        decision_id=_nullable_str(raw_source, "decision_id"),
+    )
+
+
+def _fixture_snapshot_matches(fixture: ParserFixture) -> bool:
+    if not fixture.expected_snapshot.is_file():
+        return False
+    try:
+        payload = json.loads(fixture.expected_snapshot.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        payload.get("schema_version") == PARSER_GOLDEN_SCHEMA_VERSION
+        and payload.get("fixture_id") == fixture.id
+    )
+
+
+def _source_gated_fixture_matches_inventory(
+    fixture: ParserFixture,
+    decision: ParserPublicFixtureDecision,
+    source_inventory: ParserSourceInventory,
+) -> bool:
+    try:
+        source = source_inventory.source_by_id(decision.source_id)
+        source_file = source_inventory.file_by_id(decision.file_id)
+    except AssertionError:
+        return False
+    if decision.file_id not in {file.id for file in source.files}:
+        return False
+    if fixture.source.kind != "vendored-third-party":
+        return True
+    if fixture.source.url != source.url:
+        return False
+    if fixture.source.commit != (source.commit or source.version or source.branch):
+        return False
+    return (
+        fixture.source.source_path == source_file.path
+        and fixture.source.source_sha256 == source_file.sha256
+        and fixture.source.source_size_bytes == source_file.size_bytes
     )
 
 
