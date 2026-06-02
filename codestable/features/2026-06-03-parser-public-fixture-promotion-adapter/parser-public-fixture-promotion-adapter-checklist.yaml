@@ -30,72 +30,72 @@ steps:
 checks:
   - item: 能从当前 source inventory、decision ledger、manifest 和 support matrix 派生 ParserPublicFixturePromotionSummary
     source: design-3-s1
-    status: pending
+    status: passed
 
   - item: Summary 中 promoted decisions 只包含当前 4 个 ase-extxyz-project-authored allowed/promoted decisions
     source: design-3-s2
-    status: pending
+    status: passed
 
   - item: 每个 promoted decision 的 fallback fixture 存在于 manifest，support_status 是 supported 或 partial，snapshot 文件存在且 schema 为 parser-golden-v1
     source: design-3-s3
-    status: pending
+    status: passed
 
   - item: 每个 promoted decision 覆盖的 fixture 都出现在 support matrix fixture_ids
     source: design-3-s4
-    status: pending
+    status: passed
 
   - item: MAPLE/cclib-data candidate decisions 全部保持 blocked，不出现在 source-gated executable fixture 中
     source: design-3-s5
-    status: pending
+    status: passed
 
   - item: MAPLE/cclib-data reference-only decisions 全部保持 reference-only/not-applicable，不出现在 source-gated executable fixture 中
     source: design-3-s6
-    status: pending
+    status: passed
 
   - item: 临时 vendored-third-party fixture 缺 decision_id 时会被拒绝
     source: design-3-s7
-    status: pending
+    status: passed
 
   - item: 临时 source-gated fixture 引用 unknown decision 或 non-promoted decision 时会被 adapter 标为 unresolved
     source: design-3-s8
-    status: pending
+    status: passed
 
   - item: 临时 vendored-third-party fixture 的 source_path/source_sha256/source_size_bytes 与 source inventory 不一致时会被 adapter 标为 unresolved
     source: design-3-s9
-    status: pending
+    status: passed
 
   - item: 临时 promoted fixture 缺 snapshot 或缺 support matrix coverage 时会被 adapter 标为 unresolved
     source: design-3-s10
-    status: pending
+    status: passed
 
   - item: Synthetic fixtures 不被强制要求 decision_id；synthetic-derived fallback 不被描述为 third-party original
     source: design-3-s11
-    status: pending
+    status: passed
 
   - item: Docs 明确 source-gated fixture 必须先有 decision ledger，再进入 manifest/snapshot/support matrix
     source: design-3-s12
-    status: pending
+    status: passed
 
   - item: Scope guard 证明未新增真实 third-party/user-redacted fixture files，未修改 parser runtime、Import Workflow、Platform Shell、Web UI 或 report export
     source: design-3-s13
-    status: pending
+    status: passed
 
   - item: 不 vendor MAPLE、cclib-data、ASE public examples 或其他第三方 original 输出
     source: design-3-reverse
-    status: pending
+    status: passed
 
   - item: 不新增 user-redacted 真实用户输出
     source: design-3-reverse
-    status: pending
+    status: passed
 
   - item: 不新增 parser runtime 字段、导入确认、图谱、能量曲线或报告导出能力
     source: design-3-reverse
-    status: pending
+    status: passed
 
   - item: 不让 blocked/reference-only files 通过 source-gated fixture 进入 executable corpus
     source: design-3-reverse
-    status: pending
+    status: passed
 
   - item: 不让普通 tests 访问网络
     source: design-3-reverse
-    status: pending
+    status: passed
