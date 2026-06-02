@@ -1,0 +1,67 @@
+roadmap: rxnflow-parser-public-fixture-intake
+created: 2026-06-02
+
+items:
+  - slug: parser-public-fixture-decision-ledger
+    description: 新增 public fixture decision ledger，记录 MAPLE/cclib/extxyz 候选文件的 evidence、decision、promotion 状态和 fallback
+    depends_on: []
+    status: in-progress
+    feature: 2026-06-02-parser-public-fixture-decision-ledger
+    minimal_loop: true
+    notes: 最小闭环；先建立 gate，避免 review-required source 被误 vendor
+
+  - slug: parser-public-candidate-fetch-verify
+    description: 提供 dev-only fetch/hash verify workflow，按 sources.yaml 的 source_id/file_id 拉取候选并校验 sha256
+    depends_on: [parser-public-fixture-decision-ledger]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 普通测试不访问网络；只用于人工或可选 CI 复核 source inventory
+
+  - slug: maple-public-candidate-resolution
+    description: 对 MAPLE sp/opt/path/frequency/MD/scan candidates/reference files 做逐项 decision，能 promotion 的生成 fixture，不能 promotion 的写明 synthetic-only/reference-only fallback
+    depends_on: [parser-public-fixture-decision-ledger, parser-public-candidate-fetch-verify]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不在本 feature 中生成 ReactionPath、TS candidate 或 path topology
+
+  - slug: cclib-public-candidate-resolution
+    description: 复核 cclib-data Gaussian/ORCA candidates 的许可证与 hash，决定是否 promotion；不能 promotion 时固定 synthetic-derived fallback 口径
+    depends_on: [parser-public-fixture-decision-ledger, parser-public-candidate-fetch-verify]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 只覆盖 cclib adapter projection，不新增 thermochemistry、NBO 或 SCF deep fields
+
+  - slug: extxyz-public-variant-intake
+    description: 建立公开或用户授权 extxyz 样例 intake 流程，并选择少量真实变体补 fixture 或 known_limits
+    depends_on: [parser-public-fixture-decision-ledger]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 用户授权样例走 user-redacted source，不冒充 public original
+
+  - slug: parser-public-fixture-promotion-adapter
+    description: 统一校验 promoted fixture 的 decision_id、source metadata、manifest、snapshot 和 support matrix 关系
+    depends_on: [maple-public-candidate-resolution, cclib-public-candidate-resolution, extxyz-public-variant-intake]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 如果前三条没有任何 allowed/promoted 文件，本 feature 仍需校验 blocked/reference-only 决策不会被误标 supported
+
+  - slug: public-fixture-import-preview-regression
+    description: 把 promoted public/user-redacted fixtures 纳入 ImportRegistryWorkflow 与 Platform Shell import.preview 回归
+    depends_on: [parser-public-fixture-promotion-adapter]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 只验证 preview projection，不确认导入、不登记对象
+
+  - slug: parser-public-fixture-guides
+    description: 更新开发者/用户指南和 architecture，说明 public fixture intake gate、promotion/rejection、reference-only 和贡献真实样例流程
+    depends_on: [public-fixture-import-preview-regression]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 用户文档必须继续避免“完整支持真实版本”的措辞

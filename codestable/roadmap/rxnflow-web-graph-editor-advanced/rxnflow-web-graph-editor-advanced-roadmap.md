@@ -1,9 +1,9 @@
 ---
 doc_type: roadmap
 slug: rxnflow-web-graph-editor-advanced
-status: active
+status: completed
 created: 2026-05-22
-last_reviewed: 2026-05-24
+last_reviewed: 2026-06-02
 tags: [rxnflow, web, graph-editor, advanced-editing, auto-layout, path-editing, edge-label, keyboard, viewport, wheel, minimap, history]
 related_requirements: [web-workbench-shell, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform, web-workbench]
@@ -325,7 +325,7 @@ type GraphEditorHistoryEntry = {
 
 先做 `graph-editor-auto-layout`，因为它不需要新 core command 或 schema，就能立刻改善画布可读性，也能为后续 minimap 和 history 提供可逆布局操作样本。
 
-`graph-editor-path-delete`、`graph-editor-edge-label-edit`、`graph-editor-free-edge-drawing`、`graph-editor-multiselect-keyboard`、`graph-editor-wheel-minimap`、`graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 已完成。高级图谱编辑 roadmap 当前已经收束到可重复桌面/窄屏 E2E 与 local-http smoke 边界。
+`graph-editor-path-delete`、`graph-editor-edge-label-edit`、`graph-editor-free-edge-drawing`、`graph-editor-multiselect-keyboard`、`graph-editor-wheel-minimap`、`graph-editor-lightweight-history` 和 `graph-editor-advanced-e2e-qa` 已完成。高级图谱编辑 roadmap 当前已经收束到可重复桌面/窄屏 E2E 与 local-http smoke 边界，本 roadmap 首轮完成。
 
 技术依赖之外的产品优先级不由本 roadmap 替用户决定；如果用户更想先补 edge label 或 wheel/minimap，可以在不违反依赖的前提下调整启动顺序。
 
