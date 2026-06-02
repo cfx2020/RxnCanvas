@@ -184,7 +184,7 @@ class PlatformShellBaselineTest(unittest.TestCase):
                 ShellCommand(
                     "fixture.run",
                     {
-                        "export_formats": ("png", "xlsx", "csv"),
+                        "export_formats": ("png", "xlsx", "csv", "svg"),
                         "destination_dir": str(export_dir),
                         "basename": "fixture",
                     },
@@ -193,30 +193,44 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertTrue(fixture.ok, fixture.error)
             payload = fixture.to_dict()
             json.dumps(payload)
-            self.assertEqual([artifact["format"] for artifact in payload["artifacts"]], ["png", "xlsx", "csv"])
+            self.assertEqual([artifact["format"] for artifact in payload["artifacts"]], ["png", "xlsx", "csv", "svg"])
             self.assertTrue(Path(payload["artifacts"][0]["path"]).is_file())
             self.assertTrue(Path(payload["artifacts"][1]["path"]).is_file())
             self.assertTrue(Path(payload["artifacts"][2]["path"]).is_file())
+            self.assertTrue(Path(payload["artifacts"][3]["path"]).is_file())
             self.assertIsNone(payload["artifacts"][0]["bytes_base64"])
             self.assertEqual(payload["artifacts"][0]["metadata"]["profile_id"], "profile-a-b-electronic")
             self.assertEqual(payload["artifacts"][2]["metadata"]["writer_id"], "python-csv-energy-table-v1")
             self.assertEqual(payload["artifacts"][2]["metadata"]["mime_type"], "text/csv")
             self.assertEqual(payload["artifacts"][2]["metadata"]["extension"], "csv")
+            self.assertEqual(payload["artifacts"][3]["metadata"]["writer_id"], "python-svg-graph-snapshot-v1")
+            self.assertEqual(payload["artifacts"][3]["metadata"]["mime_type"], "image/svg+xml")
+            self.assertEqual(payload["artifacts"][3]["metadata"]["extension"], "svg")
 
             inline = service.run(
                 ShellCommand(
                     "fixture.run",
-                    {"export_formats": ("csv",), "include_bytes": True},
+                    {"export_formats": ("csv", "svg"), "include_bytes": True},
                 )
             )
             self.assertTrue(inline.ok, inline.error)
-            inline_artifact = inline.to_dict()["artifacts"][0]
+            inline_artifacts = inline.to_dict()["artifacts"]
+            inline_artifact = inline_artifacts[0]
             self.assertEqual(inline_artifact["format"], "csv")
             self.assertIsNotNone(inline_artifact["bytes_base64"])
             self.assertIn("Structure", base64.b64decode(inline_artifact["bytes_base64"]).decode("utf-8"))
             self.assertEqual(inline_artifact["metadata"]["writer_id"], "python-csv-energy-table-v1")
             self.assertEqual(inline_artifact["metadata"]["mime_type"], "text/csv")
             self.assertEqual(inline_artifact["metadata"]["encoding"], "base64")
+            svg_artifact = inline_artifacts[1]
+            self.assertEqual(svg_artifact["format"], "svg")
+            self.assertIsNotNone(svg_artifact["bytes_base64"])
+            self.assertIn("<svg", base64.b64decode(svg_artifact["bytes_base64"]).decode("utf-8"))
+            self.assertEqual(svg_artifact["metadata"]["writer_id"], "python-svg-graph-snapshot-v1")
+            self.assertEqual(svg_artifact["metadata"]["mime_type"], "image/svg+xml")
+            self.assertEqual(svg_artifact["metadata"]["extension"], "svg")
+            self.assertEqual(svg_artifact["metadata"]["artifact_kind"], "graph_snapshot")
+            self.assertEqual(svg_artifact["metadata"]["encoding"], "base64")
 
     def test_import_preview_accepts_inline_bytes_source(self) -> None:
         service = PlatformShellService(AppKernel())
@@ -1222,7 +1236,7 @@ class PlatformShellBaselineTest(unittest.TestCase):
             export = service.run(
                 ShellCommand(
                     "export.profile",
-                    {"session_id": session_id, "formats": ("cdxml", "csv"), "include_bytes": True},
+                    {"session_id": session_id, "formats": ("cdxml", "csv", "svg"), "include_bytes": True},
                 )
             )
             self.assertTrue(export.ok, export.error)
@@ -1239,6 +1253,20 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertEqual(csv_artifact["metadata"]["mime_type"], "text/csv")
             self.assertEqual(csv_artifact["metadata"]["extension"], "csv")
             self.assertEqual(csv_artifact["metadata"]["encoding"], "base64")
+            svg_artifact = export_artifacts[2]
+            self.assertEqual(svg_artifact["format"], "svg")
+            self.assertIsNotNone(svg_artifact["bytes_base64"])
+            self.assertIn("<svg", base64.b64decode(svg_artifact["bytes_base64"]).decode("utf-8"))
+            self.assertEqual(svg_artifact["metadata"]["writer_id"], "python-svg-graph-snapshot-v1")
+            self.assertEqual(svg_artifact["metadata"]["mime_type"], "image/svg+xml")
+            self.assertEqual(svg_artifact["metadata"]["extension"], "svg")
+            self.assertEqual(svg_artifact["metadata"]["artifact_kind"], "graph_snapshot")
+            export_state = kernel.get_session_state(session_id)
+            self.assertIsNotNone(export_state)
+            assert export_state is not None
+            self.assertEqual(svg_artifact["metadata"]["graph_id"], export_state.graph.id)
+            self.assertEqual(svg_artifact["metadata"]["workspace_id"], export_state.workspace.workspace_id)
+            self.assertEqual(svg_artifact["metadata"]["encoding"], "base64")
 
             project_exports = project_path / "exports"
             project_exports.mkdir()
@@ -1282,13 +1310,13 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertEqual(snapshot_payload["data"]["counts"]["graphs"], 1)
             self.assertEqual(snapshot_payload["data"]["counts"]["workspaces"], 1)
             self.assertEqual(snapshot_payload["data"]["counts"]["profiles"], 1)
-            self.assertEqual(snapshot_payload["data"]["counts"]["artifacts"], 4)
+            self.assertEqual(snapshot_payload["data"]["counts"]["artifacts"], 5)
             self.assertEqual(len(snapshot_payload["data"]["imports"]), 1)
             self.assertEqual(len(snapshot_payload["data"]["workspace"]["graph"]["nodes"]), 2)
             self.assertEqual(snapshot_payload["data"]["profile"]["point_count"], 2)
             self.assertEqual(
                 [artifact["format"] for artifact in snapshot_payload["data"]["artifacts"]],
-                ["cdxml", "csv", "png", "xlsx"],
+                ["cdxml", "csv", "svg", "png", "xlsx"],
             )
             self.assertFalse(snapshot_payload["data"]["artifacts"][0]["persisted"])
 
@@ -1317,7 +1345,7 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertEqual([profile.id for profile in state.energy_profiles], [state.session.profile_id])
             self.assertEqual(
                 [item.id for item in state.artifacts],
-                [artifact["id"], csv_artifact["id"], outside_export.to_dict()["artifacts"][0]["id"]],
+                [artifact["id"], csv_artifact["id"], svg_artifact["id"], outside_export.to_dict()["artifacts"][0]["id"]],
             )
             self.assertEqual([item.id for item in state.export_artifact_records], [persisted_artifact["id"]])
 

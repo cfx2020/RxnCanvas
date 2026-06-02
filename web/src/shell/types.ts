@@ -346,7 +346,7 @@ export type EnergyComputeData = JsonObject & {
   profile: EnergyProfileSummary
 }
 
-export type ExportFormat = "png" | "cdxml" | "xlsx" | "csv"
+export type ExportFormat = "png" | "cdxml" | "xlsx" | "csv" | "svg"
 
 export type ExportProfileData = JsonObject & {
   command: "export.profile"

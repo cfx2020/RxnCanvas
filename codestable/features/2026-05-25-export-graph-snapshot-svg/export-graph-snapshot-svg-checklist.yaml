@@ -1,0 +1,54 @@
+feature: 2026-05-25-export-graph-snapshot-svg
+created: 2026-05-25
+
+steps:
+  - action: "Core SVG snapshot contract：扩展 ExportFormat/capability/ExportRequest validation 和 metadata"
+    exit_signal: "Python 单测可断言 svg supported、缺 graph/workspace 错误、metadata counts"
+    status: done
+  - action: "Core SVG renderer：实现 projection-based SVG builder，覆盖 XML escaping、empty graph、fallback positions、edge/path/selection/viewport"
+    exit_signal: "ElementTree 可解析 SVG，node/edge/path count、active path、selection 和 viewBox 可断言"
+    status: done
+  - action: "Platform Shell 与 persistence 投影：export.profile 传 workspace，export-artifacts-v1 roundtrip 接受 svg"
+    exit_signal: "Platform shell tests 覆盖 svg ShellArtifact、base64、writer/MIME/extension metadata"
+    status: done
+  - action: "Web helper/UI/persistence：更新 Web ExportFormat、capability helper、fixture、ReportExportPanel 和 persistence tests"
+    exit_signal: "Web tests 看到 svg checkbox、data:image/svg+xml;base64、fixture metadata 和 exports/{basename}.svg persistence"
+    status: done
+  - action: "文档与架构回写：更新用户/开发者指南、architecture、requirements、roadmap item"
+    exit_signal: "docs 不再说 SVG unsupported，边界仍排除 PDF/PPTX/CDX/DOM capture"
+    status: done
+  - action: "验证收口：运行 Python/Web 单测、build、浏览器 desktop/narrow smoke、YAML 和 diff 检查"
+    exit_signal: "关键验证命令通过，未新增 schema/route/frontend SVG writer"
+    status: done
+
+checks:
+  - item: "svg 进入 core/Web supported set 和 ReportExportPanel 默认 checkbox，PDF/PPTX/CDX 仍不进入"
+    source: 验收场景
+    status: passed
+  - item: "SVG writer 只消费 ReactionGraph/WorkspaceSnapshot projection，不读取 Web DOM、GraphCanvas transient state 或 browser APIs"
+    source: 编排骨架
+    status: passed
+  - item: "SVG bytes 是 valid UTF-8 XML，root 可被 ElementTree 解析，且不包含 script、foreignObject 或远程资源引用"
+    source: 名词契约
+    status: passed
+  - item: "SVG artifact metadata 包含 graph_id、workspace_id、node_count、edge_count、path_count、active_path_id、selection counts、viewport、svg dimensions、writer_id、mime_type、extension、artifact_kind、format_status"
+    source: 验收场景
+    status: passed
+  - item: "empty graph、缺 position fallback、XML escaping、active path 和 selection 均有可观察输出"
+    source: 验收场景
+    status: passed
+  - item: "Platform Shell export.profile 可返回 svg ShellArtifact 和 include_bytes base64"
+    source: 验收场景
+    status: passed
+  - item: "Web SVG download href 使用 image/svg+xml，browser persistence 写 exports/{basename}.svg 并 upsert export-artifacts-v1"
+    source: 验收场景
+    status: passed
+  - item: "本 feature 不新增 PNG graph snapshot、PDF/PPTX/CDX/HTML report writer 或 supported set"
+    source: 范围守护
+    status: passed
+  - item: "本 feature 不新增 Web DOM capture、canvas screenshot、Blob SVG builder、foreignObject、script 或远程资源引用"
+    source: 范围守护
+    status: passed
+  - item: "本 feature 不新增 Shell command、HTTP route、Project Content schema 或 Web 前端 SVG bytes 生成逻辑"
+    source: 范围守护
+    status: passed

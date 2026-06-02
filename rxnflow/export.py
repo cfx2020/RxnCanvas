@@ -6,6 +6,7 @@ import csv
 from dataclasses import dataclass, field, replace
 from io import BytesIO, StringIO
 import hashlib
+import math
 from pathlib import Path
 from typing import Any, Literal
 from xml.etree import ElementTree
@@ -17,12 +18,16 @@ from .models import (
     EnergyProfile,
     EnergyUnit,
     EnergyValue,
+    ReactionEdge,
     ReactionGraph,
+    ReactionNode,
+    ReactionPath,
 )
 from .result import Result, err, ok
+from .workspace import CanvasViewport, WorkspaceSelection, WorkspaceSnapshot
 
 
-ExportFormat = Literal["png", "cdxml", "xlsx", "csv"]
+ExportFormat = Literal["png", "cdxml", "xlsx", "csv", "svg"]
 ExportFormatStatus = Literal["supported", "experimental", "unsupported"]
 
 ENERGY_TABLE_SCHEMA_VERSION = "energy-table-v1"
@@ -93,13 +98,12 @@ EXPORT_FORMAT_CAPABILITIES: tuple[ExportFormatCapability, ...] = (
         "svg",
         "svg",
         "image/svg+xml",
-        None,
+        "python-svg-graph-snapshot-v1",
         "graph_snapshot",
         True,
-        False,
-        False,
-        "experimental",
-        "SVG graph snapshot contract is planned but not implemented.",
+        True,
+        True,
+        "supported",
     ),
     ExportFormatCapability(
         "pdf",
@@ -247,6 +251,7 @@ class CdxmlDiagramOptions:
 class ExportRequest:
     formats: tuple[str, ...]
     graph: ReactionGraph | None = None
+    workspace: WorkspaceSnapshot | None = None
     profile: EnergyProfile | None = None
     objects: tuple[ChemicalObject, ...] = ()
     table_rows: tuple[EnergyTableRow, ...] = ()
@@ -329,6 +334,7 @@ class _RenderedArtifact:
     bytes: bytes
     writer_id: str
     warnings: tuple[RxnFlowWarning, ...]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class ReportExportService:
@@ -504,6 +510,12 @@ def _validate_export_request(project_id: str, request: ExportRequest) -> RxnFlow
                 f"Format '{export_format}' requires an EnergyProfile.",
                 target="profile",
             )
+        if export_format == "svg" and _graph_snapshot_graph(request) is None:
+            return RxnFlowError(
+                "invalid_input",
+                "SVG graph snapshot export requires a ReactionGraph or WorkspaceSnapshot.",
+                target="graph",
+            )
         if (
             export_format in ("xlsx", "csv")
             and request.profile is None
@@ -578,6 +590,18 @@ def _render_format(export_format: str, request: ExportRequest) -> Result[_Render
             artifact_bytes = _render_csv(rows)
             warnings = _energy_table_warnings(rows, request.profile)
             return ok(_RenderedArtifact("csv", artifact_bytes, "python-csv-energy-table-v1", warnings))
+
+        if export_format == "svg":
+            svg = _render_graph_snapshot_svg(request)
+            return ok(
+                _RenderedArtifact(
+                    "svg",
+                    svg.bytes,
+                    "python-svg-graph-snapshot-v1",
+                    (),
+                    svg.metadata,
+                )
+            )
     except ImportError as exc:
         return err(
             RxnFlowError(
@@ -657,6 +681,314 @@ def _render_csv(rows: tuple[EnergyTableRow, ...]) -> bytes:
             )
         )
     return output.getvalue().encode("utf-8")
+
+
+@dataclass(frozen=True)
+class _GraphSnapshotRender:
+    bytes: bytes
+    metadata: dict[str, Any]
+
+
+def _render_graph_snapshot_svg(request: ExportRequest) -> _GraphSnapshotRender:
+    graph = _graph_snapshot_graph(request)
+    assert graph is not None
+    workspace = request.workspace
+    viewport = _graph_snapshot_viewport(workspace)
+    selection = _graph_snapshot_selection(workspace)
+    active_path_id = workspace.active_path_id if workspace is not None else _profile_path_id(request)
+    width = 720.0
+    height = 432.0
+    graph_width = 600.0
+    graph_height = 360.0
+    margin_x = 60.0
+    margin_y = 36.0
+    node_positions = _graph_snapshot_node_positions(graph)
+    selected_nodes = set(selection.node_ids)
+    selected_edges = set(selection.edge_ids)
+    selected_paths = set(selection.path_ids)
+    active_path_nodes = _active_path_node_ids(graph.paths, active_path_id)
+    path_edge_ids = _path_edge_ids(graph, active_path_id)
+
+    root = ElementTree.Element(
+        "svg",
+        {
+            "xmlns": "http://www.w3.org/2000/svg",
+            "width": _format_svg_number(width),
+            "height": _format_svg_number(height),
+            "viewBox": f"0 0 {_format_svg_number(width)} {_format_svg_number(height)}",
+            "role": "img",
+            "data-rxnflow-artifact": "graph-snapshot",
+            "data-graph-id": graph.id,
+        },
+    )
+    if workspace is not None:
+        root.set("data-workspace-id", workspace.workspace_id)
+    if active_path_id is not None:
+        root.set("data-active-path-id", active_path_id)
+    title = ElementTree.SubElement(root, "title")
+    title.text = request.title or f"Graph snapshot {graph.id}"
+    description = ElementTree.SubElement(root, "desc")
+    description.text = (
+        f"{len(graph.nodes)} nodes, {len(graph.edges)} edges, {len(graph.paths)} paths."
+    )
+    style = ElementTree.SubElement(root, "style")
+    style.text = (
+        ".graph-snapshot-bg{fill:#f8fafc;}"
+        ".graph-snapshot-edge{stroke:#64748b;stroke-width:2;fill:none;}"
+        ".graph-snapshot-edge--active{stroke:#2563eb;stroke-width:3;}"
+        ".graph-snapshot-edge--selected{stroke:#d97706;stroke-width:4;}"
+        ".graph-snapshot-node rect{fill:#ffffff;stroke:#334155;stroke-width:1.5;rx:8;}"
+        ".graph-snapshot-node--active rect{stroke:#2563eb;stroke-width:3;}"
+        ".graph-snapshot-node--selected rect{stroke:#d97706;stroke-width:3;}"
+        ".graph-snapshot-node-label{font-family:Arial,sans-serif;font-size:13px;fill:#0f172a;text-anchor:middle;dominant-baseline:middle;}"
+        ".graph-snapshot-edge-label{font-family:Arial,sans-serif;font-size:11px;fill:#334155;text-anchor:middle;}"
+        ".graph-snapshot-empty{font-family:Arial,sans-serif;font-size:15px;fill:#475569;text-anchor:middle;dominant-baseline:middle;}"
+    )
+    metadata_node = ElementTree.SubElement(root, "metadata")
+    path_list = ElementTree.SubElement(metadata_node, "graph-snapshot-paths")
+    for path in graph.paths:
+        ElementTree.SubElement(
+            path_list,
+            "graph-snapshot-path",
+            {
+                "data-path-id": path.id,
+                "data-path-label": path.label,
+                "data-active": "true" if path.id == active_path_id else "false",
+                "data-selected": "true" if path.id in selected_paths else "false",
+                "data-node-count": str(len(path.node_ids)),
+            },
+        )
+    graph_group = ElementTree.SubElement(
+        root,
+        "g",
+        {
+            "class": "graph-snapshot-graph",
+            "data-viewport-x": _format_svg_number(viewport.x),
+            "data-viewport-y": _format_svg_number(viewport.y),
+            "data-viewport-zoom": _format_svg_number(viewport.zoom),
+            "transform": (
+                f"translate({margin_x} {margin_y}) "
+                f"scale({_format_svg_number(viewport.zoom)}) "
+                f"translate({_format_svg_number(-viewport.x)} {_format_svg_number(-viewport.y)})"
+            ),
+        },
+    )
+    ElementTree.SubElement(
+        graph_group,
+        "rect",
+        {
+            "class": "graph-snapshot-bg",
+            "x": "0",
+            "y": "0",
+            "width": _format_svg_number(graph_width),
+            "height": _format_svg_number(graph_height),
+        },
+    )
+
+    if not graph.nodes:
+        empty = ElementTree.SubElement(
+            graph_group,
+            "text",
+            {
+                "class": "graph-snapshot-empty",
+                "x": _format_svg_number(graph_width / 2),
+                "y": _format_svg_number(graph_height / 2),
+            },
+        )
+        empty.text = "Empty graph"
+
+    edge_group = ElementTree.SubElement(graph_group, "g", {"class": "graph-snapshot-edges"})
+    for edge in graph.edges:
+        source = node_positions.get(edge.from_node)
+        target = node_positions.get(edge.to_node)
+        if source is None or target is None:
+            continue
+        classes = ["graph-snapshot-edge"]
+        if edge.id in path_edge_ids:
+            classes.append("graph-snapshot-edge--active")
+        if edge.id in selected_edges:
+            classes.append("graph-snapshot-edge--selected")
+        ElementTree.SubElement(
+            edge_group,
+            "line",
+            {
+                "class": " ".join(classes),
+                "data-edge-id": edge.id,
+                "data-source-node-id": edge.from_node,
+                "data-target-node-id": edge.to_node,
+                "data-active-path": "true" if edge.id in path_edge_ids else "false",
+                "data-selected": "true" if edge.id in selected_edges else "false",
+                "x1": _format_svg_number(source[0]),
+                "y1": _format_svg_number(source[1]),
+                "x2": _format_svg_number(target[0]),
+                "y2": _format_svg_number(target[1]),
+            },
+        )
+        if edge.label:
+            label = ElementTree.SubElement(
+                edge_group,
+                "text",
+                {
+                    "class": "graph-snapshot-edge-label",
+                    "data-edge-id": edge.id,
+                    "x": _format_svg_number((source[0] + target[0]) / 2),
+                    "y": _format_svg_number((source[1] + target[1]) / 2 - 8),
+                },
+            )
+            label.text = edge.label
+
+    node_group = ElementTree.SubElement(graph_group, "g", {"class": "graph-snapshot-nodes"})
+    for node in graph.nodes:
+        x, y = node_positions[node.id]
+        classes = ["graph-snapshot-node"]
+        if node.id in active_path_nodes:
+            classes.append("graph-snapshot-node--active")
+        if node.id in selected_nodes:
+            classes.append("graph-snapshot-node--selected")
+        item = ElementTree.SubElement(
+            node_group,
+            "g",
+            {
+                "class": " ".join(classes),
+                "data-node-id": node.id,
+                "data-node-kind": node.kind,
+                "data-active-path": "true" if node.id in active_path_nodes else "false",
+                "data-selected": "true" if node.id in selected_nodes else "false",
+                "transform": f"translate({_format_svg_number(x)} {_format_svg_number(y)})",
+            },
+        )
+        ElementTree.SubElement(
+            item,
+            "rect",
+            {
+                "x": "-48",
+                "y": "-18",
+                "width": "96",
+                "height": "36",
+            },
+        )
+        label = ElementTree.SubElement(item, "text", {"class": "graph-snapshot-node-label"})
+        label.text = node.label
+
+    xml_body = ElementTree.tostring(root, encoding="unicode", short_empty_elements=True)
+    metadata = {
+        "graph_id": graph.id,
+        "workspace_id": workspace.workspace_id if workspace is not None else None,
+        "node_count": len(graph.nodes),
+        "edge_count": len(graph.edges),
+        "path_count": len(graph.paths),
+        "active_path_id": active_path_id,
+        "selected_node_count": len(selection.node_ids),
+        "selected_edge_count": len(selection.edge_ids),
+        "selected_path_count": len(selection.path_ids),
+        "viewport_x": viewport.x,
+        "viewport_y": viewport.y,
+        "viewport_zoom": viewport.zoom,
+        "svg_width": int(width),
+        "svg_height": int(height),
+    }
+    return _GraphSnapshotRender(
+        f'<?xml version="1.0" encoding="UTF-8"?>\n{xml_body}\n'.encode("utf-8"),
+        metadata,
+    )
+
+
+def _graph_snapshot_graph(request: ExportRequest) -> ReactionGraph | None:
+    if request.workspace is not None:
+        return request.workspace.graph
+    return request.graph
+
+
+def _graph_snapshot_viewport(workspace: WorkspaceSnapshot | None) -> CanvasViewport:
+    if workspace is None:
+        return CanvasViewport()
+    viewport = workspace.viewport
+    if (
+        not math.isfinite(viewport.x)
+        or not math.isfinite(viewport.y)
+        or not math.isfinite(viewport.zoom)
+        or viewport.zoom <= 0
+    ):
+        return CanvasViewport()
+    return viewport
+
+
+def _graph_snapshot_selection(workspace: WorkspaceSnapshot | None) -> WorkspaceSelection:
+    if workspace is None:
+        return WorkspaceSelection()
+    return workspace.selection
+
+
+def _graph_snapshot_node_positions(graph: ReactionGraph) -> dict[str, tuple[float, float]]:
+    positions: dict[str, tuple[float, float]] = {}
+    fallback_positions = _graph_snapshot_fallback_positions(len(graph.nodes))
+    for index, node in enumerate(graph.nodes):
+        position = _finite_node_position(node)
+        positions[node.id] = position if position is not None else fallback_positions[index]
+    return positions
+
+
+def _graph_snapshot_fallback_positions(count: int) -> tuple[tuple[float, float], ...]:
+    if count <= 0:
+        return ()
+    graph_width = 600.0
+    graph_height = 360.0
+    columns = max(1, min(count, math.ceil(math.sqrt(count * graph_width / graph_height))))
+    rows = math.ceil(count / columns)
+    x_step = graph_width / (columns + 1)
+    y_step = graph_height / (rows + 1)
+    positions = []
+    for index in range(count):
+        column = index % columns
+        row = index // columns
+        positions.append(((column + 1) * x_step, (row + 1) * y_step))
+    return tuple(positions)
+
+
+def _finite_node_position(node: ReactionNode) -> tuple[float, float] | None:
+    if node.position is None or len(node.position) != 2:
+        return None
+    x = float(node.position[0])
+    y = float(node.position[1])
+    if not math.isfinite(x) or not math.isfinite(y):
+        return None
+    return x, y
+
+
+def _active_path_node_ids(
+    paths: tuple[ReactionPath, ...],
+    active_path_id: str | None,
+) -> set[str]:
+    if active_path_id is None:
+        return set()
+    for path in paths:
+        if path.id == active_path_id:
+            return set(path.node_ids)
+    return set()
+
+
+def _path_edge_ids(graph: ReactionGraph, active_path_id: str | None) -> set[str]:
+    if active_path_id is None:
+        return set()
+    active_path = next((path for path in graph.paths if path.id == active_path_id), None)
+    if active_path is None:
+        return set()
+    path_pairs = set(zip(active_path.node_ids, active_path.node_ids[1:]))
+    return {
+        edge.id
+        for edge in graph.edges
+        if (edge.from_node, edge.to_node) in path_pairs
+    }
+
+
+def _format_svg_number(value: float) -> str:
+    number = float(value)
+    if not math.isfinite(number):
+        number = 0.0
+    if abs(number) < 1e-9:
+        number = 0.0
+    text = f"{number:.6f}".rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def _write_energy_table_sheet(
@@ -1282,9 +1614,10 @@ def _artifact_metadata(
     byte_length: int,
 ) -> dict[str, Any]:
     capability = export_format_capability(rendered.format)
+    graph = _graph_snapshot_graph(request)
     metadata = {
         "project_id": project_id,
-        "graph_id": request.graph.id if request.graph is not None else _profile_graph_id(request),
+        "graph_id": graph.id if graph is not None else _profile_graph_id(request),
         "profile_id": request.profile.id if request.profile is not None else None,
         "path_id": request.profile.path_id if request.profile is not None else None,
         "object_count": len(request.objects),
@@ -1293,7 +1626,7 @@ def _artifact_metadata(
         "writer_id": rendered.writer_id,
         "title": request.title,
         "basename": basename,
-        "warnings": tuple(warning.code for warning in rendered.warnings),
+        "warnings": [warning.code for warning in rendered.warnings],
     }
     if capability is not None:
         metadata.update(
@@ -1309,6 +1642,7 @@ def _artifact_metadata(
         metadata["energy_table_schema_version"] = ENERGY_TABLE_SCHEMA_VERSION
         metadata["energy_table_column_count"] = len(ENERGY_TABLE_COLUMNS)
         metadata["energy_table_row_count"] = len(rows)
+    metadata.update(rendered.metadata)
     return metadata
 
 
@@ -1318,12 +1652,15 @@ def _artifact_id(
     export_format: str,
     basename: str,
 ) -> str:
+    graph = _graph_snapshot_graph(request)
     source = "|".join(
         (
             project_id,
             export_format,
             basename,
-            request.graph.id if request.graph is not None else "",
+            graph.id if graph is not None else "",
+            request.workspace.workspace_id if request.workspace is not None else "",
+            request.workspace.active_path_id if request.workspace is not None and request.workspace.active_path_id is not None else "",
             request.profile.id if request.profile is not None else "",
             request.profile.path_id if request.profile is not None else "",
         )
@@ -1335,6 +1672,8 @@ def _artifact_id(
 def _source_name(request: ExportRequest) -> str | None:
     if request.profile is not None:
         return request.profile.id
+    if request.workspace is not None:
+        return request.workspace.graph.id
     if request.graph is not None:
         return request.graph.id
     if request.objects:
@@ -1346,6 +1685,10 @@ def _source_name(request: ExportRequest) -> str | None:
 
 def _profile_graph_id(request: ExportRequest) -> str | None:
     return request.profile.graph_id if request.profile is not None else None
+
+
+def _profile_path_id(request: ExportRequest) -> str | None:
+    return request.profile.path_id if request.profile is not None else None
 
 
 def _cdxml_options(raw_options: dict[str, Any]) -> CdxmlDiagramOptions:

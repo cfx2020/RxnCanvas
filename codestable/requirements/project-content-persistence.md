@@ -3,7 +3,7 @@ doc_type: requirement
 slug: project-content-persistence
 pitch: 把项目里的对象、图谱、导入记录、基础结果和导出索引保存下来，让用户关掉项目后还能继续工作
 status: current
-last_reviewed: 2026-05-22
+last_reviewed: 2026-05-25
 implemented_by:
   - core-platform
   - web-workbench
@@ -17,7 +17,7 @@ tags: [project, persistence, restore, local-storage, import-ledger, energy-profi
 - 作为一个整理多批计算输出的人，我希望导入预览、失败记录和已确认对象能跟项目一起保存，而不是重启后重新梳理。
 - 作为一个用 agent 搭反应图的人，我希望对象、图谱和画布工作状态能落在项目目录里，方便下次继续编辑。
 - 作为一个比较反应路径能量的人，我希望已计算的 EnergyProfile、缺失点和 warnings 能跟项目一起保存，方便下次直接查看或导出，而不是重新计算后才知道当时的结果。
-- 作为一个反复导出报告的人，我希望已经写入项目 `exports/` 下的 PNG、CDXML、XLSX、CSV 导出文件能被项目索引记住格式、路径、checksum 和 metadata，方便下次打开项目时知道有哪些可复用报告 artifact。
+- 作为一个反复导出报告的人，我希望已经写入项目 `exports/` 下的 PNG、CDXML、XLSX、CSV、SVG 导出文件能被项目索引记住格式、路径、checksum 和 metadata，方便下次打开项目时知道有哪些可复用报告 artifact。
 - 作为一个长期维护项目文件的人，我希望系统能告诉我项目内容文件是否缺失、checksum 是否不一致、引用是否断掉，反应节点组成或能量表达式是否损坏，而不是等到加载失败时才逐个排查。
 - 作为一个先用本地项目验证流程的人，我希望保存的数据是普通项目文件，能被测试、备份和后续 Web/桌面壳层复用。
 - 作为一个用 CLI 或 agent 继续项目的人，我希望打开项目时能恢复已保存的对象、导入记录、图谱、workspace、energy profile 和导出索引，并且能把当前 session 再保存回项目内容文件。
@@ -42,7 +42,7 @@ Web Workbench 还提供真实 Browser Project Repository。它位于 `web/src/re
 
 Web Workbench Project Sidebar 已接入该 repository。用户可以在左侧栏列出 browser-local projects，新建 project，打开已有 project，并保存 / 覆盖 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` 真实 Project Content files。创建 browser project 时 Web 会写入空的 `project-v1` manifest、`project-content-v1` index 和 6 个空 section files；显式 Open Bridge 时 Web 把这些 bytes 作为 `project.open(content_files)` payload 交给本地 bridge；显式 Save Bridge Session 时 Web 调用 `project.save_content(include_content_files=true)` 并把返回的 section bytes 写回 Browser Project Repository。侧边栏会显示 local-only、backend、persistence、bridge、shallow validation、checksum 和 repository error。Project Bundle 当前已启用：active browser project 可从 Browser Project Repository 当前 `.rxnflow/`、`inputs/raw/` 和 `exports/` bytes 生成并下载 `.rxnflow.zip`，显示 fileCount、byteSize、rootName 和 checksum；用户也可选择 `.rxnflow.zip`，由 Web 创建新的 browser-local project 并写入 safe bundle entries，成功后 Project Sidebar active project 指向该新项目。当前 roundtrip QA 已验证：导入 bundle 后需要显式 Open Bridge 才恢复 core session，Save Bridge Session 后再导出的 bundle 会包含 repository 中保留的 raw inputs、exports 和已写回的 Project Content state。Web 用户指南已记录导出前 Save Bridge、导入后 Open Bridge、包内目录和非云同步边界；开发者指南已记录 Web archive adapter、错误 bundle 样例和 E2E 验证命令。
 
-Web Workbench Report Export Panel 已能在 active browser project 下把 `export.profile` 返回的 PNG/CDXML/XLSX/CSV inline bytes 写入 Browser Project Repository 的 `exports/{basename}.{format}` object。写入成功后，Web 会 upsert `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中 export artifacts section 的 checksum，让 Project Sidebar shallow validation 继续显示 valid。该能力只持久化已由 ShellResponse 返回的 bytes，不在前端生成报告文件，也不自动调用 `project.save_content` 或 Save Bridge Session。
+Web Workbench Report Export Panel 已能在 active browser project 下把 `export.profile` 返回的 PNG/CDXML/XLSX/CSV/SVG inline bytes 写入 Browser Project Repository 的 `exports/{basename}.{format}` object。写入成功后，Web 会 upsert `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中 export artifacts section 的 checksum，让 Project Sidebar shallow validation 继续显示 valid。该能力只持久化已由 ShellResponse 返回的 bytes，不在前端生成报告文件，也不自动调用 `project.save_content` 或 Save Bridge Session。
 
 Web Workbench 还提供 Browser Bundle Archive Adapter。它位于 `web/src/app/projectBundleArchive.ts`，使用隔离的 `fflate` dependency boundary 从 project-relative bytes entries 生成 `.rxnflow.zip` bytes，或读取 `.rxnflow.zip` bytes 并返回 safe project-relative entries 与 shallow bundle summary。adapter 复刻核心 Project Bundle 的 single-root、manifest required、allowed roots、`inputs/raw`、duplicate、`__MACOSX` 和 symlink safety 语义。Web Export Bundle 通过 `web/src/app/projectBundleExport.ts` 消费该 adapter；导出只读取 Browser Project Repository 当前 bytes，不调用 Python `ProjectBundleService`，不自动 Save Bridge Session，也不替代 Project Content deep validation。Web Import Bundle 通过 `web/src/app/projectBundleImport.ts` 消费同一 adapter；导入总是创建新的 browser-local project，不覆盖、不合并、不自动 Open Bridge，也不替代 Project Content deep validation。
 
@@ -71,7 +71,7 @@ Web Workbench 还提供 Browser Bundle Archive Adapter。它位于 `web/src/app/
 - Web Import Bundle 当前不提供跨 object transaction；如果创建 project 后写入对象时失败，UI 会显示 partial import risk、partialProjectRef 和 writtenCount，由用户后续决定是否清理该部分项目。
 - Web bundle roundtrip 和指南已有 component/default fixture/local-http QA 覆盖，但仍是显式手动流程：Import Bundle 不自动 Open Bridge，Export Bundle 不自动 Save Bridge Session，用户需要按顺序操作才能把 core session 中的新图谱/workspace/profile/export index 写入下一次 `.rxnflow.zip`。
 - Web Project Sidebar 保存 Project Content files，但 Web 本身不解析或重写 ChemicalObject、Import Ledger、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact index 领域内容；这些 bytes 的深度恢复/保存仍由 Platform Shell 和 ProjectContentStore 承担。
-- Web Export Artifact Persistence 会重写 `export-artifacts-v1` index 和 Project Content index 中的 checksum，但只处理 ShellArtifact inline bytes 到 browser-local `exports/...` 的窄路径；它不在前端生成 PNG/CDXML/XLSX/CSV bytes，不新增未支持导出格式，不把 artifact 写入 Project Manifest resources，也不把 Browser Project Ref 当作 Python filesystem path。
+- Web Export Artifact Persistence 会重写 `export-artifacts-v1` index 和 Project Content index 中的 checksum，但只处理 ShellArtifact inline bytes 到 browser-local `exports/...` 的窄路径；它不在前端生成 PNG/CDXML/XLSX/CSV/SVG bytes，不新增未支持导出格式，不把 artifact 写入 Project Manifest resources，也不把 Browser Project Ref 当作 Python filesystem path。
 - Project Sidebar 的 validation 只是浏览器 repository 浅校验，不调用 Python ProjectContentValidator，也不做 schema migration 或跨 section 引用检查。
 - 浏览器本地存储不是云备份；浏览器清数据、profile 损坏或 origin 变化仍可能导致数据丢失，早期 Web 版本仍需要引导用户导出 `.rxnflow.zip` 手动备份。
 
@@ -87,6 +87,7 @@ Web Workbench 还提供 Browser Bundle Archive Adapter。它位于 `web/src/app/
 - 2026-05-20：更新 Web Project Sidebar bridge 现状：显式 Open Bridge / Save Bridge Session 可通过 `project.open(content_files)` 与 `project.save_content(include_content_files=true)` 协作；bundle IO、云同步和 browser_storage import adapter 仍未实现。
 - 2026-05-20：补充 Web Export Artifact Persistence 现状：active browser project 下可把 runtime PNG/CDXML/XLSX inline artifacts 写入 `exports/...`，同步 `export-artifacts-v1` index 和 Project Content index checksum。
 - 2026-05-24：补充 CSV energy table artifact：active browser project 下可把 runtime CSV inline artifact 写入 `exports/...`，并复用 `export-artifacts-v1` index。
+- 2026-05-25：补充 SVG graph snapshot artifact：active browser project 下可把 runtime SVG inline artifact 写入 `exports/...`，并复用 `export-artifacts-v1` index。
 - 2026-05-22：补充 Web Browser Bundle Archive Adapter 现状：`fflate` 隔离在 archive helper 内，已支持 `.rxnflow.zip` bytes 读写、安全 entry 校验和 shallow summary，但用户可见 Project Sidebar import/export 仍未启用。
 - 2026-05-22：补充 Web Project Sidebar Export Bundle 现状：active browser project 可下载 `.rxnflow.zip`，只读取 repository 当前 `.rxnflow/`、`inputs/raw/` 和 `exports/` bytes；Import Bundle 仍待后续功能。
 - 2026-05-22：补充 Web Project Sidebar Import Bundle 现状：用户可从安全 `.rxnflow.zip` 创建新的 browser-local project；导入不覆盖当前项目、不自动 Open Bridge，写入中断时显示 partial import risk。

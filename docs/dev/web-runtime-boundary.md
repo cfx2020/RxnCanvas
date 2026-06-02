@@ -150,12 +150,14 @@ Browser Project Repository 保存在浏览器 IndexedDB 中，Python bridge 不�
 
 Report Export Panel 的 runtime artifact bytes 仍来自 `export.profile` 返回的 `ShellArtifact.bytes_base64`。当前 Web 只在 active browser project 存在时做 browser-local 持久化：
 
-- Web 根据当前 basename 和 format 生成 `exports/{basename}.{format}`，当前支持 PNG/CDXML/XLSX/CSV。
+- Web 根据当前 basename 和 format 生成 `exports/{basename}.{format}`，当前支持 PNG/CDXML/XLSX/CSV/SVG。
 - Web 把 inline bytes 写入 Browser Project Repository object，metadata 标记 `kind=export_artifact`、artifact id 和 format。
 - Web upsert `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中该 section 的 checksum。
 - Project Sidebar 随后重新做 shallow validation；这只验证 browser-local content files 可读和 checksum 对齐，不替代 Python ProjectContentValidator 深校验。
 
 没有 active browser project、include bytes 关闭、artifact 缺少 inline bytes 或写入失败时，Web 仍保留 runtime artifact summary 和可用 download link；持久化失败会显示 warning，不会让前端重新生成 artifact bytes。
+
+Report Export Panel 的 Preview mode 也遵守同一运行时边界：`buildReportPreviewModel()` 只从当前 `WorkbenchDomainState`、Report Export options、active browser project state 和已有 artifact projection 派生 readiness。它不调用 ShellClient、不读取或写入 Browser Project Repository、不保存 Project Content、不生成导出 bytes，也不重算 energy table rows、graph layout 或 graph snapshot。
 
 ## 明确不做
 
@@ -163,7 +165,8 @@ Report Export Panel 的 runtime artifact bytes 仍来自 `export.profile` 返回
 - 不新增 FastAPI、Flask、Django、Vercel route 或生产 HTTP server；当前只有本机开发用标准库 bridge。
 - 不实现 OPFS adapter、Service Worker 或大文件 chunking；真实 IndexedDB-first Browser Project Repository 已在 Web Workbench 中承担 browser-local content files 和 export artifact bytes object 保存。
 - 不实现浏览器 File / Blob / ArrayBuffer 到 parser 的大文件桥接、chunking、OPFS payload store 或 Worker pool。
-- 不在前端生成 PNG/CDXML/XLSX/CSV bytes，不新增 CDX/PDF/PPTX/SVG 等导出格式。
+- 不在前端生成 PNG/CDXML/XLSX/CSV/SVG bytes，不新增 CDX/PDF/PPTX 等导出格式。
+- 不把 Web report preview 升级成 core report composer、持久化 section、HTTP route 或 browser storage writer。
 - 不新增云存储、账号、权限、同步、队列或外部量化计算调度。
 - 不修改 parser、registry、reaction graph、energy engine 或 report export 的领域行为。
 

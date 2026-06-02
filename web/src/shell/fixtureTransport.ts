@@ -845,6 +845,8 @@ function fixtureArtifact(
 ): ShellArtifact {
   const bytes = fixtureArtifactBytes(format, basename, title)
   const capability = exportFormatCapability(format)
+  const selection = fixtureWorkspace.selection ?? { node_ids: [], edge_ids: [], path_ids: [] }
+  const viewport = fixtureWorkspace.viewport ?? { x: 0, y: 0, zoom: 1 }
   return {
     id: `artifact-${format}-${basename}`,
     format,
@@ -870,13 +872,50 @@ function fixtureArtifact(
           energy_table_row_count: 2,
         }
         : {}),
+      ...(format === "svg"
+        ? {
+          workspace_id: fixtureWorkspace.workspace_id,
+          node_count: fixtureWorkspace.graph.nodes.length,
+          edge_count: fixtureWorkspace.graph.edges.length,
+          path_count: fixtureWorkspace.graph.paths.length,
+          active_path_id: fixtureWorkspace.active_path_id,
+          selected_node_count: selection.node_ids.length,
+          selected_edge_count: selection.edge_ids.length,
+          selected_path_count: selection.path_ids.length,
+          viewport_x: viewport.x,
+          viewport_y: viewport.y,
+          viewport_zoom: viewport.zoom,
+          svg_width: 720,
+          svg_height: 432,
+        }
+        : {}),
     },
   }
 }
 
 function fixtureArtifactBytes(format: ExportFormat, basename: string, title: string): string {
+  if (format === "svg") {
+    const viewport = fixtureWorkspace.viewport ?? { x: 0, y: 0, zoom: 1 }
+    return btoaAscii(
+      `<?xml version="1.0" encoding="UTF-8"?>\n`
+      + `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="432" viewBox="0 0 720 432" data-rxnflow-artifact="graph-snapshot" data-graph-id="${fixtureWorkspace.graph.id}">`
+      + `<title>${escapeXml(title)}</title>`
+      + `<desc>${fixtureWorkspace.graph.nodes.length} nodes, ${fixtureWorkspace.graph.edges.length} edges, ${fixtureWorkspace.graph.paths.length} paths.</desc>`
+      + `<g class="graph-snapshot-graph" data-viewport-x="${viewport.x}" data-viewport-y="${viewport.y}" data-viewport-zoom="${viewport.zoom}">`
+      + `<text class="graph-snapshot-node-label">Fixture graph snapshot</text>`
+      + `</g></svg>\n`,
+    )
+  }
   const payload = `RxnFlow fixture ${format} export\nbasename=${basename}\ntitle=${title}\nprofile=${fixtureProfile.id}\n`
   return btoaAscii(payload)
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
 }
 
 async function fixtureProjectContentFiles(): Promise<JsonObject[]> {

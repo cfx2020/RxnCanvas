@@ -1,7 +1,9 @@
-import { Download, FileArchive } from "lucide-react"
-import type { EnergyProfileSummary, ExportFormat, ShellWarning, WorkbenchArtifactSummary } from "../shell"
+import { Download, Eye, FileArchive } from "lucide-react"
+import { useMemo, useState } from "react"
+import type { EnergyProfileSummary, ExportFormat, ShellWarning, WorkbenchArtifactSummary, WorkspaceSummary } from "../shell"
 import { extensionForExportFormat, mimeTypeForExportFormat, reportExportFormats } from "./exportFormatCapabilities"
-import { useI18n } from "./i18n"
+import { useI18n, type MessageKey } from "./i18n"
+import { buildReportPreviewModel, type ReportPreviewModel, type ReportPreviewAssetKey, type ReportPreviewAssetStatus } from "./reportPreviewModel"
 
 export type ReportExportOptions = {
   formats: ExportFormat[]
@@ -13,6 +15,7 @@ export type ReportExportOptions = {
 type ReportExportPanelProps = {
   artifacts: WorkbenchArtifactSummary[]
   profile?: EnergyProfileSummary
+  workspace?: WorkspaceSummary | null
   options: ReportExportOptions
   disabled: boolean
   warnings: ShellWarning[]
@@ -33,6 +36,7 @@ type ExportReadinessSummary = {
 export function ReportExportPanel({
   artifacts,
   profile,
+  workspace,
   options,
   disabled,
   warnings,
@@ -41,8 +45,18 @@ export function ReportExportPanel({
   onExport,
 }: ReportExportPanelProps) {
   const { t } = useI18n()
+  const [viewMode, setViewMode] = useState<"preview" | "export">("preview")
   const exportDisabled = disabled || options.formats.length === 0
   const readiness = exportReadinessFromProfile(profile, options, hasActiveBrowserProject)
+  const preview = useMemo(() => buildReportPreviewModel({
+    workspace,
+    profile,
+    artifacts,
+    warnings,
+    hasActiveBrowserProject,
+    includeBytes: options.includeBytes,
+    selectedFormats: options.formats,
+  }), [artifacts, hasActiveBrowserProject, options.formats, options.includeBytes, profile, warnings, workspace])
 
   return (
     <section className="report-export-panel" aria-label={t("reportExport.aria")}>
@@ -54,81 +68,178 @@ export function ReportExportPanel({
         <span className="artifact-count-badge">{t("reportExport.artifactCount", { count: artifacts.length })}</span>
       </div>
 
-      <div className="export-format-grid" aria-label={t("reportExport.formats")}>
-        {reportExportFormats().map((format) => (
-          <label key={format} className="export-format-option">
-            <input
-              type="checkbox"
-              checked={options.formats.includes(format)}
-              onChange={(event) => onOptionsChange({
-                ...options,
-                formats: event.currentTarget.checked
-                  ? [...options.formats, format]
-                  : options.formats.filter((item) => item !== format),
-              })}
-            />
-            <span>{format}</span>
-          </label>
-        ))}
-      </div>
-
-      <div className="report-export-options" aria-label={t("reportExport.options")}>
-        <label className="energy-field">
-          <span>{t("reportExport.basename")}</span>
-          <input
-            type="text"
-            value={options.basename}
-            onChange={(event) => onOptionsChange({ ...options, basename: event.currentTarget.value })}
-            placeholder="rxnflow-profile"
-          />
-        </label>
-        <label className="energy-field">
-          <span>{t("reportExport.reportTitle")}</span>
-          <input
-            type="text"
-            value={options.title}
-            onChange={(event) => onOptionsChange({ ...options, title: event.currentTarget.value })}
-            placeholder="Relative energy profile"
-          />
-        </label>
-      </div>
-
-      <div className="report-export-command-row">
-        <label className="energy-toggle">
-          <input
-            type="checkbox"
-            checked={options.includeBytes}
-            onChange={(event) => onOptionsChange({ ...options, includeBytes: event.currentTarget.checked })}
-          />
-          <span>{t("reportExport.includeBytes")}</span>
-        </label>
+      <div className="report-export-view-toggle" aria-label={t("reportExport.viewMode")}>
         <button
           type="button"
-          className="command-button"
-          disabled={exportDisabled}
-          onClick={onExport}
+          className={viewMode === "preview" ? "is-active" : undefined}
+          aria-pressed={viewMode === "preview"}
+          aria-label={t("reportExport.previewMode")}
+          onClick={() => setViewMode("preview")}
         >
-          <FileArchive size={17} />
-          <span>{t("reportExport.export")}</span>
+          <Eye size={15} />
+          <span>{t("reportExport.preview")}</span>
+        </button>
+        <button
+          type="button"
+          className={viewMode === "export" ? "is-active" : undefined}
+          aria-pressed={viewMode === "export"}
+          aria-label={t("reportExport.exportMode")}
+          onClick={() => setViewMode("export")}
+        >
+          <FileArchive size={15} />
+          <span>{t("reportExport.exportView")}</span>
         </button>
       </div>
 
-      <ExportReadinessPanel readiness={readiness} />
-
-      {artifacts.length > 0 ? (
-        <ArtifactList artifacts={artifacts} basename={options.basename} />
+      {viewMode === "preview" ? (
+        <ReportPreviewPanel model={preview} />
       ) : (
-        <div className="report-export-empty">
-          <FileArchive size={22} />
-          <strong>{t("reportExport.empty")}</strong>
-          <span>{t("reportExport.emptyDetail")}</span>
-        </div>
-      )}
+        <>
+          <div className="export-format-grid" aria-label={t("reportExport.formats")}>
+            {reportExportFormats().map((format) => (
+              <label key={format} className="export-format-option">
+                <input
+                  type="checkbox"
+                  checked={options.formats.includes(format)}
+                  onChange={(event) => onOptionsChange({
+                    ...options,
+                    formats: event.currentTarget.checked
+                      ? [...options.formats, format]
+                      : options.formats.filter((item) => item !== format),
+                  })}
+                />
+                <span>{format}</span>
+              </label>
+            ))}
+          </div>
 
-      {warnings.length > 0 ? (
-        <div className="report-export-warning-list" aria-label={t("reportExport.warnings")}>
-          <strong>{t("reportExport.warnings")}</strong>
-          {warnings.map((warning, index) => (
+          <div className="report-export-options" aria-label={t("reportExport.options")}>
+            <label className="energy-field">
+              <span>{t("reportExport.basename")}</span>
+              <input
+                type="text"
+                value={options.basename}
+                onChange={(event) => onOptionsChange({ ...options, basename: event.currentTarget.value })}
+                placeholder="rxnflow-profile"
+              />
+            </label>
+            <label className="energy-field">
+              <span>{t("reportExport.reportTitle")}</span>
+              <input
+                type="text"
+                value={options.title}
+                onChange={(event) => onOptionsChange({ ...options, title: event.currentTarget.value })}
+                placeholder="Relative energy profile"
+              />
+            </label>
+          </div>
+
+          <div className="report-export-command-row">
+            <label className="energy-toggle">
+              <input
+                type="checkbox"
+                checked={options.includeBytes}
+                onChange={(event) => onOptionsChange({ ...options, includeBytes: event.currentTarget.checked })}
+              />
+              <span>{t("reportExport.includeBytes")}</span>
+            </label>
+            <button
+              type="button"
+              className="command-button"
+              disabled={exportDisabled}
+              onClick={onExport}
+            >
+              <FileArchive size={17} />
+              <span>{t("reportExport.export")}</span>
+            </button>
+          </div>
+
+          <ExportReadinessPanel readiness={readiness} />
+
+          {artifacts.length > 0 ? (
+            <ArtifactList artifacts={artifacts} basename={options.basename} />
+          ) : (
+            <div className="report-export-empty">
+              <FileArchive size={22} />
+              <strong>{t("reportExport.empty")}</strong>
+              <span>{t("reportExport.emptyDetail")}</span>
+            </div>
+          )}
+
+          {warnings.length > 0 ? (
+            <div className="report-export-warning-list" aria-label={t("reportExport.warnings")}>
+              <strong>{t("reportExport.warnings")}</strong>
+              {warnings.map((warning, index) => (
+                <p key={`${warning.code}-${warning.target ?? "target"}-${index}`}>
+                  <code>{warning.code}</code>
+                  <span>{warning.message}</span>
+                  {warning.target ? <small>{warning.target}</small> : null}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
+  )
+}
+
+function ReportPreviewPanel({ model }: { model: ReportPreviewModel }) {
+  const { t } = useI18n()
+  return (
+    <div className="report-preview-panel" aria-label={t("reportPreview.aria")}>
+      <div className="report-preview-summary-grid">
+        <PreviewValue label={t("reportPreview.profile")} value={model.profile?.profileId ?? t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.outputUnit")} value={model.profile?.outputUnit ?? t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.points")} value={model.profile ? String(model.profile.pointCount) : t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.missing")} value={model.profile ? String(model.profile.missingPointCount) : t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.corrections")} value={model.profile ? String(model.profile.correctionPointCount) : t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.graph")} value={model.graph?.graphId ?? t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.graphCounts")} value={model.graph ? `${model.graph.nodeCount}/${model.graph.edgeCount}/${model.graph.pathCount}` : t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.activePath")} value={model.graph?.activePathId ?? t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.persistence")} value={model.project.persistenceLabel === "browser-local" ? t("reportPreview.browserLocal") : t("reportPreview.downloadOnly")} />
+      </div>
+
+      <div className="report-preview-assets" aria-label={t("reportPreview.assets")}>
+        <strong>{t("reportPreview.assets")}</strong>
+        {model.assets.map((asset) => (
+          <p key={asset.key} className={`report-preview-asset report-preview-asset--${asset.status}`}>
+            <span>{t(assetLabelKey(asset.key))}</span>
+            <code>{t(assetStatusKey(asset.status))}</code>
+            <small>{asset.formats.length > 0 ? asset.formats.join(", ") : t("reportPreview.none")}</small>
+            <small>{asset.artifactIds.length > 0 ? asset.artifactIds.join(", ") : t("reportPreview.pendingArtifact")}</small>
+          </p>
+        ))}
+      </div>
+
+      {model.energyTable ? (
+        <div className="report-preview-table" aria-label={t("reportPreview.energyTable")}>
+          <strong>{t("reportPreview.energyTable")}</strong>
+          <PreviewValue label={t("reportPreview.schema")} value={model.energyTable.schemaVersion} />
+          <PreviewValue label={t("reportPreview.columns")} value={String(model.energyTable.columnCount)} />
+          <PreviewValue label={t("reportPreview.rows")} value={String(model.energyTable.rowCount ?? t("reportPreview.none"))} />
+          <PreviewValue label={t("reportPreview.artifact")} value={model.energyTable.artifactId} />
+        </div>
+      ) : null}
+
+      <div className="report-preview-artifacts" aria-label={t("reportPreview.artifacts")}>
+        <strong>{t("reportPreview.artifacts")}</strong>
+        {model.artifacts.length > 0 ? model.artifacts.map((artifact) => (
+          <p key={artifact.id}>
+            <code>{artifact.format}</code>
+            <span>{artifact.id}</span>
+            <small>{artifact.persisted ? t("reportExport.yes") : t("reportExport.no")}</small>
+            <small>{artifact.hasInlineBytes ? t("reportExport.available") : t("reportExport.unavailable")}</small>
+            <small>{artifact.path ?? t("reportExport.inlineOnly")}</small>
+            <small>{artifact.checksum ?? t("reportExport.unavailable")}</small>
+          </p>
+        )) : <span className="report-preview-empty">{t("reportPreview.noArtifacts")}</span>}
+      </div>
+
+      {model.warnings.length > 0 ? (
+        <div className="report-export-warning-list" aria-label={t("reportPreview.warnings")}>
+          <strong>{t("reportPreview.warnings")}</strong>
+          {model.warnings.map((warning, index) => (
             <p key={`${warning.code}-${warning.target ?? "target"}-${index}`}>
               <code>{warning.code}</code>
               <span>{warning.message}</span>
@@ -137,8 +248,30 @@ export function ReportExportPanel({
           ))}
         </div>
       ) : null}
-    </section>
+    </div>
   )
+}
+
+function PreviewValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="report-preview-value">
+      <span>{label}</span>
+      <code>{value}</code>
+    </div>
+  )
+}
+
+function assetLabelKey(key: ReportPreviewAssetKey): MessageKey {
+  if (key === "energy_diagram") return "reportPreview.assets.energyDiagram"
+  if (key === "energy_table") return "reportPreview.assets.energyTable"
+  return "reportPreview.assets.graphSnapshot"
+}
+
+function assetStatusKey(status: ReportPreviewAssetStatus): MessageKey {
+  if (status === "ready") return "reportPreview.status.ready"
+  if (status === "pending") return "reportPreview.status.pending"
+  if (status === "warning") return "reportPreview.status.warning"
+  return "reportPreview.status.unavailable"
 }
 
 function ExportReadinessPanel({ readiness }: { readiness: ExportReadinessSummary }) {

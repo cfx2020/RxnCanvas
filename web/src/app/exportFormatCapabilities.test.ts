@@ -22,8 +22,8 @@ describe("export format capabilities", () => {
       "pptx",
       "cdx",
     ])
-    expect(supportedExportFormats()).toEqual(["png", "cdxml", "xlsx", "csv"])
-    expect(reportExportFormats()).toEqual(["png", "cdxml", "xlsx", "csv"])
+    expect(supportedExportFormats()).toEqual(["png", "cdxml", "xlsx", "csv", "svg"])
+    expect(reportExportFormats()).toEqual(["png", "cdxml", "xlsx", "csv", "svg"])
     expect(exportFormatCapability("csv")).toMatchObject({
       extension: "csv",
       mimeType: "text/csv",
@@ -34,8 +34,12 @@ describe("export format capabilities", () => {
       webDefaultEnabled: true,
     })
     expect(exportFormatCapability("svg")).toMatchObject({
-      status: "experimental",
+      status: "supported",
       artifactKind: "graph_snapshot",
+      writerId: "python-svg-graph-snapshot-v1",
+      fixtureWriterId: "fixture-svg-graph-snapshot-v1",
+      supportsBrowserPersistence: true,
+      webDefaultEnabled: true,
     })
     expect(exportFormatCapability("cdx")?.unsupportedReason).toContain("CDX binary")
   })
@@ -49,7 +53,10 @@ describe("export format capabilities", () => {
     expect(writerIdForExportFormat("cdxml", true)).toBe("fixture-cdxml-energy-v1")
     expect(writerIdForExportFormat("csv")).toBe("python-csv-energy-table-v1")
     expect(writerIdForExportFormat("csv", true)).toBe("fixture-csv-energy-table-v1")
+    expect(writerIdForExportFormat("svg")).toBe("python-svg-graph-snapshot-v1")
+    expect(writerIdForExportFormat("svg", true)).toBe("fixture-svg-graph-snapshot-v1")
     expect(supportsBrowserPersistence("xlsx")).toBe(true)
     expect(supportsBrowserPersistence("csv")).toBe(true)
+    expect(supportsBrowserPersistence("svg")).toBe(true)
   })
 })

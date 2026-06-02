@@ -1191,7 +1191,7 @@ describe("WorkbenchShell", () => {
     expect(missingRow?.textContent).not.toContain("-5.2")
     expect(within(energyPanel).getAllByText("Missing").length).toBeGreaterThan(0)
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
-    expect(within(exportPanel).getByText("1 missing, exported as missing")).toBeInTheDocument()
+    expect(within(exportPanel).getByText("Needs review")).toBeInTheDocument()
   })
 
   it("renders invalid shell command errors with the error code visible", async () => {
@@ -1335,15 +1335,18 @@ describe("WorkbenchShell", () => {
     renderWorkbench()
 
     const emptyExportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+    openExportMode(emptyExportPanel)
     expect(within(emptyExportPanel).getByRole("button", { name: "Export" })).toBeDisabled()
 
     fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
     expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+    expect(within(exportPanel).getByRole("button", { name: "Preview mode" })).toHaveAttribute("aria-pressed", "false")
     expect(within(exportPanel).getByLabelText("png")).toBeChecked()
     expect(within(exportPanel).getByLabelText("cdxml")).toBeChecked()
     expect(within(exportPanel).getByLabelText("xlsx")).toBeChecked()
     expect(within(exportPanel).getByLabelText("csv")).toBeChecked()
+    expect(within(exportPanel).getByLabelText("svg")).toBeChecked()
     expect(within(exportPanel).getByLabelText("Include bytes")).toBeChecked()
     expect(within(exportPanel).getByText("Export readiness")).toBeInTheDocument()
     expect(within(exportPanel).getByText("Not browser-local persisted")).toBeInTheDocument()
@@ -1355,13 +1358,15 @@ describe("WorkbenchShell", () => {
     expect(within(exportPanel).getByText("artifact-cdxml-rxnflow-profile")).toBeInTheDocument()
     expect(within(exportPanel).getByText("artifact-xlsx-rxnflow-profile")).toBeInTheDocument()
     expect(within(exportPanel).getByText("artifact-csv-rxnflow-profile")).toBeInTheDocument()
+    expect(within(exportPanel).getByText("artifact-svg-rxnflow-profile")).toBeInTheDocument()
     expect(within(exportPanel).getByText("fixture-png-energy-plot-v1")).toBeInTheDocument()
     expect(within(exportPanel).getByText("fixture-cdxml-energy-v1")).toBeInTheDocument()
     expect(within(exportPanel).getByText("fixture-xlsx-energy-table-v1")).toBeInTheDocument()
     expect(within(exportPanel).getByText("fixture-csv-energy-table-v1")).toBeInTheDocument()
+    expect(within(exportPanel).getByText("fixture-svg-graph-snapshot-v1")).toBeInTheDocument()
     expect(within(exportPanel).getAllByText("energy_table_schema_version")).toHaveLength(2)
     expect(within(exportPanel).getAllByText("energy-table-v1")).toHaveLength(2)
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(4)
+    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(5)
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[0]).toHaveAttribute("download", "rxnflow-profile.png")
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[0].getAttribute("href")).toMatch(/^data:image\/png;base64,/)
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[1]).toHaveAttribute("download", "rxnflow-profile.cdxml")
@@ -1370,8 +1375,10 @@ describe("WorkbenchShell", () => {
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[2].getAttribute("href")).toMatch(/^data:application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet;base64,/)
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[3]).toHaveAttribute("download", "rxnflow-profile.csv")
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[3].getAttribute("href")).toMatch(/^data:text\/csv;base64,/)
+    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[4]).toHaveAttribute("download", "rxnflow-profile.svg")
+    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[4].getAttribute("href")).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(screen.getAllByText("chemdraw_cdxml_only").length).toBeGreaterThan(0)
-    expect(screen.getByText("4 artifacts indexed")).toBeInTheDocument()
+    expect(screen.getByText("5 artifacts indexed")).toBeInTheDocument()
   })
 
   it("persists exported inline artifacts into the active browser project", async () => {
@@ -1384,18 +1391,21 @@ describe("WorkbenchShell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
     expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+    openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
     expect(await within(exportPanel).findByText("exports/rxnflow-profile.png")).toBeInTheDocument()
     expect(within(exportPanel).getByText("exports/rxnflow-profile.cdxml")).toBeInTheDocument()
     expect(within(exportPanel).getByText("exports/rxnflow-profile.xlsx")).toBeInTheDocument()
     expect(within(exportPanel).getByText("exports/rxnflow-profile.csv")).toBeInTheDocument()
-    expect(within(exportPanel).getAllByText("Yes").length).toBeGreaterThanOrEqual(4)
-    expect(within(exportPanel).getAllByText(/sha256:[a-f0-9]{64}/i).length).toBeGreaterThanOrEqual(4)
+    expect(within(exportPanel).getByText("exports/rxnflow-profile.svg")).toBeInTheDocument()
+    expect(within(exportPanel).getAllByText("Yes").length).toBeGreaterThanOrEqual(5)
+    expect(within(exportPanel).getAllByText(/sha256:[a-f0-9]{64}/i).length).toBeGreaterThanOrEqual(5)
     const [project] = await repository.listProjects()
     await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.png")).resolves.toBe(true)
+    await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.svg")).resolves.toBe(true)
     const exportIndex = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, exportArtifactsPath)).bytes))
-    expect(exportIndex.artifacts).toHaveLength(4)
+    expect(exportIndex.artifacts).toHaveLength(5)
     expect(exportIndex.artifacts[0]).toMatchObject({
       id: "artifact-cdxml-rxnflow-profile",
       path: "exports/rxnflow-profile.cdxml",
@@ -1404,6 +1414,11 @@ describe("WorkbenchShell", () => {
     expect(exportIndex.artifacts[1]).toMatchObject({
       id: "artifact-csv-rxnflow-profile",
       path: "exports/rxnflow-profile.csv",
+      checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+    })
+    expect(exportIndex.artifacts.find((artifact: { id: string }) => artifact.id === "artifact-svg-rxnflow-profile")).toMatchObject({
+      id: "artifact-svg-rxnflow-profile",
+      path: "exports/rxnflow-profile.svg",
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
     expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
@@ -1418,13 +1433,14 @@ describe("WorkbenchShell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
     expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+    openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByLabelText("Include bytes"))
     expect(within(exportPanel).getByText("Runtime metadata only")).toBeInTheDocument()
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
     expect(await within(exportPanel).findByText("artifact-png-rxnflow-profile")).toBeInTheDocument()
     expect(within(exportPanel).queryByRole("link", { name: "Download" })).not.toBeInTheDocument()
-    expect(within(exportPanel).getAllByText("Download unavailable")).toHaveLength(4)
+    expect(within(exportPanel).getAllByText("Download unavailable")).toHaveLength(5)
     const [project] = await repository.listProjects()
     await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.png")).resolves.toBe(false)
     const exportIndex = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, exportArtifactsPath)).bytes))
@@ -1440,11 +1456,12 @@ describe("WorkbenchShell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
     expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+    openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
     expect(await within(exportPanel).findByText("artifact-png-rxnflow-profile")).toBeInTheDocument()
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(4)
-    expect(within(exportPanel).getAllByText("No").length).toBeGreaterThanOrEqual(4)
+    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(5)
+    expect(within(exportPanel).getAllByText("No").length).toBeGreaterThanOrEqual(5)
     expect(screen.getAllByText("artifact_persistence_failed").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Browser local storage quota would be exceeded.").length).toBeGreaterThan(0)
     expect(screen.getAllByText("exports").length).toBeGreaterThan(0)
@@ -2033,9 +2050,12 @@ describe("WorkbenchShell", () => {
       }))
 
       const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+      openExportMode(exportPanel)
       fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
       expect(await within(exportPanel).findByText("exports/rxnflow-profile.png")).toBeInTheDocument()
+      expect(await within(exportPanel).findByText("exports/rxnflow-profile.svg")).toBeInTheDocument()
       expect(await repository.exists(importedProject.projectRef, "exports/rxnflow-profile.png")).toBe(true)
+      expect(await repository.exists(importedProject.projectRef, "exports/rxnflow-profile.svg")).toBe(true)
       expect(transport.payloads.filter((payload) => payload.command === "project.save_content")).toHaveLength(0)
 
       const workspaceBeforeSave = await readJsonObject(repository, importedProject.projectRef, workspacesPath)
@@ -2052,6 +2072,7 @@ describe("WorkbenchShell", () => {
       expect(await repository.exists(importedProject.projectRef, "inputs/raw/demo.xyz")).toBe(true)
       expect(await repository.exists(importedProject.projectRef, "exports/profile.png")).toBe(true)
       expect(await repository.exists(importedProject.projectRef, "exports/rxnflow-profile.png")).toBe(true)
+      expect(await repository.exists(importedProject.projectRef, "exports/rxnflow-profile.svg")).toBe(true)
 
       fireEvent.click(screen.getByRole("button", { name: "Export Bundle" }))
       expect(await screen.findByText("Bundle ready")).toBeInTheDocument()
@@ -2064,6 +2085,7 @@ describe("WorkbenchShell", () => {
         "inputs/raw/demo.xyz",
         "exports/profile.png",
         "exports/rxnflow-profile.png",
+        "exports/rxnflow-profile.svg",
       ]))
       const exportedWorkspace = JSON.parse(new TextDecoder().decode(
         exportedBundle.entries.find((entry) => entry.projectRelativePath === workspacesPath)?.bytes,
@@ -2083,6 +2105,7 @@ describe("WorkbenchShell", () => {
       expect(reimportedProject?.projectRef).toMatch(/^browser-project:/)
       expect(await repository.exists(reimportedProject?.projectRef ?? "", "inputs/raw/demo.xyz")).toBe(true)
       expect(await repository.exists(reimportedProject?.projectRef ?? "", "exports/rxnflow-profile.png")).toBe(true)
+      expect(await repository.exists(reimportedProject?.projectRef ?? "", "exports/rxnflow-profile.svg")).toBe(true)
       fireEvent.click(screen.getByRole("button", { name: "Open Bridge" }))
       expect(await within(graphCanvas).findByText("120%")).toBeInTheDocument()
 
@@ -2181,9 +2204,14 @@ describe("WorkbenchShell", () => {
     expect(within(energyPanel).getByRole("button", { name: "计算" })).toBeEnabled()
     const exportPanel = screen.getByRole("region", { name: "报告导出面板" })
     expect(within(exportPanel).getByText("报告导出")).toBeInTheDocument()
+    openExportMode(exportPanel, "导出模式")
     expect(within(exportPanel).getByRole("button", { name: "导出" })).toBeEnabled()
   })
 })
+
+function openExportMode(exportPanel: HTMLElement, label = "Export mode") {
+  fireEvent.click(within(exportPanel).getByRole("button", { name: label }))
+}
 
 function renderWorkbench(
   projectRepository = new MemoryBrowserProjectRepository(),

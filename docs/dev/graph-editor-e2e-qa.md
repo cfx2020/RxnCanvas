@@ -47,7 +47,7 @@ cd web && npm run test:e2e:local-http
 - 小文件 inline parser preview。
 - graph add/connect/set path 主流程。
 - energy compute。
-- PNG/CDXML/XLSX/CSV export projection 与 browser-local artifact persistence。
+- PNG/CDXML/XLSX/CSV/SVG export projection 与 browser-local artifact persistence。
 - bundle export/import/open bridge roundtrip。
 
 不要把复杂 graph gesture matrix 复制进 local-http E2E；那会把浏览器手势波动和 Python bridge dependency 绑在一起。

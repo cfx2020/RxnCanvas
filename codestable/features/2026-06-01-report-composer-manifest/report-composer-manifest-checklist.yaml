@@ -1,0 +1,54 @@
+feature: 2026-06-01-report-composer-manifest
+created: 2026-06-01
+
+steps:
+  - action: "Manifest contracts：定义 ReportDocument / ReportSection / ReportAsset / ReportComposerRequest，并保证字段 JSON-safe"
+    exit_signal: "类型可 import，bytes / Path / Python object 不进入 dataclass 字段"
+    status: done
+  - action: "Composer service：实现从 profile/table rows/artifacts/records 到 ReportDocument 的纯构建逻辑"
+    exit_signal: "正常输入生成固定 section 顺序、asset refs 和 warning list"
+    status: done
+  - action: "Edge cases：处理缺 profile、缺 graph snapshot、重复 artifact、artifact record path/checksum merge 和 metadata 非 JSON-safe"
+    exit_signal: "错误/警告语义可由单测断言，缺输入不伪造成 ready asset"
+    status: done
+  - action: "Tests and docs：补 core unit tests 与开发者文档，确认未新增 writer/UI/schema"
+    exit_signal: "Python targeted tests、python3 -m unittest discover 相关子集、YAML 校验通过"
+    status: done
+
+checks:
+  - item: "ReportAsset 是 JSON-safe manifest 引用，不保存 bytes；runtime bytes 仍由 ExportArtifact 或 exports/... 文件承载"
+    source: 名词契约
+    status: passed
+  - item: "ReportDocument 含 summary、graph、energy_profile、energy_table、artifacts、warnings sections，且 section 顺序稳定"
+    source: 验收场景
+    status: passed
+  - item: "profile + PNG/CDXML + CSV/XLSX + SVG artifacts 输入时，assets 指向已有 artifact ids"
+    source: 验收场景
+    status: passed
+  - item: "artifact 同时有 runtime path 和 ExportArtifactRecord checksum 时，ReportAsset 合并 path/checksum/metadata 且不复制 bytes"
+    source: 验收场景
+    status: passed
+  - item: "只有 profile、没有 table/snapshot artifacts 时 compose 成功，缺失资产进入 warning 或 unavailable data，不生成假 asset"
+    source: 验收场景
+    status: passed
+  - item: "profile warnings 与 artifact metadata warnings 会去重，并保留 code/message/target"
+    source: 验收场景
+    status: passed
+  - item: "metadata 中出现非 JSON-safe 值时返回 invalid_input target=metadata，不过滤也不塞进 dataclass"
+    source: 验收场景
+    status: passed
+  - item: "重复 compose 同一输入时 section ids、asset ids、section order 稳定"
+    source: 验收场景
+    status: passed
+  - item: "future writer 只拿 ReportDocument 就能知道报告结构，不需要访问 EnergyProfile / ExportArtifact bytes / Web state"
+    source: 验收场景
+    status: passed
+  - item: "本 feature 不新增 PDF/PPTX/HTML/CDX writer 或 supported format"
+    source: 范围守护
+    status: passed
+  - item: "本 feature 不新增 Web UI、Shell command、HTTP route、Project Content section 或 Browser Repository writer"
+    source: 范围守护
+    status: passed
+  - item: "本 feature 不重新计算 energy profile、CSV rows、graph layout 或 graph snapshot"
+    source: 范围守护
+    status: passed

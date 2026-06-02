@@ -21,14 +21,14 @@ describe("export artifact persistence", () => {
       basename: "rxnflow-profile",
     })
 
-    expect(first).toHaveLength(4)
+    expect(first).toHaveLength(5)
     expect(first[0]).toMatchObject({
       artifactId: "artifact-png-rxnflow-profile",
       persisted: true,
       path: "exports/rxnflow-profile.png",
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
-    expect(second).toHaveLength(4)
+    expect(second).toHaveLength(5)
     await expect(repository.readObject(project.projectRef, "exports/rxnflow-profile.png")).resolves.toMatchObject({
       path: "exports/rxnflow-profile.png",
       checksum: first[0].checksum,
@@ -41,7 +41,7 @@ describe("export artifact persistence", () => {
     })
     const indexObject = await repository.readObject(project.projectRef, exportArtifactsPath)
     const index = JSON.parse(new TextDecoder().decode(indexObject.bytes))
-    expect(index.artifacts).toHaveLength(4)
+    expect(index.artifacts).toHaveLength(5)
     expect(index.artifacts[0]).toMatchObject({
       id: "artifact-cdxml-rxnflow-profile",
       format: "cdxml",
@@ -56,6 +56,16 @@ describe("export artifact persistence", () => {
       metadata: expect.objectContaining({
         mime_type: "text/csv",
         energy_table_schema_version: "energy-table-v1",
+      }),
+    })
+    expect(index.artifacts.find((artifact: { id: string }) => artifact.id === "artifact-svg-rxnflow-profile")).toMatchObject({
+      id: "artifact-svg-rxnflow-profile",
+      format: "svg",
+      path: "exports/rxnflow-profile.svg",
+      metadata: expect.objectContaining({
+        mime_type: "image/svg+xml",
+        artifact_kind: "graph_snapshot",
+        workspace_id: "workspace-a-b",
       }),
     })
     const contentIndex = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, projectContentIndexPath)).bytes))
@@ -151,6 +161,10 @@ describe("export artifact persistence", () => {
         id: "artifact-csv-rxnflow-profile",
         persisted: false,
       }),
+      expect.objectContaining({
+        id: "artifact-svg-rxnflow-profile",
+        persisted: false,
+      }),
     ])
   })
 
@@ -177,10 +191,11 @@ function fixtureArtifacts(): ShellArtifact[] {
     fixtureArtifact("cdxml"),
     fixtureArtifact("xlsx"),
     fixtureArtifact("csv"),
+    fixtureArtifact("svg"),
   ]
 }
 
-function fixtureArtifact(format: "png" | "cdxml" | "xlsx" | "csv"): ShellArtifact {
+function fixtureArtifact(format: "png" | "cdxml" | "xlsx" | "csv" | "svg"): ShellArtifact {
   const metadataByFormat = {
     png: {
       mime_type: "image/png",
@@ -207,7 +222,14 @@ function fixtureArtifact(format: "png" | "cdxml" | "xlsx" | "csv"): ShellArtifac
       format_status: "supported",
       energy_table_schema_version: "energy-table-v1",
     },
-  } satisfies Record<"png" | "cdxml" | "xlsx" | "csv", Record<string, string>>
+    svg: {
+      mime_type: "image/svg+xml",
+      extension: "svg",
+      artifact_kind: "graph_snapshot",
+      format_status: "supported",
+      workspace_id: "workspace-a-b",
+    },
+  } satisfies Record<"png" | "cdxml" | "xlsx" | "csv" | "svg", Record<string, string>>
   return {
     id: `artifact-${format}-rxnflow-profile`,
     format,

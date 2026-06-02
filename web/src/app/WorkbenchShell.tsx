@@ -2112,6 +2112,7 @@ function InspectorPanel({
       <ReportExportPanel
         artifacts={state.artifacts}
         profile={state.profile}
+        workspace={state.workspace}
         options={reportExportOptions}
         disabled={!state.sessionId || !state.profile}
         warnings={state.warnings}

@@ -1077,6 +1077,7 @@ class PlatformShellService:
             ExportRequest(
                 formats=formats,
                 graph=state.graph,
+                workspace=state.workspace,
                 profile=state.profile,
                 objects=state.objects,
                 destination_dir=command.args.get("destination_dir"),

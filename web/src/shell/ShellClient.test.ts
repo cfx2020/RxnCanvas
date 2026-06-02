@@ -957,7 +957,7 @@ describe("ShellClient", () => {
       command: "export.profile",
       args: {
         session_id: fixtureResponse.data?.session_id ?? "",
-        formats: ["png", "cdxml", "xlsx", "csv"],
+        formats: ["png", "cdxml", "xlsx", "csv", "svg"],
         include_bytes: true,
         basename: "fixture-export",
         title: "Fixture Export",
@@ -966,8 +966,8 @@ describe("ShellClient", () => {
 
     expect(response.ok).toBe(true)
     expect(response.data?.command).toBe("export.profile")
-    expect(response.data?.artifact_count).toBe(4)
-    expect(response.artifacts.map((artifact) => artifact.format)).toEqual(["png", "cdxml", "xlsx", "csv"])
+    expect(response.data?.artifact_count).toBe(5)
+    expect(response.artifacts.map((artifact) => artifact.format)).toEqual(["png", "cdxml", "xlsx", "csv", "svg"])
     expect(response.artifacts[0].id).toBe("artifact-png-fixture-export")
     expect(response.artifacts[0].bytes_base64).toEqual(expect.any(String))
     expect(response.artifacts[0].metadata).toMatchObject({
@@ -1000,6 +1000,16 @@ describe("ShellClient", () => {
       energy_table_schema_version: "energy-table-v1",
       energy_table_row_count: 2,
     })
+    expect(response.artifacts[4].metadata).toMatchObject({
+      writer_id: "fixture-svg-graph-snapshot-v1",
+      mime_type: "image/svg+xml",
+      extension: "svg",
+      artifact_kind: "graph_snapshot",
+      workspace_id: "workspace-fixture",
+      svg_width: 720,
+      svg_height: 432,
+    })
+    expect(atob(response.artifacts[4].bytes_base64 ?? "")).toContain("<svg")
     expect(response.warnings[0].code).toBe("chemdraw_cdxml_only")
     expect(() => JSON.stringify(response)).not.toThrow()
   })

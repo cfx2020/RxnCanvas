@@ -3,6 +3,7 @@ import {
   type BrowserWriteReceipt,
 } from "../repository"
 import type { JsonObject, ShellArtifact, ShellError, WorkbenchArtifactSummary } from "../shell"
+import type { ExportFormat } from "../shell/types"
 import {
   exportArtifactsPath,
   projectContentIndexPath,
@@ -14,7 +15,7 @@ const exportArtifactCreatedAt = "2026-05-05T00:00:00Z" as const
 const projectContentTime = "2026-05-05T00:00:00Z" as const
 export type BrowserPersistedArtifactRecord = JsonObject & {
   id: string
-  format: "png" | "cdxml" | "xlsx" | "csv"
+  format: ExportFormat
   path: `exports/${string}`
   checksum: string
   created_at: string

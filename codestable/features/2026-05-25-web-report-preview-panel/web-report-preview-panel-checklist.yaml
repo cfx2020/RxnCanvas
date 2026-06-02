@@ -1,0 +1,60 @@
+feature: 2026-05-25-web-report-preview-panel
+created: 2026-05-25
+
+steps:
+  - action: "Report preview model helper：定义 ReportPreviewModel 和 buildReportPreviewModel，覆盖 profile/graph/table/snapshot/artifact/warning 推导"
+    exit_signal: "helper tests 可断言缺 profile、已有 CSV/XLSX table、已有 SVG snapshot、inline/persisted artifacts 和 warnings"
+    status: done
+  - action: "ReportExportPanel Preview mode：加入 Preview/Export segmented control 和 preview view，保留 Export mode 现有行为"
+    exit_signal: "component tests 能看到 Preview/Export 切换、asset readiness、artifact reuse list，且现有 export tests 不退化"
+    status: done
+  - action: "i18n 与 responsive CSS：补中英文文案、紧凑 preview matrix、窄屏单列和长文本 wrap"
+    exit_signal: "zh-CN / en-US key 对齐，桌面与 390px 宽度无水平溢出"
+    status: done
+  - action: "集成验证：运行 Web targeted tests/build，必要时更新 WorkbenchShell tests 的 report export section"
+    exit_signal: "Web tests/build 通过，未新增 core/Shell/schema 变化"
+    status: done
+  - action: "浏览器验收：从 web/ 启动 Vite，桌面和窄屏运行 Fixture -> Compute -> Preview/Export"
+    exit_signal: "Preview 初始 pending、Export 后 ready 状态可观察，console clean，无 overlay、无水平溢出"
+    status: done
+
+checks:
+  - item: "Preview 有 workspace/profile 但无 artifacts 时显示 graph/profile summary，energy table 和 graph snapshot 为 pending export，不显示假 ready"
+    source: 验收场景
+    status: passed
+  - item: "profile 含 missing point 和 corrections 时，Preview 显示 missing count、correction count 和 warning/readiness 状态，不把 missing point 当作 0"
+    source: 验收场景
+    status: passed
+  - item: "CSV/XLSX artifact metadata 含 energy_table_schema_version=energy-table-v1 时，energy table asset 为 ready，并显示 row/column count 与 artifact id"
+    source: 验收场景
+    status: passed
+  - item: "SVG artifact metadata 含 artifact_kind=graph_snapshot 时，graph snapshot asset 为 ready，并显示 graph/workspace/counts 或 snapshot artifact id"
+    source: 验收场景
+    status: passed
+  - item: "artifact 缺 inline bytes 或 include bytes 关闭时，Preview artifact reuse list 显示 hasInlineBytes=false，不写 browser persistence"
+    source: 验收场景
+    status: passed
+  - item: "active browser project 下导出 artifacts 后，Preview 显示 persisted path/checksum，Export mode 现有 artifact list 仍可下载"
+    source: 验收场景
+    status: passed
+  - item: "warnings 中的 chemdraw_cdxml_only 或 persistence warning 在 Preview warning list 保留 code、message、target 原样"
+    source: 验收场景
+    status: passed
+  - item: "切换 Preview/Export mode 不丢失格式选择、basename/title/include bytes，Export button 行为不变"
+    source: 验收场景
+    status: passed
+  - item: "窄屏 390x840 下 Preview/Export 的 preview matrix、artifact ids、checksum、warnings 不重叠、不产生水平滚动"
+    source: 验收场景
+    status: passed
+  - item: "本 feature 不新增 core report composer、Shell command、HTTP route、Project Content schema 或 persistence section"
+    source: 范围守护
+    status: passed
+  - item: "本 feature 不在 Web 生成 PNG/CDXML/XLSX/CSV/SVG bytes、DOM screenshot、canvas capture、Blob SVG builder 或 graph layout"
+    source: 范围守护
+    status: passed
+  - item: "本 feature 不新增 PDF/PPTX/CDX/HTML report supported set、file picker、云分享或账号相关 UI"
+    source: 范围守护
+    status: passed
+  - item: "本 feature 不把 Report Preview Model、view mode、readiness 或 warnings 写入 Project Content、Browser Project Repository、localStorage 或 ShellResponse"
+    source: 范围守护
+    status: passed

@@ -40,10 +40,12 @@ from rxnflow.models import (
     EnergyPoint,
     EnergyProfile,
     EnergyValue,
+    ReactionEdge,
     ReactionGraph,
     ReactionNode,
     ReactionPath,
 )
+from rxnflow.workspace import CanvasViewport, NetworkPreview, WorkspaceSelection, WorkspaceSnapshot
 
 
 PROJECT_ID = "project-a"
@@ -51,7 +53,7 @@ PROJECT_ID = "project-a"
 
 class ReportExportBaselineTest(unittest.TestCase):
     def test_export_contracts_and_input_validation(self) -> None:
-        self.assertEqual(ALLOWED_EXPORT_FORMATS, frozenset(("png", "cdxml", "xlsx", "csv")))
+        self.assertEqual(ALLOWED_EXPORT_FORMATS, frozenset(("png", "cdxml", "xlsx", "csv", "svg")))
         self.assertEqual(supported_export_formats(), ALLOWED_EXPORT_FORMATS)
         self.assertEqual(ENERGY_TABLE_SCHEMA_VERSION, "energy-table-v1")
         self.assertEqual(ENERGY_TABLE_COLUMNS[0].key, "structure_name")
@@ -96,7 +98,10 @@ class ReportExportBaselineTest(unittest.TestCase):
         self.assertTrue(capabilities["csv"].supports_browser_persistence)
         self.assertTrue(capabilities["csv"].web_default_enabled)
         self.assertEqual(capabilities["csv"].writer_id, "python-csv-energy-table-v1")
-        self.assertEqual(capabilities["svg"].status, "experimental")
+        self.assertEqual(capabilities["svg"].status, "supported")
+        self.assertEqual(capabilities["svg"].writer_id, "python-svg-graph-snapshot-v1")
+        self.assertTrue(capabilities["svg"].supports_browser_persistence)
+        self.assertTrue(capabilities["svg"].web_default_enabled)
         self.assertEqual(capabilities["cdx"].unsupported_reason, "ChemDraw CDX binary writer/converter is not available.")
         self.assertIs(export_format_capability("missing"), None)
 
@@ -122,6 +127,11 @@ class ReportExportBaselineTest(unittest.TestCase):
             "invalid_input",
             "request",
         )
+        self.assert_error(
+            service.export(PROJECT_ID, ExportRequest(formats=("svg",))),
+            "invalid_input",
+            "graph",
+        )
         for export_format in ("cdx", "pdf", "pptx"):
             self.assert_error(
                 service.export(PROJECT_ID, ExportRequest(formats=(export_format,), profile=_profile())),
@@ -134,6 +144,127 @@ class ReportExportBaselineTest(unittest.TestCase):
             "invalid_input",
             "request",
         )
+
+    def test_svg_graph_snapshot_exports_valid_xml_and_metadata(self) -> None:
+        service = ReportExportService()
+        graph = _graph_with_projection()
+        workspace = _workspace(graph)
+        result = service.export(
+            PROJECT_ID,
+            ExportRequest(
+                formats=("svg",),
+                graph=ReactionGraph("ignored-graph", PROJECT_ID),
+                workspace=workspace,
+                profile=_profile(),
+                basename="graph-snapshot",
+                title="Graph Snapshot",
+            ),
+        )
+
+        self.assertTrue(result.ok, result.error)
+        artifact = result.value[0]  # type: ignore[index]
+        self.assertEqual(artifact.format, "svg")
+        self.assertTrue((artifact.bytes or b"").startswith(b'<?xml version="1.0" encoding="UTF-8"?>'))
+        self.assertEqual(artifact.metadata["writer_id"], "python-svg-graph-snapshot-v1")
+        self.assertEqual(artifact.metadata["extension"], "svg")
+        self.assertEqual(artifact.metadata["mime_type"], "image/svg+xml")
+        self.assertEqual(artifact.metadata["artifact_kind"], "graph_snapshot")
+        self.assertEqual(artifact.metadata["format_status"], "supported")
+        self.assertEqual(artifact.metadata["graph_id"], "graph-main")
+        self.assertEqual(artifact.metadata["workspace_id"], "workspace-main")
+        self.assertEqual(artifact.metadata["node_count"], 3)
+        self.assertEqual(artifact.metadata["edge_count"], 2)
+        self.assertEqual(artifact.metadata["path_count"], 1)
+        self.assertEqual(artifact.metadata["active_path_id"], "path-main")
+        self.assertEqual(artifact.metadata["selected_node_count"], 1)
+        self.assertEqual(artifact.metadata["selected_edge_count"], 1)
+        self.assertEqual(artifact.metadata["selected_path_count"], 1)
+        self.assertEqual(artifact.metadata["viewport_x"], 24.0)
+        self.assertEqual(artifact.metadata["viewport_y"], 12.0)
+        self.assertEqual(artifact.metadata["viewport_zoom"], 1.25)
+        self.assertEqual(artifact.metadata["svg_width"], 720)
+        self.assertEqual(artifact.metadata["svg_height"], 432)
+
+        xml_text = (artifact.bytes or b"").decode("utf-8")
+        for forbidden in ("<script", "<foreignObject", "xlink:href", ' href="', "https://"):
+            self.assertNotIn(forbidden, xml_text)
+        root = ElementTree.fromstring(xml_text)
+        self.assertTrue(root.tag.endswith("svg"))
+        self.assertEqual(root.attrib["data-rxnflow-artifact"], "graph-snapshot")
+        self.assertEqual(root.attrib["data-graph-id"], "graph-main")
+        self.assertEqual(root.attrib["data-workspace-id"], "workspace-main")
+        self.assertEqual(root.attrib["data-active-path-id"], "path-main")
+        self.assertEqual(root.attrib["viewBox"], "0 0 720 432")
+
+        graph_group = _svg_element_by_class(root, "graph-snapshot-graph")
+        self.assertIsNotNone(graph_group)
+        assert graph_group is not None
+        self.assertEqual(graph_group.attrib["data-viewport-x"], "24")
+        self.assertEqual(graph_group.attrib["data-viewport-y"], "12")
+        self.assertEqual(graph_group.attrib["data-viewport-zoom"], "1.25")
+
+        selected_node = _svg_element_by_attr(root, "data-node-id", "node-ts")
+        self.assertIsNotNone(selected_node)
+        assert selected_node is not None
+        self.assertIn("graph-snapshot-node--active", selected_node.attrib["class"])
+        self.assertIn("graph-snapshot-node--selected", selected_node.attrib["class"])
+        self.assertEqual(selected_node.attrib["data-active-path"], "true")
+        self.assertEqual(selected_node.attrib["data-selected"], "true")
+
+        selected_edge = _svg_element_by_attr(root, "data-edge-id", "edge-a-ts")
+        self.assertIsNotNone(selected_edge)
+        assert selected_edge is not None
+        self.assertIn("graph-snapshot-edge--active", selected_edge.attrib["class"])
+        self.assertIn("graph-snapshot-edge--selected", selected_edge.attrib["class"])
+        self.assertEqual(selected_edge.attrib["data-active-path"], "true")
+        self.assertEqual(selected_edge.attrib["data-selected"], "true")
+
+        text_values = [element.text for element in root.iter() if element.text]
+        self.assertIn("TS <A & B>", text_values)
+        self.assertIn("R & TS <A>", text_values)
+
+    def test_svg_graph_snapshot_handles_empty_graph_and_fallback_positions(self) -> None:
+        service = ReportExportService()
+        empty_result = service.export(
+            PROJECT_ID,
+            ExportRequest(formats=("svg",), graph=ReactionGraph("graph-empty", PROJECT_ID)),
+        )
+
+        self.assertTrue(empty_result.ok, empty_result.error)
+        empty_artifact = empty_result.value[0]  # type: ignore[index]
+        empty_root = ElementTree.fromstring(empty_artifact.bytes or b"")
+        self.assertEqual(empty_artifact.metadata["graph_id"], "graph-empty")
+        self.assertEqual(empty_artifact.metadata["node_count"], 0)
+        self.assertEqual(empty_artifact.metadata["edge_count"], 0)
+        self.assertEqual(empty_artifact.metadata["path_count"], 0)
+        self.assertIn("Empty graph", [element.text for element in empty_root.iter() if element.text])
+
+        fallback_graph = ReactionGraph(
+            id="graph-fallback",
+            project_id=PROJECT_ID,
+            nodes=(
+                ReactionNode("node-a", "species", "A"),
+                ReactionNode("node-b", "species", "B"),
+                ReactionNode("node-c", "species", "C"),
+            ),
+            edges=(ReactionEdge("edge-a-b", "node-a", "node-b"),),
+        )
+        first = service.export(PROJECT_ID, ExportRequest(formats=("svg",), graph=fallback_graph))
+        second = service.export(PROJECT_ID, ExportRequest(formats=("svg",), graph=fallback_graph))
+
+        self.assertTrue(first.ok, first.error)
+        self.assertTrue(second.ok, second.error)
+        first_artifact = first.value[0]  # type: ignore[index]
+        second_artifact = second.value[0]  # type: ignore[index]
+        self.assertEqual(first_artifact.bytes, second_artifact.bytes)
+        root = ElementTree.fromstring(first_artifact.bytes or b"")
+        transforms = [
+            element.attrib["transform"]
+            for element in root.iter()
+            if element.attrib.get("data-node-id") in {"node-a", "node-b", "node-c"}
+        ]
+        self.assertEqual(len(transforms), 3)
+        self.assertTrue(all("translate(" in transform for transform in transforms))
 
     def test_energy_table_header_mapping_covers_user_workbook_headers(self) -> None:
         self.assertEqual(normalize_energy_table_header("Egas", context="hartree"), "egas_hartree")
@@ -469,6 +600,7 @@ class ReportExportBaselineTest(unittest.TestCase):
         artifact = result.value[0]  # type: ignore[index]
         self.assertEqual(artifact.bytes[:8], PNG_SIGNATURE)  # type: ignore[index]
         self.assertEqual(artifact.metadata["profile_id"], "profile-main")
+        self.assertIsInstance(artifact.metadata["warnings"], list)
         self.assertIn("missing_energy_point", artifact.metadata["warnings"])
         self.assertIn("missing_energy_point", [warning.code for warning in result.warnings])
 
@@ -731,6 +863,60 @@ def _graph() -> ReactionGraph:
         ),
         paths=(ReactionPath("path-main", "main", ("node-a", "node-ts", "node-b")),),
     )
+
+
+def _graph_with_projection() -> ReactionGraph:
+    return ReactionGraph(
+        id="graph-main",
+        project_id=PROJECT_ID,
+        nodes=(
+            ReactionNode("node-a", "species", "A", ("object-a",), position=(120.0, 160.0)),
+            ReactionNode("node-ts", "transition_state", "TS <A & B>", ("object-ts",), position=(300.0, 120.0)),
+            ReactionNode("node-b", "species", "B", ("object-b",), position=(480.0, 180.0)),
+        ),
+        edges=(
+            ReactionEdge("edge-a-ts", "node-a", "node-ts", "R & TS <A>"),
+            ReactionEdge("edge-ts-b", "node-ts", "node-b", "TS > P"),
+        ),
+        paths=(ReactionPath("path-main", "Main <path>", ("node-a", "node-ts", "node-b")),),
+    )
+
+
+def _workspace(graph: ReactionGraph) -> WorkspaceSnapshot:
+    return WorkspaceSnapshot(
+        workspace_id="workspace-main",
+        project_id=PROJECT_ID,
+        graph=graph,
+        palette=(),
+        selection=WorkspaceSelection(
+            node_ids=("node-ts",),
+            edge_ids=("edge-a-ts",),
+            path_ids=("path-main",),
+        ),
+        viewport=CanvasViewport(24.0, 12.0, 1.25),
+        active_path_id="path-main",
+        preview=NetworkPreview(
+            graph_id=graph.id,
+            active_path_id="path-main",
+            nodes=graph.nodes,
+            edges=graph.edges,
+            paths=graph.paths,
+        ),
+    )
+
+
+def _svg_element_by_class(root: ElementTree.Element, class_name: str) -> ElementTree.Element | None:
+    for element in root.iter():
+        if class_name in element.attrib.get("class", "").split():
+            return element
+    return None
+
+
+def _svg_element_by_attr(root: ElementTree.Element, key: str, value: str) -> ElementTree.Element | None:
+    for element in root.iter():
+        if element.attrib.get(key) == value:
+            return element
+    return None
 
 
 def _xlsx_xml(workbook: bytes) -> tuple[str, str]:

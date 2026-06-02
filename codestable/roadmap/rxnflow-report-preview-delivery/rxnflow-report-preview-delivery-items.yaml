@@ -21,34 +21,34 @@ items:
   - slug: export-graph-snapshot-svg
     description: 从 graph/workspace projection 生成报告用 SVG graph snapshot artifact，覆盖 escaping、空图、active path 和 viewport bounds
     depends_on: [export-format-capability-matrix]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-25-export-graph-snapshot-svg
     minimal_loop: false
     notes: 首轮优先 projection-based SVG，避免把 DOM hover、pending edge、minimap draft 或 history stack 写进报告
 
   - slug: web-report-preview-panel
     description: 新增 Web 报告预览面板或 Report Export Panel preview mode，汇总 graph/profile/table/artifact readiness 与 warnings，覆盖桌面/窄屏
     depends_on: [export-csv-energy-table, export-graph-snapshot-svg]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-05-25-web-report-preview-panel
     minimal_loop: false
     notes: Web 预览只消费 ShellResponse、WorkbenchDomainState 和 artifact projection，不在前端重算能量或导出 bytes
 
   - slug: report-composer-manifest
     description: 定义 ReportDocument/ReportSection/ReportAsset manifest，组合当前 energy diagram、table、graph snapshot 和 artifact metadata
     depends_on: [export-csv-energy-table, export-graph-snapshot-svg]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-01-report-composer-manifest
     minimal_loop: false
     notes: manifest 只保存 JSON-safe data 和 artifact references，不持有 Python object、React state、DOM node 或 Blob
 
   - slug: delivery-format-boundary-spike
-    description: 调研并固定 SVG/PDF/PPTX/CDX 的依赖、运行位置、错误码和 unsupported UI 口径，能落地的格式转成后续 implementation item
+    description: 调研并固定 PDF/PPTX/CDX 的依赖、运行位置、错误码和 unsupported UI 口径，并明确已落地 SVG graph snapshot 在组合报告中的复用边界
     depends_on: [report-composer-manifest]
     status: planned
     feature: null
     minimal_loop: false
-    notes: CDX 在没有可靠 writer/converter、license、平台可用性和测试策略前保持 unsupported
+    notes: SVG graph snapshot 已 supported；CDX 在没有可靠 writer/converter、license、平台可用性和测试策略前保持 unsupported
 
   - slug: report-preview-delivery-qa-guides
     description: 收口 unit/component/E2E、用户指南和开发者指南，说明 CSV、graph snapshot、report preview、composer manifest 和暂不支持格式边界
