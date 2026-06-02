@@ -37,10 +37,10 @@ items:
   - slug: extxyz-public-variant-intake
     description: 建立公开或用户授权 extxyz 样例 intake 流程，并选择少量真实变体补 fixture 或 known_limits
     depends_on: [parser-public-fixture-decision-ledger]
-    status: in-progress
+    status: done
     feature: 2026-06-02-extxyz-public-variant-intake
     minimal_loop: false
-    notes: 方案已起草；本轮先用 project-authored authorized extxyz variants 固定 lattice/PBC/forces/stress 等 advanced fields 的 known-limits，不下载或 vendor 外部 public extxyz 数据集
+    notes: 已落地 extxyz variant intake summary/guards；当前 4 个 project-authored extxyz variants 全 allowed/promoted，新增 lattice/PBC/forces/stress/magmoms advanced-field fixture，但 advanced fields 仍为 known-limits 不映射到领域模型
 
   - slug: parser-public-fixture-promotion-adapter
     description: 统一校验 promoted fixture 的 decision_id、source metadata、manifest、snapshot 和 support matrix 关系

@@ -279,9 +279,9 @@ source:
 5. **extxyz-public-variant-intake**：建立公开或用户授权 extxyz 样例 intake 流程，并选择少量真实变体补 fixture 或 known_limits。
    - 所属模块：extxyz External Variant Intake
    - 依赖：parser-public-fixture-decision-ledger
-   - 状态：in-progress
+   - 状态：done
    - 对应 feature：2026-06-02-extxyz-public-variant-intake
-   - 备注：方案已起草；本轮先用 project-authored authorized extxyz variants 固定 lattice/PBC/forces/stress 等 advanced fields 的 known-limits，不下载或 vendor 外部 public extxyz 数据集。
+   - 备注：已落地 extxyz variant intake summary/guards；当前 4 个 project-authored extxyz variants 全 allowed/promoted，新增 lattice/PBC/forces/stress/magmoms advanced-field fixture，但 advanced fields 仍为 known-limits 不映射到领域模型。
 
 6. **parser-public-fixture-promotion-adapter**：统一校验 promoted fixture 的 `decision_id`、source metadata、manifest、snapshot 和 support matrix 关系。
    - 所属模块：Fixture Promotion Adapter
