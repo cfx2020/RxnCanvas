@@ -286,9 +286,9 @@ source:
 6. **parser-public-fixture-promotion-adapter**：统一校验 promoted fixture 的 `decision_id`、source metadata、manifest、snapshot 和 support matrix 关系。
    - 所属模块：Fixture Promotion Adapter
    - 依赖：maple-public-candidate-resolution, cclib-public-candidate-resolution, extxyz-public-variant-intake
-   - 状态：planned
-   - 对应 feature：null
-   - 备注：如果前三条没有任何 allowed/promoted 文件，本 feature 仍需校验 blocked/reference-only 决策不会被误标 supported。
+   - 状态：in-progress
+   - 对应 feature：2026-06-03-parser-public-fixture-promotion-adapter
+   - 备注：方案已起草；本 feature 统一校验 promoted decision、source-gated fixture decision_id、source metadata、manifest、snapshot 和 support matrix 关系，不新增真实 third-party/user-redacted fixture files。
 
 7. **public-fixture-import-preview-regression**：把 promoted public/user-redacted fixtures 纳入 ImportRegistryWorkflow 与 Platform Shell `import.preview` 回归。
    - 所属模块：Import Preview Public Regression

@@ -45,10 +45,10 @@ items:
   - slug: parser-public-fixture-promotion-adapter
     description: 统一校验 promoted fixture 的 decision_id、source metadata、manifest、snapshot 和 support matrix 关系
     depends_on: [maple-public-candidate-resolution, cclib-public-candidate-resolution, extxyz-public-variant-intake]
-    status: planned
-    feature: null
+    status: in-progress
+    feature: 2026-06-03-parser-public-fixture-promotion-adapter
     minimal_loop: false
-    notes: 如果前三条没有任何 allowed/promoted 文件，本 feature 仍需校验 blocked/reference-only 决策不会被误标 supported
+    notes: 方案已起草；本 feature 统一校验 promoted decision、source-gated fixture decision_id、source metadata、manifest、snapshot 和 support matrix 关系，不新增真实 third-party/user-redacted fixture files
 
   - slug: public-fixture-import-preview-regression
     description: 把 promoted public/user-redacted fixtures 纳入 ImportRegistryWorkflow 与 Platform Shell import.preview 回归
