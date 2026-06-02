@@ -4,85 +4,85 @@ created: 2026-06-02
 steps:
   - action: "Intake summary contract：定义 extxyz variant intake summary dataclass/helper，从 inventory + decision ledger + manifest + support matrix 派生当前 authorized extxyz 状态"
     exit_signal: "summary 覆盖 ase-extxyz-project-authored 全部 vendored file ids，promoted files 与 executable fixture ids 对齐，unresolved 为空"
-    status: pending
+    status: done
 
   - action: "Advanced-field fixture boundary：补 project-authored extxyz variant 和 snapshot，覆盖 lattice/PBC/forces/stress 等 advanced fields 的输入形状，但 runtime projection 仍只含当前支持字段"
     exit_signal: "fixture parse 成功，geometry/label/energy warning 符合当前 parser 行为，advanced fields 没有进入 ChemicalObjectDraft 或 supported field 声明"
-    status: pending
+    status: done
 
   - action: "Support matrix/docs guards：扩展 support matrix known limits、focused tests 和 developer guide，固定 public/user-redacted extxyz 后续 intake 纪律"
     exit_signal: "ordinary tests no-network，support matrix 不把 advanced fields 标成 supported，docs 明确外部 extxyz 必须走 decision ledger，YAML validation 和 git diff --check 通过"
-    status: pending
+    status: done
 
 checks:
   - item: "能从当前 sources.yaml / public-fixture-decisions.yaml / manifest.yaml / support-matrix.yaml 派生 ParserExtxyzVariantIntakeSummary"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "summary 覆盖 ase-extxyz-project-authored 的全部 vendored file ids，无 missing/extra/unresolved"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "每个 project-authored extxyz vendored file 都是 allowed/promoted，并带同名或明确对应的 fallback fixture"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "每个 promoted extxyz fallback fixture 存在于 manifest，且 source.kind 为 synthetic 或项目授权等价语义"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "support matrix 中 ase-extxyz-synthetic 的 executable fixture ids 覆盖所有 promoted extxyz fixtures"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "新增 advanced-field extxyz fixture parse 成功，输出仍只包含 geometry、label、charge/spin 和 electronic energy 等当前支持字段"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "lattice/PBC、forces、stress、magmoms 等 advanced fields 在 support matrix 中保持 unsupported/known-limits，不被声明为 parser supported fields"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "multi-frame extxyz 仍输出多个 ChemicalObjectDraft，不生成 ReactionPath、direction/topology、TS candidate 或 energy profile"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "extxyz energy 仍按 ASE eV 语义转 Hartree，并保留 unit_assumed warning；missing energy 仍保留 missing_section warning"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Docs 明确 external/public/user-redacted extxyz 后续必须走 source policy、decision ledger 和 promotion adapter，不允许自动 vendor"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "Scope guard 证明未修改 Import Workflow、Platform Shell、Web UI、report export 或外部 fetch workflow"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "不下载或 vendor 外部 public extxyz 数据集"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不复制未授权用户文件、网页示例或 ASE 文档片段"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不新增 lattice/PBC、forces、stress、magmoms、per-atom charges 或 calculator metadata 的领域模型字段"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不让 extxyz multi-frame 生成 ReactionPath、direction/topology、TS candidate 或 energy profile"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不修改 import workflow、Platform Shell、Web UI 或 report export"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不改变 extxyz energy eV -> Hartree 转换和 warning 语义"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不让普通 tests 访问网络"
     source: 范围守护
-    status: pending
+    status: passed

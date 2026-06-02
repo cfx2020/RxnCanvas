@@ -23,6 +23,7 @@ from tests.parser_fixture_harness import (
     load_parser_support_matrix,
     project_parser_fixture_snapshot,
     summarize_cclib_public_candidate_resolution,
+    summarize_extxyz_variant_intake,
     summarize_maple_public_candidate_resolution,
     verify_parser_public_candidate_bytes,
 )
@@ -38,7 +39,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
     def test_manifest_loads_synthetic_fixture_and_parse_options(self) -> None:
         manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
 
-        self.assertEqual(len(manifest.fixtures), 15)
+        self.assertEqual(len(manifest.fixtures), 16)
         fixture = _fixture_by_id(manifest, "maple-sp-synthetic-minimal")
         self.assertEqual(fixture.id, "maple-sp-synthetic-minimal")
         self.assertEqual(fixture.source.kind, "synthetic")
@@ -78,6 +79,10 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         )
         extxyz = _matrix_entry_by_id(matrix, "ase-extxyz-synthetic")
         self.assertEqual(extxyz.source_ids, ("ase-extxyz-project-authored",))
+        self.assertEqual(extxyz.fields["lattice_pbc"], "unsupported")
+        self.assertEqual(extxyz.fields["forces"], "unsupported")
+        self.assertEqual(extxyz.fields["stress"], "unsupported")
+        self.assertEqual(extxyz.fields["magmoms"], "unsupported")
 
     def test_maple_public_example_inventory_splits_candidates_and_references(self) -> None:
         manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
@@ -174,9 +179,13 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         self.assertEqual(ase.version, "3.28.0")
         self.assertEqual(ase.license, "LGPL-2.1-or-later")
         self.assertEqual(ase.redistributable_default, "allowed")
-        self.assertEqual(len(ase.files_by_policy("vendored")), 3)
+        self.assertEqual(len(ase.files_by_policy("vendored")), 4)
         self.assertIn(
             "ase-extxyz-multiframe-metadata-calculator-energy",
+            {file.id for file in ase.files_by_policy("vendored")},
+        )
+        self.assertIn(
+            "ase-extxyz-lattice-forces-stress",
             {file.id for file in ase.files_by_policy("vendored")},
         )
 
@@ -772,6 +781,83 @@ class ParserFixtureHarnessTest(unittest.TestCase):
                 self.assertIn("not a third-party public original", decision.reason)
                 self.assertTrue(decision.fallback_fixture_ids)
 
+    def test_extxyz_variant_intake_summary_covers_project_authored_variants(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        summary = summarize_extxyz_variant_intake(inventory, ledger, manifest, matrix)
+
+        self.assertEqual(summary.source_id, "ase-extxyz-project-authored")
+        self.assertEqual(
+            summary.vendored_file_ids,
+            (
+                "ase-extxyz-h2-energy-charge-spin",
+                "ase-extxyz-h2-missing-energy",
+                "ase-extxyz-multiframe-metadata-calculator-energy",
+                "ase-extxyz-lattice-forces-stress",
+            ),
+        )
+        self.assertEqual(summary.promoted_file_ids, summary.vendored_file_ids)
+        self.assertEqual(summary.unresolved_file_ids, ())
+        self.assertEqual(
+            set(summary.executable_fixture_ids),
+            {
+                "extxyz-h2-energy-charge-spin",
+                "extxyz-h2-missing-energy",
+                "extxyz-multiframe-metadata-calculator-energy",
+                "extxyz-lattice-forces-stress",
+            },
+        )
+        self.assertTrue(
+            {"lattice_pbc", "forces", "stress", "magmoms"}.issubset(
+                set(summary.advanced_known_limit_fields)
+            )
+        )
+
+    def test_extxyz_variant_intake_summary_exposes_inconsistencies(self) -> None:
+        manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
+        inventory = load_parser_source_inventory(SOURCE_INVENTORY)
+        matrix = load_parser_support_matrix(SUPPORT_MATRIX, manifest, source_inventory=inventory)
+        ledger = load_parser_public_fixture_decisions(
+            PUBLIC_FIXTURE_DECISIONS,
+            source_inventory=inventory,
+            manifest=manifest,
+        )
+
+        with self.assertRaisesRegex(AssertionError, "program=ase-extxyz"):
+            summarize_extxyz_variant_intake(
+                inventory,
+                ledger,
+                manifest,
+                matrix,
+                source_id="maple-dev-example",
+            )
+
+        missing_fallback = _replace_decision(
+            ledger,
+            "ase-extxyz-h2-energy-charge-spin",
+            fallback_fixture_ids=(),
+        )
+        summary = summarize_extxyz_variant_intake(inventory, missing_fallback, manifest, matrix)
+        self.assertIn("ase-extxyz-h2-energy-charge-spin", summary.unresolved_file_ids)
+
+        missing_decision = ledger.__class__(
+            root=ledger.root,
+            decisions=tuple(
+                decision
+                for decision in ledger.decisions
+                if decision.file_id != "ase-extxyz-h2-missing-energy"
+            ),
+        )
+        summary = summarize_extxyz_variant_intake(inventory, missing_decision, manifest, matrix)
+        self.assertIn("ase-extxyz-h2-missing-energy", summary.unresolved_file_ids)
+
     def test_vendored_third_party_source_metadata_loads_when_complete(self) -> None:
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "manifest.yaml"
@@ -904,6 +990,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         extxyz = _fixture_by_id(manifest, "extxyz-h2-energy-charge-spin")
         partial = _fixture_by_id(manifest, "extxyz-h2-missing-energy")
         multiframe = _fixture_by_id(manifest, "extxyz-multiframe-metadata-calculator-energy")
+        advanced = _fixture_by_id(manifest, "extxyz-lattice-forces-stress")
         bad = _fixture_by_id(manifest, "xyz-bad-atom-count")
         executable_ids = {fixture.id for fixture in manifest.executable_fixtures()}
 
@@ -913,13 +1000,16 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         self.assertEqual(extxyz.support_status, "supported")
         self.assertEqual(partial.support_status, "partial")
         self.assertEqual(multiframe.support_status, "partial")
+        self.assertEqual(advanced.support_status, "partial")
         self.assertIn("multiframe", multiframe.tags)
         self.assertIn("calculator-energy", multiframe.tags)
+        self.assertIn("advanced-fields", advanced.tags)
         self.assertEqual(bad.support_status, "unsupported")
         self.assertIn(xyz.id, executable_ids)
         self.assertIn(extxyz.id, executable_ids)
         self.assertIn(partial.id, executable_ids)
         self.assertIn(multiframe.id, executable_ids)
+        self.assertIn(advanced.id, executable_ids)
         self.assertNotIn(bad.id, executable_ids)
 
     def test_gaussian_manifest_entry_and_executable_status(self) -> None:
@@ -1053,6 +1143,10 @@ class ParserFixtureHarnessTest(unittest.TestCase):
             ParserRegistry.default(),
             _fixture_by_id(manifest, "extxyz-multiframe-metadata-calculator-energy"),
         )
+        advanced = project_parser_fixture_snapshot(
+            ParserRegistry.default(),
+            _fixture_by_id(manifest, "extxyz-lattice-forces-stress"),
+        )
 
         self.assertTrue(xyz["parse_ok"])
         self.assertEqual(xyz["object_count"], 1)
@@ -1100,6 +1194,21 @@ class ParserFixtureHarnessTest(unittest.TestCase):
             multiframe["warning_codes"],
             ["missing_section", "unit_assumed", "unit_assumed"],
         )
+
+        self.assertTrue(advanced["parse_ok"])
+        self.assertEqual(advanced["object_count"], 1)
+        advanced_object = advanced["objects"][0]
+        self.assertEqual(advanced_object["label"], "si-lattice-forces-stress")
+        self.assertEqual(advanced_object["charge"], 0)
+        self.assertEqual(advanced_object["spin_multiplicity"], 1)
+        self.assertEqual(advanced_object["elements"], ["Si", "Si"])
+        self.assertEqual(advanced_object["energy_keys"], ["electronic"])
+        self.assertAlmostEqual(
+            advanced_object["energies"]["electronic"]["value"],
+            -3.25 * EV_TO_HARTREE,
+        )
+        self.assertEqual(advanced_object["thermochemistry_keys"], [])
+        self.assertEqual(advanced["warning_codes"], ["unit_assumed"])
 
     def test_maple_snapshots_cover_expected_fields(self) -> None:
         manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
@@ -1826,6 +1935,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
                 inspect.getsource(build_parser_public_candidate_fetch_request),
                 inspect.getsource(verify_parser_public_candidate_bytes),
                 inspect.getsource(summarize_cclib_public_candidate_resolution),
+                inspect.getsource(summarize_extxyz_variant_intake),
                 inspect.getsource(summarize_maple_public_candidate_resolution),
             )
         )

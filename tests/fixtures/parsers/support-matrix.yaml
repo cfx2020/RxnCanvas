@@ -373,6 +373,10 @@ entries:
       charge_spin: partial
       method: unsupported
       unit_metadata: partial
+      lattice_pbc: unsupported
+      forces: unsupported
+      stress: unsupported
+      magmoms: unsupported
     source_ids:
       - ase-extxyz-project-authored
     candidate_file_ids: []
@@ -380,6 +384,7 @@ entries:
       - extxyz-h2-energy-charge-spin
       - extxyz-h2-missing-energy
       - extxyz-multiframe-metadata-calculator-energy
+      - extxyz-lattice-forces-stress
     reference_file_ids: []
     observed_warning_codes: [missing_section, unit_assumed]
     observed_error_codes: []
@@ -388,6 +393,7 @@ entries:
       - Missing energy remains a warning with an empty energy map.
       - Multi-frame extxyz files produce one ChemicalObjectDraft per frame; no reaction path, topology or energy profile is inferred.
       - ASE may expose extxyz energy through calculator results instead of atoms.info; the adapter treats both as electronic energy.
+      - Lattice/PBC, forces, stress, magmoms and per-atom metadata may appear in authorized variants but are not mapped to ChemicalObjectDraft fields yet.
 
   - id: gaussian-log-cclib-synthetic
     program: gaussian

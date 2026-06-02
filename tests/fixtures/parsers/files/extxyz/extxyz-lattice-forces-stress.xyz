@@ -1,0 +1,4 @@
+2
+Lattice="3.0 0.0 0.0 0.0 3.0 0.0 0.0 0.0 3.0" Properties=species:S:1:pos:R:3:forces:R:3 energy=-3.25 stress="0.1 0.0 0.0 0.0 0.1 0.0 0.0 0.0 0.1" magmoms="0.0 0.0" charge=0 spin_multiplicity=1 label="si-lattice-forces-stress" pbc="T T T"
+Si 0.0 0.0 0.0 0.01 0.0 0.0
+Si 1.5 1.5 1.5 -0.01 0.0 0.0

@@ -250,6 +250,31 @@ fixtures:
     tags: [extxyz, ase, multiframe, metadata, calculator-energy, missing-energy, synthetic]
     notes: "Project-authored extxyz variant covering multi-frame metadata, calculator energy fallback and missing energy."
 
+  - id: extxyz-lattice-forces-stress
+    program: ase-extxyz
+    format: extxyz
+    task: lattice-forces-stress
+    parser_id: xyz-ase
+    file: files/extxyz/extxyz-lattice-forces-stress.xyz
+    source:
+      kind: synthetic
+      url: null
+      commit: null
+      license: project-test-fixture
+      redistributable: true
+      redaction: none
+    parse_options:
+      expected_format: extxyz
+      strict: true
+      frame_policy: all
+    expected_snapshot: snapshots/extxyz-lattice-forces-stress.json
+    tolerances:
+      energy_abs: 1.0e-10
+      coordinate_abs: 1.0e-8
+    support_status: partial
+    tags: [extxyz, ase, lattice, pbc, forces, stress, magmoms, advanced-fields, synthetic]
+    notes: "Project-authored extxyz advanced-field variant; parser keeps lattice/PBC/forces/stress/magmoms as known limits."
+
   - id: gaussian-sp-water-synthetic-minimal
     program: gaussian
     format: gaussian-log

@@ -468,3 +468,21 @@ decisions:
     fallback_fixture_ids: [extxyz-multiframe-metadata-calculator-energy]
     reference_file_ids: []
     reviewer: agent
+
+  - id: ase-extxyz-project-authored:ase-extxyz-lattice-forces-stress
+    source_id: ase-extxyz-project-authored
+    file_id: ase-extxyz-lattice-forces-stress
+    checked_at: "2026-06-02"
+    evidence:
+      - kind: source-inventory
+        ref: tests/fixtures/parsers/sources.yaml
+        note: "ASE extxyz advanced-field fixture is project-authored and already vendored."
+      - kind: local-fixture
+        ref: tests/fixtures/parsers/files/extxyz/extxyz-lattice-forces-stress.xyz
+        note: "Project-authored local fixture with lattice/PBC/forces/stress/magmoms fields; not a third-party public original."
+    decision: allowed
+    promotion: promoted
+    reason: "Project-authored extxyz advanced-field fixture is already in executable corpus and is not a third-party public original."
+    fallback_fixture_ids: [extxyz-lattice-forces-stress]
+    reference_file_ids: []
+    reviewer: agent

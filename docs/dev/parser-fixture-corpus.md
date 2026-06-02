@@ -366,10 +366,13 @@ import preview regression 只校验预览路径，不确认导入、不登记 Ch
 
 ASE extxyz 项目内 fixture 维护规则：
 
+- extxyz External Variant Intake 当前只允许 project-authored 或明确授权/可再分发的 user-redacted/public 文件进入 executable corpus；外部 public extxyz 不得因为能被 ASE 读取就自动 vendor。
+- public/user-redacted extxyz 后续进入 corpus 前，必须补 source inventory、decision ledger、manifest、snapshot 和 support matrix，并明确 source policy、redaction、redistributable 和 reviewer。
 - extxyz energy 按 ASE eV 语义进入 parser，必须在 snapshot 中显示为 Hartree，并带 `unit_assumed` warning。
 - ASE 读回 extxyz 时 energy 可能位于 `atoms.calc.results["energy"]` 而不是 `atoms.info["energy"]`；新增变体要用 snapshot 或断言固定该 fallback 行为。
 - multi-frame extxyz 只表示同一文件内多个 `ChemicalObjectDraft`，不得顺手声明 reaction path、direction/topology、TS candidate 或 energy profile。
 - missing energy frame 保持 parse success、空 `energies` 和 `missing_section` warning，不补 0。
+- lattice/PBC、forces、stress、magmoms 和 per-atom metadata 可以用 project-authored fixture 固定输入形状，但当前只能写入 support matrix known limits，不得描述成 `ChemicalObjectDraft` supported fields。
 
 ## Parser Gap Triage
 

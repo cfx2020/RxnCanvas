@@ -282,9 +282,9 @@ sources:
     local_reference_path: tests/fixtures/parsers
     source_summary:
       scope: files/extxyz/
-      total_size_bytes: 813
+      total_size_bytes: 1110
       file_counts_by_extension:
-        .xyz: 3
+        .xyz: 4
     notes: "Current ASE extxyz coverage uses project-authored small fixtures informed by ASE extxyz semantics; no external extxyz dataset is vendored."
     files:
       - id: ase-extxyz-h2-energy-charge-spin
@@ -314,3 +314,12 @@ sources:
         fixture_policy: vendored
         parser_intent: xyz-ase
         notes: "Project-authored extxyz fixture covering multi-frame metadata, calculator energy fallback and missing-energy warning behavior."
+      - id: ase-extxyz-lattice-forces-stress
+        path: files/extxyz/extxyz-lattice-forces-stress.xyz
+        task: lattice-forces-stress
+        format: extxyz
+        size_bytes: 297
+        sha256: sha256:72a02e25de1c64a1972b1167d93481d652be59802d1cfceff267506c05698817
+        fixture_policy: vendored
+        parser_intent: xyz-ase
+        notes: "Project-authored extxyz fixture with lattice/PBC/forces/stress/magmoms fields; parser currently keeps these as known limits."

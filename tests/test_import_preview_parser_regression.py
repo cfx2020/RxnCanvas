@@ -239,6 +239,7 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
                 "extxyz-h2-energy-charge-spin",
                 "extxyz-h2-missing-energy",
                 "extxyz-multiframe-metadata-calculator-energy",
+                "extxyz-lattice-forces-stress",
                 "gaussian-sp-water-synthetic-minimal",
                 "gaussian-sp-public-shape-synthetic-derived",
                 "orca-sp-water-synthetic-minimal",

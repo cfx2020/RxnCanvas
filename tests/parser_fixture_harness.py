@@ -293,6 +293,16 @@ class ParserCclibPublicResolutionSummary:
     unresolved_file_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ParserExtxyzVariantIntakeSummary:
+    source_id: str
+    vendored_file_ids: tuple[str, ...]
+    promoted_file_ids: tuple[str, ...]
+    executable_fixture_ids: tuple[str, ...]
+    advanced_known_limit_fields: tuple[str, ...]
+    unresolved_file_ids: tuple[str, ...]
+
+
 def load_parser_fixture_manifest(path: Path) -> ParserFixtureManifest:
     root = path.parent
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -619,6 +629,62 @@ def summarize_cclib_public_candidate_resolution(
     )
 
 
+def summarize_extxyz_variant_intake(
+    source_inventory: ParserSourceInventory,
+    decision_ledger: ParserPublicFixtureDecisionLedger,
+    manifest: ParserFixtureManifest,
+    support_matrix: ParserSupportMatrix,
+    *,
+    source_id: str = "ase-extxyz-project-authored",
+) -> ParserExtxyzVariantIntakeSummary:
+    source = source_inventory.source_by_id(source_id)
+    if source.program != "ase-extxyz":
+        raise AssertionError(
+            f"Parser extxyz variant intake source {source_id} must have program=ase-extxyz."
+        )
+
+    vendored_file_ids = tuple(file.id for file in source.files_by_policy("vendored"))
+    fixture_ids = {fixture.id for fixture in manifest.fixtures}
+    support_fixture_ids = _support_matrix_fixture_ids_for_source(support_matrix, source.id)
+    advanced_known_limit_fields = _support_matrix_advanced_known_limit_fields(
+        support_matrix,
+        source.id,
+    )
+    unresolved_file_ids: list[str] = []
+    promoted_file_ids: list[str] = []
+
+    for file in source.files:
+        try:
+            decision = decision_ledger.decision_for(source.id, file.id)
+        except AssertionError:
+            unresolved_file_ids.append(file.id)
+            continue
+
+        if file.fixture_policy != "vendored":
+            unresolved_file_ids.append(file.id)
+            continue
+
+        if decision.decision == "allowed" and decision.promotion == "promoted":
+            promoted_file_ids.append(file.id)
+        else:
+            unresolved_file_ids.append(file.id)
+
+        if not decision.fallback_fixture_ids:
+            unresolved_file_ids.append(file.id)
+        for fixture_id in decision.fallback_fixture_ids:
+            if fixture_id not in fixture_ids or fixture_id not in support_fixture_ids:
+                unresolved_file_ids.append(file.id)
+
+    return ParserExtxyzVariantIntakeSummary(
+        source_id=source.id,
+        vendored_file_ids=vendored_file_ids,
+        promoted_file_ids=tuple(promoted_file_ids),
+        executable_fixture_ids=tuple(sorted(support_fixture_ids)),
+        advanced_known_limit_fields=tuple(sorted(advanced_known_limit_fields)),
+        unresolved_file_ids=tuple(dict.fromkeys(unresolved_file_ids)),
+    )
+
+
 def _support_matrix_file_ids_for_source(
     support_matrix: ParserSupportMatrix,
     source_id: str,
@@ -630,6 +696,35 @@ def _support_matrix_file_ids_for_source(
         file_ids.update(entry.candidate_file_ids)
         file_ids.update(entry.reference_file_ids)
     return file_ids
+
+
+def _support_matrix_fixture_ids_for_source(
+    support_matrix: ParserSupportMatrix,
+    source_id: str,
+) -> set[str]:
+    fixture_ids: set[str] = set()
+    for entry in support_matrix.entries:
+        if source_id not in entry.source_ids:
+            continue
+        fixture_ids.update(entry.fixture_ids)
+    return fixture_ids
+
+
+def _support_matrix_advanced_known_limit_fields(
+    support_matrix: ParserSupportMatrix,
+    source_id: str,
+) -> set[str]:
+    advanced_fields = {"lattice_pbc", "forces", "stress", "magmoms"}
+    fields: set[str] = set()
+    for entry in support_matrix.entries:
+        if source_id not in entry.source_ids:
+            continue
+        fields.update(
+            field
+            for field, status in entry.fields.items()
+            if field in advanced_fields and status in {"unsupported", "reference-only"}
+        )
+    return fields
 
 
 def load_parser_public_fixture_decisions(
