@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-parser-public-fixture-intake
 status: active
 created: 2026-06-02
-last_reviewed: 2026-06-02
+last_reviewed: 2026-06-03
 tags: [rxnflow, parser, fixture-corpus, public-fixtures, maple, cclib, gaussian, orca, ase, extxyz, license-gate]
 related_requirements: []
 related_architecture: [ARCHITECTURE, core-platform]
@@ -293,9 +293,9 @@ source:
 7. **public-fixture-import-preview-regression**：把 promoted public/user-redacted fixtures 纳入 ImportRegistryWorkflow 与 Platform Shell `import.preview` 回归。
    - 所属模块：Import Preview Public Regression
    - 依赖：parser-public-fixture-promotion-adapter
-   - 状态：in-progress
+   - 状态：done
    - 对应 feature：2026-06-03-public-fixture-import-preview-regression
-   - 备注：方案已起草；本 feature 从 Fixture Promotion Adapter summary 派生 promoted fixture set，只验证 Workflow/Shell preview projection，不确认导入、不登记对象。
+   - 备注：已落地 promotion-adapter-driven import preview regression；当前从 Fixture Promotion Adapter summary 派生 4 个 extxyz project-authored promoted fixtures，覆盖 Workflow/Shell preview projection、preview-only guard 和 MAPLE/cclib blocked/reference-only 反向 guard。
 
 8. **parser-public-fixture-guides**：更新开发者/用户指南和 architecture，说明 public fixture intake gate、promotion/rejection、reference-only 和贡献真实样例流程。
    - 所属模块：Public Fixture Guides

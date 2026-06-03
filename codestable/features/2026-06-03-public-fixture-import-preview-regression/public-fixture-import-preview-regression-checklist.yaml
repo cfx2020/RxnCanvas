@@ -30,64 +30,64 @@ steps:
 checks:
   - item: _promoted_preview_fixtures 从 Fixture Promotion Adapter summary 派生 fixture set，而不是手写 id list
     source: design-3-s1
-    status: pending
+    status: passed
 
   - item: 当前 promoted preview fixtures 只包含 4 个 extxyz project-authored promoted fixtures
     source: design-3-s2
-    status: pending
+    status: passed
 
   - item: Promotion summary 的 unresolved decision/fixture ids 必须为空
     source: design-3-s3
-    status: pending
+    status: passed
 
   - item: Workflow preview 对每个 promoted fixture 保留 parser_id、parser_version、object_count、warning codes、raw resource id/path/checksum 和 provenance source_file_id
     source: design-3-s4
-    status: pending
+    status: passed
 
   - item: Workflow preview 不登记 ChemicalObject
     source: design-3-s5
-    status: pending
+    status: passed
 
   - item: Platform Shell import.preview 对每个 promoted fixture 返回 JSON-safe payload，保留 raw_resource、parser metadata、object_count 和 warnings
     source: design-3-s6
-    status: pending
+    status: passed
 
   - item: Platform Shell promoted preview 不调用 graph/energy/export/bundle，也不登记 objects
     source: design-3-s7
-    status: pending
+    status: passed
 
   - item: MAPLE/cclib-data blocked candidate file ids 不进入 promoted preview fixture ids
     source: design-3-s8
-    status: pending
+    status: passed
 
   - item: MAPLE/cclib-data reference-only file ids 不进入 promoted preview fixture ids
     source: design-3-s9
-    status: pending
+    status: passed
 
   - item: Existing all-executable fixture preview regression 保留，不被删除或降级
     source: design-3-s10
-    status: pending
+    status: passed
 
   - item: Scope guard 证明未修改 parser runtime、Import Workflow implementation、Platform Shell implementation、Web UI 或 report export
     source: design-3-s11
-    status: pending
+    status: passed
 
   - item: 不新增 fixture files、source inventory entries、decision ledger entries、snapshots 或 support matrix entries
     source: design-3-reverse
-    status: pending
+    status: passed
 
   - item: 不 vendor public originals 或 user-redacted outputs
     source: design-3-reverse
-    status: pending
+    status: passed
 
   - item: 不确认导入、不登记 ChemicalObject
     source: design-3-reverse
-    status: pending
+    status: passed
 
   - item: 不修改 runtime parser/import/shell/web/export implementation
     source: design-3-reverse
-    status: pending
+    status: passed
 
   - item: 不让普通 tests 访问网络
     source: design-3-reverse
-    status: pending
+    status: passed

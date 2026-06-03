@@ -53,10 +53,10 @@ items:
   - slug: public-fixture-import-preview-regression
     description: 把 promoted public/user-redacted fixtures 纳入 ImportRegistryWorkflow 与 Platform Shell import.preview 回归
     depends_on: [parser-public-fixture-promotion-adapter]
-    status: in-progress
+    status: done
     feature: 2026-06-03-public-fixture-import-preview-regression
     minimal_loop: false
-    notes: 方案已起草；本 feature 从 Fixture Promotion Adapter summary 派生 promoted fixture set，只验证 Workflow/Shell preview projection，不确认导入、不登记对象
+    notes: 已落地 promotion-adapter-driven import preview regression；当前从 Fixture Promotion Adapter summary 派生 4 个 extxyz project-authored promoted fixtures，覆盖 Workflow/Shell preview projection、preview-only guard 和 MAPLE/cclib blocked/reference-only 反向 guard
 
   - slug: parser-public-fixture-guides
     description: 更新开发者/用户指南和 architecture，说明 public fixture intake gate、promotion/rejection、reference-only 和贡献真实样例流程
