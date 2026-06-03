@@ -4,25 +4,25 @@ status: ready
 
 steps:
   - id: developer-guide-intake-flow
-    status: pending
+    status: done
     paradigm: guide-contract
     description: 更新开发者指南，把 public fixture intake gate 和 promoted import preview regression 串成维护流程
     exit_signal: 指南明确 fetch verify 不等于 license/promotion，通过 allowed/promoted 后仍需 manifest/snapshot/support matrix/import preview coverage
 
   - id: user-guide-support-boundary
-    status: pending
+    status: done
     paradigm: user-guide
     description: 更新用户指南，说明 candidate/reference-only/blocked、MAPLE/cclib public originals、extxyz project-authored promoted coverage 和贡献真实样例 checklist
     exit_signal: 用户指南避免完整版本支持措辞，并把贡献 checklist 与 intake gate 对齐
 
   - id: architecture-and-roadmap-sync
-    status: pending
+    status: done
     paradigm: architecture-docs
     description: 更新 architecture 对指南当前职责的描述，并保持 roadmap item 衔接状态
     exit_signal: architecture 只记录已落地指南口径，不引入未来支持承诺；items.yaml YAML 校验通过
 
   - id: validation
-    status: pending
+    status: done
     paradigm: validation
     description: 运行 YAML validation、docs grep/scope diff、git diff --check 和 full unittest
     exit_signal: 无 runtime/web/tests/fixture corpus diff，文档没有把 blocked/reference-only/candidate 写成 supported

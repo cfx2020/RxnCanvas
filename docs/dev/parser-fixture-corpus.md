@@ -5,7 +5,7 @@ component: parser-fixture-corpus
 status: current
 summary: 如何添加、校验和维护 RxnFlow parser fixture corpus
 tags: [parser, fixture-corpus, testing, diagnostics]
-last_reviewed: 2026-06-02
+last_reviewed: 2026-06-03
 ---
 
 # Parser Fixture Corpus
@@ -24,6 +24,7 @@ Parser fixture corpus 是 RxnFlow parser 能力的开发者和 agent 维护入�
 - MAPLE：项目内 synthetic / synthetic-derived fixtures 覆盖基础 `.out`、final `.xyz` 和 path-family `.xyz` frame label / Hartree energy；`.sum`、AutoNEB tree、MD thermo、frequency 等仍是 reference-only。
 - XYZ / ASE extxyz：plain XYZ 覆盖 geometry-only 和 missing energy warning；ASE extxyz project-authored variants 覆盖 metadata、multi-frame、calculator energy fallback、missing energy 和 eV 到 Hartree unit warning。
 - Import Preview Regression：同一 fixture corpus 驱动 `ImportRegistryWorkflow.import_files` 和 Platform Shell `import.preview`，只验证 preview projection，不确认导入、不登记 ChemicalObject。
+- Public Fixture Intake Gate：真实/公开或用户授权输出必须先进入 source inventory，再经过可选 fetch/hash verify、decision ledger、promotion adapter、manifest/snapshot/support matrix 和 import preview regression；fetch verify 成功不等于许可证或 promotion 通过。
 
 corpus 位于 `tests/fixtures/parsers/`：
 
@@ -121,6 +122,47 @@ result = verify_parser_public_candidate_bytes(
 - sha 或 size mismatch 必须作为 structured result 暴露，保留 expected/actual 值；不要自动修改 `sources.yaml`、decision ledger、manifest、support matrix 或 snapshot。
 - 后续如果新增显式 dev command 或 provider，可以把真实网络读取、local checkout 读取和 Explicit Artifact 写入放在 helper 外层，但默认仍只能写临时目录或用户显式指定的 artifact 目录，不能自动 vendor。
 - promotion 仍必须先查 `public-fixture-decisions.yaml`；fetch verify 成功不能被描述为文件已可再分发、已进入 corpus 或已 supported。
+
+## Public Fixture Intake Gate
+
+Public fixture intake 是真实第三方输出或用户授权输出进入 executable fixture corpus 的准入链路。它不是单个文件复制动作，而是从来源登记到 preview regression 的可审计流程：
+
+```text
+source inventory
+-> optional Candidate Fetch Verify
+-> public fixture decision ledger
+-> manifest/files/snapshot/support matrix
+-> Fixture Promotion Adapter
+-> import preview regression
+-> developer/user guide sync
+```
+
+每一段只回答自己的问题：
+
+| 阶段 | 回答的问题 | 不能替代 |
+|---|---|---|
+| Source Inventory | 这个外部/用户样例来自哪里、路径/hash/体积/任务是什么 | 不证明可再分发，不证明 parser 支持 |
+| Candidate Fetch Verify | 调用方提供的 bytes 是否匹配登记的 hash 和 size | 不证明 license、脱敏或 promotion 通过 |
+| Decision Ledger | 该 source file 当前是 `allowed/promoted`、`needs-permission/blocked` 还是 `reference-only/not-applicable` | 不生成 fixture，不修改 parser |
+| Manifest / Snapshot / Support Matrix | executable fixture、期望 parser 投影和字段支持边界是否齐全 | 不绕过 decision ledger |
+| Fixture Promotion Adapter | promoted decision 是否有 executable coverage，source-gated fixture 是否可追溯 | 不 fetch、不写文件、不自动修复 corpus |
+| Import Preview Regression | promoted fixture 进入 Workflow/Shell preview 后 projection 是否保真 | 不确认导入、不登记 ChemicalObject |
+
+新增真实样例时按下面顺序推进：
+
+1. 先在 `sources.yaml` 登记 source 和 file entry，写清 URL、commit/version/branch、path、task、format、size、sha256、`fixture_policy` 和 `parser_intent`。
+2. 可选地使用 Candidate Fetch Verify 复核 bytes/hash/size；复核结果只作为证据之一，不能写成“已允许 vendor”。
+3. 在 `public-fixture-decisions.yaml` 写 decision：`allowed/promoted` 必须有足够 license、授权或项目内来源证据；`needs-permission/blocked` 必须写 reason 和 fallback；`reference-only/not-applicable` 必须有 reference anchor。
+4. 只有 `allowed/promoted` 的小型、可再分发、已脱敏文件才可进入 `files/`，并且 manifest source metadata 必须能追溯到 decision/source file。
+5. promoted fixture 必须同时有 `parser-golden-v1` snapshot、support matrix `fixture_ids` coverage 和 import preview regression coverage。
+6. 最后同步 `docs/dev/parser-fixture-corpus.md` 和 `docs/user/parser-output-support.md`；用户指南只能声明 fixture-backed preview 行为，不能写完整版本认证。
+
+当前 public fixture intake 结论：
+
+- MAPLE public examples：3 个 candidate 保持 `needs-permission/blocked`，14 个 reference-only anchors 只作为格式/任务参考；没有 MAPLE public original promoted。
+- cclib-data Gaussian/ORCA examples：4 个 candidate 保持 `needs-permission/blocked`，2 个 reference-only anchors 只作为格式/任务参考；没有 cclib-data public original promoted。
+- ASE extxyz：4 个 `ase-extxyz-project-authored` 文件是项目内 authored variants，记录为 `allowed/promoted` 并进入 executable fixture coverage；它们不代表第三方 extxyz 数据集或 ASE 真实版本完整认证。
+- 当前没有 `vendored-third-party` 或 `user-redacted` source-gated executable fixture；后续新增时必须通过 Fixture Promotion Adapter 的 `decision_id`、source metadata、snapshot 和 support matrix coverage guard。
 
 ## MAPLE Candidate Resolution
 
@@ -410,6 +452,17 @@ git diff -- tests/fixtures/parsers/snapshots/<fixture-id>.json
 
 import preview regression 只校验预览路径，不确认导入、不登记 ChemicalObject，也不更新项目状态。若 preview 通过但 confirm/import 行为改变，应另起对应 workflow 的 feature 或 issue。
 
+Promotion-adapter-driven import preview regression 还会从 `summarize_parser_public_fixture_promotion(...).covered_fixture_ids` 派生 promoted preview fixture set，而不是维护第二份手写清单。当前 promoted preview set 是 4 个 extxyz project-authored fixtures；MAPLE/cclib-data blocked candidate 和 reference-only file ids 必须通过 guard 证明不在 promoted preview fixture ids 中。
+
+维护 public/user-redacted fixture promotion 时，新增 promoted fixture 后必须让它同时进入：
+
+- parser fixture harness snapshot regression。
+- Fixture Promotion Adapter coverage。
+- Workflow preview projection regression。
+- Platform Shell `import.preview` projection regression。
+
+这些 regression 都是 preview-only：不能调用 graph/energy/export/bundle，不确认导入，不登记 ChemicalObject。
+
 ASE extxyz 项目内 fixture 维护规则：
 
 - extxyz External Variant Intake 当前只允许 project-authored 或明确授权/可再分发的 user-redacted/public 文件进入 executable corpus；外部 public extxyz 不得因为能被 ASE 读取就自动 vendor。
@@ -501,3 +554,5 @@ python3 codestable/tools/validate-yaml.py --file codestable/features/2026-05-16-
 - `codestable/features/2026-05-15-parser-fixture-harness/parser-fixture-harness-design.md`
 - `codestable/features/2026-05-16-parser-support-matrix-diagnostics/parser-support-matrix-diagnostics-acceptance.md`
 - `codestable/features/2026-05-16-import-preview-parser-regression/import-preview-parser-regression-acceptance.md`
+- `codestable/features/2026-06-03-public-fixture-import-preview-regression/public-fixture-import-preview-regression-acceptance.md`
+- `codestable/features/2026-06-03-parser-public-fixture-guides/parser-public-fixture-guides-design.md`

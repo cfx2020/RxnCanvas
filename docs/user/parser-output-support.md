@@ -5,7 +5,7 @@ component: parser-output-support
 status: current
 summary: RxnFlow 当前计算输出导入预览的支持边界、已知限制和样例贡献要求
 tags: [parser, import-preview, gaussian, orca, maple, extxyz]
-last_reviewed: 2026-05-22
+last_reviewed: 2026-06-03
 ---
 
 # Parser Output Support
@@ -26,16 +26,22 @@ last_reviewed: 2026-05-22
 
 如果 UI 或 shell preview 返回 warning/error，应按 warning/error code 判断能否继续使用，不要只看文件后缀。
 
+Public fixture intake 中还会出现 `needs-permission/blocked`、`allowed/promoted` 等维护状态。它们是开发者用于决定文件能否进入测试 corpus 的 license / redistribution gate，不是用户向导入能力名称。对用户来说：
+
+- `candidate`、`reference-only` 或 `blocked` 的公开原始文件没有进入 executable fixture corpus，不能被当作已支持导入。
+- Candidate Fetch Verify 只说明 bytes/hash/size 是否匹配登记信息，不说明该文件可以再分发或已经 supported。
+- 只有 `allowed/promoted` 且已经进入 manifest、golden snapshot、support matrix 和 import preview regression 的样例，才代表对应 fixture-backed preview 行为被覆盖。
+
 ## 当前格式边界
 
 | 程序 / 格式 | 当前可预览字段 | 状态 | 主要限制 |
 |---|---|---|---|
-| Gaussian log via cclib adapter | method、charge、spin multiplicity、last geometry、electronic energy | `partial` | 当前 executable fixtures 是项目内 synthetic / synthetic-derived shape；cclib-data public originals 未 vendor；真实 Gaussian 版本、任务类型、thermochemistry、frequency、NBO、SCF convergence 和完整 job metadata 未声明完整支持。 |
-| ORCA output via cclib adapter | method、charge、spin multiplicity、last geometry、electronic energy | `partial` | 当前 executable fixtures 是项目内 synthetic / synthetic-derived shape；cclib-data public originals 未 vendor；真实 ORCA 版本、任务类型、SCF convergence details 和完整 job metadata 未声明完整支持。 |
-| MAPLE `.out` | 基础 single point / optimization 形状中的 geometry 与 Hartree energy | `partial` | ClickFF/MAPLE public examples 仍是 candidate/reference-only；项目内 synthetic-derived fixture 只覆盖最小输出形状。 |
-| MAPLE / MAPLE-style path `.xyz` | 多帧 label、geometry、Hartree energy comment | `partial` | 只生成 frame-level ChemicalObjectDraft；不推断 ReactionPath、IRC direction、NEB/String topology、TS candidate 或 energy profile。AutoNEB tree JSON、MD thermo、frequency summary 仍是 reference-only。 |
+| Gaussian log via cclib adapter | method、charge、spin multiplicity、last geometry、electronic energy | `partial` | 当前 executable fixtures 是项目内 synthetic / synthetic-derived shape；cclib-data public originals 仍是 `needs-permission/blocked`，未 vendor；真实 Gaussian 版本、任务类型、thermochemistry、frequency、NBO、SCF convergence 和完整 job metadata 未声明完整支持。 |
+| ORCA output via cclib adapter | method、charge、spin multiplicity、last geometry、electronic energy | `partial` | 当前 executable fixtures 是项目内 synthetic / synthetic-derived shape；cclib-data public originals 仍是 `needs-permission/blocked`，未 vendor；真实 ORCA 版本、任务类型、SCF convergence details 和完整 job metadata 未声明完整支持。 |
+| MAPLE `.out` | 基础 single point / optimization 形状中的 geometry 与 Hartree energy | `partial` | ClickFF/MAPLE public examples 仍是 candidate/reference-only 或 `needs-permission/blocked`，未 vendor；项目内 synthetic-derived fixture 只覆盖最小输出形状。 |
+| MAPLE / MAPLE-style path `.xyz` | 多帧 label、geometry、Hartree energy comment | `partial` | 只生成 frame-level ChemicalObjectDraft；不推断 ReactionPath、IRC direction、NEB/String topology、TS candidate 或 energy profile。AutoNEB tree JSON、MD thermo、frequency summary 仍是 reference-only，不代表已支持导入。 |
 | Plain XYZ | element 与 3D coordinates | `partial` | plain XYZ 通常没有 energy、charge、spin 或 method；缺失 energy 会给 `missing_section` warning。 |
-| ASE extxyz | geometry、label metadata、charge/spin metadata、electronic energy | `partial` | 当前是 project-authored variants；energy 按 ASE eV 语义转 Hartree 并给 `unit_assumed` warning；multi-frame extxyz 只生成多个对象，不推断反应路径。forces、stress、magmoms、lattice/PBC 深语义、calculator name、method 和 thermochemistry 未建模。 |
+| ASE extxyz | geometry、label metadata、charge/spin metadata、electronic energy | `partial` | 当前 4 个 promoted executable fixtures 是 project-authored variants，并已进入 import preview regression；这不等同于第三方 extxyz 数据集或 ASE 真实版本完整认证。energy 按 ASE eV 语义转 Hartree 并给 `unit_assumed` warning；multi-frame extxyz 只生成多个对象，不推断反应路径。forces、stress、magmoms、lattice/PBC 深语义、calculator name、method 和 thermochemistry 未建模。 |
 
 ## Warning / Error 含义
 
@@ -62,12 +68,14 @@ last_reviewed: 2026-05-22
 
 真实 Gaussian、ORCA、MAPLE、ASE 或其他程序输出进入仓库前，必须先确认这些事项：
 
+- 准入流程：先登记为 source inventory entry，再经过 public fixture decision；hash 复核不能替代授权或脱敏确认。
 - 授权：你有权分享该文件，且许可证或来源允许作为测试样例再分发。
 - 脱敏：删除或替换用户名、home 目录、scratch 路径、主机名、队列名、作业号、邮箱、token、license server、内部项目编号和未公开结构信息。
 - 体积：优先提交最小可复现样例；大型输出、轨迹、checkpoint 或二进制文件不应直接进入 corpus。
 - 软件信息：说明程序、版本、任务类型、文件后缀和关键输入条件。
 - 期望字段：说明希望 RxnFlow 解析哪些字段，例如 geometry、charge/spin、method、electronic energy、thermochemistry 或 path frame labels。
 - 边界：如果文件只用于说明格式形状、许可证不清或不适合提交原文，应登记为 candidate/reference-only，而不是复制进 `files/`。
+- 回归覆盖：允许 promotion 的样例还需要 manifest、golden snapshot、support matrix 和 import preview regression；进入这些覆盖前不要把它描述成 supported。
 
 许可证不清时，RxnFlow 默认采用 `review-required`，不会自动 vendor 原始文件。可以用项目内 synthetic-derived fixture 固定 parser 所需的最小格式形状，但必须明确 public original 未进入仓库。
 
