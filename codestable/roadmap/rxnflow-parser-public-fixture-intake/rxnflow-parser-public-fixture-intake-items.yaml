@@ -61,7 +61,7 @@ items:
   - slug: parser-public-fixture-guides
     description: 更新开发者/用户指南和 architecture，说明 public fixture intake gate、promotion/rejection、reference-only 和贡献真实样例流程
     depends_on: [public-fixture-import-preview-regression]
-    status: in-progress
+    status: done
     feature: 2026-06-03-parser-public-fixture-guides
     minimal_loop: false
-    notes: 方案已起草；本 feature 只更新开发者/用户指南、architecture 和 CodeStable 状态，用户文档必须继续避免“完整支持真实版本”的措辞
+    notes: 已落地 public fixture intake 指南收口；开发者指南串起 source inventory、fetch verify、decision ledger、promotion adapter、manifest/snapshot/support matrix、import preview regression 和 guide sync，用户指南明确 candidate/reference-only/blocked 不代表 supported，MAPLE/cclib originals 未 vendor，extxyz promoted coverage 是 project-authored variants

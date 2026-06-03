@@ -300,9 +300,9 @@ source:
 8. **parser-public-fixture-guides**：更新开发者/用户指南和 architecture，说明 public fixture intake gate、promotion/rejection、reference-only 和贡献真实样例流程。
    - 所属模块：Public Fixture Guides
    - 依赖：public-fixture-import-preview-regression
-   - 状态：planned
-   - 对应 feature：null
-   - 备注：用户文档必须继续避免“完整支持真实版本”的措辞。
+   - 状态：done
+   - 对应 feature：2026-06-03-parser-public-fixture-guides
+   - 备注：已落地 public fixture intake 指南收口；开发者指南串起 source inventory、fetch verify、decision ledger、promotion adapter、manifest/snapshot/support matrix、import preview regression 和 guide sync，用户指南明确 candidate/reference-only/blocked 不代表 supported，MAPLE/cclib originals 未 vendor，extxyz promoted coverage 是 project-authored variants。
 
 **最小闭环**：第 1 条 `parser-public-fixture-decision-ledger`。完成后，即使没有任何第三方文件被允许 vendor，项目也能明确记录“为什么不能进、用哪个 synthetic-derived fixture 兜底、后续需要用户授权还是继续 reference-only”。
 
