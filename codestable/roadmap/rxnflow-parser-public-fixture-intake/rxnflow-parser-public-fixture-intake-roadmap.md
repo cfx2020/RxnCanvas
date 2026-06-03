@@ -1,7 +1,7 @@
 ---
 doc_type: roadmap
 slug: rxnflow-parser-public-fixture-intake
-status: active
+status: completed
 created: 2026-06-02
 last_reviewed: 2026-06-03
 tags: [rxnflow, parser, fixture-corpus, public-fixtures, maple, cclib, gaussian, orca, ase, extxyz, license-gate]
