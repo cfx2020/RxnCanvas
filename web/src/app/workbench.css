@@ -398,6 +398,192 @@ button {
   width: 100%;
 }
 
+.project-files-section {
+  display: grid;
+  gap: 10px;
+}
+
+.project-files-header {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.project-files-header > div {
+  min-width: 0;
+}
+
+.project-files-count {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(39, 89, 106, 0.2);
+  background: rgba(39, 89, 106, 0.08);
+  color: var(--blueprint);
+  padding: 0 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.project-files-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.project-file-list {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.project-file-card {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(31, 33, 29, 0.14);
+  background: rgba(255, 250, 240, 0.72);
+  padding: 9px;
+}
+
+.project-file-card--exported {
+  border-color: rgba(39, 89, 106, 0.28);
+  background: rgba(39, 89, 106, 0.07);
+}
+
+.project-file-card--used-in-graph,
+.project-file-card--registered {
+  border-color: rgba(83, 98, 74, 0.32);
+  background: rgba(83, 98, 74, 0.08);
+}
+
+.project-file-card--error {
+  border-color: rgba(141, 53, 39, 0.34);
+  background: rgba(141, 53, 39, 0.08);
+}
+
+.project-file-card--draggable {
+  cursor: grab;
+}
+
+.project-file-card--draggable:active {
+  cursor: grabbing;
+}
+
+.project-file-title-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.project-file-icon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--blueprint);
+}
+
+.project-file-title {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.project-file-title strong,
+.project-file-title small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-file-title strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.project-file-title small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.project-file-meta-row {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.project-file-meta-row span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(31, 33, 29, 0.12);
+  background: rgba(255, 250, 240, 0.78);
+  color: var(--muted);
+  padding: 0 7px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.project-file-meta-row .project-file-status {
+  color: var(--sage);
+}
+
+.project-file-meta-row .project-file-status--exported {
+  color: var(--blueprint);
+}
+
+.project-file-meta-row .project-file-status--error {
+  color: var(--oxide);
+}
+
+.project-file-checksum {
+  min-width: 0;
+  display: block;
+  border: 1px solid rgba(39, 89, 106, 0.16);
+  background: rgba(255, 255, 255, 0.46);
+  color: var(--blueprint);
+  padding: 6px;
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+
+.project-file-reference-row,
+.project-file-warning-row {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.project-file-reference-row code,
+.project-file-warning-row code {
+  min-width: 0;
+  border: 1px solid rgba(31, 33, 29, 0.12);
+  background: rgba(255, 255, 255, 0.46);
+  padding: 4px 6px;
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+
+.project-file-reference-row code {
+  color: var(--sage);
+}
+
+.project-file-warning-row code {
+  color: var(--oxide);
+}
+
 .sidebar-error {
   display: grid;
   gap: 5px;
@@ -3014,6 +3200,10 @@ button {
 
   .workspace-toolbar {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .project-files-header {
     flex-direction: column;
   }
 

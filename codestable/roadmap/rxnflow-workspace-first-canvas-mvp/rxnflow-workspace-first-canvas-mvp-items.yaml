@@ -1,0 +1,51 @@
+roadmap: rxnflow-workspace-first-canvas-mvp
+created: 2026-06-03
+
+items:
+  - slug: workspace-file-drop-minimal-loop
+    description: 打开本地工作区文件夹或选择文件，左侧展示项目文件区，拖单个输出文件到画布后保存入项目、解析登记并创建一个节点
+    depends_on: []
+    status: done
+    feature: 2026-06-03-workspace-file-drop-minimal-loop
+    minimal_loop: true
+    notes: "最小闭环：folder/file picker -> project file -> parse/register -> canvas node with structure name and energy"
+
+  - slug: canvas-chemical-node-card
+    description: 完善画布节点的信息密度和多对象/多帧候选选择器，显示结构名称、来源文件、方法、电荷自旋、能量、warning 和轻量结构预览
+    depends_on: [workspace-file-drop-minimal-loop]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: "单对象直接建节点；多对象或多帧 preview 在落点附近选择，默认高亮 final candidate 但不自动全放画布"
+
+  - slug: canvas-path-authoring-pes-preview
+    description: 用画布拖线手动连接节点形成 active path，并在右侧预览势能面、相对能量、相邻能量差和 missing/correction 信息
+    depends_on: [canvas-chemical-node-card]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: "前端只触发 energy.compute 并消费 ShellResponse，不在浏览器重算能量或自动判定化学合理性"
+
+  - slug: minimal-cdxml-energy-delta-export
+    description: 基于 active path 导出最小 ChemDraw CDXML，包含结构名称、相对能量、相邻能量差和 missing/correction marker
+    depends_on: [canvas-path-authoring-pes-preview]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: "不做 CDX binary，不做 molecule-level CDXML 或原子/键语义"
+
+  - slug: workspace-first-flow-polish
+    description: 收束当前复杂三栏流程，把项目文件、画布、势能面和导出整理成 workspace-first 主界面
+    depends_on: [workspace-file-drop-minimal-loop, canvas-path-authoring-pes-preview]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: "目标是减少奇怪按钮流程，不继续在旧心智模型上堆叠分散面板"
+
+  - slug: workspace-first-flow-qa-guides
+    description: 补桌面、窄屏、local-http E2E 和用户指南，固定新主流程的保存、导出、分享和恢复验收脚本
+    depends_on: [minimal-cdxml-energy-delta-export, workspace-first-flow-polish]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: "覆盖保存项目、导出 .rxnflow.zip、重新导入后恢复 raw files、graph、PES preview 和 CDXML 下载边界"

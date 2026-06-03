@@ -21,6 +21,7 @@ describe("project sidebar state contract", () => {
       bridge: {
         state: "idle",
       },
+      projectFiles: [],
       validation: {
         state: "unknown",
         messageKey: "projectSidebar.validation.noProject",

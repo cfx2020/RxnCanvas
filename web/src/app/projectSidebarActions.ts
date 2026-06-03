@@ -22,6 +22,7 @@ import {
   projectSidebarValidValidation,
   type ProjectSidebarState,
 } from "./projectSidebarState"
+import { listProjectFileEntries, type ProjectFileEntry } from "./projectFiles"
 
 export async function refreshProjects(
   repository: BrowserProjectRepository,
@@ -29,7 +30,9 @@ export async function refreshProjects(
 ): Promise<ProjectSidebarState> {
   try {
     const projects = await repository.listProjects()
-    return readyProjectSidebarState(state, projects)
+    const activeProject = findProject(projects, state.activeProjectRef)
+    const projectFiles = await listProjectFileEntries(repository, activeProject)
+    return readyProjectSidebarState(state, projects, projectFiles)
   } catch (error) {
     return repositoryErrorProjectSidebarState(state, error)
   }
@@ -47,6 +50,7 @@ export async function createProject(
     const projects = await repository.listProjects()
     const activeProject = findProject(projects, project.projectRef) ?? project
     const indexReceipt = receiptForPath(receipts, projectContentIndexPath)
+    const projectFiles = await listProjectFileEntries(repository, activeProject)
 
     return {
       status: "ready",
@@ -55,6 +59,7 @@ export async function createProject(
       activeProject,
       persistence: "persisted",
       bridge: { state: "idle" },
+      projectFiles,
       validation: projectSidebarValidValidation(indexReceipt.checksum, indexReceipt.updatedAt),
       lastWrite: indexReceipt,
     }
@@ -83,6 +88,7 @@ export async function openProject(
 
     try {
       const validation = await validateBrowserProjectContent(repository, safeProjectRef)
+      const projectFiles = await listProjectFileEntries(repository, activeProject)
       return {
         status: "ready",
         projects,
@@ -90,6 +96,7 @@ export async function openProject(
         activeProject,
         persistence: validation.state === "valid" ? "persisted" : validation.state === "missing" ? "dirty" : "error",
         bridge: { state: "idle" },
+        projectFiles,
         validation: projectSidebarBridgeValidation(validation),
       }
     } catch (error) {
@@ -101,6 +108,7 @@ export async function openProject(
           activeProject,
           persistence: "dirty",
           bridge: { state: "idle" },
+          projectFiles: await listProjectFileEntries(repository, activeProject),
           validation: projectSidebarMissingValidation(),
         }
       }
@@ -140,6 +148,7 @@ export async function saveProjectContent(
     const projects = await repository.listProjects()
     const refreshedActiveProject = findProject(projects, activeProject.projectRef) ?? activeProject
     const indexReceipt = receiptForPath(receipts, projectContentIndexPath)
+    const projectFiles = await listProjectFileEntries(repository, refreshedActiveProject)
 
     return {
       status: "ready",
@@ -148,6 +157,7 @@ export async function saveProjectContent(
       activeProject: refreshedActiveProject,
       persistence: "persisted",
       bridge: state.bridge,
+      projectFiles,
       validation: projectSidebarValidValidation(indexReceipt.checksum, indexReceipt.updatedAt),
       lastWrite: indexReceipt,
     }
@@ -159,6 +169,7 @@ export async function saveProjectContent(
 function readyProjectSidebarState(
   state: ProjectSidebarState,
   projects: BrowserProjectRef[],
+  projectFiles: ProjectFileEntry[],
 ): ProjectSidebarState {
   const activeProject = findProject(projects, state.activeProjectRef)
   if (!activeProject) {
@@ -167,6 +178,7 @@ function readyProjectSidebarState(
       projects,
       persistence: "empty",
       bridge: { state: "idle" },
+      projectFiles: [],
       validation: initialProjectSidebarState.validation,
     }
   }
@@ -178,6 +190,7 @@ function readyProjectSidebarState(
     activeProjectRef: activeProject.projectRef,
     activeProject,
     bridge: state.bridge,
+    projectFiles,
     error: undefined,
   }
 }

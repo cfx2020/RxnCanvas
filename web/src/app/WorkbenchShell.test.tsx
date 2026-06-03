@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 import { BrowserProjectRepositoryError, checksumBrowserStorageBytes, MemoryBrowserProjectRepository } from "../repository"
 import { ShellClient, fixtureTransport, type ShellCommandPayload, type ShellResponse, type ShellRuntimeInfo, type ShellTransport } from "../shell"
 import { graphObjectDragMimeType } from "./graphObjectDragPayload"
+import { graphRawFileDropMimeType } from "./graphRawFileDropPayload"
 import { WorkbenchShell } from "./WorkbenchShell"
 import { I18nProvider, type SupportedLocale } from "./i18n"
 import { chemicalObjectsPath, exportArtifactsPath, projectContentIndexPath, reactionGraphsPath, workspacesPath } from "./projectContentBridge"
@@ -247,6 +248,146 @@ describe("WorkbenchShell", () => {
       chemical_object_ids: ["object-b"],
       position: [240, 180],
     })
+  })
+
+  it("drops an external raw file into the active project and creates a graph node", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await createProjectWithContent(repository, "Raw Drop")
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /raw drop/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+    const dataTransfer = new TestDataTransfer([new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })])
+
+    fireEvent.dragOver(surface, { dataTransfer })
+    dispatchDrop(surface, dataTransfer, 240, 180)
+
+    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
+    expect(rawObjects).toHaveLength(1)
+    expect(rawObjects[0].path).toMatch(/^inputs\/raw\/[a-f0-9]{12}-water\.xyz$/)
+    expect(screen.getAllByText(rawObjects[0].path).length).toBeGreaterThan(0)
+    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
+    const rawFileRow = within(projectFilesPanel).getByText(rawObjects[0].path).closest(".project-file-card")
+    if (!(rawFileRow instanceof HTMLElement)) {
+      throw new Error("Project raw file row was not rendered.")
+    }
+    expect(within(rawFileRow).getByText("Used in graph")).toBeInTheDocument()
+    expect(within(rawFileRow).getByText("object-imported-water")).toBeInTheDocument()
+    expect(within(rawFileRow).getAllByText("node-web-3").length).toBeGreaterThan(0)
+    expect(transport.payloads.find((payload) => payload.command === "import.preview")?.args).toMatchObject({
+      source_paths: [rawObjects[0].path],
+    })
+    expect(transport.payloads.find((payload) => payload.command === "import.register_all")?.args).toMatchObject({
+      batch_id: "import-batch-fixture-web-1",
+    })
+    expect(lastPayload(transport, "workspace.add_node")?.args).toMatchObject({
+      chemical_object_ids: ["object-imported-water"],
+      position: [240, 180],
+    })
+  })
+
+  it("reuses project raw file rows without writing another raw object", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await createProjectWithContent(repository, "Project Raw Reuse")
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /project raw reuse/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+    const externalDrop = new TestDataTransfer([new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })])
+    fireEvent.dragOver(surface, { dataTransfer: externalDrop })
+    dispatchDrop(surface, externalDrop, 240, 180)
+    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
+    expect(rawObjects).toHaveLength(1)
+
+    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
+    const rawFileRow = within(projectFilesPanel).getByText(rawObjects[0].path).closest(".project-file-card")
+    if (!(rawFileRow instanceof HTMLElement)) {
+      throw new Error("Project raw file row was not rendered.")
+    }
+    const projectFileDrop = new TestDataTransfer()
+    fireEvent.dragStart(rawFileRow, { dataTransfer: projectFileDrop })
+    expect(projectFileDrop.getData(graphRawFileDropMimeType)).toContain(rawObjects[0].path)
+
+    fireEvent.dragOver(surface, { dataTransfer: projectFileDrop })
+    dispatchDrop(surface, projectFileDrop, 360, 200)
+
+    await waitFor(() => {
+      expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(2)
+    })
+    await expect(repository.listObjects(project.projectRef, "inputs/raw")).resolves.toHaveLength(1)
+    expect(lastPayload(transport, "workspace.add_node")?.args).toMatchObject({
+      chemical_object_ids: ["object-imported-water"],
+      position: [360, 200],
+    })
+  })
+
+  it("stops raw file drops when project raw persistence fails", async () => {
+    const repository = new FailingRawInputProjectRepository()
+    await createProjectWithContent(repository, "Raw Drop Fails")
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /raw drop fails/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+    const dataTransfer = new TestDataTransfer([new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })])
+
+    fireEvent.dragOver(surface, { dataTransfer })
+    dispatchDrop(surface, dataTransfer, 240, 180)
+
+    expect(await screen.findByText("Raw persistence error")).toBeInTheDocument()
+    expect(screen.getAllByText("storage_quota_exceeded").length).toBeGreaterThan(0)
+    expect(transport.payloads.filter((payload) => payload.command === "import.preview")).toHaveLength(0)
+    expect(transport.payloads.filter((payload) => payload.command === "import.register_all")).toHaveLength(0)
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(0)
+    expect(within(graphCanvas).queryByText("node-web-3")).not.toBeInTheDocument()
+  })
+
+  it("shows project file error state when raw drop preview fails", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await createProjectWithContent(repository, "Raw Preview Fails")
+    const transport = new FailingImportPreviewTransport()
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /raw preview fails/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+    const dataTransfer = new TestDataTransfer([new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })])
+
+    fireEvent.dragOver(surface, { dataTransfer })
+    dispatchDrop(surface, dataTransfer, 240, 180)
+
+    expect((await screen.findAllByText("preview_failed")).length).toBeGreaterThan(0)
+    const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
+    expect(rawObjects).toHaveLength(1)
+    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
+    const rawFileRow = within(projectFilesPanel).getByText(rawObjects[0].path).closest(".project-file-card")
+    if (!(rawFileRow instanceof HTMLElement)) {
+      throw new Error("Project raw file row was not rendered.")
+    }
+    expect(within(rawFileRow).getByText("Error")).toBeInTheDocument()
+    expect(within(rawFileRow).getByText("preview_failed")).toBeInTheDocument()
+    expect(within(rawFileRow).getByText("import.preview")).toBeInTheDocument()
+    expect(transport.payloads.filter((payload) => payload.command === "import.register_all")).toHaveLength(0)
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(0)
   })
 
   it("applies viewport zoom, fit, reset and keeps drop coordinates in graph space", async () => {
@@ -791,7 +932,9 @@ describe("WorkbenchShell", () => {
     expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"] },
     })
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Delete Selected" }))
+    const deleteButton = within(graphCanvas).getByRole("button", { name: "Delete Selected" })
+    await waitFor(() => expect(deleteButton).toBeEnabled())
+    fireEvent.click(deleteButton)
 
     await waitFor(() => {
       expect(lastPayload(transport, "workspace.remove")?.args).toMatchObject({
@@ -2470,6 +2613,7 @@ async function createProjectWithContent(
       projects: [],
       persistence: "empty",
       bridge: { state: "idle" },
+      projectFiles: [],
       validation: { state: "unknown", messageKey: "projectSidebar.validation.noProject" },
     }, name),
   )
@@ -2546,6 +2690,29 @@ class RecordingProjectBridgeTransport implements ShellTransport {
   }
 }
 
+class FailingImportPreviewTransport implements ShellTransport {
+  kind = "in-process-test" as const
+  payloads: ShellCommandPayload<string>[] = []
+
+  async run(payload: ShellCommandPayload<string>): Promise<ShellResponse> {
+    this.payloads.push(payload)
+    if (payload.command !== "import.preview") {
+      return fixtureTransport.run(payload)
+    }
+    return {
+      ok: false,
+      data: null,
+      error: {
+        code: "preview_failed",
+        message: "Import preview failed for this fixture.",
+        target: "import.preview",
+      },
+      warnings: [],
+      artifacts: [],
+    }
+  }
+}
+
 class FailingCorrectionTransport implements ShellTransport {
   kind = "in-process-test" as const
 
@@ -2571,9 +2738,17 @@ class TestDataTransfer {
   dropEffect = "none"
   effectAllowed = "all"
   private readonly store = new Map<string, string>()
+  readonly files: FileList
+
+  constructor(files: File[] = []) {
+    this.files = Object.assign(files.slice(), {
+      item: (index: number) => files[index] ?? null,
+    }) as unknown as FileList
+  }
 
   get types() {
-    return Array.from(this.store.keys())
+    const types = Array.from(this.store.keys())
+    return this.files.length > 0 ? [...types, "Files"] : types
   }
 
   setData(type: string, value: string) {

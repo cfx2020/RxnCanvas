@@ -12,6 +12,7 @@ import {
 } from "./graphEditorInteractionState"
 import { createGraphLayoutPlan, type GraphLayoutPlan, type GraphLayoutWarning } from "./graphAutoLayout"
 import { graphObjectDragMimeType, parseGraphObjectDragPayload } from "./graphObjectDragPayload"
+import { graphRawFileDropMimeType, parseGraphRawFileDropPayload } from "./graphRawFileDropPayload"
 import {
   canvasPointToGraphNodePosition,
   graphNodeCssPosition,
@@ -46,6 +47,13 @@ import { useI18n } from "./i18n"
 export type AddObjectNodeRequest = {
   objectId?: string
   position?: [number, number]
+}
+
+export type AddRawFileNodeRequest = {
+  source:
+    | { kind: "external-file"; file: File }
+    | { kind: "project-file"; projectFileId: string; path: string }
+  position: [number, number]
 }
 
 export type MoveGraphNodeRequest = {
@@ -117,6 +125,7 @@ type GraphCanvasProps = {
   onCancelPointerEdge: () => void
   onOpenWorkspace: () => void
   onAddObjectNode: (request?: AddObjectNodeRequest) => void
+  onAddRawFileNode: (request: AddRawFileNodeRequest) => void | Promise<void>
   onMoveNode: (request: MoveGraphNodeRequest) => void
   onNudgeNodes: (request: NudgeGraphNodesRequest) => void
   onUndoHistory: () => void
@@ -173,6 +182,7 @@ export function GraphCanvas({
   onCancelPointerEdge,
   onOpenWorkspace,
   onAddObjectNode,
+  onAddRawFileNode,
   onMoveNode,
   onNudgeNodes,
   onUndoHistory,
@@ -237,7 +247,7 @@ export function GraphCanvas({
   const canSetPath = nodes.length > 1
   const canRemoveSelection = selectionSize > 0
   const canApplyLayout = canUseWorkspace && nodes.length > 0 && autoLayoutStatus?.state !== "applying"
-  const dropEnabled = canUseWorkspace && state.objects.length > 0
+  const objectDropEnabled = canUseWorkspace && state.objects.length > 0
   const rubberBandRectangle = rubberBandRectangleFromInteractionState(interactionState)
 
   const handleZoom = (direction: "in" | "out") => {
@@ -446,14 +456,23 @@ export function GraphCanvas({
     setMinimapDragSession(null)
   }
 
-  const handleObjectDragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (!dropEnabled || !hasGraphObjectDragPayload(event.dataTransfer)) return
+  const handleCanvasDragOver = (event: DragEvent<HTMLDivElement>) => {
+    const acceptsRawFile = canUseWorkspace && hasGraphRawFileDropPayload(event.dataTransfer)
+    const acceptsObject = objectDropEnabled && hasGraphObjectDragPayload(event.dataTransfer)
+    if (!acceptsRawFile && !acceptsObject) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "copy"
   }
 
-  const handleObjectDrop = (event: DragEvent<HTMLDivElement>) => {
-    if (!dropEnabled) return
+  const handleCanvasDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!canUseWorkspace) return
+    const rawFileRequest = rawFileNodeRequestFromDrop(event, viewport)
+    if (rawFileRequest) {
+      event.preventDefault()
+      void onAddRawFileNode(rawFileRequest)
+      return
+    }
+    if (!objectDropEnabled) return
     const payload = parseGraphObjectDragPayload(event.dataTransfer.getData(graphObjectDragMimeType))
     if (!payload || !state.objects.some((object) => object.id === payload.objectId)) return
     event.preventDefault()
@@ -686,8 +705,8 @@ export function GraphCanvas({
           className={`graph-canvas-surface ${panActive ? "graph-canvas-surface--pan" : ""}`}
           aria-label={t("graphCanvas.surface")}
           tabIndex={canUseWorkspace ? 0 : undefined}
-          onDragOver={handleObjectDragOver}
-          onDrop={handleObjectDrop}
+          onDragOver={handleCanvasDragOver}
+          onDrop={handleCanvasDrop}
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handleCanvasPointerMove}
           onPointerUp={handleCanvasPointerUp}
@@ -963,6 +982,43 @@ function GraphMinimap({
 
 function hasGraphObjectDragPayload(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes(graphObjectDragMimeType)
+}
+
+function hasGraphRawFileDropPayload(dataTransfer: DataTransfer): boolean {
+  const types = Array.from(dataTransfer.types)
+  return types.includes(graphRawFileDropMimeType) || types.includes("Files")
+}
+
+function rawFileNodeRequestFromDrop(
+  event: DragEvent<HTMLDivElement>,
+  viewport: GraphViewport,
+): AddRawFileNodeRequest | null {
+  const position = canvasPositionFromDrop(event, viewport)
+  const projectFilePayload = parseGraphRawFileDropPayload(event.dataTransfer.getData(graphRawFileDropMimeType))
+  if (projectFilePayload?.kind === "project-file") {
+    return {
+      source: {
+        kind: "project-file",
+        projectFileId: projectFilePayload.projectFileId,
+        path: projectFilePayload.path,
+      },
+      position,
+    }
+  }
+  const file = firstDataTransferFile(event.dataTransfer)
+  if (file) {
+    return {
+      source: { kind: "external-file", file },
+      position,
+    }
+  }
+  return null
+}
+
+function firstDataTransferFile(dataTransfer: DataTransfer): File | null {
+  const files = dataTransfer.files
+  if (!files || files.length === 0) return null
+  return files.item(0) ?? files[0] ?? null
 }
 
 function isCanvasPanStartTarget(target: EventTarget): boolean {

@@ -1,0 +1,100 @@
+feature: 2026-06-03-workspace-file-drop-minimal-loop
+created: 2026-06-03
+
+steps:
+  - action: "Project File Projection：建立 ProjectFileEntry 派生逻辑和 Project Files Panel 静态 UI"
+    exit_signal: "active project 下能列出 inputs/raw/... 和 exports/...；无 active project 时显示空状态"
+    status: done
+
+  - action: "Raw File Drag Payload：定义 project raw file / external file drop payload，GraphCanvas 能识别 raw file drop"
+    exit_signal: "组件测试可验证 project file row drag payload 和 GraphCanvas drop position"
+    status: done
+
+  - action: "Drop Import Pipeline：接入 raw persistence、import.preview、single-object guard、import.register_all 和 workspace.add_node"
+    exit_signal: "单对象 fixture 或 local-http 小文件 drop 后出现 ShellResponse graph node；失败时不创建节点"
+    status: done
+
+  - action: "Project File Status Feedback：把 stored/previewed/registered/used-in-graph/error 状态投影到 Project Files Panel"
+    exit_signal: "成功 drop 后对应 project file 显示 used-in-graph；preview/register/add-node error 显示 code/target"
+    status: done
+
+  - action: "UX / I18n / Responsive：收紧左侧布局、按钮文案、长文件名和窄屏 Project Files 展示"
+    exit_signal: "zh-CN/en-US 文案完整；桌面和窄屏布局无水平溢出"
+    status: done
+
+  - action: "Verification And Scope Guard：跑 unit/component/build/browser smoke，确认没有越界引入 parser/cloud/schema"
+    exit_signal: "Web tests/build 通过；local-http smoke 可跑；scope grep 无违规依赖"
+    status: done
+
+checks:
+  - item: "ProjectFileEntry 包含 projectRef、path、name、kind、checksum、status、rawResourceId、registeredObjectIds、graphNodeIds、artifactIds 和 warnings"
+    source: 名词契约
+    status: passed
+
+  - item: "Raw file drop payload 与 registered-object payload 分离，使用独立 MIME type"
+    source: 名词契约
+    status: passed
+
+  - item: "external file drop 必须先写入项目 inputs/raw/... 并 merge manifest，再 preview/register/add node"
+    source: 编排骨架
+    status: passed
+
+  - item: "object_count != 1 的 preview 不自动创建 graph node，并显示需要后续候选选择器的状态"
+    source: 跨层纪律
+    status: passed
+
+  - item: "raw persistence、import.preview、import.register_all 或 workspace.add_node 任一步失败都停止后续步骤，不伪造半成品 node"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Project Sidebar active project 区新增 Project Files Panel 作为新主流程入口"
+    source: 挂载点
+    status: passed
+
+  - item: "GraphCanvas surface 支持 raw file drop；旧 registered-object drop 不再作为兼容性验收要求"
+    source: 挂载点
+    status: passed
+
+  - item: "WorkbenchShell 新增 addRawFileNode 编排，将 raw persistence、preview/register 和 add node 串联"
+    source: 挂载点
+    status: passed
+
+  - item: "不新增 molecule preview、CDXML/CDX、PES preview 或 energy.compute 新逻辑"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 Python Shell command、Project Content schema、Browser Project Repository interface 或 parser plugin"
+    source: 范围守护
+    status: passed
+
+  - item: "Web 代码不 import Python parser/core，不解析 Gaussian/ORCA/MAPLE/XYZ/extxyz"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 browser directory handle 写入 Project Content 作为长期 authority"
+    source: 范围守护
+    status: passed
+
+  - item: "创建或打开 active browser project 后，左侧显示 Project Files Panel"
+    source: 验收场景
+    status: passed
+
+  - item: "通过 file picker 选择单个小型输出文件并拖到画布后，文件写入 inputs/raw/{sha12}-{safeName}"
+    source: 验收场景
+    status: passed
+
+  - item: "单对象 preview/register 成功后，按 drop position 调用 workspace.add_node 并显示 ShellResponse 返回的 graph node"
+    source: 验收场景
+    status: passed
+
+  - item: "项目内 raw file row 可再次拖到画布，复用已有 project file，不重复写 raw object"
+    source: 验收场景
+    status: passed
+
+  - item: "zh-CN / en-US 新增静态文案完整；文件名、path、checksum、error code 原样显示"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面和窄屏 viewport 下 Project Files Panel 与 GraphCanvas drop 状态不重叠、不水平溢出"
+    source: 验收场景
+    status: passed

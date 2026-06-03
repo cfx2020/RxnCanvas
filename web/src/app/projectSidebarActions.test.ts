@@ -25,6 +25,7 @@ describe("project sidebar repository actions", () => {
     expect(state.activeProject).toBeUndefined()
     expect(state.persistence).toBe("empty")
     expect(state.validation.state).toBe("unknown")
+    expect(state.projectFiles).toEqual([])
   })
 
   it("creates a project, writes real project content files, and selects it", async () => {
@@ -45,6 +46,7 @@ describe("project sidebar repository actions", () => {
       path: projectContentIndexPath,
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
+    expect(state.projectFiles).toEqual([])
 
     const manifestObject = await repository.readObject(
       state.activeProjectRef ?? "",
@@ -83,6 +85,42 @@ describe("project sidebar repository actions", () => {
       state: "valid",
       checksum: created.lastWrite?.checksum,
     })
+    expect(opened.projectFiles).toEqual([])
+  })
+
+  it("opens an existing project with projected raw and export files", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const created = await createProject(repository, initialProjectSidebarState, "Files")
+    const projectRef = created.activeProjectRef ?? ""
+
+    const rawReceipt = await repository.writeObject(projectRef, {
+      path: "inputs/raw/maple-result.out",
+      bytes: new TextEncoder().encode("MAPLE output") as Uint8Array<ArrayBuffer>,
+      metadata: { kind: "raw_file" },
+    })
+    await repository.writeObject(projectRef, {
+      path: "exports/profile.csv",
+      bytes: new TextEncoder().encode("name,energy") as Uint8Array<ArrayBuffer>,
+      metadata: { kind: "export_artifact", artifact_id: "artifact-profile-csv" },
+    })
+
+    const opened = await openProject(repository, initialProjectSidebarState, projectRef)
+
+    expect(opened.projectFiles).toEqual([
+      expect.objectContaining({
+        id: "artifact-profile-csv",
+        path: "exports/profile.csv",
+        kind: "export-artifact",
+        status: "exported",
+        artifactIds: ["artifact-profile-csv"],
+      }),
+      expect.objectContaining({
+        id: `raw-${rawReceipt.checksum.replace(/^sha256:/, "").slice(0, 12)}`,
+        path: "inputs/raw/maple-result.out",
+        kind: "maple-output",
+        status: "stored",
+      }),
+    ])
   })
 
   it("opens a project with missing content without failing", async () => {
@@ -97,6 +135,7 @@ describe("project sidebar repository actions", () => {
     expect(opened.validation.state).toBe("missing")
     expect(opened.validation.messageKey).toBe("projectSidebar.validation.contentMissing")
     expect(opened.validation.messageParams).toEqual({ path: projectContentIndexPath })
+    expect(opened.projectFiles).toEqual([])
   })
 
   it("saves the active project content by overwriting project content paths", async () => {
@@ -114,6 +153,7 @@ describe("project sidebar repository actions", () => {
       state: "valid",
       checksum: secondSave.lastWrite?.checksum,
     })
+    expect(secondSave.projectFiles).toEqual([])
     await expect(
       repository.listObjects(missingProject.projectRef, projectContentIndexPath),
     ).resolves.toHaveLength(1)

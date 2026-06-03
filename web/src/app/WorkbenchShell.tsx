@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AlertTriangle, Play } from "lucide-react"
-import { BrowserProjectRepositoryError, type BrowserProjectRepository } from "../repository"
+import {
+  BrowserProjectRepositoryError,
+  type BrowserProjectRepository,
+  type BrowserProjectRepositoryErrorPayload,
+  type BrowserStorageObject,
+} from "../repository"
 import type { EnergyComputeData, ExportProfileData, FixtureRunData, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, JsonObject, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary, WorkspaceSummary } from "../shell"
 import {
   addCompositionDraftRow,
@@ -78,7 +83,7 @@ import {
   type GraphPathOrderDraft,
   type GraphPathOrderMoveDirection,
 } from "./graphPathOrderDraft"
-import { GraphCanvas, type AddObjectNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type RemoveGraphItemsRequest } from "./GraphCanvas"
+import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type RemoveGraphItemsRequest } from "./GraphCanvas"
 import { ImportInbox } from "./ImportInbox"
 import {
   importPreviewArgsFromFiles,
@@ -88,7 +93,7 @@ import {
   type WebImportFile,
 } from "./importInboxState"
 import { ObjectRegistryPanel, type ApplyCorrectionRequest } from "./ObjectRegistryPanel"
-import { persistImportFilesAsRawInputs } from "./rawInputPersistence"
+import { persistImportFilesAsRawInputs, persistRawInputFile, type BrowserRawResource } from "./rawInputPersistence"
 import { exportBrowserProjectBundle, type ExportBundleStatus } from "./projectBundleExport"
 import {
   browserProjectBundleImportConflictPolicy,
@@ -96,6 +101,7 @@ import {
   type ImportBundleStatus,
 } from "./projectBundleImport"
 import { createProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
+import type { ProjectFileEntry } from "./projectFiles"
 import {
   contentFilesToShellPayload,
   readProjectContentFiles,
@@ -694,6 +700,270 @@ export function WorkbenchShell({
       resetGraphEditorHistory()
     }
   }, [activeObjectId, applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.objects, workbenchState.sessionId, workbenchState.workspace])
+
+  const applyDropImportError = useCallback((
+    error: ShellError,
+    selectedFiles: WebImportFile[] = [],
+    warnings: WorkbenchDomainState["warnings"] = [],
+    activeBatch?: ImportBatchSummary,
+  ) => {
+    setImportInboxState((current) => ({
+      ...current,
+      status: "error",
+      selectedFiles: selectedFiles.length > 0 ? selectedFiles : current.selectedFiles,
+      activeBatch: activeBatch ?? current.activeBatch,
+      warnings,
+      error,
+    }))
+    setWorkbenchState((current) => {
+      const imports = activeBatch ? upsertImportBatch(current.imports, activeBatch) : current.imports
+      return {
+        ...current,
+        status: "error",
+        imports,
+        counts: { ...current.counts, imports: imports.length },
+        warnings,
+        error,
+      }
+    })
+  }, [])
+
+  const updateProjectFileEntry = useCallback((
+    path: string,
+    patch: Partial<Pick<ProjectFileEntry, "status" | "registeredObjectIds" | "graphNodeIds" | "warnings">>,
+  ) => {
+    const current = projectSidebarStateRef.current
+    const nextState: ProjectSidebarState = {
+      ...current,
+      projectFiles: current.projectFiles.map((file) => (
+        file.path === path
+          ? {
+              ...file,
+              ...patch,
+              registeredObjectIds: patch.registeredObjectIds ?? file.registeredObjectIds,
+              graphNodeIds: patch.graphNodeIds ?? file.graphNodeIds,
+              warnings: patch.warnings ?? file.warnings,
+            }
+          : file
+      )),
+    }
+    replaceProjectSidebarState(nextState)
+  }, [replaceProjectSidebarState])
+
+  const addRawFileNode = useCallback(async (request: AddRawFileNodeRequest) => {
+    const sessionId = workbenchState.sessionId
+    const activeProject = projectSidebarStateRef.current.activeProject
+    if (!sessionId) {
+      applyDropImportError(shellError("invalid_input", "Shell session is required before dropping raw files.", "session_id"))
+      return
+    }
+    if (!activeProject) {
+      applyDropImportError(shellError("active_project_required", "Active browser project is required before dropping raw files.", "active_project"))
+      return
+    }
+
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const importFileResult = await rawDropImportFile(projectRepository, activeProject.projectRef, request.source)
+    if (!importFileResult.ok) {
+      if (request.source.kind === "project-file") {
+        updateProjectFileEntry(request.source.path, {
+          status: "error",
+          warnings: projectFileWarningMessagesFromError(importFileResult.error),
+        })
+      }
+      applyDropImportError(importFileResult.error, [importFileResult.file])
+      return
+    }
+    const rawFilePath = importFileResult.file.storagePath ?? importFileResult.file.name
+
+    const previewState: ImportInboxState = {
+      ...initialImportInboxState,
+      status: "previewing",
+      selectedFiles: [importFileResult.file],
+      expectedFormat: importInboxState.expectedFormat,
+      strict: importInboxState.strict,
+    }
+    setImportInboxState(previewState)
+    replaceProjectSidebarState(await refreshProjects(projectRepository, projectSidebarStateRef.current))
+
+    const payload = await importPreviewArgsFromFiles(previewState, sessionId)
+    if (!payload.ok) {
+      updateProjectFileEntry(rawFilePath, {
+        status: "error",
+        warnings: projectFileWarningMessagesFromError(payload.error),
+      })
+      applyDropImportError(payload.error, payload.files)
+      return
+    }
+
+    const previewResponse = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: payload.args,
+    })
+    if (!previewResponse.ok || !previewResponse.data) {
+      const error = previewResponse.error ?? shellError("invalid_input", "Import preview did not return a batch.", "import.preview")
+      updateProjectFileEntry(rawFilePath, {
+        status: "error",
+        warnings: projectFileWarningMessagesFromError(error),
+      })
+      applyDropImportError(
+        error,
+        payload.files,
+        previewResponse.warnings,
+      )
+      return
+    }
+
+    const previewBatch = previewResponse.data.batch
+    updateProjectFileEntry(rawFilePath, {
+      status: "previewed",
+      warnings: projectFileWarningMessagesFromWarnings(previewResponse.warnings),
+    })
+    setImportInboxState((current) => ({
+      ...current,
+      status: "ready",
+      selectedFiles: payload.files,
+      activeBatch: previewBatch,
+      registeredObjectIds: [],
+      warnings: previewResponse.warnings,
+      error: undefined,
+    }))
+    setWorkbenchState((current) => {
+      const imports = upsertImportBatch(current.imports, previewBatch)
+      return {
+        ...current,
+        status: "success",
+        imports,
+        counts: { ...current.counts, imports: imports.length },
+        warnings: previewResponse.warnings,
+        error: undefined,
+      }
+    })
+
+    const objectCount = importPreviewObjectCount(previewBatch)
+    if (objectCount !== 1) {
+      const error = shellError(
+        "candidate_selection_required",
+        `Raw file preview produced ${objectCount} objects. Candidate selection is not implemented yet.`,
+        importFileResult.file.storagePath ?? importFileResult.file.name,
+      )
+      updateProjectFileEntry(rawFilePath, {
+        status: "error",
+        warnings: projectFileWarningMessagesFromError(error),
+      })
+      applyDropImportError(error, payload.files, previewResponse.warnings, previewBatch)
+      return
+    }
+
+    setImportInboxState((current) => ({
+      ...current,
+      status: "registering",
+      warnings: [],
+      error: undefined,
+    }))
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const registerResponse = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: sessionId,
+        batch_id: previewBatch.id,
+      },
+    })
+    if (!registerResponse.ok || !registerResponse.data) {
+      const error = registerResponse.error ?? shellError("invalid_input", "Import register did not return object ids.", "import.register_all")
+      updateProjectFileEntry(rawFilePath, {
+        status: "error",
+        warnings: projectFileWarningMessagesFromError(error),
+      })
+      applyDropImportError(
+        error,
+        payload.files,
+        registerResponse.warnings,
+        previewBatch,
+      )
+      return
+    }
+
+    const registerData = registerResponse.data
+    const registeredObjectId = registerData.registered_object_ids[0]
+    const registeredObject = registerData.objects.find((object) => object.id === registeredObjectId)
+    if (!registeredObjectId || !registeredObject) {
+      const error = shellError("invalid_input", "Import register did not return a single registered object.", "import.register_all")
+      updateProjectFileEntry(rawFilePath, {
+        status: "error",
+        warnings: projectFileWarningMessagesFromError(error),
+      })
+      applyDropImportError(
+        error,
+        payload.files,
+        registerResponse.warnings,
+        registerData.batch,
+      )
+      return
+    }
+
+    setActiveObjectId(registeredObjectId)
+    updateProjectFileEntry(rawFilePath, {
+      status: "registered",
+      registeredObjectIds: [registeredObjectId],
+      warnings: projectFileWarningMessagesFromWarnings(registerResponse.warnings),
+    })
+    setImportInboxState((current) => ({
+      ...current,
+      status: "registered",
+      activeBatch: registerData.batch,
+      registeredObjectIds: registerData.registered_object_ids,
+      warnings: registerResponse.warnings,
+      error: undefined,
+    }))
+    setWorkbenchState((current) => {
+      const imports = upsertImportBatch(current.imports, registerData.batch)
+      const mergedObjects = mergeRegisteredObjects(current.objects, registerData.objects)
+      return {
+        ...current,
+        status: "success",
+        imports,
+        objects: mergedObjects,
+        counts: {
+          ...current.counts,
+          imports: imports.length,
+          objects: mergedObjects.length,
+        },
+        warnings: registerResponse.warnings,
+        error: undefined,
+      }
+    })
+
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.add_node",
+      args: {
+        session_id: sessionId,
+        kind: "species",
+        label: registeredObject.label ?? registeredObject.id,
+        chemical_object_ids: [registeredObject.id],
+        position: request.position,
+      },
+    })
+    applyWorkspaceResponse(addNodeResponse)
+    if (!addNodeResponse.ok || !addNodeResponse.data) {
+      updateProjectFileEntry(rawFilePath, {
+        status: "error",
+        registeredObjectIds: [registeredObjectId],
+        warnings: projectFileWarningMessagesFromError(
+          addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node"),
+        ),
+      })
+      return
+    }
+    updateProjectFileEntry(rawFilePath, {
+      status: "used-in-graph",
+      registeredObjectIds: [registeredObjectId],
+      graphNodeIds: graphNodeIdsForObject(addNodeResponse.data.workspace, registeredObjectId),
+      warnings: projectFileWarningMessagesFromWarnings(addNodeResponse.warnings),
+    })
+    resetGraphEditorHistory()
+  }, [applyDropImportError, applyWorkspaceResponse, importInboxState.expectedFormat, importInboxState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
 
   const applyCorrection = useCallback(async (request: ApplyCorrectionRequest) => {
     const sessionId = workbenchState.sessionId
@@ -1738,6 +2008,7 @@ export function WorkbenchShell({
             onCancelPointerEdge={cancelPointerEdge}
             onOpenWorkspace={openWorkspace}
             onAddObjectNode={addObjectNode}
+            onAddRawFileNode={addRawFileNode}
             onMoveNode={moveGraphNode}
             onNudgeNodes={nudgeGraphNodes}
             onUndoHistory={() => void replayGraphEditorHistory("undo")}
@@ -1788,6 +2059,145 @@ function upsertImportBatch(
     return [...batches, batch]
   }
   return batches.map((existing, currentIndex) => (currentIndex === index ? batch : existing))
+}
+
+type RawDropImportFileResult =
+  | { ok: true; file: WebImportFile }
+  | { ok: false; file: WebImportFile; error: ShellError }
+
+async function rawDropImportFile(
+  repository: BrowserProjectRepository,
+  projectRef: string,
+  source: AddRawFileNodeRequest["source"],
+): Promise<RawDropImportFileResult> {
+  if (source.kind === "external-file") {
+    const result = await persistRawInputFile(repository, projectRef, source.file)
+    const fallbackFile = webImportFileFromFile(source.file)
+    if (!result.ok) {
+      return {
+        ok: false,
+        file: {
+          ...fallbackFile,
+          rawPersistence: { state: "error", error: result.error },
+        },
+        error: result.error,
+      }
+    }
+    return {
+      ok: true,
+      file: webImportFileFromRawResource(result.resource, source.file),
+    }
+  }
+
+  try {
+    const object = await repository.readObject(projectRef, source.path)
+    return {
+      ok: true,
+      file: webImportFileFromRawResource(browserRawResourceFromObject(object, source.projectFileId)),
+    }
+  } catch (error) {
+    const shellErrorPayload = repositoryErrorPayload(error, source.path)
+    return {
+      ok: false,
+      file: {
+        id: source.projectFileId,
+        name: baseName(source.path),
+        size: 0,
+        storagePath: source.path,
+        sourceKind: "path",
+        rawPersistence: { state: "error", error: shellErrorPayload },
+      },
+      error: shellErrorPayload,
+    }
+  }
+}
+
+function webImportFileFromFile(file: File): WebImportFile {
+  return {
+    id: `${file.name}-${file.size}-${file.lastModified}`,
+    name: file.name,
+    size: file.size,
+    mimeType: file.type || undefined,
+    lastModified: file.lastModified || undefined,
+    storagePath: `inputs/raw/${file.name}`,
+    file,
+    sourceKind: "path",
+  }
+}
+
+function webImportFileFromRawResource(resource: BrowserRawResource, file?: File): WebImportFile {
+  return {
+    id: resource.id,
+    name: resource.metadata.source_name,
+    size: resource.metadata.byte_size,
+    mimeType: resource.metadata.mime_type ?? file?.type ?? undefined,
+    lastModified: resource.metadata.last_modified ?? file?.lastModified ?? undefined,
+    storagePath: resource.path,
+    file,
+    sourceKind: "path",
+    rawPersistence: { state: "persisted", resource },
+  }
+}
+
+function browserRawResourceFromObject(object: BrowserStorageObject, rawResourceId: string): BrowserRawResource {
+  const sourceName = stringMetadata(object, "source_name") ?? baseName(object.path)
+  return {
+    id: rawResourceId,
+    kind: "raw_file",
+    path: object.path,
+    checksum: object.checksum ?? "",
+    metadata: {
+      source_name: sourceName,
+      byte_size: numberMetadata(object, "byte_size") ?? object.bytes.byteLength,
+      mime_type: stringMetadata(object, "mime_type"),
+      last_modified: numberMetadata(object, "last_modified"),
+    },
+  }
+}
+
+function importPreviewObjectCount(batch: ImportBatchSummary): number {
+  return batch.items.reduce((count, item) => count + (item.preview?.object_count ?? 0), 0)
+}
+
+function graphNodeIdsForObject(workspace: WorkspaceSummary, objectId: string): string[] {
+  return workspace.graph.nodes
+    .filter((node) => node.chemical_object_ids?.includes(objectId))
+    .map((node) => node.id)
+}
+
+function projectFileWarningMessagesFromError(error: ShellError): string[] {
+  return [error.code, error.target].filter((value): value is string => Boolean(value))
+}
+
+function projectFileWarningMessagesFromWarnings(warnings: WorkbenchDomainState["warnings"]): string[] {
+  return warnings.flatMap((warning) =>
+    [warning.code, warning.target].filter((value): value is string => Boolean(value))
+  )
+}
+
+function repositoryErrorPayload(error: unknown, target: string): BrowserProjectRepositoryErrorPayload {
+  if (error instanceof BrowserProjectRepositoryError) {
+    return error.toJSON()
+  }
+  return {
+    code: "storage_failed",
+    message: error instanceof Error ? error.message : "Browser project file read failed.",
+    target,
+  }
+}
+
+function stringMetadata(object: BrowserStorageObject, key: string): string | null {
+  const value = object.metadata[key]
+  return typeof value === "string" ? value : null
+}
+
+function numberMetadata(object: BrowserStorageObject, key: string): number | null {
+  const value = object.metadata[key]
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function baseName(path: string): string {
+  return path.split("/").filter(Boolean).at(-1) ?? path
 }
 
 function replaceWorkbenchObject(

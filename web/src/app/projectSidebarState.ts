@@ -7,6 +7,7 @@ import type {
 } from "../repository"
 import type { MessageKey, MessageParams } from "./i18n"
 import type { BrowserContentValidation } from "./projectContentBridge"
+import type { ProjectFileEntry } from "./projectFiles"
 
 export type ProjectPersistenceState = "empty" | "dirty" | "saving" | "persisted" | "error"
 export type ProjectBridgeState = "idle" | "opening" | "open" | "saving" | "error"
@@ -30,6 +31,7 @@ export type ProjectSidebarState = {
     state: ProjectBridgeState
     sessionId?: string
   }
+  projectFiles: ProjectFileEntry[]
   lastWrite?: BrowserWriteReceipt
   error?: BrowserProjectRepositoryErrorPayload
 }
@@ -41,6 +43,7 @@ export const initialProjectSidebarState: ProjectSidebarState = {
   bridge: {
     state: "idle",
   },
+  projectFiles: [],
   validation: {
     state: "unknown",
     messageKey: "projectSidebar.validation.noProject",

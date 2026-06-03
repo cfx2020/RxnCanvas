@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   CloudCog,
   Download,
+  FileText,
   FlaskConical,
   FolderOpen,
   HardDrive,
@@ -16,9 +17,11 @@ import {
 import { browserProjectBackendId } from "../repository"
 import type { WorkbenchDomainState } from "./workbenchState"
 import type { ProjectSidebarState } from "./projectSidebarState"
+import type { ProjectFileEntry, ProjectFileKind, ProjectFileStatus } from "./projectFiles"
 import type { ExportBundleStatus } from "./projectBundleExport"
 import type { ImportBundleStatus } from "./projectBundleImport"
-import { useI18n } from "./i18n"
+import { graphRawFileDropMimeType, serializeGraphRawFileDropPayload } from "./graphRawFileDropPayload"
+import { useI18n, type MessageKey } from "./i18n"
 
 type ProjectSidebarProps = {
   state: ProjectSidebarState
@@ -195,6 +198,8 @@ export function ProjectSidebar({
         ) : null}
       </section>
 
+      <ProjectFilesPanel state={state} />
+
       <section className="rail-section bundle-entry-section" aria-label={t("projectSidebar.bundleAria")}>
         <p className="section-kicker">{t("projectSidebar.bundleSection")}</p>
         <div className="project-command-row">
@@ -251,6 +256,110 @@ export function ProjectSidebar({
       </section>
     </aside>
   )
+}
+
+type ProjectFilesPanelProps = {
+  state: ProjectSidebarState
+}
+
+function ProjectFilesPanel({ state }: ProjectFilesPanelProps) {
+  const { t } = useI18n()
+  const fileCount = state.projectFiles.length
+  return (
+    <section className="rail-section project-files-section" aria-label={t("projectSidebar.projectFiles.aria")}>
+      <div className="project-files-header">
+        <div>
+          <p className="section-kicker">{t("projectSidebar.projectFiles.section")}</p>
+          <h2>{t("projectSidebar.projectFiles.title")}</h2>
+        </div>
+        <span className="project-files-count">
+          {t("projectSidebar.projectFiles.count", { count: fileCount })}
+        </span>
+      </div>
+      {!state.activeProject ? (
+        <p className="project-files-empty">{t("projectSidebar.projectFiles.noActiveProject")}</p>
+      ) : fileCount === 0 ? (
+        <p className="project-files-empty">{t("projectSidebar.projectFiles.empty")}</p>
+      ) : (
+        <ul className="project-file-list" aria-label={t("projectSidebar.projectFiles.listAria")}>
+          {state.projectFiles.map((file) => (
+            <ProjectFileRow key={file.id} file={file} />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+type ProjectFileRowProps = {
+  file: ProjectFileEntry
+}
+
+function ProjectFileRow({ file }: ProjectFileRowProps) {
+  const { t } = useI18n()
+  const draggable = isDraggableRawProjectFile(file)
+  return (
+    <li
+      className={`project-file-card project-file-card--${file.status} ${draggable ? "project-file-card--draggable" : ""}`}
+      draggable={draggable}
+      onDragStart={draggable ? (event) => {
+        event.dataTransfer.effectAllowed = "copy"
+        event.dataTransfer.setData(graphRawFileDropMimeType, serializeGraphRawFileDropPayload({
+          kind: "project-file",
+          projectFileId: file.id,
+          path: file.path,
+        }))
+      } : undefined}
+    >
+      <div className="project-file-title-row">
+        <span className="project-file-icon" aria-hidden="true">
+          {file.kind === "export-artifact" ? <Download size={16} /> : <FileText size={16} />}
+        </span>
+        <span className="project-file-title">
+          <strong title={file.name}>{file.name}</strong>
+          <small>{file.path}</small>
+        </span>
+      </div>
+      <div className="project-file-meta-row">
+        <span>{t(projectFileKindLabelKey(file.kind))}</span>
+        <span className={`project-file-status project-file-status--${file.status}`}>
+          {t(projectFileStatusLabelKey(file.status))}
+        </span>
+        {typeof file.byteSize === "number" ? (
+          <span>{formatFileByteSize(file.byteSize)}</span>
+        ) : null}
+      </div>
+      {file.checksum ? (
+        <code className="project-file-checksum">{file.checksum}</code>
+      ) : null}
+      {projectFileReferenceIds(file).length > 0 ? (
+        <div className="project-file-reference-row">
+          {projectFileReferenceIds(file).map((id) => (
+            <code key={id}>{id}</code>
+          ))}
+        </div>
+      ) : null}
+      {file.warnings.length > 0 ? (
+        <div className="project-file-warning-row" role="status">
+          {file.warnings.map((warning, index) => (
+            <code key={`${warning}-${index}`}>{warning}</code>
+          ))}
+        </div>
+      ) : null}
+    </li>
+  )
+}
+
+function isDraggableRawProjectFile(file: ProjectFileEntry): boolean {
+  return file.path.startsWith("inputs/raw/") && file.kind !== "export-artifact"
+}
+
+function projectFileReferenceIds(file: ProjectFileEntry): string[] {
+  return [
+    ...file.registeredObjectIds,
+    ...file.graphNodeIds,
+    ...file.artifactIds,
+  ]
 }
 
 type BundleImportStatusViewProps = {
@@ -386,6 +495,32 @@ function formatBundleByteSize(byteSize: number): string {
   const kib = byteSize / 1024
   if (kib < 1024) return `${kib.toFixed(1)} KiB`
   return `${(kib / 1024).toFixed(1)} MiB`
+}
+
+function formatFileByteSize(byteSize: number): string {
+  if (byteSize < 1024) return `${byteSize} B`
+  const kib = byteSize / 1024
+  if (kib < 1024) return `${kib.toFixed(1)} KiB`
+  return `${(kib / 1024).toFixed(1)} MiB`
+}
+
+function projectFileKindLabelKey(kind: ProjectFileKind): MessageKey {
+  if (kind === "gaussian-log") return "projectSidebar.projectFiles.kind.gaussianLog"
+  if (kind === "orca-output") return "projectSidebar.projectFiles.kind.orcaOutput"
+  if (kind === "maple-output") return "projectSidebar.projectFiles.kind.mapleOutput"
+  if (kind === "xyz") return "projectSidebar.projectFiles.kind.xyz"
+  if (kind === "extxyz") return "projectSidebar.projectFiles.kind.extxyz"
+  if (kind === "export-artifact") return "projectSidebar.projectFiles.kind.exportArtifact"
+  return "projectSidebar.projectFiles.kind.unknown"
+}
+
+function projectFileStatusLabelKey(status: ProjectFileStatus): MessageKey {
+  if (status === "previewed") return "projectSidebar.projectFiles.status.previewed"
+  if (status === "registered") return "projectSidebar.projectFiles.status.registered"
+  if (status === "used-in-graph") return "projectSidebar.projectFiles.status.usedInGraph"
+  if (status === "exported") return "projectSidebar.projectFiles.status.exported"
+  if (status === "error") return "projectSidebar.projectFiles.status.error"
+  return "projectSidebar.projectFiles.status.stored"
 }
 
 type Translate = ReturnType<typeof useI18n>["t"]
