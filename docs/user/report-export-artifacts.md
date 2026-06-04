@@ -53,7 +53,7 @@ RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为�
 | 格式 | 用途 | 当前边界 |
 |---|---|---|
 | PNG | 快速放进文档、汇报或聊天中查看能量图。 | 位图，不适合在 ChemDraw 中编辑对象。 |
-| CDXML | 用 ChemDraw 打开和编辑能量图线条、文字等图形对象。 | 当前是 `.cdxml` XML 文件，不是 `.cdx` 二进制文件；不包含分子结构编辑语义。 |
+| CDXML | 用 ChemDraw 打开和编辑能量图线条、结构名、相对能量、相邻 `dE`、missing reason 和 correction marker。 | 当前是 `.cdxml` XML 文件，不是 `.cdx` 二进制文件；不包含分子结构、原子/键或反应式编辑语义。 |
 | XLSX | 查看结构优先的能量表、Energy Profile 和 warnings。 | 当前不套用你的私有 Excel 模板；缺失字段留空，不自动补 0。 |
 | CSV | 把结构优先的能量表交给脚本、表格软件或其他数据流程。 | UTF-8 单表 CSV；没有公式、多 sheet、样式或私有模板；缺失字段为空 cell。 |
 | SVG | 保存当前反应图谱的 graph snapshot，适合放入报告、网页或矢量编辑流程。 | 由 core 根据 graph/workspace 投影生成，不是 Web 画布截图；包含节点、边、active path、selection 和 viewport metadata，不包含 hover 或拖拽中的临时状态。 |
@@ -115,6 +115,10 @@ A: checksum 是文件内容的 sha256 指纹，用于判断保存后的 artifact
 Q: CDXML 和 CDX 有什么区别？
 
 A: CDXML 是 XML 格式，当前 RxnFlow 支持导出 `.cdxml`。CDX 是 ChemDraw 的二进制格式，当前不支持，也不会出现在 Web 导出勾选项里。需要 CDX 时，先在 ChemDraw 中打开 CDXML，再由 ChemDraw 另存为 CDX。
+
+Q: CDXML 里会包含哪些能量信息？
+
+A: 当前 CDXML 能量图包含每个 state 的结构名称和相对能量，也会在相邻有效 state 之间标出 `dE`。如果某个 point 缺失能量，会显示 missing reason，不会把缺失点当作 0；如果某个 point 使用了校正项，会显示 `corr xN` marker。
 
 Q: XLSX 第一列是什么？
 

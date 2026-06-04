@@ -368,9 +368,9 @@ class MinimalCdxmlEnergyDeltaOptions:
 4. **minimal-cdxml-energy-delta-export** — 基于 active path 导出最小 CDXML，包含结构名称、相对能量、相邻能量差和 missing/correction marker。
    - 所属模块：Minimal CDXML Export
    - 依赖：`canvas-path-authoring-pes-preview`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：CDXML 不是 CDX，不包含 molecule-level atoms/bonds。
+   - 状态：done
+   - 对应 feature：`2026-06-04-minimal-cdxml-energy-delta-export`
+   - 备注：CDXML 输出结构名、relative value + unit、相邻 `dE`、missing reason 和 `corr xN` marker；仍不是 CDX，不包含 molecule-level atoms/bonds。
 
 5. **workspace-first-flow-polish** — 收束当前复杂三栏流程，把项目文件、画布、势能面和导出整理成 workspace-first 主界面。
    - 所属模块：Project Files Panel / GraphCanvas / PES Preview / Report Export UI

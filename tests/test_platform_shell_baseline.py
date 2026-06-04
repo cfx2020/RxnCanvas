@@ -1343,6 +1343,7 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertEqual(artifact["format"], "cdxml")
             self.assertIsNotNone(artifact["bytes_base64"])
             self.assertEqual(artifact["metadata"]["encoding"], "base64")
+
             csv_artifact = export_artifacts[1]
             self.assertEqual(csv_artifact["format"], "csv")
             self.assertIsNotNone(csv_artifact["bytes_base64"])
@@ -1446,6 +1447,40 @@ class PlatformShellBaselineTest(unittest.TestCase):
                 [artifact["id"], csv_artifact["id"], svg_artifact["id"], outside_export.to_dict()["artifacts"][0]["id"]],
             )
             self.assertEqual([item.id for item in state.export_artifact_records], [persisted_artifact["id"]])
+
+            cdxml_without_delta = service.run(
+                ShellCommand(
+                    "export.profile",
+                    {
+                        "session_id": session_id,
+                        "formats": ("cdxml",),
+                        "include_bytes": True,
+                        "options": {"cdxml": {"show_step_delta": False}},
+                    },
+                )
+            )
+            self.assertTrue(cdxml_without_delta.ok, cdxml_without_delta.error)
+            cdxml_without_delta_artifact = cdxml_without_delta.to_dict()["artifacts"][0]
+            self.assertEqual(cdxml_without_delta_artifact["metadata"]["cdxml_includes_step_delta"], False)
+            cdxml_without_delta_text = base64.b64decode(
+                cdxml_without_delta_artifact["bytes_base64"]
+            ).decode("utf-8")
+            self.assertNotIn("dE ", cdxml_without_delta_text)
+
+            cdxml_without_bytes = service.run(
+                ShellCommand(
+                    "export.profile",
+                    {
+                        "session_id": session_id,
+                        "formats": ("cdxml",),
+                        "include_bytes": False,
+                    },
+                )
+            )
+            self.assertTrue(cdxml_without_bytes.ok, cdxml_without_bytes.error)
+            cdxml_without_bytes_artifact = cdxml_without_bytes.to_dict()["artifacts"][0]
+            self.assertIsNone(cdxml_without_bytes_artifact["bytes_base64"])
+            self.assertEqual(cdxml_without_bytes_artifact["metadata"]["cdxml_step_delta_count"], 1)
 
             missing_energy = PlatformShellService(AppKernel()).run(
                 ShellCommand("energy.compute", {"session_id": "missing"})

@@ -131,6 +131,8 @@ document = result.value
 - `csv`
 - `svg`
 
+当前 CDXML writer 是 `rxnflow-cdxml-energy-v1`。它输出 ChemDraw 可打开的能量图对象，包含结构名称、relative value + unit、相邻 `dE` label、missing marker / reason 和 `corr xN` correction marker。`dE` 只从相邻两个有效 relative energy point 派生；missing point 不补 0、不生成 state line，也不会跨 missing point 画 connector 或 delta。correction marker 只来自 `EnergyPoint.expression.corrections.length`，不重新求和 correction contribution。
+
 能力矩阵还记录后续格式入口，但它们当前不可执行：
 
 | format | status | extension | MIME | 说明 |
@@ -370,7 +372,7 @@ cd web && RXNFLOW_E2E_PYTHON=/path/to/python3 npm run test:e2e:local-http
 ## 已知限制与注意事项
 
 - 当前不支持 `.cdx` binary。CDXML 是 XML 格式，可由 ChemDraw 打开和编辑能量图对象；它不是 ChemDraw 二进制 CDX。
-- 当前 CDXML 只生成能量图对象，不生成 molecule-level CDXML、反应式结构、bond/atom 语义或 ChemDraw 编辑器。
+- 当前 CDXML 只生成能量图对象和文本标注，包括结构名称、相对能量、相邻 `dE`、missing reason 和 correction marker；不生成 molecule-level CDXML、反应式结构、bond/atom 语义或 ChemDraw 编辑器。
 - SVG graph snapshot 是 core projection，不是 Web DOM/canvas screenshot；它不包含 hover、pending edge、rubber-band、minimap draft、history stack、远程资源、script 或 `foreignObject`。
 - 当前不支持 PDF、PPTX、DOCX、HTML report 或 CDX writer；PDF/PPTX/CDX 只在 Export Format Capability 中记录为 unsupported 状态。`ReportDocument` 是内部 manifest，不等于用户可下载的完整报告文件。未开放格式是 `invalid_input target=formats`；已开放 writer 的依赖缺失才是 `export_failed target=dependency`。
 - XLSX workbook 不读取用户私有模板；Energy Table 缺失字段留空。

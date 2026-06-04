@@ -98,7 +98,7 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 1. 通过 ReportExportService 把已加载的 ReactionGraph / EnergyProfile / ChemicalObject / table_rows 导出为 ExportArtifact。
 2. 支持 `png` energy plot、`cdxml` ChemDraw 可编辑能量图、`xlsx` 结构能量 workbook、`csv` 结构能量表和 `svg` graph snapshot。
 3. 使用 structure-first 的 Energy Table，第一列固定为结构名称；缺失字段留空或保留 missing reason。
-4. PNG 和 CDXML 共用 Energy Diagram Route；missing point 形成断点和 warning，不编造相对能量。
+4. PNG 和 CDXML 共用 Energy Diagram Route；route 会从 `EnergyProfile.points` 派生 state label、relative value、step delta、correction count、missing reason 和 padded energy bounds；missing point 形成断点和 warning，不编造相对能量。
 5. 支持 bytes-only 返回，也支持写入已有 destination_dir 并返回 artifact.path。
 6. 通过 Export Format Capability 记录 `png/cdxml/xlsx/csv/svg/pdf/pptx/cdx` 的 extension、MIME、writer、artifact kind、inline/browser persistence、Web 默认状态和 supported/experimental/unsupported 状态；当前可执行 supported set 为 `png/cdxml/xlsx/csv/svg`。
 7. 通过 `docs/dev/report-export-artifacts.md` 和 `docs/user/report-export-artifacts.md` 记录开发者 API、Report Preview Delivery QA Matrix、Web 操作、PNG/CDXML/XLSX/CSV/SVG 格式用途、Export Format Capability、CDXML/CDX 边界、Energy Table/graph snapshot 字段口径、`exports/...` artifact 保存路径和 `.rxnflow.zip` 手动备份/迁移边界。
@@ -513,9 +513,9 @@ Report Export 当前使用以下稳定协议：
 - ReportDocument 序列化：`report_document_to_dict()` 返回 JSON-safe dict；非有限数字、非字符串 metadata key 或 Python object 以 `invalid_input` 返回
 - Energy Table Contract：schema version 当前为 `energy-table-v1`；第一列语义为 `structure_name`，默认列覆盖 Egas、Ggas、Ggas+1M、Ggas(shermo)、Ggas(shermo+1M)、Esol、Gsol、basis function 占位、relative energy 和 missing reason；所有列可通过 `energy_table_columns_by_key()` 按 stable key 查询；XLSX 主表使用 title、group header row、column label row、autofilter、freeze pane 和按列类型设置的列宽；CSV 使用同一列顺序和 label 输出 UTF-8 单表
 - Workbook Header Mapping：`normalize_energy_table_header()` 可把用户样表常见表头如 `Egas`、`basis function`、`Ggas+1M`、`Ggas(shermo+1M)`、`Esol`、`Gsol` 映射为 Energy Table column key；`Sgau/Swhit/RT` 等 entropy 原始列当前返回 `None`，不被自动推断为能量列
-- Energy Diagram Route：从 EnergyProfile.points 派生 state label、relative value、unit、missing reason、padded energy bounds 和 state anchors；PNG/CDXML 共用这些 bounds/anchors，missing point 不生成 y 或 state line anchors
+- Energy Diagram Route：从 EnergyProfile.points 派生 state label、relative value、unit、step delta、correction count、missing reason、padded energy bounds 和 state anchors；PNG/CDXML 共用这些 bounds/anchors，missing point 不生成 y 或 state line anchors
 - XLSX workbook：写 `Energy Table` sheet，可选 `Energy Profile` sheet 和 `Warnings` sheet，并始终写 `Export Metadata` sheet 记录 energy table schema version、column count、row count、title、profile id、graph id 和 path id
-- CDXML energy diagram：写带 `CreationProgram`、font/color、page header/footer 和 group geometry 的 CDXML document；state line 使用 `graphic GraphicType="Line"`，connector 使用 `arrow`，label/value/missing 文本使用 `t` + `s`；generated object id 单文档唯一，group/graphic/arrow/text 均带 `Z`，graphic/arrow/text 带稳定 BoundingBox / LineWidth / justification 属性
+- CDXML energy diagram：写带 `CreationProgram`、font/color、page header/footer 和 group geometry 的 CDXML document；state line 使用 `graphic GraphicType="Line"`，connector 使用 `arrow`，label/value/step delta/missing/correction marker 文本使用 `t` + `s`；relative value 和 step delta 带单位，correction marker 使用 `corr xN`，missing reason 可显示为 `missing: {reason}`；generated object id 单文档唯一，group/graphic/arrow/text 均带 `Z`，graphic/arrow/text 带稳定 BoundingBox / LineWidth / justification 属性
 - SVG graph snapshot：从 `ReactionGraph` / 可选 `WorkspaceSnapshot` 稳定投影生成 valid UTF-8 SVG XML，保留 node position、edge label、active path、selection 和 viewport；不读取 Web DOM、GraphCanvas transient state、hover、pending edge、rubber-band、minimap draft 或 history stack，不嵌入 script、foreignObject 或远程资源
 - 文件输出：默认 bytes-only；提供 destination_dir 和 basename 时写入 `<basename>.<format>`，basename 不允许路径分隔符或 `..`
 - 指南入口：开发者指南为 `docs/dev/report-export-artifacts.md`，用户指南为 `docs/user/report-export-artifacts.md`；开发者指南中的 Report Preview Delivery QA Matrix 将 Python export/manifest tests、Web unit/component tests、build、fixture E2E、local-http E2E 和文档检查映射到 CSV/SVG/preview/manifest/persistence/bundle/unsupported boundary 风险

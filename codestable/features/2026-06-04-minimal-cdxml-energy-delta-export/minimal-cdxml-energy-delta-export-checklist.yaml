@@ -1,0 +1,116 @@
+feature: 2026-06-04-minimal-cdxml-energy-delta-export
+created: 2026-06-04
+
+steps:
+  - action: "Route Annotation Contract：扩展 EnergyDiagramState / CdxmlDiagramOptions，让 route 派生 step delta、correction count、missing count"
+    exit_signal: "unit tests 证明 delta 只在相邻有效 points 间出现，missing adjacency 不产生 delta，correction count 来自 expression"
+    status: done
+
+  - action: "CDXML Writer Text Markers：增强 _render_cdxml，输出 structure name、relative value + unit、dE label、corr xN 和 missing reason"
+    exit_signal: "解析 CDXML XML 后能在 text nodes 中找到预期 labels，missing point 不生成 state line / connector"
+    status: done
+
+  - action: "Shell/Web Export Boundary：Platform Shell 透传 export options；Web 保持只调用 export.profile、下载和 persistence 现有路径"
+    exit_signal: "shell tests 覆盖 enhanced CDXML bytes/metadata；Web tests 证明无需前端 writer，CDXML artifact 仍显示和持久化"
+    status: done
+
+  - action: "Documentation / Scope Guard：更新 architecture / docs 中 CDXML/CDX 边界和最小 CDXML 口径"
+    exit_signal: "文档说明 CDXML 包含 name/relative/delta/missing/correction，CDX 仍 unsupported"
+    status: done
+
+  - action: "Verification：运行 Python tests、Web targeted tests/build、YAML、diff check 和必要浏览器 smoke"
+    exit_signal: "验证通过；未新增 CDX、molecule-level CDXML、Web XML writer 或持久化 schema"
+    status: done
+
+checks:
+  - item: "三点 profile [A=0.00, TS=12.50, B=4.20] 导出 CDXML，文本包含 A/TS/B 和 0.00/12.50/4.20 kcal/mol"
+    source: 验收场景
+    status: passed
+
+  - item: "同一 profile 的 CDXML 包含相邻 delta：dE +12.50 kcal/mol 和 dE -8.30 kcal/mol"
+    source: 验收场景
+    status: passed
+
+  - item: "第一 point 不显示 step delta"
+    source: 验收场景
+    status: passed
+
+  - item: "任一相邻 point missing 时，不显示跨 missing point 的 dE，missing point 不画 state line / connector"
+    source: 验收场景
+    status: passed
+
+  - item: "missing point 显示 missing 或 missing: {reason}，export warnings 保留 missing_energy_point"
+    source: 验收场景
+    status: passed
+
+  - item: "expression corrections 长度为 2 的 point 显示 corr x2；长度为 0 或 expression missing 时不显示 correction marker"
+    source: 验收场景
+    status: passed
+
+  - item: "CDXML metadata 包含 writer id、MIME、path/profile ids，以及 step delta / correction / missing marker summary"
+    source: 验收场景
+    status: passed
+
+  - item: "export.profile shell command 导出 CDXML 时返回 enhanced bytes；include_bytes=false 仍只返回 metadata"
+    source: 验收场景
+    status: passed
+
+  - item: "Report Export Panel 不新增前端 writer；CDXML download link 和 active browser project persistence 仍使用 ShellArtifact bytes"
+    source: 验收场景
+    status: passed
+
+  - item: "请求 cdx、pdf、pptx 仍返回 unsupported invalid_input target=formats，supported set 不变"
+    source: 验收场景
+    status: passed
+
+  - item: "PNG/XLSX/CSV/SVG baseline tests 不因 CDXML marker 增强改变输出 contract"
+    source: 验收场景
+    status: passed
+
+  - item: "CDXML text label 经过 XML escaping，含 <, &, quotes 的 structure label 不破坏 XML parse"
+    source: 验收场景
+    status: passed
+
+  - item: "step_delta_value 只从相邻两个有效 point.relative_energy.value 派生"
+    source: 名词契约
+    status: passed
+
+  - item: "correction_count 只来自 point.expression.corrections.length；expression is None 时为 0"
+    source: 名词契约
+    status: passed
+
+  - item: "CdxmlDiagramOptions 默认显示 structure name、relative value + unit、step delta、missing marker 和 correction marker"
+    source: 名词契约
+    status: passed
+
+  - item: "build_energy_diagram_route 不调用 Energy Engine，不读取 ChemicalObject，不修改 profile"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Platform Shell 只透传 dict options，不新增 shell command 或 Web-only option schema"
+    source: 编排骨架
+    status: passed
+
+  - item: "不新增或启用 .cdx writer/converter"
+    source: 范围守护
+    status: passed
+
+  - item: "不在 CDXML 中输出 atoms/bonds/molecule-level structures/reaction scheme"
+    source: 范围守护
+    status: passed
+
+  - item: "不在 Web 前端生成 CDXML bytes 或拼 XML"
+    source: 范围守护
+    status: passed
+
+  - item: "不重算 EnergyProfile、relative energy、correction total 或 unit conversion"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 missing point 当 0，不跨 missing point 画 connector 或 delta"
+    source: 范围守护
+    status: passed
+
+  - item: "不改 Project Content / ExportArtifactRecord / Browser Project Repository schema"
+    source: 范围守护
+    status: passed

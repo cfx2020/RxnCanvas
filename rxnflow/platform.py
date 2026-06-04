@@ -1134,6 +1134,7 @@ class PlatformShellService:
                 destination_dir=command.args.get("destination_dir"),
                 basename=command.args.get("basename"),
                 title=command.args.get("title"),
+                options=_export_options_arg(command.args),
             ),
         )
         if not export_result.ok or export_result.value is None:
@@ -1443,6 +1444,7 @@ def _export_fixture_artifacts(
             destination_dir=command.args.get("destination_dir"),
             basename=str(command.args.get("basename") or value.profile.id),
             title=command.args.get("title"),
+            options=_export_options_arg(command.args),
         ),
     )
     if not export_result.ok or export_result.value is None:
@@ -1962,6 +1964,13 @@ def _tuple_of_str(value: Any) -> tuple[str, ...]:
     if isinstance(value, (list, tuple, set, frozenset)):
         return tuple(str(item) for item in value)
     return (str(value),)
+
+
+def _export_options_arg(args: dict[str, Any]) -> dict[str, Any]:
+    options = args.get("options")
+    if isinstance(options, dict):
+        return options
+    return {}
 
 
 def _optional_composition_terms(value: Any) -> tuple[ReactionNodeCompositionTerm, ...] | ShellResponse:

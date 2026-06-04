@@ -29,8 +29,8 @@ items:
   - slug: minimal-cdxml-energy-delta-export
     description: 基于 active path 导出最小 ChemDraw CDXML，包含结构名称、相对能量、相邻能量差和 missing/correction marker
     depends_on: [canvas-path-authoring-pes-preview]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-04-minimal-cdxml-energy-delta-export
     minimal_loop: false
     notes: "不做 CDX binary，不做 molecule-level CDXML 或原子/键语义"
 

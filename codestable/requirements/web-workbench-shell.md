@@ -56,6 +56,7 @@ tags: [web, workbench, local-first, shell-client, project-sidebar, project-files
 - 作为一个需要比较 electronic energy 和 thermochemistry 的用户，我希望能在能量面板里明确选择 energy channel 和来源 section，而不是只能手输一个模糊的 key。
 - 作为一个需要管理校正项口径的用户，我希望能按 none/all/kinds/ids 选择 correction policy，而不是只有一个笼统的 include corrections 开关。
 - 作为一个已经得到能量剖面的用户，我希望能从 Web 工作台直接导出 PNG、CDXML、XLSX、CSV 和 SVG artifacts，并在浏览器里看到导出结果、metadata、warnings 和可用下载入口。
+- 作为一个需要把能量剖面交给 ChemDraw 继续整理的用户，我希望 CDXML 能量图已经包含结构名称、相对能量、相邻 `dE`、missing reason 和 correction marker，而不是只导出空泛曲线。
 - 作为一个导出报告前做检查的用户，我希望导出面板提前告诉我当前 profile 是否有 missing point、是否包含 correction marker、include bytes 是否关闭、当前结果是否会 browser-local persisted，以及 ChemDraw 当前只支持 CDXML 不支持 CDX。
 - 作为一个导出报告前做总览的用户，我希望在 Report Export 面板里先看到 graph/profile summary、energy table、graph snapshot、artifact reuse 和 warnings 的预览状态，再决定是否执行导出。
 - 作为一个使用浏览器本地项目的用户，我希望导出的 PNG、CDXML、XLSX、CSV 和 SVG artifacts 在当前 browser-local project 下有 `exports/...` 路径、persisted 状态和 checksum，而不是刷新页面后只剩一次性的下载链接。
@@ -106,6 +107,7 @@ RxnFlow 的核心流程已经能在无界面的状态下跑通，但用户很难
 - 当前 Energy Profile Panel 点击曲线点或表格行只通过 `workspace.select` 联动 Graph Canvas selected node，不直接修改 graph/path/profile 或节点组成。
 - 当前 Energy Profile Panel 不直接保存 profile，也不生成 PNG/CDXML/XLSX/CSV/SVG artifact；profile 持久化由显式 Save Bridge Session 将当前 session content 写回 Browser Project Repository。
 - 当前 Report Export Panel 只处理 ShellResponse 返回的 runtime artifacts；active browser project 下会写 Browser Project Repository `exports/...` object 和 `export-artifacts-v1` browser-local index，并显示 persisted path 与 checksum，但不创建 Python filesystem artifact，也不自动调用 Save Bridge Session。
+- 当前 CDXML artifact 由 core writer 生成，包含结构名称、relative value + unit、相邻 `dE`、missing reason 和 `corr xN` marker；Web 不生成 CDXML bytes，也不在浏览器重算 step delta 或 correction marker。
 - 当前 Report Export Panel 显示 Export Readiness 静态摘要；missing point、include bytes 关闭、没有 active browser project 和 CDXML-only 都只是导出前提示，不改变导出按钮可用性和 `export.profile` 行为。
 - 当前 Report Export Panel 不在前端生成 PNG/CDXML/XLSX/CSV/SVG bytes；download link 只在 `bytes_base64` 存在时启用，include bytes 关闭时只显示 artifact metadata 和不可下载状态。当前 fixture/local-http 回归已固定 CDXML/XLSX/CSV/SVG download MIME、writer metadata、`energy-table-v1`/graph snapshot metadata 和 browser-local checksum。
 - 当前 Report Export Panel 不实现 file picker、File System Access API、OPFS、JSZip、云存储、账号系统、独立报告 writer、ChemDraw 编辑器、CDX、PDF 或 PPTX；Preview 只扫描已有 projection 和 artifact metadata，不保存、不生成 bytes。

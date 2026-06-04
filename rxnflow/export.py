@@ -214,6 +214,8 @@ class EnergyDiagramState:
     label: str
     relative_value: float | None
     unit: EnergyUnit
+    step_delta_value: float | None = None
+    correction_count: int = 0
     missing_reason: str | None = None
     x: float | None = None
     y: float | None = None
@@ -235,6 +237,9 @@ class EnergyDiagramRoute:
     warnings: tuple[RxnFlowWarning, ...] = ()
     min_energy: float = -1.0
     max_energy: float = 1.0
+    step_delta_count: int = 0
+    correction_marker_count: int = 0
+    missing_point_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -242,6 +247,9 @@ class CdxmlDiagramOptions:
     state_line_span: float = 54.0
     show_values: bool = True
     show_labels: bool = True
+    show_step_delta: bool = True
+    show_correction_markers: bool = True
+    show_missing_reason: bool = True
     decimals: int = 2
     y_axis_label: str | None = None
     line_style: str = "solid"
@@ -444,9 +452,16 @@ def build_energy_diagram_route(
     top = 62.0
     bottom = 338.0
     state_span = diagram_options.state_line_span
+    previous_relative_value: float | None = None
 
     for point, position_x in zip(profile.points, positions):
         relative_value = point.relative_energy.value if point.relative_energy is not None else None
+        step_delta_value = (
+            relative_value - previous_relative_value
+            if relative_value is not None and previous_relative_value is not None
+            else None
+        )
+        correction_count = len(point.expression.corrections) if point.expression is not None else 0
         missing_reason = point.missing_reason
         if relative_value is None and missing_reason is None:
             missing_reason = "missing_relative_energy"
@@ -466,6 +481,8 @@ def build_energy_diagram_route(
                 label=point.label,
                 relative_value=relative_value,
                 unit=state_unit,
+                step_delta_value=step_delta_value,
+                correction_count=correction_count,
                 missing_reason=missing_reason,
                 x=position_x,
                 y=y,
@@ -477,6 +494,7 @@ def build_energy_diagram_route(
                 value_y=y - 16 if y is not None else None,
             )
         )
+        previous_relative_value = relative_value
 
     y_axis_label = diagram_options.y_axis_label or f"Relative energy ({_unit_label(unit)})"
     return EnergyDiagramRoute(
@@ -487,6 +505,9 @@ def build_energy_diagram_route(
         warnings=tuple(warnings),
         min_energy=min_energy,
         max_energy=max_energy,
+        step_delta_count=sum(1 for state in states if state.step_delta_value is not None),
+        correction_marker_count=sum(1 for state in states if state.correction_count > 0),
+        missing_point_count=sum(1 for state in states if state.missing_reason is not None),
     )
 
 
@@ -577,7 +598,15 @@ def _render_format(export_format: str, request: ExportRequest) -> Result[_Render
             options = _cdxml_options(request.options)
             route = build_energy_diagram_route(request.profile, options)
             artifact_bytes = _render_cdxml(route, options, request.title)
-            return ok(_RenderedArtifact("cdxml", artifact_bytes, "rxnflow-cdxml-energy-v1", route.warnings))
+            return ok(
+                _RenderedArtifact(
+                    "cdxml",
+                    artifact_bytes,
+                    "rxnflow-cdxml-energy-v1",
+                    route.warnings,
+                    _cdxml_artifact_metadata(route, options),
+                )
+            )
 
         if export_format == "xlsx":
             rows = build_energy_table_rows(request.objects, request.profile, request.table_rows)
@@ -1303,7 +1332,7 @@ def _render_cdxml(
                 next_z(),
                 state.label_x or position_x - 28,
                 (state.label_y or bottom + 18) + 16,
-                "missing",
+                _format_cdxml_missing_marker(state.missing_reason, options),
                 size="8",
                 color="4",
             )
@@ -1334,6 +1363,18 @@ def _render_cdxml(
                 },
             )
             object_id += 1
+            if options.show_step_delta and state.step_delta_value is not None:
+                _cdxml_text(
+                    group,
+                    object_id,
+                    next_z(),
+                    (previous[0] + line_start) / 2 - 30,
+                    (previous[1] + y) / 2 - 14,
+                    _format_cdxml_step_delta(state.step_delta_value, state.unit, options.decimals),
+                    size="8",
+                    color="3",
+                )
+                object_id += 1
         ElementTree.SubElement(
             group,
             "graphic",
@@ -1366,8 +1407,20 @@ def _render_cdxml(
                 next_z(),
                 state.value_x or position_x - 18,
                 state.value_y or y - 16,
-                f"{state.relative_value:.{options.decimals}f}",
+                _format_cdxml_energy_value(state.relative_value, state.unit, options.decimals),
                 size="9",
+            )
+            object_id += 1
+        if options.show_correction_markers and state.correction_count > 0:
+            _cdxml_text(
+                group,
+                object_id,
+                next_z(),
+                state.value_x or position_x - 18,
+                (state.value_y or y - 16) + 14,
+                f"corr x{state.correction_count}",
+                size="8",
+                color="4",
             )
             object_id += 1
         previous = (line_end, y)
@@ -1474,6 +1527,34 @@ def _cdxml_text(
         {"font": "3", "size": size, "color": color, "face": "0"},
     )
     string_node.text = text
+
+
+def _format_cdxml_energy_value(value: float, unit: EnergyUnit, decimals: int) -> str:
+    return f"{value:.{decimals}f} {_unit_label(unit)}"
+
+
+def _format_cdxml_step_delta(value: float, unit: EnergyUnit, decimals: int) -> str:
+    sign = "+" if value >= 0 else ""
+    return f"dE {sign}{value:.{decimals}f} {_unit_label(unit)}"
+
+
+def _format_cdxml_missing_marker(reason: str | None, options: CdxmlDiagramOptions) -> str:
+    if options.show_missing_reason and reason:
+        return f"missing: {reason}"
+    return "missing"
+
+
+def _cdxml_artifact_metadata(route: EnergyDiagramRoute, options: CdxmlDiagramOptions) -> dict[str, Any]:
+    return {
+        "cdxml_includes_step_delta": options.show_step_delta,
+        "cdxml_includes_correction_markers": options.show_correction_markers,
+        "cdxml_includes_missing_reason": options.show_missing_reason,
+        "cdxml_step_delta_count": route.step_delta_count if options.show_step_delta else 0,
+        "cdxml_correction_marker_count": (
+            route.correction_marker_count if options.show_correction_markers else 0
+        ),
+        "cdxml_missing_point_count": route.missing_point_count,
+    }
 
 
 def _cdxml_bbox(x1: float, y1: float, x2: float, y2: float) -> str:
@@ -1699,6 +1780,9 @@ def _cdxml_options(raw_options: dict[str, Any]) -> CdxmlDiagramOptions:
         state_line_span=float(cdxml_options.get("state_line_span", 54.0)),
         show_values=bool(cdxml_options.get("show_values", True)),
         show_labels=bool(cdxml_options.get("show_labels", True)),
+        show_step_delta=bool(cdxml_options.get("show_step_delta", True)),
+        show_correction_markers=bool(cdxml_options.get("show_correction_markers", True)),
+        show_missing_reason=bool(cdxml_options.get("show_missing_reason", True)),
         decimals=int(cdxml_options.get("decimals", 2)),
         y_axis_label=cdxml_options.get("y_axis_label"),
         line_style=str(cdxml_options.get("line_style", "solid")),

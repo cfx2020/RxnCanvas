@@ -36,6 +36,8 @@ from rxnflow.export import (
 )
 from rxnflow.models import (
     ChemicalObject,
+    CorrectionComponent,
+    EnergyExpression,
     EnergyOptions,
     EnergyPoint,
     EnergyProfile,
@@ -371,6 +373,86 @@ class ReportExportBaselineTest(unittest.TestCase):
             ),
         )
         self.assert_error(missing_destination, "export_failed", "destination")
+
+    def test_energy_diagram_route_derives_step_delta_and_correction_counts(self) -> None:
+        profile = _profile_with_points((
+            EnergyPoint("node-a", "A", relative_energy=EnergyValue(0.0, "kcal_mol")),
+            EnergyPoint(
+                "node-ts",
+                "TS",
+                relative_energy=EnergyValue(12.5, "kcal_mol"),
+                expression=_expression_with_corrections("node-ts", 2),
+            ),
+            EnergyPoint("node-missing", "Missing", relative_energy=None, missing_reason="missing_energy"),
+            EnergyPoint("node-b", "B", relative_energy=EnergyValue(4.2, "kcal_mol")),
+        ))
+
+        route = build_energy_diagram_route(profile)
+
+        self.assertEqual([state.label for state in route.states], ["A", "TS", "Missing", "B"])
+        self.assertEqual([state.step_delta_value for state in route.states], [None, 12.5, None, None])
+        self.assertEqual([state.correction_count for state in route.states], [0, 2, 0, 0])
+        self.assertEqual(route.step_delta_count, 1)
+        self.assertEqual(route.correction_marker_count, 1)
+        self.assertEqual(route.missing_point_count, 1)
+        self.assertEqual(route.states[2].missing_reason, "missing_energy")
+        self.assertIsNone(route.states[3].step_delta_value)
+
+    def test_cdxml_export_includes_energy_delta_and_correction_markers(self) -> None:
+        service = ReportExportService()
+        profile = _profile_with_points((
+            EnergyPoint("node-a", "A", relative_energy=EnergyValue(0.0, "kcal_mol")),
+            EnergyPoint(
+                "node-ts",
+                "TS <A & B>",
+                relative_energy=EnergyValue(12.5, "kcal_mol"),
+                expression=_expression_with_corrections("node-ts", 2),
+            ),
+            EnergyPoint("node-b", "B", relative_energy=EnergyValue(4.2, "kcal_mol")),
+        ))
+
+        result = service.export(PROJECT_ID, ExportRequest(formats=("cdxml",), profile=profile))
+
+        self.assertTrue(result.ok, result.error)
+        artifact = result.value[0]  # type: ignore[index]
+        root = ElementTree.fromstring(artifact.bytes or b"")
+        text_values = _xml_text_values(root)
+        self.assertIn("A", text_values)
+        self.assertIn("TS <A & B>", text_values)
+        self.assertIn("B", text_values)
+        self.assertIn("0.00 kcal/mol", text_values)
+        self.assertIn("12.50 kcal/mol", text_values)
+        self.assertIn("4.20 kcal/mol", text_values)
+        self.assertIn("dE +12.50 kcal/mol", text_values)
+        self.assertIn("dE -8.30 kcal/mol", text_values)
+        self.assertIn("corr x2", text_values)
+        self.assertEqual(artifact.metadata["cdxml_includes_step_delta"], True)
+        self.assertEqual(artifact.metadata["cdxml_step_delta_count"], 2)
+        self.assertEqual(artifact.metadata["cdxml_correction_marker_count"], 1)
+        self.assertEqual(artifact.metadata["cdxml_missing_point_count"], 0)
+
+    def test_cdxml_export_marks_missing_without_fake_lines_or_delta(self) -> None:
+        service = ReportExportService()
+
+        result = service.export(PROJECT_ID, ExportRequest(formats=("cdxml",), profile=_profile(missing=True)))
+
+        self.assertTrue(result.ok, result.error)
+        artifact = result.value[0]  # type: ignore[index]
+        root = ElementTree.fromstring(artifact.bytes or b"")
+        text_values = _xml_text_values(root)
+        self.assertIn("missing: missing_energy", text_values)
+        self.assertNotIn("dE +6.25 kcal/mol", text_values)
+        self.assertEqual(artifact.metadata["cdxml_step_delta_count"], 0)
+        self.assertEqual(artifact.metadata["cdxml_missing_point_count"], 1)
+
+        energy_state_lines = [
+            element
+            for element in root.iter("graphic")
+            if element.attrib.get("color") == "3" and element.attrib.get("LineWidth") == "2"
+        ]
+        connectors = list(root.iter("arrow"))
+        self.assertEqual(len(energy_state_lines), 2)
+        self.assertEqual(connectors, [])
 
     def test_energy_table_rows_are_structure_first_and_do_not_invent_missing_values(self) -> None:
         profile = _profile(missing=True)
@@ -846,6 +928,22 @@ def _profile_with_points(points: tuple[EnergyPoint, ...]) -> EnergyProfile:
     )
 
 
+def _expression_with_corrections(node_id: str, count: int) -> EnergyExpression:
+    corrections = tuple(
+        CorrectionComponent(
+            object_id=f"object-{index}",
+            correction_id=f"correction-{index}",
+            kind="manual",
+            coefficient=1.0,
+            raw_energy=EnergyValue(0.1, "kcal_mol"),
+            converted_energy=EnergyValue(0.1, "kcal_mol"),
+            contribution=EnergyValue(0.1, "kcal_mol"),
+        )
+        for index in range(count)
+    )
+    return EnergyExpression(node_id=node_id, corrections=corrections, total=EnergyValue(12.5, "kcal_mol"))
+
+
 def _object(
     object_id: str,
     label: str,
@@ -931,6 +1029,10 @@ def _svg_element_by_attr(root: ElementTree.Element, key: str, value: str) -> Ele
         if element.attrib.get(key) == value:
             return element
     return None
+
+
+def _xml_text_values(root: ElementTree.Element) -> list[str]:
+    return [element.text for element in root.iter() if element.text]
 
 
 def _xlsx_xml(workbook: bytes) -> tuple[str, str]:
