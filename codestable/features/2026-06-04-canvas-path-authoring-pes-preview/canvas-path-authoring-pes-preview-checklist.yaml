@@ -29,96 +29,96 @@ steps:
 checks:
   - item: "无 active path 时从 A 拖线到 B，先发送 workspace.connect(A, B)，成功后发送 workspace.set_path(path-web-main, [A, B])"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "active path 为 [A, B] 时从 B 拖线到 C，会追加为 [A, B, C] 并触发 PES compute"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "active path 为 [B, C] 时从 A 拖线到 B，会前插为 [A, B, C]"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "active path 内部连接、重复节点连接或分叉连接不发送 workspace.set_path，只显示 manual path status"
     source: 编排骨架
-    status: pending
+    status: passed
 
   - item: "workspace.connect 成功但 workspace.set_path 失败时 edge 保留，path/PES 不伪造成功，错误可见"
     source: 跨层纪律
-    status: pending
+    status: passed
 
   - item: "active path projection 变化后 energy.compute 被自动触发一次；同一 PesComputeSignature 不重复自动触发"
     source: 编排骨架
-    status: pending
+    status: passed
 
   - item: "手动 Compute 仍按当前 path/options 调用 energy.compute"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "PES Preview table 显示结构名称、node id、relative energy、step delta、unit、missing reason、correction count 和 warning marker"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "相邻两个点都有 relative energy 时，step delta 显示当前点相对前一点的差值；第一点 delta 为空或 baseline label"
     source: 名词契约
-    status: pending
+    status: passed
 
   - item: "当前点或前一点 missing 时，step delta 为空，不显示 0；missing reason 原样可见"
     source: 跨层纪律
-    status: pending
+    status: passed
 
   - item: "correction count 来自 point.expression.corrections.length，前端不重算 correction contribution"
     source: 名词契约
-    status: pending
+    status: passed
 
   - item: "点击 PES curve/table point 后发送 workspace.select(node_ids=[nodeId])，Graph Canvas selected node 来自 ShellResponse"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "zh-CN / en-US 新增静态文案完整；node id、path id、energy key/source、unit、warning/error code 原样显示"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "桌面和 390px 窄屏下 Graph Canvas、Network Preview、PES table/curve/detail 不重叠、不造成页面整体水平溢出"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "npm run test 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "npm run build 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "python3 -m unittest discover 通过"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "浏览器 dev preview 验证页面非空白、console clean、拖线建 path 和 PES step delta 有可观察变化"
     source: 验收场景
-    status: pending
+    status: passed
 
   - item: "不新增自动路径搜索、化学合理性推断、反应配平、元素守恒、电荷守恒或 TS/final 自动判定"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不新增或修改 CDXML/CDX/PNG/XLSX/CSV/SVG writer，也不生成 report artifact"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "Web 不 import Python core/parser/energy engine，不从 object energies 前端重算 relative energy、unit conversion、correction total 或 EnergyExpression"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不把 missing point 当 0，不把缺失 step delta 写成数值"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不新增 Project Content schema、Browser Project Repository schema、localStorage key、cloud storage、account/auth、autosave 或 directory watcher"
     source: 范围守护
-    status: pending
+    status: passed
 
   - item: "不新增 D3/Recharts/diagramming/canvas library"
     source: 范围守护
-    status: pending
+    status: passed

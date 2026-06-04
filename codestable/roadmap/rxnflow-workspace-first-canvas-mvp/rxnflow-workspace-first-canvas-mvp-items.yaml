@@ -21,7 +21,7 @@ items:
   - slug: canvas-path-authoring-pes-preview
     description: 用画布拖线手动连接节点形成 active path，并在右侧预览势能面、相对能量、相邻能量差和 missing/correction 信息
     depends_on: [canvas-chemical-node-card]
-    status: in-progress
+    status: done
     feature: 2026-06-04-canvas-path-authoring-pes-preview
     minimal_loop: false
     notes: "前端只触发 energy.compute 并消费 ShellResponse，不在浏览器重算能量或自动判定化学合理性"

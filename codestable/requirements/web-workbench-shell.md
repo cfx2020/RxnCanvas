@@ -6,7 +6,7 @@ status: current
 last_reviewed: 2026-06-04
 implemented_by:
   - web-workbench
-tags: [web, workbench, local-first, shell-client, project-sidebar, project-files, raw-file-drop, parse-candidate-chooser, canvas-chemical-node, indexeddb, i18n, import-inbox, raw-inputs, object-registry, correction-entry, graph-canvas, graph-object-drop, graph-node-layout, graph-auto-layout, graph-edge-path-editing, graph-edge-label-editing, graph-editor-free-edge-drawing, graph-editor-multiselect-keyboard, graph-viewport-controls, graph-editor-wheel-minimap, graph-editor-lightweight-history, graph-editor-workspace-persistence, node-composition, energy-semantics, energy-profile, energy-curve-interaction, report-export, report-preview, export-readiness, e2e, bridge-qa]
+tags: [web, workbench, local-first, shell-client, project-sidebar, project-files, raw-file-drop, parse-candidate-chooser, canvas-chemical-node, indexeddb, i18n, import-inbox, raw-inputs, object-registry, correction-entry, graph-canvas, graph-object-drop, graph-node-layout, graph-auto-layout, graph-edge-path-editing, graph-edge-label-editing, graph-editor-free-edge-drawing, graph-path-authoring, graph-editor-multiselect-keyboard, graph-viewport-controls, graph-editor-wheel-minimap, graph-editor-lightweight-history, graph-editor-workspace-persistence, node-composition, energy-semantics, energy-profile, pes-preview, energy-step-delta, energy-curve-interaction, report-export, report-preview, export-readiness, e2e, bridge-qa]
 ---
 
 # 打开浏览器就进入 RxnFlow 工作台
@@ -39,6 +39,7 @@ tags: [web, workbench, local-first, shell-client, project-sidebar, project-files
 - 作为一个整理反应路径的用户，我希望能对已有 path 的节点顺序做受控调整，并在确认后才更新 active path。
 - 作为一个标注反应图谱的用户，我希望能选中已有 edge 后编辑它的 label，用来记录反应步骤、条件、催化剂或分叉说明，同时不误改边的起点和终点。
 - 作为一个搭建反应路径的用户，我希望能从一个图谱节点直接拖线到另一个节点创建连接，而不是只能通过按钮式 Connect 流程。
+- 作为一个按画布直觉串反应路径的用户，我希望拖线连接能在无歧义时自动创建或延长 active path，并在分叉或重复节点时提示我手动调整路径。
 - 作为一个整理稍复杂反应图谱的用户，我希望能同时选中多个 node、edge 或 path，用一次删除操作处理当前选择，而不是逐个点选删除。
 - 作为一个整理节点布局的用户，我希望能在画布里框选多个节点，并用方向键按网格微调它们的位置。
 - 作为一个键盘操作频繁的用户，我希望 Delete/Backspace、Escape 和方向键只在图谱画布焦点内生效，不影响输入框里的文字编辑。
@@ -48,6 +49,7 @@ tags: [web, workbench, local-first, shell-client, project-sidebar, project-files
 - 作为一个使用浏览器本地项目编辑图谱的用户，我希望显式保存后能恢复节点位置、画布视口、当前选中的节点/边/path 和 active path，而不是每次重新打开都丢失编辑上下文。
 - 作为一个搭建反应路径的用户，我希望能在选中图谱节点后把节点组成编辑成 `A + 2B` 这类多对象表达，而不是只能用单个对象代表一个节点。
 - 作为一个已经设置反应路径的用户，我希望能直接从当前 active path 计算相对能量，并看到结构名称、节点、相对能量、单位、缺失原因、warnings 和可交互曲线预览。
+- 作为一个比较反应能垒和分步能量变化的用户，我希望右侧势能面能跟随 active path 自动刷新，并在表格和详情里显示相邻 step delta、missing reason 和 correction count。
 - 作为一个需要核对能量来源的用户，我希望能在能量面板里看到每个 profile point 的组成项、校正项、单位换算贡献和缺失明细，而不是只看到最终相对能量数字。
 - 作为一个浏览能量曲线的用户，我希望曲线点能显示有效、缺失、含校正和当前选中的状态，并且点开某个 point 时看到对应结构、节点、相对能量、表达式总量、组成项数量和校正项数量。
 - 作为一个从能量曲线定位图谱的用户，我希望点击曲线点或表格行后，中间图谱画布能选中同一个 graph node，而不是手动在画布里重新找。
@@ -91,12 +93,15 @@ RxnFlow 的核心流程已经能在无界面的状态下跑通，但用户很难
 - 当前对象选择是前端 UI-only 状态，不写入 Project Content，不替代 Workspace Selection；已登记对象可以拖入画布创建节点。pending/failed import item、raw resource 和 parser preview item 不能直接拖成 graph node；浏览器文件和项目内 raw file 只能走 Raw File Drop pipeline。
 - 当前 Raw File Drop 对 `object_count === 1` 的 preview 自动登记并创建一个 graph node；多对象、多帧和 path-family 文件不会自动创建全部 graph nodes，必须先显示候选选择器，用户确认后才登记选择对象并创建对应节点。
 - 当前 Graph Canvas 支持已登记对象拖入画布创建节点、raw file 多候选选择器、Canvas Chemical Node 富摘要、click-driven 备用路径、从节点 Edge Connect Handle 直接拖线到另一个节点创建 edge、已有节点基础拖动布局、一键自动布局、普通点击/Shift-click 多选 node/edge/path、select mode 空白画布 rubber-band 框选 nodes、Delete Selected 与 Delete/Backspace 删除当前 selection、Escape 清空 selection、方向键按网格微调 selected nodes、selected node composition 编辑、selected edge label draft、existing path 的 Path Order Draft、Pan/Zoom/Fit/Reset/wheel/minimap viewport controls，以及 layout/viewport/selection/selected node nudge 的 runtime-only Undo/Redo；不实现碰撞避让、edge rerouting、label collision avoidance、缩放/平移自动持久化、删除撤销、add/connect/path order/edge label/composition 撤销、跨 reload history、持久化 history、edge/path nudge、edge/path rubber-band hit testing、viewport auto persistence、惯性滚动、多指 PointerEvent pinch、persistent minimap preference、edge endpoint 重连、结构化反应条件编辑、2D/3D 分子渲染、自动反应配平、元素守恒或电荷守恒校验。
+- 当前 Path Authoring 只在 `workspace.connect` 成功后做无歧义 active path 创建或延长：无 active path 时创建 `path-web-main=[from,to]`，tail/head 匹配时 append/prepend；分叉、内部连接、重复节点、stale path 或 no-op 不发送 `workspace.set_path`，只提示用户继续用 Path Order Draft 手动整理。
 - 当前 Graph Canvas 不直接保存项目内容；图谱变化只来自 ShellClient 返回的 workspace projection，保存仍由 Project Sidebar 的显式 Save Bridge Session 触发。
 - 当前 path delete 不删除 nodes/edges，不删除或重算 EnergyProfile，不自动保存 Project Content 或 Browser Project Repository；它只通过 `workspace.remove(path_ids?)` 更新 workspace projection。
 - 当前 Graph Canvas 的 node/edge/path selection 是 Workspace Selection projection，可随显式 Save Bridge Session / Open Bridge 保存和恢复；rubber-band draft、Path Order Draft、hover、dragging、edge hitbox、pending edge、layout plan、layout warnings、layout applying/no-op status、viewport intent、transient pan drag、surface DOM size、fit 中间值、wheel delta、minimap geometry、minimap drag draft、keyboard focus intent、toolbar pressed state、Graph Editor History stack 和 Object Registry active object 都是 UI-only。它们不写 Project Content、Browser Project Repository、localStorage 或 ShellResponse。Direct Edge Gesture 的 pending preview 只在 release 前存在，不持久化、不自动保存、不产生 label prompt。viewport、selection、layout move、wheel/minimap viewport navigation、runtime history replay 和 selected node nudge 成功提交后只以 ShellResponse workspace projection 为权威状态。
 - 当前不新增 Project Content schema、browser-local graph layout schema、localStorage graph persistence、自动保存、云同步或账号系统；恢复图谱布局/视口/选择只复用现有 `reaction-graphs-v1` 和 `workspaces-v1` content files。
 - 当前 Energy Profile Panel 可经 fixture transport 或 local-http transport 调用 `energy.compute`；Project Content bridge 已可保存/恢复 session content files，Report Export Panel 已可把 inline artifacts 写入 active browser project 的 `exports/...`。
 - 当前 Energy Profile Panel 可选择来自对象摘要的 energy channel、手输自定义 energy key，并选择 none/all/kinds/ids correction policy；它不在前端重新计算相对能量、校正项、expression 或单位换算，显示值、warnings、missing reason、curve point marker 和 expression details 都来自 ShellResponse profile projection。
+- 当前 Energy Profile Panel 会在 active path projection 或能量选项变化时按 signature 自动触发一次 `energy.compute`，签名不变不重复自动 compute；手动 Compute 仍按当前 path/options 强制重算。
+- 当前 PES Preview 表格和详情显示 step delta；该值只从相邻两个有效 relative energy 值派生，第一点或任一相邻 missing 点保持空值，不补 0。correction count 只来自 `point.expression.corrections.length`。
 - 当前 Energy Profile Panel 的曲线点详情和 active/pinned point 是 UI-only 状态；不会保存到 Project Content、Browser Project Repository 或 localStorage。missing point 不补 0、不连入有效 polyline；correction marker 只基于 `expression.corrections.length`。
 - 当前 Energy Profile Panel 点击曲线点或表格行只通过 `workspace.select` 联动 Graph Canvas selected node，不直接修改 graph/path/profile 或节点组成。
 - 当前 Energy Profile Panel 不直接保存 profile，也不生成 PNG/CDXML/XLSX/CSV/SVG artifact；profile 持久化由显式 Save Bridge Session 将当前 session content 写回 Browser Project Repository。

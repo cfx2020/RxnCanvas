@@ -361,9 +361,9 @@ class MinimalCdxmlEnergyDeltaOptions:
 3. **canvas-path-authoring-pes-preview** — 用画布拖线手动连接节点形成 active path，并在右侧预览势能面、相对能量和 step delta。
    - 所属模块：Path Authoring / PES Preview
    - 依赖：`canvas-chemical-node-card`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：不做自动反应路径搜索，不做化学合理性判断。
+   - 状态：done
+   - 对应 feature：`2026-06-04-canvas-path-authoring-pes-preview`
+   - 备注：拖线后只在无歧义 create/append/prepend 场景更新 active path；分叉/重复/内部连接保留 edge 并提示手动整理。PES Preview 自动 compute 仍只消费 ShellResponse，不做前端能量重算或化学合理性判断。
 
 4. **minimal-cdxml-energy-delta-export** — 基于 active path 导出最小 CDXML，包含结构名称、相对能量、相邻能量差和 missing/correction marker。
    - 所属模块：Minimal CDXML Export
@@ -386,7 +386,7 @@ class MinimalCdxmlEnergyDeltaOptions:
    - 对应 feature：未启动
    - 备注：覆盖保存项目、导出 `.rxnflow.zip`、重新导入后恢复 raw files / graph / PES preview 的边界。
 
-**最小闭环**：第 1 条 `workspace-file-drop-minimal-loop` 已完成。第 2 条 `canvas-chemical-node-card` 已完成后，用户能创建或打开 active browser project，把一个单对象 log/out/xyz/extxyz 类文件拖到画布，看到该文件进入 Project Files Panel，并看到画布出现来自 ShellResponse 的富摘要节点；多对象 / 多帧 preview 会先显示候选选择器，用户确认后才登记选择对象并创建 stack nodes。
+**最小闭环**：第 1 条 `workspace-file-drop-minimal-loop` 已完成。第 2 条 `canvas-chemical-node-card` 已完成后，用户能创建或打开 active browser project，把一个单对象 log/out/xyz/extxyz 类文件拖到画布，看到该文件进入 Project Files Panel，并看到画布出现来自 ShellResponse 的富摘要节点；多对象 / 多帧 preview 会先显示候选选择器，用户确认后才登记选择对象并创建 stack nodes。第 3 条 `canvas-path-authoring-pes-preview` 已完成后，用户可以从节点拖线连接，在无歧义时自动形成或延长 active path，并在右侧看到相对能量、相邻 step delta、missing reason 和 correction count。
 
 ## 6. 排期思路
 
