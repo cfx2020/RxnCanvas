@@ -1,14 +1,11 @@
-import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react"
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react"
 import {
-  Boxes,
   CheckCircle2,
   CloudCog,
   Download,
   FileText,
-  FlaskConical,
   FolderOpen,
   HardDrive,
-  Network,
   Plus,
   RefreshCw,
   Save,
@@ -86,62 +83,6 @@ export function ProjectSidebar({
             <span>{browserProjectBackendId}</span>
           </span>
         </div>
-      </section>
-
-      <form className="rail-section project-create-form" aria-label={t("projectSidebar.createFormAria")} onSubmit={handleCreateProject}>
-        <label htmlFor="project-sidebar-name">{t("projectSidebar.projectName")}</label>
-        <input
-          id="project-sidebar-name"
-          value={projectName}
-          onChange={(event) => setProjectName(event.currentTarget.value)}
-          placeholder={t("projectSidebar.projectNamePlaceholder")}
-          disabled={isBusy}
-        />
-        <div className="project-command-row">
-          <button type="submit" className="sidebar-command-button" disabled={isBusy}>
-            <Plus size={16} />
-            <span>{t("projectSidebar.createProject")}</span>
-          </button>
-          <button
-            type="button"
-            className="sidebar-command-button sidebar-command-button--secondary"
-            onClick={onRefreshProjects}
-            disabled={isBusy}
-          >
-            <RefreshCw size={16} />
-            <span>{t("projectSidebar.refresh")}</span>
-          </button>
-        </div>
-      </form>
-
-      <section className="rail-section" aria-label={t("projectSidebar.projectsAria")}>
-        <p className="section-kicker">{t("projectSidebar.projectsSection")}</p>
-        {state.projects.length > 0 ? (
-          <ul className="project-list">
-            {state.projects.map((project) => {
-              const isActive = project.projectRef === state.activeProjectRef
-              return (
-                <li key={project.projectRef}>
-                  <button
-                    type="button"
-                    className={`project-list-button ${isActive ? "project-list-button--active" : ""}`}
-                    onClick={() => onOpenProject(project.projectRef)}
-                    aria-current={isActive ? "true" : undefined}
-                    disabled={isBusy}
-                  >
-                    <FolderOpen size={16} />
-                    <span>
-                      <strong>{project.name}</strong>
-                      <small>{project.projectRef}</small>
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        ) : (
-          <p className="muted">{t("projectSidebar.noProjects")}</p>
-        )}
       </section>
 
       <section className="rail-section active-project-section" aria-label={t("projectSidebar.activeAria")}>
@@ -239,21 +180,61 @@ export function ProjectSidebar({
         <BundleExportStatusView status={exportBundleStatus} />
       </section>
 
-      <section className="rail-section">
-        <p className="section-kicker">{t("projectSidebar.snapshotSection")}</p>
-        <h2>{workbenchState.project?.name ?? t("projectSidebar.noProjectLoaded")}</h2>
-        <p className="muted">{workbenchState.project?.id ?? workbenchState.sessionId ?? t("projectSidebar.noShellSession")}</p>
+      <section className="rail-section project-switcher-section" aria-label={t("projectSidebar.projectsAria")}>
+        <p className="section-kicker">{t("projectSidebar.projectsSection")}</p>
+        {state.projects.length > 0 ? (
+          <ul className="project-list">
+            {state.projects.map((project) => {
+              const isActive = project.projectRef === state.activeProjectRef
+              return (
+                <li key={project.projectRef}>
+                  <button
+                    type="button"
+                    className={`project-list-button ${isActive ? "project-list-button--active" : ""}`}
+                    onClick={() => onOpenProject(project.projectRef)}
+                    aria-current={isActive ? "true" : undefined}
+                    disabled={isBusy}
+                  >
+                    <FolderOpen size={16} />
+                    <span>
+                      <strong>{project.name}</strong>
+                      <small>{project.projectRef}</small>
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p className="muted">{t("projectSidebar.noProjects")}</p>
+        )}
       </section>
 
-      <section className="rail-section metric-stack" aria-label={t("projectSidebar.objectSummaryAria")}>
-        <Metric icon={<Boxes size={18} />} label={t("projectSidebar.objects")} value={workbenchState.counts.objects} />
-        <Metric icon={<Network size={18} />} label={t("projectSidebar.graph")} value={workbenchState.counts.graphs} />
-        <Metric
-          icon={<FlaskConical size={18} />}
-          label={t("projectSidebar.profilePoints")}
-          value={workbenchState.profile?.point_count ?? 0}
+      <form className="rail-section project-create-form" aria-label={t("projectSidebar.createFormAria")} onSubmit={handleCreateProject}>
+        <label htmlFor="project-sidebar-name">{t("projectSidebar.projectName")}</label>
+        <input
+          id="project-sidebar-name"
+          value={projectName}
+          onChange={(event) => setProjectName(event.currentTarget.value)}
+          placeholder={t("projectSidebar.projectNamePlaceholder")}
+          disabled={isBusy}
         />
-      </section>
+        <div className="project-command-row">
+          <button type="submit" className="sidebar-command-button" disabled={isBusy}>
+            <Plus size={16} />
+            <span>{t("projectSidebar.createProject")}</span>
+          </button>
+          <button
+            type="button"
+            className="sidebar-command-button sidebar-command-button--secondary"
+            onClick={onRefreshProjects}
+            disabled={isBusy}
+          >
+            <RefreshCw size={16} />
+            <span>{t("projectSidebar.refresh")}</span>
+          </button>
+        </div>
+      </form>
     </aside>
   )
 }
@@ -470,22 +451,6 @@ function StateRow({ label, value }: StateRowProps) {
         <CheckCircle2 size={15} />
         {value}
       </strong>
-    </div>
-  )
-}
-
-type MetricProps = {
-  icon: ReactNode
-  label: string
-  value: number
-}
-
-function Metric({ icon, label, value }: MetricProps) {
-  return (
-    <div className="metric">
-      {icon}
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   )
 }

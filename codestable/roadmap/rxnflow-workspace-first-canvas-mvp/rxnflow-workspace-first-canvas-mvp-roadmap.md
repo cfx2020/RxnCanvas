@@ -375,9 +375,9 @@ class MinimalCdxmlEnergyDeltaOptions:
 5. **workspace-first-flow-polish** — 收束当前复杂三栏流程，把项目文件、画布、势能面和导出整理成 workspace-first 主界面。
    - 所属模块：Project Files Panel / GraphCanvas / PES Preview / Report Export UI
    - 依赖：`workspace-file-drop-minimal-loop`、`canvas-path-authoring-pes-preview`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：目标是减少奇怪按钮流程，不继续堆叠分散面板。
+   - 状态：done
+   - 对应 feature：`2026-06-04-workspace-first-flow-polish`
+   - 备注：已形成 Project Rail / Canvas Stage / Analysis Dock 主界面；Source Tray 贴近画布，Diagnostics 收纳 command status 和 dev commands。
 
 6. **workspace-first-flow-qa-guides** — 补桌面、窄屏、local-http E2E 和用户指南，固定新主流程验收脚本。
    - 所属模块：Workspace-First QA & Guides

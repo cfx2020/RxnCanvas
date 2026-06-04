@@ -4,20 +4,21 @@
     "Segoe UI",
     system-ui,
     sans-serif;
-  color: #1f211d;
-  background: #f3efe3;
+  color: #20231f;
+  background: #eef1ea;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --paper: #fffaf0;
-  --paper-deep: #ece4d2;
-  --ink: #1f211d;
-  --muted: #6a6b61;
-  --line: #d4c9b6;
-  --sage: #53624a;
-  --amber: #c2772a;
-  --oxide: #8d3527;
-  --blueprint: #27596a;
-  --shadow: 0 18px 48px rgba(53, 46, 31, 0.12);
+  --paper: #fbfcf8;
+  --paper-deep: #e7ece4;
+  --ink: #20231f;
+  --ink-soft: #3e4641;
+  --muted: #626c66;
+  --line: #c7d0c4;
+  --sage: #4d6a59;
+  --amber: #b77424;
+  --oxide: #96372c;
+  --blueprint: #236170;
+  --shadow: 0 1px 0 rgba(31, 33, 29, 0.08);
 }
 
 * {
@@ -64,21 +65,21 @@ button {
   display: grid;
   grid-template-rows: auto 1fr;
   background:
-    linear-gradient(90deg, rgba(83, 98, 74, 0.06) 1px, transparent 1px),
-    linear-gradient(rgba(39, 89, 106, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(35, 97, 112, 0.045) 1px, transparent 1px),
+    linear-gradient(rgba(77, 106, 89, 0.045) 1px, transparent 1px),
     var(--paper-deep);
-  background-size: 48px 48px;
+  background-size: 44px 44px;
 }
 
 .workbench-topbar {
-  min-height: 76px;
+  min-height: 62px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 14px 18px;
+  gap: 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 250, 240, 0.9);
+  background: rgba(251, 252, 248, 0.94);
 }
 
 .brand-lockup {
@@ -88,12 +89,12 @@ button {
 }
 
 .brand-mark {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
   border: 2px solid var(--ink);
-  background: #f2d174;
+  background: #e6c35f;
   color: var(--ink);
   font-weight: 900;
 }
@@ -117,7 +118,7 @@ button {
 }
 
 .workbench-topbar h1 {
-  font-size: 1.2rem;
+  font-size: 1.08rem;
 }
 
 .topbar-status {
@@ -183,9 +184,19 @@ button {
 .workbench-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(360px, 1fr) minmax(260px, 340px);
-  gap: 14px;
-  padding: 14px;
+  grid-template-columns: minmax(240px, 292px) minmax(520px, 1fr) minmax(280px, 360px);
+  gap: 12px;
+  padding: 12px;
+}
+
+.workspace-flow-shell {
+  align-items: start;
+}
+
+.project-rail,
+.canvas-stage,
+.analysis-dock {
+  min-width: 0;
 }
 
 .project-sidebar,
@@ -201,7 +212,7 @@ button {
 .report-export-panel,
 .inspector-panel {
   border: 1px solid var(--line);
-  background: rgba(255, 250, 240, 0.92);
+  background: rgba(251, 252, 248, 0.94);
   box-shadow: var(--shadow);
 }
 
@@ -209,16 +220,79 @@ button {
 .inspector-panel {
   display: grid;
   align-content: start;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
+}
+
+.analysis-dock-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.analysis-dock-tab {
+  min-width: 0;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.54);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.analysis-dock-tab[aria-selected="true"] {
+  border-color: rgba(47, 93, 155, 0.4);
+  background: rgba(47, 93, 155, 0.11);
+  color: var(--blueprint);
+}
+
+.analysis-dock-tab--error {
+  border-color: rgba(141, 53, 39, 0.3);
+}
+
+.analysis-dock-tab--warning {
+  border-color: rgba(172, 111, 42, 0.34);
+}
+
+.analysis-dock-tab small {
+  min-width: 18px;
+  min-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0 5px;
+  font-size: 0.7rem;
+}
+
+.analysis-dock-panel {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
 }
 
 .rail-section,
 .inspector-section,
 .command-panel {
-  border: 1px solid rgba(31, 33, 29, 0.12);
-  background: rgba(255, 255, 255, 0.42);
-  padding: 12px;
+  border: 0;
+  border-top: 1px solid rgba(31, 33, 29, 0.1);
+  background: transparent;
+  padding: 10px 0 0;
+}
+
+.project-sidebar-header,
+.inspector-panel > .analysis-dock-tabs:first-child,
+.rail-section:first-child,
+.inspector-section:first-child,
+.command-panel:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .muted {
@@ -671,21 +745,63 @@ button {
   align-self: start;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr);
-  gap: 14px;
+  grid-template-rows: auto minmax(520px, 1fr);
+  gap: 10px;
+}
+
+.canvas-stage-stack {
+  width: 100%;
 }
 
 .import-inbox {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
 }
 
+.source-tray-header,
 .import-inbox-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.source-tray-header h2 {
+  margin: 0;
+  font-size: clamp(1rem, 1.4vw, 1.18rem);
+}
+
+.source-tray-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.source-tray-status {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(47, 93, 155, 0.25);
+  padding: 0 10px;
+  background: rgba(47, 93, 155, 0.08);
+  color: var(--blueprint);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.source-tray-status--error {
+  border-color: rgba(141, 53, 39, 0.28);
+  background: rgba(141, 53, 39, 0.1);
+  color: var(--oxide);
+}
+
+.source-tray-status--registered,
+.source-tray-status--used-in-graph {
+  border-color: rgba(88, 111, 79, 0.28);
+  background: rgba(88, 111, 79, 0.1);
+  color: var(--sage);
 }
 
 .import-status {
@@ -706,6 +822,24 @@ button {
 
 .import-status--registered {
   color: var(--blueprint);
+}
+
+.source-tray-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-tray-hints span {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(31, 33, 29, 0.1);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--muted);
+  padding: 0 8px;
+  font-size: 0.76rem;
+  font-weight: 800;
 }
 
 .import-controls {
@@ -782,6 +916,39 @@ button {
 
 .import-empty-state {
   margin: 0;
+}
+
+.source-tray-details {
+  min-width: 0;
+  border-top: 1px solid rgba(31, 33, 29, 0.1);
+  padding-top: 4px;
+}
+
+.source-tray-details summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--sage);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.source-tray-details summary small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.source-tray-detail-body {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
 }
 
 .import-file-list,
@@ -1399,10 +1566,10 @@ button {
 .graph-viewport-bar {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(62px, 0.65fr) repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 10px 16px;
+  gap: 6px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .graph-viewport-bar button,
@@ -1435,11 +1602,11 @@ button {
 .graph-minimap-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 180px;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 10px 16px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 250, 240, 0.5);
+  background: rgba(251, 252, 248, 0.44);
 }
 
 .graph-minimap-header {
@@ -1512,15 +1679,15 @@ button {
 .graph-canvas-layout {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(210px, 250px);
-  gap: 12px;
-  padding: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(196px, 232px);
+  gap: 10px;
+  padding: 12px;
 }
 
 .graph-canvas-surface {
   position: relative;
   min-width: 0;
-  min-height: 320px;
+  min-height: 340px;
   border: 1px solid rgba(31, 33, 29, 0.14);
   background:
     linear-gradient(90deg, rgba(39, 89, 106, 0.12) 1px, transparent 1px),
@@ -1543,6 +1710,8 @@ button {
   place-content: center;
   justify-items: center;
   gap: 9px;
+  border: 1px dashed rgba(47, 93, 155, 0.3);
+  background: rgba(47, 93, 155, 0.04);
   color: var(--muted);
   padding: 22px;
   text-align: center;
@@ -2444,8 +2613,8 @@ button {
 .energy-profile-panel {
   min-width: 0;
   display: grid;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
 }
 
 .energy-panel-header {
@@ -2474,8 +2643,8 @@ button {
 
 .energy-options-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
 }
 
 .energy-field {
@@ -2544,8 +2713,8 @@ button {
 
 .energy-profile-summary {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .energy-profile-summary div {
@@ -2594,11 +2763,11 @@ button {
 .energy-curve-preview {
   min-width: 0;
   display: grid;
-  gap: 8px;
+  gap: 7px;
   margin: 0;
   border: 1px solid rgba(31, 33, 29, 0.12);
   background: rgba(255, 255, 255, 0.38);
-  padding: 10px;
+  padding: 8px;
 }
 
 .energy-curve-preview figcaption {
@@ -2860,10 +3029,10 @@ button {
 .energy-expression-details {
   min-width: 0;
   display: grid;
-  gap: 8px;
+  gap: 7px;
   border: 1px solid rgba(31, 33, 29, 0.12);
   background: rgba(255, 255, 255, 0.34);
-  padding: 10px;
+  padding: 8px;
 }
 
 .energy-expression-details > strong {
@@ -2959,8 +3128,8 @@ button {
 .report-export-panel {
   min-width: 0;
   display: grid;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
 }
 
 .report-export-header,
@@ -3430,6 +3599,7 @@ button {
 @media (max-width: 940px) {
   .workbench-grid {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .graph-workspace {
@@ -3458,6 +3628,8 @@ button {
   .workbench-topbar {
     align-items: flex-start;
     flex-direction: column;
+    gap: 10px;
+    padding: 10px;
   }
 
   .topbar-status {
@@ -3465,7 +3637,7 @@ button {
   }
 
   .workbench-grid {
-    padding: 10px;
+    padding: 8px;
   }
 
   .workspace-toolbar {
@@ -3477,9 +3649,34 @@ button {
     flex-direction: column;
   }
 
+  .source-tray-header,
   .import-inbox-header,
   .import-item-title {
     flex-direction: column;
+  }
+
+  .source-tray-status-row {
+    justify-content: flex-start;
+  }
+
+  .source-tray-details summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .analysis-dock-tabs,
+  .graph-command-bar,
+  .report-export-view-toggle,
+  .export-format-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .graph-viewport-bar {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .graph-viewport-bar output {
+    grid-column: span 2;
   }
 
   .import-controls,
@@ -3490,12 +3687,8 @@ button {
   .composition-row,
   .energy-command-row,
   .report-export-command-row,
-  .report-export-view-toggle,
-  .export-format-grid,
   .import-file-list li,
   .import-preview-grid,
-  .graph-command-bar,
-  .graph-viewport-bar,
   .graph-minimap-panel,
   .network-preview-grid,
   .graph-node-detail-grid,
@@ -3534,40 +3727,40 @@ button {
     transform: none !important;
   }
 
-	  .warning-row,
-	  .import-error,
-	  .object-warning-list div,
-	  .correction-error,
-	  .export-readiness-row,
-	  .report-preview-asset,
-	  .report-preview-artifacts p,
-	  .artifact-metadata p {
-	    grid-template-columns: auto minmax(0, 1fr);
-	  }
+  .warning-row,
+  .import-error,
+  .object-warning-list div,
+  .correction-error,
+  .export-readiness-row,
+  .report-preview-asset,
+  .report-preview-artifacts p,
+  .artifact-metadata p {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
 
   .warning-row span,
   .import-error span,
   .warning-row code,
   .import-error code,
-	  .object-warning-list span,
-	  .object-warning-list code,
-	  .correction-error span,
-	  .correction-error code,
-	  .export-readiness-row span,
-	  .export-readiness-row code,
-	  .report-preview-asset span,
-	  .report-preview-asset code,
-	  .report-preview-asset small,
-	  .report-preview-artifacts span,
-	  .report-preview-artifacts code,
-	  .report-preview-artifacts small,
-	  .artifact-metadata code,
-	  .artifact-metadata span {
-	    grid-column: 1 / -1;
-	  }
+  .object-warning-list span,
+  .object-warning-list code,
+  .correction-error span,
+  .correction-error code,
+  .export-readiness-row span,
+  .export-readiness-row code,
+  .report-preview-asset span,
+  .report-preview-asset code,
+  .report-preview-asset small,
+  .report-preview-artifacts span,
+  .report-preview-artifacts code,
+  .report-preview-artifacts small,
+  .artifact-metadata code,
+  .artifact-metadata span {
+    grid-column: 1 / -1;
+  }
 
-	  .object-detail-grid,
-	  .correction-form-grid {
-	    grid-template-columns: 1fr;
-	  }
+  .object-detail-grid,
+  .correction-form-grid {
+    grid-template-columns: 1fr;
+  }
 }

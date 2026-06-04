@@ -22,21 +22,33 @@ describe("WorkbenchShell", () => {
     expect(screen.getByLabelText("Language")).toHaveValue("en-US")
     expect(screen.getAllByText("Local-only").length).toBeGreaterThan(0)
     expect(screen.getByText("Runtime Fixture")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Project Rail" })).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Canvas Stage" })).toBeInTheDocument()
+    expect(screen.getByRole("complementary", { name: "Analysis Dock" })).toHaveAttribute("data-active-tab", "pes")
     expect(screen.getByRole("complementary", { name: "Project Sidebar" })).toBeInTheDocument()
     expect(screen.getByText("No active project")).toBeInTheDocument()
-    expect(screen.getByText("No project loaded")).toBeInTheDocument()
+    expect(screen.queryByText("No project loaded")).not.toBeInTheDocument()
+    const sourceTray = screen.getByRole("region", { name: "Source Tray" })
+    expect(within(sourceTray).getByRole("heading", { name: "Add sources to canvas" })).toBeInTheDocument()
+    expect(within(sourceTray).getByText("No recent preview")).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "PES" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.queryByRole("button", { name: "Fixture Run" })).not.toBeInTheDocument()
+    openAnalysisDockTab("Object")
     expect(screen.getByRole("heading", { name: "Registered Objects" })).toBeInTheDocument()
     expect(screen.getByText("No registered objects")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add Correction" })).toBeDisabled()
+    openAnalysisDockTab("Diagnostics")
+    expect(screen.getByRole("button", { name: "Fixture Run" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Invalid command" })).toBeInTheDocument()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     expect(within(graphCanvas).getByText("No workspace graph")).toBeInTheDocument()
+    expect(within(graphCanvas).getByText(/Drop a raw output file here/)).toBeInTheDocument()
     expect(within(graphCanvas).getByText("No session")).toBeInTheDocument()
     expect(within(graphCanvas).getByRole("button", { name: "Open Workspace" })).toBeDisabled()
     expect(within(graphCanvas).getByRole("button", { name: "Add Node" })).toBeDisabled()
     expect(within(graphCanvas).getByRole("button", { name: "Connect" })).toBeDisabled()
     expect(within(graphCanvas).getByRole("button", { name: "Set Path" })).toBeDisabled()
     expect(within(graphCanvas).getByRole("button", { name: "Delete Selected" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Fixture Run" })).toBeInTheDocument()
   })
 
   it("switches visible workbench copy between English and Simplified Chinese", async () => {
@@ -77,6 +89,7 @@ describe("WorkbenchShell", () => {
       endpoint: "http://127.0.0.1:8765/api/shell",
     }, new ShellClient(new UnavailableHttpTransport()))
 
+    openAnalysisDockTab("Diagnostics")
     fireEvent.click(await screen.findByRole("button", { name: "Fixture Run" }))
 
     expect(await screen.findByText("transport_unavailable")).toBeInTheDocument()
@@ -87,9 +100,10 @@ describe("WorkbenchShell", () => {
   it("projects fixture.run into visible workbench state", async () => {
     renderWorkbench()
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    runFixtureCommand()
 
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("PES")
     expect(screen.getAllByText("profile-a-b-electronic").length).toBeGreaterThan(0)
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     expect(within(energyPanel).getByText("Energy curve")).toBeInTheDocument()
@@ -99,6 +113,7 @@ describe("WorkbenchShell", () => {
     expect(within(energyPanel).getAllByText("electronic · energies").length).toBeGreaterThan(0)
     expect(within(energyPanel).getAllByText("-12.4").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Ready").length).toBeGreaterThan(0)
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     expect(within(objectRegistry).getByRole("button", { name: /object a/i })).toHaveAttribute("aria-current", "true")
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
@@ -118,7 +133,8 @@ describe("WorkbenchShell", () => {
   it("selects object registry entries without invoking shell commands", async () => {
     renderWorkbench()
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    runFixtureCommand()
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     expect(await within(objectRegistry).findByRole("button", { name: /object b/i })).toBeInTheDocument()
 
@@ -135,8 +151,9 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     fireEvent.click(within(objectRegistry).getByRole("button", { name: /object b/i }))
     const form = within(objectRegistry).getByRole("form", { name: "Apply object correction" })
@@ -160,6 +177,7 @@ describe("WorkbenchShell", () => {
       },
     })
 
+    openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     fireEvent.change(within(energyPanel).getByLabelText("Correction policy"), { target: { value: "all" } })
     fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
@@ -171,8 +189,9 @@ describe("WorkbenchShell", () => {
   it("shows registry correction errors without locally appending corrections", async () => {
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(new FailingCorrectionTransport()))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     const form = within(objectRegistry).getByRole("form", { name: "Apply object correction" })
 
@@ -187,9 +206,10 @@ describe("WorkbenchShell", () => {
   it("opens the graph workspace and applies add, connect, and set path commands", async () => {
     renderWorkbench()
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Open Workspace" }))
@@ -225,8 +245,9 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
@@ -257,8 +278,8 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /raw drop/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -299,8 +320,8 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /raw drop candidates/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -343,8 +364,8 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /raw candidate nodes/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -402,8 +423,8 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /raw candidate add fails/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -421,6 +442,7 @@ describe("WorkbenchShell", () => {
     })
     expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(1)
     expect(within(graphCanvas).queryByText("node-web-3")).not.toBeInTheDocument()
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     expect(within(objectRegistry).getByRole("button", { name: /frame 1/i })).toBeInTheDocument()
   })
@@ -432,8 +454,8 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /project raw reuse/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -473,8 +495,8 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /raw drop fails/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -498,8 +520,8 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /raw preview fails/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -527,8 +549,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface)
@@ -545,6 +567,7 @@ describe("WorkbenchShell", () => {
       },
     })
 
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     const objectBButton = within(objectRegistry).getByRole("button", { name: /object b/i })
     const dataTransfer = new TestDataTransfer()
@@ -578,8 +601,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -630,8 +653,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const minimapPanel = within(graphCanvas).getByLabelText("Graph minimap")
     const minimap = within(minimapPanel).getByRole("button", { name: "Navigate graph minimap" })
@@ -667,8 +690,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
 
@@ -700,8 +723,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
@@ -723,6 +746,7 @@ describe("WorkbenchShell", () => {
     }))
     await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true"))
 
+    openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     fireEvent.click(within(energyPanel).getByLabelText(/Object B node-b/))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
@@ -735,8 +759,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
 
@@ -782,8 +806,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Apply Layout" }))
@@ -810,8 +834,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
 
@@ -836,8 +860,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
 
@@ -863,8 +887,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"))
 
@@ -886,10 +910,10 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
-    const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
 
@@ -922,6 +946,8 @@ describe("WorkbenchShell", () => {
       expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
         path_id: "path-a-b",
       })
+      openAnalysisDockTab("PES")
+      const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
       expect((await within(energyPanel).findAllByText("Step delta")).length).toBeGreaterThan(0)
       expect((await within(energyPanel).findAllByText("node-web-3")).length).toBeGreaterThan(0)
       expect(within(graphCanvas).getByText("Active path updated (append-tail)")).toBeInTheDocument()
@@ -936,16 +962,18 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Delete Selected" }))
     await waitFor(() => expect(within(graphCanvas).getByText("No paths")).toBeInTheDocument())
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
+    fireEvent.click(nodeA)
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Connect" }))
+    await waitFor(() => expect(nodeA).toHaveClass("graph-node-card--pending"))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }))
 
     await waitFor(() => expect(lastPayload(transport, "workspace.set_path")?.args).toMatchObject({
@@ -960,9 +988,10 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
 
@@ -995,8 +1024,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const handle = within(graphCanvas).getByRole("button", { name: "Draw edge from Object A" })
     const connectCount = transport.payloads.filter((payload) => payload.command === "workspace.connect").length
@@ -1025,8 +1054,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -1076,8 +1105,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Apply Layout" }))
@@ -1104,8 +1133,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const edge = within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" })
 
@@ -1115,10 +1144,9 @@ describe("WorkbenchShell", () => {
     })
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Delete Selected" }))
 
-    const removePayload = transport.payloads.find((payload) => payload.command === "workspace.remove")
-    expect(removePayload?.args).toMatchObject({
+    await waitFor(() => expect(lastPayload(transport, "workspace.remove")?.args).toMatchObject({
       edge_ids: ["edge-a-b"],
-    })
+    }))
     await waitFor(() => expect(within(graphCanvas).getByText("0")).toBeInTheDocument())
     expect(within(graphCanvas).queryByRole("button", { name: "Edge Object A to Object B" })).not.toBeInTheDocument()
     expect(within(graphCanvas).getAllByText("node-a").length).toBeGreaterThan(0)
@@ -1129,8 +1157,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
@@ -1156,8 +1184,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const edge = within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" })
 
@@ -1200,8 +1228,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
@@ -1226,8 +1254,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
     const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
@@ -1274,8 +1302,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
@@ -1301,8 +1329,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     const removeCountBeforeEmptyDelete = transport.payloads.filter((payload) => payload.command === "workspace.remove").length
@@ -1334,8 +1362,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
 
@@ -1360,8 +1388,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
 
@@ -1403,8 +1431,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
@@ -1438,8 +1466,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
@@ -1457,8 +1485,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
@@ -1484,8 +1512,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const dataTransfer = new TestDataTransfer()
     dataTransfer.setData(graphObjectDragMimeType, JSON.stringify({
@@ -1507,9 +1535,10 @@ describe("WorkbenchShell", () => {
   it("shows missing energy reasons without converting them to zero", async () => {
     renderWorkbench()
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
 
     fireEvent.change(screen.getByLabelText("Select Files"), {
@@ -1531,6 +1560,7 @@ describe("WorkbenchShell", () => {
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Set Path" }))
     expect((await within(graphCanvas).findAllByText("path-web-main")).length).toBeGreaterThan(0)
 
+    openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
 
@@ -1540,6 +1570,7 @@ describe("WorkbenchShell", () => {
     expect(missingRow?.textContent).toContain("missing_energy")
     expect(missingRow?.textContent).not.toContain("-5.2")
     expect(within(energyPanel).getAllByText("Missing").length).toBeGreaterThan(0)
+    openAnalysisDockTab("Export")
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
     expect(within(exportPanel).getByText("Needs review")).toBeInTheDocument()
   })
@@ -1547,6 +1578,7 @@ describe("WorkbenchShell", () => {
   it("renders invalid shell command errors with the error code visible", async () => {
     renderWorkbench()
 
+    openAnalysisDockTab("Diagnostics")
     fireEvent.click(screen.getByRole("button", { name: "Invalid command" }))
 
     expect(await screen.findByText("invalid_input")).toBeInTheDocument()
@@ -1556,11 +1588,13 @@ describe("WorkbenchShell", () => {
   it("computes the active path energy profile from the energy panel", async () => {
     renderWorkbench()
 
+    openAnalysisDockTab("PES")
     const emptyEnergyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     expect(within(emptyEnergyPanel).getByRole("button", { name: "Compute" })).toBeDisabled()
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     expect(within(energyPanel).getByRole("button", { name: "Compute" })).toBeEnabled()
     fireEvent.change(within(energyPanel).getByLabelText("Output unit"), { target: { value: "kj_mol" } })
@@ -1578,8 +1612,9 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
@@ -1600,8 +1635,9 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
 
     fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
@@ -1638,8 +1674,9 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
 
     expect(within(energyPanel).getByText("thermochemistry:gibbs · hartree · 2")).toBeInTheDocument()
@@ -1659,8 +1696,8 @@ describe("WorkbenchShell", () => {
     const transport = new RecordingProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
     const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
@@ -1672,6 +1709,7 @@ describe("WorkbenchShell", () => {
     fireEvent.click(within(editor).getByRole("button", { name: "Apply" }))
     await waitFor(() => expect(lastPayload(transport, "workspace.set_node_composition")).toBeTruthy())
 
+    openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
 
@@ -1684,13 +1722,16 @@ describe("WorkbenchShell", () => {
   it("exports profile artifacts with inline download links", async () => {
     renderWorkbench()
 
+    openAnalysisDockTab("Export")
     const emptyExportPanel = screen.getByRole("region", { name: "Report Export Panel" })
     openExportMode(emptyExportPanel)
     expect(within(emptyExportPanel).getByRole("button", { name: "Export" })).toBeDisabled()
 
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("Export")
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+    openExportMode(exportPanel)
     expect(within(exportPanel).getByRole("button", { name: "Preview mode" })).toHaveAttribute("aria-pressed", "false")
     expect(within(exportPanel).getByLabelText("png")).toBeChecked()
     expect(within(exportPanel).getByLabelText("cdxml")).toBeChecked()
@@ -1728,6 +1769,7 @@ describe("WorkbenchShell", () => {
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[4]).toHaveAttribute("download", "rxnflow-profile.svg")
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[4].getAttribute("href")).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(screen.getAllByText("chemdraw_cdxml_only").length).toBeGreaterThan(0)
+    openAnalysisDockTab("Diagnostics")
     expect(screen.getByText("5 artifacts indexed")).toBeInTheDocument()
   })
 
@@ -1738,8 +1780,9 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /export project/i }))
     expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("Export")
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
     openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
@@ -1780,8 +1823,9 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository)
 
     fireEvent.click(await screen.findByRole("button", { name: /no bytes/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("Export")
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
     openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByLabelText("Include bytes"))
@@ -1803,8 +1847,9 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository)
 
     fireEvent.click(await screen.findByRole("button", { name: /quota project/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("Export")
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
     openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
@@ -1822,8 +1867,8 @@ describe("WorkbenchShell", () => {
 
     expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled()
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
 
     const input = screen.getByLabelText("Select Files")
     fireEvent.change(input, {
@@ -1855,9 +1900,10 @@ describe("WorkbenchShell", () => {
 
     expect((await screen.findAllByText("object-imported-water")).length).toBeGreaterThan(0)
     expect(screen.getAllByText("Registered").length).toBeGreaterThan(0)
-    expect(screen.getByText("3")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: /water.xyz/i }))
-    expect(screen.getByRole("button", { name: /water.xyz/i })).toHaveAttribute("aria-current", "true")
+    openAnalysisDockTab("Object")
+    const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
+    fireEvent.click(within(objectRegistry).getByRole("button", { name: /water.xyz/i }))
+    expect(within(objectRegistry).getByRole("button", { name: /water.xyz/i })).toHaveAttribute("aria-current", "true")
     expect(screen.getByText("H2O")).toBeInTheDocument()
     expect(screen.getAllByText("raw-water-xyz").length).toBeGreaterThan(0)
     expect(screen.getAllByText("xyz-ase").length).toBeGreaterThan(0)
@@ -1872,8 +1918,8 @@ describe("WorkbenchShell", () => {
     }, new ShellClient(transport))
 
     expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
 
     fireEvent.change(screen.getByLabelText("Select Files"), {
       target: {
@@ -1910,8 +1956,8 @@ describe("WorkbenchShell", () => {
     }, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /raw preview/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     fireEvent.change(screen.getByLabelText("Select Files"), {
       target: {
         files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
@@ -1956,8 +2002,8 @@ describe("WorkbenchShell", () => {
     }, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /raw repeat/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     fireEvent.change(screen.getByLabelText("Select Files"), {
       target: {
         files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
@@ -1983,8 +2029,8 @@ describe("WorkbenchShell", () => {
     }, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /raw fails/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     fireEvent.change(screen.getByLabelText("Select Files"), {
       target: {
         files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
@@ -2008,8 +2054,8 @@ describe("WorkbenchShell", () => {
     }, new ShellClient(transport))
 
     expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     fireEvent.change(screen.getByLabelText("Select Files"), {
       target: {
         files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
@@ -2031,8 +2077,8 @@ describe("WorkbenchShell", () => {
     }, new ShellClient(transport))
 
     expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
 
     fireEvent.change(screen.getByLabelText("Select Files"), {
       target: {
@@ -2057,8 +2103,8 @@ describe("WorkbenchShell", () => {
     }, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /large raw/i }))
-    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    runFixtureCommand()
+    await expectFixtureWorkbenchProjected()
     fireEvent.change(screen.getByLabelText("Select Files"), {
       target: {
         files: [new File(["x".repeat(1024 * 1024 + 1)], "large.xyz", { type: "chemical/x-xyz" })],
@@ -2133,7 +2179,8 @@ describe("WorkbenchShell", () => {
     fireEvent.click(await screen.findByRole("button", { name: /bridge later/i }))
 
     expect(await screen.findByText("Persisted")).toBeInTheDocument()
-    expect(screen.getByText("No shell session")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open Bridge" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Save Bridge" })).toBeDisabled()
     expect(transport.payloads.filter((payload) => payload.command === "project.open")).toHaveLength(0)
     expect(created.name).toBe("Bridge Later")
   })
@@ -2149,7 +2196,7 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Open Bridge" }))
 
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    await expectFixtureWorkbenchProjected()
     expect(screen.getByText("Open")).toBeInTheDocument()
     const openPayload = transport.payloads.find((payload) => payload.command === "project.open")
     expect(openPayload?.args).toMatchObject({
@@ -2178,7 +2225,7 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /graph restore/i }))
     fireEvent.click(await screen.findByRole("button", { name: "Open Bridge" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
 
@@ -2306,7 +2353,7 @@ describe("WorkbenchShell", () => {
     expect(screen.getAllByText(/sha256:[a-f0-9]{64}/i).length).toBeGreaterThan(0)
     expect(screen.getByRole("button", { name: /imported bundle/i })).toHaveAttribute("aria-current", "true")
     expect(screen.getByText("Project content files are readable.")).toBeInTheDocument()
-    expect(screen.getByText("No project loaded")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open Bridge" })).toBeEnabled()
 
     const projects = await repository.listProjects()
     expect(projects.map((project) => project.name)).toEqual(["Existing Project", "Imported Bundle"])
@@ -2376,7 +2423,7 @@ describe("WorkbenchShell", () => {
       })
       expect(await screen.findByText("Bundle imported")).toBeInTheDocument()
       expect(screen.getByRole("button", { name: /roundtrip source/i })).toHaveAttribute("aria-current", "true")
-      expect(screen.getByText("No project loaded")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Open Bridge" })).toBeEnabled()
 
       const importedProject = await onlyProjectNamed(repository, "Roundtrip Source")
       const workspaceBeforeOpen = await readJsonObject(repository, importedProject.projectRef, workspacesPath)
@@ -2386,7 +2433,7 @@ describe("WorkbenchShell", () => {
       expect(transport.payloads.filter((payload) => payload.command === "project.open")).toHaveLength(0)
 
       fireEvent.click(screen.getByRole("button", { name: "Open Bridge" }))
-      expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+      expect((await screen.findAllByText("graph-roundtrip-source")).length).toBeGreaterThan(0)
       const openPayload = lastPayload(transport, "project.open")
       expect(openPayload?.args).toMatchObject({ load_content: true })
       expect(JSON.stringify(openPayload?.args.content_files)).toContain(workspacesPath)
@@ -2399,7 +2446,8 @@ describe("WorkbenchShell", () => {
         viewport: { zoom: 1.2 },
       }))
 
-      const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
+      openAnalysisDockTab("Export")
+    const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
       openExportMode(exportPanel)
       fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
       expect(await within(exportPanel).findByText("exports/rxnflow-profile.png")).toBeInTheDocument()
@@ -2496,7 +2544,7 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Open Bridge" }))
 
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    await expectFixtureWorkbenchProjected()
     expect(screen.getByText("Bridge session is open. Save Bridge Session first if you want recent shell changes in the bundle.")).toBeInTheDocument()
     expect(project.name).toBe("Bridge Bundle")
   })
@@ -2521,13 +2569,18 @@ describe("WorkbenchShell", () => {
     renderWorkbench(undefined, "zh-CN")
 
     expect(await screen.findByText("暂无浏览器本地项目")).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "解析预览" })).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "来源托盘" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "添加来源到画布" })).toBeInTheDocument()
+    openAnalysisDockTab("对象")
     expect(screen.getByRole("heading", { name: "已登记对象" })).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "图谱画布" })).toBeInTheDocument()
     expect(screen.getByText("暂无工作区图谱")).toBeInTheDocument()
+    expect(screen.getByText(/可在此拖入原始输出文件/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "预览" })).toBeDisabled()
+    openAnalysisDockTab("诊断")
     fireEvent.click(screen.getByRole("button", { name: "运行 Fixture" }))
-    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    await expectFixtureWorkbenchProjected()
+    openAnalysisDockTab("对象")
     expect(screen.getByText("fixture-parser")).toBeInTheDocument()
     const graphCanvas = screen.getByRole("region", { name: "图谱画布" })
     expect(within(graphCanvas).getByRole("button", { name: "添加节点" })).toBeEnabled()
@@ -2548,10 +2601,12 @@ describe("WorkbenchShell", () => {
     expect(screen.getByText("xyz-ase")).toBeInTheDocument()
     expect(screen.getAllByText("missing_section").length).toBeGreaterThan(0)
     expect(screen.getByText("water.xyz")).toBeInTheDocument()
+    openAnalysisDockTab("势能面")
     const energyPanel = screen.getByRole("region", { name: "能量剖面面板" })
     expect(within(energyPanel).getAllByText("相对能量").length).toBeGreaterThan(0)
     expect(within(energyPanel).getByText("表达式明细")).toBeInTheDocument()
     expect(within(energyPanel).getByRole("button", { name: "计算" })).toBeEnabled()
+    openAnalysisDockTab("导出")
     const exportPanel = screen.getByRole("region", { name: "报告导出面板" })
     expect(within(exportPanel).getByText("报告导出")).toBeInTheDocument()
     openExportMode(exportPanel, "导出模式")
@@ -2581,6 +2636,21 @@ function renderWorkbench(
       />
     </I18nProvider>,
   )
+}
+
+async function expectFixtureWorkbenchProjected() {
+  expect((await screen.findAllByText("graph-a-b")).length).toBeGreaterThan(0)
+}
+
+function openAnalysisDockTab(tabName: string) {
+  const dock = screen.getByRole("complementary", { name: /Analysis Dock|分析区/ })
+  fireEvent.click(within(dock).getByRole("tab", { name: tabName }))
+}
+
+function runFixtureCommand() {
+  openAnalysisDockTab("Diagnostics")
+  const dock = screen.getByRole("complementary", { name: /Analysis Dock|分析区/ })
+  fireEvent.click(within(dock).getByRole("button", { name: "Fixture Run" }))
 }
 
 function mockCanvasSurfaceRect(element: HTMLElement, width = 900, height = 420) {

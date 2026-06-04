@@ -85,7 +85,7 @@ import {
   type GraphPathOrderMoveDirection,
 } from "./graphPathOrderDraft"
 import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type ParseCandidateChooserState, type PathAuthoringStatus, type RemoveGraphItemsRequest } from "./GraphCanvas"
-import { ImportInbox } from "./ImportInbox"
+import { ImportInbox, type SourceTrayModel, type SourceTrayStatus } from "./ImportInbox"
 import {
   importPreviewArgsFromFiles,
   initialImportInboxState,
@@ -120,7 +120,7 @@ import {
   type WorkbenchDomainState,
   type WorkbenchSnapshotData,
 } from "./workbenchState"
-import { useI18n, type SupportedLocale } from "./i18n"
+import { useI18n, type MessageKey, type SupportedLocale } from "./i18n"
 
 type WorkbenchShellProps = {
   shellClient: ShellClient
@@ -128,9 +128,35 @@ type WorkbenchShellProps = {
   runtimeInfo?: ShellRuntimeInfo
 }
 
+type AnalysisDockTab = "pes" | "export" | "object" | "diagnostics"
+
+type AnalysisDockModel = {
+  activeTab: AnalysisDockTab
+  tabs: Array<{
+    id: AnalysisDockTab
+    labelKey: MessageKey
+    badge?: string | number | null
+    status?: "idle" | "ready" | "warning" | "error"
+  }>
+}
+
+type WorkspaceFlowShellState = {
+  analysisDockTab: AnalysisDockTab
+  projectRailDensity: "normal" | "compact"
+  sourceTrayOpen: boolean
+  devToolsOpen: boolean
+}
+
 const defaultRuntimeInfo: ShellRuntimeInfo = {
   mode: "fixture",
   transportKind: "in-process-test",
+}
+
+const defaultWorkspaceFlowShellState: WorkspaceFlowShellState = {
+  analysisDockTab: "pes",
+  projectRailDensity: "normal",
+  sourceTrayOpen: true,
+  devToolsOpen: false,
 }
 
 export function WorkbenchShell({
@@ -144,6 +170,9 @@ export function WorkbenchShell({
   )
   const [projectSidebarState, setProjectSidebarState] = useState<ProjectSidebarState>(
     initialProjectSidebarState,
+  )
+  const [workspaceFlowShellState, setWorkspaceFlowShellState] = useState<WorkspaceFlowShellState>(
+    defaultWorkspaceFlowShellState,
   )
   const [exportBundleStatus, setExportBundleStatus] = useState<ExportBundleStatus>({ state: "idle" })
   const [importBundleStatus, setImportBundleStatus] = useState<ImportBundleStatus>({ state: "idle" })
@@ -189,6 +218,7 @@ export function WorkbenchShell({
     basename: "rxnflow-profile",
     title: "Relative energy profile",
   })
+  const sourceTrayModel = sourceTrayModelFromState(projectSidebarState, importInboxState)
   const projectSidebarStateRef = useRef<ProjectSidebarState>(initialProjectSidebarState)
   const workbenchStateRef = useRef<WorkbenchDomainState>(initialWorkbenchDomainState)
   const graphEditorHistoryRef = useRef<GraphEditorHistoryState>(initialGraphEditorHistoryState)
@@ -261,6 +291,14 @@ export function WorkbenchShell({
     const nextState = await refreshProjects(projectRepository, loadingState)
     replaceProjectSidebarState(nextState)
   }, [projectRepository, replaceProjectSidebarState])
+
+  const setAnalysisDockTab = useCallback((analysisDockTab: AnalysisDockTab) => {
+    setWorkspaceFlowShellState((current) => ({
+      ...current,
+      analysisDockTab,
+      devToolsOpen: analysisDockTab === "diagnostics",
+    }))
+  }, [])
 
   useEffect(() => {
     void refreshProjectSidebar()
@@ -2172,103 +2210,117 @@ export function WorkbenchShell({
         </div>
       </header>
 
-      <main className="workbench-grid" aria-label={t("workbench.aria")}>
-        <ProjectSidebar
-          state={projectSidebarState}
-          workbenchState={workbenchState}
-          exportBundleStatus={exportBundleStatus}
-          importBundleStatus={importBundleStatus}
-          onRefreshProjects={refreshProjectSidebar}
-          onCreateProject={createSidebarProject}
-          onOpenProject={openSidebarProject}
-          onSaveProjectContent={saveSidebarProjectStub}
-          onOpenBridgeSession={openSidebarBridgeSession}
-          onSaveBridgeSession={saveSidebarBridgeSession}
-          onExportBundle={exportSidebarBundle}
-          onImportBundleFileSelected={importSidebarBundleFile}
-        />
-        <div className="workspace-column">
-          <ImportInbox
-            state={importInboxState}
-            onFilesSelected={selectImportFiles}
-            onExpectedFormatChange={changeImportExpectedFormat}
-            onStrictChange={changeImportStrict}
-            onPreview={previewImport}
-            onRegisterAll={registerImportBatch}
-            onClear={clearImportInbox}
+      <main
+        className="workbench-grid workspace-flow-shell"
+        aria-label={t("workbench.aria")}
+        data-analysis-tab={workspaceFlowShellState.analysisDockTab}
+        data-project-rail-density={workspaceFlowShellState.projectRailDensity}
+        data-source-tray={workspaceFlowShellState.sourceTrayOpen ? "open" : "closed"}
+        data-dev-tools={workspaceFlowShellState.devToolsOpen ? "open" : "closed"}
+      >
+        <section className="project-rail" aria-label={t("workbench.flow.projectRail")}>
+          <ProjectSidebar
+            state={projectSidebarState}
+            workbenchState={workbenchState}
+            exportBundleStatus={exportBundleStatus}
+            importBundleStatus={importBundleStatus}
+            onRefreshProjects={refreshProjectSidebar}
+            onCreateProject={createSidebarProject}
+            onOpenProject={openSidebarProject}
+            onSaveProjectContent={saveSidebarProjectStub}
+            onOpenBridgeSession={openSidebarBridgeSession}
+            onSaveBridgeSession={saveSidebarBridgeSession}
+            onExportBundle={exportSidebarBundle}
+            onImportBundleFileSelected={importSidebarBundleFile}
           />
-          <GraphCanvas
-            state={workbenchState}
-            activeObjectId={activeObjectId}
-            interactionState={graphEditorInteraction}
-            autoLayoutStatus={autoLayoutStatus}
-            pathAuthoringStatus={pathAuthoringStatus}
-            historyControls={{
-              canUndo: graphEditorHistory.undo.length > 0,
-              canRedo: graphEditorHistory.redo.length > 0,
-              undoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "undo"),
-              redoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "redo"),
-              running: graphEditorHistory.running,
-              error: graphEditorHistory.error,
-            }}
-            pathOrderDraft={pathOrderDraft}
-            edgeLabelDraft={edgeLabelDraft}
-            edgeLabelPending={edgeLabelPending}
-            edgeLabelError={edgeLabelError}
-            compositionDraft={compositionDraft}
-            compositionPending={compositionPending}
-            compositionError={compositionError}
-            candidateChooser={parseCandidateChooser}
-            onSelectNode={selectGraphNode}
-            onSelectEdge={selectGraphEdge}
-            onSelectPath={selectGraphPath}
-            onMovePathDraftNode={movePathDraftNode}
-            onApplyPathOrderDraft={applyPathOrderDraft}
-            onEdgeLabelDraftChange={updateGraphEdgeLabelDraft}
-            onResetEdgeLabelDraft={resetGraphEdgeLabelDraft}
-            onClearEdgeLabelDraft={clearGraphEdgeLabelDraft}
-            onApplyEdgeLabelDraft={applyGraphEdgeLabelDraft}
-            onStartNodeDrag={startNodeDrag}
-            onUpdateNodeDrag={updateNodeDrag}
-            onEndNodeDrag={endNodeDrag}
-            onStartCanvasDrag={startCanvasDrag}
-            onUpdateCanvasDrag={updateCanvasDrag}
-            onEndCanvasDrag={endCanvasDrag}
-            onStartRubberBand={startRubberBand}
-            onUpdateRubberBand={updateRubberBand}
-            onEndRubberBand={endRubberBand}
-            onCancelRubberBand={cancelRubberBand}
-            onStartPointerEdge={startPointerEdge}
-            onUpdatePointerEdge={updatePointerEdge}
-            onEndPointerEdge={endPointerEdge}
-            onCancelPointerEdge={cancelPointerEdge}
-            onOpenWorkspace={openWorkspace}
-            onAddObjectNode={addObjectNode}
-            onAddRawFileNode={addRawFileNode}
-            onToggleCandidateSelection={toggleParseCandidateSelection}
-            onConfirmCandidateChooser={confirmParseCandidateChooser}
-            onCancelCandidateChooser={cancelParseCandidateChooser}
-            onMoveNode={moveGraphNode}
-            onNudgeNodes={nudgeGraphNodes}
-            onUndoHistory={() => void replayGraphEditorHistory("undo")}
-            onRedoHistory={() => void replayGraphEditorHistory("redo")}
-            onApplyAutoLayout={applyGraphAutoLayout}
-            onRemoveGraphItems={removeGraphItems}
-            onClearSelection={clearGraphSelection}
-            onSetViewport={setGraphViewport}
-            onTogglePanMode={togglePanMode}
-            onStartConnection={startConnection}
-            onSetActivePath={setActiveCanvasPath}
-            onCompositionDraftRowChange={updateNodeCompositionDraft}
-            onAddCompositionDraftRow={addNodeCompositionDraftRow}
-            onRemoveCompositionDraftRow={removeNodeCompositionDraftRow}
-            onResetCompositionDraft={resetNodeCompositionDraft}
-            onApplyCompositionDraft={applyNodeCompositionDraft}
-          />
-        </div>
+        </section>
+        <section className="canvas-stage" aria-label={t("workbench.flow.canvasStage")}>
+          <div className="workspace-column canvas-stage-stack">
+            <ImportInbox
+              state={importInboxState}
+              sourceTray={sourceTrayModel}
+              onFilesSelected={selectImportFiles}
+              onExpectedFormatChange={changeImportExpectedFormat}
+              onStrictChange={changeImportStrict}
+              onPreview={previewImport}
+              onRegisterAll={registerImportBatch}
+              onClear={clearImportInbox}
+            />
+            <GraphCanvas
+              state={workbenchState}
+              activeObjectId={activeObjectId}
+              interactionState={graphEditorInteraction}
+              autoLayoutStatus={autoLayoutStatus}
+              pathAuthoringStatus={pathAuthoringStatus}
+              historyControls={{
+                canUndo: graphEditorHistory.undo.length > 0,
+                canRedo: graphEditorHistory.redo.length > 0,
+                undoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "undo"),
+                redoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "redo"),
+                running: graphEditorHistory.running,
+                error: graphEditorHistory.error,
+              }}
+              pathOrderDraft={pathOrderDraft}
+              edgeLabelDraft={edgeLabelDraft}
+              edgeLabelPending={edgeLabelPending}
+              edgeLabelError={edgeLabelError}
+              compositionDraft={compositionDraft}
+              compositionPending={compositionPending}
+              compositionError={compositionError}
+              candidateChooser={parseCandidateChooser}
+              onSelectNode={selectGraphNode}
+              onSelectEdge={selectGraphEdge}
+              onSelectPath={selectGraphPath}
+              onMovePathDraftNode={movePathDraftNode}
+              onApplyPathOrderDraft={applyPathOrderDraft}
+              onEdgeLabelDraftChange={updateGraphEdgeLabelDraft}
+              onResetEdgeLabelDraft={resetGraphEdgeLabelDraft}
+              onClearEdgeLabelDraft={clearGraphEdgeLabelDraft}
+              onApplyEdgeLabelDraft={applyGraphEdgeLabelDraft}
+              onStartNodeDrag={startNodeDrag}
+              onUpdateNodeDrag={updateNodeDrag}
+              onEndNodeDrag={endNodeDrag}
+              onStartCanvasDrag={startCanvasDrag}
+              onUpdateCanvasDrag={updateCanvasDrag}
+              onEndCanvasDrag={endCanvasDrag}
+              onStartRubberBand={startRubberBand}
+              onUpdateRubberBand={updateRubberBand}
+              onEndRubberBand={endRubberBand}
+              onCancelRubberBand={cancelRubberBand}
+              onStartPointerEdge={startPointerEdge}
+              onUpdatePointerEdge={updatePointerEdge}
+              onEndPointerEdge={endPointerEdge}
+              onCancelPointerEdge={cancelPointerEdge}
+              onOpenWorkspace={openWorkspace}
+              onAddObjectNode={addObjectNode}
+              onAddRawFileNode={addRawFileNode}
+              onToggleCandidateSelection={toggleParseCandidateSelection}
+              onConfirmCandidateChooser={confirmParseCandidateChooser}
+              onCancelCandidateChooser={cancelParseCandidateChooser}
+              onMoveNode={moveGraphNode}
+              onNudgeNodes={nudgeGraphNodes}
+              onUndoHistory={() => void replayGraphEditorHistory("undo")}
+              onRedoHistory={() => void replayGraphEditorHistory("redo")}
+              onApplyAutoLayout={applyGraphAutoLayout}
+              onRemoveGraphItems={removeGraphItems}
+              onClearSelection={clearGraphSelection}
+              onSetViewport={setGraphViewport}
+              onTogglePanMode={togglePanMode}
+              onStartConnection={startConnection}
+              onSetActivePath={setActiveCanvasPath}
+              onCompositionDraftRowChange={updateNodeCompositionDraft}
+              onAddCompositionDraftRow={addNodeCompositionDraftRow}
+              onRemoveCompositionDraftRow={removeNodeCompositionDraftRow}
+              onResetCompositionDraft={resetNodeCompositionDraft}
+              onApplyCompositionDraft={applyNodeCompositionDraft}
+            />
+          </div>
+        </section>
         <InspectorPanel
           state={workbenchState}
           activeObjectId={activeObjectId}
+          activeTab={workspaceFlowShellState.analysisDockTab}
+          devToolsOpen={workspaceFlowShellState.devToolsOpen}
           hasActiveBrowserProject={Boolean(projectSidebarState.activeProject)}
           correctionPending={correctionPending}
           correctionError={correctionError}
@@ -2282,6 +2334,7 @@ export function WorkbenchShell({
           onRunReportExport={runReportExport}
           onRunFixture={runFixture}
           onRunInvalidCommand={runInvalidCommand}
+          onActiveTabChange={setAnalysisDockTab}
           onSelectEnergyProfilePoint={selectEnergyProfilePoint}
         />
       </main>
@@ -2298,6 +2351,29 @@ function upsertImportBatch(
     return [...batches, batch]
   }
   return batches.map((existing, currentIndex) => (currentIndex === index ? batch : existing))
+}
+
+function sourceTrayModelFromState(
+  projectSidebarState: ProjectSidebarState,
+  importInboxState: ImportInboxState,
+): SourceTrayModel {
+  return {
+    hasActiveProject: Boolean(projectSidebarState.activeProject),
+    rawFileCount: projectSidebarState.projectFiles.filter(isSourceTrayRawProjectFile).length,
+    lastDropStatus: sourceTrayStatusFromImportStatus(importInboxState.status),
+    acceptedExtensions: [".log", ".out", ".xyz", ".extxyz", "MAPLE"],
+  }
+}
+
+function sourceTrayStatusFromImportStatus(status: ImportInboxState["status"]): SourceTrayStatus {
+  if (status === "previewing" || status === "ready" || status === "registering") return "previewing"
+  if (status === "registered") return "registered"
+  if (status === "error") return "error"
+  return "idle"
+}
+
+function isSourceTrayRawProjectFile(file: ProjectFileEntry): boolean {
+  return file.kind !== "export-artifact" && file.path.startsWith("inputs/raw/")
 }
 
 type RawDropImportFileResult =
@@ -2799,6 +2875,8 @@ type StateProps = {
 type InspectorPanelProps = {
   state: WorkbenchDomainState
   activeObjectId?: string
+  activeTab: AnalysisDockTab
+  devToolsOpen: boolean
   hasActiveBrowserProject: boolean
   correctionPending: boolean
   correctionError: ShellError | null
@@ -2812,12 +2890,15 @@ type InspectorPanelProps = {
   onRunReportExport: () => void
   onRunFixture: () => void
   onRunInvalidCommand: () => void
+  onActiveTabChange: (tab: AnalysisDockTab) => void
   onSelectEnergyProfilePoint: (nodeId: string) => void
 }
 
 function InspectorPanel({
   state,
   activeObjectId,
+  activeTab,
+  devToolsOpen,
   hasActiveBrowserProject,
   correctionPending,
   correctionError,
@@ -2831,71 +2912,169 @@ function InspectorPanel({
   onRunReportExport,
   onRunFixture,
   onRunInvalidCommand,
+  onActiveTabChange,
   onSelectEnergyProfilePoint,
 }: InspectorPanelProps) {
   const { t } = useI18n()
+  const model = analysisDockModelFromState(state, activeTab)
 
   return (
-    <aside className="inspector-panel" aria-label="Command and profile inspector">
-      <ObjectRegistryPanel
-        objects={state.objects}
-        activeObjectId={activeObjectId}
-        correctionPending={correctionPending}
-        correctionError={correctionError}
-        onSelectObject={onSelectObject}
-        onApplyCorrection={onApplyCorrection}
-      />
-
-      <section className="command-panel">
-        <p className="section-kicker">{t("workbench.command.section")}</p>
-        <div className="command-actions">
-          <button type="button" className="command-button" onClick={onRunFixture}>
-            <Play size={17} />
-            <span>{t("workbench.command.fixtureRun")}</span>
-          </button>
+    <aside
+      className="inspector-panel analysis-dock"
+      aria-label={t("workbench.flow.analysisDock")}
+      data-active-tab={activeTab}
+      data-dev-tools={devToolsOpen ? "open" : "closed"}
+    >
+      <div className="analysis-dock-tabs" role="tablist" aria-label={t("analysisDock.tabs")}>
+        {model.tabs.map((tab) => (
           <button
+            key={tab.id}
             type="button"
-            className="icon-button"
-            onClick={onRunInvalidCommand}
-            title={t("workbench.command.invalid")}
-            aria-label={t("workbench.command.invalid")}
+            role="tab"
+            aria-label={t(tab.labelKey)}
+            aria-selected={tab.id === model.activeTab}
+            aria-controls={`analysis-dock-panel-${tab.id}`}
+            id={`analysis-dock-tab-${tab.id}`}
+            className={`analysis-dock-tab analysis-dock-tab--${tab.status ?? "idle"}`}
+            onClick={() => onActiveTabChange(tab.id)}
           >
-            <AlertTriangle size={17} />
+            <span>{t(tab.labelKey)}</span>
+            {tab.badge ? <small>{tab.badge}</small> : null}
           </button>
+        ))}
+      </div>
+
+      {activeTab === "pes" ? (
+        <div
+          id="analysis-dock-panel-pes"
+          role="tabpanel"
+          aria-labelledby="analysis-dock-tab-pes"
+          className="analysis-dock-panel"
+        >
+          <EnergyProfilePanel
+            profile={state.profile}
+            workspace={state.workspace}
+            objects={state.objects}
+            options={energyPanelOptions}
+            disabled={!state.sessionId || !energyPanelOptions.pathId && !state.workspace?.active_path_id && !state.workspace?.graph.paths[0]?.id}
+            warnings={state.warnings}
+            selectedNodeId={state.workspace?.selection?.node_ids[0] ?? null}
+            onOptionsChange={onEnergyOptionsChange}
+            onCompute={onRunEnergyCompute}
+            onSelectProfilePoint={onSelectEnergyProfilePoint}
+          />
         </div>
-      </section>
+      ) : null}
 
-      <EnergyProfilePanel
-        profile={state.profile}
-        workspace={state.workspace}
-        objects={state.objects}
-        options={energyPanelOptions}
-        disabled={!state.sessionId || !energyPanelOptions.pathId && !state.workspace?.active_path_id && !state.workspace?.graph.paths[0]?.id}
-        warnings={state.warnings}
-        selectedNodeId={state.workspace?.selection?.node_ids[0] ?? null}
-        onOptionsChange={onEnergyOptionsChange}
-        onCompute={onRunEnergyCompute}
-        onSelectProfilePoint={onSelectEnergyProfilePoint}
-      />
+      {activeTab === "export" ? (
+        <div
+          id="analysis-dock-panel-export"
+          role="tabpanel"
+          aria-labelledby="analysis-dock-tab-export"
+          className="analysis-dock-panel"
+        >
+          <ReportExportPanel
+            artifacts={state.artifacts}
+            profile={state.profile}
+            workspace={state.workspace}
+            options={reportExportOptions}
+            disabled={!state.sessionId || !state.profile}
+            warnings={state.warnings}
+            hasActiveBrowserProject={Boolean(state.sessionId && hasActiveBrowserProject)}
+            onOptionsChange={onReportExportOptionsChange}
+            onExport={onRunReportExport}
+          />
+        </div>
+      ) : null}
 
-      <ReportExportPanel
-        artifacts={state.artifacts}
-        profile={state.profile}
-        workspace={state.workspace}
-        options={reportExportOptions}
-        disabled={!state.sessionId || !state.profile}
-        warnings={state.warnings}
-        hasActiveBrowserProject={Boolean(state.sessionId && hasActiveBrowserProject)}
-        onOptionsChange={onReportExportOptionsChange}
-        onExport={onRunReportExport}
-      />
+      {activeTab === "object" ? (
+        <div
+          id="analysis-dock-panel-object"
+          role="tabpanel"
+          aria-labelledby="analysis-dock-tab-object"
+          className="analysis-dock-panel"
+        >
+          <ObjectRegistryPanel
+            objects={state.objects}
+            activeObjectId={activeObjectId}
+            correctionPending={correctionPending}
+            correctionError={correctionError}
+            onSelectObject={onSelectObject}
+            onApplyCorrection={onApplyCorrection}
+          />
+        </div>
+      ) : null}
 
-      <section className="inspector-section">
-        <p className="section-kicker">{t("workbench.commandStatus.section")}</p>
-        <CommandStatusPanel state={state} />
-      </section>
+      {activeTab === "diagnostics" ? (
+        <div
+          id="analysis-dock-panel-diagnostics"
+          role="tabpanel"
+          aria-labelledby="analysis-dock-tab-diagnostics"
+          className="analysis-dock-panel analysis-dock-panel--diagnostics"
+        >
+          <section className="command-panel analysis-dock-dev-tools">
+            <p className="section-kicker">{t("workbench.command.section")}</p>
+            <div className="command-actions">
+              <button type="button" className="command-button" onClick={onRunFixture}>
+                <Play size={17} />
+                <span>{t("workbench.command.fixtureRun")}</span>
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={onRunInvalidCommand}
+                title={t("workbench.command.invalid")}
+                aria-label={t("workbench.command.invalid")}
+              >
+                <AlertTriangle size={17} />
+              </button>
+            </div>
+          </section>
+
+          <section className="inspector-section">
+            <p className="section-kicker">{t("workbench.commandStatus.section")}</p>
+            <CommandStatusPanel state={state} />
+          </section>
+        </div>
+      ) : null}
     </aside>
   )
+}
+
+function analysisDockModelFromState(
+  state: WorkbenchDomainState,
+  activeTab: AnalysisDockTab,
+): AnalysisDockModel {
+  const diagnosticsBadge = state.error ? "!" : state.warnings.length || null
+  return {
+    activeTab,
+    tabs: [
+      {
+        id: "pes",
+        labelKey: "analysisDock.tab.pes",
+        badge: state.profile?.point_count ?? null,
+        status: state.profile ? "ready" : "idle",
+      },
+      {
+        id: "export",
+        labelKey: "analysisDock.tab.export",
+        badge: state.artifacts.length || null,
+        status: state.artifacts.length > 0 ? "ready" : "idle",
+      },
+      {
+        id: "object",
+        labelKey: "analysisDock.tab.object",
+        badge: state.objects.length || null,
+        status: state.objects.length > 0 ? "ready" : "idle",
+      },
+      {
+        id: "diagnostics",
+        labelKey: "analysisDock.tab.diagnostics",
+        badge: diagnosticsBadge,
+        status: state.error ? "error" : state.warnings.length > 0 ? "warning" : "idle",
+      },
+    ],
+  }
 }
 
 function CommandStatusPanel({ state }: StateProps) {

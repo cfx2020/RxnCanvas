@@ -15,6 +15,7 @@ describe("ProjectSidebar", () => {
     expect(within(panel).getByRole("heading", { name: "Files" })).toBeInTheDocument()
     expect(within(panel).getByText("0 files")).toBeInTheDocument()
     expect(within(panel).getByText("Open a project to view its files.")).toBeInTheDocument()
+    expect(screen.queryByText("No project loaded")).not.toBeInTheDocument()
   })
 
   it("renders raw inputs and export artifacts from project file state", () => {

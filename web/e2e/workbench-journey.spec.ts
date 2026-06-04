@@ -23,6 +23,7 @@ import {
   exportWithoutInlineBytes,
   importInvalidProjectBundleSample,
   importProjectBundleFile,
+  openAnalysisDockTab,
   openBrowserProject,
   openWorkbench,
   previewAndRegisterImport,
@@ -62,6 +63,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await exportFixtureProfile(page)
     await exportWithoutInlineBytes(page)
 
+    await openAnalysisDockTab(page, "Diagnostics")
     await expect(page.getByText("5 artifacts indexed")).toBeVisible()
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)
@@ -120,7 +122,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await page.reload({ waitUntil: "networkidle" })
     await openWorkbench(page)
     await importProjectBundleFile(page, bundle.path)
-    await expect(page.getByText("No project loaded")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Open Bridge" })).toBeVisible()
     await expect(page.getByText(projectName).first()).toBeVisible()
 
     await expectNoFrameworkOverlay(page)
@@ -158,10 +160,9 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await openWorkbench(page)
     await runFixture(page)
 
+    await openAnalysisDockTab(page, "Object")
     const objectRegistry = await expectRegionVisible(page, "Object Registry")
     const graphCanvas = await expectRegionVisible(page, "Graph Canvas")
-    const energyPanel = await expectRegionVisible(page, "Energy Profile Panel")
-    const exportPanel = await expectRegionVisible(page, "Report Export Panel")
 
     await objectRegistry.getByRole("button", { name: /object b/i }).click()
     await graphCanvas.getByRole("button", { name: "Add Node" }).click()
@@ -178,10 +179,14 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("100%")
     await expect(graphCanvas.getByLabel("Network Preview")).toBeVisible()
 
+    await openAnalysisDockTab(page, "PES")
+    const energyPanel = await expectRegionVisible(page, "Energy Profile Panel")
     await energyPanel.getByRole("button", { name: "Compute" }).click()
     await expect(energyPanel.getByText("profile-path-web-main-electronic-kcal_mol").first()).toBeVisible()
     await expect(energyPanel.getByText("Energy curve")).toBeVisible()
 
+    await openAnalysisDockTab(page, "Export")
+    const exportPanel = await expectRegionVisible(page, "Report Export Panel")
     await exportPanel.getByRole("button", { name: "Export mode" }).click()
     await exportPanel.getByRole("button", { name: "Export", exact: true }).click()
     await expect(exportPanel.getByText("artifact-png-rxnflow-profile")).toBeVisible()

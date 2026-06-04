@@ -5,14 +5,14 @@ component: report-export-guides
 status: current
 summary: 如何在 RxnFlow Web 工作台导出报告 artifacts
 tags: [report-export, web-workbench, cdxml, xlsx, csv, svg, local-first]
-last_reviewed: 2026-06-02
+last_reviewed: 2026-06-05
 ---
 
 # 导出 PNG、CDXML、XLSX、CSV 和 SVG 报告文件
 
 ## 功能简介
 
-RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为五类文件：PNG 能量图、ChemDraw 可打开的 CDXML 能量图、XLSX 能量表工作簿、CSV 能量表，以及 SVG graph snapshot。Report Export 面板默认先显示 Preview，用来检查 graph/profile summary、报告资产 readiness、可复用 artifacts 和 warnings；切到 Export 后可以执行导出。导出结果会显示下载入口、metadata、warnings、保存状态和 checksum。
+RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为五类文件：PNG 能量图、ChemDraw 可打开的 CDXML 能量图、XLSX 能量表工作簿、CSV 能量表，以及 SVG graph snapshot。导出入口在右侧 Analysis Dock 的 Export tab。Report Export 面板默认先显示 Preview，用来检查 graph/profile summary、报告资产 readiness、可复用 artifacts 和 warnings；切到 Export 后可以执行导出。导出结果会显示下载入口、metadata、warnings、保存状态和 checksum。
 
 当前导出是本地优先能力。浏览器项目中的 `exports/...` 文件保存在当前浏览器本地仓储中，不是云同步。
 
@@ -25,12 +25,12 @@ RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为�
 ## 如何使用
 
 1. 在 Web 工作台中确认图谱已有当前路径。
-2. 在 Energy Profile 面板点击 `Compute`，得到相对能量表和曲线。
-3. 在 Report Export 面板先查看 `Preview`：
+2. 在右侧 Analysis Dock 切到 `PES`，点击 `Compute`，得到相对能量表和曲线。
+3. 切到 Analysis Dock 的 `Export`，先查看 `Preview`：
    - `Report assets` 会显示 energy diagram、energy table、graph snapshot 是 `Ready` 还是 `Pending export`。
    - `Reusable artifacts` 会列出当前已有 artifact 的 format、id、inline bytes、persisted/path/checksum 状态。
    - `Preview warnings` 会保留导出 warning code、message 和 target。
-4. 切到 `Export` 模式，选择需要的格式：
+4. 在 Report Export 面板切到 `Export` 模式，选择需要的格式：
    - `png`
    - `cdxml`
    - `xlsx`

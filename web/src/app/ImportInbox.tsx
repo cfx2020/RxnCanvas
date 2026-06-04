@@ -14,6 +14,7 @@ import {
 
 type ImportInboxProps = {
   state: ImportInboxState
+  sourceTray: SourceTrayModel
   onFilesSelected: (files: WebImportFile[]) => void
   onExpectedFormatChange: (format: string) => void
   onStrictChange: (strict: boolean) => void
@@ -22,8 +23,18 @@ type ImportInboxProps = {
   onClear: () => void
 }
 
+export type SourceTrayStatus = "idle" | "persisting" | "previewing" | "registered" | "used-in-graph" | "error"
+
+export type SourceTrayModel = {
+  hasActiveProject: boolean
+  rawFileCount: number
+  lastDropStatus?: SourceTrayStatus
+  acceptedExtensions: string[]
+}
+
 export function ImportInbox({
   state,
+  sourceTray,
   onFilesSelected,
   onExpectedFormatChange,
   onStrictChange,
@@ -34,21 +45,34 @@ export function ImportInbox({
   const { t } = useI18n()
   const previewDisabled = !canPreviewImport(state)
   const registerDisabled = !canRegisterImport(state)
+  const detailOpen = state.selectedFiles.length > 0 || Boolean(state.activeBatch) || Boolean(state.error)
+  const lastDropStatus = sourceTray.lastDropStatus ?? "idle"
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     onFilesSelected(filesToWebImportFiles(event.currentTarget.files ?? []))
   }
 
   return (
-    <section className="import-inbox" aria-label={t("importInbox.aria")}>
-      <div className="import-inbox-header">
+    <section className="import-inbox source-tray" aria-label={t("sourceTray.aria")}>
+      <div className="source-tray-header">
         <div>
-          <p className="section-kicker">{t("importInbox.section")}</p>
-          <h2>{t("importInbox.title")}</h2>
+          <p className="section-kicker">{t("sourceTray.section")}</p>
+          <h2>{t("sourceTray.title")}</h2>
         </div>
-        <span className={`import-status import-status--${state.status}`}>
-          {t(`importInbox.status.${state.status}`)}
-        </span>
+        <div className="source-tray-status-row">
+          <span className={`source-tray-status source-tray-status--${lastDropStatus}`}>
+            {t(`sourceTray.status.${lastDropStatus}` as MessageKey)}
+          </span>
+          <span className={`import-status import-status--${state.status}`}>
+            {t(`importInbox.status.${state.status}`)}
+          </span>
+        </div>
+      </div>
+
+      <div className="source-tray-hints" aria-label={t("sourceTray.contextAria")}>
+        <span>{sourceTray.hasActiveProject ? t("sourceTray.activeProject") : t("sourceTray.noActiveProject")}</span>
+        <span>{t("sourceTray.rawFileCount", { count: sourceTray.rawFileCount })}</span>
+        <span>{t("sourceTray.accepts", { extensions: sourceTray.acceptedExtensions.join(", ") })}</span>
       </div>
 
       <div className="import-controls">
@@ -106,8 +130,16 @@ export function ImportInbox({
         </button>
       </div>
 
-      <SelectedFileList files={state.selectedFiles} />
-      <ImportSummary state={state} />
+      <details className="source-tray-details" open={detailOpen}>
+        <summary>
+          <span>{t("sourceTray.details")}</span>
+          <small>{sourceTrayDetailSummary(state, t)}</small>
+        </summary>
+        <div className="source-tray-detail-body">
+          <SelectedFileList files={state.selectedFiles} />
+          <ImportSummary state={state} />
+        </div>
+      </details>
     </section>
   )
 }
@@ -271,4 +303,15 @@ function ImportError({ error }: { error: ShellError }) {
       {error.target ? <code>{error.target}</code> : null}
     </div>
   )
+}
+
+type Translate = ReturnType<typeof useI18n>["t"]
+
+function sourceTrayDetailSummary(state: ImportInboxState, t: Translate): string {
+  if (state.error) return t("sourceTray.errorReady")
+  if (state.activeBatch) return t("sourceTray.previewReady")
+  if (state.selectedFiles.length > 0) {
+    return t("sourceTray.selectedCount", { count: state.selectedFiles.length })
+  }
+  return t("sourceTray.detailsIdle")
 }

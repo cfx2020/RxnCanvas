@@ -37,10 +37,10 @@ items:
   - slug: workspace-first-flow-polish
     description: 收束当前复杂三栏流程，把项目文件、画布、势能面和导出整理成 workspace-first 主界面
     depends_on: [workspace-file-drop-minimal-loop, canvas-path-authoring-pes-preview]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-04-workspace-first-flow-polish
     minimal_loop: false
-    notes: "目标是减少奇怪按钮流程，不继续在旧心智模型上堆叠分散面板"
+    notes: "已形成 Project Rail / Canvas Stage / Analysis Dock 主界面；Source Tray 与 Diagnostics 降级内部流程和 dev commands"
 
   - slug: workspace-first-flow-qa-guides
     description: 补桌面、窄屏、local-http E2E 和用户指南，固定新主流程的保存、导出、分享和恢复验收脚本

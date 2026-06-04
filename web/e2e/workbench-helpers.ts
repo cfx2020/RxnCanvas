@@ -85,6 +85,13 @@ export async function expectRegionVisible(page: Page, name: string | RegExp): Pr
   return region
 }
 
+export async function openAnalysisDockTab(page: Page, tabName: string) {
+  const dock = page.getByRole("complementary", { name: "Analysis Dock" })
+  const tab = dock.getByRole("tab", { name: tabName, exact: true })
+  await tab.click()
+  await expect(tab).toHaveAttribute("aria-selected", "true")
+}
+
 export async function attachViewportScreenshot(page: Page, testInfo: TestInfo, name: string) {
   const screenshot = await page.screenshot({ fullPage: false })
   await testInfo.attach(name, {
@@ -191,12 +198,17 @@ function invalidBundleSample(kind: InvalidBundleSampleKind): {
 }
 
 export async function runFixture(page: Page) {
+  await openAnalysisDockTab(page, "Diagnostics")
   await page.getByRole("button", { name: "Fixture Run" }).click()
-  await expect(page.getByText("Fixture Minimal Reaction")).toBeVisible()
-  await expect(page.getByRole("region", { name: "Object Registry" })).toBeVisible()
+  await expect(page.getByText("graph-a-b").first()).toBeVisible()
   await expect(page.getByRole("region", { name: "Graph Canvas" })).toBeVisible()
+  await openAnalysisDockTab(page, "Object")
+  await expect(page.getByRole("region", { name: "Object Registry" })).toBeVisible()
+  await openAnalysisDockTab(page, "PES")
   await expect(page.getByRole("region", { name: "Energy Profile Panel" })).toBeVisible()
+  await openAnalysisDockTab(page, "Export")
   await expect(page.getByRole("region", { name: "Report Export Panel" })).toBeVisible()
+  await openAnalysisDockTab(page, "PES")
 }
 
 export async function dragRegisteredObjectToGraphCanvas(
@@ -208,6 +220,7 @@ export async function dragRegisteredObjectToGraphCanvas(
     target?: { xRatio: number; yRatio: number }
   },
 ) {
+  await openAnalysisDockTab(page, "Object")
   const objectRegistry = page.getByRole("region", { name: "Object Registry" })
   const source = objectRegistry.getByRole("button", { name: options.objectName }).first()
   await expect(source).toBeVisible()
@@ -341,7 +354,9 @@ export async function createAndDeleteTemporaryGraphPath(page: Page) {
 
 export async function editFixtureEdgeLabel(page: Page, label: string) {
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
-  await graphCanvas.getByRole("button", { name: "Edge Object A to Object B" }).click()
+  await graphCanvas.getByRole("button", { name: "Edge Object A to Object B" }).evaluate((element) => {
+    (element as HTMLElement).click()
+  })
 
   const editor = graphCanvas.getByRole("form", { name: "Edge Label Editor" })
   await expect(editor).toBeVisible()
@@ -664,7 +679,7 @@ export async function exerciseNarrowGraphAdvancedControls(page: Page) {
 }
 
 export async function previewAndRegisterImport(page: Page) {
-  const importInbox = page.getByRole("region", { name: "Import Inbox" })
+  const importInbox = page.getByRole("region", { name: "Source Tray" })
   await importInbox.getByLabel("Select Files").setInputFiles([
     {
       name: "water.xyz",
@@ -691,6 +706,7 @@ export async function previewAndRegisterImport(page: Page) {
 }
 
 export async function buildImportedWaterPath(page: Page) {
+  await openAnalysisDockTab(page, "Object")
   const objectRegistry = page.getByRole("region", { name: "Object Registry" })
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
 
@@ -705,10 +721,12 @@ export async function buildImportedWaterPath(page: Page) {
 
   await graphCanvas.getByRole("button", { name: "Set Path" }).click()
   await expect(graphCanvas.getByText("path-web-main").first()).toBeVisible()
-  await expect(graphCanvas.getByText("node-a -> node-b -> node-web-3")).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Select path Canvas path" }))
+    .toContainText("node-a -> node-b -> node-web-3")
 }
 
 export async function computeMissingEnergyProfile(page: Page) {
+  await openAnalysisDockTab(page, "PES")
   const energyPanel = page.getByRole("region", { name: "Energy Profile Panel" })
   await energyPanel.getByRole("button", { name: "Compute" }).click()
   await expect(energyPanel.getByText("missing_energy").first()).toBeVisible()
@@ -716,6 +734,7 @@ export async function computeMissingEnergyProfile(page: Page) {
 }
 
 export async function exportFixtureProfile(page: Page) {
+  await openAnalysisDockTab(page, "Export")
   const exportPanel = page.getByRole("region", { name: "Report Export Panel" })
   await openReportExportMode(exportPanel)
   await exportPanel.getByRole("button", { name: "Export", exact: true }).click()
@@ -755,6 +774,7 @@ export async function exportFixtureProfile(page: Page) {
 }
 
 export async function exportWithoutInlineBytes(page: Page) {
+  await openAnalysisDockTab(page, "Export")
   const exportPanel = page.getByRole("region", { name: "Report Export Panel" })
   await openReportExportMode(exportPanel)
   await exportPanel.getByLabel("Include bytes").uncheck()

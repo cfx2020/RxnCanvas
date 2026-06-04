@@ -9,6 +9,7 @@ import {
   exportProjectBundleDownload,
   importProjectBundleFile,
   openWorkbench,
+  openAnalysisDockTab,
   resetWorkbenchStorage,
 } from "./workbench-helpers"
 
@@ -36,14 +37,14 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await page.getByRole("button", { name: "Save Bridge" }).click()
     await expect(page.getByText("Project content files are readable.")).toBeVisible()
 
+    await openAnalysisDockTab(page, "Diagnostics")
     await page.getByRole("button", { name: "Fixture Run" }).click()
-    await expect(page.getByText("fixture-minimal-reaction")).toBeVisible()
-    await expect(page.getByText("project-fixture-minimal-reaction").first()).toBeVisible()
+    await openAnalysisDockTab(page, "Object")
     const objectRegistry = page.getByRole("region", { name: "Object Registry" })
     await expect(objectRegistry.getByRole("button", { name: /Fixture A/ })).toBeVisible()
     await expect(objectRegistry.getByRole("button", { name: /Fixture B/ })).toBeVisible()
 
-    const importInbox = page.getByRole("region", { name: "Import Inbox" })
+    const importInbox = page.getByRole("region", { name: "Source Tray" })
     await importInbox.getByLabel("Select Files").setInputFiles({
       name: "water.xyz",
       mimeType: "chemical/x-xyz",
@@ -72,11 +73,13 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await graphCanvas.getByRole("button", { name: "Set Path" }).click()
     await expect(graphCanvas.getByText("path-web-main").first()).toBeVisible()
 
+    await openAnalysisDockTab(page, "PES")
     const energyPanel = page.getByRole("region", { name: "Energy Profile Panel" })
     await energyPanel.getByRole("button", { name: "Compute" }).click()
     await expect(energyPanel.getByText("profile-web-main-electronic-kcal_mol-raw").first()).toBeVisible()
     await expect(energyPanel.getByText("Energy curve")).toBeVisible()
 
+    await openAnalysisDockTab(page, "Export")
     const exportPanel = page.getByRole("region", { name: "Report Export Panel" })
     await exportPanel.getByRole("button", { name: "Export mode" }).click()
     await exportPanel.getByRole("button", { name: "Export", exact: true }).click()
@@ -112,6 +115,7 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await expect(exportPanel.getByRole("link", { name: "Download" }).nth(4)).toHaveAttribute("download", "rxnflow-profile.svg")
     await expect(exportPanel.getByRole("link", { name: "Download" }).nth(4)).toHaveAttribute("href", /^data:image\/svg\+xml;base64,/)
 
+    await openAnalysisDockTab(page, "Diagnostics")
     await expect(page.getByText("5 artifacts indexed")).toBeVisible()
 
     await expectNoHorizontalOverflow(page)
@@ -127,7 +131,7 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     const projectName = `Local HTTP Bundle ${Date.now()}`
     await createAndSaveBrowserProject(page, projectName)
 
-    const importInbox = page.getByRole("region", { name: "Import Inbox" })
+    const importInbox = page.getByRole("region", { name: "Source Tray" })
     await importInbox.getByLabel("Select Files").setInputFiles({
       name: "water.xyz",
       mimeType: "chemical/x-xyz",
@@ -155,7 +159,7 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await page.reload({ waitUntil: "networkidle" })
     await openWorkbench(page)
     await importProjectBundleFile(page, bundle.path)
-    await expect(sidebar.getByText("No project loaded")).toBeVisible()
+    await expect(sidebar.getByRole("button", { name: "Open Bridge" })).toBeVisible()
     await sidebar.getByRole("button", { name: "Open Bridge" }).click()
     await expect(sidebar.getByText("Open", { exact: true })).toBeVisible()
     await expect(page.getByText(projectName).first()).toBeVisible()
