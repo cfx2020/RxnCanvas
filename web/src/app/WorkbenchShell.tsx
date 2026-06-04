@@ -77,13 +77,14 @@ import {
 import type { GraphLayoutPlan } from "./graphAutoLayout"
 import { canvasPointToGraphNodePosition, graphNodePosition, moveGraphNodePosition } from "./graphNodeLayout"
 import { normalizeGraphViewport, type GraphViewport } from "./graphViewport"
+import { resolvePathAutoExtendIntent } from "./graphPathAutoExtend"
 import {
   createGraphPathOrderDraft,
   moveGraphPathDraftNode,
   type GraphPathOrderDraft,
   type GraphPathOrderMoveDirection,
 } from "./graphPathOrderDraft"
-import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type ParseCandidateChooserState, type RemoveGraphItemsRequest } from "./GraphCanvas"
+import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type ParseCandidateChooserState, type PathAuthoringStatus, type RemoveGraphItemsRequest } from "./GraphCanvas"
 import { ImportInbox } from "./ImportInbox"
 import {
   importPreviewArgsFromFiles,
@@ -159,6 +160,7 @@ export function WorkbenchShell({
     initialGraphEditorHistoryState,
   )
   const [autoLayoutStatus, setAutoLayoutStatus] = useState<GraphAutoLayoutStatus>({ state: "idle" })
+  const [pathAuthoringStatus, setPathAuthoringStatus] = useState<PathAuthoringStatus>({ state: "idle" })
   const [pathOrderDraft, setPathOrderDraft] = useState<GraphPathOrderDraft | null>(null)
   const [edgeLabelDraft, setEdgeLabelDraft] = useState<EdgeLabelDraftState>(
     initialEdgeLabelDraftState,
@@ -192,6 +194,8 @@ export function WorkbenchShell({
   const graphEditorHistoryRef = useRef<GraphEditorHistoryState>(initialGraphEditorHistoryState)
   const graphEditorHistoryCounterRef = useRef(0)
   const graphEditorHistoryScopeRef = useRef("")
+  const pesComputeSignatureRef = useRef<string | null>(null)
+  const pesComputeInFlightRef = useRef<string | null>(null)
 
   useEffect(() => {
     workbenchStateRef.current = workbenchState
@@ -1759,6 +1763,7 @@ export function WorkbenchShell({
     const sessionId = workbenchState.sessionId
     if (!sessionId || fromNodeId === toNodeId) return
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    setPathAuthoringStatus({ state: "idle" })
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.connect",
       args: {
@@ -1769,6 +1774,34 @@ export function WorkbenchShell({
     })
     applyWorkspaceResponse(response)
     if (response.ok && response.data) {
+      const autoExtend = resolvePathAutoExtendIntent(response.data.workspace, fromNodeId, toNodeId)
+      if (autoExtend.kind === "set-path") {
+        setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+        const pathResponse = await shellClient.run<WorkspaceCommandData>({
+          command: "workspace.set_path",
+          args: {
+            session_id: sessionId,
+            path_id: autoExtend.pathId,
+            node_ids: autoExtend.nodeIds,
+            label: autoExtend.pathId,
+          },
+        })
+        applyWorkspaceResponse(pathResponse)
+        if (pathResponse.ok && pathResponse.data) {
+          setPathAuthoringStatus({
+            state: "auto",
+            pathId: autoExtend.pathId,
+            reason: autoExtend.reason,
+          })
+        } else {
+          setPathAuthoringStatus({
+            state: "error",
+            error: pathResponse.error ?? shellError("graph_invalid", "Path update failed after connecting nodes.", "workspace.set_path"),
+          })
+        }
+      } else {
+        setPathAuthoringStatus({ state: "manual", reason: autoExtend.reason })
+      }
       resetGraphEditorHistory()
     }
   }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
@@ -1843,29 +1876,31 @@ export function WorkbenchShell({
     }
   }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId, workbenchState.workspace])
 
-  const runEnergyCompute = useCallback(async () => {
-    const sessionId = workbenchState.sessionId
-    const pathId = workbenchState.workspace?.active_path_id
-      || energyPanelOptions.pathId
-      || workbenchState.workspace?.graph.paths[0]?.id
-      || ""
-    const energyKey = energyPanelOptions.energyKey.trim() || "electronic"
-    const correctionPolicy = correctionPolicyFromEnergyOptions(energyPanelOptions)
-    if (!sessionId || !pathId) return
+  const runEnergyCompute = useCallback(async ({ force = true }: { force?: boolean } = {}) => {
+    const target = pesComputeTarget(workbenchState, energyPanelOptions)
+    if (!target) return
+    if (!force && profileMatchesPesComputeTarget(workbenchState.profile, target)) {
+      pesComputeSignatureRef.current = target.signature
+      return
+    }
+    if (!force && pesComputeSignatureRef.current === target.signature) return
+    if (pesComputeInFlightRef.current === target.signature) return
+    pesComputeInFlightRef.current = target.signature
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<EnergyComputeData>({
       command: "energy.compute",
       args: {
-        session_id: sessionId,
-        path_id: pathId,
-        output_unit: energyPanelOptions.outputUnit,
-        include_corrections: energyPanelOptions.correctionPolicyMode !== "none",
-        energy_key: energyKey,
-        energy_source: energyPanelOptions.energySource,
-        correction_policy: correctionPolicy,
-        ...(energyPanelOptions.baselineNodeId ? { baseline_node_id: energyPanelOptions.baselineNodeId } : {}),
+        session_id: target.sessionId,
+        path_id: target.pathId,
+        output_unit: target.outputUnit,
+        include_corrections: target.includeCorrections,
+        energy_key: target.energyKey,
+        energy_source: target.energySource,
+        correction_policy: target.correctionPolicy,
+        ...(target.baselineNodeId ? { baseline_node_id: target.baselineNodeId } : {}),
       },
     })
+    pesComputeInFlightRef.current = null
 
     if (!response.ok || !response.data) {
       setWorkbenchState((current) => ({
@@ -1878,6 +1913,7 @@ export function WorkbenchShell({
     }
 
     const profile = response.data.profile
+    pesComputeSignatureRef.current = target.signature
     setWorkbenchState((current) => ({
       ...current,
       status: "success",
@@ -1893,7 +1929,11 @@ export function WorkbenchShell({
       warnings: response.warnings,
       error: undefined,
     }))
-  }, [energyPanelOptions, shellClient, workbenchState.sessionId, workbenchState.workspace])
+  }, [energyPanelOptions, shellClient, workbenchState])
+
+  useEffect(() => {
+    void runEnergyCompute({ force: false })
+  }, [runEnergyCompute])
 
   const runReportExport = useCallback(async () => {
     const sessionId = workbenchState.sessionId
@@ -2162,6 +2202,7 @@ export function WorkbenchShell({
             activeObjectId={activeObjectId}
             interactionState={graphEditorInteraction}
             autoLayoutStatus={autoLayoutStatus}
+            pathAuthoringStatus={pathAuthoringStatus}
             historyControls={{
               canUndo: graphEditorHistory.undo.length > 0,
               canRedo: graphEditorHistory.redo.length > 0,
@@ -2237,7 +2278,7 @@ export function WorkbenchShell({
           onApplyCorrection={applyCorrection}
           onEnergyOptionsChange={setEnergyPanelOptions}
           onReportExportOptionsChange={setReportExportOptions}
-          onRunEnergyCompute={runEnergyCompute}
+          onRunEnergyCompute={() => void runEnergyCompute({ force: true })}
           onRunReportExport={runReportExport}
           onRunFixture={runFixture}
           onRunInvalidCommand={runInvalidCommand}
@@ -2588,6 +2629,98 @@ function energyOptionsForWorkspace(
     pathId: activePathId,
     baselineNodeId: baselineStillExists ? current.baselineNodeId : "",
   }
+}
+
+type PesComputeTarget = {
+  signature: string
+  sessionId: string
+  pathId: string
+  nodeIds: string[]
+  outputUnit: EnergyPanelOptions["outputUnit"]
+  energyKey: string
+  energySource: EnergyPanelOptions["energySource"]
+  baselineNodeId: string
+  correctionPolicy: JsonObject
+  includeCorrections: boolean
+}
+
+function pesComputeTarget(
+  state: WorkbenchDomainState,
+  options: EnergyPanelOptions,
+): PesComputeTarget | null {
+  const sessionId = state.sessionId
+  const workspace = state.workspace
+  if (!sessionId || !workspace) return null
+  const pathId = workspace.active_path_id
+    || options.pathId
+    || workspace.graph.paths[0]?.id
+    || ""
+  const path = workspace.graph.paths.find((item) => item.id === pathId)
+  if (!path) return null
+  const energyKey = options.energyKey.trim() || "electronic"
+  const correctionPolicy = correctionPolicyFromEnergyOptions(options)
+  const target: Omit<PesComputeTarget, "signature"> = {
+    sessionId,
+    pathId,
+    nodeIds: [...path.node_ids],
+    outputUnit: options.outputUnit,
+    energyKey,
+    energySource: options.energySource,
+    baselineNodeId: options.baselineNodeId || path.node_ids[0] || "",
+    correctionPolicy,
+    includeCorrections: options.correctionPolicyMode !== "none",
+  }
+  return {
+    ...target,
+    signature: pesComputeSignature(target),
+  }
+}
+
+function profileMatchesPesComputeTarget(
+  profile: WorkbenchDomainState["profile"],
+  target: PesComputeTarget,
+): boolean {
+  if (!profile) return false
+  if (profile.path_id !== target.pathId) return false
+  if (profile.output_unit !== target.outputUnit) return false
+  if ((profile.energy_key ?? "electronic") !== target.energyKey) return false
+  if ((profile.energy_source ?? "auto") !== target.energySource) return false
+  if ((profile.baseline_node_id ?? target.nodeIds[0] ?? "") !== target.baselineNodeId) return false
+  if (profile.points.map((point) => point.node_id).join("\n") !== target.nodeIds.join("\n")) return false
+  const profileCorrectionPolicy = profile.correction_policy ?? { mode: "none" }
+  return stableJson(profileCorrectionPolicy) === stableJson(target.correctionPolicy)
+}
+
+function pesComputeSignature(target: Omit<PesComputeTarget, "signature">): string {
+  return stableJson({
+    sessionId: target.sessionId,
+    pathId: target.pathId,
+    nodeIds: target.nodeIds,
+    outputUnit: target.outputUnit,
+    energyKey: target.energyKey,
+    energySource: target.energySource,
+    baselineNodeId: target.baselineNodeId,
+    correctionPolicy: target.correctionPolicy,
+  })
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(stableJsonValue(value))
+}
+
+function stableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stableJsonValue)
+  }
+  if (!value || typeof value !== "object") {
+    return value
+  }
+  const object = value as Record<string, unknown>
+  return Object.fromEntries(
+    Object.keys(object)
+      .sort()
+      .map((key) => [key, stableJsonValue(object[key])]),
+  )
 }
 
 function correctionPolicyFromEnergyOptions(options: EnergyPanelOptions): JsonObject {

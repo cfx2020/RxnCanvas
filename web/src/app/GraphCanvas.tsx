@@ -39,6 +39,7 @@ import {
   type GraphSurfaceSize,
   type GraphViewport,
 } from "./graphViewport"
+import type { PathAutoExtendResult } from "./graphPathAutoExtend"
 import type { GraphPathOrderDraft } from "./graphPathOrderDraft"
 import type { CompositionDraftRow, CompositionDraftState } from "./compositionDraftState"
 import type { EdgeLabelDraftState } from "./edgeLabelDraftState"
@@ -77,6 +78,12 @@ export type GraphAutoLayoutStatus = {
   message?: string
   warnings?: GraphLayoutWarning[]
 }
+
+export type PathAuthoringStatus =
+  | { state: "idle" }
+  | { state: "auto"; pathId: string; reason: Extract<PathAutoExtendResult, { kind: "set-path" }>["reason"] }
+  | { state: "manual"; reason: Extract<PathAutoExtendResult, { kind: "manual" }>["reason"] }
+  | { state: "error"; error: ShellError }
 
 export type GraphHistoryControls = {
   canUndo: boolean
@@ -129,6 +136,7 @@ type GraphCanvasProps = {
   activeObjectId?: string
   interactionState: GraphEditorInteractionState
   autoLayoutStatus?: GraphAutoLayoutStatus
+  pathAuthoringStatus?: PathAuthoringStatus
   historyControls: GraphHistoryControls
   pathOrderDraft: GraphPathOrderDraft | null
   edgeLabelDraft: EdgeLabelDraftState
@@ -190,6 +198,7 @@ export function GraphCanvas({
   activeObjectId,
   interactionState,
   autoLayoutStatus,
+  pathAuthoringStatus = { state: "idle" },
   historyControls,
   pathOrderDraft,
   edgeLabelDraft,
@@ -834,6 +843,7 @@ export function GraphCanvas({
             </div>
           </dl>
           <PreviewValue label={t("graphCanvas.activePath")} value={workspace?.active_path_id} />
+          <PathAuthoringStatusNotice status={pathAuthoringStatus} />
           <EdgeLabelEditor
             edge={selectedEdge}
             sourceLabel={selectedEdgeSource?.label}
@@ -1988,6 +1998,33 @@ function PathList({
         )
       })}
     </ul>
+  )
+}
+
+function PathAuthoringStatusNotice({ status }: { status: PathAuthoringStatus }) {
+  const { t } = useI18n()
+  if (status.state === "idle") return null
+  if (status.state === "auto") {
+    return (
+      <p className="network-preview-ok path-authoring-status">
+        <strong>{t("graphCanvas.pathAuthoring.auto", { reason: status.reason })}</strong>
+        <code>{status.pathId}</code>
+      </p>
+    )
+  }
+  if (status.state === "manual") {
+    return (
+      <p className="network-preview-warning path-authoring-status">
+        <strong>{t("graphCanvas.pathAuthoring.manual", { reason: status.reason })}</strong>
+      </p>
+    )
+  }
+  return (
+    <p className="network-preview-warning path-authoring-status">
+      <strong>{t("graphCanvas.pathAuthoring.error")}</strong>
+      <code>{status.error.code}</code>
+      <span>{status.error.message}</span>
+    </p>
   )
 }
 

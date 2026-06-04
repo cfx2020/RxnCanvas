@@ -1914,6 +1914,7 @@ button {
 .preview-value code,
 .graph-path-list code,
 .graph-path-list span,
+.path-authoring-status code,
 .network-preview-warning code {
   overflow-wrap: anywhere;
 }
@@ -2151,6 +2152,14 @@ button {
 .network-preview-ok {
   color: var(--sage);
   font-weight: 800;
+}
+
+.path-authoring-status {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 
 .network-preview-warning {
@@ -2783,7 +2792,7 @@ button {
 
 .energy-table {
   width: 100%;
-  min-width: 610px;
+  min-width: 760px;
   border-collapse: collapse;
   font-size: 0.78rem;
 }

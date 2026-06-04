@@ -218,7 +218,7 @@ describe("WorkbenchShell", () => {
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Set Path" }))
 
     expect((await within(graphCanvas).findAllByText("path-web-main")).length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getByText("node-a -> node-b -> node-web-3")).toBeInTheDocument()
+    expect(within(graphCanvas).getAllByText("node-a -> node-b -> node-web-3").length).toBeGreaterThan(0)
   })
 
   it("drags registered objects from the object registry into the graph canvas", async () => {
@@ -889,6 +889,7 @@ describe("WorkbenchShell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
     expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
 
@@ -898,6 +899,7 @@ describe("WorkbenchShell", () => {
     const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
     const nodeWeb = within(graphCanvas).getByRole("button", { name: /node-web-3/i })
     const handle = within(nodeShell(nodeB)).getByRole("button", { name: "Draw edge from Object B" })
+    const computeCountBeforeConnect = transport.payloads.filter((payload) => payload.command === "energy.compute").length
     const restoreElementsFromPoint = mockElementsFromPoint([nodeWeb])
     try {
       fireEvent.pointerDown(handle, { button: 0, clientX: 360, clientY: 160, pointerId: 7 })
@@ -912,8 +914,78 @@ describe("WorkbenchShell", () => {
         from_node_id: "node-b",
         to_node_id: "node-web-3",
       }))
+      await waitFor(() => expect(lastPayload(transport, "workspace.set_path")?.args).toMatchObject({
+        path_id: "path-a-b",
+        node_ids: ["node-a", "node-b", "node-web-3"],
+      }))
+      await waitFor(() => expect(transport.payloads.filter((payload) => payload.command === "energy.compute")).toHaveLength(computeCountBeforeConnect + 1))
+      expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
+        path_id: "path-a-b",
+      })
+      expect((await within(energyPanel).findAllByText("Step delta")).length).toBeGreaterThan(0)
+      expect((await within(energyPanel).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+      expect(within(graphCanvas).getByText("Active path updated (append-tail)")).toBeInTheDocument()
       expect(await within(graphCanvas).findByRole("button", { name: "Edge Object B to Object B" })).toBeInTheDocument()
       expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(0)
+    } finally {
+      restoreElementsFromPoint()
+    }
+  })
+
+  it("creates an active path from a connection when no active path exists", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Delete Selected" }))
+    await waitFor(() => expect(within(graphCanvas).getByText("No paths")).toBeInTheDocument())
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Connect" }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.set_path")?.args).toMatchObject({
+      path_id: "path-web-main",
+      node_ids: ["node-a", "node-b"],
+    }))
+    expect(within(graphCanvas).getByText("Active path updated (create)")).toBeInTheDocument()
+    expect(await within(graphCanvas).findByText("node-a -> node-b")).toBeInTheDocument()
+  })
+
+  it("keeps branch connections manual instead of rewriting the active path", async () => {
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
+    mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
+
+    fireEvent.click(within(objectRegistry).getByRole("button", { name: /object b/i }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Add Node" }))
+    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    const setPathCount = transport.payloads.filter((payload) => payload.command === "workspace.set_path").length
+    const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
+    const nodeWeb = within(graphCanvas).getByRole("button", { name: /node-web-3/i })
+    const handle = within(nodeShell(nodeA)).getByRole("button", { name: "Draw edge from Object A" })
+    const restoreElementsFromPoint = mockElementsFromPoint([nodeWeb])
+    try {
+      fireEvent.pointerDown(handle, { button: 0, clientX: 120, clientY: 160, pointerId: 10 })
+      fireEvent.pointerMove(handle, { button: 0, clientX: 480, clientY: 160, pointerId: 10 })
+      fireEvent.pointerUp(handle, { button: 0, clientX: 480, clientY: 160, pointerId: 10 })
+
+      await waitFor(() => expect(lastPayload(transport, "workspace.connect")?.args).toMatchObject({
+        from_node_id: "node-a",
+        to_node_id: "node-web-3",
+      }))
+      expect(transport.payloads.filter((payload) => payload.command === "workspace.set_path")).toHaveLength(setPathCount)
+      expect(within(graphCanvas).getByText("Edge kept. Adjust path order manually (branch).")).toBeInTheDocument()
+      expect(within(graphCanvas).getByText("node-a -> node-b")).toBeInTheDocument()
     } finally {
       restoreElementsFromPoint()
     }
@@ -1372,6 +1444,7 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
     const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
+    await waitFor(() => expect(editor).toHaveTextContent("node-a"))
     fireEvent.change(within(editor).getByLabelText("Coef"), { target: { value: "0" } })
     fireEvent.click(within(editor).getByRole("button", { name: "Apply" }))
 

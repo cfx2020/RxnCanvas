@@ -66,6 +66,7 @@ type EnergyCurvePointStatus = {
 
 type EnergyCurvePointView = NormalizedEnergyPoint & {
   index: number
+  stepDelta?: number
   status: EnergyCurvePointStatus
 }
 
@@ -96,11 +97,15 @@ export function EnergyProfilePanel({
   const energyChannelOptions = energyChannelOptionsFromObjects(objects)
   const points = profile?.points.map(normalizeEnergyPoint) ?? []
   const pointViews = useMemo(
-    () => points.map((point, index) => ({
-      ...point,
-      index,
-      status: pointStatus(point, selectedNodeId ?? null),
-    })),
+    () => points.map((point, index) => {
+      const previousPoint = index > 0 ? points[index - 1] : undefined
+      return {
+        ...point,
+        index,
+        stepDelta: stepDeltaEnergy(point, previousPoint),
+        status: pointStatus(point, selectedNodeId ?? null),
+      }
+    }),
     [points, selectedNodeId],
   )
   const detailPoint = activeCurvePoint(pointViews, curvePointState, selectedNodeId ?? null)
@@ -409,7 +414,9 @@ function EnergyTable({
             <th>{t("energyPanel.structure")}</th>
             <th>{t("energyPanel.node")}</th>
             <th>{t("energyPanel.relative")}</th>
+            <th>{t("energyPanel.stepDelta")}</th>
             <th>{t("energyPanel.unit")}</th>
+            <th>{t("energyPanel.correctionCount")}</th>
             <th>{t("energyPanel.missingReason")}</th>
           </tr>
         </thead>
@@ -435,7 +442,9 @@ function EnergyTable({
               <td>{point.label}</td>
               <td><code>{point.nodeId}</code></td>
               <td>{point.value === undefined ? "" : formatEnergy(point.value)}</td>
+              <td>{point.stepDelta === undefined ? "" : formatEnergy(point.stepDelta)}</td>
               <td>{point.unit ?? ""}</td>
+              <td>{point.expression?.corrections.length ?? 0}</td>
               <td>{point.missingReason ?? ""}</td>
             </tr>
           ))}
@@ -473,6 +482,10 @@ function CurvePointDetail({ point }: { point?: EnergyCurvePointView }) {
         <div>
           <dt>{t("energyPanel.relative")}</dt>
           <dd>{point.value === undefined ? t("energyPanel.noRelativeEnergy") : `${formatEnergy(point.value)} ${point.unit ?? ""}`}</dd>
+        </div>
+        <div>
+          <dt>{t("energyPanel.stepDelta")}</dt>
+          <dd>{point.stepDelta === undefined ? t("energyPanel.noRelativeEnergy") : `${formatEnergy(point.stepDelta)} ${point.unit ?? ""}`}</dd>
         </div>
         <div>
           <dt>{t("energyPanel.expressionTotal")}</dt>
@@ -732,6 +745,11 @@ function pointStatus(point: NormalizedEnergyPoint, selectedNodeId: string | null
     hasCorrections: Boolean(point.expression?.corrections.length),
     isSelected: point.nodeId === selectedNodeId,
   }
+}
+
+function stepDeltaEnergy(point: NormalizedEnergyPoint, previousPoint: NormalizedEnergyPoint | undefined): number | undefined {
+  if (point.value === undefined || previousPoint?.value === undefined) return undefined
+  return point.value - previousPoint.value
 }
 
 function legendStatus(kind: "valid" | "missing" | "correction"): EnergyCurvePointStatus {
