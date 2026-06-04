@@ -142,6 +142,7 @@ A: 当前不能。当前可执行导出是 PNG、CDXML、XLSX、CSV 和 SVG。�
 
 ## 相关功能
 
+- Web 工作台主流程验收：`docs/user/workspace-first-workbench.md`
 - 打开并恢复项目内容：`docs/user/open-project-content.md`
 - 项目备份包：`docs/user/project-bundle-backup.md`
 - 开发者导出契约：`docs/dev/report-export-artifacts.md`

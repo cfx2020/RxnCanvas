@@ -1,9 +1,9 @@
 ---
 doc_type: roadmap
 slug: rxnflow-workspace-first-canvas-mvp
-status: active
+status: completed
 created: 2026-06-03
-last_reviewed: 2026-06-04
+last_reviewed: 2026-06-05
 tags: [rxnflow, web, workspace-first, canvas, local-first, project-files, cdxml, energy-profile]
 related_requirements: [web-workbench-shell, project-content-persistence, platform-shell-entry]
 related_architecture: [core-platform, web-workbench]
@@ -382,15 +382,15 @@ class MinimalCdxmlEnergyDeltaOptions:
 6. **workspace-first-flow-qa-guides** — 补桌面、窄屏、local-http E2E 和用户指南，固定新主流程验收脚本。
    - 所属模块：Workspace-First QA & Guides
    - 依赖：`minimal-cdxml-energy-delta-export`、`workspace-first-flow-polish`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：覆盖保存项目、导出 `.rxnflow.zip`、重新导入后恢复 raw files / graph / PES preview 的边界。
+   - 状态：done
+   - 对应 feature：`2026-06-05-workspace-first-flow-qa-guides`
+   - 备注：已补 workspace-first 用户指南、开发者 QA matrix、桌面/窄屏 fixture E2E 和 local-http bundle roundtrip 证据；固定 local-only、CDXML-not-CDX、fixture/local-http 证明边界和 Playwright output boundary。
 
 **最小闭环**：第 1 条 `workspace-file-drop-minimal-loop` 已完成。第 2 条 `canvas-chemical-node-card` 已完成后，用户能创建或打开 active browser project，把一个单对象 log/out/xyz/extxyz 类文件拖到画布，看到该文件进入 Project Files Panel，并看到画布出现来自 ShellResponse 的富摘要节点；多对象 / 多帧 preview 会先显示候选选择器，用户确认后才登记选择对象并创建 stack nodes。第 3 条 `canvas-path-authoring-pes-preview` 已完成后，用户可以从节点拖线连接，在无歧义时自动形成或延长 active path，并在右侧看到相对能量、相邻 step delta、missing reason 和 correction count。
 
 ## 6. 排期思路
 
-先做 `workspace-file-drop-minimal-loop`，因为它直接修正用户当前感受到的主流程问题：项目文件权威、左侧文件列表和画布拖入必须先成立。第二步补节点信息和多对象选择，避免一遇到优化轨迹或多帧 extxyz 就行为混乱。第三步再把节点连接和右侧势能面收束到同一个画布驱动流程。CDXML 导出放在 active path / PES preview 之后，因为它必须消费已经稳定的 EnergyProfile / PesPreviewPoint。最后再做整体 polish 和 QA，避免在旧流程上提前做视觉微调。
+本 roadmap 已完成。实际推进顺序为：先做 `workspace-file-drop-minimal-loop` 固定项目文件权威、左侧文件列表和画布拖入；再补 `canvas-chemical-node-card` 解决节点信息密度和多对象候选选择；随后通过 `canvas-path-authoring-pes-preview` 把拖线 active path 与右侧势能面绑定；接着用 `minimal-cdxml-energy-delta-export` 固定 CDXML 能量图的名称、相对能量、相邻 `dE`、missing/correction marker；最后由 `workspace-first-flow-polish` 和 `workspace-first-flow-qa-guides` 收束主界面与验收/指南。
 
 ## 7. 观察项
 

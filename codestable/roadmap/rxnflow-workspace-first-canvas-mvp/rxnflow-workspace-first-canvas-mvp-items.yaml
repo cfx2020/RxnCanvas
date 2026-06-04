@@ -45,7 +45,7 @@ items:
   - slug: workspace-first-flow-qa-guides
     description: 补桌面、窄屏、local-http E2E 和用户指南，固定新主流程的保存、导出、分享和恢复验收脚本
     depends_on: [minimal-cdxml-energy-delta-export, workspace-first-flow-polish]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-05-workspace-first-flow-qa-guides
     minimal_loop: false
     notes: "覆盖保存项目、导出 .rxnflow.zip、重新导入后恢复 raw files、graph、PES preview 和 CDXML 下载边界"

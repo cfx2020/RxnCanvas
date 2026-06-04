@@ -163,6 +163,7 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await sidebar.getByRole("button", { name: "Open Bridge" }).click()
     await expect(sidebar.getByText("Open", { exact: true })).toBeVisible()
     await expect(page.getByText(projectName).first()).toBeVisible()
+    await expect(sidebar.getByText(/inputs\/raw\/[a-f0-9]{12}-water\.xyz/)).toBeVisible()
 
     await expectNoHorizontalOverflow(page)
     await attachViewportScreenshot(page, testInfo, "local-http-bundle-roundtrip")

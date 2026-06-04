@@ -5,10 +5,12 @@ component: web-graph-editor
 status: current
 summary: Web Graph Editor 高级交互的 Playwright QA 命令、覆盖范围和输出边界
 tags: [web, graph-editor, e2e, playwright, local-http]
-last_reviewed: 2026-05-24
+last_reviewed: 2026-06-05
 ---
 
 # Graph Editor E2E QA
+
+这份指南只负责 Graph Canvas 的高级交互矩阵。Workspace-first 主流程、Project Sidebar、Analysis Dock、保存、导出、bundle 和 local-http roundtrip 的总入口见 `docs/dev/workspace-first-flow-qa.md`。
 
 ## 什么时候跑
 

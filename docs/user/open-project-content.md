@@ -5,7 +5,7 @@ component: platform-shell-state-restore
 status: current
 summary: 如何用 CLI 打开 RxnFlow 项目并恢复已保存的项目内容
 tags: [project, cli, persistence, restore]
-last_reviewed: 2026-05-14
+last_reviewed: 2026-06-05
 ---
 
 # 打开并恢复项目内容
@@ -59,5 +59,6 @@ A: 只有保存 session 时，位于当前项目 `exports/` 目录下的 runtime
 
 ## 相关功能
 
+- Web 工作台主流程验收：`docs/user/workspace-first-workbench.md`
 - 项目内容验证：打开项目时会先校验 `.rxnflow/state/`。
 - 报告导出：导出的 PNG、CDXML、XLSX、CSV 文件应放在项目 `exports/` 目录下，便于后续登记和校验。

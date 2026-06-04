@@ -1,0 +1,136 @@
+feature: 2026-06-05-workspace-first-flow-qa-guides
+created: 2026-06-05
+
+steps:
+  - action: "QA Matrix Contract：盘点现有 fixture/local-http e2e 与 workspace-first 主流程步骤的覆盖关系"
+    exit_signal: "每个 workspace-first 主流程步骤都有自动化、手工或明确不支持的归属"
+    status: done
+
+  - action: "Fixture E2E Evidence：补强桌面/窄屏 fixture e2e 的用户可见断言、截图标签或 helper 说明"
+    exit_signal: "workbench-journey.spec.ts 覆盖 Project Rail、Canvas Stage、Analysis Dock、PES、Export 和 bundle backup/restore"
+    status: done
+
+  - action: "Local-HTTP Roundtrip Evidence：补强 local-http e2e 的 open/save/import/export/bundle roundtrip 证据"
+    exit_signal: "test:e2e:local-http 覆盖真实 bridge 下 raw preview、PES/export、Save/Open Bridge 和 bundle re-import restore"
+    status: done
+
+  - action: "User Guide：新增 workspace-first 用户快速验收指南并交叉链接 report/bundle/open-project docs"
+    exit_signal: "用户能按一份指南完成创建项目、拖入文件、连接路径、查看 PES、导出 CDXML/表格、保存、打包和恢复"
+    status: done
+
+  - action: "Developer QA Guide：新增/刷新开发者 QA matrix，说明命令、覆盖范围、输出边界和不证明什么"
+    exit_signal: "开发者能按改动类型选择 test:e2e、test:e2e:local-http、build/test/Python/YAML/diff check 命令"
+    status: done
+
+  - action: "Verification / Scope Guard：跑 Web/Python/CodeStable 验证和范围 grep"
+    exit_signal: "测试、构建、e2e、local-http、YAML、diff check 通过；未新增 runtime schema/command/dependency"
+    status: done
+
+checks:
+  - item: "用户指南存在，并从 Web 工作台第一屏开始说明 Project Rail / Canvas Stage / Analysis Dock 的主流程"
+    source: 验收场景
+    status: passed
+
+  - item: "用户指南覆盖 create/open browser project、raw file drop/select、canvas node、path connection、PES preview、Export tab、CDXML/XLSX/CSV/PNG/SVG download、Save Bridge、Export Bundle、Import Bundle、Open Bridge restore"
+    source: 验收场景
+    status: passed
+
+  - item: "用户指南明确 local-only、非云同步、Save Bridge / Export Bundle 顺序、CDXML-not-CDX、parser support 不等于第三方软件完整认证"
+    source: 验收场景
+    status: passed
+
+  - item: "现有 report export、project bundle、open project user docs 能从 workspace-first 指南互相跳转，且入口文案不互相矛盾"
+    source: 验收场景
+    status: passed
+
+  - item: "开发者 QA guide 包含 fixture desktop/narrow、local-http bridge、Python unittest、Web unit/build、YAML、diff check 的命令矩阵"
+    source: 验收场景
+    status: passed
+
+  - item: "QA guide 说明 fixture E2E 与 local-http E2E 的证明边界，不把复杂 graph gestures 复制到 local-http"
+    source: 验收场景
+    status: passed
+
+  - item: "E2E desktop fixture flow 可观察 Project Rail / Canvas Stage / Analysis Dock，且覆盖 graph、PES、Export、browser-local persistence 和 bundle backup/restore"
+    source: 验收场景
+    status: passed
+
+  - item: "E2E narrow fixture flow 在 390px 下主动作可达、无水平溢出"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http E2E 覆盖真实 bridge 下 small file preview、Open Bridge、Save Bridge、energy compute、五格式 export persistence、bundle export/import/open restore"
+    source: 验收场景
+    status: passed
+
+  - item: "e2e helper/test 只通过 UI 和 public browser APIs 操作，不直接 mutate WorkbenchDomainState、ShellResponse 或 repository bytes，除非是现有 bundle download entry readback 这类测试产物检查"
+    source: 验收场景
+    status: passed
+
+  - item: "Playwright screenshot/trace/report 输出边界仍写在 gitignored test output，不进入 Project Content、Browser Repository 或 exported report artifacts"
+    source: 验收场景
+    status: passed
+
+  - item: "cd web && npm run test 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "cd web && npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "cd web && npm run test:e2e -- workbench-journey.spec.ts 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "cd web && npm run test:e2e:local-http 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "python3 -m unittest discover 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "YAML 校验和 git diff --check 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "不新增 Shell command、Python parser/core import、Project Content schema、Browser Repository schema、localStorage key 或 export writer"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 cloud/auth/autosave/directory watcher 或 File System Access 长期 handle"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增大型测试/截图/视觉回归依赖"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 fixture parser 结果写成真实 Gaussian/ORCA/MAPLE/XYZ/extxyz 完整支持承诺"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 CDXML 写成 CDX，也不承诺 molecule-level ChemDraw 编辑语义"
+    source: 范围守护
+    status: passed
+
+  - item: "不让指南要求用户直接打开 file://.../web/index.html；Web 预览仍必须走 Vite dev server"
+    source: 范围守护
+    status: passed
+
+  - item: "WorkspaceFirstQaScenario 和 WorkspaceFirstUserJourney 只作为文档/QA 组织 contract，不进入 production model、Shell DTO、Project Content 或 Browser Repository"
+    source: 名词契约
+    status: passed
+
+  - item: "QA evidence 不改变 runtime state，测试和文档不为了可测性新增生产按钮或 schema"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Fixture/local-http 证明边界写清：fixture 证明 UI 编排；local-http 证明真实 bridge 主链路；两者都不等于完整第三方 parser 认证"
+    source: 跨层纪律
+    status: passed
+
+  - item: "Bundle / export 指南维持 local-only 口径：保存和备份是显式动作，不承诺云同步或 autosave"
+    source: 跨层纪律
+    status: passed

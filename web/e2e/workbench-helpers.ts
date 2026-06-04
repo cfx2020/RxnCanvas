@@ -24,7 +24,16 @@ export async function openWorkbench(page: Page) {
   await gotoWorkbenchWithRetry(page, "networkidle")
   await expect(page).toHaveTitle("RxnFlow Workbench")
   await expect(page.getByRole("main", { name: /rxnflow web workbench/i })).toBeVisible()
+  await expectWorkspaceFirstShellVisible(page)
+}
+
+export async function expectWorkspaceFirstShellVisible(page: Page) {
   await expect(page.getByRole("complementary", { name: "Project Sidebar" })).toBeVisible()
+  await expect(page.getByRole("region", { name: "Graph Canvas" })).toBeVisible()
+  const analysisDock = page.getByRole("complementary", { name: "Analysis Dock" })
+  await expect(analysisDock).toBeVisible()
+  await expect(analysisDock.getByRole("tab", { name: "PES", exact: true })).toBeVisible()
+  await expect(analysisDock.getByRole("tab", { name: "Export", exact: true })).toBeVisible()
 }
 
 export async function resetWorkbenchStorage(page: Page) {

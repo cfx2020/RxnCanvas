@@ -5,7 +5,7 @@ component: project-bundle-import-export
 status: current
 summary: 如何在 Web 工作台或 CLI 中导出和导入 RxnFlow .rxnflow.zip 项目备份包
 tags: [project, backup, web-workbench, cli, bundle]
-last_reviewed: 2026-05-22
+last_reviewed: 2026-06-05
 ---
 
 # 导出和导入项目备份包
@@ -97,3 +97,9 @@ A: 第一版不支持覆盖、自动改名或合并。Web 导入会创建新的 
 Q: 网页版需要购买云存储才能持久保存吗？
 
 A: 不需要。当前 Web 工作台使用浏览器本地仓储保存项目内容；但它不是可靠云备份。长期保留或换设备时，请导出 `.rxnflow.zip` 并自行保管。
+
+## 相关功能
+
+- Web 工作台主流程验收：`docs/user/workspace-first-workbench.md`
+- 报告导出格式和边界：`docs/user/report-export-artifacts.md`
+- 打开并恢复项目内容：`docs/user/open-project-content.md`
