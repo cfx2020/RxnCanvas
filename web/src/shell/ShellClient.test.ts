@@ -6,6 +6,7 @@ import type {
   FixtureRunData,
   ImportPreviewData,
   ImportRegisterAllData,
+  ImportRegisterSelectionData,
   RegistryApplyCorrectionData,
   WorkbenchSnapshotData,
   WorkspaceCommandData,
@@ -246,6 +247,15 @@ describe("ShellClient", () => {
     ])
     expect(response.data?.batch.items[0].preview?.parser_id).toBe("xyz-ase")
     expect(response.data?.batch.items[0].preview?.object_count).toBe(1)
+    expect(response.data?.batch.items[0].preview?.candidates?.[0]).toMatchObject({
+      object_index: 0,
+      label: "water.xyz",
+      coordinate_preview: {
+        atom_count: 0,
+        has3d: false,
+        preview_kind: "unavailable",
+      },
+    })
     expect(response.data?.batch.items[0].warnings[0].code).toBe("missing_section")
     expect(response.data?.batch.items[1].error?.code).toBe("parse_failed")
     expect(response.warnings[0].code).toBe("unit_assumed")
@@ -287,6 +297,54 @@ describe("ShellClient", () => {
     expect(first.data?.objects.map((object) => object.id)).toContain("object-imported-water")
     expect(repeated.data?.registered_object_ids).toEqual(first.data?.registered_object_ids)
     expect(() => JSON.stringify(first)).not.toThrow()
+  })
+
+  it("registers selected fixture import candidates", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const preview = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        source_paths: ["inbox/multi.extxyz"],
+      },
+    })
+
+    expect(preview.data?.batch.items[0].preview?.object_count).toBe(2)
+    expect(preview.data?.batch.items[0].preview?.candidates?.map((candidate) => candidate.label)).toEqual([
+      "Frame 1",
+      "Frame 2",
+    ])
+
+    const selected = await shellClient.run<ImportRegisterSelectionData>({
+      command: "import.register_selection",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        batch_id: preview.data?.batch.id ?? "",
+        item_id: preview.data?.batch.items[0].id ?? "",
+        object_indices: [1],
+      },
+    })
+    const invalid = await shellClient.run<ImportRegisterSelectionData>({
+      command: "import.register_selection",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        batch_id: preview.data?.batch.id ?? "",
+        item_id: preview.data?.batch.items[0].id ?? "",
+        object_indices: [9],
+      },
+    })
+
+    expect(selected.ok).toBe(true)
+    expect(selected.data?.command).toBe("import.register_selection")
+    expect(selected.data?.registered_object_ids).toEqual(["object-imported-frame-2"])
+    expect(selected.data?.objects.map((object) => object.id)).toContain("object-imported-frame-2")
+    expect(invalid.ok).toBe(false)
+    expect(invalid.error?.target).toBe("object_indices")
+    expect(() => JSON.stringify(selected)).not.toThrow()
   })
 
   it("returns invalid_input when import.preview has no source paths", async () => {

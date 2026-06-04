@@ -10,6 +10,7 @@ import {
 import {
   GraphCanvas,
   type AddRawFileNodeRequest,
+  type ParseCandidateChooserState,
 } from "./GraphCanvas"
 import { I18nProvider } from "./i18n"
 import { initialWorkbenchDomainState } from "./workbenchState"
@@ -60,7 +61,51 @@ describe("GraphCanvas raw file drops", () => {
   })
 })
 
-function renderGraphCanvas(onAddRawFileNode: (request: AddRawFileNodeRequest) => void) {
+describe("GraphCanvas parse candidate chooser", () => {
+  it("renders preview candidates near the canvas drop point and supports selection actions", () => {
+    const onCancelCandidateChooser = vi.fn()
+    const onConfirmCandidateChooser = vi.fn()
+    const onToggleCandidateSelection = vi.fn()
+    renderGraphCanvas(vi.fn(), {
+      candidateChooser: {
+        ...fixtureCandidateChooser,
+        selectedCandidateIds: ["candidate-frame-1"],
+      },
+      onCancelCandidateChooser,
+      onConfirmCandidateChooser,
+      onToggleCandidateSelection,
+    })
+
+    expect(screen.getByRole("region", { name: "Parse Candidate Chooser" })).toBeInTheDocument()
+    expect(screen.getByText("Select structure candidate")).toBeInTheDocument()
+    expect(screen.getByText("inputs/raw/multi.extxyz")).toBeInTheDocument()
+    expect(screen.getByText("2 candidates")).toBeInTheDocument()
+    expect(screen.getByText("Frame 1")).toBeInTheDocument()
+    expect(screen.getByText("candidate-frame-1")).toBeInTheDocument()
+    expect(screen.getByText("electronic -100.25 hartree")).toBeInTheDocument()
+    expect(screen.getAllByText("3 atoms · O H · 3D").length).toBeGreaterThan(0)
+    expect(screen.getByRole("checkbox", { name: "Select Frame 1" })).toBeChecked()
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Frame 2" }))
+    expect(onToggleCandidateSelection).toHaveBeenCalledWith("candidate-frame-2", true)
+
+    fireEvent.click(screen.getByRole("button", { name: "Add selected (1)" }))
+    expect(onConfirmCandidateChooser).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(onCancelCandidateChooser).toHaveBeenCalledTimes(1)
+  })
+})
+
+function renderGraphCanvas(
+  onAddRawFileNode: (request: AddRawFileNodeRequest) => void,
+  options: {
+    candidateChooser?: ParseCandidateChooserState | null
+    onToggleCandidateSelection?: (candidateId: string, selected: boolean) => void
+    onConfirmCandidateChooser?: () => void
+    onCancelCandidateChooser?: () => void
+  } = {},
+) {
   return render(
     <I18nProvider initialLocale="en-US">
       <GraphCanvas
@@ -77,6 +122,7 @@ function renderGraphCanvas(onAddRawFileNode: (request: AddRawFileNodeRequest) =>
         compositionDraft={initialCompositionDraftState}
         compositionPending={false}
         compositionError={null}
+        candidateChooser={options.candidateChooser ?? null}
         onSelectNode={() => undefined}
         onSelectEdge={() => undefined}
         onSelectPath={() => undefined}
@@ -103,6 +149,9 @@ function renderGraphCanvas(onAddRawFileNode: (request: AddRawFileNodeRequest) =>
         onOpenWorkspace={() => undefined}
         onAddObjectNode={() => undefined}
         onAddRawFileNode={onAddRawFileNode}
+        onToggleCandidateSelection={options.onToggleCandidateSelection ?? (() => undefined)}
+        onConfirmCandidateChooser={options.onConfirmCandidateChooser ?? (() => undefined)}
+        onCancelCandidateChooser={options.onCancelCandidateChooser ?? (() => undefined)}
         onMoveNode={() => undefined}
         onNudgeNodes={() => undefined}
         onUndoHistory={() => undefined}
@@ -122,6 +171,63 @@ function renderGraphCanvas(onAddRawFileNode: (request: AddRawFileNodeRequest) =>
       />
     </I18nProvider>,
   )
+}
+
+const fixtureCandidateChooser: ParseCandidateChooserState = {
+  projectFileId: "raw-multi",
+  rawFilePath: "inputs/raw/multi.extxyz",
+  batchId: "batch-1",
+  itemId: "item-1",
+  selectedCandidateIds: [],
+  position: [260, 160],
+  status: "choosing",
+  error: null,
+  candidates: [
+    {
+      candidate_id: "candidate-frame-1",
+      object_index: 0,
+      label: "Frame 1",
+      formula: "H2O",
+      charge: 0,
+      spin_multiplicity: 1,
+      method: "extxyz fixture",
+      display_energy: {
+        key: "electronic",
+        source: "energies",
+        value: -100.25,
+        unit: "hartree",
+      },
+      coordinate_preview: {
+        atom_count: 3,
+        has3d: true,
+        elements: ["O", "H"],
+        preview_kind: "text",
+      },
+      warnings: [],
+    },
+    {
+      candidate_id: "candidate-frame-2",
+      object_index: 1,
+      label: "Frame 2",
+      formula: "H2O",
+      charge: 0,
+      spin_multiplicity: 1,
+      method: "extxyz fixture",
+      display_energy: {
+        key: "electronic",
+        source: "energies",
+        value: -100.1,
+        unit: "hartree",
+      },
+      coordinate_preview: {
+        atom_count: 3,
+        has3d: true,
+        elements: ["O", "H"],
+        preview_kind: "text",
+      },
+      warnings: [],
+    },
+  ],
 }
 
 function dispatchDrop(

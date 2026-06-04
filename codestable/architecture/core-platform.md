@@ -3,8 +3,8 @@ doc_type: architecture
 slug: core-platform
 status: current
 created: 2026-05-02
-last_reviewed: 2026-06-02
-tags: [core, fixture, domain-model, energy-profile, energy-channel-catalog, energy-profile-persistence, import-workflow, graph-editor-workspace, graph-editor-node-layout, graph-editor-edge-path-editing, graph-editor-edge-label, graph-editor-workspace-persistence, workspace-move-node, workspace-remove, workspace-remove-path, workspace-update-edge, workspace-select, report-export, report-preview-delivery-qa, platform-shell, cli, local-http-shell-bridge, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, parser-public-fixture-decision-ledger, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
+last_reviewed: 2026-06-04
+tags: [core, fixture, domain-model, energy-profile, energy-channel-catalog, energy-profile-persistence, import-workflow, import-register-selection, shell-candidate-projection, graph-editor-workspace, graph-editor-node-layout, graph-editor-edge-path-editing, graph-editor-edge-label, graph-editor-workspace-persistence, workspace-move-node, workspace-remove, workspace-remove-path, workspace-update-edge, workspace-select, report-export, report-preview-delivery-qa, platform-shell, cli, local-http-shell-bridge, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, parser-public-fixture-decision-ledger, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
 ---
 
 # Core Platform
@@ -107,13 +107,14 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 
 1. 通过 ShellCommand、ShellResponse、ShellArtifact 和 PlatformSession 定义端侧 JSON-safe 命令协议。
 2. 通过 AppKernel 集中装配 ProjectStore、ProjectContentStore、ProjectBundleService、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
-3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`registry.apply_correction`、`workspace.open`、`workspace.add_node`、`workspace.set_node_composition`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.update_edge`、`workspace.set_path`、`energy.compute`、`export.profile` 和 `workbench.snapshot`。
+3. 通过 PlatformShellService.run 分发 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`import.register_selection`、`registry.apply_correction`、`workspace.open`、`workspace.add_node`、`workspace.set_node_composition`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.update_edge`、`workspace.set_path`、`energy.compute`、`export.profile` 和 `workbench.snapshot`。
 4. 通过 `python3 -m rxnflow.cli` 提供标准库 CLI 入口，支持 fixture、project create/load/open、project export-bundle/import-bundle 和 import preview 的 JSON 输出与错误 exit code；CLI project open 支持默认恢复 content 和 `--manifest-only`。
 5. 通过 handle_platform_payload 提供纯 Python dict adapter，供未来 Web route 或 desktop bridge 复用。
 6. 通过 `workbench.snapshot` 提供当前 Platform Session 的只读 Workbench Snapshot，汇总 project/session active ids、counts、objects、import batches、active workspace、active profile、runtime artifacts、persisted export artifact records 和 warnings；该命令不创建 session、不保存项目、不重新 parse/import/register/compute/export。
 7. 通过 `docs/dev/web-runtime-boundary.md` 记录 Web MVP 的 local-first browser workbench、Shell Client、Browser Project Repository、local bridge 和 stateless http-api 职责边界，并通过 `tests/test_web_runtime_boundary.py` 验证 payload POC 的成功/错误 JSON-safe response。
 8. 通过 `rxnflow.local_bridge` 提供标准库本地 HTTP shell bridge，`GET /health` 返回 bridge health，`POST /api/shell` 接收 JSON-safe shell payload 并复用同一个 `PlatformShellService(AppKernel())` 保留跨请求 session；该 bridge 默认监听 `127.0.0.1:8765`，用于本机开发和后续 Web HTTP transport，不是生产公网服务或云存储方案。
-9. `import.preview` 当前支持 path source 和小文件 inline bytes source；inline bytes 由 Platform Shell 解码到临时文件后复用 ImportRegistryWorkflow，临时文件在 preview 返回前清理。session 没有 core `project_path` 时会创建进程内 Temporary Preview Project，用于 local-http 小文件 preview；`browser_storage` source 在 Python bridge 中仍返回 `storage_object_missing`。
+9. `import.preview` 当前支持 path source 和小文件 inline bytes source；inline bytes 由 Platform Shell 解码到临时文件后复用 ImportRegistryWorkflow，临时文件在 preview 返回前清理。preview projection 会为每个 `ChemicalObjectDraft` 输出 candidate summary，包含 object index、label、formula、charge/spin、method、display energy、coordinate preview、role hint 和 warnings。session 没有 core `project_path` 时会创建进程内 Temporary Preview Project，用于 local-http 小文件 preview；`browser_storage` source 在 Python bridge 中仍返回 `storage_object_missing`。
+10. `import.register_selection` 是 `confirm_import(object_indices)` 的 Shell command 投影，按 `batch_id + item_id + object_indices` 只确认指定 item 的指定 draft；空 selection、未知 item、无 preview 或越界 object index 都返回 structured `invalid_input`，不登记对象。
 
 第十一类是 Project Content Store：
 
@@ -243,6 +244,8 @@ ReportExportService
 PlatformShellService
 ├── run(ShellCommand)
 ├── fixture/project/import/registry/workspace/energy/export command handlers
+├── import.preview candidate summary projection
+├── import.register_selection selection confirmation projection
 ├── workbench.snapshot read-only session projection
 ├── project.open validation-gated restore
 ├── project.save_content session snapshot save
@@ -532,9 +535,12 @@ Platform Shell 当前使用以下稳定协议：
 - Local HTTP bridge 错误：invalid JSON 返回 `invalid_json`，未知 path 返回 `not_found`，不支持的方法返回 `method_not_allowed`，bridge 未包装异常返回 `bridge_internal_error`
 - Local HTTP bridge 边界：默认只面向本机开发，不提供认证、TLS、公网部署、云存储、跨设备同步或生产安全边界
 - Import Preview Source：`source.kind=path` 使用 `source_path`；`source.kind=inline_bytes` 使用 `filename` 和 `bytes_base64`；`source.kind=browser_storage` 第一版未接 Python adapter，返回 `storage_object_missing target=storage_path`
+- Import Preview Projection：`import.preview` 返回 `preview.candidates[]`，每个 candidate 使用 draft index 生成 `candidate_id` / `object_index`，并投影 label、formula、charge、spin_multiplicity、method、display_energy、coordinate_preview、role_hint 和 warnings；缺失 energy 返回 `display_energy=null`，缺失 geometry 返回 `coordinate_preview.preview_kind=unavailable`，不编造 0 能量或 fake 结构。
+- Import Register Selection：`import.register_selection(session_id, batch_id, item_id, object_indices)` 复用 `ImportRegistryWorkflow.confirm_import(ImportSelection(...))`，只登记指定 preview item 的指定 object indices；成功返回 `registered_object_ids` 和更新后的 object summaries。空 `object_indices`、未知 item、无 preview 或越界 index 返回 `invalid_input`，不调用登记。
 - Inline import limit：Platform Shell 只接受小文件 inline preview，超过限制返回 `payload_too_large target=bytes_base64`
 - Temporary Preview Project：session 没有 core `project_path` 且收到 inline preview 时创建的进程内临时项目；不写 Browser Project Repository，不替代 Project Content bridge
 - Workbench Snapshot：`workbench.snapshot(session_id)` 返回当前 session 的只读 project/object/import/workspace/profile/artifact summary，不保存或重算任何核心状态
+- Object Summary Projection：Shell object summary 当前包含 `display_energy` 和 `coordinate_preview`。`display_energy` 只从对象已有 energies / thermochemistry 选择第一个可展示通道，服务节点卡快速扫描，不替代 `energy.compute`；`coordinate_preview` 只输出 atom count、是否有 3D、元素预览和 text/unavailable 状态，不进入 Project Content schema。
 - Registry Apply Correction：`registry.apply_correction(session_id, object_id, correction)` 要求 correction kind 属于 `resonance`、`solvation`、`manual`，energy 是 `{value, unit, reference?}` 且 unit 为 `hartree|kcal_mol|kj_mol`、value 为有限数；缺省 correction id 时由 Shell 根据 object/kind/energy/note 生成稳定 id。成功后 Shell 只调用 `ChemicalRegistry.apply_correction`，替换 session objects 中的对应 ChemicalObject，并返回带 `correction_count` 和 `corrections` 明细的 object summary；不自动保存 Project Content。
 - Workspace Set Node Composition：`workspace.set_node_composition(session_id, node_id, composition)` 要求 composition 是非空数组，term.object_id 非空且 coefficient 为非零有限数；成功后返回 workspace graph projection，节点同时包含 `composition` 和兼容 `chemical_object_ids`；非法 payload 返回 `invalid_input target=composition`，未知 node 或 object 引用透传 `graph_invalid`，失败不更新 workspace graph
 - Workspace Move Node：`workspace.move_node(session_id, node_id, position)` 要求 position 是两个 finite number；成功后返回 workspace graph projection，缺失或未知 node 通过结构化 `invalid_input` / `graph_invalid` 返回，不更新 workspace graph
@@ -660,7 +666,7 @@ GraphEditorWorkspaceService 的 graph edit 操作失败时不更新 workspace gr
 
 EnergyProfileEngine 不持久化 profile，也不写回 graph/object state；返回的 EnergyProfile.options 会记录实际 baseline node、energy key、output unit 和 correction inclusion。
 
-PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空命令、未知命令和 shell 层参数缺失统一返回 `invalid_input`。`registry.apply_correction` 的 shape 错误返回 `invalid_input target=correction.*` 或 `object_id`，ChemicalRegistry 的同 id 不同 payload 冲突统一投影为 `invalid_input target=correction.id`。`workbench.snapshot` 的缺失或不存在 session 也统一返回 `invalid_input`，不自动创建 session。Project Bundle validation error 以 `project_content_invalid` 或 `invalid_bundle` 投影。CLI 对 `ok=False` 返回非 0 exit code。
+PlatformShellService 将核心 Result error 投影进 ShellResponse.error；空命令、未知命令和 shell 层参数缺失统一返回 `invalid_input`。`import.register_selection` 的空 selection、未知 item、无 preview 和越界 object index 统一返回 `invalid_input`，target 分别落到 `object_indices` 或 `item_id`，不调用 ChemicalRegistry.register。`registry.apply_correction` 的 shape 错误返回 `invalid_input target=correction.*` 或 `object_id`，ChemicalRegistry 的同 id 不同 payload 冲突统一投影为 `invalid_input target=correction.id`。`workbench.snapshot` 的缺失或不存在 session 也统一返回 `invalid_input`，不自动创建 session。Project Bundle validation error 以 `project_content_invalid` 或 `invalid_bundle` 投影。CLI 对 `ok=False` 返回非 0 exit code。
 
 ## 5. 约束与边界
 

@@ -16,6 +16,7 @@ export type ShellCommandName =
   | "project.import_bundle"
   | "import.preview"
   | "import.register_all"
+  | "import.register_selection"
   | "registry.apply_correction"
   | "workspace.open"
   | "workspace.add_node"
@@ -84,6 +85,14 @@ export type ObjectSummary = JsonObject & {
   energy_keys?: JsonValue[]
   thermochemistry_keys?: JsonValue[]
   energy_channels?: EnergyChannelSummary[]
+  display_energy?: {
+    key: string
+    source: EnergyChannelSource | string
+    value: number
+    unit: string
+    reference?: string | null
+  } | null
+  coordinate_preview?: CoordinatePreviewSummary | null
   provenance?: {
     source_file_id: string
     parser_id: string
@@ -93,6 +102,13 @@ export type ObjectSummary = JsonObject & {
   correction_count?: number
   corrections?: CorrectionSummary[]
   warnings?: ShellWarning[]
+}
+
+export type CoordinatePreviewSummary = JsonObject & {
+  atom_count: number
+  has3d: boolean
+  elements: string[]
+  preview_kind: "text" | "unavailable" | string
 }
 
 export type CorrectionKind = "resonance" | "solvation" | "manual"
@@ -137,6 +153,27 @@ export type ImportParsePreviewSummary = JsonObject & {
   parser_id: string
   parser_version: string
   object_count: number
+  candidates?: ParseCandidateSummary[]
+  warnings: ShellWarning[]
+}
+
+export type ParseCandidateSummary = JsonObject & {
+  candidate_id: string
+  object_index: number
+  label: string
+  formula?: string | null
+  charge?: number | null
+  spin_multiplicity?: number | null
+  method?: string | null
+  display_energy?: {
+    key: string
+    source: EnergyChannelSource | string
+    value: number
+    unit: string
+    reference?: string | null
+  } | null
+  coordinate_preview: CoordinatePreviewSummary
+  role_hint?: "final" | "intermediate" | "path-point" | "unknown" | string
   warnings: ShellWarning[]
 }
 
@@ -165,6 +202,14 @@ export type ImportPreviewData = JsonObject & {
 
 export type ImportRegisterAllData = JsonObject & {
   command: "import.register_all"
+  session_id: string
+  batch: ImportBatchSummary
+  registered_object_ids: string[]
+  objects: ObjectSummary[]
+}
+
+export type ImportRegisterSelectionData = JsonObject & {
+  command: "import.register_selection"
   session_id: string
   batch: ImportBatchSummary
   registered_object_ids: string[]

@@ -15,10 +15,12 @@ import type {
   ImportBatchSummary,
   ImportPreviewData,
   ImportRegisterAllData,
+  ImportRegisterSelectionData,
   ObjectSummary,
   JsonObject,
   JsonValue,
   RegistryApplyCorrectionData,
+  ParseCandidateSummary,
   ShellArtifact,
   ShellCommandPayload,
   ShellResponse,
@@ -63,8 +65,95 @@ const fixtureProject = {
 const fixtureGraphId = "graph-a-b"
 const fixtureProfileId = "profile-a-b-electronic"
 const fixtureWorkspaceId = "workspace-fixture"
-const fixtureImportBatch = importBatchSummary("needs_confirmation")
 const fixtureRegisteredObjectIds = ["object-imported-water"]
+const fixtureMultiCandidateObjects: ObjectSummary[] = [
+  {
+    id: "object-imported-frame-1",
+    label: "Frame 1",
+    formula: "H2O",
+    charge: 0,
+    spin_multiplicity: 1,
+    method: "extxyz fixture",
+    source_file_id: "raw-multi-extxyz",
+    energy_keys: ["electronic"],
+    thermochemistry_keys: [],
+    energy_channels: [
+      {
+        key: "electronic",
+        source: "energies",
+        label: "electronic (energies)",
+        unit: "hartree",
+        reference: "fixture frame energy",
+        object_ids: ["object-imported-frame-1"],
+      },
+    ],
+    display_energy: {
+      key: "electronic",
+      source: "energies",
+      value: -100.25,
+      unit: "hartree",
+      reference: "fixture frame energy",
+    },
+    coordinate_preview: {
+      atom_count: 3,
+      has3d: true,
+      elements: ["O", "H"],
+      preview_kind: "text",
+    },
+    provenance: {
+      source_file_id: "raw-multi-extxyz",
+      parser_id: "extxyz-ase",
+      parser_version: "fixture-web",
+      parsed_at: "2026-05-20T00:00:00Z",
+    },
+    correction_count: 0,
+    corrections: [],
+    warnings: [],
+  },
+  {
+    id: "object-imported-frame-2",
+    label: "Frame 2",
+    formula: "H2O",
+    charge: 0,
+    spin_multiplicity: 1,
+    method: "extxyz fixture",
+    source_file_id: "raw-multi-extxyz",
+    energy_keys: ["electronic"],
+    thermochemistry_keys: [],
+    energy_channels: [
+      {
+        key: "electronic",
+        source: "energies",
+        label: "electronic (energies)",
+        unit: "hartree",
+        reference: "fixture frame energy",
+        object_ids: ["object-imported-frame-2"],
+      },
+    ],
+    display_energy: {
+      key: "electronic",
+      source: "energies",
+      value: -100.1,
+      unit: "hartree",
+      reference: "fixture frame energy",
+    },
+    coordinate_preview: {
+      atom_count: 3,
+      has3d: true,
+      elements: ["O", "H"],
+      preview_kind: "text",
+    },
+    provenance: {
+      source_file_id: "raw-multi-extxyz",
+      parser_id: "extxyz-ase",
+      parser_version: "fixture-web",
+      parsed_at: "2026-05-20T00:00:00Z",
+    },
+    correction_count: 0,
+    corrections: [],
+    warnings: [],
+  },
+]
 let fixtureWorkspace = baseWorkspaceSummary()
 const initialFixtureObjects: ObjectSummary[] = [
   objectSummary("object-a", "Object A") as ObjectSummary,
@@ -93,6 +182,13 @@ const initialFixtureObjects: ObjectSummary[] = [
     source_file_id: "raw-water-xyz",
     energy_keys: ["electronic"],
     thermochemistry_keys: [],
+    display_energy: {
+      key: "electronic",
+      source: "energies",
+      value: -1.2,
+      unit: "hartree",
+      reference: "fixture imported object",
+    },
     provenance: {
       source_file_id: "raw-water-xyz",
       parser_id: "xyz-ase",
@@ -109,6 +205,7 @@ const initialFixtureObjects: ObjectSummary[] = [
     ],
   },
 ]
+const fixtureImportBatch = importBatchSummary("needs_confirmation")
 let fixtureObjects: ObjectSummary[] = cloneObjects(initialFixtureObjects.slice(0, 2))
 let fixtureProfile = profileSummary({
   pathId: "path-a-b",
@@ -143,6 +240,10 @@ export const fixtureTransport: ShellTransport = {
 
     if (payload.command === "import.register_all") {
       return fixtureImportRegisterAllResponse(payload.args)
+    }
+
+    if (payload.command === "import.register_selection") {
+      return fixtureImportRegisterSelectionResponse(payload.args)
     }
 
     if (payload.command === "registry.apply_correction") {
@@ -1556,11 +1657,80 @@ function fixtureImportRegisterAllResponse(args: JsonObject): ShellResponse<Impor
   }
 }
 
+function fixtureImportRegisterSelectionResponse(args: JsonObject): ShellResponse<ImportRegisterSelectionData> {
+  if (args.session_id !== fixtureSessionId) {
+    return invalidSessionResponse()
+  }
+  const batchId = typeof args.batch_id === "string" ? args.batch_id : ""
+  if (batchId !== fixtureImportBatch.id) {
+    return {
+      ok: false,
+      data: null,
+      error: {
+        code: "invalid_input",
+        message: "Import batch is not registered in this fixture session.",
+        target: "batch_id",
+      },
+      warnings: [],
+      artifacts: [],
+    }
+  }
+  const itemId = typeof args.item_id === "string" ? args.item_id : ""
+  if (itemId !== "import-item-water") {
+    return {
+      ok: false,
+      data: null,
+      error: {
+        code: "invalid_input",
+        message: "Import item is not registered in this fixture batch.",
+        target: "item_id",
+      },
+      warnings: [],
+      artifacts: [],
+    }
+  }
+  const objectIndices = Array.isArray(args.object_indices) ? args.object_indices.map(Number) : []
+  if (objectIndices.length === 0 || objectIndices.some((index) => !Number.isInteger(index) || index < 0 || index >= fixtureMultiCandidateObjects.length)) {
+    return {
+      ok: false,
+      data: null,
+      error: {
+        code: "invalid_input",
+        message: "Import selection object index is out of range.",
+        target: "object_indices",
+      },
+      warnings: [],
+      artifacts: [],
+    }
+  }
+  const selectedObjects = objectIndices.map((index) => fixtureMultiCandidateObjects[index])
+  for (const object of selectedObjects) {
+    if (!fixtureObjects.some((item) => item.id === object.id)) {
+      fixtureObjects = [...fixtureObjects, JSON.parse(JSON.stringify(object)) as ObjectSummary]
+    }
+  }
+  const registeredObjectIds = selectedObjects.map((object) => object.id)
+  return {
+    ok: true,
+    data: {
+      command: "import.register_selection",
+      session_id: fixtureSessionId,
+      batch: importBatchSummary("registered", ["inbox/multi.extxyz"]),
+      registered_object_ids: registeredObjectIds,
+      objects: cloneObjects(fixtureObjects),
+    },
+    error: null,
+    warnings: [],
+    artifacts: [],
+  }
+}
+
 function importBatchSummary(
   successStatus: "needs_confirmation" | "registered",
   sourcePaths: string[] = ["inbox/water.xyz", "inbox/bad-count.xyz"],
 ): ImportBatchSummary {
   const [successPath = "inbox/water.xyz", failedPath = "inbox/bad-count.xyz"] = sourcePaths
+  const multiCandidate = successPath.includes("multi")
   return {
     id: "import-batch-fixture-web-1",
     project_id: fixtureProject.id,
@@ -1580,10 +1750,16 @@ function importBatchSummary(
           },
         },
         preview: {
-          raw_resource_id: "raw-water-xyz",
-          parser_id: "xyz-ase",
+          raw_resource_id: multiCandidate ? "raw-multi-extxyz" : "raw-water-xyz",
+          parser_id: multiCandidate ? "extxyz-ase" : "xyz-ase",
           parser_version: "fixture-web",
-          object_count: 1,
+          object_count: multiCandidate ? 2 : 1,
+          candidates: multiCandidate ? [
+            parseCandidateSummary(fixtureMultiCandidateObjects[0], 0),
+            parseCandidateSummary(fixtureMultiCandidateObjects[1], 1),
+          ] : [
+            parseCandidateSummary(initialFixtureObjects[2], 0),
+          ],
           warnings: [
             {
               code: "missing_section",
@@ -1626,6 +1802,34 @@ function importBatchSummary(
         warnings: [],
       },
     ],
+  }
+}
+
+function parseCandidateSummary(object: ObjectSummary, index: number): ParseCandidateSummary {
+  const channel = object.energy_channels?.[0]
+  return {
+    candidate_id: `raw-fixture:${index}`,
+    object_index: index,
+    label: object.label ?? `Candidate ${index + 1}`,
+    formula: object.formula ?? null,
+    charge: object.charge ?? null,
+    spin_multiplicity: object.spin_multiplicity ?? null,
+    method: object.method ?? null,
+    display_energy: channel ? {
+      key: channel.key,
+      source: channel.source,
+      value: index === 0 ? -1.0 : -0.95,
+      unit: channel.unit,
+      reference: channel.reference ?? null,
+    } : null,
+    coordinate_preview: object.coordinate_preview ?? {
+      atom_count: 0,
+      has3d: false,
+      elements: [],
+      preview_kind: "unavailable",
+    },
+    role_hint: "unknown",
+    warnings: object.warnings ?? [],
   }
 }
 
@@ -1673,6 +1877,19 @@ function objectSummary(
         object_ids: [id],
       },
     ],
+    display_energy: {
+      key: "electronic",
+      source: "energies",
+      value: id === "object-b" ? -1.02 : -1,
+      unit: "hartree",
+      reference: "fixture-electronic",
+    },
+    coordinate_preview: {
+      atom_count: options.formula ? 2 : 0,
+      has3d: Boolean(options.formula),
+      elements: options.formula ? [options.formula.replace(/[0-9]/g, "") || "X"] : [],
+      preview_kind: options.formula ? "text" : "unavailable",
+    },
     provenance: {
       source_file_id: sourceFileId,
       parser_id: options.parser_id ?? "fixture-parser",

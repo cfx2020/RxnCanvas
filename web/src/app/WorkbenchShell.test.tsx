@@ -292,6 +292,139 @@ describe("WorkbenchShell", () => {
     })
   })
 
+  it("shows a parse candidate chooser for multi-object raw drops without creating a node before confirmation", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await createProjectWithContent(repository, "Raw Drop Candidates")
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /raw drop candidates/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+    const dataTransfer = new TestDataTransfer([new File(["2\nframe 1\n2\nframe 2\n"], "multi.extxyz", { type: "chemical/x-extxyz" })])
+
+    fireEvent.dragOver(surface, { dataTransfer })
+    dispatchDrop(surface, dataTransfer, 260, 160)
+
+    expect(await within(graphCanvas).findByRole("region", { name: "Parse Candidate Chooser" })).toBeInTheDocument()
+    expect(within(graphCanvas).getByText("Frame 1")).toBeInTheDocument()
+    expect(within(graphCanvas).getByText("Frame 2")).toBeInTheDocument()
+    expect(within(graphCanvas).getByRole("button", { name: "Add selected (1)" })).toBeEnabled()
+    expect(transport.payloads.filter((payload) => payload.command === "import.register_all")).toHaveLength(0)
+    expect(transport.payloads.filter((payload) => payload.command === "import.register_selection")).toHaveLength(0)
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(0)
+
+    const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
+    expect(rawObjects).toHaveLength(1)
+    expect(rawObjects[0].path).toMatch(/multi\.extxyz$/)
+    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
+    const rawFileName = rawObjects[0].path.split("/").at(-1) ?? rawObjects[0].path
+    const rawFileRow = within(projectFilesPanel).getByText(rawFileName).closest(".project-file-card")
+    if (!(rawFileRow instanceof HTMLElement)) {
+      throw new Error("Project raw file row was not rendered.")
+    }
+    expect(within(rawFileRow).getByText("Previewed")).toBeInTheDocument()
+
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Cancel" }))
+
+    await waitFor(() => {
+      expect(within(graphCanvas).queryByRole("region", { name: "Parse Candidate Chooser" })).not.toBeInTheDocument()
+    })
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(0)
+  })
+
+  it("registers selected raw file candidates and creates stack graph nodes", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await createProjectWithContent(repository, "Raw Candidate Nodes")
+    const transport = new RecordingProjectBridgeTransport()
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /raw candidate nodes/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+    const dataTransfer = new TestDataTransfer([new File(["2\nframe 1\n2\nframe 2\n"], "multi.extxyz", { type: "chemical/x-extxyz" })])
+
+    fireEvent.dragOver(surface, { dataTransfer })
+    dispatchDrop(surface, dataTransfer, 260, 160)
+
+    expect(await within(graphCanvas).findByRole("region", { name: "Parse Candidate Chooser" })).toBeInTheDocument()
+    fireEvent.click(within(graphCanvas).getByRole("checkbox", { name: "Select Frame 2" }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Add selected (2)" }))
+
+    await waitFor(() => {
+      expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(2)
+    })
+    expect(within(graphCanvas).queryByRole("region", { name: "Parse Candidate Chooser" })).not.toBeInTheDocument()
+    expect(transport.payloads.find((payload) => payload.command === "import.register_selection")?.args).toMatchObject({
+      batch_id: "import-batch-fixture-web-1",
+      item_id: "import-item-water",
+      object_indices: [0, 1],
+    })
+    const addNodePayloads = transport.payloads.filter((payload) => payload.command === "workspace.add_node")
+    expect(addNodePayloads[0]?.args).toMatchObject({
+      chemical_object_ids: ["object-imported-frame-1"],
+      position: [260, 160],
+    })
+    expect(addNodePayloads[1]?.args).toMatchObject({
+      chemical_object_ids: ["object-imported-frame-2"],
+      position: [420, 280],
+    })
+    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    expect((await within(graphCanvas).findAllByText("node-web-4")).length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getAllByText("extxyz fixture").length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getByText("electronic -100.25 hartree")).toBeInTheDocument()
+    expect(within(graphCanvas).getByText("electronic -100.1 hartree")).toBeInTheDocument()
+    expect(within(graphCanvas).getAllByText("3 atoms · O H · 3D").length).toBeGreaterThan(0)
+
+    const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
+    expect(rawObjects).toHaveLength(1)
+    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
+    const rawFileName = rawObjects[0].path.split("/").at(-1) ?? rawObjects[0].path
+    const rawFileRow = within(projectFilesPanel).getByText(rawFileName).closest(".project-file-card")
+    if (!(rawFileRow instanceof HTMLElement)) {
+      throw new Error("Project raw file row was not rendered.")
+    }
+    expect(within(rawFileRow).getByText("Used in graph")).toBeInTheDocument()
+    expect(within(rawFileRow).getByText("object-imported-frame-1")).toBeInTheDocument()
+    expect(within(rawFileRow).getByText("object-imported-frame-2")).toBeInTheDocument()
+  })
+
+  it("keeps registered candidates visible when candidate add-node fails", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    await createProjectWithContent(repository, "Raw Candidate Add Fails")
+    const transport = new FailingWorkspaceAddNodeTransport()
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /raw candidate add fails/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Fixture Run" }))
+    expect(await screen.findByText("Fixture Minimal Reaction")).toBeInTheDocument()
+    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
+    const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+    mockCanvasSurfaceRect(surface, 600, 360)
+    const dataTransfer = new TestDataTransfer([new File(["2\nframe 1\n2\nframe 2\n"], "multi.extxyz", { type: "chemical/x-extxyz" })])
+
+    fireEvent.dragOver(surface, { dataTransfer })
+    dispatchDrop(surface, dataTransfer, 260, 160)
+
+    expect(await within(graphCanvas).findByRole("region", { name: "Parse Candidate Chooser" })).toBeInTheDocument()
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Add selected (1)" }))
+
+    expect((await screen.findAllByText("graph_invalid")).length).toBeGreaterThan(0)
+    expect(transport.payloads.find((payload) => payload.command === "import.register_selection")?.args).toMatchObject({
+      object_indices: [0],
+    })
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(1)
+    expect(within(graphCanvas).queryByText("node-web-3")).not.toBeInTheDocument()
+    const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
+    expect(within(objectRegistry).getByRole("button", { name: /frame 1/i })).toBeInTheDocument()
+  })
+
   it("reuses project raw file rows without writing another raw object", async () => {
     const repository = new MemoryBrowserProjectRepository()
     const project = await createProjectWithContent(repository, "Project Raw Reuse")
@@ -1226,6 +1359,7 @@ describe("WorkbenchShell", () => {
       ],
     }))
     expect(within(graphCanvas).getAllByText("object-a + 2*object-b").length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getAllByText("Object A + Object B").length).toBeGreaterThan(0)
   })
 
   it("shows composition coefficient errors without sending workspace.set_node_composition", async () => {
@@ -2706,6 +2840,29 @@ class FailingImportPreviewTransport implements ShellTransport {
         code: "preview_failed",
         message: "Import preview failed for this fixture.",
         target: "import.preview",
+      },
+      warnings: [],
+      artifacts: [],
+    }
+  }
+}
+
+class FailingWorkspaceAddNodeTransport implements ShellTransport {
+  kind = "in-process-test" as const
+  payloads: ShellCommandPayload<string>[] = []
+
+  async run(payload: ShellCommandPayload<string>): Promise<ShellResponse> {
+    this.payloads.push(payload)
+    if (payload.command !== "workspace.add_node") {
+      return fixtureTransport.run(payload)
+    }
+    return {
+      ok: false,
+      data: null,
+      error: {
+        code: "graph_invalid",
+        message: "Workspace add node failed for this fixture.",
+        target: "workspace.add_node",
       },
       warnings: [],
       artifacts: [],

@@ -253,6 +253,8 @@ class PlatformShellService:
             return self._run_import_preview(command)
         if command.name == "import.register_all":
             return self._run_import_register_all(command)
+        if command.name == "import.register_selection":
+            return self._run_import_register_selection(command)
         if command.name == "registry.apply_correction":
             return self._run_registry_apply_correction(command)
         if command.name == "workspace.open":
@@ -700,6 +702,54 @@ class PlatformShellService:
         if not selections:
             return _invalid_input("Import batch has no parse previews to register.", "batch_id")
 
+        return self._confirm_import_selection(command.name, state, batch_id, selections)
+
+    def _run_import_register_selection(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        if state.session.project_id is None:
+            return _invalid_input("Project id is required.", "project_id")
+        batch_id = _required_str(command.args, "batch_id")
+        if batch_id is None:
+            return _invalid_input("Import batch id is required.", "batch_id")
+        item_id = _required_str(command.args, "item_id")
+        if item_id is None:
+            return _invalid_input("Import item id is required.", "item_id")
+        object_indices = _object_indices_arg(command.args.get("object_indices"))
+        if isinstance(object_indices, ShellResponse):
+            return object_indices
+        if not object_indices:
+            return _invalid_input("Import selection requires at least one object index.", "object_indices")
+
+        batch_result = self._kernel.import_workflow.get_batch(state.session.project_id, batch_id)
+        if not batch_result.ok or batch_result.value is None:
+            return _result_error_response(batch_result)
+        item = next((candidate for candidate in batch_result.value.items if candidate.id == item_id), None)
+        if item is None:
+            return _invalid_input("Import item is not registered in this batch.", "item_id")
+        if item.preview is None:
+            return _invalid_input("Import item does not have a parse preview to select from.", "item_id")
+        object_count = item.preview.object_count
+        if any(index < 0 or index >= object_count for index in object_indices):
+            return _invalid_input("Import selection object index is out of range.", "object_indices")
+
+        return self._confirm_import_selection(
+            command.name,
+            state,
+            batch_id,
+            (ImportSelection(item_id, tuple(object_indices)),),
+        )
+
+    def _confirm_import_selection(
+        self,
+        command_name: str,
+        state: _PlatformSessionState,
+        batch_id: str,
+        selections: tuple[ImportSelection, ...],
+    ) -> ShellResponse:
+        assert state.session.project_id is not None
         confirmed = self._kernel.import_workflow.confirm_import(
             state.session.project_id,
             batch_id,
@@ -745,11 +795,12 @@ class PlatformShellService:
         return ShellResponse(
             ok=True,
             data=_response_data(
-                command.name,
+                command_name,
                 updated.session,
                 {
                     "batch": _import_batch_summary(confirmed.value),
                     "registered_object_ids": object_ids,
+                    "objects": [_object_summary(obj) for obj in objects],
                 },
                 state=updated,
             ),
@@ -1604,6 +1655,18 @@ def _bool_arg(args: dict[str, Any], key: str, *, default: bool) -> bool | ShellR
     return _invalid_input(f"{key} must be a boolean.", key)
 
 
+def _object_indices_arg(value: Any) -> tuple[int, ...] | ShellResponse:
+    if not isinstance(value, list):
+        return _invalid_input("object_indices must be a list of integers.", "object_indices")
+    indices: list[int] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, int):
+            return _invalid_input("object_indices must be a list of integers.", "object_indices")
+        if item not in indices:
+            indices.append(item)
+    return tuple(indices)
+
+
 def _upsert_import_batch(
     batches: tuple[ImportBatch, ...],
     batch: ImportBatch,
@@ -2342,6 +2405,8 @@ def _object_summary(obj: ChemicalObject) -> dict[str, Any]:
         "energy_keys": sorted(obj.energies),
         "thermochemistry_keys": sorted(obj.thermochemistry),
         "energy_channels": [_energy_channel_summary(channel) for channel in energy_channel_catalog((obj,))],
+        "display_energy": _display_energy_summary(obj),
+        "coordinate_preview": _coordinate_preview_summary(obj.geometry),
         "correction_count": len(obj.corrections),
         "corrections": [_correction_summary(correction) for correction in obj.corrections],
         "provenance": (
@@ -2506,7 +2571,61 @@ def _parse_preview_summary(preview: Any) -> dict[str, Any]:
         "parser_id": preview.parser_id,
         "parser_version": preview.parser_version,
         "object_count": preview.object_count,
+        "candidates": [
+            _parse_candidate_summary(preview, draft, index)
+            for index, draft in enumerate(preview.parse_result.objects)
+        ],
         "warnings": [_warning_to_dict(warning) for warning in preview.warnings],
+    }
+
+
+def _parse_candidate_summary(preview: Any, draft: Any, index: int) -> dict[str, Any]:
+    return {
+        "candidate_id": f"{preview.raw_resource_id}:{index}",
+        "object_index": index,
+        "label": draft.label or f"Candidate {index + 1}",
+        "formula": draft.formula,
+        "charge": draft.charge,
+        "spin_multiplicity": draft.spin_multiplicity,
+        "method": draft.method,
+        "display_energy": _display_energy_summary(draft),
+        "coordinate_preview": _coordinate_preview_summary(draft.geometry),
+        "role_hint": "unknown",
+        "warnings": [],
+    }
+
+
+def _display_energy_summary(obj: Any) -> dict[str, Any] | None:
+    if obj.energies:
+        key = sorted(obj.energies)[0]
+        energy = obj.energies[key]
+        return {
+            "key": key,
+            "source": "energies",
+            "value": energy.value,
+            "unit": energy.unit,
+            "reference": energy.reference,
+        }
+    if obj.thermochemistry:
+        key = sorted(obj.thermochemistry)[0]
+        energy = obj.thermochemistry[key]
+        return {
+            "key": key,
+            "source": "thermochemistry",
+            "value": energy.value,
+            "unit": energy.unit,
+            "reference": energy.reference,
+        }
+    return None
+
+
+def _coordinate_preview_summary(geometry: tuple[Any, ...]) -> dict[str, Any]:
+    elements = tuple(dict.fromkeys(atom.element for atom in geometry if getattr(atom, "element", None)))
+    return {
+        "atom_count": len(geometry),
+        "has3d": bool(geometry),
+        "elements": list(elements[:8]),
+        "preview_kind": "text" if geometry else "unavailable",
     }
 
 

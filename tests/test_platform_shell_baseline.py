@@ -265,6 +265,104 @@ class PlatformShellBaselineTest(unittest.TestCase):
         self.assertEqual(item["status"], "needs_confirmation")
         self.assertEqual(item["preview"]["parser_id"], "xyz-ase")
         self.assertEqual(item["preview"]["object_count"], 1)
+        self.assertEqual(item["preview"]["candidates"][0]["object_index"], 0)
+        self.assertEqual(item["preview"]["candidates"][0]["coordinate_preview"]["atom_count"], 2)
+        self.assertEqual(item["preview"]["candidates"][0]["display_energy"]["unit"], "hartree")
+
+    def test_import_register_selection_confirms_selected_object_indices(self) -> None:
+        service = PlatformShellService(AppKernel())
+        inline_payload = base64.b64encode(
+            b"2\nFrame 1 energy=-1.5 Hartree\nH 0 0 0\nH 0 0 0.74\n"
+            b"2\nFrame 2 energy=-1.4 Hartree\nH 0 0 0\nH 0 0 0.78\n"
+        ).decode("ascii")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_path = Path(tmp) / "selection-demo"
+            created = service.run(
+                ShellCommand("project.create", {"name": "selection-demo", "location": str(project_path)})
+            )
+            self.assertTrue(created.ok, created.error)
+            session_id = created.to_dict()["data"]["session_id"]
+            preview = service.run(
+                ShellCommand(
+                    "import.preview",
+                    {
+                        "session_id": session_id,
+                        "source": {
+                            "kind": "inline_bytes",
+                            "filename": "frames.xyz",
+                            "bytes_base64": inline_payload,
+                            "mime_type": "chemical/x-xyz",
+                        },
+                    },
+                )
+            )
+            self.assertTrue(preview.ok, preview.error)
+            preview_item = preview.to_dict()["data"]["batch"]["items"][0]
+            self.assertEqual(preview_item["preview"]["object_count"], 2)
+            self.assertEqual(len(preview_item["preview"]["candidates"]), 2)
+
+            invalid = service.run(
+                ShellCommand(
+                    "import.register_selection",
+                    {
+                        "session_id": session_id,
+                        "batch_id": preview.to_dict()["data"]["batch"]["id"],
+                        "item_id": preview_item["id"],
+                        "object_indices": [3],
+                    },
+                )
+            )
+            self.assertFalse(invalid.ok)
+            self.assertEqual(invalid.to_dict()["error"]["target"], "object_indices")
+
+            empty_selection = service.run(
+                ShellCommand(
+                    "import.register_selection",
+                    {
+                        "session_id": session_id,
+                        "batch_id": preview.to_dict()["data"]["batch"]["id"],
+                        "item_id": preview_item["id"],
+                        "object_indices": [],
+                    },
+                )
+            )
+            self.assertFalse(empty_selection.ok)
+            self.assertEqual(empty_selection.to_dict()["error"]["target"], "object_indices")
+
+            unknown_item = service.run(
+                ShellCommand(
+                    "import.register_selection",
+                    {
+                        "session_id": session_id,
+                        "batch_id": preview.to_dict()["data"]["batch"]["id"],
+                        "item_id": "missing-item",
+                        "object_indices": [0],
+                    },
+                )
+            )
+            self.assertFalse(unknown_item.ok)
+            self.assertEqual(unknown_item.to_dict()["error"]["target"], "item_id")
+
+            selected = service.run(
+                ShellCommand(
+                    "import.register_selection",
+                    {
+                        "session_id": session_id,
+                        "batch_id": preview.to_dict()["data"]["batch"]["id"],
+                        "item_id": preview_item["id"],
+                        "object_indices": [1],
+                    },
+                )
+            )
+
+        self.assertTrue(selected.ok, selected.error)
+        payload = selected.to_dict()["data"]
+        self.assertEqual(payload["command"], "import.register_selection")
+        self.assertEqual(len(payload["registered_object_ids"]), 1)
+        self.assertEqual(payload["objects"][0]["label"], "Frame 2")
+        self.assertEqual(payload["objects"][0]["coordinate_preview"]["atom_count"], 2)
+        self.assertEqual(payload["objects"][0]["display_energy"]["value"], -1.4)
 
     def test_workspace_select_command_projects_selection_and_errors(self) -> None:
         service = PlatformShellService(AppKernel())

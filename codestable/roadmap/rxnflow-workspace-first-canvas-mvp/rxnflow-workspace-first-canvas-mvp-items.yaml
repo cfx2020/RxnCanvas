@@ -13,8 +13,8 @@ items:
   - slug: canvas-chemical-node-card
     description: 完善画布节点的信息密度和多对象/多帧候选选择器，显示结构名称、来源文件、方法、电荷自旋、能量、warning 和轻量结构预览
     depends_on: [workspace-file-drop-minimal-loop]
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-03-canvas-chemical-node-card
     minimal_loop: false
     notes: "单对象直接建节点；多对象或多帧 preview 在落点附近选择，默认高亮 final candidate 但不自动全放画布"
 

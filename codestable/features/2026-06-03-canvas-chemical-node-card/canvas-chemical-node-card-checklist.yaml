@@ -1,0 +1,112 @@
+feature: 2026-06-03-canvas-chemical-node-card
+created: 2026-06-03
+
+steps:
+  - action: "Shell Candidate Projection：扩展 import.preview candidate summary / ObjectSummary coordinate preview，并新增 import.register_selection"
+    exit_signal: "Python shell tests 与 Web shell tests 能看到 candidates、coordinatePreview，并能按 object_indices 登记"
+    status: done
+
+  - action: "Candidate Chooser State：把 raw drop 多对象路径从 error 改为 chooser pending state"
+    exit_signal: "多候选 preview 不创建 node，GraphCanvas 显示 chooser，取消和错误路径可见"
+    status: done
+
+  - action: "Selection Register And Node Creation：确认候选后 register selection 并按落点创建一个或多个 graph nodes"
+    exit_signal: "单选创建一个 node，多选创建 stack nodes；失败不伪造 node"
+    status: done
+
+  - action: "Canvas Chemical Node Summary：派生并渲染结构名称、方法、电荷自旋、能量、atom count、warnings"
+    exit_signal: "fixture/imported node card 信息更完整；组合节点仍可读"
+    status: done
+
+  - action: "UX / I18n / Responsive：补候选选择器和节点卡片文案、样式、窄屏布局"
+    exit_signal: "zh-CN/en-US 文案完整；桌面和 390px 窄屏 chooser/node card 无重叠、无水平溢出"
+    status: done
+
+  - action: "Verification And Scope Guard：跑 Python/Web tests/build/browser smoke，确认无 parser runtime、energy、CDXML、cloud 越界"
+    exit_signal: "测试通过；scope grep 无违规依赖；browser smoke 覆盖多候选选择与节点卡片"
+    status: done
+
+checks:
+  - item: "import.preview 对多对象 / 多帧文件返回 preview.candidates[]，candidate count 与 object_count 一致"
+    source: 验收场景
+    status: passed
+
+  - item: "Candidate summary 包含 label、objectIndex、formula/charge/spin/method、displayEnergy、coordinatePreview、warnings；缺失字段不编造"
+    source: 名词契约
+    status: passed
+
+  - item: "import.register_selection 按 batch_id + item_id + object_indices 登记选择对象，并返回 objects 与 registered ids"
+    source: 名词契约
+    status: passed
+
+  - item: "非法 item id、空 selection、越界 object index 返回 structured invalid_input，且不登记对象"
+    source: 验收场景
+    status: passed
+
+  - item: "Raw file drop 多候选 preview 后显示 chooser，不自动 register、不自动 add node"
+    source: 编排骨架
+    status: passed
+
+  - item: "用户取消 chooser 后不登记、不建节点，Project File 保持 previewed 或等价状态"
+    source: 验收场景
+    status: passed
+
+  - item: "用户选择一个 candidate 后创建一个 graph node，位置接近 drop point"
+    source: 验收场景
+    status: passed
+
+  - item: "用户选择多个 candidates 后创建多个 graph nodes，节点不完全重叠"
+    source: 验收场景
+    status: passed
+
+  - item: "register selection 成功但 add-node 失败时不伪造 node，UI 显示 workspace error，已登记 object 保留"
+    source: 跨层纪律
+    status: passed
+
+  - item: "单对象 raw file drop 仍直接创建节点，不需要 chooser"
+    source: 验收场景
+    status: passed
+
+  - item: "Canvas node card 显示结构名称、object ids/composition、formula、charge/spin、method、display energy、atom count 和 warning marker"
+    source: 验收场景
+    status: passed
+
+  - item: "多对象 composition node card 不只显示第一个 object；必须能看出 composition 里有多个 object"
+    source: 验收场景
+    status: passed
+
+  - item: "没有 geometry 或 energy 的对象显示 unavailable/missing 状态，不把缺失能量当 0"
+    source: 验收场景
+    status: passed
+
+  - item: "zh-CN / en-US 文案完整；candidate id、object id、warning/error code 原样显示"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面 viewport 下 chooser、node card、Network Preview 不重叠"
+    source: 验收场景
+    status: passed
+
+  - item: "390px 窄屏下候选列表、节点卡片和画布 controls 不造成水平溢出"
+    source: 验收场景
+    status: passed
+
+  - item: "不新增 2D/3D molecule renderer、OpenBabel/Mol*、CDXML/CDX、PES preview 或 energy.compute 新逻辑"
+    source: 范围守护
+    status: passed
+
+  - item: "Web 不 import Python parser/core，不解析 Gaussian/ORCA/MAPLE/XYZ/extxyz"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 Project Content schema、Browser Project Repository interface、cloud storage、directory watcher 或 browser directory handle authority"
+    source: 范围守护
+    status: passed
+
+  - item: "多对象 / 多帧 preview 不绕过 chooser 自动创建全部节点"
+    source: 范围守护
+    status: passed
+
+  - item: "不把 roleHint 当作化学真实性判断；无 core/parser hint 时显示 unknown/last candidate，而不是 TS/final"
+    source: 范围守护
+    status: passed

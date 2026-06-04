@@ -6,7 +6,7 @@ import {
   type BrowserProjectRepositoryErrorPayload,
   type BrowserStorageObject,
 } from "../repository"
-import type { EnergyComputeData, ExportProfileData, FixtureRunData, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, JsonObject, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary, WorkspaceSummary } from "../shell"
+import type { EnergyComputeData, ExportProfileData, FixtureRunData, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, ImportRegisterSelectionData, JsonObject, ParseCandidateSummary, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary, WorkspaceSummary } from "../shell"
 import {
   addCompositionDraftRow,
   compositionDraftFromSelectedNode,
@@ -75,7 +75,7 @@ import {
   type GraphEditorHistoryState,
 } from "./graphEditorHistory"
 import type { GraphLayoutPlan } from "./graphAutoLayout"
-import { graphNodePosition, moveGraphNodePosition } from "./graphNodeLayout"
+import { canvasPointToGraphNodePosition, graphNodePosition, moveGraphNodePosition } from "./graphNodeLayout"
 import { normalizeGraphViewport, type GraphViewport } from "./graphViewport"
 import {
   createGraphPathOrderDraft,
@@ -83,7 +83,7 @@ import {
   type GraphPathOrderDraft,
   type GraphPathOrderMoveDirection,
 } from "./graphPathOrderDraft"
-import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type RemoveGraphItemsRequest } from "./GraphCanvas"
+import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type ParseCandidateChooserState, type RemoveGraphItemsRequest } from "./GraphCanvas"
 import { ImportInbox } from "./ImportInbox"
 import {
   importPreviewArgsFromFiles,
@@ -170,6 +170,7 @@ export function WorkbenchShell({
   )
   const [compositionPending, setCompositionPending] = useState(false)
   const [compositionError, setCompositionError] = useState<ShellError | null>(null)
+  const [parseCandidateChooser, setParseCandidateChooser] = useState<ParseCandidateChooserState | null>(null)
   const [energyPanelOptions, setEnergyPanelOptions] = useState<EnergyPanelOptions>({
     pathId: "",
     outputUnit: "kcal_mol",
@@ -568,6 +569,7 @@ export function WorkbenchShell({
   }, [projectRepository, replaceProjectSidebarState])
 
   const runFixture = useCallback(async () => {
+    setParseCandidateChooser(null)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const fixtureResponse = await shellClient.run<FixtureRunData>({
       command: "fixture.run",
@@ -633,6 +635,7 @@ export function WorkbenchShell({
 
   const clearImportInbox = useCallback(() => {
     setImportInboxState(initialImportInboxState)
+    setParseCandidateChooser(null)
   }, [])
 
   const applyWorkspaceResponse = useCallback((response: Awaited<ReturnType<ShellClient["run"]>>) => {
@@ -753,6 +756,7 @@ export function WorkbenchShell({
   const addRawFileNode = useCallback(async (request: AddRawFileNodeRequest) => {
     const sessionId = workbenchState.sessionId
     const activeProject = projectSidebarStateRef.current.activeProject
+    setParseCandidateChooser(null)
     if (!sessionId) {
       applyDropImportError(shellError("invalid_input", "Shell session is required before dropping raw files.", "session_id"))
       return
@@ -841,10 +845,25 @@ export function WorkbenchShell({
     })
 
     const objectCount = importPreviewObjectCount(previewBatch)
+    const chooserItem = importPreviewCandidateChooserItem(previewBatch)
+    if (objectCount > 1 && chooserItem) {
+      setParseCandidateChooser({
+        projectFileId: importFileResult.file.id,
+        rawFilePath,
+        batchId: previewBatch.id,
+        itemId: chooserItem.itemId,
+        candidates: chooserItem.candidates,
+        selectedCandidateIds: [chooserItem.candidates[0]?.candidate_id].filter((value): value is string => Boolean(value)),
+        position: request.position,
+        status: "choosing",
+        error: null,
+      })
+      return
+    }
     if (objectCount !== 1) {
       const error = shellError(
         "candidate_selection_required",
-        `Raw file preview produced ${objectCount} objects. Candidate selection is not implemented yet.`,
+        `Raw file preview produced ${objectCount} objects but no selectable candidate list.`,
         importFileResult.file.storagePath ?? importFileResult.file.name,
       )
       updateProjectFileEntry(rawFilePath, {
@@ -964,6 +983,181 @@ export function WorkbenchShell({
     })
     resetGraphEditorHistory()
   }, [applyDropImportError, applyWorkspaceResponse, importInboxState.expectedFormat, importInboxState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
+
+  const cancelParseCandidateChooser = useCallback(() => {
+    setParseCandidateChooser(null)
+  }, [])
+
+  const toggleParseCandidateSelection = useCallback((candidateId: string, selected: boolean) => {
+    setParseCandidateChooser((current) => {
+      if (!current || current.status !== "choosing") return current
+      const selectedIds = new Set(current.selectedCandidateIds)
+      if (selected) {
+        selectedIds.add(candidateId)
+      } else {
+        selectedIds.delete(candidateId)
+      }
+      return {
+        ...current,
+        selectedCandidateIds: current.candidates
+          .map((candidate) => candidate.candidate_id)
+          .filter((id) => selectedIds.has(id)),
+        error: null,
+      }
+    })
+  }, [])
+
+  const confirmParseCandidateChooser = useCallback(async () => {
+    const chooser = parseCandidateChooser
+    const sessionId = workbenchState.sessionId
+    if (!chooser || !sessionId || chooser.status !== "choosing") return
+    const selectedCandidates = chooser.candidates.filter((candidate) =>
+      chooser.selectedCandidateIds.includes(candidate.candidate_id)
+    )
+    if (selectedCandidates.length === 0) {
+      setParseCandidateChooser({
+        ...chooser,
+        status: "error",
+        error: shellError("invalid_input", "At least one parse candidate must be selected.", "object_indices"),
+      })
+      return
+    }
+
+    setParseCandidateChooser({ ...chooser, status: "registering", error: null })
+    setImportInboxState((current) => ({ ...current, status: "registering", warnings: [], error: undefined }))
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const registerResponse = await shellClient.run<ImportRegisterSelectionData>({
+      command: "import.register_selection",
+      args: {
+        session_id: sessionId,
+        batch_id: chooser.batchId,
+        item_id: chooser.itemId,
+        object_indices: selectedCandidates.map((candidate) => candidate.object_index),
+      },
+    })
+    if (!registerResponse.ok || !registerResponse.data) {
+      const error = registerResponse.error ?? shellError("invalid_input", "Import selection did not return object ids.", "import.register_selection")
+      updateProjectFileEntry(chooser.rawFilePath, {
+        status: "error",
+        warnings: projectFileWarningMessagesFromError(error),
+      })
+      setImportInboxState((current) => ({
+        ...current,
+        status: "error",
+        warnings: registerResponse.warnings,
+        error,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: registerResponse.warnings,
+        error,
+      }))
+      setParseCandidateChooser((current) => current ? { ...current, status: "error", error } : current)
+      return
+    }
+
+    const registerData = registerResponse.data
+    const registeredObjectIds = registerData.registered_object_ids
+    const objectById = new Map(registerData.objects.map((object) => [object.id, object]))
+    const registeredObjects = registeredObjectIds
+      .map((objectId) => objectById.get(objectId))
+      .filter((object): object is NonNullable<typeof object> => Boolean(object))
+    if (registeredObjects.length !== registeredObjectIds.length) {
+      const error = shellError("invalid_input", "Import selection did not return every selected object.", "import.register_selection")
+      updateProjectFileEntry(chooser.rawFilePath, {
+        status: "error",
+        warnings: projectFileWarningMessagesFromError(error),
+      })
+      setImportInboxState((current) => ({
+        ...current,
+        status: "error",
+        activeBatch: registerData.batch,
+        registeredObjectIds,
+        warnings: registerResponse.warnings,
+        error,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: registerResponse.warnings,
+        error,
+      }))
+      setParseCandidateChooser((current) => current ? { ...current, status: "error", error } : current)
+      return
+    }
+
+    setActiveObjectId(registeredObjectIds[0])
+    updateProjectFileEntry(chooser.rawFilePath, {
+      status: "registered",
+      registeredObjectIds,
+      warnings: projectFileWarningMessagesFromWarnings(registerResponse.warnings),
+    })
+    setImportInboxState((current) => ({
+      ...current,
+      status: "registered",
+      activeBatch: registerData.batch,
+      registeredObjectIds,
+      warnings: registerResponse.warnings,
+      error: undefined,
+    }))
+    setWorkbenchState((current) => {
+      const imports = upsertImportBatch(current.imports, registerData.batch)
+      const mergedObjects = mergeRegisteredObjects(current.objects, registerData.objects)
+      return {
+        ...current,
+        status: "success",
+        imports,
+        objects: mergedObjects,
+        counts: {
+          ...current.counts,
+          imports: imports.length,
+          objects: mergedObjects.length,
+        },
+        warnings: registerResponse.warnings,
+        error: undefined,
+      }
+    })
+
+    setParseCandidateChooser((current) => current ? { ...current, status: "adding-nodes", error: null } : current)
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    let latestWorkspace: WorkspaceSummary | null = null
+    for (const [index, object] of registeredObjects.entries()) {
+      const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
+        command: "workspace.add_node",
+        args: {
+          session_id: sessionId,
+          kind: "species",
+          label: object.label ?? object.id,
+          chemical_object_ids: [object.id],
+          position: stackedCandidateNodePosition(chooser.position, index),
+        },
+      })
+      applyWorkspaceResponse(addNodeResponse)
+      if (!addNodeResponse.ok || !addNodeResponse.data) {
+        const error = addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node")
+        updateProjectFileEntry(chooser.rawFilePath, {
+          status: "error",
+          registeredObjectIds,
+          warnings: projectFileWarningMessagesFromError(error),
+        })
+        setParseCandidateChooser((current) => current ? { ...current, status: "error", error } : current)
+        return
+      }
+      latestWorkspace = addNodeResponse.data.workspace
+    }
+
+    if (latestWorkspace) {
+      updateProjectFileEntry(chooser.rawFilePath, {
+        status: "used-in-graph",
+        registeredObjectIds,
+        graphNodeIds: registeredObjectIds.flatMap((objectId) => graphNodeIdsForObject(latestWorkspace, objectId)),
+        warnings: [],
+      })
+    }
+    setParseCandidateChooser(null)
+    resetGraphEditorHistory()
+  }, [applyWorkspaceResponse, parseCandidateChooser, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
 
   const applyCorrection = useCallback(async (request: ApplyCorrectionRequest) => {
     const sessionId = workbenchState.sessionId
@@ -1983,6 +2177,7 @@ export function WorkbenchShell({
             compositionDraft={compositionDraft}
             compositionPending={compositionPending}
             compositionError={compositionError}
+            candidateChooser={parseCandidateChooser}
             onSelectNode={selectGraphNode}
             onSelectEdge={selectGraphEdge}
             onSelectPath={selectGraphPath}
@@ -2009,6 +2204,9 @@ export function WorkbenchShell({
             onOpenWorkspace={openWorkspace}
             onAddObjectNode={addObjectNode}
             onAddRawFileNode={addRawFileNode}
+            onToggleCandidateSelection={toggleParseCandidateSelection}
+            onConfirmCandidateChooser={confirmParseCandidateChooser}
+            onCancelCandidateChooser={cancelParseCandidateChooser}
             onMoveNode={moveGraphNode}
             onNudgeNodes={nudgeGraphNodes}
             onUndoHistory={() => void replayGraphEditorHistory("undo")}
@@ -2157,6 +2355,18 @@ function browserRawResourceFromObject(object: BrowserStorageObject, rawResourceI
 
 function importPreviewObjectCount(batch: ImportBatchSummary): number {
   return batch.items.reduce((count, item) => count + (item.preview?.object_count ?? 0), 0)
+}
+
+function importPreviewCandidateChooserItem(
+  batch: ImportBatchSummary,
+): { itemId: string; candidates: ParseCandidateSummary[] } | null {
+  for (const item of batch.items) {
+    const candidates = item.preview?.candidates ?? []
+    if (candidates.length > 1) {
+      return { itemId: item.id, candidates }
+    }
+  }
+  return null
 }
 
 function graphNodeIdsForObject(workspace: WorkspaceSummary, objectId: string): string[] {
@@ -2346,6 +2556,22 @@ function isSingleGraphEditorPathSelection(selection: GraphEditorSelection): bool
 
 function tuplePosition(position: CanvasPoint): [number, number] {
   return [position.x, position.y]
+}
+
+function stackedCandidateNodePosition(origin: [number, number], index: number): [number, number] {
+  const baseX = clampCandidateGraphCoordinate(origin[0], 120, 480)
+  const baseY = baseX > 420 ? 50 : clampCandidateGraphCoordinate(origin[1], 50, 270)
+  const directionX = baseX > 420 ? -160 : 160
+  const directionY = baseY > 210 ? -220 : 220
+  return tuplePosition(canvasPointToGraphNodePosition({
+    x: clampCandidateGraphCoordinate(baseX + index * directionX, 120, 480),
+    y: clampCandidateGraphCoordinate(baseY + index * directionY, 50, 270),
+  }))
+}
+
+function clampCandidateGraphCoordinate(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min
+  return Math.min(max, Math.max(min, value))
 }
 
 function energyOptionsForWorkspace(

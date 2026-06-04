@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-workspace-first-canvas-mvp
 status: active
 created: 2026-06-03
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-04
 tags: [rxnflow, web, workspace-first, canvas, local-first, project-files, cdxml, energy-profile]
 related_requirements: [web-workbench-shell, project-content-persistence, platform-shell-entry]
 related_architecture: [core-platform, web-workbench]
@@ -240,7 +240,8 @@ type ParseCandidateSummary = {
   method?: string | null
   charge?: number | null
   spinMultiplicity?: number | null
-  energy?: { key: string; value: number; unit: string } | null
+  displayEnergy?: { key: string; source: "energies" | "thermochemistry"; value: number; unit: string } | null
+  coordinatePreview?: { atomCount: number; has3d: boolean; elements: string[]; previewKind: "text" | "unavailable" } | null
   warnings: string[]
 }
 
@@ -281,7 +282,8 @@ type CanvasChemicalNodeSummary = {
   coordinatePreview?: {
     atomCount: number
     has3d: boolean
-    previewKind: "text" | "svg" | "canvas" | "unavailable"
+    elements: string[]
+    previewKind: "text" | "unavailable"
   }
   warnings: string[]
 }
@@ -352,9 +354,9 @@ class MinimalCdxmlEnergyDeltaOptions:
 2. **canvas-chemical-node-card** — 完善画布节点的信息密度和多对象 / 多帧候选选择器。
    - 所属模块：Parse Candidate Chooser / Canvas Chemical Node
    - 依赖：`workspace-file-drop-minimal-loop`
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：单对象直接建节点；多对象在落点附近选择；默认高亮 final candidate 但不自动全放画布。
+   - 状态：done
+   - 对应 feature：`2026-06-03-canvas-chemical-node-card`
+   - 备注：单对象直接建节点；多对象在落点附近选择；无 core/parser 明确信号时 role hint 保持 unknown，不自动全放画布。
 
 3. **canvas-path-authoring-pes-preview** — 用画布拖线手动连接节点形成 active path，并在右侧预览势能面、相对能量和 step delta。
    - 所属模块：Path Authoring / PES Preview
@@ -384,7 +386,7 @@ class MinimalCdxmlEnergyDeltaOptions:
    - 对应 feature：未启动
    - 备注：覆盖保存项目、导出 `.rxnflow.zip`、重新导入后恢复 raw files / graph / PES preview 的边界。
 
-**最小闭环**：第 1 条 `workspace-file-drop-minimal-loop` 已完成。用户能创建或打开 active browser project，把一个单对象 log/out/xyz/extxyz 类文件拖到画布，看到该文件进入 Project Files Panel，并看到画布出现来自 ShellResponse 的节点；多对象 / 多帧候选选择和更丰富节点信息由后续 `canvas-chemical-node-card` 承接。
+**最小闭环**：第 1 条 `workspace-file-drop-minimal-loop` 已完成。第 2 条 `canvas-chemical-node-card` 已完成后，用户能创建或打开 active browser project，把一个单对象 log/out/xyz/extxyz 类文件拖到画布，看到该文件进入 Project Files Panel，并看到画布出现来自 ShellResponse 的富摘要节点；多对象 / 多帧 preview 会先显示候选选择器，用户确认后才登记选择对象并创建 stack nodes。
 
 ## 6. 排期思路
 

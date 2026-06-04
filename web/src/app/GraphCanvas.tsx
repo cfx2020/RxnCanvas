@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react"
 import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, Redo2, RotateCcw, Route, Trash2, Undo2, XCircle, ZoomIn, ZoomOut } from "lucide-react"
-import type { ShellError } from "../shell"
+import type { ParseCandidateSummary, ShellError, ShellWarning } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
 import type { CanvasPoint, GraphEditorInteractionState, GraphEditorSelectionMode, PendingEdgeDraft } from "./graphEditorInteractionState"
 import {
@@ -87,6 +87,43 @@ export type GraphHistoryControls = {
   error?: ShellError | null
 }
 
+export type ParseCandidateChooserState = {
+  projectFileId: string
+  rawFilePath: string
+  batchId: string
+  itemId: string
+  candidates: ParseCandidateSummary[]
+  selectedCandidateIds: string[]
+  position: [number, number]
+  status: "choosing" | "registering" | "adding-nodes" | "error"
+  error?: ShellError | null
+}
+
+type CanvasChemicalNodeSummary = {
+  nodeId: string
+  structureName: string
+  objectIds: string[]
+  objectLabels: string[]
+  composition: Array<{ object_id: string; coefficient?: number }>
+  formula?: string | null
+  charge?: number | null
+  spinMultiplicity?: number | null
+  method?: string | null
+  displayEnergy?: {
+    key: string
+    source: string
+    value?: number | null
+    unit: string
+  } | null
+  coordinatePreview?: {
+    atom_count: number
+    has3d: boolean
+    elements: string[]
+    preview_kind: string
+  } | null
+  warnings: ShellWarning[]
+}
+
 type GraphCanvasProps = {
   state: WorkbenchDomainState
   activeObjectId?: string
@@ -100,6 +137,7 @@ type GraphCanvasProps = {
   compositionDraft: CompositionDraftState
   compositionPending: boolean
   compositionError: ShellError | null
+  candidateChooser: ParseCandidateChooserState | null
   onSelectNode: (nodeId: string, mode?: GraphEditorSelectionMode) => void
   onSelectEdge: (edgeId: string, mode?: GraphEditorSelectionMode) => void
   onSelectPath: (pathId: string, nodeIds: string[], mode?: GraphEditorSelectionMode) => void
@@ -126,6 +164,9 @@ type GraphCanvasProps = {
   onOpenWorkspace: () => void
   onAddObjectNode: (request?: AddObjectNodeRequest) => void
   onAddRawFileNode: (request: AddRawFileNodeRequest) => void | Promise<void>
+  onToggleCandidateSelection: (candidateId: string, selected: boolean) => void
+  onConfirmCandidateChooser: () => void
+  onCancelCandidateChooser: () => void
   onMoveNode: (request: MoveGraphNodeRequest) => void
   onNudgeNodes: (request: NudgeGraphNodesRequest) => void
   onUndoHistory: () => void
@@ -157,6 +198,7 @@ export function GraphCanvas({
   compositionDraft,
   compositionPending,
   compositionError,
+  candidateChooser,
   onSelectNode,
   onSelectEdge,
   onSelectPath,
@@ -183,6 +225,9 @@ export function GraphCanvas({
   onOpenWorkspace,
   onAddObjectNode,
   onAddRawFileNode,
+  onToggleCandidateSelection,
+  onConfirmCandidateChooser,
+  onCancelCandidateChooser,
   onMoveNode,
   onNudgeNodes,
   onUndoHistory,
@@ -740,7 +785,7 @@ export function GraphCanvas({
                     <GraphNodeButton
                       key={node.id}
                       node={node}
-                      object={objectForNode(node, state.objects)}
+                      summary={canvasChemicalNodeSummary(node, state.objects)}
                       selected={selectedNodeIds.has(node.id)}
                       pending={node.id === pendingConnectionFromId}
                       pendingTarget={node.id === pendingDirectEdgeTargetId}
@@ -762,6 +807,14 @@ export function GraphCanvas({
               </div>
             </>
           )}
+          {candidateChooser ? (
+            <ParseCandidateChooser
+              state={candidateChooser}
+              onToggleSelection={onToggleCandidateSelection}
+              onConfirm={onConfirmCandidateChooser}
+              onCancel={onCancelCandidateChooser}
+            />
+          ) : null}
         </div>
 
         <aside className="network-preview-panel" aria-label={t("graphCanvas.preview")}>
@@ -819,6 +872,199 @@ export function GraphCanvas({
       </div>
     </section>
   )
+}
+
+function ParseCandidateChooser({
+  state,
+  onToggleSelection,
+  onConfirm,
+  onCancel,
+}: {
+  state: ParseCandidateChooserState
+  onToggleSelection: (candidateId: string, selected: boolean) => void
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const { t } = useI18n()
+  const selectedCandidateIds = new Set(state.selectedCandidateIds)
+  const selectedCount = state.candidates.filter((candidate) => selectedCandidateIds.has(candidate.candidate_id)).length
+  const busy = state.status === "registering" || state.status === "adding-nodes"
+  return (
+    <section
+      className={`parse-candidate-chooser parse-candidate-chooser--${state.status}`}
+      aria-label={t("graphCanvas.candidateChooser.aria")}
+      style={parseCandidateChooserStyle(state.position)}
+    >
+      <div className="parse-candidate-chooser-header">
+        <div>
+          <p className="section-kicker">{t("graphCanvas.candidateChooser.section")}</p>
+          <h3>{t("graphCanvas.candidateChooser.title")}</h3>
+        </div>
+        <span>{parseCandidateChooserStatusLabel(state.status, t)}</span>
+      </div>
+      <div className="parse-candidate-chooser-source">
+        <span>{t("graphCanvas.candidateChooser.file")}</span>
+        <code>{state.rawFilePath}</code>
+        <small>{t("graphCanvas.candidateChooser.count", { count: state.candidates.length })}</small>
+      </div>
+      <ul className="parse-candidate-list">
+        {state.candidates.map((candidate) => (
+          <li
+            key={candidate.candidate_id}
+            className={`parse-candidate-card ${selectedCandidateIds.has(candidate.candidate_id) ? "parse-candidate-card--selected" : ""}`}
+          >
+            <div className="parse-candidate-title">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={selectedCandidateIds.has(candidate.candidate_id)}
+                  disabled={busy}
+                  onChange={(event) => onToggleSelection(candidate.candidate_id, event.currentTarget.checked)}
+                  aria-label={t("graphCanvas.candidateChooser.selectCandidate", { label: candidate.label })}
+                />
+                <strong>{candidate.label}</strong>
+              </label>
+              <code>{candidate.candidate_id}</code>
+            </div>
+            <dl className="parse-candidate-grid">
+              <CandidateValue
+                label={t("graphCanvas.candidateChooser.index")}
+                value={String(candidate.object_index)}
+              />
+              <CandidateValue
+                label={t("graphCanvas.candidateChooser.formula")}
+                value={candidate.formula ?? t("graphCanvas.none")}
+              />
+              <CandidateValue
+                label={t("graphCanvas.candidateChooser.chargeSpin")}
+                value={formatCandidateChargeSpin(candidate, t)}
+              />
+              <CandidateValue
+                label={t("graphCanvas.candidateChooser.method")}
+                value={candidate.method ?? t("graphCanvas.none")}
+              />
+              <CandidateValue
+                label={t("graphCanvas.candidateChooser.energy")}
+                value={formatCandidateDisplayEnergy(candidate, t)}
+              />
+              <CandidateValue
+                label={t("graphCanvas.candidateChooser.coordinates")}
+                value={formatCandidateCoordinatePreview(candidate, t)}
+              />
+            </dl>
+            {candidate.warnings.length > 0 ? (
+              <div className="parse-candidate-warning-row">
+                <span>{t("graphCanvas.candidateChooser.warnings")}</span>
+                {candidate.warnings.map((warning) => (
+                  <code key={`${candidate.candidate_id}:${warning.code}:${warning.target ?? ""}`}>
+                    {warning.code}
+                  </code>
+                ))}
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {state.error ? (
+        <p className="parse-candidate-error" role="alert">
+          <code>{state.error.code}</code>
+          <span>{state.error.message}</span>
+          {state.error.target ? <small>{state.error.target}</small> : null}
+        </p>
+      ) : null}
+      <div className="parse-candidate-command-row">
+        <button type="button" onClick={onCancel} disabled={busy}>
+          <XCircle size={15} />
+          <span>{t("graphCanvas.candidateChooser.cancel")}</span>
+        </button>
+        <button type="button" onClick={onConfirm} disabled={busy || selectedCount === 0}>
+          <Check size={15} />
+          <span>{parseCandidateChooserConfirmLabel(state.status, selectedCount, t)}</span>
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function parseCandidateChooserConfirmLabel(
+  status: ParseCandidateChooserState["status"],
+  selectedCount: number,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  if (status === "registering") return t("graphCanvas.candidateChooser.registering")
+  if (status === "adding-nodes") return t("graphCanvas.candidateChooser.addingNodes")
+  return t("graphCanvas.candidateChooser.confirm", { count: selectedCount })
+}
+
+function CandidateValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  )
+}
+
+function formatCandidateChargeSpin(
+  candidate: ParseCandidateSummary,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  const charge = candidate.charge ?? t("graphCanvas.none")
+  const spin = candidate.spin_multiplicity ?? t("graphCanvas.none")
+  return t("graphCanvas.candidateChooser.chargeSpinValue", { charge, spin })
+}
+
+function formatCandidateDisplayEnergy(
+  candidate: ParseCandidateSummary,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  const energy = candidate.display_energy
+  if (!energy) return t("graphCanvas.none")
+  return `${energy.key} ${energy.value} ${energy.unit}`
+}
+
+function formatCandidateCoordinatePreview(
+  candidate: ParseCandidateSummary,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  const preview = candidate.coordinate_preview
+  if (!preview || preview.preview_kind === "unavailable") return t("graphCanvas.none")
+  const elements = preview.elements.length > 0 ? preview.elements.join(" ") : t("graphCanvas.none")
+  const dimensionality = preview.has3d
+    ? t("graphCanvas.candidateChooser.has3d")
+    : t("graphCanvas.candidateChooser.no3d")
+  return t("graphCanvas.candidateChooser.coordinateValue", {
+    count: preview.atom_count,
+    elements,
+    dimensionality,
+  })
+}
+
+function parseCandidateChooserStyle(position: [number, number]) {
+  const cssPosition = graphNodeCssPosition({ x: position[0], y: position[1] })
+  const horizontalAnchor = position[0] > graphNodeLayoutBounds.width * 0.58 ? "-100%" : "0"
+  const verticalAnchor = position[1] > graphNodeLayoutBounds.height * 0.58 ? "-100%" : "0"
+  return {
+    ...cssPosition,
+    transform: `translate(${horizontalAnchor}, ${verticalAnchor})`,
+  }
+}
+
+function parseCandidateChooserStatusLabel(
+  status: ParseCandidateChooserState["status"],
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  switch (status) {
+    case "registering":
+      return t("graphCanvas.candidateChooser.status.registering")
+    case "adding-nodes":
+      return t("graphCanvas.candidateChooser.status.addingNodes")
+    case "error":
+      return t("graphCanvas.candidateChooser.status.error")
+    case "choosing":
+    default:
+      return t("graphCanvas.candidateChooser.status.choosing")
+  }
 }
 
 function HistoryStatus({ controls }: { controls: GraphHistoryControls }) {
@@ -1023,7 +1269,7 @@ function firstDataTransferFile(dataTransfer: DataTransfer): File | null {
 
 function isCanvasPanStartTarget(target: EventTarget): boolean {
   if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
-  return !target.closest(".graph-node-card, .graph-edge-connect-handle, .graph-edge-hitbox, .graph-path-select")
+  return !target.closest(".graph-node-card, .graph-edge-connect-handle, .graph-edge-hitbox, .graph-path-select, .parse-candidate-chooser")
 }
 
 function isGraphKeyboardScopeTarget(target: EventTarget): boolean {
@@ -1033,7 +1279,7 @@ function isGraphKeyboardScopeTarget(target: EventTarget): boolean {
 
 function isCanvasViewportInputTarget(target: EventTarget): boolean {
   if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
-  return Boolean(target.closest(".graph-canvas-surface"))
+  return Boolean(target.closest(".graph-canvas-surface")) && !target.closest(".parse-candidate-chooser")
 }
 
 function canvasPositionFromDrop(event: DragEvent<HTMLDivElement>, viewport: GraphViewport): [number, number] {
@@ -1182,7 +1428,7 @@ function nodeIdsInRubberBand(
 
 function GraphNodeButton({
   node,
-  object,
+  summary,
   selected,
   pending,
   pendingTarget,
@@ -1200,7 +1446,7 @@ function GraphNodeButton({
   onClick,
 }: {
   node: GraphNodeSummary
-  object?: ObjectSummary
+  summary: CanvasChemicalNodeSummary
   selected: boolean
   pending: boolean
   pendingTarget: boolean
@@ -1219,9 +1465,6 @@ function GraphNodeButton({
 }) {
   const { t } = useI18n()
   const position = graphNodeCssPosition(draggingPosition ?? graphNodePosition(node))
-  const composition = node.composition?.length
-    ? node.composition
-    : (node.chemical_object_ids ?? []).map((objectId) => ({ object_id: objectId, coefficient: 1 }))
   return (
     <div
       className={`graph-node-card-shell ${dragging ? "graph-node-card-shell--dragging" : ""}`}
@@ -1239,10 +1482,24 @@ function GraphNodeButton({
         onClick={(event) => onClick(node.id, event)}
         aria-current={selected ? "true" : undefined}
       >
-        <span>{node.label}</span>
-        <small>{node.id}</small>
-        <code>{formatCompositionSummary(composition) || t("graphCanvas.noObject")}</code>
-        {object?.formula ? <em>{object.formula}</em> : null}
+        <span>{summary.structureName}</span>
+        <small>{summary.nodeId}</small>
+        <code>{formatCompositionSummary(summary.composition) || t("graphCanvas.noObject")}</code>
+        {summary.objectLabels.length > 0 ? <em>{summary.objectLabels.join(" + ")}</em> : null}
+        <span className="graph-node-detail-grid">
+          <GraphNodeDetail label={t("graphCanvas.node.formula")} value={summary.formula ?? t("graphCanvas.none")} />
+          <GraphNodeDetail label={t("graphCanvas.node.chargeSpin")} value={formatNodeChargeSpin(summary, t)} />
+          <GraphNodeDetail label={t("graphCanvas.node.method")} value={summary.method ?? t("graphCanvas.none")} />
+          <GraphNodeDetail label={t("graphCanvas.node.energy")} value={formatNodeDisplayEnergy(summary, t)} />
+          <GraphNodeDetail label={t("graphCanvas.node.atoms")} value={formatNodeCoordinatePreview(summary, t)} />
+        </span>
+        {summary.warnings.length > 0 ? (
+          <span className="graph-node-warning-strip">
+            {summary.warnings.map((warning) => (
+              <code key={`${summary.nodeId}:${warning.code}:${warning.target ?? ""}`}>{warning.code}</code>
+            ))}
+          </span>
+        ) : null}
       </button>
       <button
         type="button"
@@ -1259,6 +1516,145 @@ function GraphNodeButton({
       </button>
     </div>
   )
+}
+
+function GraphNodeDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="graph-node-detail-pill">
+      <small>{label}</small>
+      <b>{value}</b>
+    </span>
+  )
+}
+
+function canvasChemicalNodeSummary(
+  node: GraphNodeSummary,
+  objects: ObjectSummary[],
+): CanvasChemicalNodeSummary {
+  const composition = nodeCompositionTerms(node)
+  const objectIds = uniqueStrings([
+    ...composition.map((term) => term.object_id),
+    ...(node.chemical_object_ids ?? []),
+  ])
+  const objectById = new Map(objects.map((object) => [object.id, object]))
+  const nodeObjects = objectIds
+    .map((objectId) => objectById.get(objectId))
+    .filter((object): object is ObjectSummary => Boolean(object))
+  const primaryObject = nodeObjects[0]
+  return {
+    nodeId: node.id,
+    structureName: node.label || primaryObject?.label || node.id,
+    objectIds,
+    objectLabels: nodeObjects.map((object) => object.label ?? object.id),
+    composition,
+    formula: summarizeNodeFormula(nodeObjects),
+    charge: summarizeSharedNumber(nodeObjects.map((object) => object.charge)),
+    spinMultiplicity: summarizeSharedNumber(nodeObjects.map((object) => object.spin_multiplicity)),
+    method: summarizeSharedString(nodeObjects.map((object) => object.method)),
+    displayEnergy: summarizeNodeDisplayEnergy(nodeObjects),
+    coordinatePreview: summarizeNodeCoordinatePreview(nodeObjects),
+    warnings: nodeObjects.flatMap((object) => object.warnings ?? []),
+  }
+}
+
+function nodeCompositionTerms(node: GraphNodeSummary): Array<{ object_id: string; coefficient?: number }> {
+  return node.composition?.length
+    ? node.composition
+    : (node.chemical_object_ids ?? []).map((objectId) => ({ object_id: objectId, coefficient: 1 }))
+}
+
+function summarizeNodeFormula(objects: ObjectSummary[]): string | null {
+  const formulas = uniqueStrings(objects.map((object) => object.formula).filter((value): value is string => Boolean(value)))
+  if (formulas.length === 0) return null
+  return formulas.join(" + ")
+}
+
+function summarizeSharedNumber(values: Array<number | null | undefined>): number | null {
+  const present = values.filter((value): value is number => typeof value === "number")
+  if (present.length === 0) return null
+  return present.every((value) => value === present[0]) ? present[0] : null
+}
+
+function summarizeSharedString(values: Array<string | null | undefined>): string | null {
+  const present = uniqueStrings(values.filter((value): value is string => Boolean(value)))
+  if (present.length === 0) return null
+  return present.length === 1 ? present[0] : present.join(" + ")
+}
+
+function summarizeNodeDisplayEnergy(objects: ObjectSummary[]): CanvasChemicalNodeSummary["displayEnergy"] {
+  for (const object of objects) {
+    if (object.display_energy) {
+      return {
+        key: object.display_energy.key,
+        source: object.display_energy.source,
+        value: object.display_energy.value,
+        unit: object.display_energy.unit,
+      }
+    }
+    const channel = object.energy_channels?.[0]
+    if (channel) {
+      return {
+        key: channel.key,
+        source: channel.source,
+        value: null,
+        unit: channel.unit,
+      }
+    }
+  }
+  return null
+}
+
+function summarizeNodeCoordinatePreview(objects: ObjectSummary[]): CanvasChemicalNodeSummary["coordinatePreview"] {
+  const previews = objects
+    .map((object) => object.coordinate_preview)
+    .filter((preview): preview is NonNullable<ObjectSummary["coordinate_preview"]> => Boolean(preview))
+    .filter((preview) => preview.preview_kind !== "unavailable")
+  if (previews.length === 0) return null
+  if (previews.length === 1) return previews[0]
+  return {
+    atom_count: previews.reduce((count, preview) => count + preview.atom_count, 0),
+    has3d: previews.some((preview) => preview.has3d),
+    elements: uniqueStrings(previews.flatMap((preview) => preview.elements)).slice(0, 5),
+    preview_kind: "text",
+  }
+}
+
+function formatNodeChargeSpin(
+  summary: CanvasChemicalNodeSummary,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  const charge = summary.charge ?? t("graphCanvas.none")
+  const spin = summary.spinMultiplicity ?? t("graphCanvas.none")
+  return t("graphCanvas.node.chargeSpinValue", { charge, spin })
+}
+
+function formatNodeDisplayEnergy(
+  summary: CanvasChemicalNodeSummary,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  const energy = summary.displayEnergy
+  if (!energy) return t("graphCanvas.node.energyMissing")
+  if (typeof energy.value === "number") return `${energy.key} ${energy.value} ${energy.unit}`
+  return `${energy.key} · ${energy.unit}`
+}
+
+function formatNodeCoordinatePreview(
+  summary: CanvasChemicalNodeSummary,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  const preview = summary.coordinatePreview
+  if (!preview || preview.preview_kind === "unavailable") return t("graphCanvas.node.coordinatesMissing")
+  const elements = preview.elements.length > 0 ? preview.elements.join(" ") : t("graphCanvas.none")
+  const dimensionality = preview.has3d ? t("graphCanvas.candidateChooser.has3d") : t("graphCanvas.candidateChooser.no3d")
+  return t("graphCanvas.candidateChooser.coordinateValue", {
+    count: preview.atom_count,
+    elements,
+    dimensionality,
+  })
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)))
 }
 
 function formatCompositionSummary(composition: Array<{ object_id: string; coefficient?: number }>): string {
@@ -1774,11 +2170,6 @@ function CompositionDraftRowEditor({
       </button>
     </div>
   )
-}
-
-function objectForNode(node: GraphNodeSummary, objects: ObjectSummary[]): ObjectSummary | undefined {
-  const objectId = node.chemical_object_ids?.[0]
-  return objects.find((object) => object.id === objectId)
 }
 
 function isNodeInActivePath(nodeId: string, activePathId: string | null | undefined, paths: GraphPathSummary[]): boolean {
