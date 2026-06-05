@@ -5,7 +5,7 @@ component: web-runtime-boundary-decision
 status: current
 summary: RxnFlow Web Workbench MVP 的浏览器、Shell Client、Python core 和 HTTP/serverless 边界
 tags: [web, runtime-boundary, local-first, platform-shell]
-last_reviewed: 2026-05-20
+last_reviewed: 2026-06-05
 ---
 
 # Web Runtime Boundary
@@ -22,12 +22,12 @@ RxnFlow Web Workbench MVP 采用 local-first browser workbench 边界：浏览�
 |---|---|---|
 | Browser UI | 工作台布局、selection、viewport、面板开关、文件选择、下载入口 | parser、registry、reaction graph、energy、export 领域逻辑 |
 | Shell Client | 发送 JSON-safe `ShellCommandPayload`，接收 `ShellResponse`，规范化 loading/error/warning/artifact 投影 | 直接 import Python core，或把 Python dataclass 映射成 UI 内部真相 |
-| Browser Project Repository | 保存项目 refs、raw files、exports、bundle import/export 所需的本地对象 | 跨设备同步、账号、权限、冲突合并、多人协作 |
+| Browser Project Repository | 保存项目 refs、raw files、exports 和 Project Content bytes | 跨设备同步、账号、权限、冲突合并、多人协作 |
 | Python core | 执行 parser、registry、workspace、graph、energy、export 的已存在核心能力 | 维护浏览器 UI 状态或云端项目数据库 |
 | Stateless Python API | 在 Vercel/http-api 方向执行一次 command 或有限 parse/export/compute 请求 | 长期项目存储、跨请求 session authority、持久 filesystem |
 | Local Python Bridge | 本地开发或桌面壳层调用 Python core 的候选通道 | Vercel 部署前提或浏览器本地仓储的替代物 |
 
-核心原则：项目内容的第一版 authority 在浏览器本地仓储和 `.rxnflow.zip` bundle，不在 serverless filesystem。HTTP API 即使存在，也只能被视为 command executor。
+核心原则：当前 Web 主流程的项目内容 authority 在浏览器本地仓储，不在 serverless filesystem，也不在 `.rxnflow.zip`。HTTP API 即使存在，也只能被视为 command executor；`.rxnflow.zip` 只保留为内部/CLI/后备迁移能力。
 
 ## Transport 模式
 
@@ -54,7 +54,7 @@ Web MVP 第一版不购买云存储。项目持久化策略是：
 
 1. 浏览器端保存项目引用和本地对象，后续真实实现可选 IndexedDB、OPFS 或等价浏览器能力。
 2. 原始计算输出和 exports 由 Browser Project Repository 管理；UI 只展示 local-only 状态和 validation 结果。
-3. `.rxnflow.zip` bundle 是备份、迁移和手动同步的第一版机制。
+3. 当前 Web UI 不把 `.rxnflow.zip` 作为主备份/分享入口；项目包 helper 只作为内部/CLI/后备迁移能力保留。
 4. Python core 的 `PlatformSession` 仍是进程内概念，不是跨请求、跨标签页或跨设备持久化机制。
 
 现有 `rxnflow.browser_storage.BrowserLocalProjectStorageBackend` 是 Python 测试替身，可作为协议参考，但不等同于未来 JS/TS adapter。
@@ -138,10 +138,10 @@ Browser Project Repository 保存在浏览器 IndexedDB 中，Python bridge 不�
 
 当前规则：
 
-- 打开 browser project 只更新 `ProjectSidebarState` 和 shallow validation，不自动创建 `PlatformSession`。
-- 用户点击 Open Bridge 时，Web 从 Browser Project Repository 读取 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json`，编码为 `project.open(content_files, load_content=true)` 的 JSON-safe base64 payload。
+- 打开 browser project 会更新 `ProjectSidebarState` 和 shallow validation，并在可用 content files 存在时自动创建/恢复 `PlatformSession`。
+- Web 从 Browser Project Repository 读取 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json`，编码为 `project.open(content_files, load_content=true)` 的 JSON-safe base64 payload。
 - Platform Shell 收到 `content_files` 后 materialize 到进程内临时 project directory，再复用既有 ProjectStore / ProjectContentStore 打开与校验流程。
-- 用户点击 Save Bridge Session 时，Web 调用 `project.save_content(include_content_files=true)`；Platform Shell 写回临时 project directory，并返回 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` bytes，Web 再覆盖写回 Browser Project Repository。
+- 用户点击 `Save Project` 时，Web 调用 `project.save_content(include_content_files=true)`；Platform Shell 写回临时 project directory，并返回 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` bytes，Web 再覆盖写回 Browser Project Repository。
 - `project.open(project_path)` 和 `project.save_content(session_id)` 的本地 filesystem 行为保持可用；`include_content_files=false` 时不返回 bytes payload。
 
 该桥接不实现 `.rxnflow.zip` bundle IO、云存储、账号同步、OPFS/chunking、Worker、Service Worker 或 browser_storage import adapter。Web 只搬运 content files bytes 和 checksum，不在前端解析或重写 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 领域内容。

@@ -1,10 +1,9 @@
-import { AlertTriangle, CheckCircle2, FilePlus2, RotateCcw, UploadCloud } from "lucide-react"
+import { AlertTriangle, FilePlus2, RotateCcw, UploadCloud } from "lucide-react"
 import type { ChangeEvent } from "react"
 import type { ImportItemSummary, ShellError, ShellWarning } from "../shell"
 import { useI18n, type MessageKey } from "./i18n"
 import {
   canPreviewImport,
-  canRegisterImport,
   filesToWebImportFiles,
   formatFileSize,
   importFormatOptions,
@@ -19,7 +18,6 @@ type ImportInboxProps = {
   onExpectedFormatChange: (format: string) => void
   onStrictChange: (strict: boolean) => void
   onPreview: () => Promise<void>
-  onRegisterAll: () => Promise<void>
   onClear: () => void
 }
 
@@ -39,12 +37,10 @@ export function ImportInbox({
   onExpectedFormatChange,
   onStrictChange,
   onPreview,
-  onRegisterAll,
   onClear,
 }: ImportInboxProps) {
   const { t } = useI18n()
   const previewDisabled = !canPreviewImport(state)
-  const registerDisabled = !canRegisterImport(state)
   const detailOpen = state.selectedFiles.length > 0 || Boolean(state.activeBatch) || Boolean(state.error)
   const lastDropStatus = sourceTray.lastDropStatus ?? "idle"
 
@@ -115,15 +111,6 @@ export function ImportInbox({
         <button type="button" className="command-button" onClick={onPreview} disabled={previewDisabled}>
           <UploadCloud size={17} />
           <span>{t("importInbox.preview")}</span>
-        </button>
-        <button
-          type="button"
-          className="sidebar-command-button sidebar-command-button--secondary"
-          onClick={onRegisterAll}
-          disabled={registerDisabled}
-        >
-          <CheckCircle2 size={17} />
-          <span>{t("importInbox.registerAll")}</span>
         </button>
         <button type="button" className="icon-button" onClick={onClear} title={t("importInbox.clear")} aria-label={t("importInbox.clear")}>
           <RotateCcw size={17} />

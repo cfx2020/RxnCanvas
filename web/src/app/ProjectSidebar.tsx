@@ -1,8 +1,6 @@
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import {
   CheckCircle2,
-  CloudCog,
-  Download,
   FileText,
   FolderOpen,
   HardDrive,
@@ -12,49 +10,31 @@ import {
   Upload,
 } from "lucide-react"
 import { browserProjectBackendId } from "../repository"
-import type { WorkbenchDomainState } from "./workbenchState"
 import type { ProjectSidebarState } from "./projectSidebarState"
 import type { ProjectFileEntry, ProjectFileKind, ProjectFileStatus } from "./projectFiles"
-import type { ExportBundleStatus } from "./projectBundleExport"
-import type { ImportBundleStatus } from "./projectBundleImport"
 import { graphRawFileDropMimeType, serializeGraphRawFileDropPayload } from "./graphRawFileDropPayload"
 import { useI18n, type MessageKey } from "./i18n"
 
 type ProjectSidebarProps = {
   state: ProjectSidebarState
-  workbenchState: WorkbenchDomainState
-  exportBundleStatus: ExportBundleStatus
-  importBundleStatus: ImportBundleStatus
   onRefreshProjects: () => Promise<void>
   onCreateProject: (name: string) => Promise<ProjectSidebarState>
   onOpenProject: (projectRef: string) => Promise<void>
   onSaveProjectContent: () => Promise<void>
-  onOpenBridgeSession: () => Promise<void>
-  onSaveBridgeSession: () => Promise<void>
-  onExportBundle: () => Promise<void>
-  onImportBundleFileSelected: (file: File) => Promise<void>
+  onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
 }
 
 export function ProjectSidebar({
   state,
-  workbenchState,
-  exportBundleStatus,
-  importBundleStatus,
   onRefreshProjects,
   onCreateProject,
   onOpenProject,
   onSaveProjectContent,
-  onOpenBridgeSession,
-  onSaveBridgeSession,
-  onExportBundle,
-  onImportBundleFileSelected,
+  onAddProjectFileToCanvas,
 }: ProjectSidebarProps) {
   const { t } = useI18n()
   const [projectName, setProjectName] = useState("")
-  const importInputRef = useRef<HTMLInputElement | null>(null)
   const isBusy = state.status === "loading"
-  const isExporting = exportBundleStatus.state === "exporting"
-  const isImporting = importBundleStatus.state === "importing"
 
   const handleCreateProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -62,13 +42,6 @@ export function ProjectSidebar({
     if (nextState.status === "ready") {
       setProjectName("")
     }
-  }
-
-  const handleImportBundleChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0]
-    event.currentTarget.value = ""
-    if (!file) return
-    await onImportBundleFileSelected(file)
   }
 
   return (
@@ -109,26 +82,6 @@ export function ProjectSidebar({
           <Save size={16} />
           <span>{t("projectSidebar.saveContent")}</span>
         </button>
-        <div className="project-command-row">
-          <button
-            type="button"
-            className="sidebar-command-button sidebar-command-button--secondary"
-            onClick={onOpenBridgeSession}
-            disabled={isBusy || !state.activeProject}
-          >
-            <CloudCog size={16} />
-            <span>{t("projectSidebar.openBridge")}</span>
-          </button>
-          <button
-            type="button"
-            className="sidebar-command-button sidebar-command-button--secondary"
-            onClick={onSaveBridgeSession}
-            disabled={isBusy || !state.activeProject || !workbenchState.sessionId}
-          >
-            <Save size={16} />
-            <span>{t("projectSidebar.saveBridge")}</span>
-          </button>
-        </div>
 
         {state.error ? (
           <div className="sidebar-error" role="alert">
@@ -139,46 +92,7 @@ export function ProjectSidebar({
         ) : null}
       </section>
 
-      <ProjectFilesPanel state={state} />
-
-      <section className="rail-section bundle-entry-section" aria-label={t("projectSidebar.bundleAria")}>
-        <p className="section-kicker">{t("projectSidebar.bundleSection")}</p>
-        <div className="project-command-row">
-          <button
-            type="button"
-            className="sidebar-command-button sidebar-command-button--secondary"
-            onClick={() => importInputRef.current?.click()}
-            disabled={isBusy || isImporting || isExporting}
-          >
-            <Upload size={16} />
-            <span>{t("projectSidebar.importBundle")}</span>
-          </button>
-          <input
-            ref={importInputRef}
-            className="visually-hidden"
-            type="file"
-            accept=".rxnflow.zip,application/zip"
-            aria-label={t("projectSidebar.importBundleFileInput")}
-            onChange={handleImportBundleChange}
-            disabled={isBusy || isImporting || isExporting}
-          />
-          <button
-            type="button"
-            className="sidebar-command-button sidebar-command-button--secondary"
-            onClick={onExportBundle}
-            disabled={isBusy || isExporting || isImporting || !state.activeProject}
-          >
-            <Download size={16} />
-            <span>{t("projectSidebar.exportBundle")}</span>
-          </button>
-        </div>
-        <p className="bundle-unavailable-message">{t("projectSidebar.bundleImportIdle")}</p>
-        {state.bridge.state === "open" ? (
-          <p className="bundle-hint-message">{t("projectSidebar.bundleSaveBridgeHint")}</p>
-        ) : null}
-        <BundleImportStatusView status={importBundleStatus} />
-        <BundleExportStatusView status={exportBundleStatus} />
-      </section>
+      <ProjectFilesPanel state={state} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
 
       <section className="rail-section project-switcher-section" aria-label={t("projectSidebar.projectsAria")}>
         <p className="section-kicker">{t("projectSidebar.projectsSection")}</p>
@@ -241,9 +155,10 @@ export function ProjectSidebar({
 
 type ProjectFilesPanelProps = {
   state: ProjectSidebarState
+  onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
 }
 
-function ProjectFilesPanel({ state }: ProjectFilesPanelProps) {
+function ProjectFilesPanel({ state, onAddProjectFileToCanvas }: ProjectFilesPanelProps) {
   const { t } = useI18n()
   const fileCount = state.projectFiles.length
   return (
@@ -254,7 +169,12 @@ function ProjectFilesPanel({ state }: ProjectFilesPanelProps) {
           <h2>{t("projectSidebar.projectFiles.title")}</h2>
         </div>
         <span className="project-files-count">
-          {t("projectSidebar.projectFiles.count", { count: fileCount })}
+          {t(
+            fileCount === 1
+              ? "projectSidebar.projectFiles.countOne"
+              : "projectSidebar.projectFiles.count",
+            { count: fileCount },
+          )}
         </span>
       </div>
       {!state.activeProject ? (
@@ -264,7 +184,7 @@ function ProjectFilesPanel({ state }: ProjectFilesPanelProps) {
       ) : (
         <ul className="project-file-list" aria-label={t("projectSidebar.projectFiles.listAria")}>
           {state.projectFiles.map((file) => (
-            <ProjectFileRow key={file.id} file={file} />
+            <ProjectFileRow key={file.id} file={file} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
           ))}
         </ul>
       )}
@@ -274,9 +194,10 @@ function ProjectFilesPanel({ state }: ProjectFilesPanelProps) {
 
 type ProjectFileRowProps = {
   file: ProjectFileEntry
+  onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
 }
 
-function ProjectFileRow({ file }: ProjectFileRowProps) {
+function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps) {
   const { t } = useI18n()
   const draggable = isDraggableRawProjectFile(file)
   return (
@@ -294,7 +215,7 @@ function ProjectFileRow({ file }: ProjectFileRowProps) {
     >
       <div className="project-file-title-row">
         <span className="project-file-icon" aria-hidden="true">
-          {file.kind === "export-artifact" ? <Download size={16} /> : <FileText size={16} />}
+          <FileText size={16} />
         </span>
         <span className="project-file-title">
           <strong title={file.name}>{file.name}</strong>
@@ -320,6 +241,16 @@ function ProjectFileRow({ file }: ProjectFileRowProps) {
           ))}
         </div>
       ) : null}
+      {draggable ? (
+        <button
+          type="button"
+          className="project-file-add-button"
+          onClick={() => void onAddProjectFileToCanvas(file)}
+        >
+          <Upload size={15} />
+          <span>{t("projectSidebar.projectFiles.addToCanvas")}</span>
+        </button>
+      ) : null}
       {file.warnings.length > 0 ? (
         <div className="project-file-warning-row" role="status">
           {file.warnings.map((warning, index) => (
@@ -343,101 +274,6 @@ function projectFileReferenceIds(file: ProjectFileEntry): string[] {
   ]
 }
 
-type BundleImportStatusViewProps = {
-  status: ImportBundleStatus
-}
-
-function BundleImportStatusView({ status }: BundleImportStatusViewProps) {
-  const { t } = useI18n()
-  if (status.state === "idle") {
-    return null
-  }
-  if (status.state === "importing") {
-    return (
-      <p className="bundle-status-message bundle-status-message--active">
-        {t("projectSidebar.bundleImporting", { fileName: status.fileName })}
-      </p>
-    )
-  }
-  if (status.state === "error") {
-    return (
-      <div className="sidebar-error" role="alert">
-        <strong>{status.error.code}</strong>
-        <span>{status.error.message}</span>
-        {status.error.target ? <small>{status.error.target}</small> : null}
-        {status.error.details?.partialProjectRef ? (
-          <small>
-            {t("projectSidebar.bundleImportPartialRisk", {
-              projectRef: status.error.details.partialProjectRef,
-              writtenCount: status.error.details.writtenCount ?? 0,
-            })}
-          </small>
-        ) : null}
-      </div>
-    )
-  }
-  return (
-    <div className="bundle-summary bundle-summary--import" role="status">
-      <strong>{t("projectSidebar.bundleImportSuccess")}</strong>
-      <span>
-        {t("projectSidebar.bundleImportSummary", {
-          projectName: status.project.name,
-          fileCount: status.summary.fileCount,
-          byteSize: formatBundleByteSize(status.summary.byteSize),
-          receiptCount: status.receiptCount,
-        })}
-      </span>
-      <small>{status.summary.rootName}</small>
-      <code>{status.summary.checksum}</code>
-    </div>
-  )
-}
-
-type BundleExportStatusViewProps = {
-  status: ExportBundleStatus
-}
-
-function BundleExportStatusView({ status }: BundleExportStatusViewProps) {
-  const { t } = useI18n()
-  if (status.state === "idle") {
-    return (
-      <p className="bundle-status-message">
-        {t("projectSidebar.bundleExportIdle")}
-      </p>
-    )
-  }
-  if (status.state === "exporting") {
-    return (
-      <p className="bundle-status-message bundle-status-message--active">
-        {t("projectSidebar.bundleExporting")}
-      </p>
-    )
-  }
-  if (status.state === "error") {
-    return (
-      <div className="sidebar-error" role="alert">
-        <strong>{status.error.code}</strong>
-        <span>{status.error.message}</span>
-        {status.error.target ? <small>{status.error.target}</small> : null}
-      </div>
-    )
-  }
-  return (
-    <div className="bundle-summary" role="status">
-      <strong>{t("projectSidebar.bundleExportSuccess")}</strong>
-      <span>
-        {t("projectSidebar.bundleExportSummary", {
-          fileName: status.fileName,
-          fileCount: status.summary.fileCount,
-          byteSize: formatBundleByteSize(status.summary.byteSize),
-        })}
-      </span>
-      <small>{status.summary.rootName}</small>
-      <code>{status.summary.checksum}</code>
-    </div>
-  )
-}
-
 type StateRowProps = {
   label: string
   value: string
@@ -453,13 +289,6 @@ function StateRow({ label, value }: StateRowProps) {
       </strong>
     </div>
   )
-}
-
-function formatBundleByteSize(byteSize: number): string {
-  if (byteSize < 1024) return `${byteSize} B`
-  const kib = byteSize / 1024
-  if (kib < 1024) return `${kib.toFixed(1)} KiB`
-  return `${(kib / 1024).toFixed(1)} MiB`
 }
 
 function formatFileByteSize(byteSize: number): string {

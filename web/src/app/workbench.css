@@ -632,6 +632,25 @@ button {
   overflow-wrap: anywhere;
 }
 
+.project-file-add-button {
+  min-height: 30px;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(39, 89, 106, 0.22);
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--blueprint);
+  padding: 0 9px;
+  font-size: 0.73rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.project-file-add-button:hover {
+  background: rgba(39, 89, 106, 0.08);
+}
+
 .project-file-reference-row,
 .project-file-warning-row {
   min-width: 0;

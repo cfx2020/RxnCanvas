@@ -10,7 +10,7 @@ last_reviewed: 2026-06-05
 
 # Graph Editor E2E QA
 
-这份指南只负责 Graph Canvas 的高级交互矩阵。Workspace-first 主流程、Project Sidebar、Analysis Dock、保存、导出、bundle 和 local-http roundtrip 的总入口见 `docs/dev/workspace-first-flow-qa.md`。
+这份指南只负责 Graph Canvas 的高级交互矩阵。Workspace-first 主流程、Project Sidebar、Analysis Dock、保存、导出和 local-http roundtrip 的总入口见 `docs/dev/workspace-first-flow-qa.md`。
 
 ## 什么时候跑
 
@@ -33,7 +33,7 @@ cd web && npm run test:e2e:local-http
 `web/e2e/workbench-journey.spec.ts` 使用 fixture runtime，不依赖 Python bridge。它覆盖：
 
 - desktop `1280x720` workbench journey：project、import、graph、energy、report export。
-- desktop graph editor matrix：object drag/drop、node drag、Apply Layout、path delete、edge label edit、direct edge drawing、rubber-band multi-select delete、keyboard nudge、Undo/Redo、wheel/minimap、Save/Open Bridge restore。
+- desktop graph editor matrix：object drag/drop、node drag、Apply Layout、path delete、edge label edit、direct edge drawing、rubber-band multi-select delete、keyboard nudge、Undo/Redo、wheel/minimap、Save Project restore。
 - narrow `390x840` workbench flow：graph、energy、report export 主链路。
 - narrow graph advanced controls：layout/history/viewport/minimap/edge label/path list/network preview 可达，无水平溢出。
 - report delivery：Report Export / Preview 覆盖 PNG、CDXML、XLSX、CSV 和 SVG 五个 supported artifacts 的 download link、writer metadata、browser-local persisted path/checksum，以及 include bytes 关闭时的不可下载状态。
@@ -46,12 +46,12 @@ cd web && npm run test:e2e:local-http
 `web/e2e/local-http-bridge.spec.ts` 独立启动本地 Python bridge 和 Vite local-http runtime。它只覆盖 bridge 主链路：
 
 - runtime badge 与 endpoint。
-- browser project create/open/save bridge。
+- browser project create/open/save project。
 - 小文件 inline parser preview。
 - graph add/connect/set path 主流程。
 - energy compute。
 - PNG/CDXML/XLSX/CSV/SVG export projection、download MIME、writer metadata 与 browser-local artifact persistence。
-- bundle export/import/open bridge roundtrip。
+- project save/reopen restore roundtrip。
 
 不要把复杂 graph gesture matrix 复制进 local-http E2E；那会把浏览器手势波动和 Python bridge dependency 绑在一起。
 
@@ -64,12 +64,12 @@ Playwright 产物只写入 gitignored 目录：
 - `web/playwright-report/`
 - `web/playwright-report-local-http/`
 
-这些 screenshot、trace 和 HTML report 不进入 Project Content、Browser Project Repository、`.rxnflow.zip` bundle 或报告导出索引。
+这些 screenshot、trace 和 HTML report 不进入 Project Content、Browser Project Repository 或报告导出索引。
 
 ## 维护规则
 
 - helper 名称描述用户动作，例如 `editFixtureEdgeLabel`、`rubberBandDeleteTemporaryNodes`，不要暴露 React 内部函数名。
 - 优先使用 role、label、button text 和可访问区域；pointer / wheel / drag 这类输入可用局部 DOM event helper。
 - 测试只通过 UI 触发 Shell command，不直接 mutate `WorkbenchDomainState`、IndexedDB bytes、Project Content files 或 ShellResponse。
-- 断言用户可观察结果：node/edge/path 可见、Network Preview 数量、edge label、viewport zoom/transform、active path、Save/Open Bridge 后恢复。
+- 断言用户可观察结果：node/edge/path 可见、Network Preview 数量、edge label、viewport zoom/transform、active path、Save Project 后重开恢复。
 - E2E 不为测试便利新增生产按钮或测试专用 UI。

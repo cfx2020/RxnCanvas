@@ -78,14 +78,9 @@ exports/rxnflow-profile.svg
 
 ### 备份和迁移
 
-浏览器本地 `exports/...` 不是云备份。要把已保存的导出文件和项目内容带到另一个浏览器或另一台机器，使用 Project Sidebar 的 `.rxnflow.zip` 项目包：
+浏览器本地 `exports/...` 不是云备份。当前 Web 主流程中，编辑态项目通过左侧 `Save Project` 保存；报告文件通过右侧 Export 面板下载或写入当前 browser-local project。CDXML、CSV、PNG、XLSX 和 SVG 不出现在左侧 Project Files 中。
 
-1. 如果你已经通过 Open Bridge 修改过图谱、workspace、profile 或导出索引，先点击 `Save Bridge Session`。
-2. 点击 `Export Bundle` 下载 `.rxnflow.zip`。
-3. 在目标浏览器中点击 `Import Bundle` 导入。
-4. 导入后点击 `Open Bridge`，把包里的 Project Content 恢复为当前 core session。
-
-项目包只包含 `.rxnflow/`、`inputs/raw/` 和 `exports/`。它不会自动同步云端，不包含未保存的 bridge session，也不包含项目根目录外的临时文件。
+`.rxnflow.zip` 项目包能力仍保留给内部/CLI/后备迁移场景，但当前 Web 左侧主流程不再暴露 Import Bundle / Export Bundle 作为默认操作。
 
 ## Preview 状态含义
 
@@ -126,7 +121,7 @@ A: 第一列固定为结构名称。能量字段包括 Egas、Ggas、Ggas+1M、G
 
 Q: 网页版会自动云备份这些导出文件吗？
 
-A: 不会。当前 Web 工作台是 local-only。浏览器清数据、profile 损坏或换浏览器都可能导致 browser-local project 丢失。需要迁移或备份时，后续使用 `.rxnflow.zip` 项目包路线。
+A: 不会。当前 Web 工作台是 local-only。浏览器清数据、profile 损坏或换浏览器都可能导致 browser-local project 丢失。当前主流程先用 `Save Project` 保留本浏览器项目，跨设备备份/分享入口后续会重新设计。
 
 Q: 能导出 CSV 吗？
 

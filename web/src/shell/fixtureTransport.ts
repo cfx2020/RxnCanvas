@@ -4,6 +4,7 @@ import type {
   EnergyComponentSummary,
   EnergyComputeData,
   EnergyExpressionSummary,
+  EnergyChannelSummary,
   ExportFormat,
   ExportProfileData,
   EnergyOutputUnit,
@@ -24,7 +25,9 @@ import type {
   ShellArtifact,
   ShellCommandPayload,
   ShellResponse,
+  ShellWarning,
   ShellTransport,
+  WorkbenchArtifactSummary,
   WorkbenchSnapshotData,
   WorkspaceCommandData,
   WorkspaceSelectionSummary,
@@ -57,6 +60,13 @@ export type FixtureRunData = JsonObject & {
 }
 
 const fixtureSessionId = "session-fixture-web"
+type RestoredDisplayEnergy = {
+  key: string
+  source: string
+  value: number
+  unit: string
+  reference?: string | null
+}
 const fixtureProject = {
   id: "project-fixture-minimal-reaction",
   name: "Fixture Minimal Reaction",
@@ -155,6 +165,8 @@ const fixtureMultiCandidateObjects: ObjectSummary[] = [
   },
 ]
 let fixtureWorkspace = baseWorkspaceSummary()
+let fixtureArtifacts: WorkbenchArtifactSummary[] = []
+let fixtureProjectManifest: JsonObject | null = null
 const initialFixtureObjects: ObjectSummary[] = [
   objectSummary("object-a", "Object A") as ObjectSummary,
   objectSummary("object-b", "Object B", {
@@ -304,6 +316,8 @@ export const fixtureTransport: ShellTransport = {
 
 function fixtureRunResponse(): ShellResponse<FixtureRunData> {
   fixtureWorkspace = baseWorkspaceSummary()
+  fixtureArtifacts = []
+  fixtureProjectManifest = null
   fixtureObjects = cloneObjects(initialFixtureObjects.slice(0, 2))
   fixtureProfile = profileSummary({
     pathId: "path-a-b",
@@ -338,41 +352,40 @@ function fixtureWorkbenchSnapshotResponse(args: JsonObject): ShellResponse<Workb
   if (args.session_id !== fixtureSessionId) {
     return invalidSessionResponse()
   }
+  const activeProfile = fixtureActiveProfile()
+  const projectSummary = fixtureProjectSummary()
 
   return {
     ok: true,
     data: {
       command: "workbench.snapshot",
       session_id: fixtureSessionId,
-      project_id: fixtureProject.id,
+      project_id: projectSummary.id,
       project_path: null,
-      workspace_id: fixtureWorkspaceId,
-      graph_id: fixtureGraphId,
-      profile_id: fixtureProfile.id,
+      workspace_id: fixtureWorkspace.workspace_id,
+      graph_id: fixtureWorkspace.graph.id,
+      profile_id: activeProfile?.id ?? null,
       active: {
-        workspace_id: fixtureWorkspaceId,
-        graph_id: fixtureGraphId,
-        profile_id: fixtureProfile.id,
+        workspace_id: fixtureWorkspace.workspace_id,
+        graph_id: fixtureWorkspace.graph.id,
+        profile_id: activeProfile?.id ?? null,
       },
       counts: {
-        objects: 2,
+        objects: fixtureObjects.length,
         imports: 0,
         graphs: 1,
         workspaces: 1,
-        profiles: 1,
-        artifacts: 0,
+        profiles: activeProfile ? 1 : 0,
+        artifacts: fixtureArtifacts.length,
       },
-      project: {
-        ...fixtureProject,
-        resource_count: 0,
-      },
+      project: projectSummary,
       objects: [
-        ...cloneObjects(fixtureObjects.filter((object) => object.id === "object-a" || object.id === "object-b")),
+        ...cloneObjects(fixtureObjects),
       ],
       imports: [],
       workspace: fixtureWorkspace,
-      profile: fixtureProfile,
-      artifacts: [],
+      profile: activeProfile,
+      artifacts: fixtureArtifacts,
       warnings: [],
     },
     error: null,
@@ -395,31 +408,34 @@ function fixtureProjectOpenResponse(args: JsonObject): ShellResponse {
       artifacts: [],
     }
   }
-  fixtureWorkspace = workspaceFromProjectContentFiles(args.content_files) ?? baseWorkspaceSummary()
+  fixtureProjectManifest = projectManifestFromProjectContentFiles(args.content_files)
+  const projectId = fixtureProjectId()
+  fixtureWorkspace = workspaceFromProjectContentFiles(args.content_files) ?? emptyWorkspaceSummary(projectId)
+  fixtureObjects = objectSummariesFromProjectContentFiles(args.content_files) ?? []
+  fixtureArtifacts = artifactSummariesFromProjectContentFiles(args.content_files)
   fixtureProfile = profileSummary({
-    pathId: fixtureWorkspace.active_path_id ?? fixtureWorkspace.graph.paths[0]?.id ?? "path-a-b",
+    pathId: fixtureWorkspace.active_path_id ?? fixtureWorkspace.graph.paths[0]?.id ?? "",
     outputUnit: "kcal_mol",
     energyKey: "electronic",
-    baselineNodeId: fixtureWorkspace.graph.paths[0]?.node_ids[0] ?? "node-a",
+    baselineNodeId: fixtureWorkspace.graph.paths[0]?.node_ids[0] ?? null,
   })
+  const activeProfile = fixtureActiveProfile()
+  const projectSummary = fixtureProjectSummary()
   return {
     ok: true,
     data: {
       command: "project.open",
       session_id: fixtureSessionId,
-      project_id: fixtureProject.id,
-      workspace_id: fixtureWorkspaceId,
-      graph_id: fixtureGraphId,
-      profile_id: fixtureProfile.id,
-      object_count: 2,
+      project_id: projectSummary.id,
+      workspace_id: fixtureWorkspace.workspace_id,
+      graph_id: fixtureWorkspace.graph.id,
+      profile_id: activeProfile?.id ?? null,
+      object_count: fixtureObjects.length,
       graph_count: 1,
       workspace_count: 1,
-      profile_count: 1,
-      artifact_count: 0,
-      project: {
-        ...fixtureProject,
-        resource_count: 0,
-      },
+      profile_count: activeProfile ? 1 : 0,
+      artifact_count: fixtureArtifacts.length,
+      project: projectSummary,
       load_content: args.load_content !== false,
     },
     error: null,
@@ -435,23 +451,25 @@ async function fixtureProjectSaveContentResponse(args: JsonObject): Promise<Shel
   const contentFiles = args.include_content_files === true
     ? await fixtureProjectContentFiles()
     : undefined
+  const activeProfile = fixtureActiveProfile()
+  const projectSummary = fixtureProjectSummary()
   return {
     ok: true,
     data: {
       command: "project.save_content",
       session_id: fixtureSessionId,
-      project_id: fixtureProject.id,
-      workspace_id: fixtureWorkspaceId,
-      graph_id: fixtureGraphId,
-      profile_id: fixtureProfile.id,
-      object_count: 2,
+      project_id: projectSummary.id,
+      workspace_id: fixtureWorkspace.workspace_id,
+      graph_id: fixtureWorkspace.graph.id,
+      profile_id: activeProfile?.id ?? null,
+      object_count: fixtureObjects.length,
       graph_count: 1,
       workspace_count: 1,
-      profile_count: 1,
-      artifact_count: 0,
+      profile_count: activeProfile ? 1 : 0,
+      artifact_count: fixtureArtifacts.length,
       saved: {
         schema_version: "project-content-v1",
-        project_id: fixtureProject.id,
+        project_id: projectSummary.id,
         file_count: 6,
         files: [],
       },
@@ -1020,51 +1038,54 @@ function escapeXml(value: string): string {
 }
 
 async function fixtureProjectContentFiles(): Promise<JsonObject[]> {
+  const projectId = fixtureProjectId()
+  const manifestResources = fixtureProjectResources()
   const sectionData: Array<[string, string, JsonObject]> = [
     [".rxnflow/state/chemical-objects.json", "chemical_objects", {
       schema_version: "chemical-objects-v1",
-      project_id: fixtureProject.id,
+      project_id: projectId,
       objects: fixtureChemicalObjectsSection(),
     }],
     [".rxnflow/state/reaction-graphs.json", "reaction_graphs", {
       schema_version: "reaction-graphs-v1",
-      project_id: fixtureProject.id,
+      project_id: projectId,
       graphs: [reactionGraphSectionFromWorkspace(fixtureWorkspace)],
     }],
     [".rxnflow/state/workspaces.json", "workspaces", {
       schema_version: "workspaces-v1",
-      project_id: fixtureProject.id,
+      project_id: projectId,
       workspaces: [workspaceSectionFromWorkspace(fixtureWorkspace)],
     }],
     [".rxnflow/state/energy-profiles.json", "energy_profiles", {
       schema_version: "energy-profiles-v1",
-      project_id: fixtureProject.id,
+      project_id: projectId,
       profiles: [],
     }],
     [".rxnflow/state/import-ledger.json", "import_ledger", {
       schema_version: "import-ledger-v1",
-      project_id: fixtureProject.id,
+      project_id: projectId,
       batches: [],
     }],
     [".rxnflow/state/export-artifacts.json", "export_artifacts", {
       schema_version: "export-artifacts-v1",
-      project_id: fixtureProject.id,
+      project_id: projectId,
       artifacts: [],
     }],
   ]
   const sectionFiles = await Promise.all(sectionData.map(([path, kind, data]) => fixtureProjectContentFile(path, kind, data)))
   const files = [
     await fixtureProjectContentFile(".rxnflow/manifest.json", "project_manifest", {
-      id: fixtureProject.id,
-      name: fixtureProject.name,
-      created_at: "2026-05-02T00:00:00Z",
-      updated_at: "2026-05-02T00:00:00Z",
+      ...(fixtureProjectManifest ?? {}),
+      id: projectId,
+      name: fixtureProjectName(),
+      created_at: typeof fixtureProjectManifest?.created_at === "string" ? fixtureProjectManifest.created_at : "2026-05-02T00:00:00Z",
+      updated_at: "2026-05-05T00:00:00Z",
       schema_version: "project-v1",
-      resources: [],
+      resources: manifestResources,
     }),
     await fixtureProjectContentFile(".rxnflow/state/project-content.json", "project_content_index", {
       schema_version: "project-content-v1",
-      project_id: fixtureProject.id,
+      project_id: projectId,
       updated_at: "2026-05-05T00:00:00Z",
       files: sectionFiles.map((file) => {
         const metadata = file.metadata as JsonObject
@@ -1224,6 +1245,142 @@ function workspaceFromProjectContentFiles(files: JsonValue[]): WorkspaceSummary 
   })
 }
 
+function objectSummariesFromProjectContentFiles(files: JsonValue[]): ObjectSummary[] | null {
+  const section = projectContentJson(files, ".rxnflow/state/chemical-objects.json")
+  const rawObjects = section?.objects
+  if (!Array.isArray(rawObjects)) return null
+  return rawObjects
+    .map(objectSummaryFromProjectContent)
+    .filter((object): object is ObjectSummary => Boolean(object))
+}
+
+function objectSummaryFromProjectContent(value: JsonValue): ObjectSummary | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const raw = value as JsonObject
+  const id = typeof raw.id === "string" && raw.id ? raw.id : ""
+  if (!id) return null
+  const energies = jsonRecord(raw.energies)
+  const thermochemistry = jsonRecord(raw.thermochemistry)
+  const energyChannels = [
+    ...energyChannelsFromRecord(energies, "energies", id),
+    ...energyChannelsFromRecord(thermochemistry, "thermochemistry", id),
+  ]
+  const displayEnergy = displayEnergyFromRecords(energies, thermochemistry)
+  const geometry = Array.isArray(raw.geometry) ? raw.geometry : []
+  const elements = uniqueStrings(geometry.map((atom) => {
+    if (!atom || typeof atom !== "object" || Array.isArray(atom)) return ""
+    return typeof (atom as JsonObject).element === "string" ? String((atom as JsonObject).element) : ""
+  }).filter(Boolean))
+  const provenance = jsonRecord(raw.provenance)
+  return {
+    ...raw,
+    id,
+    label: typeof raw.label === "string" ? raw.label : id,
+    formula: typeof raw.formula === "string" ? raw.formula : null,
+    charge: finiteNumberOrNull(raw.charge),
+    spin_multiplicity: finiteNumberOrNull(raw.spin_multiplicity),
+    method: typeof raw.method === "string" ? raw.method : null,
+    source_file_id: typeof raw.source_file_id === "string" ? raw.source_file_id : null,
+    energy_keys: Object.keys(energies),
+    thermochemistry_keys: Object.keys(thermochemistry),
+    energy_channels: energyChannels,
+    display_energy: displayEnergy,
+    coordinate_preview: {
+      atom_count: geometry.length,
+      has3d: geometry.some((atom) => (
+        atom
+        && typeof atom === "object"
+        && !Array.isArray(atom)
+        && Number.isFinite(Number((atom as JsonObject).x))
+        && Number.isFinite(Number((atom as JsonObject).y))
+        && Number.isFinite(Number((atom as JsonObject).z))
+      )),
+      elements,
+      preview_kind: geometry.length > 0 ? "text" : "unavailable",
+    },
+    provenance: provenance ? {
+      source_file_id: typeof provenance.source_file_id === "string"
+        ? provenance.source_file_id
+        : typeof raw.source_file_id === "string" ? raw.source_file_id : id,
+      parser_id: typeof provenance.parser_id === "string" ? provenance.parser_id : "project-content",
+      parser_version: typeof provenance.parser_version === "string" ? provenance.parser_version : "fixture-restore",
+      parsed_at: typeof provenance.parsed_at === "string" ? provenance.parsed_at : null,
+    } : null,
+    correction_count: Array.isArray(raw.corrections) ? raw.corrections.length : 0,
+    corrections: Array.isArray(raw.corrections) ? raw.corrections as CorrectionSummary[] : [],
+    warnings: Array.isArray(raw.warnings) ? raw.warnings as ShellWarning[] : [],
+  }
+}
+
+function artifactSummariesFromProjectContentFiles(files: JsonValue[]): WorkbenchArtifactSummary[] {
+  const section = projectContentJson(files, ".rxnflow/state/export-artifacts.json")
+  const rawArtifacts = section?.artifacts
+  if (!Array.isArray(rawArtifacts)) return []
+  return rawArtifacts
+    .map((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null
+      const raw = value as JsonObject
+      const id = typeof raw.id === "string" && raw.id ? raw.id : ""
+      const format = typeof raw.format === "string" && raw.format ? raw.format : ""
+      if (!id || !format) return null
+      return {
+        id,
+        format,
+        path: typeof raw.path === "string" ? raw.path : null,
+        checksum: typeof raw.checksum === "string" ? raw.checksum : undefined,
+        metadata: jsonRecord(raw.metadata) ?? {},
+        persisted: true,
+        has_inline_bytes: false,
+      } as WorkbenchArtifactSummary
+    })
+    .filter((artifact): artifact is WorkbenchArtifactSummary => Boolean(artifact))
+}
+
+function projectManifestFromProjectContentFiles(files: JsonValue[]): JsonObject | null {
+  return projectContentJson(files, ".rxnflow/manifest.json")
+}
+
+function fixtureProjectId(): string {
+  return typeof fixtureProjectManifest?.id === "string" && fixtureProjectManifest.id
+    ? fixtureProjectManifest.id
+    : fixtureProject.id
+}
+
+function fixtureProjectName(): string {
+  return typeof fixtureProjectManifest?.name === "string" && fixtureProjectManifest.name
+    ? fixtureProjectManifest.name
+    : fixtureProject.name
+}
+
+function fixtureProjectResources(): JsonValue[] {
+  return Array.isArray(fixtureProjectManifest?.resources)
+    ? fixtureProjectManifest.resources
+    : []
+}
+
+function fixtureProjectSummary() {
+  return {
+    ...fixtureProject,
+    id: fixtureProjectId(),
+    name: fixtureProjectName(),
+    created_at: typeof fixtureProjectManifest?.created_at === "string"
+      ? fixtureProjectManifest.created_at
+      : "2026-05-02T00:00:00Z",
+    updated_at: typeof fixtureProjectManifest?.updated_at === "string"
+      ? fixtureProjectManifest.updated_at
+      : "2026-05-02T00:00:00Z",
+    resource_count: fixtureProjectResources().length,
+  }
+}
+
+function fixtureActiveProfile(): EnergyProfileSummary | null {
+  const pathId = fixtureWorkspace.active_path_id ?? fixtureWorkspace.graph.paths[0]?.id ?? ""
+  if (!pathId || !fixtureWorkspace.graph.paths.some((path) => path.id === pathId)) {
+    return null
+  }
+  return fixtureProfile.path_id === pathId ? fixtureProfile : null
+}
+
 function projectContentJson(files: JsonValue[], path: string): JsonObject | null {
   const file = files.find((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return false
@@ -1238,6 +1395,78 @@ function projectContentJson(files: JsonValue[], path: string): JsonObject | null
   } catch {
     return null
   }
+}
+
+function jsonRecord(value: JsonValue | undefined): JsonObject {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {}
+}
+
+function energyChannelsFromRecord(
+  record: JsonObject,
+  source: "energies" | "thermochemistry",
+  objectId: string,
+): EnergyChannelSummary[] {
+  return Object.entries(record).flatMap(([key, value]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return []
+    const energy = value as JsonObject
+    const unit = typeof energy.unit === "string" ? energy.unit : ""
+    if (!unit) return []
+    return [{
+      key,
+      source,
+      label: `${key} (${source})`,
+      unit,
+      reference: typeof energy.reference === "string" ? energy.reference : null,
+      object_ids: [objectId],
+    }]
+  })
+}
+
+function displayEnergyFromRecords(
+  energies: JsonObject,
+  thermochemistry: JsonObject,
+): RestoredDisplayEnergy | null {
+  const preferred = energyValueFromRecord(energies, "electronic")
+    ?? firstEnergyValueFromRecord(energies)
+    ?? firstEnergyValueFromRecord(thermochemistry, "thermochemistry")
+  return preferred
+}
+
+function energyValueFromRecord(
+  record: JsonObject,
+  key: string,
+  source: "energies" | "thermochemistry" = "energies",
+): RestoredDisplayEnergy | null {
+  const value = record[key]
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const energy = value as JsonObject
+  const numericValue = Number(energy.value)
+  const unit = typeof energy.unit === "string" ? energy.unit : ""
+  if (!Number.isFinite(numericValue) || !unit) return null
+  return {
+    key,
+    source,
+    value: numericValue,
+    unit,
+    reference: typeof energy.reference === "string" ? energy.reference : null,
+  }
+}
+
+function firstEnergyValueFromRecord(
+  record: JsonObject,
+  source: "energies" | "thermochemistry" = "energies",
+): RestoredDisplayEnergy | null {
+  const key = Object.keys(record)[0]
+  return key ? energyValueFromRecord(record, key, source) : null
+}
+
+function finiteNumberOrNull(value: JsonValue | undefined): number | null {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : null
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values))
 }
 
 function graphSummaryFromSection(graph: JsonObject): WorkspaceSummary["graph"] | null {
@@ -1351,7 +1580,7 @@ function profileSummary(options: {
   includeCorrections?: boolean
 }): EnergyProfileSummary {
   const path = fixtureWorkspace.graph.paths.find((item) => item.id === options.pathId)
-  const nodeIds = path?.node_ids ?? ["node-a", "node-b"]
+  const nodeIds = path?.node_ids ?? (options.pathId ? ["node-a", "node-b"] : [])
   const points = nodeIds.map((nodeId, index) => profilePoint(
     nodeId,
     index,
@@ -1362,7 +1591,7 @@ function profileSummary(options: {
   ))
   return {
     id: profileId(options.pathId, options.energyKey, options.outputUnit, options.energySource ?? "auto"),
-    graph_id: fixtureGraphId,
+    graph_id: fixtureWorkspace.graph.id,
     path_id: options.pathId,
     point_count: points.length,
     energy_key: options.energyKey,
@@ -1472,6 +1701,26 @@ function profilePoint(
   const node = fixtureWorkspace.graph.nodes.find((item) => item.id === nodeId)
   const objectId = node?.chemical_object_ids?.[0]
   if (objectId && objectId !== "object-a" && objectId !== "object-b") {
+    const absoluteEnergyKcal = nodeAbsoluteEnergyKcal(nodeId, energyKey, energySource)
+    const baselineEnergyKcal = baselineAbsoluteEnergyKcal(energyKey, energySource)
+    if (absoluteEnergyKcal !== null && baselineEnergyKcal !== null) {
+      const relativeKcal = absoluteEnergyKcal - baselineEnergyKcal
+      const value = outputUnit === "kj_mol"
+        ? Number((relativeKcal * 4.184).toFixed(6))
+        : Number(relativeKcal.toFixed(6))
+      return {
+        node_id: nodeId,
+        label: node?.label ?? nodeId,
+        relative_energy: {
+          value,
+          unit: outputUnit,
+          reference: "project-content-restored",
+        },
+        missing_reason: null,
+        expression: fixtureExpression(nodeId, node?.label ?? nodeId, outputUnit, value, energyKey, energySource, includeCorrections),
+        warnings: [],
+      }
+    }
     return {
       node_id: nodeId,
       label: node?.label ?? nodeId,
@@ -1511,6 +1760,71 @@ function profilePoint(
     expression: fixtureExpression(nodeId, node?.label ?? nodeId, outputUnit, value, energyKey, energySource, includeCorrections),
     warnings: [],
   }
+}
+
+const hartreeToKcalMol = 627.5094740631
+
+function baselineAbsoluteEnergyKcal(
+  energyKey: string,
+  energySource: "energies" | "thermochemistry" | "auto",
+): number | null {
+  const activePathId = fixtureWorkspace.active_path_id ?? fixtureWorkspace.graph.paths[0]?.id ?? ""
+  const path = fixtureWorkspace.graph.paths.find((item) => item.id === activePathId)
+  const baselineNodeId = path?.node_ids[0] ?? fixtureWorkspace.graph.nodes[0]?.id ?? ""
+  return baselineNodeId ? nodeAbsoluteEnergyKcal(baselineNodeId, energyKey, energySource) : null
+}
+
+function nodeAbsoluteEnergyKcal(
+  nodeId: string,
+  energyKey: string,
+  energySource: "energies" | "thermochemistry" | "auto",
+): number | null {
+  const node = fixtureWorkspace.graph.nodes.find((item) => item.id === nodeId)
+  const composition = node?.composition?.length
+    ? node.composition
+    : compositionTermsFromArgs(undefined, node?.chemical_object_ids ?? [])
+  if (composition.length === 0) return null
+  let total = 0
+  for (const term of composition) {
+    const object = fixtureObjects.find((item) => item.id === term.object_id)
+    const value = object ? objectEnergyKcal(object, energyKey, energySource) : null
+    if (value === null) return null
+    total += term.coefficient * value
+  }
+  return total
+}
+
+function objectEnergyKcal(
+  object: ObjectSummary,
+  energyKey: string,
+  energySource: "energies" | "thermochemistry" | "auto",
+): number | null {
+  const candidates = energySource === "thermochemistry"
+    ? [jsonRecord(object.thermochemistry as JsonValue | undefined)]
+    : energySource === "energies"
+      ? [jsonRecord(object.energies as JsonValue | undefined)]
+      : [
+          jsonRecord(object.energies as JsonValue | undefined),
+          jsonRecord(object.thermochemistry as JsonValue | undefined),
+        ]
+  for (const record of candidates) {
+    const value = energyScalarFromRecord(record, energyKey)
+    if (value !== null) return value
+  }
+  return null
+}
+
+function energyScalarFromRecord(record: JsonObject, key: string): number | null {
+  const value = record[key]
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const energy = value as JsonObject
+  const numericValue = Number(energy.value)
+  const unit = typeof energy.unit === "string" ? energy.unit : ""
+  if (!Number.isFinite(numericValue) || !unit) return null
+  if (unit === "kcal_mol") return numericValue
+  if (unit === "kj_mol") return numericValue / 4.184
+  if (unit === "hartree") return numericValue * hartreeToKcalMol
+  return null
 }
 
 function fixtureExpression(
@@ -1637,7 +1951,7 @@ function fixtureImportRegisterAllResponse(args: JsonObject): ShellResponse<Impor
     }
   }
 
-  for (const object of initialFixtureObjects) {
+  for (const object of initialFixtureObjects.filter((item) => fixtureRegisteredObjectIds.includes(item.id))) {
     if (!fixtureObjects.some((item) => item.id === object.id)) {
       fixtureObjects = [...fixtureObjects, JSON.parse(JSON.stringify(object)) as ObjectSummary]
     }
@@ -1954,6 +2268,44 @@ function baseWorkspaceSummary(): WorkspaceSummary {
     preview: {
       graph_id: fixtureGraphId,
       active_path_id: "path-a-b",
+      node_count: 0,
+      edge_count: 0,
+      path_count: 0,
+      disconnected_node_ids: [],
+      warnings: [],
+    },
+  })
+}
+
+function emptyWorkspaceSummary(projectId: string): WorkspaceSummary {
+  return normalizeWorkspace({
+    workspace_id: "workspace-project-main",
+    project_id: projectId,
+    active_path_id: null,
+    selection: {
+      node_ids: [],
+      edge_ids: [],
+      path_ids: [],
+    },
+    viewport: {
+      x: 0,
+      y: 0,
+      zoom: 1,
+    },
+    palette: [],
+    graph: {
+      id: "graph-project-main",
+      project_id: projectId,
+      node_count: 0,
+      edge_count: 0,
+      path_count: 0,
+      nodes: [],
+      edges: [],
+      paths: [],
+    },
+    preview: {
+      graph_id: "graph-project-main",
+      active_path_id: null,
       node_count: 0,
       edge_count: 0,
       path_count: 0,

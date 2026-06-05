@@ -13,20 +13,16 @@ import {
   editFixtureEdgeLabel,
   exerciseNarrowGraphAdvancedControls,
   exerciseGraphViewportControls,
-  expectBundleEntry,
   expectConsoleClean,
   expectNoFrameworkOverlay,
   expectNoHorizontalOverflow,
   expectRegionVisible,
-  exportProjectBundleDownload,
   exportFixtureProfile,
   exportWithoutInlineBytes,
-  importInvalidProjectBundleSample,
-  importProjectBundleFile,
+  importSourcesToCanvas,
   openAnalysisDockTab,
   openBrowserProject,
   openWorkbench,
-  previewAndRegisterImport,
   rubberBandDeleteTemporaryNodes,
   reorderFixturePathToReverse,
   resetWorkbenchStorage,
@@ -49,7 +45,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     const projectName = `E2E Project ${Date.now()}`
     await createAndSaveBrowserProject(page, projectName)
     await runFixture(page)
-    await previewAndRegisterImport(page)
+    await importSourcesToCanvas(page)
     await buildImportedWaterPath(page)
     await computeMissingEnergyProfile(page)
 
@@ -71,7 +67,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await expectConsoleClean(consoleIssues)
   })
 
-  test("desktop graph editor matrix covers advanced editing and bridge restore", async ({ page }, testInfo) => {
+  test("desktop graph editor matrix covers advanced editing and project restore", async ({ page }, testInfo) => {
     const consoleIssues = collectConsoleIssues(page)
     await page.setViewportSize({ width: 1280, height: 720 })
     await openWorkbench(page)
@@ -107,50 +103,43 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await expectConsoleClean(consoleIssues)
   })
 
-  test("desktop project bundle backup and restore uses browser-local repository bytes", async ({ page }, testInfo) => {
+  test("desktop project save and reopen restores browser-local project content", async ({ page }, testInfo) => {
     const consoleIssues = collectConsoleIssues(page)
     await page.setViewportSize({ width: 1280, height: 720 })
     await openWorkbench(page)
 
-    const projectName = `Bundle QA ${Date.now()}`
+    const projectName = `Restore QA ${Date.now()}`
     await createAndSaveBrowserProject(page, projectName)
-
-    const bundle = await exportProjectBundleDownload(page)
-    expectBundleEntry(bundle.entries, ".rxnflow/manifest.json")
-    expectBundleEntry(bundle.entries, ".rxnflow/state/project-content.json")
+    await runFixture(page)
+    await importSourcesToCanvas(page)
+    await page.getByRole("complementary", { name: "Project Sidebar" }).getByRole("button", { name: "Save Project" }).click()
+    await expect(page.getByText("Project content files are readable.")).toBeVisible()
 
     await page.reload({ waitUntil: "networkidle" })
     await openWorkbench(page)
-    await importProjectBundleFile(page, bundle.path)
-    await expect(page.getByRole("button", { name: "Open Bridge" })).toBeVisible()
+    await openBrowserProject(page, projectName)
     await expect(page.getByText(projectName).first()).toBeVisible()
+    await expect(page.getByRole("region", { name: "Graph Canvas" }).getByText("node-web-3").first()).toBeVisible()
 
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)
-    await attachViewportScreenshot(page, testInfo, "desktop-project-bundle-backup-restore")
+    await attachViewportScreenshot(page, testInfo, "desktop-project-save-restore")
     await expectConsoleClean(consoleIssues)
   })
 
-  test("narrow project bundle rejects invalid imports without creating projects", async ({ page }, testInfo) => {
+  test("narrow project rail keeps bundle actions out of the primary flow", async ({ page }, testInfo) => {
     const consoleIssues = collectConsoleIssues(page)
     await page.setViewportSize({ width: 390, height: 840 })
     await openWorkbench(page)
 
     const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
-    await expect(sidebar.getByRole("button", { name: "Import Bundle" })).toBeVisible()
-    await expect(sidebar.getByRole("button", { name: "Export Bundle" })).toBeDisabled()
-
-    await importInvalidProjectBundleSample(page, "non_zip_bytes")
-    await expect(sidebar.getByText("Project bundle is not a valid zip file.")).toBeVisible()
-    await expect(sidebar.getByText("No browser-local projects")).toBeVisible()
-
-    await importInvalidProjectBundleSample(page, "missing_manifest")
-    await expect(sidebar.getByText("Project bundle is missing .rxnflow/manifest.json.")).toBeVisible()
+    await expect(sidebar.getByRole("button", { name: "Import Bundle" })).toHaveCount(0)
+    await expect(sidebar.getByRole("button", { name: "Export Bundle" })).toHaveCount(0)
     await expect(sidebar.getByText("No browser-local projects")).toBeVisible()
 
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)
-    await attachViewportScreenshot(page, testInfo, "narrow-project-bundle-invalid-imports")
+    await attachViewportScreenshot(page, testInfo, "narrow-project-rail-no-bundle-actions")
     await expectConsoleClean(consoleIssues)
   })
 

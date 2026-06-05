@@ -72,7 +72,11 @@ export async function persistImportFilesAsRawInputs(
 
     const result = await persistRawInputFile(repository, activeProject.projectRef, file.file)
     if (result.ok) {
-      nextFiles.push(withRawPersistence(file, {
+      nextFiles.push(withRawPersistence({
+        ...file,
+        storagePath: result.resource.path,
+        sourceKind: "path",
+      }, {
         state: "persisted",
         resource: result.resource,
       }))

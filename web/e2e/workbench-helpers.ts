@@ -118,7 +118,7 @@ export async function createAndSaveBrowserProject(page: Page, name: string) {
   await expect(sidebar.getByText("Valid", { exact: true })).toBeVisible()
   await expect(sidebar.getByText(/sha256:[a-f0-9]{64}/i)).toBeVisible()
 
-  await sidebar.getByRole("button", { name: "Save Content" }).click()
+  await sidebar.getByRole("button", { name: "Save Project" }).click()
   await expect(sidebar.getByText(/Project content files are readable/)).toBeVisible()
 }
 
@@ -631,13 +631,12 @@ export async function saveReloadAndRestoreGraphWorkspace(page: Page, projectName
 
   await selectGraphPathById(graphCanvas, "path-a-b")
 
-  await sidebar.getByRole("button", { name: "Save Bridge" }).click()
+  await sidebar.getByRole("button", { name: "Save Project" }).click()
   await expect(sidebar.getByText("Project content files are readable.")).toBeVisible()
 
   await page.reload({ waitUntil: "networkidle" })
   await openWorkbench(page)
   await openBrowserProject(page, projectName)
-  await sidebar.getByRole("button", { name: "Open Bridge" }).click()
 
   await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("120%")
   await expect(graphCanvas.getByText("node-b -> node-a")).toBeVisible()
@@ -687,7 +686,7 @@ export async function exerciseNarrowGraphAdvancedControls(page: Page) {
   await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("100%")
 }
 
-export async function previewAndRegisterImport(page: Page) {
+export async function importSourcesToCanvas(page: Page) {
   const importInbox = page.getByRole("region", { name: "Source Tray" })
   await importInbox.getByLabel("Select Files").setInputFiles([
     {
@@ -703,24 +702,19 @@ export async function previewAndRegisterImport(page: Page) {
   ])
   await importInbox.getByLabel("Expected format").selectOption("xyz")
   await importInbox.getByLabel("Strict parser").check()
-  await importInbox.getByRole("button", { name: "Preview" }).click()
+  await importInbox.getByRole("button", { name: "Import to Canvas" }).click()
 
   await expect(importInbox.getByText("import-batch-fixture-web-1")).toBeVisible()
   await expect(importInbox.getByText("inputs/raw/water.xyz")).toBeVisible()
   await expect(importInbox.getByText("missing_section").first()).toBeVisible()
   await expect(importInbox.getByText("parse_failed")).toBeVisible()
-
-  await importInbox.getByRole("button", { name: "Register All" }).click()
   await expect(importInbox.getByText("object-imported-water").first()).toBeVisible()
+  await expect(page.getByRole("region", { name: "Graph Canvas" }).getByText("node-web-3").first()).toBeVisible()
 }
 
 export async function buildImportedWaterPath(page: Page) {
-  await openAnalysisDockTab(page, "Object")
-  const objectRegistry = page.getByRole("region", { name: "Object Registry" })
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
 
-  await objectRegistry.getByRole("button", { name: /water.xyz/i }).click()
-  await graphCanvas.getByRole("button", { name: "Add Node" }).click()
   await expect(graphCanvas.getByText("node-web-3").first()).toBeVisible()
 
   await graphCanvas.getByRole("button", { name: /node-b/i }).click()

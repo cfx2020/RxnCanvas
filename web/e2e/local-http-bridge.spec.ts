@@ -3,11 +3,9 @@ import {
   attachViewportScreenshot,
   collectConsoleIssues,
   createAndSaveBrowserProject,
-  expectBundleEntry,
   expectConsoleClean,
   expectNoHorizontalOverflow,
-  exportProjectBundleDownload,
-  importProjectBundleFile,
+  openBrowserProject,
   openWorkbench,
   openAnalysisDockTab,
   resetWorkbenchStorage,
@@ -31,10 +29,9 @@ test.describe("RxnFlow local-http bridge E2E", () => {
 
     const projectName = `Local HTTP E2E ${Date.now()}`
     await createAndSaveBrowserProject(page, projectName)
-    await page.getByRole("button", { name: "Open Bridge" }).click()
     await expect(page.getByText("Open", { exact: true }).first()).toBeVisible()
     await expect(page.getByText(projectName).first()).toBeVisible()
-    await page.getByRole("button", { name: "Save Bridge" }).click()
+    await page.getByRole("button", { name: "Save Project" }).click()
     await expect(page.getByText("Project content files are readable.")).toBeVisible()
 
     await openAnalysisDockTab(page, "Diagnostics")
@@ -51,7 +48,7 @@ test.describe("RxnFlow local-http bridge E2E", () => {
       buffer: Buffer.from("2\nEnergy = -1.5 Hartree\nH 0 0 0\nH 0 0 0.74\n"),
     })
     await importInbox.getByLabel("Expected format").selectOption("xyz")
-    await importInbox.getByRole("button", { name: "Preview" }).click()
+    await importInbox.getByRole("button", { name: "Import to Canvas" }).click()
 
     await expect(importInbox.getByText("xyz-ase").first()).toBeVisible()
     await expect(importInbox.getByText("Inline bytes").first()).toBeVisible()
@@ -123,12 +120,12 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await expectConsoleClean(consoleIssues)
   })
 
-  test("exports, imports, and opens a browser project bundle through the local HTTP bridge", async ({ page }, testInfo) => {
+  test("saves and reopens browser-local raw inputs through the local HTTP bridge", async ({ page }, testInfo) => {
     const consoleIssues = collectConsoleIssues(page)
     await page.setViewportSize({ width: 1280, height: 720 })
     await openWorkbench(page)
 
-    const projectName = `Local HTTP Bundle ${Date.now()}`
+    const projectName = `Local HTTP Restore ${Date.now()}`
     await createAndSaveBrowserProject(page, projectName)
 
     const importInbox = page.getByRole("region", { name: "Source Tray" })
@@ -138,35 +135,26 @@ test.describe("RxnFlow local-http bridge E2E", () => {
       buffer: Buffer.from("2\nEnergy = -1.5 Hartree\nH 0 0 0\nH 0 0 0.74\n"),
     })
     await importInbox.getByLabel("Expected format").selectOption("xyz")
-    await importInbox.getByRole("button", { name: "Preview" }).click()
+    await importInbox.getByRole("button", { name: "Import to Canvas" }).click()
     await expect(importInbox.getByText("Persisted raw input")).toBeVisible()
-    await expect(importInbox.getByText(/inputs\/raw\/[a-f0-9]{12}-water\.xyz/)).toBeVisible()
+    await expect(importInbox.getByText(/inputs\/raw\/[a-f0-9]{12}-water\.xyz/).first()).toBeVisible()
+    await expect(page.getByRole("region", { name: "Graph Canvas" }).getByText(/node-/).first()).toBeVisible()
 
     const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
-    await sidebar.getByRole("button", { name: "Open Bridge" }).click()
     await expect(sidebar.getByText("Open", { exact: true })).toBeVisible()
-    await sidebar.getByRole("button", { name: "Save Bridge" }).click()
+    await sidebar.getByRole("button", { name: "Save Project" }).click()
     await expect(sidebar.getByText("Project content files are readable.")).toBeVisible()
-
-    const bundle = await exportProjectBundleDownload(page)
-    const bundleEntries = bundle.entries
-    expectBundleEntry(bundleEntries, ".rxnflow/manifest.json")
-    expectBundleEntry(bundleEntries, ".rxnflow/state/project-content.json")
-    expectBundleEntry(bundleEntries, ".rxnflow/state/workspaces.json")
-    expectBundleEntry(bundleEntries, ".rxnflow/state/reaction-graphs.json")
-    expect(bundleEntries.some((entry) => /\/inputs\/raw\/[a-f0-9]{12}-water\.xyz$/.test(entry))).toBe(true)
 
     await page.reload({ waitUntil: "networkidle" })
     await openWorkbench(page)
-    await importProjectBundleFile(page, bundle.path)
-    await expect(sidebar.getByRole("button", { name: "Open Bridge" })).toBeVisible()
-    await sidebar.getByRole("button", { name: "Open Bridge" }).click()
+    await openBrowserProject(page, projectName)
     await expect(sidebar.getByText("Open", { exact: true })).toBeVisible()
     await expect(page.getByText(projectName).first()).toBeVisible()
     await expect(sidebar.getByText(/inputs\/raw\/[a-f0-9]{12}-water\.xyz/)).toBeVisible()
+    await expect(page.getByRole("region", { name: "Graph Canvas" }).getByText(/node-/).first()).toBeVisible()
 
     await expectNoHorizontalOverflow(page)
-    await attachViewportScreenshot(page, testInfo, "local-http-bundle-roundtrip")
+    await attachViewportScreenshot(page, testInfo, "local-http-project-save-restore")
     await expectConsoleClean(consoleIssues)
   })
 })

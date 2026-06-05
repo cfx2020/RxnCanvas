@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { AlertTriangle, Play } from "lucide-react"
 import {
   BrowserProjectRepositoryError,
+  checksumBrowserStorageBytes,
   type BrowserProjectRepository,
   type BrowserProjectRepositoryErrorPayload,
   type BrowserStorageObject,
@@ -95,16 +96,11 @@ import {
 } from "./importInboxState"
 import { ObjectRegistryPanel, type ApplyCorrectionRequest } from "./ObjectRegistryPanel"
 import { persistImportFilesAsRawInputs, persistRawInputFile, type BrowserRawResource } from "./rawInputPersistence"
-import { exportBrowserProjectBundle, type ExportBundleStatus } from "./projectBundleExport"
-import {
-  browserProjectBundleImportConflictPolicy,
-  importBrowserProjectBundle,
-  type ImportBundleStatus,
-} from "./projectBundleImport"
 import { createProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
-import type { ProjectFileEntry } from "./projectFiles"
+import { projectFileEntriesWithWorkbenchProjection, type ProjectFileEntry } from "./projectFiles"
 import {
   contentFilesToShellPayload,
+  projectManifestPath,
   readProjectContentFiles,
   shellPayloadToContentFiles,
   type BrowserProjectContentFile,
@@ -174,8 +170,6 @@ export function WorkbenchShell({
   const [workspaceFlowShellState, setWorkspaceFlowShellState] = useState<WorkspaceFlowShellState>(
     defaultWorkspaceFlowShellState,
   )
-  const [exportBundleStatus, setExportBundleStatus] = useState<ExportBundleStatus>({ state: "idle" })
-  const [importBundleStatus, setImportBundleStatus] = useState<ImportBundleStatus>({ state: "idle" })
   const [importInboxState, setImportInboxState] = useState<ImportInboxState>(
     initialImportInboxState,
   )
@@ -226,10 +220,28 @@ export function WorkbenchShell({
   const graphEditorHistoryScopeRef = useRef("")
   const pesComputeSignatureRef = useRef<string | null>(null)
   const pesComputeInFlightRef = useRef<string | null>(null)
+  const shellSessionVersionRef = useRef(0)
 
   useEffect(() => {
     workbenchStateRef.current = workbenchState
   }, [workbenchState])
+
+  const replaceProjectSidebarState = useCallback((nextState: ProjectSidebarState) => {
+    projectSidebarStateRef.current = nextState
+    setProjectSidebarState(nextState)
+  }, [])
+
+  useEffect(() => {
+    const current = projectSidebarStateRef.current
+    const projectedFiles = projectFileEntriesWithWorkbenchProjection(current.projectFiles, workbenchState)
+    if (projectFileProjectionSignature(projectedFiles) === projectFileProjectionSignature(current.projectFiles)) {
+      return
+    }
+    replaceProjectSidebarState({
+      ...current,
+      projectFiles: projectedFiles,
+    })
+  }, [replaceProjectSidebarState, workbenchState])
 
   const replaceGraphEditorHistory = useCallback((nextState: GraphEditorHistoryState) => {
     graphEditorHistoryRef.current = nextState
@@ -276,11 +288,6 @@ export function WorkbenchShell({
     workbenchState.workspace,
   ])
 
-  const replaceProjectSidebarState = useCallback((nextState: ProjectSidebarState) => {
-    projectSidebarStateRef.current = nextState
-    setProjectSidebarState(nextState)
-  }, [])
-
   const refreshProjectSidebar = useCallback(async () => {
     const loadingState: ProjectSidebarState = {
       ...projectSidebarStateRef.current,
@@ -303,10 +310,6 @@ export function WorkbenchShell({
   useEffect(() => {
     void refreshProjectSidebar()
   }, [refreshProjectSidebar])
-
-  useEffect(() => {
-    setExportBundleStatus({ state: "idle" })
-  }, [projectSidebarState.activeProjectRef])
 
   useEffect(() => {
     setActiveObjectId((current) => {
@@ -388,52 +391,18 @@ export function WorkbenchShell({
     })
   }, [workbenchState.workspace])
 
-  const createSidebarProject = useCallback(
-    async (name: string) => {
-      const loadingState: ProjectSidebarState = {
-        ...projectSidebarStateRef.current,
-        status: "loading",
-        error: undefined,
-      }
-      replaceProjectSidebarState(loadingState)
-      const nextState = await createProject(projectRepository, loadingState, name)
-      replaceProjectSidebarState(nextState)
-      return nextState
-    },
-    [projectRepository, replaceProjectSidebarState],
-  )
-
-  const openSidebarProject = useCallback(
-    async (projectRef: string) => {
-      const loadingState: ProjectSidebarState = {
-        ...projectSidebarStateRef.current,
-        status: "loading",
-        error: undefined,
-      }
-      replaceProjectSidebarState(loadingState)
-      const nextState = await openProject(projectRepository, loadingState, projectRef)
-      replaceProjectSidebarState(nextState)
-    },
-    [projectRepository, replaceProjectSidebarState],
-  )
-
-  const saveSidebarProjectStub = useCallback(async () => {
-    const loadingState: ProjectSidebarState = {
-      ...projectSidebarStateRef.current,
-      status: "loading",
-      persistence: "saving",
-      error: undefined,
+  const restoreSidebarProjectSession = useCallback(async (
+    baseState: ProjectSidebarState,
+  ) => {
+    const restoreVersion = shellSessionVersionRef.current + 1
+    shellSessionVersionRef.current = restoreVersion
+    const activeProject = baseState.activeProject
+    if (!activeProject) {
+      replaceProjectSidebarState(baseState)
+      return
     }
-    replaceProjectSidebarState(loadingState)
-    const nextState = await saveProjectContent(projectRepository, loadingState)
-    replaceProjectSidebarState(nextState)
-  }, [projectRepository, replaceProjectSidebarState])
-
-  const openSidebarBridgeSession = useCallback(async () => {
-    const activeProject = projectSidebarStateRef.current.activeProject
-    if (!activeProject) return
     const loadingState: ProjectSidebarState = {
-      ...projectSidebarStateRef.current,
+      ...baseState,
       status: "loading",
       bridge: { state: "opening" },
       error: undefined,
@@ -501,6 +470,9 @@ export function WorkbenchShell({
       command: "workbench.snapshot",
       args: { session_id: response.data.session_id },
     })
+    if (shellSessionVersionRef.current !== restoreVersion) {
+      return
+    }
     resetGraphEditorHistory()
     setWorkbenchState(projectWorkbenchSnapshot(snapshot))
     const sessionId = String(response.data.session_id)
@@ -516,6 +488,55 @@ export function WorkbenchShell({
     }
     replaceProjectSidebarState(nextState)
   }, [projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient])
+
+  const createSidebarProject = useCallback(
+    async (name: string) => {
+      const requestVersion = shellSessionVersionRef.current
+      const loadingState: ProjectSidebarState = {
+        ...projectSidebarStateRef.current,
+        status: "loading",
+        error: undefined,
+      }
+      replaceProjectSidebarState(loadingState)
+      const nextState = await createProject(projectRepository, loadingState, name)
+      if (
+        nextState.status === "ready"
+        && nextState.activeProject
+        && nextState.validation.state === "valid"
+        && shellSessionVersionRef.current === requestVersion
+      ) {
+        await restoreSidebarProjectSession(nextState)
+        return nextState
+      }
+      replaceProjectSidebarState(nextState)
+      return nextState
+    },
+    [projectRepository, replaceProjectSidebarState, restoreSidebarProjectSession],
+  )
+
+  const openSidebarProject = useCallback(
+    async (projectRef: string) => {
+      const requestVersion = shellSessionVersionRef.current
+      const loadingState: ProjectSidebarState = {
+        ...projectSidebarStateRef.current,
+        status: "loading",
+        error: undefined,
+      }
+      replaceProjectSidebarState(loadingState)
+      const nextState = await openProject(projectRepository, loadingState, projectRef)
+      if (
+        nextState.status === "ready"
+        && nextState.activeProject
+        && nextState.validation.state === "valid"
+        && shellSessionVersionRef.current === requestVersion
+      ) {
+        await restoreSidebarProjectSession(nextState)
+        return
+      }
+      replaceProjectSidebarState(nextState)
+    },
+    [projectRepository, replaceProjectSidebarState, restoreSidebarProjectSession],
+  )
 
   const saveSidebarBridgeSession = useCallback(async () => {
     const activeProject = projectSidebarStateRef.current.activeProject
@@ -558,7 +579,11 @@ export function WorkbenchShell({
       }))
       return
     }
-    const files = shellPayloadToContentFiles(response.data.content_files) as BrowserProjectContentFile[]
+    const files = await preserveBrowserProjectManifest(
+      projectRepository,
+      activeProject.projectRef,
+      shellPayloadToContentFiles(response.data.content_files) as BrowserProjectContentFile[],
+    )
     const savedState = await saveProjectContent(projectRepository, loadingState, files)
     replaceProjectSidebarState({
       ...savedState,
@@ -567,50 +592,24 @@ export function WorkbenchShell({
     setWorkbenchState((current) => ({ ...current, status: "success", warnings: response.warnings, error: undefined }))
   }, [projectRepository, replaceProjectSidebarState, shellClient, workbenchState.sessionId])
 
-  const exportSidebarBundle = useCallback(async () => {
-    const activeProject = projectSidebarStateRef.current.activeProject
-    setExportBundleStatus({ state: "exporting" })
-    const result = await exportBrowserProjectBundle(projectRepository, activeProject)
-    if (!result.ok) {
-      setExportBundleStatus({ state: "error", error: result.error })
+  const saveSidebarProject = useCallback(async () => {
+    if (workbenchStateRef.current.sessionId) {
+      await saveSidebarBridgeSession()
       return
     }
-    triggerBrowserBundleDownload(result.blob, result.fileName)
-    setExportBundleStatus({
-      state: "success",
-      fileName: result.fileName,
-      summary: result.summary,
-    })
-  }, [projectRepository])
-
-  const importSidebarBundleFile = useCallback(async (file: File) => {
-    setImportBundleStatus({ state: "importing", fileName: file.name })
-    const result = await importBrowserProjectBundle(projectRepository, {
-      file,
-      conflictPolicy: browserProjectBundleImportConflictPolicy,
-    })
-    if (!result.ok) {
-      setImportBundleStatus({ state: "error", error: result.error })
-      return
-    }
-
     const loadingState: ProjectSidebarState = {
       ...projectSidebarStateRef.current,
       status: "loading",
+      persistence: "saving",
       error: undefined,
     }
     replaceProjectSidebarState(loadingState)
-    const nextState = await openProject(projectRepository, loadingState, result.project.projectRef)
+    const nextState = await saveProjectContent(projectRepository, loadingState)
     replaceProjectSidebarState(nextState)
-    setImportBundleStatus({
-      state: "success",
-      project: nextState.activeProject ?? result.project,
-      summary: result.summary,
-      receiptCount: result.receipts.length,
-    })
-  }, [projectRepository, replaceProjectSidebarState])
+  }, [projectRepository, replaceProjectSidebarState, saveSidebarBridgeSession])
 
   const runFixture = useCallback(async () => {
+    shellSessionVersionRef.current += 1
     setParseCandidateChooser(null)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const fixtureResponse = await shellClient.run<FixtureRunData>({
@@ -723,12 +722,28 @@ export function WorkbenchShell({
     applyWorkspaceResponse(response)
   }, [applyWorkspaceResponse, shellClient, workbenchState.sessionId])
 
+  const ensureWorkspaceReady = useCallback(async (sessionId: string) => {
+    if (workbenchStateRef.current.workspace) return true
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.open",
+      args: { session_id: sessionId },
+    })
+    applyWorkspaceResponse(response)
+    if (response.ok && response.data) {
+      resetGraphEditorHistory()
+      return true
+    }
+    return false
+  }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient])
+
   const addObjectNode = useCallback(async (request: AddObjectNodeRequest = {}) => {
     const sessionId = workbenchState.sessionId
     const activeObject = workbenchState.objects.find((object) => object.id === (request.objectId ?? activeObjectId))
       ?? workbenchState.objects[0]
     if (!sessionId || !activeObject) return
     const nodeCount = workbenchState.workspace?.graph.nodes.length ?? 0
+    if (!(await ensureWorkspaceReady(sessionId))) return
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.add_node",
@@ -744,7 +759,7 @@ export function WorkbenchShell({
     if (response.ok && response.data) {
       resetGraphEditorHistory()
     }
-  }, [activeObjectId, applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.objects, workbenchState.sessionId, workbenchState.workspace])
+  }, [activeObjectId, applyWorkspaceResponse, ensureWorkspaceReady, resetGraphEditorHistory, shellClient, workbenchState.objects, workbenchState.sessionId, workbenchState.workspace])
 
   const applyDropImportError = useCallback((
     error: ShellError,
@@ -995,6 +1010,7 @@ export function WorkbenchShell({
       }
     })
 
+    if (!(await ensureWorkspaceReady(sessionId))) return
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.add_node",
@@ -1024,7 +1040,19 @@ export function WorkbenchShell({
       warnings: projectFileWarningMessagesFromWarnings(addNodeResponse.warnings),
     })
     resetGraphEditorHistory()
-  }, [applyDropImportError, applyWorkspaceResponse, importInboxState.expectedFormat, importInboxState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
+  }, [applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, importInboxState.expectedFormat, importInboxState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
+
+  const addProjectFileToCanvas = useCallback(async (file: ProjectFileEntry) => {
+    const baseNodeCount = workbenchStateRef.current.workspace?.graph.nodes.length ?? 0
+    await addRawFileNode({
+      source: {
+        kind: "project-file",
+        projectFileId: file.id,
+        path: file.path,
+      },
+      position: registeredImportNodePosition(baseNodeCount, 0),
+    })
+  }, [addRawFileNode])
 
   const cancelParseCandidateChooser = useCallback(() => {
     setParseCandidateChooser(null)
@@ -1162,6 +1190,7 @@ export function WorkbenchShell({
     })
 
     setParseCandidateChooser((current) => current ? { ...current, status: "adding-nodes", error: null } : current)
+    if (!(await ensureWorkspaceReady(sessionId))) return
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     let latestWorkspace: WorkspaceSummary | null = null
     for (const [index, object] of registeredObjects.entries()) {
@@ -1199,7 +1228,7 @@ export function WorkbenchShell({
     }
     setParseCandidateChooser(null)
     resetGraphEditorHistory()
-  }, [applyWorkspaceResponse, parseCandidateChooser, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
+  }, [applyWorkspaceResponse, ensureWorkspaceReady, parseCandidateChooser, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
 
   const applyCorrection = useCallback(async (request: ApplyCorrectionRequest) => {
     const sessionId = workbenchState.sessionId
@@ -2052,42 +2081,232 @@ export function WorkbenchShell({
     }))
   }, [projectRepository, replaceProjectSidebarState, reportExportOptions, shellClient, workbenchState.artifacts, workbenchState.profile, workbenchState.sessionId])
 
-  const previewImport = useCallback(async () => {
-    const payload = await importPreviewArgsFromFiles(importInboxState, workbenchState.sessionId, {
-      preferInlineBytes: runtimeInfo.mode === "local-http",
-    })
-    if (!payload.ok) {
+  const registerImportBatchToCanvas = useCallback(async (batchId: string, selectedFiles: WebImportFile[]) => {
+    const sessionId = workbenchState.sessionId
+    if (!sessionId) {
+      const error = shellError("invalid_input", "Shell session is required before registering import files.", "session_id")
       setImportInboxState((current) => ({
         ...current,
         status: "error",
-        selectedFiles: payload.files,
+        selectedFiles,
         warnings: [],
-        error: payload.error,
+        error,
       }))
       setWorkbenchState((current) => ({
         ...current,
         status: "error",
         warnings: [],
-        error: payload.error,
+        error,
       }))
       return
     }
-    const args = payload.args
-    const selectedFiles = await persistImportFilesAsRawInputs(
-      projectRepository,
-      projectSidebarStateRef.current.activeProject,
-      payload.files,
-    )
+    const selectedRawPaths = selectedFiles
+      .map((file) => file.rawPersistence?.state === "persisted"
+        ? file.rawPersistence.resource.path
+        : file.storagePath)
+      .filter((path): path is string => Boolean(path))
     setImportInboxState((current) => ({
       ...current,
-      status: "previewing",
+      status: "registering",
       selectedFiles,
       warnings: [],
       error: undefined,
     }))
+    const response = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: sessionId,
+        batch_id: batchId,
+      },
+    })
+
+    if (!response.ok || !response.data) {
+      const error = response.error ?? shellError("invalid_input", "Import register did not return object ids.", "import.register_all")
+      setImportInboxState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error,
+      }))
+      return
+    }
+
+    const { batch, registered_object_ids: registeredObjectIds, objects } = response.data
+    const objectById = new Map(objects.map((object) => [object.id, object]))
+    const registeredObjects = registeredObjectIds
+      .map((objectId) => objectById.get(objectId))
+      .filter((object): object is NonNullable<typeof object> => Boolean(object))
+    setImportInboxState((current) => ({
+      ...current,
+      status: "registered",
+      activeBatch: batch,
+      selectedFiles,
+      registeredObjectIds,
+      warnings: response.warnings,
+      error: undefined,
+    }))
+    setWorkbenchState((current) => {
+      const imports = upsertImportBatch(current.imports, batch)
+      const mergedObjects = mergeRegisteredObjects(current.objects, objects)
+      return {
+        ...current,
+        status: "success",
+        imports,
+        objects: mergedObjects,
+        counts: {
+          ...current.counts,
+          imports: imports.length,
+          objects: mergedObjects.length,
+        },
+        warnings: response.warnings,
+        error: undefined,
+      }
+    })
+
+    for (const rawPath of selectedRawPaths) {
+      updateProjectFileEntry(rawPath, {
+        status: "registered",
+        registeredObjectIds,
+        warnings: projectFileWarningMessagesFromWarnings(response.warnings),
+      })
+    }
+    if (registeredObjects.length === 0) {
+      return
+    }
+
+    if (!(await ensureWorkspaceReady(sessionId))) return
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    let latestWorkspace: WorkspaceSummary | null = null
+    const baseNodeCount = workbenchStateRef.current.workspace?.graph.nodes.length ?? 0
+    for (const [index, object] of registeredObjects.entries()) {
+      const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
+        command: "workspace.add_node",
+        args: {
+          session_id: sessionId,
+          kind: "species",
+          label: object.label ?? object.id,
+          chemical_object_ids: [object.id],
+          position: registeredImportNodePosition(baseNodeCount, index),
+        },
+      })
+      applyWorkspaceResponse(addNodeResponse)
+      if (!addNodeResponse.ok || !addNodeResponse.data) {
+        const error = addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node")
+        for (const rawPath of selectedRawPaths) {
+          updateProjectFileEntry(rawPath, {
+            status: "error",
+            registeredObjectIds,
+            warnings: projectFileWarningMessagesFromError(error),
+          })
+        }
+        setImportInboxState((current) => ({
+          ...current,
+          status: "error",
+          warnings: addNodeResponse.warnings,
+          error,
+        }))
+        setWorkbenchState((current) => ({
+          ...current,
+          status: "error",
+          warnings: addNodeResponse.warnings,
+          error,
+        }))
+        return
+      }
+      latestWorkspace = addNodeResponse.data.workspace
+    }
+
+    if (latestWorkspace) {
+      for (const rawPath of selectedRawPaths) {
+        updateProjectFileEntry(rawPath, {
+          status: "used-in-graph",
+          registeredObjectIds,
+          graphNodeIds: registeredObjectIds.flatMap((objectId) => graphNodeIdsForObject(latestWorkspace, objectId)),
+          warnings: projectFileWarningMessagesFromWarnings(response.warnings),
+        })
+      }
+      resetGraphEditorHistory()
+    }
+  }, [
+    applyWorkspaceResponse,
+    ensureWorkspaceReady,
+    resetGraphEditorHistory,
+    shellClient,
+    updateProjectFileEntry,
+    workbenchState.sessionId,
+  ])
+
+  const previewImport = useCallback(async () => {
+    const preferInlineBytes = runtimeInfo.mode === "local-http"
+    let payload = await importPreviewArgsFromFiles(importInboxState, workbenchState.sessionId, {
+      preferInlineBytes,
+    })
+    if (!payload.ok) {
+      const failedPayload = payload
+      setImportInboxState((current) => ({
+        ...current,
+        status: "error",
+        selectedFiles: failedPayload.files,
+        warnings: [],
+        error: failedPayload.error,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: [],
+        error: failedPayload.error,
+      }))
+      return
+    }
+    const selectedFiles = await persistImportFilesAsRawInputs(
+      projectRepository,
+      projectSidebarStateRef.current.activeProject,
+      payload.ok ? payload.files : importInboxState.selectedFiles,
+    )
+    if (!preferInlineBytes) {
+      payload = await importPreviewArgsFromFiles({
+        ...importInboxState,
+        selectedFiles,
+      }, workbenchState.sessionId)
+    }
+    if (!payload.ok) {
+      const failedPayload = payload
+      setImportInboxState((current) => ({
+        ...current,
+        status: "error",
+        selectedFiles: failedPayload.files,
+        warnings: [],
+        error: failedPayload.error,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: [],
+        error: failedPayload.error,
+      }))
+      return
+    }
+    const previewFiles = selectedFiles.map((file) => ({
+      ...file,
+      sourceKind: preferInlineBytes && file.file ? "inline_bytes" as const : file.sourceKind,
+    }))
+    setImportInboxState((current) => ({
+      ...current,
+      status: "previewing",
+      selectedFiles: previewFiles,
+      warnings: [],
+      error: undefined,
+    }))
+    replaceProjectSidebarState(await refreshProjects(projectRepository, projectSidebarStateRef.current))
     const response = await shellClient.run<ImportPreviewData>({
       command: "import.preview",
-      args,
+      args: payload.args,
     })
 
     if (!response.ok || !response.data) {
@@ -2112,6 +2331,7 @@ export function WorkbenchShell({
       ...current,
       status: "ready",
       activeBatch: batch,
+      selectedFiles: previewFiles,
       registeredObjectIds: [],
       warnings: response.warnings,
       error: undefined,
@@ -2127,68 +2347,8 @@ export function WorkbenchShell({
         error: undefined,
       }
     })
-  }, [importInboxState, projectRepository, runtimeInfo.mode, shellClient, workbenchState.sessionId])
-
-  const registerImportBatch = useCallback(async () => {
-    const batchId = importInboxState.activeBatch?.id
-    setImportInboxState((current) => ({
-      ...current,
-      status: "registering",
-      warnings: [],
-      error: undefined,
-    }))
-    const response = await shellClient.run<ImportRegisterAllData>({
-      command: "import.register_all",
-      args: {
-        session_id: workbenchState.sessionId ?? "",
-        batch_id: batchId ?? "",
-      },
-    })
-
-    if (!response.ok || !response.data) {
-      const error = response.error ?? shellError("invalid_input", "Import register did not return object ids.", "import.register_all")
-      setImportInboxState((current) => ({
-        ...current,
-        status: "error",
-        warnings: response.warnings,
-        error,
-      }))
-      setWorkbenchState((current) => ({
-        ...current,
-        status: "error",
-        warnings: response.warnings,
-        error,
-      }))
-      return
-    }
-
-    const { batch, registered_object_ids: registeredObjectIds, objects } = response.data
-    setImportInboxState((current) => ({
-      ...current,
-      status: "registered",
-      activeBatch: batch,
-      registeredObjectIds,
-      warnings: response.warnings,
-      error: undefined,
-    }))
-    setWorkbenchState((current) => {
-      const imports = upsertImportBatch(current.imports, batch)
-      const mergedObjects = mergeRegisteredObjects(current.objects, objects)
-      return {
-        ...current,
-        status: "success",
-        imports,
-        objects: mergedObjects,
-        counts: {
-          ...current.counts,
-          imports: imports.length,
-          objects: mergedObjects.length,
-        },
-        warnings: response.warnings,
-        error: undefined,
-      }
-    })
-  }, [importInboxState.activeBatch?.id, shellClient, workbenchState.sessionId])
+    await registerImportBatchToCanvas(batch.id, previewFiles)
+  }, [importInboxState, projectRepository, registerImportBatchToCanvas, replaceProjectSidebarState, runtimeInfo.mode, shellClient, workbenchState.sessionId])
 
   return (
     <div className="workbench-shell">
@@ -2221,17 +2381,11 @@ export function WorkbenchShell({
         <section className="project-rail" aria-label={t("workbench.flow.projectRail")}>
           <ProjectSidebar
             state={projectSidebarState}
-            workbenchState={workbenchState}
-            exportBundleStatus={exportBundleStatus}
-            importBundleStatus={importBundleStatus}
             onRefreshProjects={refreshProjectSidebar}
             onCreateProject={createSidebarProject}
             onOpenProject={openSidebarProject}
-            onSaveProjectContent={saveSidebarProjectStub}
-            onOpenBridgeSession={openSidebarBridgeSession}
-            onSaveBridgeSession={saveSidebarBridgeSession}
-            onExportBundle={exportSidebarBundle}
-            onImportBundleFileSelected={importSidebarBundleFile}
+            onSaveProjectContent={saveSidebarProject}
+            onAddProjectFileToCanvas={addProjectFileToCanvas}
           />
         </section>
         <section className="canvas-stage" aria-label={t("workbench.flow.canvasStage")}>
@@ -2243,7 +2397,6 @@ export function WorkbenchShell({
               onExpectedFormatChange={changeImportExpectedFormat}
               onStrictChange={changeImportStrict}
               onPreview={previewImport}
-              onRegisterAll={registerImportBatch}
               onClear={clearImportInbox}
             />
             <GraphCanvas
@@ -2470,6 +2623,50 @@ function browserRawResourceFromObject(object: BrowserStorageObject, rawResourceI
   }
 }
 
+async function preserveBrowserProjectManifest(
+  repository: BrowserProjectRepository,
+  projectRef: string,
+  files: BrowserProjectContentFile[],
+): Promise<BrowserProjectContentFile[]> {
+  const manifestFile = files.find((file) => file.path === projectManifestPath)
+  if (!manifestFile) return files
+  try {
+    const currentObject = await repository.readObject(projectRef, projectManifestPath)
+    const currentManifest = parseJsonObjectBytes(currentObject.bytes)
+    const savedManifest = parseJsonObjectBytes(manifestFile.bytes)
+    const nextManifest: JsonObject = {
+      ...savedManifest,
+      id: typeof currentManifest.id === "string" ? currentManifest.id : savedManifest.id,
+      name: typeof currentManifest.name === "string" ? currentManifest.name : savedManifest.name,
+      created_at: typeof currentManifest.created_at === "string" ? currentManifest.created_at : savedManifest.created_at,
+      resources: Array.isArray(currentManifest.resources)
+        ? currentManifest.resources
+        : Array.isArray(savedManifest.resources) ? savedManifest.resources : [],
+    }
+    const bytes = jsonObjectBytes(nextManifest)
+    const checksum = await checksumBrowserStorageBytes(bytes)
+    return files.map((file) => file.path === projectManifestPath
+      ? {
+        ...file,
+        bytes,
+        checksum,
+        metadata: { kind: "project_manifest" },
+      }
+      : file)
+  } catch {
+    return files
+  }
+}
+
+function parseJsonObjectBytes(bytes: Uint8Array<ArrayBuffer>): JsonObject {
+  const value = JSON.parse(new TextDecoder().decode(bytes))
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {}
+}
+
+function jsonObjectBytes(value: JsonObject): Uint8Array<ArrayBuffer> {
+  return new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`) as Uint8Array<ArrayBuffer>
+}
+
 function importPreviewObjectCount(batch: ImportBatchSummary): number {
   return batch.items.reduce((count, item) => count + (item.preview?.object_count ?? 0), 0)
 }
@@ -2500,6 +2697,16 @@ function projectFileWarningMessagesFromWarnings(warnings: WorkbenchDomainState["
   return warnings.flatMap((warning) =>
     [warning.code, warning.target].filter((value): value is string => Boolean(value))
   )
+}
+
+function projectFileProjectionSignature(files: ProjectFileEntry[]): string {
+  return JSON.stringify(files.map((file) => ({
+    id: file.id,
+    status: file.status,
+    registeredObjectIds: file.registeredObjectIds,
+    graphNodeIds: file.graphNodeIds,
+    warnings: file.warnings,
+  })))
 }
 
 function repositoryErrorPayload(error: unknown, target: string): BrowserProjectRepositoryErrorPayload {
@@ -2673,6 +2880,11 @@ function isSingleGraphEditorPathSelection(selection: GraphEditorSelection): bool
 
 function tuplePosition(position: CanvasPoint): [number, number] {
   return [position.x, position.y]
+}
+
+function registeredImportNodePosition(baseNodeCount: number, index: number): [number, number] {
+  const column = baseNodeCount + index
+  return [120 + column * 260, column % 2 === 0 ? 280 : 160]
 }
 
 function stackedCandidateNodePosition(origin: [number, number], index: number): [number, number] {
@@ -3121,22 +3333,6 @@ function RuntimeBadge({ runtimeInfo }: { runtimeInfo: ShellRuntimeInfo }) {
       {label}
     </span>
   )
-}
-
-function triggerBrowserBundleDownload(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  try {
-    link.href = url
-    link.download = fileName
-    link.rel = "noopener"
-    link.style.display = "none"
-    document.body.appendChild(link)
-    link.click()
-  } finally {
-    link.remove()
-    URL.revokeObjectURL(url)
-  }
 }
 
 type LocaleSwitcherProps = {

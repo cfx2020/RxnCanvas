@@ -88,7 +88,7 @@ describe("project sidebar repository actions", () => {
     expect(opened.projectFiles).toEqual([])
   })
 
-  it("opens an existing project with projected raw and export files", async () => {
+  it("opens an existing project with projected raw files only", async () => {
     const repository = new MemoryBrowserProjectRepository()
     const created = await createProject(repository, initialProjectSidebarState, "Files")
     const projectRef = created.activeProjectRef ?? ""
@@ -107,13 +107,6 @@ describe("project sidebar repository actions", () => {
     const opened = await openProject(repository, initialProjectSidebarState, projectRef)
 
     expect(opened.projectFiles).toEqual([
-      expect.objectContaining({
-        id: "artifact-profile-csv",
-        path: "exports/profile.csv",
-        kind: "export-artifact",
-        status: "exported",
-        artifactIds: ["artifact-profile-csv"],
-      }),
       expect.objectContaining({
         id: `raw-${rawReceipt.checksum.replace(/^sha256:/, "").slice(0, 12)}`,
         path: "inputs/raw/maple-result.out",
