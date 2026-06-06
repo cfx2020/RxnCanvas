@@ -5,9 +5,13 @@ import {
   createAndSaveBrowserProject,
   expectConsoleClean,
   expectNoHorizontalOverflow,
+  closeProjectRail,
   openBrowserProject,
   openWorkbench,
   openAnalysisDockTab,
+  openProjectRail,
+  closeSourceTray,
+  openSourceTray,
   resetWorkbenchStorage,
 } from "./workbench-helpers"
 
@@ -22,26 +26,24 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await page.setViewportSize({ width: 1280, height: 720 })
     await openWorkbench(page)
 
-    const runtimeBadge = page.getByText("Runtime Local HTTP")
-    await expect(runtimeBadge).toBeVisible()
-    await expect(runtimeBadge).toHaveAttribute("title", "Endpoint http://127.0.0.1:8766/api/shell")
+    await openAnalysisDockTab(page, "Diagnostics")
+    await expect(page.getByText("Runtime Local HTTP")).toBeVisible()
+    await expect(page.getByText("Endpoint http://127.0.0.1:8766/api/shell")).toBeVisible()
     await expect(page.getByText("Runtime Fixture")).toHaveCount(0)
 
     const projectName = `Local HTTP E2E ${Date.now()}`
     await createAndSaveBrowserProject(page, projectName)
-    await expect(page.getByText("Open", { exact: true }).first()).toBeVisible()
     await expect(page.getByText(projectName).first()).toBeVisible()
     await page.getByRole("button", { name: "Save Project" }).click()
     await expect(page.getByText("Project content files are readable.")).toBeVisible()
 
-    await openAnalysisDockTab(page, "Diagnostics")
     await page.getByRole("button", { name: "Fixture Run" }).click()
     await openAnalysisDockTab(page, "Object")
     const objectRegistry = page.getByRole("region", { name: "Object Registry" })
     await expect(objectRegistry.getByRole("button", { name: /Fixture A/ })).toBeVisible()
     await expect(objectRegistry.getByRole("button", { name: /Fixture B/ })).toBeVisible()
 
-    const importInbox = page.getByRole("region", { name: "Source Tray" })
+    const importInbox = await openSourceTray(page)
     await importInbox.getByLabel("Select Files").setInputFiles({
       name: "water.xyz",
       mimeType: "chemical/x-xyz",
@@ -53,10 +55,13 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await expect(importInbox.getByText("xyz-ase").first()).toBeVisible()
     await expect(importInbox.getByText("Inline bytes").first()).toBeVisible()
     await expect(importInbox.getByText("import-batch-fixture-web-1")).toHaveCount(0)
+    await closeSourceTray(page)
+    await closeProjectRail(page)
 
     const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
     await graphCanvas.getByRole("button", { name: "Open Workspace" }).click()
     await expect(graphCanvas.getByText("No workspace graph")).toBeVisible()
+    await openAnalysisDockTab(page, "Object")
     await objectRegistry.getByRole("button", { name: "Fixture A" }).click()
     await graphCanvas.getByRole("button", { name: "Add Node" }).click()
     await expect(graphCanvas.getByText("Fixture A").first()).toBeVisible()
@@ -128,7 +133,7 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     const projectName = `Local HTTP Restore ${Date.now()}`
     await createAndSaveBrowserProject(page, projectName)
 
-    const importInbox = page.getByRole("region", { name: "Source Tray" })
+    const importInbox = await openSourceTray(page)
     await importInbox.getByLabel("Select Files").setInputFiles({
       name: "water.xyz",
       mimeType: "chemical/x-xyz",
@@ -140,15 +145,15 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     await expect(importInbox.getByText(/inputs\/raw\/[a-f0-9]{12}-water\.xyz/).first()).toBeVisible()
     await expect(page.getByRole("region", { name: "Graph Canvas" }).getByText(/node-/).first()).toBeVisible()
 
-    const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
-    await expect(sidebar.getByText("Open", { exact: true })).toBeVisible()
-    await sidebar.getByRole("button", { name: "Save Project" }).click()
+    const sidebar = await openProjectRail(page)
+    await expect(sidebar.getByRole("heading", { name: projectName })).toBeVisible()
+    await page.getByRole("button", { name: "Save Project" }).click()
     await expect(sidebar.getByText("Project content files are readable.")).toBeVisible()
 
     await page.reload({ waitUntil: "networkidle" })
     await openWorkbench(page)
     await openBrowserProject(page, projectName)
-    await expect(sidebar.getByText("Open", { exact: true })).toBeVisible()
+    await expect(sidebar.getByRole("heading", { name: projectName })).toBeVisible()
     await expect(page.getByText(projectName).first()).toBeVisible()
     await expect(sidebar.getByText(/inputs\/raw\/[a-f0-9]{12}-water\.xyz/)).toBeVisible()
     await expect(page.getByRole("region", { name: "Graph Canvas" }).getByText(/node-/).first()).toBeVisible()

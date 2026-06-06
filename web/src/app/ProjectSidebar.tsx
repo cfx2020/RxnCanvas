@@ -1,15 +1,9 @@
-import { useState, type FormEvent } from "react"
 import {
   CheckCircle2,
   FileText,
   FolderOpen,
-  HardDrive,
-  Plus,
-  RefreshCw,
-  Save,
   Upload,
 } from "lucide-react"
-import { browserProjectBackendId } from "../repository"
 import type { ProjectSidebarState } from "./projectSidebarState"
 import type { ProjectFileEntry, ProjectFileKind, ProjectFileStatus } from "./projectFiles"
 import { graphRawFileDropMimeType, serializeGraphRawFileDropPayload } from "./graphRawFileDropPayload"
@@ -17,71 +11,38 @@ import { useI18n, type MessageKey } from "./i18n"
 
 type ProjectSidebarProps = {
   state: ProjectSidebarState
-  onRefreshProjects: () => Promise<void>
-  onCreateProject: (name: string) => Promise<ProjectSidebarState>
   onOpenProject: (projectRef: string) => Promise<void>
-  onSaveProjectContent: () => Promise<void>
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
 }
 
 export function ProjectSidebar({
   state,
-  onRefreshProjects,
-  onCreateProject,
   onOpenProject,
-  onSaveProjectContent,
   onAddProjectFileToCanvas,
 }: ProjectSidebarProps) {
   const { t } = useI18n()
-  const [projectName, setProjectName] = useState("")
   const isBusy = state.status === "loading"
-
-  const handleCreateProject = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const nextState = await onCreateProject(projectName)
-    if (nextState.status === "ready") {
-      setProjectName("")
-    }
-  }
 
   return (
     <aside className="project-sidebar" aria-label={t("projectSidebar.aria")} aria-busy={isBusy}>
       <section className="rail-section project-sidebar-header">
         <p className="section-kicker">{t("projectSidebar.section")}</p>
         <h2>{t("projectSidebar.title")}</h2>
-        <div className="sidebar-badge-row">
-          <span className="local-only-badge">{t("workbench.localOnly")}</span>
-          <span className="backend-badge">
-            <HardDrive size={15} />
-            <span>{browserProjectBackendId}</span>
-          </span>
-        </div>
       </section>
 
       <section className="rail-section active-project-section" aria-label={t("projectSidebar.activeAria")}>
         <p className="section-kicker">{t("projectSidebar.activeSection")}</p>
         <h2>{state.activeProject?.name ?? t("projectSidebar.noActiveProject")}</h2>
-        <p className="muted">{state.activeProjectRef ?? t("projectSidebar.createOrOpen")}</p>
+        <p className="muted">{state.activeProject ? t("projectSidebar.projectReady") : t("projectSidebar.createOrOpen")}</p>
 
         <div className="project-state-grid">
           <StateRow label={t("projectSidebar.persistence")} value={persistenceLabel(state.persistence, t)} />
           <StateRow label={t("projectSidebar.validation")} value={validationLabel(state.validation.state, t)} />
-          <StateRow label={t("projectSidebar.bridge")} value={bridgeLabel(state.bridge.state, t)} />
         </div>
         <p className="validation-message">{t(state.validation.messageKey, state.validation.messageParams)}</p>
         {state.validation.checksum ? (
           <code className="checksum-chip">{state.validation.checksum}</code>
         ) : null}
-
-        <button
-          type="button"
-          className="sidebar-command-button save-content-button"
-          onClick={onSaveProjectContent}
-          disabled={isBusy || !state.activeProject}
-        >
-          <Save size={16} />
-          <span>{t("projectSidebar.saveContent")}</span>
-        </button>
 
         {state.error ? (
           <div className="sidebar-error" role="alert">
@@ -112,7 +73,7 @@ export function ProjectSidebar({
                     <FolderOpen size={16} />
                     <span>
                       <strong>{project.name}</strong>
-                      <small>{project.projectRef}</small>
+                      <small>{t("projectSidebar.projectUpdated", { date: formatProjectUpdatedAt(project.updatedAt) })}</small>
                     </span>
                   </button>
                 </li>
@@ -123,32 +84,6 @@ export function ProjectSidebar({
           <p className="muted">{t("projectSidebar.noProjects")}</p>
         )}
       </section>
-
-      <form className="rail-section project-create-form" aria-label={t("projectSidebar.createFormAria")} onSubmit={handleCreateProject}>
-        <label htmlFor="project-sidebar-name">{t("projectSidebar.projectName")}</label>
-        <input
-          id="project-sidebar-name"
-          value={projectName}
-          onChange={(event) => setProjectName(event.currentTarget.value)}
-          placeholder={t("projectSidebar.projectNamePlaceholder")}
-          disabled={isBusy}
-        />
-        <div className="project-command-row">
-          <button type="submit" className="sidebar-command-button" disabled={isBusy}>
-            <Plus size={16} />
-            <span>{t("projectSidebar.createProject")}</span>
-          </button>
-          <button
-            type="button"
-            className="sidebar-command-button sidebar-command-button--secondary"
-            onClick={onRefreshProjects}
-            disabled={isBusy}
-          >
-            <RefreshCw size={16} />
-            <span>{t("projectSidebar.refresh")}</span>
-          </button>
-        </div>
-      </form>
     </aside>
   )
 }
@@ -298,6 +233,16 @@ function formatFileByteSize(byteSize: number): string {
   return `${(kib / 1024).toFixed(1)} MiB`
 }
 
+function formatProjectUpdatedAt(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
+
 function projectFileKindLabelKey(kind: ProjectFileKind): MessageKey {
   if (kind === "gaussian-log") return "projectSidebar.projectFiles.kind.gaussianLog"
   if (kind === "orca-output") return "projectSidebar.projectFiles.kind.orcaOutput"
@@ -332,12 +277,4 @@ function validationLabel(state: ProjectSidebarState["validation"]["state"], t: T
   if (state === "valid") return t("projectSidebar.validation.valid")
   if (state === "error") return t("projectSidebar.validation.error")
   return t("projectSidebar.validation.unknown")
-}
-
-function bridgeLabel(state: ProjectSidebarState["bridge"]["state"], t: Translate): string {
-  if (state === "opening") return t("projectSidebar.bridge.opening")
-  if (state === "open") return t("projectSidebar.bridge.open")
-  if (state === "saving") return t("projectSidebar.bridge.saving")
-  if (state === "error") return t("projectSidebar.bridge.error")
-  return t("projectSidebar.bridge.idle")
 }

@@ -12,9 +12,9 @@ last_reviewed: 2026-06-05
 
 ## 功能简介
 
-RxnFlow Web 工作台当前按 workspace-first 流程组织：左侧 `Project Sidebar` 管当前浏览器本地项目和项目内文件，中间 `Graph Canvas` 管结构节点和路径，右侧 `Analysis Dock` 管 PES、导出、对象详情和诊断。
+RxnFlow Web 工作台当前按 canvas-first / workspace-first 流程组织：顶部菜单负责 `New`、`Projects`、`Save Project`、`Sources`、`Export`、`Analysis` 等全局动作；中间 `Graph Canvas` 是默认视觉主体；左侧 `Project Sidebar` 和右侧 `Analysis Dock` 都是可展开/收起的工作区覆盖层。窄屏首屏默认收起项目栏，避免遮住画布。
 
-当前 Web 版是 local-first。项目内容保存在当前浏览器本地仓储中，不是云同步；完成编辑后用左侧 `Save Project` 保存当前项目状态。报告文件从右侧 `Export` 面板单独导出。
+当前 Web 版是 local-first。项目内容保存在当前浏览器本地仓储中，不是云同步；完成编辑后用顶部 `Save Project` 保存当前项目状态。报告文件从右侧 `Export` 面板单独导出。主界面不展示 `browser-local-indexeddb-opfs-v1`、`Runtime Fixture`、`browser-project:...` 这类实现细节；runtime / backend 信息只在 `Diagnostics` 中用于排查。
 
 ## 打开方式
 
@@ -34,24 +34,21 @@ http://127.0.0.1:5173/
 
 ## 最小验收路线
 
-1. 打开页面后确认第一屏能看到三块主区域：
-   - 左侧 `Project Sidebar`
-   - 中间 `Graph Canvas`
-   - 右侧 `Analysis Dock`
-2. 在左侧输入项目名，点击 `Create Project`。看到项目处于 `Persisted` 和 `Valid` 状态。
-3. 把一个小的原始输出文件导入项目。当前可以从 `Source Tray` 选择文件，也可以把文件拖到中间画布。
-4. 导入后确认项目文件进入左侧 Project Files，而不是只停留在一次性文件选择器里。
+1. 打开页面后确认第一屏以中间 `Graph Canvas` 为主体，顶部菜单显示 `Projects`、`Save Project`、`Sources`、`Export`、`Analysis`。
+2. 在顶部输入项目名，点击 `New` / `Create Project`。需要看项目文件时点击 `Projects` 展开左侧项目栏，确认项目处于 `Persisted` 和 `Valid` 状态。
+3. 把一个小的原始输出文件导入项目。当前可以点击顶部 `Sources` 展开 Source Tray 选择文件，也可以把文件拖到中间画布。
+4. 导入后确认项目文件进入左侧 Project Files，而不是只停留在一次性文件选择器里。`Sources` 与 `Analysis` / `Export` 会互斥展开，避免同时遮住画布。
 5. 如果解析结果只有一个对象，画布会按落点创建节点；如果有多个对象或多帧候选，先在候选选择器里选择要放到画布的结构。
 6. 在画布上连接节点。无歧义时会自动创建或延长 active path；有分叉或重复节点时，继续用 path 列表和 Path Order Draft 手动整理。
-7. 切到右侧 `PES`，点击 `Compute`，确认能看到 profile id、相对能量、step delta、missing reason 和能量曲线。
-8. 切到右侧 `Export`，先看 `Preview`，再切到 `Export` 模式导出：
+7. 点击顶部 `Analysis` 打开右侧分析区，切到 `PES`，点击 `Compute`，确认能看到 profile id、相对能量、step delta、missing reason 和能量曲线。
+8. 点击顶部 `Export` 或在右侧切到 `Export`，先看 `Preview`，再切到 `Export` 模式导出：
    - PNG
    - CDXML
    - XLSX
    - CSV
    - SVG
 9. 保持 `Include bytes` 开启，导出后确认每个 artifact 有 `Download`、`exports/...` path、persisted 状态和 checksum。
-10. 点击左侧 `Save Project`，确认项目保持 `Persisted` / `Valid`。
+10. 点击顶部 `Save Project`，确认项目保持 `Persisted` / `Valid`。
 11. 刷新页面或重新打开同一 browser-local project，确认项目文件、画布节点、边、path、viewport 和 PES/profile 状态能恢复。
 12. 继续从左侧 Project Files 点击 `Add to canvas` 或把项目文件拖回画布，确认已有 raw 文件可以再次生成画布节点而不重复写入 raw object。
 

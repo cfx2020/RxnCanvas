@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react"
-import { AlertTriangle, Play } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import { AlertTriangle, Download, FolderPlus, PanelLeft, PanelRight, Play, RefreshCw, Save, UploadCloud } from "lucide-react"
 import {
   BrowserProjectRepositoryError,
   checksumBrowserStorageBytes,
@@ -139,6 +139,8 @@ type AnalysisDockModel = {
 type WorkspaceFlowShellState = {
   analysisDockTab: AnalysisDockTab
   projectRailDensity: "normal" | "compact"
+  projectRailOpen: boolean
+  inspectorOpen: boolean
   sourceTrayOpen: boolean
   devToolsOpen: boolean
 }
@@ -151,9 +153,13 @@ const defaultRuntimeInfo: ShellRuntimeInfo = {
 const defaultWorkspaceFlowShellState: WorkspaceFlowShellState = {
   analysisDockTab: "pes",
   projectRailDensity: "normal",
-  sourceTrayOpen: true,
+  projectRailOpen: true,
+  inspectorOpen: false,
+  sourceTrayOpen: false,
   devToolsOpen: false,
 }
+
+const narrowWorkbenchMediaQuery = "(max-width: 700px)"
 
 export function WorkbenchShell({
   shellClient,
@@ -167,6 +173,7 @@ export function WorkbenchShell({
   const [projectSidebarState, setProjectSidebarState] = useState<ProjectSidebarState>(
     initialProjectSidebarState,
   )
+  const [projectName, setProjectName] = useState("")
   const [workspaceFlowShellState, setWorkspaceFlowShellState] = useState<WorkspaceFlowShellState>(
     defaultWorkspaceFlowShellState,
   )
@@ -221,6 +228,58 @@ export function WorkbenchShell({
   const pesComputeSignatureRef = useRef<string | null>(null)
   const pesComputeInFlightRef = useRef<string | null>(null)
   const shellSessionVersionRef = useRef(0)
+  const shellElementRef = useRef<HTMLDivElement | null>(null)
+  const topbarElementRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    const shellElement = shellElementRef.current
+    const topbarElement = topbarElementRef.current
+    if (!shellElement || !topbarElement) return undefined
+
+    const syncTopbarHeight = () => {
+      shellElement.style.setProperty("--workbench-topbar-height", `${Math.ceil(topbarElement.getBoundingClientRect().height)}px`)
+    }
+    syncTopbarHeight()
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", syncTopbarHeight)
+      return () => window.removeEventListener("resize", syncTopbarHeight)
+    }
+
+    const observer = new ResizeObserver(syncTopbarHeight)
+    observer.observe(topbarElement)
+    window.addEventListener("resize", syncTopbarHeight)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", syncTopbarHeight)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return undefined
+
+    const mediaQuery = window.matchMedia(narrowWorkbenchMediaQuery)
+    const closeProjectRailForNarrowViewport = (matches: boolean) => {
+      if (!matches) return
+      setWorkspaceFlowShellState((current) => (
+        current.projectRailOpen ? { ...current, projectRailOpen: false } : current
+      ))
+    }
+
+    closeProjectRailForNarrowViewport(mediaQuery.matches)
+
+    const handleMediaChange = (event: MediaQueryListEvent) => {
+      closeProjectRailForNarrowViewport(event.matches)
+    }
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleMediaChange)
+      return () => mediaQuery.removeEventListener("change", handleMediaChange)
+    }
+
+    mediaQuery.addListener(handleMediaChange)
+    return () => mediaQuery.removeListener(handleMediaChange)
+  }, [])
 
   useEffect(() => {
     workbenchStateRef.current = workbenchState
@@ -303,6 +362,8 @@ export function WorkbenchShell({
     setWorkspaceFlowShellState((current) => ({
       ...current,
       analysisDockTab,
+      inspectorOpen: true,
+      sourceTrayOpen: false,
       devToolsOpen: analysisDockTab === "diagnostics",
     }))
   }, [])
@@ -512,6 +573,17 @@ export function WorkbenchShell({
       return nextState
     },
     [projectRepository, replaceProjectSidebarState, restoreSidebarProjectSession],
+  )
+
+  const createTopbarProject = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const nextState = await createSidebarProject(projectName)
+      if (nextState.status === "ready") {
+        setProjectName("")
+      }
+    },
+    [createSidebarProject, projectName],
   )
 
   const openSidebarProject = useCallback(
@@ -2350,9 +2422,47 @@ export function WorkbenchShell({
     await registerImportBatchToCanvas(batch.id, previewFiles)
   }, [importInboxState, projectRepository, registerImportBatchToCanvas, replaceProjectSidebarState, runtimeInfo.mode, shellClient, workbenchState.sessionId])
 
+  const toggleProjectRail = useCallback(() => {
+    setWorkspaceFlowShellState((current) => ({
+      ...current,
+      projectRailOpen: !current.projectRailOpen,
+    }))
+  }, [])
+
+  const toggleSourceTray = useCallback(() => {
+    setWorkspaceFlowShellState((current) => ({
+      ...current,
+      inspectorOpen: current.sourceTrayOpen ? current.inspectorOpen : false,
+      sourceTrayOpen: !current.sourceTrayOpen,
+      devToolsOpen: current.sourceTrayOpen ? current.devToolsOpen : false,
+    }))
+  }, [])
+
+  const openExportPanel = useCallback(() => {
+    setWorkspaceFlowShellState((current) => ({
+      ...current,
+      analysisDockTab: "export",
+      inspectorOpen: true,
+      sourceTrayOpen: false,
+      devToolsOpen: false,
+    }))
+  }, [])
+
+  const toggleAnalysisDock = useCallback(() => {
+    setWorkspaceFlowShellState((current) => {
+      const nextInspectorOpen = !current.inspectorOpen
+      return {
+        ...current,
+        inspectorOpen: nextInspectorOpen,
+        sourceTrayOpen: false,
+        devToolsOpen: nextInspectorOpen && current.analysisDockTab === "diagnostics",
+      }
+    })
+  }, [])
+
   return (
-    <div className="workbench-shell">
-      <header className="workbench-topbar">
+    <div className="workbench-shell" ref={shellElementRef}>
+      <header className="workbench-topbar" ref={topbarElementRef}>
         <div className="brand-lockup" aria-label="RxnFlow">
           <span className="brand-mark">Rf</span>
           <div>
@@ -2360,10 +2470,81 @@ export function WorkbenchShell({
             <h1>{t("workbench.title")}</h1>
           </div>
         </div>
+
+        <form className="topbar-project-form" aria-label={t("projectSidebar.createFormAria")} onSubmit={createTopbarProject}>
+          <label className="visually-hidden" htmlFor="topbar-project-name">{t("projectSidebar.projectName")}</label>
+          <input
+            id="topbar-project-name"
+            value={projectName}
+            onChange={(event) => setProjectName(event.currentTarget.value)}
+            placeholder={t("projectSidebar.projectNamePlaceholder")}
+            disabled={projectSidebarState.status === "loading"}
+          />
+          <button
+            type="submit"
+            className="topbar-command-button"
+            aria-label={t("projectSidebar.createProject")}
+            disabled={projectSidebarState.status === "loading"}
+          >
+            <FolderPlus size={16} />
+            <span>{t("workbench.menu.createProject")}</span>
+          </button>
+        </form>
+
+        <nav className="topbar-command-menu" aria-label={t("workbench.menu.aria")}>
+          <button
+            type="button"
+            className={`topbar-icon-command ${workspaceFlowShellState.projectRailOpen ? "topbar-icon-command--active" : ""}`}
+            onClick={toggleProjectRail}
+            aria-pressed={workspaceFlowShellState.projectRailOpen}
+          >
+            <PanelLeft size={17} />
+            <span>{t("workbench.menu.projectPanel")}</span>
+          </button>
+          <button
+            type="button"
+            className="topbar-icon-command"
+            onClick={() => void refreshProjectSidebar()}
+            disabled={projectSidebarState.status === "loading"}
+          >
+            <RefreshCw size={17} />
+            <span>{t("workbench.menu.refresh")}</span>
+          </button>
+          <button
+            type="button"
+            className="topbar-command-button topbar-command-button--primary"
+            onClick={() => void saveSidebarProject()}
+            disabled={projectSidebarState.status === "loading" || !projectSidebarState.activeProject}
+          >
+            <Save size={17} />
+            <span>{t("workbench.menu.saveProject")}</span>
+          </button>
+          <button
+            type="button"
+            className={`topbar-icon-command ${workspaceFlowShellState.sourceTrayOpen ? "topbar-icon-command--active" : ""}`}
+            onClick={toggleSourceTray}
+            aria-pressed={workspaceFlowShellState.sourceTrayOpen}
+          >
+            <UploadCloud size={17} />
+            <span>{t("workbench.menu.sources")}</span>
+          </button>
+          <button type="button" className="topbar-command-button" onClick={openExportPanel}>
+            <Download size={17} />
+            <span>{t("workbench.menu.export")}</span>
+          </button>
+          <button
+            type="button"
+            className={`topbar-icon-command ${workspaceFlowShellState.inspectorOpen ? "topbar-icon-command--active" : ""}`}
+            onClick={toggleAnalysisDock}
+            aria-pressed={workspaceFlowShellState.inspectorOpen}
+          >
+            <PanelRight size={17} />
+            <span>{t("workbench.menu.analysisPanel")}</span>
+          </button>
+        </nav>
+
         <div className="topbar-status">
           <LocaleSwitcher locale={locale} onChange={setLocale} />
-          <span className="local-only-badge">{t("workbench.localOnly")}</span>
-          <RuntimeBadge runtimeInfo={runtimeInfo} />
           <span className={`run-state run-state--${workbenchState.status}`}>
             {statusLabel(workbenchState.status, t)}
           </span>
@@ -2375,16 +2556,15 @@ export function WorkbenchShell({
         aria-label={t("workbench.aria")}
         data-analysis-tab={workspaceFlowShellState.analysisDockTab}
         data-project-rail-density={workspaceFlowShellState.projectRailDensity}
+        data-project-rail={workspaceFlowShellState.projectRailOpen ? "open" : "closed"}
+        data-inspector={workspaceFlowShellState.inspectorOpen ? "open" : "closed"}
         data-source-tray={workspaceFlowShellState.sourceTrayOpen ? "open" : "closed"}
         data-dev-tools={workspaceFlowShellState.devToolsOpen ? "open" : "closed"}
       >
         <section className="project-rail" aria-label={t("workbench.flow.projectRail")}>
           <ProjectSidebar
             state={projectSidebarState}
-            onRefreshProjects={refreshProjectSidebar}
-            onCreateProject={createSidebarProject}
             onOpenProject={openSidebarProject}
-            onSaveProjectContent={saveSidebarProject}
             onAddProjectFileToCanvas={addProjectFileToCanvas}
           />
         </section>
@@ -2473,6 +2653,7 @@ export function WorkbenchShell({
           state={workbenchState}
           activeObjectId={activeObjectId}
           activeTab={workspaceFlowShellState.analysisDockTab}
+          runtimeInfo={runtimeInfo}
           devToolsOpen={workspaceFlowShellState.devToolsOpen}
           hasActiveBrowserProject={Boolean(projectSidebarState.activeProject)}
           correctionPending={correctionPending}
@@ -3088,6 +3269,7 @@ type InspectorPanelProps = {
   state: WorkbenchDomainState
   activeObjectId?: string
   activeTab: AnalysisDockTab
+  runtimeInfo: ShellRuntimeInfo
   devToolsOpen: boolean
   hasActiveBrowserProject: boolean
   correctionPending: boolean
@@ -3110,6 +3292,7 @@ function InspectorPanel({
   state,
   activeObjectId,
   activeTab,
+  runtimeInfo,
   devToolsOpen,
   hasActiveBrowserProject,
   correctionPending,
@@ -3244,6 +3427,11 @@ function InspectorPanel({
           </section>
 
           <section className="inspector-section">
+            <p className="section-kicker">{t("workbench.runtime.section")}</p>
+            <RuntimeStatusPanel runtimeInfo={runtimeInfo} />
+          </section>
+
+          <section className="inspector-section">
             <p className="section-kicker">{t("workbench.commandStatus.section")}</p>
             <CommandStatusPanel state={state} />
           </section>
@@ -3319,19 +3507,20 @@ function statusLabel(status: CommandStatus, t: Translate): string {
   return t("workbench.status.idle")
 }
 
-function RuntimeBadge({ runtimeInfo }: { runtimeInfo: ShellRuntimeInfo }) {
+function RuntimeStatusPanel({ runtimeInfo }: { runtimeInfo: ShellRuntimeInfo }) {
   const { t } = useI18n()
   const label = runtimeInfo.mode === "local-http"
     ? t("workbench.runtime.localHttp")
     : t("workbench.runtime.fixture")
-  const title = runtimeInfo.endpoint
+  const detail = runtimeInfo.endpoint
     ? t("workbench.runtime.endpoint", { endpoint: runtimeInfo.endpoint })
     : t("workbench.runtime.transport", { transport: runtimeInfo.transportKind })
 
   return (
-    <span className={`runtime-badge runtime-badge--${runtimeInfo.mode}`} title={title}>
-      {label}
-    </span>
+    <div className="status-box runtime-status-box">
+      <strong>{label}</strong>
+      <small>{detail}</small>
+    </div>
   )
 }
 

@@ -3,6 +3,7 @@ import {
   attachViewportScreenshot,
   applyAutoLayoutAndReplayHistory,
   buildImportedWaterPath,
+  closeAnalysisDock,
   collectConsoleIssues,
   computeMissingEnergyProfile,
   createAndDeleteTemporaryGraphPath,
@@ -22,6 +23,7 @@ import {
   importSourcesToCanvas,
   openAnalysisDockTab,
   openBrowserProject,
+  openProjectRail,
   openWorkbench,
   rubberBandDeleteTemporaryNodes,
   reorderFixturePathToReverse,
@@ -112,7 +114,8 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await createAndSaveBrowserProject(page, projectName)
     await runFixture(page)
     await importSourcesToCanvas(page)
-    await page.getByRole("complementary", { name: "Project Sidebar" }).getByRole("button", { name: "Save Project" }).click()
+    await page.getByRole("button", { name: "Save Project" }).click()
+    await openProjectRail(page)
     await expect(page.getByText("Project content files are readable.")).toBeVisible()
 
     await page.reload({ waitUntil: "networkidle" })
@@ -132,10 +135,11 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await page.setViewportSize({ width: 390, height: 840 })
     await openWorkbench(page)
 
-    const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
+    await expect(page.getByRole("button", { name: "Projects" })).toHaveAttribute("aria-pressed", "false")
+    const sidebar = await openProjectRail(page)
     await expect(sidebar.getByRole("button", { name: "Import Bundle" })).toHaveCount(0)
     await expect(sidebar.getByRole("button", { name: "Export Bundle" })).toHaveCount(0)
-    await expect(sidebar.getByText("No browser-local projects")).toBeVisible()
+    await expect(sidebar.getByText("No projects yet")).toBeVisible()
 
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)
@@ -154,6 +158,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     const graphCanvas = await expectRegionVisible(page, "Graph Canvas")
 
     await objectRegistry.getByRole("button", { name: /object b/i }).click()
+    await closeAnalysisDock(page)
     await graphCanvas.getByRole("button", { name: "Add Node" }).click()
     await expect(graphCanvas.getByText("node-web-3").first()).toBeVisible()
     await graphCanvas.getByRole("button", { name: /node-b/i }).click()
@@ -194,6 +199,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await page.setViewportSize({ width: 390, height: 840 })
     await openWorkbench(page)
     await runFixture(page)
+    await closeAnalysisDock(page)
 
     await exerciseNarrowGraphAdvancedControls(page)
 

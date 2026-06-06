@@ -141,10 +141,7 @@ function renderSidebar(state: ProjectSidebarState, onAddProjectFileToCanvas = vi
     <I18nProvider initialLocale="en-US">
       <ProjectSidebar
         state={state}
-        onRefreshProjects={async () => undefined}
-        onCreateProject={async () => state}
         onOpenProject={async () => undefined}
-        onSaveProjectContent={async () => undefined}
         onAddProjectFileToCanvas={onAddProjectFileToCanvas}
       />
     </I18nProvider>,

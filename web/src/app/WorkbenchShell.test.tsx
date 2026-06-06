@@ -17,11 +17,11 @@ describe("WorkbenchShell", () => {
   it("renders a local-only workbench shell as the first screen", async () => {
     renderWorkbench()
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     expect(screen.getByRole("main", { name: /rxnflow web workbench/i })).toBeInTheDocument()
     expect(screen.getByLabelText("Language")).toHaveValue("en-US")
-    expect(screen.getAllByText("Local-only").length).toBeGreaterThan(0)
-    expect(screen.getByText("Runtime Fixture")).toBeInTheDocument()
+    expect(screen.queryByText("Local-only")).not.toBeInTheDocument()
+    expect(screen.queryByText("Runtime Fixture")).not.toBeInTheDocument()
     expect(screen.getByRole("region", { name: "Project Rail" })).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "Canvas Stage" })).toBeInTheDocument()
     expect(screen.getByRole("complementary", { name: "Analysis Dock" })).toHaveAttribute("data-active-tab", "pes")
@@ -38,6 +38,7 @@ describe("WorkbenchShell", () => {
     expect(screen.getByText("No registered objects")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add Correction" })).toBeDisabled()
     openAnalysisDockTab("Diagnostics")
+    expect(screen.getByText("Runtime Fixture")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Fixture Run" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Invalid command" })).toBeInTheDocument()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
@@ -54,14 +55,17 @@ describe("WorkbenchShell", () => {
   it("switches visible workbench copy between English and Simplified Chinese", async () => {
     renderWorkbench(undefined, "en-US")
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Language"), { target: { value: "zh-CN" } })
 
     expect(await screen.findByRole("heading", { name: "工作台" })).toBeInTheDocument()
     expect(screen.getByText("项目侧边栏")).toBeInTheDocument()
-    expect(screen.getByText("运行时 Fixture")).toBeInTheDocument()
+    expect(screen.queryByText("运行时 Fixture")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "创建项目" })).toBeInTheDocument()
-    expect(screen.getByText("暂无浏览器本地项目")).toBeInTheDocument()
+    expect(screen.getByText("暂无项目")).toBeInTheDocument()
+
+    openAnalysisDockTab("诊断")
+    expect(screen.getByText("运行时 Fixture")).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText("语言"), { target: { value: "en-US" } })
 
@@ -76,10 +80,38 @@ describe("WorkbenchShell", () => {
       endpoint: "http://127.0.0.1:8765/api/shell",
     })
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
-    const badge = screen.getByText("Runtime Local HTTP")
-    expect(badge).toBeInTheDocument()
-    expect(badge).toHaveAttribute("title", "Endpoint http://127.0.0.1:8765/api/shell")
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
+    expect(screen.queryByText("Runtime Local HTTP")).not.toBeInTheDocument()
+    openAnalysisDockTab("Diagnostics")
+    expect(screen.getByText("Runtime Local HTTP")).toBeInTheDocument()
+    expect(screen.getByText("Endpoint http://127.0.0.1:8765/api/shell")).toBeInTheDocument()
+  })
+
+  it("keeps source tray and analysis dock mutually exclusive from topbar commands", async () => {
+    renderWorkbench()
+
+    const shell = await screen.findByRole("main", { name: /rxnflow web workbench/i })
+    const commandMenu = screen.getByRole("navigation", { name: "Workbench commands" })
+
+    expect(shell).toHaveAttribute("data-source-tray", "closed")
+    expect(shell).toHaveAttribute("data-inspector", "closed")
+
+    fireEvent.click(within(commandMenu).getByRole("button", { name: "Sources" }))
+    expect(shell).toHaveAttribute("data-source-tray", "open")
+    expect(shell).toHaveAttribute("data-inspector", "closed")
+
+    fireEvent.click(within(commandMenu).getByRole("button", { name: "Export" }))
+    expect(shell).toHaveAttribute("data-source-tray", "closed")
+    expect(shell).toHaveAttribute("data-inspector", "open")
+    expect(shell).toHaveAttribute("data-analysis-tab", "export")
+
+    fireEvent.click(within(commandMenu).getByRole("button", { name: "Sources" }))
+    expect(shell).toHaveAttribute("data-source-tray", "open")
+    expect(shell).toHaveAttribute("data-inspector", "closed")
+
+    fireEvent.click(within(commandMenu).getByRole("button", { name: "Analysis" }))
+    expect(shell).toHaveAttribute("data-source-tray", "closed")
+    expect(shell).toHaveAttribute("data-inspector", "open")
   })
 
   it("shows transport_unavailable from local-http runtime failures with target", async () => {
@@ -640,8 +672,9 @@ describe("WorkbenchShell", () => {
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
+    await waitFor(() => expect(within(graphCanvas).getByLabelText("100%")).toBeInTheDocument())
 
-    fireEvent.wheel(surface, { deltaY: -100, clientX: 300, clientY: 180 })
+    dispatchWheel(surface, { deltaY: -100, clientX: 300, clientY: 180 })
 
     await within(graphCanvas).findByLabelText("110%")
     expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
@@ -654,7 +687,7 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Reset" }))
     await within(graphCanvas).findByLabelText("100%")
-    fireEvent.wheel(surface, { deltaY: -100, clientX: 300, clientY: 180, ctrlKey: true })
+    dispatchWheel(surface, { deltaY: -100, clientX: 300, clientY: 180, ctrlKey: true })
 
     await within(graphCanvas).findByLabelText("120%")
     expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
@@ -666,7 +699,7 @@ describe("WorkbenchShell", () => {
     })
 
     const viewportCommandCount = transport.payloads.filter((payload) => payload.command === "workspace.set_viewport").length
-    fireEvent.wheel(graphCanvas, { deltaY: -100, clientX: 300, clientY: 180 })
+    dispatchWheel(graphCanvas, { deltaY: -100, clientX: 300, clientY: 180 })
     expect(transport.payloads.filter((payload) => payload.command === "workspace.set_viewport")).toHaveLength(viewportCommandCount)
   })
 
@@ -1226,7 +1259,14 @@ describe("WorkbenchShell", () => {
     const edge = within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" })
 
     fireEvent.click(edge)
-    const editor = await within(graphCanvas).findByRole("form", { name: "Edge Label Editor" })
+    await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
+      selection: { edge_ids: ["edge-a-b"] },
+    }))
+    await waitFor(() => {
+      const projectedEditor = within(graphCanvas).getByRole("form", { name: "Edge Label Editor" })
+      expect(within(projectedEditor).getByText("edge-a-b")).toBeInTheDocument()
+    })
+    const editor = within(graphCanvas).getByRole("form", { name: "Edge Label Editor" })
     expect(within(editor).getByText("edge-a-b")).toBeInTheDocument()
     expect(within(editor).getByLabelText("Label")).toHaveValue("")
     await waitFor(() => expect(within(editor).getByRole("button", { name: "Apply" })).toBeDisabled())
@@ -1898,7 +1938,7 @@ describe("WorkbenchShell", () => {
   it("queues import files, parses them, and adds registered objects to the canvas", async () => {
     renderWorkbench()
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Import to Canvas" })).toBeDisabled()
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
@@ -1947,7 +1987,7 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /empty import/i }))
-    expect(await screen.findByText("Open")).toBeInTheDocument()
+    await waitFor(() => expect(transport.payloads.some((payload) => payload.command === "project.open")).toBe(true))
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     expect(within(graphCanvas).getByText("No workspace graph")).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Select Files"), {
@@ -1976,7 +2016,7 @@ describe("WorkbenchShell", () => {
       endpoint: "http://127.0.0.1:8765/api/shell",
     }, new ShellClient(transport))
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
 
@@ -2112,7 +2152,7 @@ describe("WorkbenchShell", () => {
       endpoint: "http://127.0.0.1:8765/api/shell",
     }, new ShellClient(transport))
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
     fireEvent.change(screen.getByLabelText("Select Files"), {
@@ -2135,7 +2175,7 @@ describe("WorkbenchShell", () => {
       endpoint: "http://127.0.0.1:8765/api/shell",
     }, new ShellClient(transport))
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
 
@@ -2179,7 +2219,7 @@ describe("WorkbenchShell", () => {
   it("shows import preview shell errors without hiding error target", async () => {
     renderWorkbench()
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     const input = screen.getByLabelText("Select Files")
     fireEvent.change(input, {
       target: {
@@ -2197,7 +2237,7 @@ describe("WorkbenchShell", () => {
     const repository = new MemoryBrowserProjectRepository()
     renderWorkbench(repository)
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Project name"), {
       target: { value: "Catalyst Screen" },
     })
@@ -2239,7 +2279,6 @@ describe("WorkbenchShell", () => {
 
     expect(await screen.findByText("Persisted")).toBeInTheDocument()
     await expectEmptyProjectWorkbenchProjected()
-    expect(screen.getByText("Open")).toBeInTheDocument()
     const openPayload = transport.payloads.find((payload) => payload.command === "project.open")
     expect(openPayload?.args).toMatchObject({
       load_content: true,
@@ -2327,7 +2366,7 @@ describe("WorkbenchShell", () => {
   it("renders repository errors with code, message, and target visible", async () => {
     renderWorkbench()
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Create Project" }))
 
     expect(await screen.findByText("invalid_input")).toBeInTheDocument()
@@ -2338,7 +2377,7 @@ describe("WorkbenchShell", () => {
   it("does not expose project bundle import or export controls in the project rail", async () => {
     renderWorkbench()
 
-    expect(await screen.findByText("No browser-local projects")).toBeInTheDocument()
+    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Import Bundle" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Export Bundle" })).not.toBeInTheDocument()
     expect(screen.queryByText(/Import creates a new browser-local project/)).not.toBeInTheDocument()
@@ -2364,7 +2403,7 @@ describe("WorkbenchShell", () => {
   it("renders import inbox controls through the active locale while preserving dynamic codes", async () => {
     renderWorkbench(undefined, "zh-CN")
 
-    expect(await screen.findByText("暂无浏览器本地项目")).toBeInTheDocument()
+    expect(await screen.findByText("暂无项目")).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "来源托盘" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "添加来源到画布" })).toBeInTheDocument()
     openAnalysisDockTab("对象")
@@ -2465,6 +2504,27 @@ function mockCanvasSurfaceRect(element: HTMLElement, width = 900, height = 420) 
     height,
     toJSON: () => ({}),
   } as DOMRect)
+}
+
+function dispatchWheel(
+  element: HTMLElement,
+  options: {
+    deltaY: number
+    clientX: number
+    clientY: number
+    ctrlKey?: boolean
+    metaKey?: boolean
+  },
+) {
+  element.dispatchEvent(new WheelEvent("wheel", {
+    bubbles: true,
+    cancelable: true,
+    deltaY: options.deltaY,
+    clientX: options.clientX,
+    clientY: options.clientY,
+    ctrlKey: options.ctrlKey ?? false,
+    metaKey: options.metaKey ?? false,
+  }))
 }
 
 function mockElementsFromPoint(elements: Element[]) {
