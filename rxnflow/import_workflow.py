@@ -25,6 +25,7 @@ T = TypeVar("T")
 class ImportFileRequest:
     source_path: str | os.PathLike[str]
     parse_options: ParseOptions | None = None
+    retain_raw: bool = False
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,9 @@ class ImportItem:
     registered_object_ids: tuple[ID, ...] = ()
     error: RxnFlowError | None = None
     warnings: tuple[RxnFlowWarning, ...] = ()
+    source_name: str | None = None
+    source_checksum: str | None = None
+    source_byte_size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -210,41 +214,34 @@ class ImportRegistryWorkflow:
         source_path = str(request.source_path)
         item_id = _item_id(source_path, index)
 
-        raw_resource = self._project_store.add_raw_file(project_path, request.source_path)
-        if not raw_resource.ok or raw_resource.value is None:
-            assert raw_resource.error is not None
+        prepared = self._prepare_raw_file(project_path, request)
+        if not prepared.ok or prepared.value is None:
+            assert prepared.error is not None
             return ImportItem(
                 id=item_id,
                 source_path=source_path,
                 status="failed",
-                error=raw_resource.error,
+                error=prepared.error,
             )
+        raw_file, raw_resource, source_checksum, source_byte_size = prepared.value
 
-        raw_file = _raw_file_from_resource(project_path, raw_resource.value)
-        if not raw_file.ok or raw_file.value is None:
-            assert raw_file.error is not None
-            return ImportItem(
-                id=item_id,
-                source_path=source_path,
-                status="failed",
-                raw_resource=raw_resource.value,
-                error=raw_file.error,
-            )
-
-        parsed = self._parser_registry.parse(raw_file.value, request.parse_options)
+        parsed = self._parser_registry.parse(raw_file, request.parse_options)
         if not parsed.ok or parsed.value is None:
             assert parsed.error is not None
             return ImportItem(
                 id=item_id,
                 source_path=source_path,
                 status="failed",
-                raw_resource=raw_resource.value,
+                raw_resource=raw_resource,
                 error=parsed.error,
                 warnings=parsed.warnings,
+                source_name=raw_file.name,
+                source_checksum=source_checksum,
+                source_byte_size=source_byte_size,
             )
 
         preview = ParsePreview(
-            raw_resource_id=raw_resource.value.id,
+            raw_resource_id=raw_file.id,
             parser_id=parsed.value.provenance.parser_id,
             parser_version=parsed.value.provenance.parser_version,
             object_count=len(parsed.value.objects),
@@ -255,10 +252,39 @@ class ImportRegistryWorkflow:
             id=item_id,
             source_path=source_path,
             status="needs_confirmation",
-            raw_resource=raw_resource.value,
+            raw_resource=raw_resource,
             preview=preview,
             warnings=parsed.warnings,
+            source_name=raw_file.name,
+            source_checksum=source_checksum,
+            source_byte_size=source_byte_size,
         )
+
+    def _prepare_raw_file(
+        self,
+        project_path: str | os.PathLike[str],
+        request: ImportFileRequest,
+    ) -> Result[tuple[RawFile, ProjectResource | None, str, int]]:
+        if request.retain_raw:
+            raw_resource = self._project_store.add_raw_file(project_path, request.source_path)
+            if not raw_resource.ok or raw_resource.value is None:
+                assert raw_resource.error is not None
+                return err(raw_resource.error)
+
+            raw_file = _raw_file_from_resource(project_path, raw_resource.value)
+            if not raw_file.ok or raw_file.value is None:
+                assert raw_file.error is not None
+                return err(raw_file.error)
+            checksum = raw_resource.value.checksum or ""
+            size = raw_resource.value.metadata.get("byte_size")
+            return ok((raw_file.value, raw_resource.value, checksum, size if isinstance(size, int) else 0))
+
+        raw_file = _raw_file_from_source_path(request.source_path)
+        if not raw_file.ok or raw_file.value is None:
+            assert raw_file.error is not None
+            return err(raw_file.error)
+        checksum, byte_size, raw = raw_file.value
+        return ok((raw, None, checksum, byte_size))
 
 
 def _raw_file_from_resource(
@@ -282,6 +308,54 @@ def _raw_file_from_resource(
             size=size if isinstance(size, int) else None,
         )
     )
+
+
+def _raw_file_from_source_path(source_path: str | os.PathLike[str]) -> Result[tuple[str, int, RawFile]]:
+    source = Path(source_path)
+    if not source.is_file():
+        return _invalid_input("Raw file source path does not exist or is not a file.", str(source))
+    checksum = _sha256_file(source)
+    if not checksum.ok or checksum.value is None:
+        assert checksum.error is not None
+        return err(checksum.error)
+    try:
+        byte_size = source.stat().st_size
+    except OSError as exc:
+        return err(
+            RxnFlowError(
+                code="internal_error",
+                message=f"Failed to stat raw file source: {exc}.",
+                target=str(source),
+            )
+        )
+    raw = RawFile(
+        id=_transient_source_id(checksum.value),
+        name=source.name,
+        path=source,
+        size=byte_size,
+    )
+    return ok((checksum.value, byte_size, raw))
+
+
+def _sha256_file(path: Path) -> Result[str]:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as exc:
+        return err(
+            RxnFlowError(
+                code="internal_error",
+                message=f"Failed to read raw file source: {exc}.",
+                target=str(path),
+            )
+        )
+    return ok(f"sha256:{digest.hexdigest()}")
+
+
+def _transient_source_id(checksum: str) -> ID:
+    return f"source-{checksum.removeprefix('sha256:')[:12]}"
 
 
 def _select_parse_result(

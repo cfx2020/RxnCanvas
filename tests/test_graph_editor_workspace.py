@@ -103,7 +103,8 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
             palette = opened.value.palette  # type: ignore[union-attr]
             self.assertEqual([item.object_id for item in palette], [confirmed_object_id])
             self.assertEqual(palette[0].label, "confirmed Energy = -1.0 Hartree")
-            self.assertEqual(palette[0].source_file_id, confirmed.items[0].raw_resource.id)
+            assert confirmed.items[0].preview is not None
+            self.assertEqual(palette[0].source_file_id, confirmed.items[0].preview.raw_resource_id)
             self.assertEqual(palette[0].energy_keys, ("electronic",))
 
     def test_add_node_preserves_object_position_and_metadata(self) -> None:

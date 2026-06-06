@@ -130,6 +130,10 @@ class LocalHttpShellBridgeTest(unittest.TestCase):
         self.assertTrue(preview["ok"], preview["error"])
         item = preview["data"]["batch"]["items"][0]
         self.assertEqual(item["status"], "needs_confirmation")
+        self.assertIsNone(item["raw_resource"])
+        self.assertEqual(item["source_name"], "h2.xyz")
+        self.assertTrue(item["source_checksum"].startswith("sha256:"))
+        self.assertTrue(item["preview"]["raw_resource_id"].startswith("source-"))
         self.assertEqual(item["preview"]["parser_id"], "xyz-ase")
 
     def test_unknown_shell_command_returns_shell_response(self) -> None:

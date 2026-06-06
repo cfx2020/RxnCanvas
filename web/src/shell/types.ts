@@ -180,6 +180,9 @@ export type ParseCandidateSummary = JsonObject & {
 export type ImportItemSummary = JsonObject & {
   id: string
   source_path: string
+  source_name?: string | null
+  source_checksum?: string | null
+  source_byte_size?: number | null
   status: string
   raw_resource?: ImportRawResourceSummary | null
   preview?: ImportParsePreviewSummary | null

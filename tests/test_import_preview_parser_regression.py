@@ -40,7 +40,7 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
 
                 imported = workflow.import_files(
                     project_path,
-                    (ImportFileRequest(fixture.file, fixture.parse_options),),
+                    (ImportFileRequest(fixture.file, fixture.parse_options, retain_raw=True),),
                 )
 
                 self.assertTrue(imported.ok, imported.error)
@@ -87,7 +87,7 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
 
             imported = workflow.import_files(
                 project_path,
-                (ImportFileRequest(fixture.file, fixture.parse_options),),
+                (ImportFileRequest(fixture.file, fixture.parse_options, retain_raw=True),),
             )
 
             self.assertTrue(imported.ok, imported.error)
@@ -135,6 +135,7 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
                         {
                             "session_id": session_id,
                             "source_path": str(fixture.file),
+                            "retain_raw": True,
                         },
                     )
                 )
@@ -200,6 +201,7 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
                     {
                         "session_id": session_id,
                         "source_path": str(failure.file),
+                        "retain_raw": True,
                     },
                 )
             )
@@ -314,7 +316,7 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
             project_path = _create_project(tmp, fixture.id)
             imported = workflow.import_files(
                 project_path,
-                (ImportFileRequest(fixture.file, fixture.parse_options),),
+                (ImportFileRequest(fixture.file, fixture.parse_options, retain_raw=True),),
             )
 
             self.assertTrue(imported.ok, imported.error)
@@ -344,6 +346,7 @@ class ImportPreviewParserRegressionTest(unittest.TestCase):
                     {
                         "session_id": created.to_dict()["data"]["session_id"],
                         "source_path": str(fixture.file),
+                        "retain_raw": True,
                     },
                 )
             )
@@ -412,7 +415,7 @@ def _assert_workflow_preview_projection(test_case: unittest.TestCase, fixture: o
         project_path = _create_project(tmp, fixture.id)  # type: ignore[attr-defined]
         imported = workflow.import_files(
             project_path,
-            (ImportFileRequest(fixture.file, fixture.parse_options),),  # type: ignore[attr-defined]
+            (ImportFileRequest(fixture.file, fixture.parse_options, retain_raw=True),),  # type: ignore[attr-defined]
         )
 
         test_case.assertTrue(imported.ok, imported.error)
@@ -459,6 +462,7 @@ def _assert_shell_preview_projection(test_case: unittest.TestCase, fixture: obje
                 {
                     "session_id": created.to_dict()["data"]["session_id"],
                     "source_path": str(fixture.file),  # type: ignore[attr-defined]
+                    "retain_raw": True,
                 },
             )
         )

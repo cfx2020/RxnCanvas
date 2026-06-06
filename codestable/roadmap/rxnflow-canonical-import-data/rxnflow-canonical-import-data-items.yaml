@@ -5,10 +5,10 @@ items:
   - slug: transient-import-core-contract
     description: Core/Platform Shell 支持 retain_raw=false transient import，解析成功后只登记 canonical objects 和来源摘要
     depends_on: []
-    status: planned
-    feature: null
+    status: done
+    feature: 2026-06-06-transient-import-core-contract
     minimal_loop: true
-    notes: 用 Ni-fxc 三个 log 验证 preview/register 不依赖 raw resource，manifest 不新增 raw file resource
+    notes: Core 和 Platform Shell 默认 retain_raw=false；preview/register 不依赖 raw resource，manifest 不新增 raw file resource；retain_raw=true 保留旧路径
 
   - slug: canonical-import-ledger
     description: 扩展 import ledger/project content codec，保存 CanonicalImportRecord，恢复时不要求 raw file 存在

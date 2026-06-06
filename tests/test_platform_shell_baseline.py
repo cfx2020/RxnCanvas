@@ -267,7 +267,12 @@ class PlatformShellBaselineTest(unittest.TestCase):
         self.assertTrue(preview.ok, preview.error)
         item = preview.to_dict()["data"]["batch"]["items"][0]
         self.assertEqual(item["source_path"].split("/")[-1], "h2.xyz")
+        self.assertIsNone(item["raw_resource"])
+        self.assertEqual(item["source_name"], "h2.xyz")
+        self.assertTrue(item["source_checksum"].startswith("sha256:"))
+        self.assertGreater(item["source_byte_size"], 0)
         self.assertEqual(item["status"], "needs_confirmation")
+        self.assertTrue(item["preview"]["raw_resource_id"].startswith("source-"))
         self.assertEqual(item["preview"]["parser_id"], "xyz-ase")
         self.assertEqual(item["preview"]["object_count"], 1)
         self.assertEqual(item["preview"]["candidates"][0]["object_index"], 0)
@@ -495,7 +500,9 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertTrue(preview.ok, preview.error)
             item = preview.to_dict()["data"]["batch"]["items"][0]
             self.assertEqual(item["status"], "needs_confirmation")
+            self.assertIsNone(item["raw_resource"])
             self.assertEqual(item["preview"]["parser_id"], "xyz-ase")
+            self.assertTrue(item["preview"]["raw_resource_id"].startswith("source-"))
             self.assertTrue(snapshot.ok, snapshot.error)
             self.assertEqual(snapshot.to_dict()["data"]["project"]["id"], "project-web-inline-preview")
             self.assertEqual(snapshot.to_dict()["data"]["counts"]["imports"], 1)
@@ -1064,6 +1071,7 @@ class PlatformShellBaselineTest(unittest.TestCase):
             json.dumps(preview_payload)
             batch = preview_payload["data"]["batch"]
             self.assertEqual(batch["items"][0]["status"], "needs_confirmation")
+            self.assertIsNone(batch["items"][0]["raw_resource"])
             self.assertEqual(batch["items"][0]["preview"]["parser_id"], "xyz-ase")
             self.assertEqual(batch["items"][0]["preview"]["object_count"], 1)
 

@@ -30,13 +30,18 @@ class ImportRegistryWorkflowTest(unittest.TestCase):
             assert imported is not None
             item = imported.items[0]
             self.assertEqual(item.status, "needs_confirmation")
-            self.assertIsNotNone(item.raw_resource)
+            self.assertIsNone(item.raw_resource)
             self.assertIsNotNone(item.preview)
             assert item.preview is not None
+            self.assertTrue(item.preview.raw_resource_id.startswith("source-"))
+            self.assertEqual(item.source_name, "water.xyz")
+            self.assertTrue(item.source_checksum.startswith("sha256:"))  # type: ignore[union-attr]
+            self.assertEqual(item.source_byte_size, source.stat().st_size)
             self.assertEqual(item.preview.object_count, 1)
             self.assertEqual(item.preview.parser_id, "xyz-ase")
             self.assertIn("missing_section", {warning.code for warning in item.warnings})
-            self.assertTrue((root / item.raw_resource.path).is_file())  # type: ignore[union-attr]
+            loaded = ProjectStore().load_project(root)
+            self.assertEqual(loaded.value.resources, ())  # type: ignore[union-attr]
 
             confirmed = workflow.confirm_import(
                 imported.project_id,
@@ -51,6 +56,22 @@ class ImportRegistryWorkflowTest(unittest.TestCase):
             lookup = registry.get_object(imported.project_id, registered_item.registered_object_ids[0])
             self.assertTrue(lookup.ok, lookup.error)
             self.assertEqual(lookup.value.label, "water")
+
+    def test_retain_raw_import_copies_file_and_registers_manifest_resource(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root, source = _project_with_xyz(tmp)
+            workflow = _workflow()
+
+            batch = workflow.import_files(root, (ImportFileRequest(source, retain_raw=True),))
+
+            self.assertTrue(batch.ok, batch.error)
+            item = batch.value.items[0]  # type: ignore[union-attr]
+            self.assertIsNotNone(item.raw_resource)
+            assert item.raw_resource is not None
+            self.assertEqual(item.preview.raw_resource_id, item.raw_resource.id)  # type: ignore[union-attr]
+            self.assertTrue((root / item.raw_resource.path).is_file())  # type: ignore[arg-type]
+            loaded = ProjectStore().load_project(root)
+            self.assertEqual(len(loaded.value.resources), 1)  # type: ignore[union-attr]
 
     def test_batch_import_allows_partial_parse_failure(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -67,7 +88,8 @@ class ImportRegistryWorkflowTest(unittest.TestCase):
             self.assertIsNotNone(items[1].error)
             assert items[1].error is not None
             self.assertEqual(items[1].error.code, "unsupported_format")
-            self.assertIsNotNone(items[1].raw_resource)
+            self.assertIsNone(items[1].raw_resource)
+            self.assertEqual(ProjectStore().load_project(root).value.resources, ())  # type: ignore[union-attr]
 
     def test_missing_source_file_fails_item_and_continues_batch(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -101,7 +123,7 @@ class ImportRegistryWorkflowTest(unittest.TestCase):
             self.assertEqual(result.error.code, "invalid_input")
             self.assertEqual(workflow.list_batches("project-demo").value, ())
 
-    def test_repeated_raw_file_import_reuses_resource_without_manifest_duplicate(self) -> None:
+    def test_repeated_transient_file_import_reuses_source_id_without_manifest_resource(self) -> None:
         with TemporaryDirectory() as tmp:
             root, source = _project_with_xyz(tmp)
             workflow = _workflow()
@@ -112,10 +134,12 @@ class ImportRegistryWorkflowTest(unittest.TestCase):
 
             self.assertTrue(first.ok, first.error)
             self.assertTrue(second.ok, second.error)
-            first_resource = first.value.items[0].raw_resource  # type: ignore[union-attr]
-            second_resource = second.value.items[0].raw_resource  # type: ignore[union-attr]
-            self.assertEqual(first_resource, second_resource)
-            self.assertEqual(len(loaded.value.resources), 1)  # type: ignore[union-attr]
+            first_preview = first.value.items[0].preview  # type: ignore[union-attr]
+            second_preview = second.value.items[0].preview  # type: ignore[union-attr]
+            assert first_preview is not None
+            assert second_preview is not None
+            self.assertEqual(first_preview.raw_resource_id, second_preview.raw_resource_id)
+            self.assertEqual(loaded.value.resources, ())  # type: ignore[union-attr]
 
     def test_confirm_import_can_select_subset_of_parsed_objects(self) -> None:
         with TemporaryDirectory() as tmp:

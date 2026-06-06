@@ -173,9 +173,9 @@ type ProjectDataEntry = {
 1. **transient-import-core-contract** — Core/Platform Shell 支持 `retain_raw=false` transient import，解析成功后只登记 canonical objects 和来源摘要。
    - 所属模块：Transient Import Core
    - 依赖：无
-   - 状态：planned
-   - 对应 feature：未启动
-   - 备注：最小闭环；用 `Ni-fxc` 三个 log 验证 preview/register 不依赖 raw resource。
+   - 状态：done
+   - 对应 feature：`2026-06-06-transient-import-core-contract`
+   - 备注：最小闭环已落地；默认 preview/register 不依赖 raw resource，manifest 不新增 raw file resource，`retain_raw=true` 保留旧 raw archive 路径。迁移期 `ParsePreview.raw_resource_id` 在 `raw_resource is None` 时表示 transient source id，字段命名留给 `canonical-import-ledger` 修订。
 
 2. **canonical-import-ledger** — 扩展 import ledger/project content codec，保存 `CanonicalImportRecord`，恢复时不要求 raw file 存在。
    - 所属模块：Transient Import Core / Project Content Authority
@@ -219,7 +219,7 @@ type ProjectDataEntry = {
    - 状态：planned
    - 对应 feature：未启动
 
-**最小闭环**：第 1 条 `transient-import-core-contract` 做完后，core/local-http 能解析 `Ni-fxc` log、登记对象、创建 graph nodes，并且项目 manifest 不新增 raw file resource。
+**最小闭环**：第 1 条 `transient-import-core-contract` 已落地；core/local-http 默认 `retain_raw=false`，可解析 `Ni-fxc` log、登记对象、创建 graph nodes，并且项目 manifest 不新增 raw file resource。
 
 ## 6. 排期思路
 
@@ -227,7 +227,6 @@ type ProjectDataEntry = {
 
 ## 7. 观察项
 
-- `codestable/architecture/core-platform.md` 当前仍记录 Project Store 复制 raw file、manifest raw resource 和 bundle 包含 `inputs/raw/`；这是现状，等对应 feature 落地后再由 acceptance 回写。
+- `codestable/architecture/core-platform.md` 已记录 Import Registry Workflow 默认 transient import；Project Store / Bundle 仍保留 `inputs/raw/` 旧能力和未来 raw archive 扩展点。
 - `codestable/architecture/web-workbench.md` 当前仍记录 Project Files raw-only 和 raw persistence；这是现状，等 Web Data Library 落地后再更新。
 - 未跟踪的 `codestable/compound/2026-06-05-decision-portable-project-storage.md` 中仍把 raw inputs 当作可携带项目内容；该文档如果要纳入仓库，应先按本 decision 修订或 supersede。
-

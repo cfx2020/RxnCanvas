@@ -1518,7 +1518,10 @@ def _import_file_requests(
     if not source_paths:
         return _invalid_input("At least one source path is required.", "source_path")
     parse_options = _parse_options(args)
-    return tuple(ImportFileRequest(path, parse_options) for path in source_paths), None
+    retain_raw = _retain_raw_arg(args)
+    if isinstance(retain_raw, ShellResponse):
+        return retain_raw
+    return tuple(ImportFileRequest(path, parse_options, retain_raw=retain_raw) for path in source_paths), None
 
 
 def _source_import_file_requests(
@@ -1571,11 +1574,14 @@ def _source_import_file_request(
     temp_dir: tempfile.TemporaryDirectory[str] | None,
 ) -> tuple[ImportFileRequest, tempfile.TemporaryDirectory[str] | None] | ShellResponse:
     kind = source.get("kind")
+    retain_raw = _retain_raw_arg(args, source)
+    if isinstance(retain_raw, ShellResponse):
+        return retain_raw
     if kind == "path":
         source_path = _required_str(source, "source_path")
         if source_path is None:
             return _invalid_input("Path import preview source requires source_path.", "source")
-        return ImportFileRequest(source_path, _parse_options(args, source)), temp_dir
+        return ImportFileRequest(source_path, _parse_options(args, source), retain_raw=retain_raw), temp_dir
 
     if kind == "inline_bytes":
         filename = _required_str(source, "filename")
@@ -1609,7 +1615,7 @@ def _source_import_file_request(
                 f"Failed to stage inline import preview payload: {exc}.",
                 "source",
             )
-        return ImportFileRequest(source_path, _parse_options(args, source)), active_temp_dir
+        return ImportFileRequest(source_path, _parse_options(args, source), retain_raw=retain_raw), active_temp_dir
 
     if kind == "browser_storage":
         storage_path = _required_str(source, "storage_path")
@@ -1622,6 +1628,15 @@ def _source_import_file_request(
         )
 
     return _invalid_input("Import preview source kind is not supported.", "source")
+
+
+def _retain_raw_arg(args: dict[str, Any], source: dict[str, Any] | None = None) -> bool | ShellResponse:
+    value = args.get("retain_raw", False)
+    if source is not None and "retain_raw" in source:
+        value = source["retain_raw"]
+    if isinstance(value, bool):
+        return value
+    return _invalid_input("retain_raw must be a boolean.", "retain_raw")
 
 
 def _safe_inline_filename(filename: str) -> str | None:
@@ -2555,6 +2570,9 @@ def _import_item_summary(item: Any) -> dict[str, Any]:
     return {
         "id": item.id,
         "source_path": item.source_path,
+        "source_name": item.source_name,
+        "source_checksum": item.source_checksum,
+        "source_byte_size": item.source_byte_size,
         "status": item.status,
         "raw_resource": _project_resource_summary(item.raw_resource) if item.raw_resource is not None else None,
         "preview": _parse_preview_summary(item.preview) if item.preview is not None else None,
