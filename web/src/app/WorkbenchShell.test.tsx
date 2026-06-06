@@ -1,6 +1,6 @@
 import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import { BrowserProjectRepositoryError, checksumBrowserStorageBytes, MemoryBrowserProjectRepository } from "../repository"
+import { BrowserProjectRepositoryError, checksumBrowserStorageBytes, MemoryBrowserProjectRepository, type BrowserStorageObject } from "../repository"
 import { ShellClient, fixtureTransport, type ShellCommandPayload, type ShellResponse, type ShellRuntimeInfo, type ShellTransport, type WorkbenchSnapshotData } from "../shell"
 import { graphObjectDragMimeType } from "./graphObjectDragPayload"
 import { graphRawFileDropMimeType } from "./graphRawFileDropPayload"
@@ -330,15 +330,18 @@ describe("WorkbenchShell", () => {
     const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
     expect(rawObjects).toHaveLength(1)
     expect(rawObjects[0].path).toMatch(/^inputs\/raw\/[a-f0-9]{12}-water\.xyz$/)
-    expect(screen.getAllByText(rawObjects[0].path).length).toBeGreaterThan(0)
-    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
-    const rawFileRow = within(projectFilesPanel).getByText(rawObjects[0].path).closest(".project-file-card")
+    const rawFileName = projectRawObjectDisplayName(rawObjects[0])
+    expect(screen.getAllByText(rawFileName).length).toBeGreaterThan(0)
+    expect(screen.queryByText(rawObjects[0].path)).not.toBeInTheDocument()
+    const projectFilesPanel = projectTreePanel()
+    const rawFileRow = within(projectFilesPanel).getByText(rawFileName).closest(".project-file-card")
     if (!(rawFileRow instanceof HTMLElement)) {
       throw new Error("Project raw file row was not rendered.")
     }
     expect(within(rawFileRow).getByText("Used in graph")).toBeInTheDocument()
-    expect(within(rawFileRow).getByText("object-imported-water")).toBeInTheDocument()
-    expect(within(rawFileRow).getAllByText("node-web-3").length).toBeGreaterThan(0)
+    expect(within(rawFileRow).getByText("On canvas: 1")).toBeInTheDocument()
+    expect(within(rawFileRow).queryByText("object-imported-water")).not.toBeInTheDocument()
+    expect(within(rawFileRow).queryByText("node-web-3")).not.toBeInTheDocument()
     expect(transport.payloads.find((payload) => payload.command === "import.preview")?.args).toMatchObject({
       source_paths: [rawObjects[0].path],
     })
@@ -355,15 +358,16 @@ describe("WorkbenchShell", () => {
     fireEvent.click(screen.getByRole("button", { name: /raw drop/i }))
 
     expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
-    const restoredProjectFilesPanel = screen.getByRole("region", { name: "Project files" })
-    const restoredRawFileRow = within(restoredProjectFilesPanel).getByText(rawObjects[0].path).closest(".project-file-card")
+    const restoredProjectFilesPanel = projectTreePanel()
+    const restoredRawFileRow = within(restoredProjectFilesPanel).getByText(rawFileName).closest(".project-file-card")
     if (!(restoredRawFileRow instanceof HTMLElement)) {
       throw new Error("Restored project raw file row was not rendered.")
     }
     await waitFor(() => {
       expect(within(restoredRawFileRow).getByText("Used in graph")).toBeInTheDocument()
-      expect(within(restoredRawFileRow).getByText("object-imported-water")).toBeInTheDocument()
-      expect(within(restoredRawFileRow).getAllByText("node-web-3").length).toBeGreaterThan(0)
+      expect(within(restoredRawFileRow).getByText("On canvas: 1")).toBeInTheDocument()
+      expect(within(restoredRawFileRow).queryByText("object-imported-water")).not.toBeInTheDocument()
+      expect(within(restoredRawFileRow).queryByText("node-web-3")).not.toBeInTheDocument()
     })
   })
 
@@ -395,8 +399,8 @@ describe("WorkbenchShell", () => {
     const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
     expect(rawObjects).toHaveLength(1)
     expect(rawObjects[0].path).toMatch(/multi\.extxyz$/)
-    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
-    const rawFileName = rawObjects[0].path.split("/").at(-1) ?? rawObjects[0].path
+    const projectFilesPanel = projectTreePanel()
+    const rawFileName = projectRawObjectDisplayName(rawObjects[0])
     const rawFileRow = within(projectFilesPanel).getByText(rawFileName).closest(".project-file-card")
     if (!(rawFileRow instanceof HTMLElement)) {
       throw new Error("Project raw file row was not rendered.")
@@ -459,15 +463,16 @@ describe("WorkbenchShell", () => {
 
     const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
     expect(rawObjects).toHaveLength(1)
-    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
-    const rawFileName = rawObjects[0].path.split("/").at(-1) ?? rawObjects[0].path
+    const projectFilesPanel = projectTreePanel()
+    const rawFileName = projectRawObjectDisplayName(rawObjects[0])
     const rawFileRow = within(projectFilesPanel).getByText(rawFileName).closest(".project-file-card")
     if (!(rawFileRow instanceof HTMLElement)) {
       throw new Error("Project raw file row was not rendered.")
     }
     expect(within(rawFileRow).getByText("Used in graph")).toBeInTheDocument()
-    expect(within(rawFileRow).getByText("object-imported-frame-1")).toBeInTheDocument()
-    expect(within(rawFileRow).getByText("object-imported-frame-2")).toBeInTheDocument()
+    expect(within(rawFileRow).getByText("On canvas: 2")).toBeInTheDocument()
+    expect(within(rawFileRow).queryByText("object-imported-frame-1")).not.toBeInTheDocument()
+    expect(within(rawFileRow).queryByText("object-imported-frame-2")).not.toBeInTheDocument()
   })
 
   it("keeps registered candidates visible when candidate add-node fails", async () => {
@@ -520,8 +525,8 @@ describe("WorkbenchShell", () => {
     const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
     expect(rawObjects).toHaveLength(1)
 
-    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
-    const rawFileRow = within(projectFilesPanel).getByText(rawObjects[0].path).closest(".project-file-card")
+    const projectFilesPanel = projectTreePanel()
+    const rawFileRow = within(projectFilesPanel).getByText(projectRawObjectDisplayName(rawObjects[0])).closest(".project-file-card")
     if (!(rawFileRow instanceof HTMLElement)) {
       throw new Error("Project raw file row was not rendered.")
     }
@@ -600,14 +605,15 @@ describe("WorkbenchShell", () => {
     expect((await screen.findAllByText("preview_failed")).length).toBeGreaterThan(0)
     const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
     expect(rawObjects).toHaveLength(1)
-    const projectFilesPanel = screen.getByRole("region", { name: "Project files" })
-    const rawFileRow = within(projectFilesPanel).getByText(rawObjects[0].path).closest(".project-file-card")
+    const projectFilesPanel = projectTreePanel()
+    const rawFileRow = within(projectFilesPanel).getByText(projectRawObjectDisplayName(rawObjects[0])).closest(".project-file-card")
     if (!(rawFileRow instanceof HTMLElement)) {
       throw new Error("Project raw file row was not rendered.")
     }
     expect(within(rawFileRow).getByText("Error")).toBeInTheDocument()
-    expect(within(rawFileRow).getByText("preview_failed")).toBeInTheDocument()
-    expect(within(rawFileRow).getByText("import.preview")).toBeInTheDocument()
+    expect(within(rawFileRow).getByText("Warnings: 2")).toBeInTheDocument()
+    expect(within(rawFileRow).queryByText("preview_failed")).not.toBeInTheDocument()
+    expect(within(rawFileRow).queryByText("import.preview")).not.toBeInTheDocument()
     expect(transport.payloads.filter((payload) => payload.command === "import.register_all")).toHaveLength(0)
     expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(0)
   })
@@ -1963,7 +1969,7 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
     expect(screen.getByText("xyz-ase")).toBeInTheDocument()
     expect(screen.getAllByText("fixture-web").length).toBeGreaterThan(0)
-    expect(screen.getByText("inputs/raw/water.xyz")).toBeInTheDocument()
+    expect(screen.queryByText("inputs/raw/water.xyz")).not.toBeInTheDocument()
     expect(screen.getAllByText("missing_section").length).toBeGreaterThan(0)
     expect(screen.getByText("parse_failed")).toBeInTheDocument()
     expect(screen.getAllByText("unit_assumed").length).toBeGreaterThan(0)
@@ -2086,9 +2092,10 @@ describe("WorkbenchShell", () => {
         checksum: rawObjects[0].checksum,
       }),
     ])
-    expect(screen.getByText("Persisted raw input")).toBeInTheDocument()
-    expect(screen.getAllByText(rawObjects[0].path).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(rawObjects[0].checksum ?? "").length).toBeGreaterThan(0)
+    expect(screen.getByText("Stored in project")).toBeInTheDocument()
+    expect(screen.getAllByText("water.xyz").length).toBeGreaterThan(0)
+    expect(screen.queryByText(rawObjects[0].path)).not.toBeInTheDocument()
+    expect(screen.queryByText(rawObjects[0].checksum ?? "")).not.toBeInTheDocument()
   })
 
   it("does not duplicate manifest raw resources when the same file is previewed repeatedly", async () => {
@@ -2248,7 +2255,7 @@ describe("WorkbenchShell", () => {
     expect(screen.getByRole("heading", { name: "Catalyst Screen" })).toBeInTheDocument()
     expect(screen.getByText("Persisted")).toBeInTheDocument()
     expect(screen.getByText("Valid")).toBeInTheDocument()
-    expect(screen.getByText(/sha256:[a-f0-9]{64}/i)).toBeInTheDocument()
+    expect(screen.queryByText(/sha256:[a-f0-9]{64}/i)).not.toBeInTheDocument()
     const [project] = await repository.listProjects()
     await expect(repository.listObjects(project.projectRef, projectContentIndexPath)).resolves.toHaveLength(1)
     await expect(repository.listObjects(project.projectRef, chemicalObjectsPath)).resolves.toHaveLength(1)
@@ -2569,6 +2576,17 @@ function lastPayload(
   command: string,
 ) {
   return transport.payloads.filter((payload) => payload.command === command).at(-1)
+}
+
+function projectTreePanel(): HTMLElement {
+  return screen.getByRole("region", { name: "Project tree" })
+}
+
+function projectRawObjectDisplayName(object: BrowserStorageObject): string {
+  const sourceName = object.metadata?.source_name
+  if (typeof sourceName === "string" && sourceName) return sourceName
+  const baseName = object.path.split("/").filter(Boolean).at(-1) ?? object.path
+  return baseName.replace(/^[a-f0-9]{12}-/i, "")
 }
 
 function mockBrowserDownload() {

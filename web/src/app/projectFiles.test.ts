@@ -53,6 +53,25 @@ describe("project file projection", () => {
     ])
   })
 
+  it("uses human-readable raw filenames when storage paths contain checksum prefixes", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const project = await repository.createProject({ name: "Ni fxc" })
+
+    await repository.writeObject(project.projectRef, {
+      path: "inputs/raw/00a0643001a0-Bfix6-ts.log",
+      bytes: encoder.encode("Gaussian fixture") as Uint8Array<ArrayBuffer>,
+      metadata: { kind: "raw_file" },
+    })
+
+    await expect(listProjectFileEntries(repository, project)).resolves.toEqual([
+      expect.objectContaining({
+        path: "inputs/raw/00a0643001a0-Bfix6-ts.log",
+        name: "Bfix6-ts.log",
+        kind: "gaussian-log",
+      }),
+    ])
+  })
+
   it("projects registered objects and graph nodes back onto raw project files", () => {
     const entries = [
       {

@@ -43,7 +43,10 @@ export async function listProjectFileEntries(
   const rawObjects = await repository.listObjects(activeProject.projectRef, "inputs/raw")
   return rawObjects
     .map((object) => rawProjectFileEntry(activeProject.projectRef, object))
-    .sort((left, right) => left.path.localeCompare(right.path))
+    .sort((left, right) => {
+      const nameOrder = left.name.localeCompare(right.name)
+      return nameOrder === 0 ? left.path.localeCompare(right.path) : nameOrder
+    })
 }
 
 export function projectFileEntriesWithWorkbenchProjection(
@@ -108,12 +111,14 @@ export function projectFileEntriesWithWorkbenchProjection(
 }
 
 function rawProjectFileEntry(projectRef: string, object: BrowserStorageObject): ProjectFileEntry {
+  const sourceName = rawSourceName(object)
+  const displayName = sourceName ?? stripChecksumPrefix(baseName(object.path))
   return {
     id: rawResourceId(object),
     projectRef,
     path: object.path,
-    name: baseName(object.path),
-    sourceName: rawSourceName(object),
+    name: displayName,
+    sourceName,
     kind: detectRawProjectFileKind(object.path),
     byteSize: object.bytes.byteLength,
     checksum: object.checksum,

@@ -2,6 +2,8 @@ import {
   CheckCircle2,
   FileText,
   FolderOpen,
+  FolderTree,
+  Plus,
   Upload,
 } from "lucide-react"
 import type { ProjectSidebarState } from "./projectSidebarState"
@@ -12,12 +14,14 @@ import { useI18n, type MessageKey } from "./i18n"
 type ProjectSidebarProps = {
   state: ProjectSidebarState
   onOpenProject: (projectRef: string) => Promise<void>
+  onImportProjectFiles: () => void
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
 }
 
 export function ProjectSidebar({
   state,
   onOpenProject,
+  onImportProjectFiles,
   onAddProjectFileToCanvas,
 }: ProjectSidebarProps) {
   const { t } = useI18n()
@@ -40,10 +44,6 @@ export function ProjectSidebar({
           <StateRow label={t("projectSidebar.validation")} value={validationLabel(state.validation.state, t)} />
         </div>
         <p className="validation-message">{t(state.validation.messageKey, state.validation.messageParams)}</p>
-        {state.validation.checksum ? (
-          <code className="checksum-chip">{state.validation.checksum}</code>
-        ) : null}
-
         {state.error ? (
           <div className="sidebar-error" role="alert">
             <strong>{state.error.code}</strong>
@@ -53,7 +53,11 @@ export function ProjectSidebar({
         ) : null}
       </section>
 
-      <ProjectFilesPanel state={state} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
+      <ProjectFilesPanel
+        state={state}
+        onImportProjectFiles={onImportProjectFiles}
+        onAddProjectFileToCanvas={onAddProjectFileToCanvas}
+      />
 
       <section className="rail-section project-switcher-section" aria-label={t("projectSidebar.projectsAria")}>
         <p className="section-kicker">{t("projectSidebar.projectsSection")}</p>
@@ -90,10 +94,11 @@ export function ProjectSidebar({
 
 type ProjectFilesPanelProps = {
   state: ProjectSidebarState
+  onImportProjectFiles: () => void
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
 }
 
-function ProjectFilesPanel({ state, onAddProjectFileToCanvas }: ProjectFilesPanelProps) {
+function ProjectFilesPanel({ state, onImportProjectFiles, onAddProjectFileToCanvas }: ProjectFilesPanelProps) {
   const { t } = useI18n()
   const fileCount = state.projectFiles.length
   return (
@@ -103,25 +108,44 @@ function ProjectFilesPanel({ state, onAddProjectFileToCanvas }: ProjectFilesPane
           <p className="section-kicker">{t("projectSidebar.projectFiles.section")}</p>
           <h2>{t("projectSidebar.projectFiles.title")}</h2>
         </div>
-        <span className="project-files-count">
-          {t(
-            fileCount === 1
-              ? "projectSidebar.projectFiles.countOne"
-              : "projectSidebar.projectFiles.count",
-            { count: fileCount },
-          )}
-        </span>
+        <button
+          type="button"
+          className="project-files-import-button"
+          onClick={onImportProjectFiles}
+          disabled={!state.activeProject}
+          title={t("projectSidebar.projectFiles.import")}
+          aria-label={t("projectSidebar.projectFiles.import")}
+        >
+          <Plus size={15} />
+          <span>{t("projectSidebar.projectFiles.importShort")}</span>
+        </button>
       </div>
       {!state.activeProject ? (
         <p className="project-files-empty">{t("projectSidebar.projectFiles.noActiveProject")}</p>
       ) : fileCount === 0 ? (
         <p className="project-files-empty">{t("projectSidebar.projectFiles.empty")}</p>
       ) : (
-        <ul className="project-file-list" aria-label={t("projectSidebar.projectFiles.listAria")}>
-          {state.projectFiles.map((file) => (
-            <ProjectFileRow key={file.id} file={file} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
-          ))}
-        </ul>
+        <div className="project-tree" role="tree" aria-label={t("projectSidebar.projectFiles.listAria")}>
+          <div className="project-tree-root" role="treeitem" aria-expanded="true">
+            <FolderTree size={16} />
+            <span>
+              <strong>{state.activeProject.name}</strong>
+              <small>
+                {t(
+                  fileCount === 1
+                    ? "projectSidebar.projectFiles.countOne"
+                    : "projectSidebar.projectFiles.count",
+                  { count: fileCount },
+                )}
+              </small>
+            </span>
+          </div>
+          <ul className="project-file-list" role="group">
+            {state.projectFiles.map((file) => (
+              <ProjectFileRow key={file.id} file={file} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
+            ))}
+          </ul>
+        </div>
       )}
     </section>
   )
@@ -138,6 +162,7 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps)
   return (
     <li
       className={`project-file-card project-file-card--${file.status} ${draggable ? "project-file-card--draggable" : ""}`}
+      role="treeitem"
       draggable={draggable}
       onDragStart={draggable ? (event) => {
         event.dataTransfer.effectAllowed = "copy"
@@ -154,7 +179,7 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps)
         </span>
         <span className="project-file-title">
           <strong title={file.name}>{file.name}</strong>
-          <small>{file.path}</small>
+          <small>{projectFileTreeHint(file, t)}</small>
         </span>
       </div>
       <div className="project-file-meta-row">
@@ -166,14 +191,9 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps)
           <span>{formatFileByteSize(file.byteSize)}</span>
         ) : null}
       </div>
-      {file.checksum ? (
-        <code className="project-file-checksum">{file.checksum}</code>
-      ) : null}
-      {projectFileReferenceIds(file).length > 0 ? (
-        <div className="project-file-reference-row">
-          {projectFileReferenceIds(file).map((id) => (
-            <code key={id}>{id}</code>
-          ))}
+      {projectFileUsageCount(file) > 0 ? (
+        <div className="project-file-usage-row">
+          {projectFileUsageSummary(file, t)}
         </div>
       ) : null}
       {draggable ? (
@@ -188,9 +208,7 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps)
       ) : null}
       {file.warnings.length > 0 ? (
         <div className="project-file-warning-row" role="status">
-          {file.warnings.map((warning, index) => (
-            <code key={`${warning}-${index}`}>{warning}</code>
-          ))}
+          {t("projectSidebar.projectFiles.warningCount", { count: file.warnings.length })}
         </div>
       ) : null}
     </li>
@@ -201,12 +219,29 @@ function isDraggableRawProjectFile(file: ProjectFileEntry): boolean {
   return file.path.startsWith("inputs/raw/") && file.kind !== "export-artifact"
 }
 
-function projectFileReferenceIds(file: ProjectFileEntry): string[] {
-  return [
-    ...file.registeredObjectIds,
-    ...file.graphNodeIds,
-    ...file.artifactIds,
-  ]
+function projectFileUsageCount(file: ProjectFileEntry): number {
+  return file.graphNodeIds.length || file.registeredObjectIds.length || file.artifactIds.length
+}
+
+function projectFileTreeHint(file: ProjectFileEntry, t: Translate): string {
+  if (file.status === "used-in-graph" && file.graphNodeIds.length > 0) {
+    return t("projectSidebar.projectFiles.hint.usedInGraph", { count: file.graphNodeIds.length })
+  }
+  if (file.status === "registered" && file.registeredObjectIds.length > 0) {
+    return t("projectSidebar.projectFiles.hint.registered", { count: file.registeredObjectIds.length })
+  }
+  if (file.status === "previewed") return t("projectSidebar.projectFiles.hint.previewed")
+  return t("projectSidebar.projectFiles.hint.drag")
+}
+
+function projectFileUsageSummary(file: ProjectFileEntry, t: Translate): string {
+  if (file.graphNodeIds.length > 0) {
+    return t("projectSidebar.projectFiles.usage.graphNodes", { count: file.graphNodeIds.length })
+  }
+  if (file.registeredObjectIds.length > 0) {
+    return t("projectSidebar.projectFiles.usage.objects", { count: file.registeredObjectIds.length })
+  }
+  return t("projectSidebar.projectFiles.usage.artifacts", { count: file.artifactIds.length })
 }
 
 type StateRowProps = {

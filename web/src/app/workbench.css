@@ -446,16 +446,6 @@ button {
   overflow-wrap: anywhere;
 }
 
-.checksum-chip {
-  display: block;
-  border: 1px solid rgba(39, 89, 106, 0.2);
-  background: rgba(39, 89, 106, 0.08);
-  color: var(--blueprint);
-  padding: 7px;
-  overflow-wrap: anywhere;
-  font-size: 0.72rem;
-}
-
 .project-files-section {
   display: grid;
   gap: 10px;
@@ -473,17 +463,61 @@ button {
   min-width: 0;
 }
 
-.project-files-count {
-  min-height: 26px;
+.project-files-import-button {
+  min-height: 32px;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
-  border: 1px solid rgba(39, 89, 106, 0.2);
-  background: rgba(39, 89, 106, 0.08);
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(39, 89, 106, 0.24);
+  background: var(--paper);
   color: var(--blueprint);
-  padding: 0 8px;
+  padding: 0 9px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.project-files-import-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.project-tree {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.project-tree-root {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(31, 33, 29, 0.12);
+  background: rgba(255, 255, 255, 0.46);
+  color: var(--ink);
+  padding: 8px;
+}
+
+.project-tree-root > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.project-tree-root strong,
+.project-tree-root small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-tree-root small {
+  color: var(--muted);
   font-size: 0.72rem;
   font-weight: 800;
-  white-space: nowrap;
 }
 
 .project-files-empty {
@@ -496,18 +530,29 @@ button {
 .project-file-list {
   display: grid;
   gap: 8px;
-  padding: 0;
-  margin: 0;
+  border-left: 1px solid rgba(31, 33, 29, 0.14);
+  padding: 0 0 0 10px;
+  margin: 0 0 0 13px;
   list-style: none;
 }
 
 .project-file-card {
+  position: relative;
   min-width: 0;
   display: grid;
   gap: 8px;
   border: 1px solid rgba(31, 33, 29, 0.14);
-  background: rgba(255, 250, 240, 0.72);
+  background: rgba(255, 250, 240, 0.64);
   padding: 9px;
+}
+
+.project-file-card::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  left: -11px;
+  width: 10px;
+  border-top: 1px solid rgba(31, 33, 29, 0.14);
 }
 
 .project-file-card--exported {
@@ -605,17 +650,6 @@ button {
   color: var(--oxide);
 }
 
-.project-file-checksum {
-  min-width: 0;
-  display: block;
-  border: 1px solid rgba(39, 89, 106, 0.16);
-  background: rgba(255, 255, 255, 0.46);
-  color: var(--blueprint);
-  padding: 6px;
-  font-size: 0.68rem;
-  overflow-wrap: anywhere;
-}
-
 .project-file-add-button {
   min-height: 30px;
   justify-self: start;
@@ -635,7 +669,7 @@ button {
   background: rgba(39, 89, 106, 0.08);
 }
 
-.project-file-reference-row,
+.project-file-usage-row,
 .project-file-warning-row {
   min-width: 0;
   display: flex;
@@ -643,8 +677,8 @@ button {
   gap: 5px;
 }
 
-.project-file-reference-row code,
-.project-file-warning-row code {
+.project-file-usage-row,
+.project-file-warning-row {
   min-width: 0;
   border: 1px solid rgba(31, 33, 29, 0.12);
   background: rgba(255, 255, 255, 0.46);
@@ -653,11 +687,11 @@ button {
   overflow-wrap: anywhere;
 }
 
-.project-file-reference-row code {
+.project-file-usage-row {
   color: var(--sage);
 }
 
-.project-file-warning-row code {
+.project-file-warning-row {
   color: var(--oxide);
 }
 
@@ -1011,6 +1045,8 @@ button {
 }
 
 .raw-persistence span,
+.raw-persistence strong,
+.raw-persistence small,
 .raw-persistence code {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1019,6 +1055,17 @@ button {
 
 .raw-persistence span:first-child {
   color: var(--ink);
+  font-weight: 800;
+}
+
+.raw-persistence strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.raw-persistence small {
+  color: var(--muted);
+  font-size: 0.76rem;
   font-weight: 800;
 }
 

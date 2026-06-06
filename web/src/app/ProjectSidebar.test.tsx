@@ -10,9 +10,9 @@ describe("ProjectSidebar", () => {
   it("shows project file empty state without an active project", () => {
     renderSidebar(initialProjectSidebarState)
 
-    const panel = screen.getByRole("region", { name: "Project files" })
-    expect(within(panel).getByRole("heading", { name: "Files" })).toBeInTheDocument()
-    expect(within(panel).getByText("0 files")).toBeInTheDocument()
+    const panel = screen.getByRole("region", { name: "Project tree" })
+    expect(within(panel).getByRole("heading", { name: "Project tree" })).toBeInTheDocument()
+    expect(within(panel).getByRole("button", { name: "Import files into project" })).toBeDisabled()
     expect(within(panel).getByText("Open a project to view its files.")).toBeInTheDocument()
     expect(screen.queryByText("No project loaded")).not.toBeInTheDocument()
   })
@@ -31,7 +31,7 @@ describe("ProjectSidebar", () => {
           id: "raw-abc123def456",
           projectRef: activeProject.projectRef,
           path: "inputs/raw/abc123def456-water.extxyz",
-          name: "abc123def456-water.extxyz",
+          name: "water.extxyz",
           kind: "extxyz",
           byteSize: 128,
           checksum: "sha256:abc123def4567890",
@@ -45,12 +45,30 @@ describe("ProjectSidebar", () => {
       ],
     })
 
-    const panel = screen.getByRole("region", { name: "Project files" })
+    const panel = screen.getByRole("region", { name: "Project tree" })
     expect(within(panel).getByText("1 file")).toBeInTheDocument()
-    expect(within(panel).getByText("abc123def456-water.extxyz")).toBeInTheDocument()
-    expect(within(panel).getByText("inputs/raw/abc123def456-water.extxyz")).toBeInTheDocument()
+    expect(within(panel).getByText("Pd Ni")).toBeInTheDocument()
+    expect(within(panel).getByText("water.extxyz")).toBeInTheDocument()
+    expect(within(panel).queryByText("inputs/raw/abc123def456-water.extxyz")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("sha256:abc123def4567890")).not.toBeInTheDocument()
     expect(within(panel).getByText("ExtXYZ")).toBeInTheDocument()
     expect(within(panel).getByText("Stored")).toBeInTheDocument()
+  })
+
+  it("opens the import tray from the project tree action", () => {
+    const activeProject = browserProject("browser-project:project-1", "Pd Ni")
+    const onImportProjectFiles = vi.fn()
+    renderSidebar({
+      ...initialProjectSidebarState,
+      status: "ready",
+      projects: [activeProject],
+      activeProjectRef: activeProject.projectRef,
+      activeProject,
+    }, vi.fn(), onImportProjectFiles)
+
+    fireEvent.click(screen.getByRole("button", { name: "Import files into project" }))
+
+    expect(onImportProjectFiles).toHaveBeenCalledTimes(1)
   })
 
   it("serializes project raw file drag payloads from raw file rows", () => {
@@ -66,7 +84,7 @@ describe("ProjectSidebar", () => {
           id: "raw-abc123def456",
           projectRef: activeProject.projectRef,
           path: "inputs/raw/abc123def456-water.extxyz",
-          name: "abc123def456-water.extxyz",
+          name: "water.extxyz",
           kind: "extxyz",
           byteSize: 128,
           checksum: "sha256:abc123def4567890",
@@ -80,7 +98,7 @@ describe("ProjectSidebar", () => {
       ],
     })
 
-    const row = screen.getByText("abc123def456-water.extxyz").closest(".project-file-card")
+    const row = screen.getByText("water.extxyz").closest(".project-file-card")
     if (!(row instanceof HTMLElement)) {
       throw new Error("Project file row was not rendered.")
     }
@@ -112,7 +130,7 @@ describe("ProjectSidebar", () => {
           id: "raw-abc123def456",
           projectRef: activeProject.projectRef,
           path: "inputs/raw/abc123def456-water.extxyz",
-          name: "abc123def456-water.extxyz",
+          name: "water.extxyz",
           kind: "extxyz",
           byteSize: 128,
           checksum: "sha256:abc123def4567890",
@@ -136,12 +154,17 @@ describe("ProjectSidebar", () => {
   })
 })
 
-function renderSidebar(state: ProjectSidebarState, onAddProjectFileToCanvas = vi.fn()) {
+function renderSidebar(
+  state: ProjectSidebarState,
+  onAddProjectFileToCanvas = vi.fn(),
+  onImportProjectFiles = vi.fn(),
+) {
   return render(
     <I18nProvider initialLocale="en-US">
       <ProjectSidebar
         state={state}
         onOpenProject={async () => undefined}
+        onImportProjectFiles={onImportProjectFiles}
         onAddProjectFileToCanvas={onAddProjectFileToCanvas}
       />
     </I18nProvider>,

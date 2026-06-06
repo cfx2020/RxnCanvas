@@ -2438,6 +2438,15 @@ export function WorkbenchShell({
     }))
   }, [])
 
+  const openSourceTray = useCallback(() => {
+    setWorkspaceFlowShellState((current) => ({
+      ...current,
+      inspectorOpen: false,
+      sourceTrayOpen: true,
+      devToolsOpen: false,
+    }))
+  }, [])
+
   const openExportPanel = useCallback(() => {
     setWorkspaceFlowShellState((current) => ({
       ...current,
@@ -2565,6 +2574,7 @@ export function WorkbenchShell({
           <ProjectSidebar
             state={projectSidebarState}
             onOpenProject={openSidebarProject}
+            onImportProjectFiles={openSourceTray}
             onAddProjectFileToCanvas={addProjectFileToCanvas}
           />
         </section>

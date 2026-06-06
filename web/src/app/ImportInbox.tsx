@@ -165,9 +165,8 @@ function RawPersistenceSummary({ file }: { file: WebImportFile }) {
     return (
       <div className="raw-persistence raw-persistence--persisted">
         <span>{t("importInbox.rawPersistence.persisted")}</span>
-        <code>{state.resource.id}</code>
-        <code>{state.resource.path}</code>
-        <code>{state.resource.checksum}</code>
+        <strong>{state.resource.metadata.source_name}</strong>
+        <small>{formatFileSize(state.resource.metadata.byte_size)}</small>
       </div>
     )
   }
@@ -232,7 +231,7 @@ function ImportItemCard({ item }: { item: ImportItemSummary }) {
   return (
     <li className={`import-item-card import-item-card--${item.status}`}>
       <div className="import-item-title">
-        <strong>{item.source_path}</strong>
+        <strong>{importItemDisplayName(item)}</strong>
         <span>{item.status}</span>
       </div>
       {item.preview ? (
@@ -254,14 +253,29 @@ function ImportItemCard({ item }: { item: ImportItemSummary }) {
       {item.raw_resource ? (
         <div className="raw-resource">
           <span>{t("importInbox.rawResource")}</span>
-          <code>{item.raw_resource.path ?? item.raw_resource.id}</code>
-          {item.raw_resource.checksum ? <code>{item.raw_resource.checksum}</code> : null}
+          <strong>{rawResourceDisplayName(item)}</strong>
         </div>
       ) : null}
       {item.warnings.length > 0 ? <WarningList warnings={item.warnings} /> : null}
       {item.error ? <ImportError error={item.error} /> : null}
     </li>
   )
+}
+
+function importItemDisplayName(item: ImportItemSummary): string {
+  return item.source_name ?? rawResourceDisplayName(item) ?? cleanImportSourcePath(item.source_path)
+}
+
+function rawResourceDisplayName(item: ImportItemSummary): string | undefined {
+  const metadataSourceName = item.raw_resource?.metadata?.source_name
+  if (typeof metadataSourceName === "string" && metadataSourceName) return metadataSourceName
+  if (item.raw_resource?.path) return cleanImportSourcePath(item.raw_resource.path)
+  return undefined
+}
+
+function cleanImportSourcePath(path: string): string {
+  const baseName = path.split("/").filter(Boolean).at(-1) ?? path
+  return baseName.replace(/^[a-f0-9]{12}-/i, "")
 }
 
 function WarningList({ warnings }: { warnings: ShellWarning[] }) {
