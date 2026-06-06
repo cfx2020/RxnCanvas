@@ -40,7 +40,7 @@ items:
     status: done
     feature: 2026-06-04-workspace-first-flow-polish
     minimal_loop: false
-    notes: "已形成 Project Rail / Canvas Stage / Analysis Dock 主界面；Source Tray 与 Diagnostics 降级内部流程和 dev commands"
+    notes: "已形成 Project Rail / Canvas Stage / Analysis Dock 主界面；Source Tray / Import Inbox 已在后续清理中删除，导入入口收束为项目树 +/drop 与画布 drop；Diagnostics 收纳 dev commands"
 
   - slug: workspace-first-flow-qa-guides
     description: 补桌面、窄屏、local-http E2E 和用户指南，固定新主流程的保存、导出、分享和恢复验收脚本
@@ -48,4 +48,4 @@ items:
     status: done
     feature: 2026-06-05-workspace-first-flow-qa-guides
     minimal_loop: false
-    notes: "覆盖保存项目、导出 .rxnflow.zip、重新导入后恢复 raw files、graph、PES preview 和 CDXML 下载边界"
+    notes: "覆盖保存项目、重新打开后恢复 raw files、graph、PES preview，以及右侧 Export 的 CDXML 下载边界；.rxnflow.zip 不再是 Web 左侧主流程"

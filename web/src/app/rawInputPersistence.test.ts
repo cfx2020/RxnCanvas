@@ -90,7 +90,7 @@ describe("raw input persistence", () => {
       id: "water",
       name: "water.xyz",
       size: 8,
-      storagePath: "inbox/water.xyz",
+      storagePath: "transient/water.xyz",
       file: new File(["2\nwater\n"], "water.xyz"),
     }
     const noProject = await persistImportFilesAsRawInputs(repository, undefined, [file])

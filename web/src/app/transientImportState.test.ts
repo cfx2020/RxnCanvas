@@ -2,19 +2,19 @@ import { describe, expect, it } from "vitest"
 import {
   importPreviewArgs,
   importPreviewArgsFromFiles,
-  initialImportInboxState,
-} from "./importInboxState"
+  initialTransientImportState,
+} from "./transientImportState"
 
-describe("importInboxState", () => {
+describe("transientImportState", () => {
   it("builds path preview args for fixture mode", () => {
     const args = importPreviewArgs({
-      ...initialImportInboxState,
+      ...initialTransientImportState,
       selectedFiles: [
         {
           id: "water",
           name: "water.xyz",
           size: 42,
-          storagePath: "inbox/water.xyz",
+          storagePath: "transient/water.xyz",
         },
       ],
       expectedFormat: "xyz",
@@ -23,7 +23,7 @@ describe("importInboxState", () => {
 
     expect(args).toEqual({
       session_id: "session-fixture-web",
-      source_paths: ["inbox/water.xyz"],
+      source_paths: ["transient/water.xyz"],
       expected_format: "xyz",
       strict: true,
     })
@@ -31,14 +31,14 @@ describe("importInboxState", () => {
 
   it("builds inline byte preview args from browser File objects", async () => {
     const result = await importPreviewArgsFromFiles({
-      ...initialImportInboxState,
+      ...initialTransientImportState,
       selectedFiles: [
         {
           id: "water",
           name: "water.xyz",
           size: 8,
           mimeType: "chemical/x-xyz",
-          storagePath: "inbox/water.xyz",
+          storagePath: "transient/water.xyz",
           file: new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" }),
         },
       ],
@@ -66,13 +66,13 @@ describe("importInboxState", () => {
 
   it("preserves raw persistence state while deriving preview sources", async () => {
     const result = await importPreviewArgsFromFiles({
-      ...initialImportInboxState,
+      ...initialTransientImportState,
       selectedFiles: [
         {
           id: "water",
           name: "water.xyz",
           size: 8,
-          storagePath: "inbox/water.xyz",
+          storagePath: "transient/water.xyz",
           file: new File(["2\nwater\n"], "water.xyz"),
           rawPersistence: {
             state: "persisted",
@@ -104,13 +104,13 @@ describe("importInboxState", () => {
 
   it("returns payload_too_large before reading oversized inline files", async () => {
     const result = await importPreviewArgsFromFiles({
-      ...initialImportInboxState,
+      ...initialTransientImportState,
       selectedFiles: [
         {
           id: "large",
           name: "large.xyz",
           size: 5,
-          storagePath: "inbox/large.xyz",
+          storagePath: "transient/large.xyz",
           file: new File(["12345"], "large.xyz"),
         },
       ],
@@ -125,13 +125,13 @@ describe("importInboxState", () => {
 
   it("allows local-http inline files above the former small demo limit", async () => {
     const result = await importPreviewArgsFromFiles({
-      ...initialImportInboxState,
+      ...initialTransientImportState,
       selectedFiles: [
         {
           id: "gaussian-log",
           name: "sample.log",
           size: 1024 * 1024 + 1,
-          storagePath: "inbox/sample.log",
+          storagePath: "transient/sample.log",
           file: new File([new Uint8Array(1024 * 1024 + 1)], "sample.log"),
         },
       ],

@@ -233,7 +233,7 @@ describe("ShellClient", () => {
       command: "import.preview",
       args: {
         session_id: fixtureResponse.data?.session_id ?? "",
-        source_paths: ["inbox/water.xyz", "inbox/bad-count.xyz"],
+        source_paths: ["transient/water.xyz", "transient/bad-count.xyz"],
         expected_format: "xyz",
         strict: false,
       },
@@ -272,7 +272,7 @@ describe("ShellClient", () => {
       command: "import.preview",
       args: {
         session_id: fixtureResponse.data?.session_id ?? "",
-        source_paths: ["inbox/water.xyz"],
+        source_paths: ["transient/water.xyz"],
       },
     })
 
@@ -309,7 +309,7 @@ describe("ShellClient", () => {
       command: "import.preview",
       args: {
         session_id: fixtureResponse.data?.session_id ?? "",
-        source_paths: ["inbox/multi.extxyz"],
+        source_paths: ["transient/multi.extxyz"],
       },
     })
 

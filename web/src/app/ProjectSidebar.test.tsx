@@ -7,14 +7,27 @@ import { ProjectSidebar } from "./ProjectSidebar"
 import { initialProjectSidebarState, type ProjectSidebarState } from "./projectSidebarState"
 
 describe("ProjectSidebar", () => {
-  it("shows project file empty state without an active project", () => {
+  it("shows the project drawer empty state without projects", () => {
     renderSidebar(initialProjectSidebarState)
 
-    const panel = screen.getByRole("region", { name: "Project tree" })
-    expect(within(panel).getByRole("heading", { name: "Project tree" })).toBeInTheDocument()
-    expect(within(panel).getByRole("button", { name: "Import files into project" })).toBeDisabled()
-    expect(within(panel).getByText("Open a project to view its files.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "New Project" })).toBeInTheDocument()
+    const panel = screen.getByRole("region", { name: "Projects" })
+    expect(within(panel).getByText("No projects yet")).toBeInTheDocument()
     expect(screen.queryByText("No project loaded")).not.toBeInTheDocument()
+  })
+
+  it("creates projects from the sidebar drawer action", () => {
+    const onCreateProject = vi.fn()
+    renderSidebar(initialProjectSidebarState, vi.fn(), vi.fn(), onCreateProject)
+
+    fireEvent.click(screen.getByRole("button", { name: "New Project" }))
+    const form = screen.getByRole("form", { name: "Create project" })
+    fireEvent.change(within(form).getByLabelText("Project name"), {
+      target: { value: "Catalyst Screen" },
+    })
+    fireEvent.click(within(form).getByRole("button", { name: "Create Project" }))
+
+    expect(onCreateProject).toHaveBeenCalledWith("Catalyst Screen")
   })
 
   it("renders raw inputs from project file state", () => {
@@ -45,17 +58,44 @@ describe("ProjectSidebar", () => {
       ],
     })
 
-    const panel = screen.getByRole("region", { name: "Project tree" })
+    const panel = screen.getByRole("region", { name: "Projects" })
     expect(within(panel).getByText("1 file")).toBeInTheDocument()
     expect(within(panel).getByText("Pd Ni")).toBeInTheDocument()
     expect(within(panel).getByText("water.extxyz")).toBeInTheDocument()
     expect(within(panel).queryByText("inputs/raw/abc123def456-water.extxyz")).not.toBeInTheDocument()
     expect(within(panel).queryByText("sha256:abc123def4567890")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("Persistence")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("Validation")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("Project content files are readable.")).not.toBeInTheDocument()
     expect(within(panel).getByText("ExtXYZ")).toBeInTheDocument()
     expect(within(panel).getByText("Stored")).toBeInTheDocument()
   })
 
-  it("opens the import tray from the project tree action", () => {
+  it("shows project notices only for unsaved or invalid project state", () => {
+    const activeProject = browserProject("browser-project:project-1", "Pd Ni")
+    renderSidebar({
+      ...initialProjectSidebarState,
+      status: "ready",
+      projects: [activeProject],
+      activeProjectRef: activeProject.projectRef,
+      activeProject,
+      persistence: "dirty",
+      validation: {
+        state: "missing",
+        messageKey: "projectSidebar.validation.contentMissing",
+        messageParams: { path: ".rxnflow/state/project-content.json" },
+      },
+    })
+
+    const notices = screen.getByRole("status", { name: "Project notices" })
+    expect(within(notices).getByText("Unsaved changes")).toBeInTheDocument()
+    expect(within(notices).getByText("Project files need attention")).toBeInTheDocument()
+    expect(within(notices).getByText(/Project content file is missing/)).toBeInTheDocument()
+    expect(screen.queryByText("Persisted")).not.toBeInTheDocument()
+    expect(screen.queryByText("Valid")).not.toBeInTheDocument()
+  })
+
+  it("opens the import tray from a project folder action", () => {
     const activeProject = browserProject("browser-project:project-1", "Pd Ni")
     const onImportProjectFiles = vi.fn()
     renderSidebar({
@@ -68,7 +108,30 @@ describe("ProjectSidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Import files into project" }))
 
-    expect(onImportProjectFiles).toHaveBeenCalledTimes(1)
+    expect(onImportProjectFiles).toHaveBeenCalledWith(activeProject.projectRef)
+  })
+
+  it("opens the import tray with local files dropped onto a project folder", () => {
+    const activeProject = browserProject("browser-project:project-1", "Pd Ni")
+    const onImportProjectFiles = vi.fn()
+    const file = new File(["water"], "water.log", { type: "text/plain" })
+    renderSidebar({
+      ...initialProjectSidebarState,
+      status: "ready",
+      projects: [activeProject],
+      activeProjectRef: activeProject.projectRef,
+      activeProject,
+    }, vi.fn(), onImportProjectFiles)
+
+    const folder = screen.getByRole("treeitem", { expanded: true })
+    fireEvent.drop(folder, {
+      dataTransfer: {
+        files: [file],
+        dropEffect: "none",
+      },
+    })
+
+    expect(onImportProjectFiles).toHaveBeenCalledWith(activeProject.projectRef, [file])
   })
 
   it("serializes project raw file drag payloads from raw file rows", () => {
@@ -158,11 +221,13 @@ function renderSidebar(
   state: ProjectSidebarState,
   onAddProjectFileToCanvas = vi.fn(),
   onImportProjectFiles = vi.fn(),
+  onCreateProject = vi.fn(),
 ) {
   return render(
     <I18nProvider initialLocale="en-US">
       <ProjectSidebar
         state={state}
+        onCreateProject={onCreateProject}
         onOpenProject={async () => undefined}
         onImportProjectFiles={onImportProjectFiles}
         onAddProjectFileToCanvas={onAddProjectFileToCanvas}

@@ -5,14 +5,14 @@ component: web-workbench-shell
 status: current
 summary: Workspace-first Web 工作台主流程的 QA matrix、命令和证据边界
 tags: [web-workbench, workspace-first, qa, e2e, playwright, local-http, local-first]
-last_reviewed: 2026-06-05
+last_reviewed: 2026-06-06
 ---
 
 # Workspace-First Flow QA
 
 ## 什么时候跑
 
-改动 Project Sidebar、Project Files、Source Tray、Graph Canvas、Analysis Dock、PES、Report Export、browser-local persistence、project save/restore、local-http transport 或用户指南时，按下面矩阵选择命令。
+改动 Project Sidebar、Project Files、项目树导入、Graph Canvas、Analysis Dock、PES、Report Export、browser-local persistence、project save/restore、local-http transport 或用户指南时，按下面矩阵选择命令。
 
 常规 Web 改动至少跑：
 
@@ -44,7 +44,7 @@ git diff --check
 
 | Scenario | Mode | Viewport | Command / spec | Proves | Does not prove |
 |---|---|---|---|---|---|
-| `fixture-desktop-workbench-journey` | fixture | desktop `1280x720` | `npm run test:e2e -- workbench-journey.spec.ts` | 顶部菜单、Project Sidebar、Graph Canvas、Analysis Dock、Source/Analysis 互斥、import/register、path、PES、Export、download、browser-local persistence | 真实 Python parser、真实 export writer、完整第三方输出兼容 |
+| `fixture-desktop-workbench-journey` | fixture | desktop `1280x720` | `npm run test:e2e -- workbench-journey.spec.ts` | 顶部菜单、Project Sidebar、Project Files import、Graph Canvas、Analysis Dock、import/register、path、PES、Export、download、browser-local persistence | 真实 Python parser、真实 export writer、完整第三方输出兼容 |
 | `fixture-desktop-project-restore` | fixture | desktop `1280x720` | `workbench-journey.spec.ts` | Save Project、刷新/重开 project、Project Files raw-only、graph/workspace/path/viewport 恢复 | Python bridge roundtrip、Project Content deep validation |
 | `fixture-narrow-workbench-flow` | fixture | narrow `390x840` | `workbench-journey.spec.ts` | 窄屏首屏项目栏默认收起、主动作可达、graph/PES/export 可用、无页面级水平溢出 | 桌面复杂手势覆盖、真实 bridge |
 | `fixture-graph-editor-matrix` | fixture | desktop + narrow | `workbench-journey.spec.ts` | object drag/drop、node drag、layout、path delete、edge label、direct edge、rubber-band、keyboard nudge、viewport/minimap/history | Python bridge、真实 parser/export writer |
@@ -77,7 +77,7 @@ Playwright 产物只写入 gitignored 目录：
 - 不直接 mutate `WorkbenchDomainState`、ShellResponse、Project Content files 或 Browser Project Repository bytes。
 - 断言用户可观察结果：顶部菜单状态、项目栏展开/收起、Project Files path/status/Add to canvas、Graph Canvas node/path、Analysis Dock tab、PES profile、Export artifact、Download link 和 Diagnostics 内 runtime status。
 - 主界面不得断言或展示 backend id、browser project ref、`Runtime Fixture`、`browser-project:...` 等实现细节；这类信息只能在 Diagnostics 中作为排障信息出现。
-- Source Tray、Analysis Dock 和 Export 入口是互斥覆盖层；测试需要在进入画布编辑前显式收起会遮挡画布的面板。
+- 旧 Source Tray / Import Inbox 不应在主界面出现；测试应优先通过项目树导入和画布 drop 覆盖文件入口。进入画布编辑前只需要处理 Project Rail 和 Analysis Dock 的展开/收起状态。
 - 不为测试便利新增生产按钮、测试专用 UI、runtime schema、localStorage key 或 shell command。
 - fixture/local-http 都要检查 framework overlay absent、console clean 和 no horizontal overflow。
 - CDXML 只按 `.cdxml` 支持验收，不把能力描述成 CDX 或 molecule-level ChemDraw structure export。

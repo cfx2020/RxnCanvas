@@ -17,7 +17,7 @@ export type WebImportFile = {
   rawPersistence?: RawPersistenceState
 }
 
-export type ImportInboxStatus =
+export type TransientImportStatus =
   | "idle"
   | "selecting"
   | "previewing"
@@ -26,8 +26,8 @@ export type ImportInboxStatus =
   | "registered"
   | "error"
 
-export type ImportInboxState = {
-  status: ImportInboxStatus
+export type TransientImportState = {
+  status: TransientImportStatus
   selectedFiles: WebImportFile[]
   expectedFormat: string
   strict: boolean
@@ -49,7 +49,7 @@ export const importFormatOptions = [
 
 export type ImportFormatOption = (typeof importFormatOptions)[number]
 
-export const initialImportInboxState: ImportInboxState = {
+export const initialTransientImportState: TransientImportState = {
   status: "idle",
   selectedFiles: [],
   expectedFormat: "auto",
@@ -65,13 +65,13 @@ export function filesToWebImportFiles(files: FileList | File[]): WebImportFile[]
     size: file.size,
     mimeType: file.type || undefined,
     lastModified: file.lastModified || undefined,
-    storagePath: `inbox/${file.name}`,
+    storagePath: `transient/${file.name}`,
     file,
     sourceKind: "path",
   }))
 }
 
-export function importPreviewArgs(state: ImportInboxState, sessionId?: string): JsonObject {
+export function importPreviewArgs(state: TransientImportState, sessionId?: string): JsonObject {
   const sourcePaths = state.selectedFiles
     .map((file) => file.storagePath)
     .filter((path): path is string => Boolean(path))
@@ -89,7 +89,7 @@ export type ImportPreviewArgsBuildResult =
   | { ok: false; error: ShellError; files: WebImportFile[] }
 
 export async function importPreviewArgsFromFiles(
-  state: ImportInboxState,
+  state: TransientImportState,
   sessionId?: string,
   options: { preferInlineBytes?: boolean; inlineByteLimit?: number } = {},
 ): Promise<ImportPreviewArgsBuildResult> {
@@ -157,11 +157,11 @@ export async function importPreviewArgsFromFiles(
   }
 }
 
-export function canPreviewImport(state: ImportInboxState): boolean {
+export function canPreviewImport(state: TransientImportState): boolean {
   return state.selectedFiles.length > 0 && state.status !== "previewing" && state.status !== "registering"
 }
 
-export function canRegisterImport(state: ImportInboxState): boolean {
+export function canRegisterImport(state: TransientImportState): boolean {
   return (
     state.status !== "registering" &&
     Boolean(state.activeBatch?.items.some((item) => item.status === "needs_confirmation" && item.preview))

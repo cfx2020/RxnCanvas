@@ -19,12 +19,12 @@ items:
     notes: raw_resource_id 默认 null；raw_retention 默认 discarded
 
   - slug: web-transient-import-flow
-    description: Web Source Tray 和 raw drop 改为临时解析，不写 Browser Raw Input Object，解析后更新对象和 workspace
+    description: Web 项目树导入和 raw drop 改为临时解析，不写 Browser Raw Input Object，解析后更新对象和 workspace
     depends_on: [transient-import-core-contract]
     status: planned
     feature: null
     minimal_loop: false
-    notes: Source Tray 继续负责外部文件选择；Graph Canvas 可见节点仍只来自 ShellResponse workspace projection
+    notes: 项目树 +/drop 和 Graph Canvas drop 继续负责外部文件选择；Graph Canvas 可见节点仍只来自 ShellResponse workspace projection
 
   - slug: web-data-library-panel
     description: 左侧 Project Sidebar 从 Project Files 改为 Project Data Library，展示已导入对象和来源摘要并支持拖入画布

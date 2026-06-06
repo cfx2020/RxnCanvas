@@ -2029,7 +2029,7 @@ function fixtureImportRegisterSelectionResponse(args: JsonObject): ShellResponse
     data: {
       command: "import.register_selection",
       session_id: fixtureSessionId,
-      batch: importBatchSummary("registered", ["inbox/multi.extxyz"]),
+      batch: importBatchSummary("registered", ["transient/multi.extxyz"]),
       registered_object_ids: registeredObjectIds,
       objects: cloneObjects(fixtureObjects),
     },
@@ -2041,9 +2041,9 @@ function fixtureImportRegisterSelectionResponse(args: JsonObject): ShellResponse
 
 function importBatchSummary(
   successStatus: "needs_confirmation" | "registered",
-  sourcePaths: string[] = ["inbox/water.xyz", "inbox/bad-count.xyz"],
+  sourcePaths: string[] = ["transient/water.xyz", "transient/bad-count.xyz"],
 ): ImportBatchSummary {
-  const [successPath = "inbox/water.xyz", failedPath = "inbox/bad-count.xyz"] = sourcePaths
+  const [successPath = "transient/water.xyz", failedPath = "transient/bad-count.xyz"] = sourcePaths
   const multiCandidate = successPath.includes("multi")
   return {
     id: "import-batch-fixture-web-1",

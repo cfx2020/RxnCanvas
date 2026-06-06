@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
-import { AlertTriangle, Download, FolderPlus, PanelLeft, PanelRight, Play, RefreshCw, Save, UploadCloud } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react"
+import { AlertTriangle, Download, PanelLeft, PanelRight, Play, RefreshCw, Save } from "lucide-react"
 import {
   BrowserProjectRepositoryError,
   checksumBrowserStorageBytes,
@@ -86,14 +86,14 @@ import {
   type GraphPathOrderMoveDirection,
 } from "./graphPathOrderDraft"
 import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type ParseCandidateChooserState, type PathAuthoringStatus, type RemoveGraphItemsRequest } from "./GraphCanvas"
-import { ImportInbox, type SourceTrayModel, type SourceTrayStatus } from "./ImportInbox"
 import {
   importPreviewArgsFromFiles,
-  initialImportInboxState,
+  filesToWebImportFiles,
+  initialTransientImportState,
   mergeRegisteredObjects,
-  type ImportInboxState,
+  type TransientImportState,
   type WebImportFile,
-} from "./importInboxState"
+} from "./transientImportState"
 import { ObjectRegistryPanel, type ApplyCorrectionRequest } from "./ObjectRegistryPanel"
 import { persistImportFilesAsRawInputs, persistRawInputFile, type BrowserRawResource } from "./rawInputPersistence"
 import { createProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
@@ -141,7 +141,6 @@ type WorkspaceFlowShellState = {
   projectRailDensity: "normal" | "compact"
   projectRailOpen: boolean
   inspectorOpen: boolean
-  sourceTrayOpen: boolean
   devToolsOpen: boolean
 }
 
@@ -155,7 +154,6 @@ const defaultWorkspaceFlowShellState: WorkspaceFlowShellState = {
   projectRailDensity: "normal",
   projectRailOpen: true,
   inspectorOpen: false,
-  sourceTrayOpen: false,
   devToolsOpen: false,
 }
 
@@ -173,12 +171,11 @@ export function WorkbenchShell({
   const [projectSidebarState, setProjectSidebarState] = useState<ProjectSidebarState>(
     initialProjectSidebarState,
   )
-  const [projectName, setProjectName] = useState("")
   const [workspaceFlowShellState, setWorkspaceFlowShellState] = useState<WorkspaceFlowShellState>(
     defaultWorkspaceFlowShellState,
   )
-  const [importInboxState, setImportInboxState] = useState<ImportInboxState>(
-    initialImportInboxState,
+  const [transientImportState, setTransientImportState] = useState<TransientImportState>(
+    initialTransientImportState,
   )
   const [activeObjectId, setActiveObjectId] = useState<string | undefined>()
   const [correctionPending, setCorrectionPending] = useState(false)
@@ -219,7 +216,6 @@ export function WorkbenchShell({
     basename: "rxnflow-profile",
     title: "Relative energy profile",
   })
-  const sourceTrayModel = sourceTrayModelFromState(projectSidebarState, importInboxState)
   const projectSidebarStateRef = useRef<ProjectSidebarState>(initialProjectSidebarState)
   const workbenchStateRef = useRef<WorkbenchDomainState>(initialWorkbenchDomainState)
   const graphEditorHistoryRef = useRef<GraphEditorHistoryState>(initialGraphEditorHistoryState)
@@ -230,6 +226,8 @@ export function WorkbenchShell({
   const shellSessionVersionRef = useRef(0)
   const shellElementRef = useRef<HTMLDivElement | null>(null)
   const topbarElementRef = useRef<HTMLElement | null>(null)
+  const projectImportInputRef = useRef<HTMLInputElement | null>(null)
+  const pendingProjectImportRef = useRef<string | null>(null)
 
   useEffect(() => {
     const shellElement = shellElementRef.current
@@ -363,7 +361,6 @@ export function WorkbenchShell({
       ...current,
       analysisDockTab,
       inspectorOpen: true,
-      sourceTrayOpen: false,
       devToolsOpen: analysisDockTab === "diagnostics",
     }))
   }, [])
@@ -575,17 +572,6 @@ export function WorkbenchShell({
     [projectRepository, replaceProjectSidebarState, restoreSidebarProjectSession],
   )
 
-  const createTopbarProject = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      const nextState = await createSidebarProject(projectName)
-      if (nextState.status === "ready") {
-        setProjectName("")
-      }
-    },
-    [createSidebarProject, projectName],
-  )
-
   const openSidebarProject = useCallback(
     async (projectRef: string) => {
       const requestVersion = shellSessionVersionRef.current
@@ -726,30 +712,100 @@ export function WorkbenchShell({
     })
   }, [shellClient])
 
-  const selectImportFiles = useCallback((files: WebImportFile[]) => {
-    setImportInboxState((current) => ({
+  const persistFilesIntoProject = useCallback(async (projectRef: string, files: File[]) => {
+    const selectedFiles = filesToWebImportFiles(files)
+    if (selectedFiles.length === 0) return
+
+    setTransientImportState((current) => ({
       ...current,
-      status: files.length > 0 ? "selecting" : "idle",
-      selectedFiles: files,
+      status: "selecting",
+      selectedFiles,
       activeBatch: undefined,
       registeredObjectIds: [],
       warnings: [],
       error: undefined,
     }))
-  }, [])
 
-  const changeImportExpectedFormat = useCallback((expectedFormat: string) => {
-    setImportInboxState((current) => ({ ...current, expectedFormat }))
-  }, [])
+    if (projectSidebarStateRef.current.activeProjectRef !== projectRef) {
+      await openSidebarProject(projectRef)
+    }
 
-  const changeImportStrict = useCallback((strict: boolean) => {
-    setImportInboxState((current) => ({ ...current, strict }))
-  }, [])
+    const activeProject = projectSidebarStateRef.current.activeProject
+    if (!activeProject || activeProject.projectRef !== projectRef) {
+      const error = shellError("active_project_required", "Active browser project is required before importing files.", "active_project")
+      setTransientImportState((current) => ({
+        ...current,
+        status: "error",
+        selectedFiles,
+        warnings: [],
+        error,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: [],
+        error,
+      }))
+      return
+    }
 
-  const clearImportInbox = useCallback(() => {
-    setImportInboxState(initialImportInboxState)
-    setParseCandidateChooser(null)
-  }, [])
+    const persistedFiles = await persistImportFilesAsRawInputs(projectRepository, activeProject, selectedFiles)
+    replaceProjectSidebarState(await refreshProjects(projectRepository, projectSidebarStateRef.current))
+    const failedFile = persistedFiles.find((file) => file.rawPersistence?.state === "error")
+    const importError = failedFile?.rawPersistence?.state === "error" ? failedFile.rawPersistence.error : undefined
+    if (importError) {
+      setTransientImportState((current) => ({
+        ...current,
+        status: "error",
+        selectedFiles: persistedFiles,
+        warnings: [],
+        error: importError,
+      }))
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: [],
+        error: importError,
+      }))
+      return
+    }
+
+    setTransientImportState((current) => ({
+      ...current,
+      status: "registered",
+      selectedFiles: persistedFiles,
+      activeBatch: undefined,
+      registeredObjectIds: [],
+      warnings: [],
+      error: undefined,
+    }))
+    setWorkbenchState((current) => ({
+      ...current,
+      status: "success",
+      error: undefined,
+    }))
+  }, [openSidebarProject, projectRepository, replaceProjectSidebarState])
+
+  const openProjectImport = useCallback(async (projectRef: string, files?: File[]) => {
+    if (files && files.length > 0) {
+      await persistFilesIntoProject(projectRef, files)
+      return
+    }
+
+    if (projectSidebarStateRef.current.activeProjectRef !== projectRef) {
+      await openSidebarProject(projectRef)
+    }
+    pendingProjectImportRef.current = projectRef
+    projectImportInputRef.current?.click()
+  }, [openSidebarProject, persistFilesIntoProject])
+
+  const handleProjectImportInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const projectRef = pendingProjectImportRef.current ?? projectSidebarStateRef.current.activeProjectRef
+    const files = Array.from(event.currentTarget.files ?? [])
+    event.currentTarget.value = ""
+    if (!projectRef || files.length === 0) return
+    void persistFilesIntoProject(projectRef, files)
+  }, [persistFilesIntoProject])
 
   const applyWorkspaceResponse = useCallback((response: Awaited<ReturnType<ShellClient["run"]>>) => {
     if (!response.ok || !response.data) {
@@ -839,7 +895,7 @@ export function WorkbenchShell({
     warnings: WorkbenchDomainState["warnings"] = [],
     activeBatch?: ImportBatchSummary,
   ) => {
-    setImportInboxState((current) => ({
+    setTransientImportState((current) => ({
       ...current,
       status: "error",
       selectedFiles: selectedFiles.length > 0 ? selectedFiles : current.selectedFiles,
@@ -909,14 +965,14 @@ export function WorkbenchShell({
     }
     const rawFilePath = importFileResult.file.storagePath ?? importFileResult.file.name
 
-    const previewState: ImportInboxState = {
-      ...initialImportInboxState,
+    const previewState: TransientImportState = {
+      ...initialTransientImportState,
       status: "previewing",
       selectedFiles: [importFileResult.file],
-      expectedFormat: importInboxState.expectedFormat,
-      strict: importInboxState.strict,
+      expectedFormat: transientImportState.expectedFormat,
+      strict: transientImportState.strict,
     }
-    setImportInboxState(previewState)
+    setTransientImportState(previewState)
     replaceProjectSidebarState(await refreshProjects(projectRepository, projectSidebarStateRef.current))
 
     const payload = await importPreviewArgsFromFiles(previewState, sessionId)
@@ -952,7 +1008,7 @@ export function WorkbenchShell({
       status: "previewed",
       warnings: projectFileWarningMessagesFromWarnings(previewResponse.warnings),
     })
-    setImportInboxState((current) => ({
+    setTransientImportState((current) => ({
       ...current,
       status: "ready",
       selectedFiles: payload.files,
@@ -1003,7 +1059,7 @@ export function WorkbenchShell({
       return
     }
 
-    setImportInboxState((current) => ({
+    setTransientImportState((current) => ({
       ...current,
       status: "registering",
       warnings: [],
@@ -1056,7 +1112,7 @@ export function WorkbenchShell({
       registeredObjectIds: [registeredObjectId],
       warnings: projectFileWarningMessagesFromWarnings(registerResponse.warnings),
     })
-    setImportInboxState((current) => ({
+    setTransientImportState((current) => ({
       ...current,
       status: "registered",
       activeBatch: registerData.batch,
@@ -1112,7 +1168,7 @@ export function WorkbenchShell({
       warnings: projectFileWarningMessagesFromWarnings(addNodeResponse.warnings),
     })
     resetGraphEditorHistory()
-  }, [applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, importInboxState.expectedFormat, importInboxState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
+  }, [applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, transientImportState.expectedFormat, transientImportState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
 
   const addProjectFileToCanvas = useCallback(async (file: ProjectFileEntry) => {
     const baseNodeCount = workbenchStateRef.current.workspace?.graph.nodes.length ?? 0
@@ -1166,7 +1222,7 @@ export function WorkbenchShell({
     }
 
     setParseCandidateChooser({ ...chooser, status: "registering", error: null })
-    setImportInboxState((current) => ({ ...current, status: "registering", warnings: [], error: undefined }))
+    setTransientImportState((current) => ({ ...current, status: "registering", warnings: [], error: undefined }))
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const registerResponse = await shellClient.run<ImportRegisterSelectionData>({
       command: "import.register_selection",
@@ -1183,7 +1239,7 @@ export function WorkbenchShell({
         status: "error",
         warnings: projectFileWarningMessagesFromError(error),
       })
-      setImportInboxState((current) => ({
+      setTransientImportState((current) => ({
         ...current,
         status: "error",
         warnings: registerResponse.warnings,
@@ -1211,7 +1267,7 @@ export function WorkbenchShell({
         status: "error",
         warnings: projectFileWarningMessagesFromError(error),
       })
-      setImportInboxState((current) => ({
+      setTransientImportState((current) => ({
         ...current,
         status: "error",
         activeBatch: registerData.batch,
@@ -1235,7 +1291,7 @@ export function WorkbenchShell({
       registeredObjectIds,
       warnings: projectFileWarningMessagesFromWarnings(registerResponse.warnings),
     })
-    setImportInboxState((current) => ({
+    setTransientImportState((current) => ({
       ...current,
       status: "registered",
       activeBatch: registerData.batch,
@@ -2153,297 +2209,10 @@ export function WorkbenchShell({
     }))
   }, [projectRepository, replaceProjectSidebarState, reportExportOptions, shellClient, workbenchState.artifacts, workbenchState.profile, workbenchState.sessionId])
 
-  const registerImportBatchToCanvas = useCallback(async (batchId: string, selectedFiles: WebImportFile[]) => {
-    const sessionId = workbenchState.sessionId
-    if (!sessionId) {
-      const error = shellError("invalid_input", "Shell session is required before registering import files.", "session_id")
-      setImportInboxState((current) => ({
-        ...current,
-        status: "error",
-        selectedFiles,
-        warnings: [],
-        error,
-      }))
-      setWorkbenchState((current) => ({
-        ...current,
-        status: "error",
-        warnings: [],
-        error,
-      }))
-      return
-    }
-    const selectedRawPaths = selectedFiles
-      .map((file) => file.rawPersistence?.state === "persisted"
-        ? file.rawPersistence.resource.path
-        : file.storagePath)
-      .filter((path): path is string => Boolean(path))
-    setImportInboxState((current) => ({
-      ...current,
-      status: "registering",
-      selectedFiles,
-      warnings: [],
-      error: undefined,
-    }))
-    const response = await shellClient.run<ImportRegisterAllData>({
-      command: "import.register_all",
-      args: {
-        session_id: sessionId,
-        batch_id: batchId,
-      },
-    })
-
-    if (!response.ok || !response.data) {
-      const error = response.error ?? shellError("invalid_input", "Import register did not return object ids.", "import.register_all")
-      setImportInboxState((current) => ({
-        ...current,
-        status: "error",
-        warnings: response.warnings,
-        error,
-      }))
-      setWorkbenchState((current) => ({
-        ...current,
-        status: "error",
-        warnings: response.warnings,
-        error,
-      }))
-      return
-    }
-
-    const { batch, registered_object_ids: registeredObjectIds, objects } = response.data
-    const objectById = new Map(objects.map((object) => [object.id, object]))
-    const registeredObjects = registeredObjectIds
-      .map((objectId) => objectById.get(objectId))
-      .filter((object): object is NonNullable<typeof object> => Boolean(object))
-    setImportInboxState((current) => ({
-      ...current,
-      status: "registered",
-      activeBatch: batch,
-      selectedFiles,
-      registeredObjectIds,
-      warnings: response.warnings,
-      error: undefined,
-    }))
-    setWorkbenchState((current) => {
-      const imports = upsertImportBatch(current.imports, batch)
-      const mergedObjects = mergeRegisteredObjects(current.objects, objects)
-      return {
-        ...current,
-        status: "success",
-        imports,
-        objects: mergedObjects,
-        counts: {
-          ...current.counts,
-          imports: imports.length,
-          objects: mergedObjects.length,
-        },
-        warnings: response.warnings,
-        error: undefined,
-      }
-    })
-
-    for (const rawPath of selectedRawPaths) {
-      updateProjectFileEntry(rawPath, {
-        status: "registered",
-        registeredObjectIds,
-        warnings: projectFileWarningMessagesFromWarnings(response.warnings),
-      })
-    }
-    if (registeredObjects.length === 0) {
-      return
-    }
-
-    if (!(await ensureWorkspaceReady(sessionId))) return
-    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
-    let latestWorkspace: WorkspaceSummary | null = null
-    const baseNodeCount = workbenchStateRef.current.workspace?.graph.nodes.length ?? 0
-    for (const [index, object] of registeredObjects.entries()) {
-      const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
-        command: "workspace.add_node",
-        args: {
-          session_id: sessionId,
-          kind: "species",
-          label: object.label ?? object.id,
-          chemical_object_ids: [object.id],
-          position: registeredImportNodePosition(baseNodeCount, index),
-        },
-      })
-      applyWorkspaceResponse(addNodeResponse)
-      if (!addNodeResponse.ok || !addNodeResponse.data) {
-        const error = addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node")
-        for (const rawPath of selectedRawPaths) {
-          updateProjectFileEntry(rawPath, {
-            status: "error",
-            registeredObjectIds,
-            warnings: projectFileWarningMessagesFromError(error),
-          })
-        }
-        setImportInboxState((current) => ({
-          ...current,
-          status: "error",
-          warnings: addNodeResponse.warnings,
-          error,
-        }))
-        setWorkbenchState((current) => ({
-          ...current,
-          status: "error",
-          warnings: addNodeResponse.warnings,
-          error,
-        }))
-        return
-      }
-      latestWorkspace = addNodeResponse.data.workspace
-    }
-
-    if (latestWorkspace) {
-      for (const rawPath of selectedRawPaths) {
-        updateProjectFileEntry(rawPath, {
-          status: "used-in-graph",
-          registeredObjectIds,
-          graphNodeIds: registeredObjectIds.flatMap((objectId) => graphNodeIdsForObject(latestWorkspace, objectId)),
-          warnings: projectFileWarningMessagesFromWarnings(response.warnings),
-        })
-      }
-      resetGraphEditorHistory()
-    }
-  }, [
-    applyWorkspaceResponse,
-    ensureWorkspaceReady,
-    resetGraphEditorHistory,
-    shellClient,
-    updateProjectFileEntry,
-    workbenchState.sessionId,
-  ])
-
-  const previewImport = useCallback(async () => {
-    const preferInlineBytes = runtimeInfo.mode === "local-http"
-    let payload = await importPreviewArgsFromFiles(importInboxState, workbenchState.sessionId, {
-      preferInlineBytes,
-    })
-    if (!payload.ok) {
-      const failedPayload = payload
-      setImportInboxState((current) => ({
-        ...current,
-        status: "error",
-        selectedFiles: failedPayload.files,
-        warnings: [],
-        error: failedPayload.error,
-      }))
-      setWorkbenchState((current) => ({
-        ...current,
-        status: "error",
-        warnings: [],
-        error: failedPayload.error,
-      }))
-      return
-    }
-    const selectedFiles = await persistImportFilesAsRawInputs(
-      projectRepository,
-      projectSidebarStateRef.current.activeProject,
-      payload.ok ? payload.files : importInboxState.selectedFiles,
-    )
-    if (!preferInlineBytes) {
-      payload = await importPreviewArgsFromFiles({
-        ...importInboxState,
-        selectedFiles,
-      }, workbenchState.sessionId)
-    }
-    if (!payload.ok) {
-      const failedPayload = payload
-      setImportInboxState((current) => ({
-        ...current,
-        status: "error",
-        selectedFiles: failedPayload.files,
-        warnings: [],
-        error: failedPayload.error,
-      }))
-      setWorkbenchState((current) => ({
-        ...current,
-        status: "error",
-        warnings: [],
-        error: failedPayload.error,
-      }))
-      return
-    }
-    const previewFiles = selectedFiles.map((file) => ({
-      ...file,
-      sourceKind: preferInlineBytes && file.file ? "inline_bytes" as const : file.sourceKind,
-    }))
-    setImportInboxState((current) => ({
-      ...current,
-      status: "previewing",
-      selectedFiles: previewFiles,
-      warnings: [],
-      error: undefined,
-    }))
-    replaceProjectSidebarState(await refreshProjects(projectRepository, projectSidebarStateRef.current))
-    const response = await shellClient.run<ImportPreviewData>({
-      command: "import.preview",
-      args: payload.args,
-    })
-
-    if (!response.ok || !response.data) {
-      const error = response.error ?? shellError("invalid_input", "Import preview did not return a batch.", "import.preview")
-      setImportInboxState((current) => ({
-        ...current,
-        status: "error",
-        warnings: response.warnings,
-        error,
-      }))
-      setWorkbenchState((current) => ({
-        ...current,
-        status: "error",
-        warnings: response.warnings,
-        error,
-      }))
-      return
-    }
-
-    const batch = response.data.batch
-    setImportInboxState((current) => ({
-      ...current,
-      status: "ready",
-      activeBatch: batch,
-      selectedFiles: previewFiles,
-      registeredObjectIds: [],
-      warnings: response.warnings,
-      error: undefined,
-    }))
-    setWorkbenchState((current) => {
-      const imports = upsertImportBatch(current.imports, batch)
-      return {
-        ...current,
-        status: "success",
-        imports,
-        counts: { ...current.counts, imports: imports.length },
-        warnings: response.warnings,
-        error: undefined,
-      }
-    })
-    await registerImportBatchToCanvas(batch.id, previewFiles)
-  }, [importInboxState, projectRepository, registerImportBatchToCanvas, replaceProjectSidebarState, runtimeInfo.mode, shellClient, workbenchState.sessionId])
-
   const toggleProjectRail = useCallback(() => {
     setWorkspaceFlowShellState((current) => ({
       ...current,
       projectRailOpen: !current.projectRailOpen,
-    }))
-  }, [])
-
-  const toggleSourceTray = useCallback(() => {
-    setWorkspaceFlowShellState((current) => ({
-      ...current,
-      inspectorOpen: current.sourceTrayOpen ? current.inspectorOpen : false,
-      sourceTrayOpen: !current.sourceTrayOpen,
-      devToolsOpen: current.sourceTrayOpen ? current.devToolsOpen : false,
-    }))
-  }, [])
-
-  const openSourceTray = useCallback(() => {
-    setWorkspaceFlowShellState((current) => ({
-      ...current,
-      inspectorOpen: false,
-      sourceTrayOpen: true,
-      devToolsOpen: false,
     }))
   }, [])
 
@@ -2452,7 +2221,6 @@ export function WorkbenchShell({
       ...current,
       analysisDockTab: "export",
       inspectorOpen: true,
-      sourceTrayOpen: false,
       devToolsOpen: false,
     }))
   }, [])
@@ -2463,7 +2231,6 @@ export function WorkbenchShell({
       return {
         ...current,
         inspectorOpen: nextInspectorOpen,
-        sourceTrayOpen: false,
         devToolsOpen: nextInspectorOpen && current.analysisDockTab === "diagnostics",
       }
     })
@@ -2479,26 +2246,6 @@ export function WorkbenchShell({
             <h1>{t("workbench.title")}</h1>
           </div>
         </div>
-
-        <form className="topbar-project-form" aria-label={t("projectSidebar.createFormAria")} onSubmit={createTopbarProject}>
-          <label className="visually-hidden" htmlFor="topbar-project-name">{t("projectSidebar.projectName")}</label>
-          <input
-            id="topbar-project-name"
-            value={projectName}
-            onChange={(event) => setProjectName(event.currentTarget.value)}
-            placeholder={t("projectSidebar.projectNamePlaceholder")}
-            disabled={projectSidebarState.status === "loading"}
-          />
-          <button
-            type="submit"
-            className="topbar-command-button"
-            aria-label={t("projectSidebar.createProject")}
-            disabled={projectSidebarState.status === "loading"}
-          >
-            <FolderPlus size={16} />
-            <span>{t("workbench.menu.createProject")}</span>
-          </button>
-        </form>
 
         <nav className="topbar-command-menu" aria-label={t("workbench.menu.aria")}>
           <button
@@ -2528,15 +2275,6 @@ export function WorkbenchShell({
             <Save size={17} />
             <span>{t("workbench.menu.saveProject")}</span>
           </button>
-          <button
-            type="button"
-            className={`topbar-icon-command ${workspaceFlowShellState.sourceTrayOpen ? "topbar-icon-command--active" : ""}`}
-            onClick={toggleSourceTray}
-            aria-pressed={workspaceFlowShellState.sourceTrayOpen}
-          >
-            <UploadCloud size={17} />
-            <span>{t("workbench.menu.sources")}</span>
-          </button>
           <button type="button" className="topbar-command-button" onClick={openExportPanel}>
             <Download size={17} />
             <span>{t("workbench.menu.export")}</span>
@@ -2559,6 +2297,14 @@ export function WorkbenchShell({
           </span>
         </div>
       </header>
+      <input
+        ref={projectImportInputRef}
+        className="project-import-file-input"
+        type="file"
+        multiple
+        onChange={handleProjectImportInputChange}
+        aria-label={t("projectSidebar.projectFiles.import")}
+      />
 
       <main
         className="workbench-grid workspace-flow-shell"
@@ -2567,28 +2313,21 @@ export function WorkbenchShell({
         data-project-rail-density={workspaceFlowShellState.projectRailDensity}
         data-project-rail={workspaceFlowShellState.projectRailOpen ? "open" : "closed"}
         data-inspector={workspaceFlowShellState.inspectorOpen ? "open" : "closed"}
-        data-source-tray={workspaceFlowShellState.sourceTrayOpen ? "open" : "closed"}
         data-dev-tools={workspaceFlowShellState.devToolsOpen ? "open" : "closed"}
       >
         <section className="project-rail" aria-label={t("workbench.flow.projectRail")}>
           <ProjectSidebar
             state={projectSidebarState}
+            onCreateProject={async (name) => {
+              await createSidebarProject(name)
+            }}
             onOpenProject={openSidebarProject}
-            onImportProjectFiles={openSourceTray}
+            onImportProjectFiles={openProjectImport}
             onAddProjectFileToCanvas={addProjectFileToCanvas}
           />
         </section>
         <section className="canvas-stage" aria-label={t("workbench.flow.canvasStage")}>
           <div className="workspace-column canvas-stage-stack">
-            <ImportInbox
-              state={importInboxState}
-              sourceTray={sourceTrayModel}
-              onFilesSelected={selectImportFiles}
-              onExpectedFormatChange={changeImportExpectedFormat}
-              onStrictChange={changeImportStrict}
-              onPreview={previewImport}
-              onClear={clearImportInbox}
-            />
             <GraphCanvas
               state={workbenchState}
               activeObjectId={activeObjectId}
@@ -2695,29 +2434,6 @@ function upsertImportBatch(
     return [...batches, batch]
   }
   return batches.map((existing, currentIndex) => (currentIndex === index ? batch : existing))
-}
-
-function sourceTrayModelFromState(
-  projectSidebarState: ProjectSidebarState,
-  importInboxState: ImportInboxState,
-): SourceTrayModel {
-  return {
-    hasActiveProject: Boolean(projectSidebarState.activeProject),
-    rawFileCount: projectSidebarState.projectFiles.filter(isSourceTrayRawProjectFile).length,
-    lastDropStatus: sourceTrayStatusFromImportStatus(importInboxState.status),
-    acceptedExtensions: [".log", ".out", ".xyz", ".extxyz", "MAPLE"],
-  }
-}
-
-function sourceTrayStatusFromImportStatus(status: ImportInboxState["status"]): SourceTrayStatus {
-  if (status === "previewing" || status === "ready" || status === "registering") return "previewing"
-  if (status === "registered") return "registered"
-  if (status === "error") return "error"
-  return "idle"
-}
-
-function isSourceTrayRawProjectFile(file: ProjectFileEntry): boolean {
-  return file.kind !== "export-artifact" && file.path.startsWith("inputs/raw/")
 }
 
 type RawDropImportFileResult =

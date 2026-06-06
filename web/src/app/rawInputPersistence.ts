@@ -8,7 +8,7 @@ import {
 } from "../repository"
 import type { JsonObject, JsonValue } from "../shell"
 import { projectManifestPath, projectSchemaVersion } from "./projectContentBridge"
-import type { WebImportFile } from "./importInboxState"
+import type { WebImportFile } from "./transientImportState"
 
 export type RawPersistenceSkippedReason =
   | "no_active_project"

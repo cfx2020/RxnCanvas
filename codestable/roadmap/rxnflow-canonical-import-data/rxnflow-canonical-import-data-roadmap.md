@@ -23,7 +23,7 @@ related_architecture: [core-platform, web-workbench]
 
 - Core import workflow 支持 transient input，不默认复制 raw file 到项目目录。
 - Project Content 保存/恢复只依赖 canonical objects、import ledger summary、graph/workspace/profile/export records。
-- Web Source Tray / Graph Canvas raw drop 解析完成后保存 canonical data，不把 raw bytes 写入 Browser Project Repository。
+- Web 项目树导入 / Graph Canvas raw drop 解析完成后保存 canonical data，不把 raw bytes 写入 Browser Project Repository。
 - 左侧项目栏从 raw-only Project Files 改为项目数据/结构库视图，支持把已导入对象拖到画布。
 - Vercel/local-http/desktop 共享同一输入语义：raw bytes 是解析输入，不是项目 authority。
 - 文档和 QA 更新到“raw log 默认不保留”的用户心智。
@@ -61,7 +61,7 @@ Canonical Import Data
 
 ### Web Data Library
 
-- **职责**：把左侧 raw Project Files 改成项目数据/结构库视图，展示已导入对象、来源摘要、能量和可拖入画布动作；Source Tray 保持“选择外部文件并解析”的入口。
+- **职责**：把左侧 raw Project Files 改成项目数据/结构库视图，展示已导入对象、来源摘要、能量和可拖入画布动作；项目树 `+` / drop 和 Graph Canvas drop 是外部文件选择与临时解析入口。
 - **承载的子 feature**：`web-data-library-panel`, `web-transient-import-flow`
 - **触碰的现有代码 / 模块**：`ProjectSidebar`, `projectFiles.ts`, `rawInputPersistence.ts`, `WorkbenchShell`, `GraphCanvas`, i18n, E2E。
 
@@ -156,7 +156,7 @@ type ProjectDataEntry = {
 
 - 左侧项目栏只展示 canonical data entries，不展示 `inputs/raw/...`。
 - 把 entry 拖到画布时，Graph Canvas 使用 `objectIds` 走 `workspace.add_node`，不重新 parse raw file。
-- Source Tray 负责外部文件选择和临时解析，不承担项目长期文件列表职责。
+- 项目树导入和 Graph Canvas drop 负责外部文件选择与临时解析，不承担项目长期文件列表职责。
 
 ### 4.4 Save / Share Project Boundary
 
@@ -183,7 +183,7 @@ type ProjectDataEntry = {
    - 状态：planned
    - 对应 feature：未启动
 
-3. **web-transient-import-flow** — Web Source Tray 和 raw drop 改为临时解析，不写 Browser Raw Input Object，解析后立即更新对象和 workspace。
+3. **web-transient-import-flow** — Web 项目树导入和 raw drop 改为临时解析，不写 Browser Raw Input Object，解析后立即更新对象和 workspace。
    - 所属模块：Web Data Library / Transport Adapters
    - 依赖：`transient-import-core-contract`
    - 状态：planned

@@ -112,7 +112,7 @@ export function projectFileEntriesWithWorkbenchProjection(
 
 function rawProjectFileEntry(projectRef: string, object: BrowserStorageObject): ProjectFileEntry {
   const sourceName = rawSourceName(object)
-  const displayName = sourceName ?? stripChecksumPrefix(baseName(object.path))
+  const displayName = stripChecksumPrefix(sourceName ?? baseName(object.path))
   return {
     id: rawResourceId(object),
     projectRef,

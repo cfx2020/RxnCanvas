@@ -53,7 +53,7 @@ Shell payload 必须是 JSON-safe 数据结构。`File`、`Blob`、`ArrayBuffer`
 Web MVP 第一版不购买云存储。项目持久化策略是：
 
 1. 浏览器端保存项目引用和本地对象，后续真实实现可选 IndexedDB、OPFS 或等价浏览器能力。
-2. 原始计算输出和 exports 由 Browser Project Repository 管理；UI 只展示 local-only 状态和 validation 结果。
+2. 原始计算输出和 exports 由 Browser Project Repository 管理；主 UI 不展示 local-only/backend/runtime 实现名，Project Sidebar 只在未保存、保存失败、项目内容缺失或浅校验错误时展示提醒。
 3. 当前 Web UI 不把 `.rxnflow.zip` 作为主备份/分享入口；项目包 helper 只作为内部/CLI/后备迁移能力保留。
 4. Python core 的 `PlatformSession` 仍是进程内概念，不是跨请求、跨标签页或跨设备持久化机制。
 
@@ -130,7 +130,7 @@ python3 -m rxnflow.local_bridge --host 127.0.0.1 --port 8765
 - `inline_bytes`：使用 `filename` 与 `bytes_base64` 传本地开发预览文件。当前 Platform Shell 单文件上限为 12MiB，本地 HTTP bridge 默认 request body 上限为 64MiB；Platform Shell 会把 bytes 写入临时文件，复用现有 Import Workflow / Project Store / Parser Registry，返回前清理临时文件；项目内 raw file 副本仍由 Project Store 写入 `inputs/raw/`。session 没有 core `project_path` 时，Platform Shell 会创建进程内 Temporary Preview Project，让 local-http 页面能完成真实 parser preview。
 - `browser_storage`：预留给后续 Browser Project Repository adapter；Python bridge 当前不读 IndexedDB/OPFS，返回 `storage_object_missing target=storage_path`。
 
-Web Import Inbox 在 fixture runtime 下仍传 `source_paths`，在 local-http runtime 下优先把浏览器 `File` 编码为 `sources[].kind=inline_bytes`。inline payload 有大小限制；超限时 Web 直接显示 `payload_too_large target=bytes_base64`，不发 shell command。这条桥接只解决本地开发预览和真实 log smoke，不替代长期 raw storage、Browser Project Repository、Project Content 保存、chunking 或大文件上传协议。
+Web transient import payload helper 在 fixture runtime 下仍传 `source_paths`，在 local-http runtime 下优先把浏览器 `File` 编码为 `sources[].kind=inline_bytes`。inline payload 有大小限制；超限时 Web 直接显示 `payload_too_large target=bytes_base64`，不发 shell command。这条桥接只解决本地开发预览和真实 log smoke，不替代长期 raw storage、Browser Project Repository、Project Content 保存、chunking 或大文件上传协议。
 
 ## Project Content Bridge
 
@@ -153,7 +153,7 @@ Report Export Panel 的 runtime artifact bytes 仍来自 `export.profile` 返回
 - Web 根据当前 basename 和 format 生成 `exports/{basename}.{format}`，当前支持 PNG/CDXML/XLSX/CSV/SVG。
 - Web 把 inline bytes 写入 Browser Project Repository object，metadata 标记 `kind=export_artifact`、artifact id 和 format。
 - Web upsert `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中该 section 的 checksum。
-- Project Sidebar 随后重新做 shallow validation；这只验证 browser-local content files 可读和 checksum 对齐，不替代 Python ProjectContentValidator 深校验。
+- Project Sidebar 随后重新做 shallow validation；这只验证 browser-local content files 可读和 checksum 对齐，不替代 Python ProjectContentValidator 深校验。正常 valid 结果不在主界面常驻显示，只在缺失或错误时作为项目提醒出现。
 
 没有 active browser project、include bytes 关闭、artifact 缺少 inline bytes 或写入失败时，Web 仍保留 runtime artifact summary 和可用 download link；持久化失败会显示 warning，不会让前端重新生成 artifact bytes。
 

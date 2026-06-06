@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-workspace-first-canvas-mvp
 status: completed
 created: 2026-06-03
-last_reviewed: 2026-06-05
+last_reviewed: 2026-06-06
 tags: [rxnflow, web, workspace-first, canvas, local-first, project-files, cdxml, energy-profile]
 related_requirements: [web-workbench-shell, project-content-persistence, platform-shell-entry]
 related_architecture: [core-platform, web-workbench]
@@ -13,11 +13,11 @@ related_architecture: [core-platform, web-workbench]
 
 ## 1. 背景
 
-当前 Web Workbench 已经具备项目侧边栏、导入收件箱、对象列表、图谱画布、势能预览和导出面板，但用户验收时暴露出主流程心智模型不对：界面把能力摊在多个面板里，用户需要先理解“导入、登记、对象、画布、能量、导出”的内部步骤，才知道下一步怎么走。
+当前 Web Workbench 已经具备项目侧边栏、旧导入面板、对象列表、图谱画布、势能预览和导出面板，但用户验收时暴露出主流程心智模型不对：界面把能力摊在多个面板里，用户需要先理解“导入、登记、对象、画布、能量、导出”的内部步骤，才知道下一步怎么走。
 
-本 roadmap 的目标是把初版收束成更直觉的工作流：用户先打开或创建一个 RxnFlow project，再用本地文件夹入口快速选择 Gaussian / ORCA / MAPLE / XYZ / extxyz 等外部计算输出；文件被拖到画布并使用后，必须进入当前项目文件区；画布节点直接显示结构名称、结构预览、能量和解析摘要；用户手动画线串成反应路径；右侧实时预览势能面；最后可保存项目或导出 `.rxnflow.zip` 分享，也可导出最小 ChemDraw CDXML 能量图。
+本 roadmap 的目标是把初版收束成更直觉的工作流：用户先打开或创建一个 RxnFlow project，再用本地文件夹入口快速选择 Gaussian / ORCA / MAPLE / XYZ / extxyz 等外部计算输出；文件被拖到画布并使用后，必须进入当前项目文件区；画布节点直接显示结构名称、结构预览、能量和解析摘要；用户手动画线串成反应路径；右侧实时预览势能面；最后可保存项目，并通过右侧导出面板导出最小 ChemDraw CDXML 能量图等报告 artifact。
 
-本 roadmap 在产品体验层面取代此前 `rxnflow-web-workbench-mvp`、`rxnflow-web-graph-editor` 和 `rxnflow-web-graph-editor-advanced` 的未来推进口径：那些 completed roadmap 仍作为已实现能力和可复用模块的历史记录，但不再作为初版主流程的设计约束。后续 feature 可以复用其中的 ShellClient、Browser Project Repository、Import Inbox、Object Registry、Graph Canvas 和 Export Panel 能力，也可以隐藏、合并或降级不符合 workspace-first 心智模型的旧 UI 入口。
+本 roadmap 在产品体验层面取代此前 `rxnflow-web-workbench-mvp`、`rxnflow-web-graph-editor` 和 `rxnflow-web-graph-editor-advanced` 的未来推进口径：那些 completed roadmap 仍作为已实现能力和可复用模块的历史记录，但不再作为初版主流程的设计约束。后续 feature 可以复用其中的 ShellClient、Browser Project Repository、transient import helper、Object Registry、Graph Canvas 和 Export Panel 能力，也可以隐藏、合并或删除不符合 workspace-first 心智模型的旧 UI 入口。2026-06-06 后续清理已删除旧 `ImportInbox.tsx` / Source Tray UI。
 
 ## 2. 范围与明确不做
 
@@ -25,7 +25,7 @@ related_architecture: [core-platform, web-workbench]
 
 - Workspace-first 主流程：项目是持久权威，本地文件夹入口只是快速选择外部文件的 picker。
 - 旧 UI 编排收束：允许重构、隐藏或合并此前面板式流程中的入口，让画布和项目文件成为第一主线。
-- Project Files 面板：左侧显示当前项目已经拥有的 `inputs/raw/...` 和 `exports/...` 文件，并允许项目内 raw file 再次拖到画布。
+- Project Files 面板：左侧只显示当前项目已经拥有的计算输出文件，并允许项目内 raw file 再次拖到画布；`exports/...` 报告 artifacts 归右侧 Export 面板管理。
 - 本地文件夹 / 文件选择入口：用于快速找到外部 log/out/xyz/extxyz 文件，拖到画布后写入项目。
 - Raw file drop to canvas：文件拖到画布后触发 parse preview、登记对象、创建 graph node 的最小闭环。
 - 多对象 / 多帧解析选择：单对象文件直接生成节点；多对象或多帧文件在落点附近显示候选选择器，再按用户选择创建节点。
@@ -50,7 +50,7 @@ related_architecture: [core-platform, web-workbench]
 ```
 RxnFlow Workspace-First Canvas MVP
 ├── Workspace Source：本地文件夹 / 文件选择 / browser project / local bridge path 的入口归一
-├── Project Files Panel：展示项目已拥有 raw files 和 exports 的左侧文件区
+├── Project Files Panel：展示项目已拥有 raw files 的左侧文件区
 ├── Raw File Drop Adapter：外部或项目内文件拖到画布后的 parse/register/add-node 编排
 ├── Parse Candidate Chooser：多对象 / 多帧解析结果的落点候选选择器
 ├── Canvas Chemical Node：结构名称、结构预览、能量和解析摘要节点
@@ -64,11 +64,11 @@ RxnFlow Workspace-First Canvas MVP
 
 - **职责**：提供外部本地文件夹 / 文件选择入口，并和现有 browser-local project、local-http bridge 入口区分清楚。它只负责帮助用户快速找到文件，不是项目持久化权威。
 - **承载的子 feature**：`workspace-file-drop-minimal-loop`
-- **触碰的现有代码 / 模块**：Project Sidebar、Browser Project Repository、Import Inbox file source、Shell runtime indicator、local-http transport。
+- **触碰的现有代码 / 模块**：Project Sidebar、Browser Project Repository、transient import state、Shell runtime indicator、local-http transport。
 
 ### Project Files Panel · 项目文件面板
 
-- **职责**：展示当前项目已保存的 `inputs/raw/...` 和 `exports/...` 文件，显示 import/used/export 状态，让项目内 raw file 可再次拖到画布。
+- **职责**：展示当前项目已保存的 `inputs/raw/...` 计算输出文件，显示 import/used 状态，让项目内 raw file 可再次拖到画布。导出的 CDXML/CSV/PNG/XLSX/SVG 等 artifacts 不进入左侧项目文件树。
 - **承载的子 feature**：`workspace-file-drop-minimal-loop`、`workspace-first-flow-polish`
 - **触碰的现有代码 / 模块**：Browser Project Repository、Project Sidebar、raw input persistence、export artifact persistence、i18n。
 
@@ -76,7 +76,7 @@ RxnFlow Workspace-First Canvas MVP
 
 - **职责**：把外部文件或项目内 raw file drop 转换为“保存到项目、parse preview、register object、workspace.add_node”的顺序流程。成功后可见节点必须来自 ShellResponse workspace projection。
 - **承载的子 feature**：`workspace-file-drop-minimal-loop`
-- **触碰的现有代码 / 模块**：GraphCanvas、WorkbenchShell、Import Inbox bridge、Platform Shell `import.preview` / `import.register_all` / `workspace.add_node`。
+- **触碰的现有代码 / 模块**：GraphCanvas、WorkbenchShell、transient import payload helper、Platform Shell `import.preview` / `import.register_all` / `workspace.add_node`。
 
 ### Parse Candidate Chooser · 解析候选选择器
 
@@ -377,7 +377,7 @@ class MinimalCdxmlEnergyDeltaOptions:
    - 依赖：`workspace-file-drop-minimal-loop`、`canvas-path-authoring-pes-preview`
    - 状态：done
    - 对应 feature：`2026-06-04-workspace-first-flow-polish`
-   - 备注：已形成 Project Rail / Canvas Stage / Analysis Dock 主界面；Source Tray 贴近画布，Diagnostics 收纳 command status 和 dev commands。
+   - 备注：已形成 Project Rail / Canvas Stage / Analysis Dock 主界面；2026-06-06 后续清理已删除 Source Tray / Import Inbox，导入入口收束为项目树 `+` / drop 与画布 drop；Diagnostics 收纳 command status 和 dev commands。
 
 6. **workspace-first-flow-qa-guides** — 补桌面、窄屏、local-http E2E 和用户指南，固定新主流程验收脚本。
    - 所属模块：Workspace-First QA & Guides
@@ -396,6 +396,6 @@ class MinimalCdxmlEnergyDeltaOptions:
 
 - 现有 `web-workbench-shell` requirement 已经记录大量面板能力，但没有把“项目文件是权威、本地文件夹只是 picker”作为主流程要求；本 roadmap 完成后应由 acceptance 回写 requirement。
 - 现有 completed Web / Graph Editor roadmaps 的 UI 顺序和面板心智模型已不再符合当前产品要求；后续 feature design 应把它们视为实现库存，不作为新交互路线的优先级依据。
-- 现有 Web 架构中 Project Sidebar 和 Import Inbox 分离较明显；后续 feature 需要谨慎收束 UI，不应破坏 Browser Project Repository / Project Content 边界。
+- 旧 Web 架构中 Project Sidebar 和 Import Inbox 分离较明显；后续 feature 已按项目树导入 + 画布 drop 收束 UI，同时仍不应破坏 Browser Project Repository / Project Content 边界。
 - 浏览器 File System Access API 的可用性受浏览器和权限限制影响；Web feature design 必须设计 fallback，而桌面 app / local bridge 可以使用 filesystem path 形态。
 - Parser 对 MAPLE path-family、多帧 extxyz 和优化轨迹的“final candidate”判定仍有限；候选选择器应先支持人工选择，不依赖 parser 完全理解化学路径。

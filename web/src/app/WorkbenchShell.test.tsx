@@ -4,7 +4,6 @@ import { BrowserProjectRepositoryError, checksumBrowserStorageBytes, MemoryBrows
 import { ShellClient, fixtureTransport, type ShellCommandPayload, type ShellResponse, type ShellRuntimeInfo, type ShellTransport, type WorkbenchSnapshotData } from "../shell"
 import { graphObjectDragMimeType } from "./graphObjectDragPayload"
 import { graphRawFileDropMimeType } from "./graphRawFileDropPayload"
-import { defaultInlineImportByteLimit } from "./importInboxState"
 import { WorkbenchShell } from "./WorkbenchShell"
 import { I18nProvider, type SupportedLocale } from "./i18n"
 import { chemicalObjectsPath, exportArtifactsPath, projectContentIndexPath, reactionGraphsPath, workspacesPath } from "./projectContentBridge"
@@ -27,11 +26,11 @@ describe("WorkbenchShell", () => {
     expect(screen.getByRole("region", { name: "Canvas Stage" })).toBeInTheDocument()
     expect(screen.getByRole("complementary", { name: "Analysis Dock" })).toHaveAttribute("data-active-tab", "pes")
     expect(screen.getByRole("complementary", { name: "Project Sidebar" })).toBeInTheDocument()
-    expect(screen.getByText("No active project")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "New Project" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.getByText("No projects yet")).toBeInTheDocument()
     expect(screen.queryByText("No project loaded")).not.toBeInTheDocument()
-    const sourceTray = screen.getByRole("region", { name: "Source Tray" })
-    expect(within(sourceTray).getByRole("heading", { name: "Add sources to canvas" })).toBeInTheDocument()
-    expect(within(sourceTray).getByText("No recent import")).toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "Source Tray" })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Project name")).not.toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "PES" })).toHaveAttribute("aria-selected", "true")
     expect(screen.queryByRole("button", { name: "Fixture Run" })).not.toBeInTheDocument()
     openAnalysisDockTab("Object")
@@ -60,9 +59,9 @@ describe("WorkbenchShell", () => {
     fireEvent.change(screen.getByLabelText("Language"), { target: { value: "zh-CN" } })
 
     expect(await screen.findByRole("heading", { name: "工作台" })).toBeInTheDocument()
-    expect(screen.getByText("项目侧边栏")).toBeInTheDocument()
+    expect(screen.getByRole("complementary", { name: "项目侧边栏" })).toBeInTheDocument()
     expect(screen.queryByText("运行时 Fixture")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "创建项目" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "新建项目" })).toBeInTheDocument()
     expect(screen.getByText("暂无项目")).toBeInTheDocument()
 
     openAnalysisDockTab("诊断")
@@ -71,7 +70,7 @@ describe("WorkbenchShell", () => {
     fireEvent.change(screen.getByLabelText("语言"), { target: { value: "en-US" } })
 
     expect(await screen.findByRole("heading", { name: "Workbench" })).toBeInTheDocument()
-    expect(screen.getByText("Project Sidebar")).toBeInTheDocument()
+    expect(screen.getByRole("complementary", { name: "Project Sidebar" })).toBeInTheDocument()
   })
 
   it("shows local-http runtime mode and endpoint when configured", async () => {
@@ -88,31 +87,24 @@ describe("WorkbenchShell", () => {
     expect(screen.getByText("Endpoint http://127.0.0.1:8765/api/shell")).toBeInTheDocument()
   })
 
-  it("keeps source tray and analysis dock mutually exclusive from topbar commands", async () => {
+  it("keeps project import off the topbar while export and analysis use the right dock", async () => {
     renderWorkbench()
 
     const shell = await screen.findByRole("main", { name: /rxnflow web workbench/i })
     const commandMenu = screen.getByRole("navigation", { name: "Workbench commands" })
 
-    expect(shell).toHaveAttribute("data-source-tray", "closed")
     expect(shell).toHaveAttribute("data-inspector", "closed")
+    expect(within(commandMenu).queryByRole("button", { name: "Sources" })).not.toBeInTheDocument()
 
-    fireEvent.click(within(commandMenu).getByRole("button", { name: "Sources" }))
-    expect(shell).toHaveAttribute("data-source-tray", "open")
+    fireEvent.click(within(commandMenu).getByRole("button", { name: "Analysis" }))
+    expect(shell).toHaveAttribute("data-inspector", "open")
+
+    fireEvent.click(within(commandMenu).getByRole("button", { name: "Analysis" }))
     expect(shell).toHaveAttribute("data-inspector", "closed")
 
     fireEvent.click(within(commandMenu).getByRole("button", { name: "Export" }))
-    expect(shell).toHaveAttribute("data-source-tray", "closed")
     expect(shell).toHaveAttribute("data-inspector", "open")
     expect(shell).toHaveAttribute("data-analysis-tab", "export")
-
-    fireEvent.click(within(commandMenu).getByRole("button", { name: "Sources" }))
-    expect(shell).toHaveAttribute("data-source-tray", "open")
-    expect(shell).toHaveAttribute("data-inspector", "closed")
-
-    fireEvent.click(within(commandMenu).getByRole("button", { name: "Analysis" }))
-    expect(shell).toHaveAttribute("data-source-tray", "closed")
-    expect(shell).toHaveAttribute("data-inspector", "open")
   })
 
   it("shows transport_unavailable from local-http runtime failures with target", async () => {
@@ -577,8 +569,7 @@ describe("WorkbenchShell", () => {
     fireEvent.dragOver(surface, { dataTransfer })
     dispatchDrop(surface, dataTransfer, 240, 180)
 
-    expect(await screen.findByText("Raw persistence error")).toBeInTheDocument()
-    expect(screen.getAllByText("storage_quota_exceeded").length).toBeGreaterThan(0)
+    expect((await screen.findAllByText("storage_quota_exceeded")).length).toBeGreaterThan(0)
     expect(transport.payloads.filter((payload) => payload.command === "import.preview")).toHaveLength(0)
     expect(transport.payloads.filter((payload) => payload.command === "import.register_all")).toHaveLength(0)
     expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(0)
@@ -941,7 +932,7 @@ describe("WorkbenchShell", () => {
     const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
 
     fireEvent.click(nodeB)
-    expect(nodeB).toHaveAttribute("aria-current", "true")
+    await waitFor(() => expect(nodeB).toHaveAttribute("aria-current", "true"))
     expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(0)
 
     fireEvent.pointerDown(nodeB, { button: 0, clientX: 360, clientY: 160, pointerId: 1 })
@@ -1043,7 +1034,9 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Delete Selected" }))
-    await waitFor(() => expect(within(graphCanvas).getByText("No paths")).toBeInTheDocument())
+    await waitFor(() => {
+      expect(within(graphCanvas).queryByRole("button", { name: "Select path Fixture path" })).not.toBeInTheDocument()
+    })
 
     const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
     fireEvent.click(nodeA)
@@ -1617,21 +1610,15 @@ describe("WorkbenchShell", () => {
   })
 
   it("shows missing energy reasons without converting them to zero", async () => {
-    renderWorkbench()
+    const repository = new MemoryBrowserProjectRepository()
+    await createProjectWithContent(repository, "Missing Energy")
+    renderWorkbench(repository)
 
+    fireEvent.click(await screen.findByRole("button", { name: /missing energy/i }))
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
-    openAnalysisDockTab("Object")
-    const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
-
-    fireEvent.change(screen.getByLabelText("Select Files"), {
-      target: {
-        files: [new File(["2\nwater"], "water.xyz", { type: "chemical/x-xyz" })],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
+    dropExternalFileOnCanvas(graphCanvas, new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" }))
     expect((await screen.findAllByText("object-imported-water")).length).toBeGreaterThan(0)
     expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
     fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }))
@@ -1859,7 +1846,7 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository)
 
     fireEvent.click(await screen.findByRole("button", { name: /export project/i }))
-    expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
+    await expectProjectFolderActive(/export project/i)
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
     openAnalysisDockTab("Export")
@@ -1894,7 +1881,7 @@ describe("WorkbenchShell", () => {
       path: "exports/rxnflow-profile.svg",
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
-    expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
+    expect(screen.queryByText("Project content files are readable.")).not.toBeInTheDocument()
   })
 
   it("shows exported artifacts without download links when inline bytes are disabled", async () => {
@@ -1942,51 +1929,6 @@ describe("WorkbenchShell", () => {
     expect(screen.getAllByText("exports").length).toBeGreaterThan(0)
   })
 
-  it("queues import files, parses them, and adds registered objects to the canvas", async () => {
-    renderWorkbench()
-
-    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Import to Canvas" })).toBeDisabled()
-    runFixtureCommand()
-    await expectFixtureWorkbenchProjected()
-
-    const input = screen.getByLabelText("Select Files")
-    fireEvent.change(input, {
-      target: {
-        files: [
-          new File(["2\nwater"], "water.xyz", { type: "chemical/x-xyz" }),
-          new File(["bad"], "bad-count.xyz", { type: "chemical/x-xyz" }),
-        ],
-      },
-    })
-    fireEvent.change(screen.getByLabelText("Expected format"), { target: { value: "xyz" } })
-    fireEvent.click(screen.getByLabelText("Strict parser"))
-
-    expect(screen.getAllByText("water.xyz").length).toBeGreaterThan(0)
-    expect(screen.getByText("bad-count.xyz")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-
-    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
-    expect(screen.getByText("xyz-ase")).toBeInTheDocument()
-    expect(screen.getAllByText("fixture-web").length).toBeGreaterThan(0)
-    expect(screen.queryByText("inputs/raw/water.xyz")).not.toBeInTheDocument()
-    expect(screen.getAllByText("missing_section").length).toBeGreaterThan(0)
-    expect(screen.getByText("parse_failed")).toBeInTheDocument()
-    expect(screen.getAllByText("unit_assumed").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("1").length).toBeGreaterThan(0)
-    expect((await screen.findAllByText("object-imported-water")).length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Registered").length).toBeGreaterThan(0)
-    const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
-    openAnalysisDockTab("Object")
-    const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
-    fireEvent.click(within(objectRegistry).getByRole("button", { name: /water.xyz/i }))
-    expect(within(objectRegistry).getByRole("button", { name: /water.xyz/i })).toHaveAttribute("aria-current", "true")
-    expect(screen.getAllByText("H2O").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("raw-water-xyz").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("xyz-ase").length).toBeGreaterThan(0)
-  })
-
   it("opens an empty workspace before adding imported files to the canvas", async () => {
     const repository = new MemoryBrowserProjectRepository()
     await createProjectWithContent(repository, "Empty Import")
@@ -1997,12 +1939,7 @@ describe("WorkbenchShell", () => {
     await waitFor(() => expect(transport.payloads.some((payload) => payload.command === "project.open")).toBe(true))
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     expect(within(graphCanvas).getByText("No workspace graph")).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("Select Files"), {
-      target: {
-        files: [new File(["2\nwater"], "water.xyz", { type: "chemical/x-xyz" })],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
+    dropExternalFileOnCanvas(graphCanvas, new File(["2\nwater"], "water.xyz", { type: "chemical/x-xyz" }))
 
     expect((await within(graphCanvas).findAllByText("node-web-1")).length).toBeGreaterThan(0)
     const openIndex = transport.payloads.findIndex((payload) => payload.command === "workspace.open")
@@ -2015,246 +1952,48 @@ describe("WorkbenchShell", () => {
     })
   })
 
-  it("sends inline byte import preview payloads in local-http runtime mode", async () => {
-    const transport = new RecordingImportPreviewTransport()
-    renderWorkbench(undefined, "en-US", {
-      mode: "local-http",
-      transportKind: "http-api",
-      endpoint: "http://127.0.0.1:8765/api/shell",
-    }, new ShellClient(transport))
-
-    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
-    runFixtureCommand()
-    await expectFixtureWorkbenchProjected()
-
-    fireEvent.change(screen.getByLabelText("Select Files"), {
-      target: {
-        files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-
-    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
-    const previewPayload = transport.payloads.find((payload) => payload.command === "import.preview")
-    expect(previewPayload?.args).toMatchObject({
-      session_id: "session-fixture-web",
-      sources: [
-        {
-          kind: "inline_bytes",
-          filename: "water.xyz",
-          bytes_base64: "Mgp3YXRlcgo=",
-          mime_type: "chemical/x-xyz",
-        },
-      ],
-      strict: false,
-    })
-    expect(screen.getAllByText("Inline bytes").length).toBeGreaterThan(0)
-  })
-
-  it("persists selected import files as raw inputs in the active browser project before preview", async () => {
+  it("imports files from the project folder action directly into the project tree", async () => {
     const repository = new MemoryBrowserProjectRepository()
-    const project = await createProjectWithContent(repository, "Raw Preview")
+    const project = await createProjectWithContent(repository, "Folder Import")
     const transport = new RecordingImportPreviewTransport()
-    renderWorkbench(repository, "en-US", {
-      mode: "local-http",
-      transportKind: "http-api",
-      endpoint: "http://127.0.0.1:8765/api/shell",
-    }, new ShellClient(transport))
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
-    fireEvent.click(await screen.findByRole("button", { name: /raw preview/i }))
-    runFixtureCommand()
-    await expectFixtureWorkbenchProjected()
-    fireEvent.change(screen.getByLabelText("Select Files"), {
+    fireEvent.click(await screen.findByRole("button", { name: /folder import/i }))
+    await expectProjectFolderActive(/folder import/i)
+    expect(screen.getByRole("navigation", { name: "Workbench commands" })).not.toHaveTextContent("Sources")
+
+    const projectImportInput = screen.getByLabelText("Import files into project", { selector: "input" })
+    fireEvent.change(projectImportInput, {
       target: {
         files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
       },
     })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
 
-    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
-    const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
-    expect(rawObjects).toHaveLength(1)
-    expect(rawObjects[0]).toMatchObject({
-      path: expect.stringMatching(/^inputs\/raw\/[a-f0-9]{12}-water\.xyz$/),
-      checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
-      metadata: expect.objectContaining({
-        kind: "raw_file",
-        source_name: "water.xyz",
-        byte_size: 8,
-      }),
+    const projectFilesPanel = projectTreePanel()
+    expect(await within(projectFilesPanel).findByText("water.xyz")).toBeInTheDocument()
+    await waitFor(async () => {
+      await expect(repository.listObjects(project.projectRef, "inputs/raw")).resolves.toHaveLength(1)
     })
-    const manifest = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, ".rxnflow/manifest.json")).bytes))
-    expect(manifest.resources).toEqual([
-      expect.objectContaining({
-        id: expect.stringMatching(/^raw-[a-f0-9]{12}$/),
-        kind: "raw_file",
-        path: rawObjects[0].path,
-        checksum: rawObjects[0].checksum,
-      }),
-    ])
-    expect(screen.getByText("Stored in project")).toBeInTheDocument()
-    expect(screen.getAllByText("water.xyz").length).toBeGreaterThan(0)
-    expect(screen.queryByText(rawObjects[0].path)).not.toBeInTheDocument()
-    expect(screen.queryByText(rawObjects[0].checksum ?? "")).not.toBeInTheDocument()
-  })
-
-  it("does not duplicate manifest raw resources when the same file is previewed repeatedly", async () => {
-    const repository = new MemoryBrowserProjectRepository()
-    const project = await createProjectWithContent(repository, "Raw Repeat")
-    const transport = new RecordingImportPreviewTransport()
-    renderWorkbench(repository, "en-US", {
-      mode: "local-http",
-      transportKind: "http-api",
-      endpoint: "http://127.0.0.1:8765/api/shell",
-    }, new ShellClient(transport))
-
-    fireEvent.click(await screen.findByRole("button", { name: /raw repeat/i }))
-    runFixtureCommand()
-    await expectFixtureWorkbenchProjected()
-    fireEvent.change(screen.getByLabelText("Select Files"), {
-      target: {
-        files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-
-    await waitFor(() => expect(transport.payloads.filter((payload) => payload.command === "import.preview")).toHaveLength(2))
-    const manifest = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, ".rxnflow/manifest.json")).bytes))
-    expect(manifest.resources.filter((resource: { kind: string }) => resource.kind === "raw_file")).toHaveLength(1)
-  })
-
-  it("keeps parser preview visible when raw persistence fails", async () => {
-    const repository = new FailingRawInputProjectRepository()
-    await createProjectWithContent(repository, "Raw Fails")
-    const transport = new RecordingImportPreviewTransport()
-    renderWorkbench(repository, "en-US", {
-      mode: "local-http",
-      transportKind: "http-api",
-      endpoint: "http://127.0.0.1:8765/api/shell",
-    }, new ShellClient(transport))
-
-    fireEvent.click(await screen.findByRole("button", { name: /raw fails/i }))
-    runFixtureCommand()
-    await expectFixtureWorkbenchProjected()
-    fireEvent.change(screen.getByLabelText("Select Files"), {
-      target: {
-        files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-
-    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
-    expect(screen.getByText("Raw persistence error")).toBeInTheDocument()
-    expect(screen.getByText("storage_quota_exceeded")).toBeInTheDocument()
-    expect(screen.getByText("inputs/raw")).toBeInTheDocument()
-    expect(screen.getByText("xyz-ase")).toBeInTheDocument()
-  })
-
-  it("keeps import preview running without an active project and marks raw persistence skipped", async () => {
-    const transport = new RecordingImportPreviewTransport()
-    renderWorkbench(undefined, "en-US", {
-      mode: "local-http",
-      transportKind: "http-api",
-      endpoint: "http://127.0.0.1:8765/api/shell",
-    }, new ShellClient(transport))
-
-    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
-    runFixtureCommand()
-    await expectFixtureWorkbenchProjected()
-    fireEvent.change(screen.getByLabelText("Select Files"), {
-      target: {
-        files: [new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-
-    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
-    expect(screen.getByText("Raw input not persisted")).toBeInTheDocument()
-    expect(screen.getByText("No active browser project")).toBeInTheDocument()
-  })
-
-  it("shows oversized import payload errors before shell preview commands", async () => {
-    const transport = new RecordingImportPreviewTransport()
-    renderWorkbench(undefined, "en-US", {
-      mode: "local-http",
-      transportKind: "http-api",
-      endpoint: "http://127.0.0.1:8765/api/shell",
-    }, new ShellClient(transport))
-
-    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
-    runFixtureCommand()
-    await expectFixtureWorkbenchProjected()
-
-    fireEvent.change(screen.getByLabelText("Select Files"), {
-      target: {
-        files: [oversizedInlineImportFile()],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-
-    expect((await screen.findAllByText("payload_too_large")).length).toBeGreaterThan(0)
-    expect(screen.getAllByText("bytes_base64").length).toBeGreaterThan(0)
     expect(transport.payloads.filter((payload) => payload.command === "import.preview")).toHaveLength(0)
   })
 
-  it("does not write active project raw inputs for oversized inline preview files", async () => {
-    const repository = new MemoryBrowserProjectRepository()
-    const project = await createProjectWithContent(repository, "Large Raw")
-    const transport = new RecordingImportPreviewTransport()
-    renderWorkbench(repository, "en-US", {
-      mode: "local-http",
-      transportKind: "http-api",
-      endpoint: "http://127.0.0.1:8765/api/shell",
-    }, new ShellClient(transport))
-
-    fireEvent.click(await screen.findByRole("button", { name: /large raw/i }))
-    runFixtureCommand()
-    await expectFixtureWorkbenchProjected()
-    fireEvent.change(screen.getByLabelText("Select Files"), {
-      target: {
-        files: [oversizedInlineImportFile()],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-
-    expect((await screen.findAllByText("payload_too_large")).length).toBeGreaterThan(0)
-    await expect(repository.listObjects(project.projectRef, "inputs/raw")).resolves.toHaveLength(0)
-    expect(transport.payloads.filter((payload) => payload.command === "import.preview")).toHaveLength(0)
-  })
-
-  it("shows import preview shell errors without hiding error target", async () => {
-    renderWorkbench()
-
-    expect(await screen.findByText("No projects yet")).toBeInTheDocument()
-    const input = screen.getByLabelText("Select Files")
-    fireEvent.change(input, {
-      target: {
-        files: [new File(["2\nwater"], "water.xyz", { type: "chemical/x-xyz" })],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
-
-    expect((await screen.findAllByText("invalid_input")).length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Shell session not found for fixture snapshot.").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("session_id").length).toBeGreaterThan(0)
-  })
-
-  it("creates a browser-local project and shows persisted validation status", async () => {
+  it("creates a browser-local project without normal persistence validation chrome", async () => {
     const repository = new MemoryBrowserProjectRepository()
     renderWorkbench(repository)
 
     expect(await screen.findByText("No projects yet")).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("Project name"), {
+    fireEvent.click(screen.getByRole("button", { name: "New Project" }))
+    const form = screen.getByRole("form", { name: "Create project" })
+    fireEvent.change(within(form).getByLabelText("Project name"), {
       target: { value: "Catalyst Screen" },
     })
-    fireEvent.click(screen.getByRole("button", { name: "Create Project" }))
+    fireEvent.click(within(form).getByRole("button", { name: "Create Project" }))
 
     expect(await screen.findByRole("button", { name: /catalyst screen/i })).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "Catalyst Screen" })).toBeInTheDocument()
-    expect(screen.getByText("Persisted")).toBeInTheDocument()
-    expect(screen.getByText("Valid")).toBeInTheDocument()
+    await expectProjectFolderActive(/catalyst screen/i)
+    expect(screen.queryByText("Persisted")).not.toBeInTheDocument()
+    expect(screen.queryByText("Valid")).not.toBeInTheDocument()
+    expect(screen.queryByRole("status", { name: "Project notices" })).not.toBeInTheDocument()
     expect(screen.queryByText(/sha256:[a-f0-9]{64}/i)).not.toBeInTheDocument()
     const [project] = await repository.listProjects()
     await expect(repository.listObjects(project.projectRef, projectContentIndexPath)).resolves.toHaveLength(1)
@@ -2268,12 +2007,13 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /needs content/i }))
 
-    expect(await screen.findByText("Missing")).toBeInTheDocument()
+    expect(await screen.findByText("Project files need attention")).toBeInTheDocument()
     expect(screen.getByText(/Project content file is missing/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Save Project" }))
 
-    expect(await screen.findByText("Persisted")).toBeInTheDocument()
-    expect(screen.getByText("Valid")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText("Project files need attention")).not.toBeInTheDocument())
+    expect(screen.queryByText("Persisted")).not.toBeInTheDocument()
+    expect(screen.queryByText("Valid")).not.toBeInTheDocument()
     await expect(repository.listObjects(project.projectRef, projectContentIndexPath)).resolves.toHaveLength(1)
   })
 
@@ -2285,7 +2025,7 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /bridge later/i }))
 
-    expect(await screen.findByText("Persisted")).toBeInTheDocument()
+    await expectProjectFolderActive(/bridge later/i)
     await expectEmptyProjectWorkbenchProjected()
     const openPayload = transport.payloads.find((payload) => payload.command === "project.open")
     expect(openPayload?.args).toMatchObject({
@@ -2305,13 +2045,13 @@ describe("WorkbenchShell", () => {
     renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
 
     fireEvent.click(await screen.findByRole("button", { name: /bridge project/i }))
-    expect(await screen.findByRole("heading", { name: "Bridge Project" })).toBeInTheDocument()
-    expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: /bridge project/i })).toBeInTheDocument()
+    await expectProjectFolderActive(/bridge project/i)
     await expectEmptyProjectWorkbenchProjected()
 
     fireEvent.click(screen.getByRole("button", { name: "Save Project" }))
 
-    expect(await screen.findByText("Project content files are readable.")).toBeInTheDocument()
+    expect(screen.queryByText("Project content files are readable.")).not.toBeInTheDocument()
     const savePayload = transport.payloads.find((payload) => payload.command === "project.save_content")
     expect(savePayload?.args).toMatchObject({
       session_id: "session-fixture-web",
@@ -2375,7 +2115,9 @@ describe("WorkbenchShell", () => {
     renderWorkbench()
 
     expect(await screen.findByText("No projects yet")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Create Project" }))
+    fireEvent.click(screen.getByRole("button", { name: "New Project" }))
+    const form = screen.getByRole("form", { name: "Create project" })
+    fireEvent.click(within(form).getByRole("button", { name: "Create Project" }))
 
     expect(await screen.findByText("invalid_input")).toBeInTheDocument()
     expect(screen.getAllByText("Browser local project name is required.").length).toBeGreaterThan(0)
@@ -2403,23 +2145,23 @@ describe("WorkbenchShell", () => {
     expect(screen.getByText((content) => content.includes(".rxnflow/state/project-content.json"))).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "保存项目" }))
 
-    expect(await screen.findByText("已保存")).toBeInTheDocument()
-    expect(screen.getByText("有效")).toBeInTheDocument()
-    expect(screen.getByText("项目内容文件可读取。")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/项目内容文件缺失/)).not.toBeInTheDocument())
+    expect(screen.queryByText("已保存")).not.toBeInTheDocument()
+    expect(screen.queryByText("有效")).not.toBeInTheDocument()
+    expect(screen.queryByText("项目内容文件可读取。")).not.toBeInTheDocument()
   })
 
-  it("renders import inbox controls through the active locale while preserving dynamic codes", async () => {
+  it("renders workspace-first controls through the active locale without source tray chrome", async () => {
     renderWorkbench(undefined, "zh-CN")
 
     expect(await screen.findByText("暂无项目")).toBeInTheDocument()
-    expect(screen.getByRole("region", { name: "来源托盘" })).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "添加来源到画布" })).toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "来源托盘" })).not.toBeInTheDocument()
+    expect(screen.getByRole("navigation", { name: "工作台命令" })).not.toHaveTextContent("来源")
     openAnalysisDockTab("对象")
     expect(screen.getByRole("heading", { name: "已登记对象" })).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "图谱画布" })).toBeInTheDocument()
     expect(screen.getByText("暂无工作区图谱")).toBeInTheDocument()
     expect(screen.getByText(/可在此拖入原始输出文件/)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "导入到画布" })).toBeDisabled()
     openAnalysisDockTab("诊断")
     fireEvent.click(screen.getByRole("button", { name: "运行 Fixture" }))
     await expectFixtureWorkbenchProjected()
@@ -2431,19 +2173,6 @@ describe("WorkbenchShell", () => {
     expect(within(graphCanvas).getByText("object-a")).toBeInTheDocument()
     expect(within(graphCanvas).getAllByText("path-a-b").length).toBeGreaterThan(0)
 
-    fireEvent.change(screen.getByLabelText("选择文件"), {
-      target: {
-        files: [new File(["2\nwater"], "water.xyz", { type: "chemical/x-xyz" })],
-      },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "导入到画布" }))
-
-    expect(await screen.findByText("import-batch-fixture-web-1")).toBeInTheDocument()
-    expect(screen.getByText("原始输入未持久化")).toBeInTheDocument()
-    expect(screen.getByText("无当前浏览器项目")).toBeInTheDocument()
-    expect(screen.getByText("xyz-ase")).toBeInTheDocument()
-    expect(screen.getAllByText("missing_section").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("water.xyz").length).toBeGreaterThan(0)
     openAnalysisDockTab("势能面")
     const energyPanel = screen.getByRole("region", { name: "能量剖面面板" })
     expect(within(energyPanel).getAllByText("相对能量").length).toBeGreaterThan(0)
@@ -2478,14 +2207,6 @@ function renderWorkbench(
         runtimeInfo={runtimeInfo}
       />
     </I18nProvider>,
-  )
-}
-
-function oversizedInlineImportFile() {
-  return new File(
-    [new Uint8Array(defaultInlineImportByteLimit + 1)],
-    "large.xyz",
-    { type: "chemical/x-xyz" },
   )
 }
 
@@ -2571,6 +2292,19 @@ function dispatchDrop(
   fireEvent(element, event)
 }
 
+function dropExternalFileOnCanvas(
+  graphCanvas: HTMLElement,
+  file: File,
+  clientX = 240,
+  clientY = 180,
+) {
+  const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
+  mockCanvasSurfaceRect(surface, 600, 360)
+  const dataTransfer = new TestDataTransfer([file])
+  fireEvent.dragOver(surface, { dataTransfer })
+  dispatchDrop(surface, dataTransfer, clientX, clientY)
+}
+
 function lastPayload(
   transport: RecordingProjectBridgeTransport,
   command: string,
@@ -2579,12 +2313,18 @@ function lastPayload(
 }
 
 function projectTreePanel(): HTMLElement {
-  return screen.getByRole("region", { name: "Project tree" })
+  return screen.getByRole("tree", { name: "Project file tree" })
+}
+
+async function expectProjectFolderActive(name: RegExp): Promise<HTMLElement> {
+  const button = await screen.findByRole("button", { name })
+  await waitFor(() => expect(button).toHaveAttribute("aria-current", "true"))
+  return button
 }
 
 function projectRawObjectDisplayName(object: BrowserStorageObject): string {
   const sourceName = object.metadata?.source_name
-  if (typeof sourceName === "string" && sourceName) return sourceName
+  if (typeof sourceName === "string" && sourceName) return sourceName.replace(/^[a-f0-9]{12}-/i, "")
   const baseName = object.path.split("/").filter(Boolean).at(-1) ?? object.path
   return baseName.replace(/^[a-f0-9]{12}-/i, "")
 }
