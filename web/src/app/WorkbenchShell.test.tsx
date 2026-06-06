@@ -4,6 +4,7 @@ import { BrowserProjectRepositoryError, checksumBrowserStorageBytes, MemoryBrows
 import { ShellClient, fixtureTransport, type ShellCommandPayload, type ShellResponse, type ShellRuntimeInfo, type ShellTransport, type WorkbenchSnapshotData } from "../shell"
 import { graphObjectDragMimeType } from "./graphObjectDragPayload"
 import { graphRawFileDropMimeType } from "./graphRawFileDropPayload"
+import { defaultInlineImportByteLimit } from "./importInboxState"
 import { WorkbenchShell } from "./WorkbenchShell"
 import { I18nProvider, type SupportedLocale } from "./i18n"
 import { chemicalObjectsPath, exportArtifactsPath, projectContentIndexPath, reactionGraphsPath, workspacesPath } from "./projectContentBridge"
@@ -2181,7 +2182,7 @@ describe("WorkbenchShell", () => {
 
     fireEvent.change(screen.getByLabelText("Select Files"), {
       target: {
-        files: [new File(["x".repeat(1024 * 1024 + 1)], "large.xyz", { type: "chemical/x-xyz" })],
+        files: [oversizedInlineImportFile()],
       },
     })
     fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
@@ -2206,7 +2207,7 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     fireEvent.change(screen.getByLabelText("Select Files"), {
       target: {
-        files: [new File(["x".repeat(1024 * 1024 + 1)], "large.xyz", { type: "chemical/x-xyz" })],
+        files: [oversizedInlineImportFile()],
       },
     })
     fireEvent.click(screen.getByRole("button", { name: "Import to Canvas" }))
@@ -2470,6 +2471,14 @@ function renderWorkbench(
         runtimeInfo={runtimeInfo}
       />
     </I18nProvider>,
+  )
+}
+
+function oversizedInlineImportFile() {
+  return new File(
+    [new Uint8Array(defaultInlineImportByteLimit + 1)],
+    "large.xyz",
+    { type: "chemical/x-xyz" },
   )
 }
 

@@ -60,7 +60,7 @@ from .result import Result
 from .workspace import CanvasViewport, GraphEditorWorkspaceService, NodePlacement, WorkspaceSelection, WorkspaceSnapshot
 
 
-MAX_INLINE_IMPORT_BYTES = 1024 * 1024
+MAX_INLINE_IMPORT_BYTES = 12 * 1024 * 1024
 
 
 @dataclass(frozen=True)

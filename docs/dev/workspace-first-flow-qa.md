@@ -48,7 +48,7 @@ git diff --check
 | `fixture-desktop-project-restore` | fixture | desktop `1280x720` | `workbench-journey.spec.ts` | Save Project、刷新/重开 project、Project Files raw-only、graph/workspace/path/viewport 恢复 | Python bridge roundtrip、Project Content deep validation |
 | `fixture-narrow-workbench-flow` | fixture | narrow `390x840` | `workbench-journey.spec.ts` | 窄屏首屏项目栏默认收起、主动作可达、graph/PES/export 可用、无页面级水平溢出 | 桌面复杂手势覆盖、真实 bridge |
 | `fixture-graph-editor-matrix` | fixture | desktop + narrow | `workbench-journey.spec.ts` | object drag/drop、node drag、layout、path delete、edge label、direct edge、rubber-band、keyboard nudge、viewport/minimap/history | Python bridge、真实 parser/export writer |
-| `local-http-bridge-smoke` | local-http | desktop `1280x720` | `npm run test:e2e:local-http` | Runtime Local HTTP、Save Project、小文件 parser preview、graph/path、energy compute、PNG/CDXML/XLSX/CSV/SVG export projection、download MIME、writer metadata、artifact persistence | 复杂 graph gestures、完整 Gaussian/ORCA/MAPLE/XYZ/extxyz 认证 |
+| `local-http-bridge-smoke` | local-http | desktop `1280x720` | `npm run test:e2e:local-http` | Runtime Local HTTP、Save Project、本地 inline parser preview、graph/path、energy compute、PNG/CDXML/XLSX/CSV/SVG export projection、download MIME、writer metadata、artifact persistence | 复杂 graph gestures、完整 Gaussian/ORCA/MAPLE/XYZ/extxyz 认证、大文件 chunking |
 | `local-http-project-restore` | local-http | desktop `1280x720` | `npm run test:e2e:local-http` | raw input persistence、Save Project、重新打开 project、graph/workspace restore、project file retention | 所有 graph gestures、云同步、autosave |
 | `manual-user-journey` | manual | desktop + narrow | `docs/user/workspace-first-workbench.md` | 用户能按指南从创建项目走到 Save Project、重开恢复和右侧导出 | 自动化覆盖以外的真实长文件、大文件、私有模板或跨设备云同步 |
 
@@ -56,7 +56,7 @@ git diff --check
 
 默认 fixture E2E 不依赖 Python bridge。它主要证明 Web UI 编排、ShellResponse projection consumption、桌面/窄屏布局、复杂图谱手势、console clean 和 no horizontal overflow。
 
-local-http E2E 会启动本地 Python bridge 和 Vite local-http runtime。它只证明真实 bridge 主链路：小文件 parser preview、project open/save、energy compute、export projection 和 project restore roundtrip。不要把复杂 graph gesture matrix 复制进 local-http spec，否则会把浏览器手势波动和 Python bridge dependency 绑在一起。
+local-http E2E 会启动本地 Python bridge 和 Vite local-http runtime。它只证明真实 bridge 主链路：本地 inline parser preview、project open/save、energy compute、export projection 和 project restore roundtrip。当前 inline preview 上限是 12MiB/文件，本地 bridge request body 默认 64MiB；不要把复杂 graph gesture matrix 复制进 local-http spec，否则会把浏览器手势波动和 Python bridge dependency 绑在一起。
 
 `RXNFLOW_E2E_PYTHON=/path/to/python3 npm run test:e2e:local-http` 可显式指定带导出依赖的解释器。
 
@@ -81,7 +81,7 @@ Playwright 产物只写入 gitignored 目录：
 - 不为测试便利新增生产按钮、测试专用 UI、runtime schema、localStorage key 或 shell command。
 - fixture/local-http 都要检查 framework overlay absent、console clean 和 no horizontal overflow。
 - CDXML 只按 `.cdxml` 支持验收，不把能力描述成 CDX 或 molecule-level ChemDraw structure export。
-- parser smoke 只描述当前 fixture/local-http 小文件链路，不承诺完整 Gaussian/ORCA/MAPLE/XYZ/extxyz 兼容认证。
+- parser smoke 只描述当前 fixture/local-http 本地开发链路，不承诺完整 Gaussian/ORCA/MAPLE/XYZ/extxyz 兼容认证或生产级大文件传输。
 
 ## 相关指南
 

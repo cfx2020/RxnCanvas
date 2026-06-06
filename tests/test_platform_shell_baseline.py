@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from rxnflow.content_store import (
     CHEMICAL_OBJECTS_PATH,
@@ -23,6 +24,7 @@ from rxnflow.fixture import run_core_fixture_vertical_slice
 from rxnflow.graph_workspace_codec import workspace_snapshot_from_graph
 from rxnflow.platform import (
     AppKernel,
+    MAX_INLINE_IMPORT_BYTES,
     PlatformSession,
     PlatformShellService,
     ShellArtifact,
@@ -54,6 +56,9 @@ def _content_files_payload(project_path: Path) -> list[dict[str, object]]:
 
 
 class PlatformShellBaselineTest(unittest.TestCase):
+    def test_inline_import_limit_covers_real_gaussian_log_sized_files(self) -> None:
+        self.assertGreaterEqual(MAX_INLINE_IMPORT_BYTES, 12 * 1024 * 1024)
+
     def test_shell_dto_and_unknown_command_are_json_safe(self) -> None:
         session = PlatformSession(
             id="session-a",
@@ -549,19 +554,20 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertTrue(created.ok, created.error)
             session_id = created.to_dict()["data"]["session_id"]
 
-            too_large = service.run(
-                ShellCommand(
-                    "import.preview",
-                    {
-                        "session_id": session_id,
-                        "source": {
-                            "kind": "inline_bytes",
-                            "filename": "large.xyz",
-                            "bytes_base64": base64.b64encode(b"x" * (1024 * 1024 + 1)).decode("ascii"),
+            with patch("rxnflow.platform.MAX_INLINE_IMPORT_BYTES", 4):
+                too_large = service.run(
+                    ShellCommand(
+                        "import.preview",
+                        {
+                            "session_id": session_id,
+                            "source": {
+                                "kind": "inline_bytes",
+                                "filename": "large.xyz",
+                                "bytes_base64": base64.b64encode(b"x" * 5).decode("ascii"),
+                            },
                         },
-                    },
+                    )
                 )
-            )
             invalid_base64 = service.run(
                 ShellCommand(
                     "import.preview",

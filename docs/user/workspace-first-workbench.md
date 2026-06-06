@@ -36,7 +36,7 @@ http://127.0.0.1:5173/
 
 1. 打开页面后确认第一屏以中间 `Graph Canvas` 为主体，顶部菜单显示 `Projects`、`Save Project`、`Sources`、`Export`、`Analysis`。
 2. 在顶部输入项目名，点击 `New` / `Create Project`。需要看项目文件时点击 `Projects` 展开左侧项目栏，确认项目处于 `Persisted` 和 `Valid` 状态。
-3. 把一个小的原始输出文件导入项目。当前可以点击顶部 `Sources` 展开 Source Tray 选择文件，也可以把文件拖到中间画布。
+3. 把一个原始输出文件导入项目。当前可以点击顶部 `Sources` 展开 Source Tray 选择文件，也可以把文件拖到中间画布；使用真实 Gaussian/ORCA/MAPLE/XYZ/extxyz parser 时，需要先启动本地 `local-http` bridge。
 4. 导入后确认项目文件进入左侧 Project Files，而不是只停留在一次性文件选择器里。`Sources` 与 `Analysis` / `Export` 会互斥展开，避免同时遮住画布。
 5. 如果解析结果只有一个对象，画布会按落点创建节点；如果有多个对象或多帧候选，先在候选选择器里选择要放到画布的结构。
 6. 在画布上连接节点。无歧义时会自动创建或延长 active path；有分叉或重复节点时，继续用 path 列表和 Path Order Draft 手动整理。
@@ -59,7 +59,7 @@ http://127.0.0.1:5173/
 - `Save Project` 是当前 Web 主流程的持久化入口：它保存项目内容、图谱 workspace、节点、边、路径和 viewport。
 - `.rxnflow.zip` 项目包能力仍保留在内部/CLI/备份文档中，但不再是 Web 左侧主流程入口。
 - CDXML 导出当前只支持 `.cdxml` XML 文件，不支持 `.cdx` 二进制文件，也不包含分子级原子/键编辑语义。
-- 当前 parser smoke 只证明 fixture 或 local-http 小文件链路可用，不等于完整认证 Gaussian、ORCA、MAPLE、XYZ 或 extxyz 的全部真实输出。
+- 当前 parser smoke 只证明 fixture 或 local-http 本地开发链路可用；local-http inline preview 当前单文件上限为 12MiB，可覆盖 `Ni-fxc` 这类 10MiB 内 Gaussian log，但不等于完整认证 Gaussian、ORCA、MAPLE、XYZ 或 extxyz 的全部真实输出。
 - PNG、CDXML、XLSX、CSV 和 SVG artifacts 只在 `Include bytes` 开启且有 active browser project 时写入项目 `exports/...`。
 
 ## 常见问题

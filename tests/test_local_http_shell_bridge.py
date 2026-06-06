@@ -10,7 +10,7 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from rxnflow.local_bridge import LocalShellBridge, create_local_bridge_server
+from rxnflow.local_bridge import DEFAULT_MAX_BODY_BYTES, LocalShellBridge, create_local_bridge_server
 
 
 class LocalHttpShellBridgeTest(unittest.TestCase):
@@ -23,6 +23,9 @@ class LocalHttpShellBridgeTest(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["service"], "rxnflow-local-shell-bridge")
         self.assertEqual(payload["version"], "local-dev-v1")
+
+    def test_default_body_limit_covers_multi_log_local_imports(self) -> None:
+        self.assertGreaterEqual(DEFAULT_MAX_BODY_BYTES, 64 * 1024 * 1024)
 
     def test_http_health_returns_json(self) -> None:
         with running_bridge() as base_url:

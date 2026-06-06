@@ -127,10 +127,10 @@ python3 -m rxnflow.local_bridge --host 127.0.0.1 --port 8765
 `import.preview` 当前可接收三类 JSON-safe source：
 
 - `path`：使用本机 `source_path`，继续服务 CLI、本地 Python path 和测试。
-- `inline_bytes`：使用 `filename` 与 `bytes_base64` 传小文件。Platform Shell 会把 bytes 写入临时文件，复用现有 Import Workflow / Project Store / Parser Registry，返回前清理临时文件；项目内 raw file 副本仍由 Project Store 写入 `inputs/raw/`。session 没有 core `project_path` 时，Platform Shell 会创建进程内 Temporary Preview Project，让 local-http 页面能完成真实 parser preview。
+- `inline_bytes`：使用 `filename` 与 `bytes_base64` 传本地开发预览文件。当前 Platform Shell 单文件上限为 12MiB，本地 HTTP bridge 默认 request body 上限为 64MiB；Platform Shell 会把 bytes 写入临时文件，复用现有 Import Workflow / Project Store / Parser Registry，返回前清理临时文件；项目内 raw file 副本仍由 Project Store 写入 `inputs/raw/`。session 没有 core `project_path` 时，Platform Shell 会创建进程内 Temporary Preview Project，让 local-http 页面能完成真实 parser preview。
 - `browser_storage`：预留给后续 Browser Project Repository adapter；Python bridge 当前不读 IndexedDB/OPFS，返回 `storage_object_missing target=storage_path`。
 
-Web Import Inbox 在 fixture runtime 下仍传 `source_paths`，在 local-http runtime 下优先把浏览器 `File` 编码为 `sources[].kind=inline_bytes`。inline payload 有大小限制；超限时 Web 直接显示 `payload_too_large target=bytes_base64`，不发 shell command。这条桥接只解决小文件 preview，不替代长期 raw storage、Browser Project Repository、Project Content 保存或大文件上传协议。
+Web Import Inbox 在 fixture runtime 下仍传 `source_paths`，在 local-http runtime 下优先把浏览器 `File` 编码为 `sources[].kind=inline_bytes`。inline payload 有大小限制；超限时 Web 直接显示 `payload_too_large target=bytes_base64`，不发 shell command。这条桥接只解决本地开发预览和真实 log smoke，不替代长期 raw storage、Browser Project Repository、Project Content 保存、chunking 或大文件上传协议。
 
 ## Project Content Bridge
 
@@ -164,7 +164,7 @@ Report Export Panel 的 Preview mode 也遵守同一运行时边界：`buildRepo
 - 不在本 feature 初始化 `package.json`、`web/`、Vite、Next.js、React、Tailwind 或 Playwright。
 - 不新增 FastAPI、Flask、Django、Vercel route 或生产 HTTP server；当前只有本机开发用标准库 bridge。
 - 不实现 OPFS adapter、Service Worker 或大文件 chunking；真实 IndexedDB-first Browser Project Repository 已在 Web Workbench 中承担 browser-local content files 和 export artifact bytes object 保存。
-- 不实现浏览器 File / Blob / ArrayBuffer 到 parser 的大文件桥接、chunking、OPFS payload store 或 Worker pool。
+- 不实现 chunking、OPFS payload store、Worker pool 或生产级大文件上传协议；当前只有本地开发 inline preview 上限。
 - 不在前端生成 PNG/CDXML/XLSX/CSV/SVG bytes，不新增 CDX/PDF/PPTX 等导出格式。
 - 不把 Web report preview 升级成 core report composer、持久化 section、HTTP route 或 browser storage writer。
 - 不新增云存储、账号、权限、同步、队列或外部量化计算调度。

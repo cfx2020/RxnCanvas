@@ -47,7 +47,7 @@ cd web && npm run test:e2e:local-http
 
 - runtime badge 与 endpoint。
 - browser project create/open/save project。
-- 小文件 inline parser preview。
+- 本地 inline parser preview。
 - graph add/connect/set path 主流程。
 - energy compute。
 - PNG/CDXML/XLSX/CSV/SVG export projection、download MIME、writer metadata 与 browser-local artifact persistence。

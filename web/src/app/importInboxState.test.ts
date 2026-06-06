@@ -122,4 +122,28 @@ describe("importInboxState", () => {
     expect(result.error.target).toBe("bytes_base64")
     expect(result.files[0].sourceKind).toBe("inline_bytes")
   })
+
+  it("allows local-http inline files above the former small demo limit", async () => {
+    const result = await importPreviewArgsFromFiles({
+      ...initialImportInboxState,
+      selectedFiles: [
+        {
+          id: "gaussian-log",
+          name: "sample.log",
+          size: 1024 * 1024 + 1,
+          storagePath: "inbox/sample.log",
+          file: new File([new Uint8Array(1024 * 1024 + 1)], "sample.log"),
+        },
+      ],
+    }, "session-1", { preferInlineBytes: true })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.args.sources).toEqual([
+      expect.objectContaining({
+        kind: "inline_bytes",
+        filename: "sample.log",
+      }),
+    ])
+  })
 })

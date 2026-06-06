@@ -15,7 +15,7 @@ BRIDGE_SERVICE_NAME = "rxnflow-local-shell-bridge"
 BRIDGE_VERSION = "local-dev-v1"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024
+DEFAULT_MAX_BODY_BYTES = 64 * 1024 * 1024
 
 
 class LocalShellBridge:
@@ -62,8 +62,12 @@ def create_local_bridge_server(
     return ThreadingHTTPServer((host, port), _LocalBridgeRequestHandler)
 
 
-def serve_local_bridge(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:
-    server = create_local_bridge_server(host, port)
+def serve_local_bridge(
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
+) -> None:
+    server = create_local_bridge_server(host, port, LocalShellBridge(max_body_bytes=max_body_bytes))
     try:
         server.serve_forever()
     finally:
@@ -216,8 +220,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="rxnflow-local-bridge")
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", default=DEFAULT_PORT, type=int)
+    parser.add_argument("--max-body-mb", default=DEFAULT_MAX_BODY_BYTES // (1024 * 1024), type=int)
     args = parser.parse_args(argv)
-    serve_local_bridge(args.host, args.port)
+    serve_local_bridge(args.host, args.port, max_body_bytes=args.max_body_mb * 1024 * 1024)
     return 0
 
 
