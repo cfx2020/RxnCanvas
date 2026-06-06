@@ -1,0 +1,70 @@
+roadmap: rxnflow-canonical-import-data
+created: 2026-06-06
+
+items:
+  - slug: transient-import-core-contract
+    description: Core/Platform Shell 支持 retain_raw=false transient import，解析成功后只登记 canonical objects 和来源摘要
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: true
+    notes: 用 Ni-fxc 三个 log 验证 preview/register 不依赖 raw resource，manifest 不新增 raw file resource
+
+  - slug: canonical-import-ledger
+    description: 扩展 import ledger/project content codec，保存 CanonicalImportRecord，恢复时不要求 raw file 存在
+    depends_on: [transient-import-core-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: raw_resource_id 默认 null；raw_retention 默认 discarded
+
+  - slug: web-transient-import-flow
+    description: Web Source Tray 和 raw drop 改为临时解析，不写 Browser Raw Input Object，解析后更新对象和 workspace
+    depends_on: [transient-import-core-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: Source Tray 继续负责外部文件选择；Graph Canvas 可见节点仍只来自 ShellResponse workspace projection
+
+  - slug: web-data-library-panel
+    description: 左侧 Project Sidebar 从 Project Files 改为 Project Data Library，展示已导入对象和来源摘要并支持拖入画布
+    depends_on: [canonical-import-ledger, web-transient-import-flow]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不展示 inputs/raw path；拖入画布使用 objectIds 走 workspace.add_node，不重新 parse
+
+  - slug: canonical-project-content-save-restore
+    description: Save Project、reopen 和 validation 只依赖 canonical sections，项目恢复不读取 raw bytes
+    depends_on: [canonical-import-ledger, web-data-library-panel]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 保持旧项目迁移/兼容策略只在 feature design 中定；本 roadmap 不承诺 raw archive
+
+  - slug: project-bundle-without-raw-default
+    description: 调整 bundle/helper 默认输出，项目分享包不包含 raw logs，保留后续 raw archive 扩展点
+    depends_on: [canonical-project-content-save-restore]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: .rxnflow.zip 不再把 inputs/raw 作为默认 content root；exports 是否保留按报告 artifact 策略处理
+
+  - slug: transport-transient-input-boundary
+    description: 固定 local-http、Vercel/cloud、desktop adapter 的 transient input 语义和大小/清理边界
+    depends_on: [transient-import-core-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: cloud adapter 可临时保存 raw blob，解析成功后删除；core 不绑定具体云存储 SDK
+
+  - slug: canonical-import-qa-guides
+    description: 用 fixture/local-http/Ni-fxc 验证 canonical data 保存恢复，更新用户/开发者指南和 architecture 回写
+    depends_on:
+      - canonical-project-content-save-restore
+      - project-bundle-without-raw-default
+      - transport-transient-input-boundary
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 收尾时回写 core-platform/web-workbench architecture 现状，并更新 workspace-first 用户指南
