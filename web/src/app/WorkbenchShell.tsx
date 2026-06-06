@@ -1165,7 +1165,6 @@ export function WorkbenchShell({
       status: "used-in-graph",
       registeredObjectIds: [registeredObjectId],
       graphNodeIds: graphNodeIdsForObject(addNodeResponse.data.workspace, registeredObjectId),
-      warnings: projectFileWarningMessagesFromWarnings(addNodeResponse.warnings),
     })
     resetGraphEditorHistory()
   }, [applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, transientImportState.expectedFormat, transientImportState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
@@ -2597,13 +2596,15 @@ function graphNodeIdsForObject(workspace: WorkspaceSummary, objectId: string): s
 }
 
 function projectFileWarningMessagesFromError(error: ShellError): string[] {
-  return [error.code, error.target].filter((value): value is string => Boolean(value))
+  return [formatProjectFileWarningMessage(error.code, error.target)]
 }
 
 function projectFileWarningMessagesFromWarnings(warnings: WorkbenchDomainState["warnings"]): string[] {
-  return warnings.flatMap((warning) =>
-    [warning.code, warning.target].filter((value): value is string => Boolean(value))
-  )
+  return Array.from(new Set(warnings.map((warning) => formatProjectFileWarningMessage(warning.code, warning.target))))
+}
+
+function formatProjectFileWarningMessage(code: string, target?: string | null): string {
+  return target ? `${code}: ${target}` : code
 }
 
 function projectFileProjectionSignature(files: ProjectFileEntry[]): string {

@@ -272,7 +272,7 @@ describe("WorkbenchShell", () => {
   })
 
   it("drags registered objects from the object registry into the graph canvas", async () => {
-    const transport = new RecordingProjectBridgeTransport()
+    const transport = new NoImportWarningProjectBridgeTransport()
     renderWorkbench(undefined, "en-US", undefined, new ShellClient(transport))
 
     runFixtureCommand()
@@ -332,6 +332,7 @@ describe("WorkbenchShell", () => {
     }
     expect(within(rawFileRow).getByText("Used in graph")).toBeInTheDocument()
     expect(within(rawFileRow).getByText("On canvas: 1")).toBeInTheDocument()
+    expect(within(rawFileRow).queryByText(/Warnings:/)).not.toBeInTheDocument()
     expect(within(rawFileRow).queryByText("object-imported-water")).not.toBeInTheDocument()
     expect(within(rawFileRow).queryByText("node-web-3")).not.toBeInTheDocument()
     expect(transport.payloads.find((payload) => payload.command === "import.preview")?.args).toMatchObject({
@@ -602,7 +603,7 @@ describe("WorkbenchShell", () => {
       throw new Error("Project raw file row was not rendered.")
     }
     expect(within(rawFileRow).getByText("Error")).toBeInTheDocument()
-    expect(within(rawFileRow).getByText("Warnings: 2")).toBeInTheDocument()
+    expect(within(rawFileRow).getByText("Warnings: 1")).toBeInTheDocument()
     expect(within(rawFileRow).queryByText("preview_failed")).not.toBeInTheDocument()
     expect(within(rawFileRow).queryByText("import.preview")).not.toBeInTheDocument()
     expect(transport.payloads.filter((payload) => payload.command === "import.register_all")).toHaveLength(0)
@@ -2591,6 +2592,20 @@ class RecordingProjectBridgeTransport implements ShellTransport {
   async run(payload: ShellCommandPayload<string>): Promise<ShellResponse> {
     this.payloads.push(payload)
     return fixtureTransport.run(payload)
+  }
+}
+
+class NoImportWarningProjectBridgeTransport implements ShellTransport {
+  kind = "in-process-test" as const
+  payloads: ShellCommandPayload<string>[] = []
+
+  async run(payload: ShellCommandPayload<string>): Promise<ShellResponse> {
+    this.payloads.push(payload)
+    const response = await fixtureTransport.run(payload)
+    if (payload.command === "import.preview" && response.ok) {
+      return { ...response, warnings: [] }
+    }
+    return response
   }
 }
 
