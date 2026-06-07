@@ -5,6 +5,7 @@ import {
   graphObjectDragMimeType,
   serializeGraphObjectDragPayload,
 } from "./graphObjectDragPayload"
+import { objectDisplayName, userFacingText, warningTargetDisplay } from "./displayNames"
 import { useI18n } from "./i18n"
 
 type ObjectRegistryPanelProps = {
@@ -64,6 +65,7 @@ export function ObjectRegistryPanel({
           <ul className="object-list" aria-label={t("objectRegistry.list")}>
             {objects.map((object) => {
               const selected = object.id === activeObject?.id
+              const displayName = objectDisplayName(object)
               return (
                 <li key={object.id}>
                   <button
@@ -76,13 +78,13 @@ export function ObjectRegistryPanel({
                       event.dataTransfer.setData(graphObjectDragMimeType, serializeGraphObjectDragPayload({
                         kind: "registered-object",
                         objectId: object.id,
-                        label: object.label ?? object.id,
+                        label: displayName,
                       }))
                     }}
                     aria-current={selected ? "true" : undefined}
                   >
-                    <span>{object.label ?? object.id}</span>
-                    <small>{object.id}</small>
+                    <span>{displayName}</span>
+                    <small>{object.formula ?? object.method ?? ""}</small>
                   </button>
                 </li>
               )
@@ -118,12 +120,13 @@ function ObjectDetail({
   const thermoKeys = stringList(object.thermochemistry_keys)
   const warnings = object.warnings ?? []
   const corrections = object.corrections ?? []
+  const displayName = objectDisplayName(object)
+  const sourceName = userFacingText(object.source_file_id) ?? userFacingText(object.provenance?.source_file_id)
 
   return (
     <article className="object-detail" aria-label={t("objectRegistry.detail")}>
       <div className="object-detail-title">
-        <strong>{object.label ?? object.id}</strong>
-        <code>{object.id}</code>
+        <strong>{displayName}</strong>
       </div>
 
       <dl className="object-detail-grid">
@@ -131,14 +134,14 @@ function ObjectDetail({
         <DetailItem label={t("objectRegistry.charge")} value={numberValue(object.charge)} />
         <DetailItem label={t("objectRegistry.spin")} value={numberValue(object.spin_multiplicity)} />
         <DetailItem label={t("objectRegistry.method")} value={object.method} />
-        <DetailItem label={t("objectRegistry.source")} value={object.source_file_id} />
+        <DetailItem label={t("objectRegistry.source")} value={sourceName} />
         <DetailItem label={t("objectRegistry.corrections")} value={object.correction_count ?? 0} />
       </dl>
 
       <KeyList label={t("objectRegistry.energyKeys")} values={energyKeys} />
       <KeyList label={t("objectRegistry.thermochemistryKeys")} values={thermoKeys} />
       <CorrectionList corrections={corrections} />
-      <ProvenanceBlock object={object} />
+      <ProvenanceBlock object={object} sourceName={sourceName} />
       {warnings.length > 0 ? <ObjectWarningList warnings={warnings} /> : null}
       <CorrectionEntryForm
         object={object}
@@ -179,10 +182,10 @@ function KeyList({ label, values }: { label: string; values: string[] }) {
   )
 }
 
-function ProvenanceBlock({ object }: { object: ObjectSummary }) {
+function ProvenanceBlock({ object, sourceName }: { object: ObjectSummary; sourceName?: string | null }) {
   const { t } = useI18n()
   const provenance = object.provenance
-  if (!provenance) {
+  if (!provenance && !sourceName) {
     return (
       <div className="object-provenance">
         <span>{t("objectRegistry.provenance")}</span>
@@ -194,10 +197,8 @@ function ProvenanceBlock({ object }: { object: ObjectSummary }) {
   return (
     <div className="object-provenance">
       <span>{t("objectRegistry.provenance")}</span>
-      <code>{provenance.parser_id}</code>
-      <code>{provenance.parser_version}</code>
-      <code>{provenance.source_file_id}</code>
-      {provenance.parsed_at ? <small>{provenance.parsed_at}</small> : null}
+      {sourceName ? <code>{sourceName}</code> : null}
+      {provenance?.parsed_at ? <small>{provenance.parsed_at}</small> : null}
     </div>
   )
 }
@@ -212,7 +213,7 @@ function ObjectWarningList({ warnings }: { warnings: ShellWarning[] }) {
           <AlertTriangle size={15} />
           <strong>{warning.code}</strong>
           <span>{warning.message}</span>
-          {warning.target ? <code>{warning.target}</code> : null}
+          {warningTargetDisplay(warning) ? <code>{warningTargetDisplay(warning)}</code> : null}
         </div>
       ))}
     </div>
@@ -235,7 +236,6 @@ function CorrectionList({ corrections }: { corrections: NonNullable<ObjectSummar
       {corrections.map((correction) => (
         <div key={correction.id} className="object-correction-row">
           <strong>{correction.kind}</strong>
-          <code>{correction.id}</code>
           <span>{energyText(correction.energy)}</span>
           {correction.note ? <small>{correction.note}</small> : null}
         </div>
@@ -324,7 +324,7 @@ function CorrectionEntryForm({
           <AlertTriangle size={15} />
           <strong>{error.code}</strong>
           <span>{error.message}</span>
-          {error.target ? <code>{error.target}</code> : null}
+          {warningTargetDisplay(error) ? <code>{warningTargetDisplay(error)}</code> : null}
         </div>
       ) : null}
       <button type="submit" className="correction-entry-button" disabled={formDisabled}>

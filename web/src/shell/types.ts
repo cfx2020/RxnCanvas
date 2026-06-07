@@ -93,6 +93,7 @@ export type ObjectSummary = JsonObject & {
     reference?: string | null
   } | null
   coordinate_preview?: CoordinatePreviewSummary | null
+  geometry?: Atom3DSummary[]
   provenance?: {
     source_file_id: string
     parser_id: string
@@ -102,6 +103,14 @@ export type ObjectSummary = JsonObject & {
   correction_count?: number
   corrections?: CorrectionSummary[]
   warnings?: ShellWarning[]
+}
+
+export type Atom3DSummary = JsonObject & {
+  element: string
+  x: number
+  y: number
+  z: number
+  unit?: string
 }
 
 export type CoordinatePreviewSummary = JsonObject & {

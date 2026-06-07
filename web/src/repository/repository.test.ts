@@ -99,6 +99,36 @@ describe("Browser Project Repository CRUD", () => {
     await expect(repository.listObjects(first.projectRef, ".rxnflow/state")).resolves.toHaveLength(1)
   })
 
+  it("deletes a project and all of its stored objects", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const encoder = new TextEncoder()
+    const first = await repository.createProject({ name: "First" })
+    const second = await repository.createProject({ name: "Second" })
+
+    await repository.writeObject(first.projectRef, {
+      path: ".rxnflow/state/project-content.json",
+      bytes: encoder.encode("first") as Uint8Array<ArrayBuffer>,
+      metadata: { project: "first" },
+    })
+    await repository.writeObject(first.projectRef, {
+      path: "inputs/raw/demo.log",
+      bytes: encoder.encode("raw") as Uint8Array<ArrayBuffer>,
+      metadata: { project: "first", kind: "raw_file" },
+    })
+    await repository.writeObject(second.projectRef, {
+      path: ".rxnflow/state/project-content.json",
+      bytes: encoder.encode("second") as Uint8Array<ArrayBuffer>,
+      metadata: { project: "second" },
+    })
+
+    await repository.deleteProject(first.projectRef)
+
+    await expect(repository.listProjects()).resolves.toEqual([second])
+    await expect(repository.listObjects(first.projectRef, ".rxnflow/state")).resolves.toEqual([])
+    await expect(repository.listObjects(first.projectRef, "inputs/raw")).resolves.toEqual([])
+    await expect(readText(repository, second.projectRef, ".rxnflow/state/project-content.json")).resolves.toBe("second")
+  })
+
   it("overwrites a single project object without preserving stale bytes or metadata", async () => {
     const repository = new MemoryBrowserProjectRepository()
     const encoder = new TextEncoder()

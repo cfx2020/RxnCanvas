@@ -13,7 +13,7 @@ import {
   type ParseCandidateChooserState,
 } from "./GraphCanvas"
 import { I18nProvider } from "./i18n"
-import { initialWorkbenchDomainState } from "./workbenchState"
+import { initialWorkbenchDomainState, type WorkbenchDomainState } from "./workbenchState"
 
 describe("GraphCanvas raw file drops", () => {
   it("passes project raw file drops with graph-space position", () => {
@@ -78,10 +78,10 @@ describe("GraphCanvas parse candidate chooser", () => {
 
     expect(screen.getByRole("region", { name: "Parse Candidate Chooser" })).toBeInTheDocument()
     expect(screen.getByText("Select structure candidate")).toBeInTheDocument()
-    expect(screen.getByText("inputs/raw/multi.extxyz")).toBeInTheDocument()
+    expect(screen.getByText("multi.extxyz")).toBeInTheDocument()
     expect(screen.getByText("2 candidates")).toBeInTheDocument()
     expect(screen.getByText("Frame 1")).toBeInTheDocument()
-    expect(screen.getByText("candidate-frame-1")).toBeInTheDocument()
+    expect(screen.queryByText("candidate-frame-1")).not.toBeInTheDocument()
     expect(screen.getByText("electronic -100.25 hartree")).toBeInTheDocument()
     expect(screen.getAllByText("3 atoms · O H · 3D").length).toBeGreaterThan(0)
     expect(screen.getByRole("checkbox", { name: "Select Frame 1" })).toBeChecked()
@@ -97,9 +97,86 @@ describe("GraphCanvas parse candidate chooser", () => {
   })
 })
 
+describe("GraphCanvas molecule previews", () => {
+  it("renders a structure preview from object geometry inside graph nodes", () => {
+    renderGraphCanvas(vi.fn(), {
+      state: {
+        ...initialWorkbenchDomainState,
+        sessionId: "session-1",
+        objects: [
+          {
+            id: "object-water",
+            label: "water.xyz",
+            formula: "H2O",
+            charge: 0,
+            spin_multiplicity: 1,
+            method: "xyz geometry",
+            source_file_id: "raw-water",
+            energy_keys: ["electronic"],
+            thermochemistry_keys: [],
+            coordinate_preview: {
+              atom_count: 3,
+              has3d: true,
+              elements: ["O", "H"],
+              preview_kind: "text",
+            },
+            geometry: [
+              { element: "O", x: 0, y: 0, z: 0, unit: "angstrom" },
+              { element: "H", x: 0.92, y: 0, z: 0.32, unit: "angstrom" },
+              { element: "H", x: -0.28, y: 0.86, z: -0.18, unit: "angstrom" },
+            ],
+          },
+        ],
+        workspace: {
+          workspace_id: "workspace-1",
+          project_id: "project-1",
+          active_path_id: null,
+          selection: { node_ids: [], edge_ids: [], path_ids: [] },
+          viewport: { x: 0, y: 0, zoom: 1 },
+          palette: [],
+          graph: {
+            id: "graph-1",
+            project_id: "project-1",
+            node_count: 1,
+            edge_count: 0,
+            path_count: 0,
+            nodes: [
+              {
+                id: "node-water",
+                kind: "species",
+                label: "water.xyz",
+                chemical_object_ids: ["object-water"],
+                position: [180, 140],
+              },
+            ],
+            edges: [],
+            paths: [],
+          },
+          preview: {
+            graph_id: "graph-1",
+            active_path_id: null,
+            node_count: 1,
+            edge_count: 0,
+            path_count: 0,
+            disconnected_node_ids: [],
+            warnings: [],
+          },
+        },
+      },
+    })
+
+    const viewer = screen.getByRole("img", { name: "water.xyz 3D structure" })
+    expect(viewer).toBeInTheDocument()
+    expect(viewer.querySelector("canvas")).toBeInTheDocument()
+    expect(screen.queryByText("node-water")).not.toBeInTheDocument()
+    expect(screen.queryByText("object-water")).not.toBeInTheDocument()
+  })
+})
+
 function renderGraphCanvas(
   onAddRawFileNode: (request: AddRawFileNodeRequest) => void,
   options: {
+    state?: WorkbenchDomainState
     candidateChooser?: ParseCandidateChooserState | null
     onToggleCandidateSelection?: (candidateId: string, selected: boolean) => void
     onConfirmCandidateChooser?: () => void
@@ -109,7 +186,7 @@ function renderGraphCanvas(
   return render(
     <I18nProvider initialLocale="en-US">
       <GraphCanvas
-        state={{
+        state={options.state ?? {
           ...initialWorkbenchDomainState,
           sessionId: "session-1",
         }}

@@ -68,6 +68,35 @@ export async function createProject(
   }
 }
 
+export async function deleteProject(
+  repository: BrowserProjectRepository,
+  state: ProjectSidebarState,
+  projectRef: string,
+): Promise<ProjectSidebarState> {
+  try {
+    const safeProjectRef = validateBrowserProjectRef(projectRef)
+    await repository.deleteProject(safeProjectRef)
+    const projects = await repository.listProjects()
+
+    if (state.activeProjectRef === safeProjectRef) {
+      return {
+        status: "ready",
+        projects,
+        persistence: "empty",
+        bridge: { state: "idle" },
+        projectFiles: [],
+        validation: initialProjectSidebarState.validation,
+      }
+    }
+
+    const activeProject = findProject(projects, state.activeProjectRef)
+    const projectFiles = await listProjectFileEntries(repository, activeProject)
+    return readyProjectSidebarState(state, projects, projectFiles)
+  } catch (error) {
+    return repositoryErrorProjectSidebarState(state, error)
+  }
+}
+
 export async function openProject(
   repository: BrowserProjectRepository,
   state: ProjectSidebarState,

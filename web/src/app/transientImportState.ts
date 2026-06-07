@@ -172,16 +172,19 @@ export function mergeRegisteredObjects(
   currentObjects: ImportRegisterAllData["objects"],
   nextObjects: ImportRegisterAllData["objects"],
 ): ImportRegisterAllData["objects"] {
-  const seen = new Set<string>()
-  const merged: ImportRegisterAllData["objects"] = []
-  for (const object of [...currentObjects, ...nextObjects]) {
-    if (seen.has(object.id)) {
-      continue
-    }
-    seen.add(object.id)
-    merged.push(object)
+  const order: string[] = []
+  const byId = new Map<string, ImportRegisterAllData["objects"][number]>()
+  for (const object of currentObjects) {
+    if (!byId.has(object.id)) order.push(object.id)
+    byId.set(object.id, object)
   }
-  return merged
+  for (const object of nextObjects) {
+    if (!byId.has(object.id)) order.push(object.id)
+    byId.set(object.id, object)
+  }
+  return order
+    .map((id) => byId.get(id))
+    .filter((object): object is ImportRegisterAllData["objects"][number] => Boolean(object))
 }
 
 export function formatFileSize(bytes: number): string {

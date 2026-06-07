@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react"
-import { AlertTriangle, Download, PanelLeft, PanelRight, Play, RefreshCw, Save } from "lucide-react"
+import { Download, PanelLeft, PanelRight } from "lucide-react"
 import {
   BrowserProjectRepositoryError,
   checksumBrowserStorageBytes,
@@ -96,7 +96,7 @@ import {
 } from "./transientImportState"
 import { ObjectRegistryPanel, type ApplyCorrectionRequest } from "./ObjectRegistryPanel"
 import { persistImportFilesAsRawInputs, persistRawInputFile, type BrowserRawResource } from "./rawInputPersistence"
-import { createProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
+import { createProject, deleteProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
 import { projectFileEntriesWithWorkbenchProjection, type ProjectFileEntry } from "./projectFiles"
 import {
   contentFilesToShellPayload,
@@ -109,14 +109,25 @@ import {
 import { initialProjectSidebarState, type ProjectSidebarState } from "./projectSidebarState"
 import { ProjectSidebar } from "./ProjectSidebar"
 import { ReportExportPanel, type ReportExportOptions } from "./ReportExportPanel"
+import { warningTargetDisplay } from "./displayNames"
 import {
   initialWorkbenchDomainState,
   projectWorkbenchSnapshot,
-  type CommandStatus,
   type WorkbenchDomainState,
   type WorkbenchSnapshotData,
 } from "./workbenchState"
 import { useI18n, type MessageKey, type SupportedLocale } from "./i18n"
+
+type WorkbenchTestApi = {
+  runFixture: () => Promise<void>
+  runInvalidCommand: () => Promise<void>
+}
+
+declare global {
+  interface Window {
+    __rxnflowWorkbenchTest?: WorkbenchTestApi
+  }
+}
 
 type WorkbenchShellProps = {
   shellClient: ShellClient
@@ -124,7 +135,7 @@ type WorkbenchShellProps = {
   runtimeInfo?: ShellRuntimeInfo
 }
 
-type AnalysisDockTab = "pes" | "export" | "object" | "diagnostics"
+type AnalysisDockTab = "pes" | "export" | "object"
 
 type AnalysisDockModel = {
   activeTab: AnalysisDockTab
@@ -141,7 +152,6 @@ type WorkspaceFlowShellState = {
   projectRailDensity: "normal" | "compact"
   projectRailOpen: boolean
   inspectorOpen: boolean
-  devToolsOpen: boolean
 }
 
 const defaultRuntimeInfo: ShellRuntimeInfo = {
@@ -154,7 +164,6 @@ const defaultWorkspaceFlowShellState: WorkspaceFlowShellState = {
   projectRailDensity: "normal",
   projectRailOpen: true,
   inspectorOpen: false,
-  devToolsOpen: false,
 }
 
 const narrowWorkbenchMediaQuery = "(max-width: 700px)"
@@ -228,6 +237,8 @@ export function WorkbenchShell({
   const topbarElementRef = useRef<HTMLElement | null>(null)
   const projectImportInputRef = useRef<HTMLInputElement | null>(null)
   const pendingProjectImportRef = useRef<string | null>(null)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoSaveSignatureRef = useRef("")
 
   useEffect(() => {
     const shellElement = shellElementRef.current
@@ -250,6 +261,12 @@ export function WorkbenchShell({
     return () => {
       observer.disconnect()
       window.removeEventListener("resize", syncTopbarHeight)
+    }
+  }, [])
+
+  useEffect(() => () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
     }
   }, [])
 
@@ -361,7 +378,6 @@ export function WorkbenchShell({
       ...current,
       analysisDockTab,
       inspectorOpen: true,
-      devToolsOpen: analysisDockTab === "diagnostics",
     }))
   }, [])
 
@@ -581,7 +597,15 @@ export function WorkbenchShell({
         error: undefined,
       }
       replaceProjectSidebarState(loadingState)
-      const nextState = await openProject(projectRepository, loadingState, projectRef)
+      let nextState = await openProject(projectRepository, loadingState, projectRef)
+      if (
+        nextState.status === "ready"
+        && nextState.activeProject
+        && nextState.validation.state === "missing"
+        && shellSessionVersionRef.current === requestVersion
+      ) {
+        nextState = await saveProjectContent(projectRepository, nextState)
+      }
       if (
         nextState.status === "ready"
         && nextState.activeProject
@@ -596,10 +620,35 @@ export function WorkbenchShell({
     [projectRepository, replaceProjectSidebarState, restoreSidebarProjectSession],
   )
 
-  const saveSidebarBridgeSession = useCallback(async () => {
+  const deleteSidebarProject = useCallback(
+    async (projectRef: string) => {
+      const deletingActiveProject = projectSidebarStateRef.current.activeProjectRef === projectRef
+      const loadingState: ProjectSidebarState = {
+        ...projectSidebarStateRef.current,
+        status: "loading",
+        error: undefined,
+      }
+      replaceProjectSidebarState(loadingState)
+      const nextState = await deleteProject(projectRepository, loadingState, projectRef)
+      replaceProjectSidebarState(nextState)
+      if (!deletingActiveProject || nextState.status !== "ready") {
+        return
+      }
+      shellSessionVersionRef.current += 1
+      autoSaveSignatureRef.current = ""
+      resetGraphEditorHistory()
+      setParseCandidateChooser(null)
+      setTransientImportState(initialTransientImportState)
+      setActiveObjectId(undefined)
+      setWorkbenchState(initialWorkbenchDomainState)
+    },
+    [projectRepository, replaceProjectSidebarState, resetGraphEditorHistory],
+  )
+
+  const saveSidebarBridgeSession = useCallback(async (): Promise<boolean> => {
     const activeProject = projectSidebarStateRef.current.activeProject
-    const sessionId = workbenchState.sessionId
-    if (!activeProject || !sessionId) return
+    const sessionId = workbenchStateRef.current.sessionId
+    if (!activeProject || !sessionId) return false
     const loadingState: ProjectSidebarState = {
       ...projectSidebarStateRef.current,
       status: "loading",
@@ -635,7 +684,7 @@ export function WorkbenchShell({
         warnings: response.warnings,
         error: response.error ?? shellError("invalid_input", "Project bridge save failed.", "project.save_content"),
       }))
-      return
+      return false
     }
     const files = await preserveBrowserProjectManifest(
       projectRepository,
@@ -643,28 +692,78 @@ export function WorkbenchShell({
       shellPayloadToContentFiles(response.data.content_files) as BrowserProjectContentFile[],
     )
     const savedState = await saveProjectContent(projectRepository, loadingState, files)
+    if (savedState.status !== "ready" || savedState.persistence !== "persisted") {
+      replaceProjectSidebarState({
+        ...savedState,
+        bridge: { state: "error", sessionId },
+      })
+      setWorkbenchState((current) => ({
+        ...current,
+        status: "error",
+        warnings: response.warnings,
+        error: shellError("storage_failed", "Project content save failed.", "project.save_content"),
+      }))
+      return false
+    }
     replaceProjectSidebarState({
       ...savedState,
       bridge: { state: "open", sessionId },
     })
     setWorkbenchState((current) => ({ ...current, status: "success", warnings: response.warnings, error: undefined }))
-  }, [projectRepository, replaceProjectSidebarState, shellClient, workbenchState.sessionId])
+    return true
+  }, [projectRepository, replaceProjectSidebarState, shellClient])
 
   const saveSidebarProject = useCallback(async () => {
+    const autoSaveSignature = projectAutoSaveSignature(
+      workbenchStateRef.current,
+      projectSidebarStateRef.current,
+    )
+    let persisted = false
     if (workbenchStateRef.current.sessionId) {
-      await saveSidebarBridgeSession()
-      return
+      persisted = await saveSidebarBridgeSession()
+    } else {
+      const loadingState: ProjectSidebarState = {
+        ...projectSidebarStateRef.current,
+        status: "loading",
+        persistence: "saving",
+        error: undefined,
+      }
+      replaceProjectSidebarState(loadingState)
+      const nextState = await saveProjectContent(projectRepository, loadingState)
+      replaceProjectSidebarState(nextState)
+      persisted = nextState.status === "ready" && nextState.persistence === "persisted"
     }
-    const loadingState: ProjectSidebarState = {
-      ...projectSidebarStateRef.current,
-      status: "loading",
-      persistence: "saving",
-      error: undefined,
+    if (persisted && autoSaveSignature) {
+      autoSaveSignatureRef.current = autoSaveSignature
     }
-    replaceProjectSidebarState(loadingState)
-    const nextState = await saveProjectContent(projectRepository, loadingState)
-    replaceProjectSidebarState(nextState)
   }, [projectRepository, replaceProjectSidebarState, saveSidebarBridgeSession])
+
+  useEffect(() => {
+    const signature = projectAutoSaveSignature(workbenchState, projectSidebarState)
+    if (
+      !signature
+      || signature === autoSaveSignatureRef.current
+      || projectSidebarState.status === "loading"
+      || projectSidebarState.bridge.state === "opening"
+      || projectSidebarState.bridge.state === "saving"
+    ) {
+      return undefined
+    }
+
+    const timer = setTimeout(() => {
+      if (autoSaveTimerRef.current === timer) {
+        autoSaveTimerRef.current = null
+      }
+      void saveSidebarProject()
+    }, 300)
+    autoSaveTimerRef.current = timer
+    return () => {
+      if (autoSaveTimerRef.current === timer) {
+        clearTimeout(timer)
+        autoSaveTimerRef.current = null
+      }
+    }
+  }, [projectSidebarState, saveSidebarProject, workbenchState])
 
   const runFixture = useCallback(async () => {
     shellSessionVersionRef.current += 1
@@ -711,6 +810,22 @@ export function WorkbenchShell({
       error: response.error ?? undefined,
     })
   }, [shellClient])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV && import.meta.env.MODE !== "test") {
+      return undefined
+    }
+    const testApi: WorkbenchTestApi = {
+      runFixture,
+      runInvalidCommand,
+    }
+    window.__rxnflowWorkbenchTest = testApi
+    return () => {
+      if (window.__rxnflowWorkbenchTest === testApi) {
+        delete window.__rxnflowWorkbenchTest
+      }
+    }
+  }, [runFixture, runInvalidCommand])
 
   const persistFilesIntoProject = useCallback(async (projectRef: string, files: File[]) => {
     const selectedFiles = filesToWebImportFiles(files)
@@ -969,13 +1084,13 @@ export function WorkbenchShell({
       ...initialTransientImportState,
       status: "previewing",
       selectedFiles: [importFileResult.file],
-      expectedFormat: transientImportState.expectedFormat,
-      strict: transientImportState.strict,
+      expectedFormat: "auto",
+      strict: false,
     }
     setTransientImportState(previewState)
     replaceProjectSidebarState(await refreshProjects(projectRepository, projectSidebarStateRef.current))
 
-    const payload = await importPreviewArgsFromFiles(previewState, sessionId)
+    const payload = await importPreviewArgsFromFiles(previewState, sessionId, { preferInlineBytes: true })
     if (!payload.ok) {
       updateProjectFileEntry(rawFilePath, {
         status: "error",
@@ -2220,7 +2335,6 @@ export function WorkbenchShell({
       ...current,
       analysisDockTab: "export",
       inspectorOpen: true,
-      devToolsOpen: false,
     }))
   }, [])
 
@@ -2230,7 +2344,6 @@ export function WorkbenchShell({
       return {
         ...current,
         inspectorOpen: nextInspectorOpen,
-        devToolsOpen: nextInspectorOpen && current.analysisDockTab === "diagnostics",
       }
     })
   }, [])
@@ -2240,10 +2353,7 @@ export function WorkbenchShell({
       <header className="workbench-topbar" ref={topbarElementRef}>
         <div className="brand-lockup" aria-label="RxnFlow">
           <span className="brand-mark">Rf</span>
-          <div>
-            <p className="brand-eyebrow">{t("app.brand")}</p>
-            <h1>{t("workbench.title")}</h1>
-          </div>
+          <p className="brand-eyebrow">{t("app.brand")}</p>
         </div>
 
         <nav className="topbar-command-menu" aria-label={t("workbench.menu.aria")}>
@@ -2255,24 +2365,6 @@ export function WorkbenchShell({
           >
             <PanelLeft size={17} />
             <span>{t("workbench.menu.projectPanel")}</span>
-          </button>
-          <button
-            type="button"
-            className="topbar-icon-command"
-            onClick={() => void refreshProjectSidebar()}
-            disabled={projectSidebarState.status === "loading"}
-          >
-            <RefreshCw size={17} />
-            <span>{t("workbench.menu.refresh")}</span>
-          </button>
-          <button
-            type="button"
-            className="topbar-command-button topbar-command-button--primary"
-            onClick={() => void saveSidebarProject()}
-            disabled={projectSidebarState.status === "loading" || !projectSidebarState.activeProject}
-          >
-            <Save size={17} />
-            <span>{t("workbench.menu.saveProject")}</span>
           </button>
           <button type="button" className="topbar-command-button" onClick={openExportPanel}>
             <Download size={17} />
@@ -2291,9 +2383,6 @@ export function WorkbenchShell({
 
         <div className="topbar-status">
           <LocaleSwitcher locale={locale} onChange={setLocale} />
-          <span className={`run-state run-state--${workbenchState.status}`}>
-            {statusLabel(workbenchState.status, t)}
-          </span>
         </div>
       </header>
       <input
@@ -2304,6 +2393,7 @@ export function WorkbenchShell({
         onChange={handleProjectImportInputChange}
         aria-label={t("projectSidebar.projectFiles.import")}
       />
+      {workbenchState.error ? <WorkbenchErrorAlert error={workbenchState.error} /> : null}
 
       <main
         className="workbench-grid workspace-flow-shell"
@@ -2312,7 +2402,6 @@ export function WorkbenchShell({
         data-project-rail-density={workspaceFlowShellState.projectRailDensity}
         data-project-rail={workspaceFlowShellState.projectRailOpen ? "open" : "closed"}
         data-inspector={workspaceFlowShellState.inspectorOpen ? "open" : "closed"}
-        data-dev-tools={workspaceFlowShellState.devToolsOpen ? "open" : "closed"}
       >
         <section className="project-rail" aria-label={t("workbench.flow.projectRail")}>
           <ProjectSidebar
@@ -2321,6 +2410,7 @@ export function WorkbenchShell({
               await createSidebarProject(name)
             }}
             onOpenProject={openSidebarProject}
+            onDeleteProject={deleteSidebarProject}
             onImportProjectFiles={openProjectImport}
             onAddProjectFileToCanvas={addProjectFileToCanvas}
           />
@@ -2401,8 +2491,6 @@ export function WorkbenchShell({
           state={workbenchState}
           activeObjectId={activeObjectId}
           activeTab={workspaceFlowShellState.analysisDockTab}
-          runtimeInfo={runtimeInfo}
-          devToolsOpen={workspaceFlowShellState.devToolsOpen}
           hasActiveBrowserProject={Boolean(projectSidebarState.activeProject)}
           correctionPending={correctionPending}
           correctionError={correctionError}
@@ -2414,12 +2502,21 @@ export function WorkbenchShell({
           onReportExportOptionsChange={setReportExportOptions}
           onRunEnergyCompute={() => void runEnergyCompute({ force: true })}
           onRunReportExport={runReportExport}
-          onRunFixture={runFixture}
-          onRunInvalidCommand={runInvalidCommand}
           onActiveTabChange={setAnalysisDockTab}
           onSelectEnergyProfilePoint={selectEnergyProfilePoint}
         />
       </main>
+    </div>
+  )
+}
+
+function WorkbenchErrorAlert({ error }: { error: ShellError }) {
+  const target = warningTargetDisplay(error)
+  return (
+    <div className="workbench-error-alert" role="alert">
+      <code>{error.code}</code>
+      <span>{error.message}</span>
+      {target ? <small>{target}</small> : null}
     </div>
   )
 }
@@ -2465,9 +2562,10 @@ async function rawDropImportFile(
 
   try {
     const object = await repository.readObject(projectRef, source.path)
+    const resource = browserRawResourceFromObject(object, source.projectFileId)
     return {
       ok: true,
-      file: webImportFileFromRawResource(browserRawResourceFromObject(object, source.projectFileId)),
+      file: webImportFileFromRawResource(resource, fileFromBrowserStorageObject(object, resource)),
     }
   } catch (error) {
     const shellErrorPayload = repositoryErrorPayload(error, source.path)
@@ -2484,6 +2582,14 @@ async function rawDropImportFile(
       error: shellErrorPayload,
     }
   }
+}
+
+function fileFromBrowserStorageObject(object: BrowserStorageObject, resource: BrowserRawResource): File | undefined {
+  if (typeof File === "undefined") return undefined
+  return new File([object.bytes], resource.metadata.source_name, {
+    type: resource.metadata.mime_type ?? "",
+    lastModified: resource.metadata.last_modified ?? undefined,
+  })
 }
 
 function webImportFileFromFile(file: File): WebImportFile {
@@ -2988,16 +3094,10 @@ function browserPersistenceWarning(error: unknown) {
   }
 }
 
-type StateProps = {
-  state: WorkbenchDomainState
-}
-
 type InspectorPanelProps = {
   state: WorkbenchDomainState
   activeObjectId?: string
   activeTab: AnalysisDockTab
-  runtimeInfo: ShellRuntimeInfo
-  devToolsOpen: boolean
   hasActiveBrowserProject: boolean
   correctionPending: boolean
   correctionError: ShellError | null
@@ -3009,8 +3109,6 @@ type InspectorPanelProps = {
   onReportExportOptionsChange: (options: ReportExportOptions) => void
   onRunEnergyCompute: () => void
   onRunReportExport: () => void
-  onRunFixture: () => void
-  onRunInvalidCommand: () => void
   onActiveTabChange: (tab: AnalysisDockTab) => void
   onSelectEnergyProfilePoint: (nodeId: string) => void
 }
@@ -3019,8 +3117,6 @@ function InspectorPanel({
   state,
   activeObjectId,
   activeTab,
-  runtimeInfo,
-  devToolsOpen,
   hasActiveBrowserProject,
   correctionPending,
   correctionError,
@@ -3032,8 +3128,6 @@ function InspectorPanel({
   onReportExportOptionsChange,
   onRunEnergyCompute,
   onRunReportExport,
-  onRunFixture,
-  onRunInvalidCommand,
   onActiveTabChange,
   onSelectEnergyProfilePoint,
 }: InspectorPanelProps) {
@@ -3045,7 +3139,6 @@ function InspectorPanel({
       className="inspector-panel analysis-dock"
       aria-label={t("workbench.flow.analysisDock")}
       data-active-tab={activeTab}
-      data-dev-tools={devToolsOpen ? "open" : "closed"}
     >
       <div className="analysis-dock-tabs" role="tablist" aria-label={t("analysisDock.tabs")}>
         {model.tabs.map((tab) => (
@@ -3126,44 +3219,6 @@ function InspectorPanel({
           />
         </div>
       ) : null}
-
-      {activeTab === "diagnostics" ? (
-        <div
-          id="analysis-dock-panel-diagnostics"
-          role="tabpanel"
-          aria-labelledby="analysis-dock-tab-diagnostics"
-          className="analysis-dock-panel analysis-dock-panel--diagnostics"
-        >
-          <section className="command-panel analysis-dock-dev-tools">
-            <p className="section-kicker">{t("workbench.command.section")}</p>
-            <div className="command-actions">
-              <button type="button" className="command-button" onClick={onRunFixture}>
-                <Play size={17} />
-                <span>{t("workbench.command.fixtureRun")}</span>
-              </button>
-              <button
-                type="button"
-                className="icon-button"
-                onClick={onRunInvalidCommand}
-                title={t("workbench.command.invalid")}
-                aria-label={t("workbench.command.invalid")}
-              >
-                <AlertTriangle size={17} />
-              </button>
-            </div>
-          </section>
-
-          <section className="inspector-section">
-            <p className="section-kicker">{t("workbench.runtime.section")}</p>
-            <RuntimeStatusPanel runtimeInfo={runtimeInfo} />
-          </section>
-
-          <section className="inspector-section">
-            <p className="section-kicker">{t("workbench.commandStatus.section")}</p>
-            <CommandStatusPanel state={state} />
-          </section>
-        </div>
-      ) : null}
     </aside>
   )
 }
@@ -3172,7 +3227,6 @@ function analysisDockModelFromState(
   state: WorkbenchDomainState,
   activeTab: AnalysisDockTab,
 ): AnalysisDockModel {
-  const diagnosticsBadge = state.error ? "!" : state.warnings.length || null
   return {
     activeTab,
     tabs: [
@@ -3194,61 +3248,32 @@ function analysisDockModelFromState(
         badge: state.objects.length || null,
         status: state.objects.length > 0 ? "ready" : "idle",
       },
-      {
-        id: "diagnostics",
-        labelKey: "analysisDock.tab.diagnostics",
-        badge: diagnosticsBadge,
-        status: state.error ? "error" : state.warnings.length > 0 ? "warning" : "idle",
-      },
     ],
   }
 }
 
-function CommandStatusPanel({ state }: StateProps) {
-  const { t } = useI18n()
-
-  if (state.error) {
-    return (
-      <div className="status-box status-box--error" role="alert">
-        <strong>{state.error.code}</strong>
-        <span>{state.error.message}</span>
-        {state.error.target ? <small>{state.error.target}</small> : null}
-      </div>
-    )
+function projectAutoSaveSignature(
+  workbenchState: WorkbenchDomainState,
+  projectSidebarState: ProjectSidebarState,
+): string {
+  if (
+    !workbenchState.sessionId
+    || !projectSidebarState.activeProjectRef
+    || workbenchState.status === "running"
+    || workbenchState.status === "error"
+  ) {
+    return ""
   }
 
-  return (
-    <div className="status-box">
-      <strong>{statusLabel(state.status, t)}</strong>
-      <span>{t("workbench.commandStatus.artifacts", { count: state.counts.artifacts })}</span>
-    </div>
-  )
-}
-
-type Translate = ReturnType<typeof useI18n>["t"]
-
-function statusLabel(status: CommandStatus, t: Translate): string {
-  if (status === "running") return t("workbench.status.running")
-  if (status === "success") return t("workbench.status.ready")
-  if (status === "error") return t("workbench.status.error")
-  return t("workbench.status.idle")
-}
-
-function RuntimeStatusPanel({ runtimeInfo }: { runtimeInfo: ShellRuntimeInfo }) {
-  const { t } = useI18n()
-  const label = runtimeInfo.mode === "local-http"
-    ? t("workbench.runtime.localHttp")
-    : t("workbench.runtime.fixture")
-  const detail = runtimeInfo.endpoint
-    ? t("workbench.runtime.endpoint", { endpoint: runtimeInfo.endpoint })
-    : t("workbench.runtime.transport", { transport: runtimeInfo.transportKind })
-
-  return (
-    <div className="status-box runtime-status-box">
-      <strong>{label}</strong>
-      <small>{detail}</small>
-    </div>
-  )
+  return JSON.stringify({
+    projectRef: projectSidebarState.activeProjectRef,
+    sessionId: workbenchState.sessionId,
+    objects: workbenchState.objects,
+    imports: workbenchState.imports,
+    workspace: workbenchState.workspace,
+    profile: workbenchState.profile,
+    artifacts: workbenchState.artifacts,
+  })
 }
 
 type LocaleSwitcherProps = {

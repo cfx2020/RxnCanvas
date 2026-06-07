@@ -30,6 +30,7 @@ export type {
   GraphNodeSummary,
   GraphPathSummary,
   GraphSummary,
+  Atom3DSummary,
   CoordinatePreviewSummary,
   ImportBatchSummary,
   ImportItemSummary,

@@ -58,6 +58,16 @@ export class MemoryBrowserProjectRepository implements BrowserProjectRepository 
     return { ...project }
   }
 
+  async deleteProject(projectRef: string): Promise<void> {
+    const safeProjectRef = validateBrowserProjectRef(projectRef)
+    this.projects.delete(safeProjectRef)
+    for (const key of Array.from(this.objects.keys())) {
+      if (key.startsWith(`${safeProjectRef}\u0000`)) {
+        this.objects.delete(key)
+      }
+    }
+  }
+
   async readObject(projectRef: string, path: string): Promise<BrowserStorageObject> {
     const record = this.getObjectRecord(projectRef, path)
     if (!record) {

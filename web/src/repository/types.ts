@@ -70,6 +70,7 @@ export class BrowserProjectRepositoryError extends Error {
 export interface BrowserProjectRepository {
   listProjects(): Promise<BrowserProjectRef[]>
   createProject(input: { name: string }): Promise<BrowserProjectRef>
+  deleteProject(projectRef: string): Promise<void>
   readObject(projectRef: string, path: string): Promise<BrowserStorageObject>
   writeObject(
     projectRef: string,

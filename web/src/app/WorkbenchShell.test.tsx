@@ -37,14 +37,12 @@ describe("WorkbenchShell", () => {
     expect(screen.getByRole("heading", { name: "Registered Objects" })).toBeInTheDocument()
     expect(screen.getByText("No registered objects")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add Correction" })).toBeDisabled()
-    openAnalysisDockTab("Diagnostics")
-    expect(screen.getByText("Runtime Fixture")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Fixture Run" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Invalid command" })).toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "Diagnostics" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Runtime Fixture")).not.toBeInTheDocument()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     expect(within(graphCanvas).getByText("No workspace graph")).toBeInTheDocument()
     expect(within(graphCanvas).getByText(/Drop a raw output file here/)).toBeInTheDocument()
-    expect(within(graphCanvas).getByText("No session")).toBeInTheDocument()
+    expect(within(graphCanvas).queryByText("No session")).not.toBeInTheDocument()
     expect(within(graphCanvas).getByRole("button", { name: "Open Workspace" })).toBeDisabled()
     expect(within(graphCanvas).getByRole("button", { name: "Add Node" })).toBeDisabled()
     expect(within(graphCanvas).getByRole("button", { name: "Connect" })).toBeDisabled()
@@ -58,18 +56,20 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Language"), { target: { value: "zh-CN" } })
 
-    expect(await screen.findByRole("heading", { name: "工作台" })).toBeInTheDocument()
+    expect(await screen.findByText("RxnFlow")).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "工作台" })).not.toBeInTheDocument()
     expect(screen.getByRole("complementary", { name: "项目侧边栏" })).toBeInTheDocument()
     expect(screen.queryByText("运行时 Fixture")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "新建项目" })).toBeInTheDocument()
     expect(screen.getByText("暂无项目")).toBeInTheDocument()
 
-    openAnalysisDockTab("诊断")
-    expect(screen.getByText("运行时 Fixture")).toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "诊断" })).not.toBeInTheDocument()
+    expect(screen.queryByText("运行时 Fixture")).not.toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText("语言"), { target: { value: "en-US" } })
 
-    expect(await screen.findByRole("heading", { name: "Workbench" })).toBeInTheDocument()
+    expect(await screen.findByText("RxnFlow")).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Workbench" })).not.toBeInTheDocument()
     expect(screen.getByRole("complementary", { name: "Project Sidebar" })).toBeInTheDocument()
   })
 
@@ -82,9 +82,7 @@ describe("WorkbenchShell", () => {
 
     expect(await screen.findByText("No projects yet")).toBeInTheDocument()
     expect(screen.queryByText("Runtime Local HTTP")).not.toBeInTheDocument()
-    openAnalysisDockTab("Diagnostics")
-    expect(screen.getByText("Runtime Local HTTP")).toBeInTheDocument()
-    expect(screen.getByText("Endpoint http://127.0.0.1:8765/api/shell")).toBeInTheDocument()
+    expect(screen.queryByText("Endpoint http://127.0.0.1:8765/api/shell")).not.toBeInTheDocument()
   })
 
   it("keeps project import off the topbar while export and analysis use the right dock", async () => {
@@ -95,6 +93,8 @@ describe("WorkbenchShell", () => {
 
     expect(shell).toHaveAttribute("data-inspector", "closed")
     expect(within(commandMenu).queryByRole("button", { name: "Sources" })).not.toBeInTheDocument()
+    expect(within(commandMenu).queryByRole("button", { name: "Refresh" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument()
 
     fireEvent.click(within(commandMenu).getByRole("button", { name: "Analysis" }))
     expect(shell).toHaveAttribute("data-inspector", "open")
@@ -114,8 +114,7 @@ describe("WorkbenchShell", () => {
       endpoint: "http://127.0.0.1:8765/api/shell",
     }, new ShellClient(new UnavailableHttpTransport()))
 
-    openAnalysisDockTab("Diagnostics")
-    fireEvent.click(await screen.findByRole("button", { name: "Fixture Run" }))
+    runFixtureCommand()
 
     expect(await screen.findByText("transport_unavailable")).toBeInTheDocument()
     expect(screen.getByText("HTTP shell bridge is unavailable.")).toBeInTheDocument()
@@ -129,7 +128,7 @@ describe("WorkbenchShell", () => {
 
     await expectFixtureWorkbenchProjected()
     openAnalysisDockTab("PES")
-    expect(screen.getAllByText("profile-a-b-electronic").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Computed profile").length).toBeGreaterThan(0)
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     expect(within(energyPanel).getByText("Energy curve")).toBeInTheDocument()
     expect(within(energyPanel).getAllByText("Relative energy").length).toBeGreaterThan(0)
@@ -137,19 +136,19 @@ describe("WorkbenchShell", () => {
     expect(within(energyPanel).getAllByText("Composition terms").length).toBeGreaterThan(0)
     expect(within(energyPanel).getAllByText("electronic · energies").length).toBeGreaterThan(0)
     expect(within(energyPanel).getAllByText("-12.4").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Ready").length).toBeGreaterThan(0)
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument()
     openAnalysisDockTab("Object")
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
     expect(within(objectRegistry).getByRole("button", { name: /object a/i })).toHaveAttribute("aria-current", "true")
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
-    expect(within(graphCanvas).getByText("graph-a-b")).toBeInTheDocument()
-    expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toBeInTheDocument()
-    expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toBeInTheDocument()
-    expect(within(graphCanvas).getAllByText("path-a-b").length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getByText("node-a -> node-b")).toBeInTheDocument()
+    expect(within(graphCanvas).queryByText("graph-a-b")).not.toBeInTheDocument()
+    expect(graphNodeButtonById(graphCanvas, "node-a")).toBeInTheDocument()
+    expect(graphNodeButtonById(graphCanvas, "node-b")).toBeInTheDocument()
+    expect(within(graphCanvas).getByRole("button", { name: "Select path Object A -> Object B" })).toBeInTheDocument()
+    expect(within(graphCanvas).getAllByText("Object A -> Object B").length).toBeGreaterThan(0)
     expect(within(graphCanvas).getByText("No disconnected nodes")).toBeInTheDocument()
-    expect(screen.getByText("fixture-parser")).toBeInTheDocument()
-    expect(screen.getAllByText("fixture-source").length).toBeGreaterThan(0)
+    expect(screen.queryByText("fixture-parser")).not.toBeInTheDocument()
+    expect(screen.queryByText("fixture-source")).not.toBeInTheDocument()
     expect(screen.getByText("electronic")).toBeInTheDocument()
     expect(screen.getByRole("form", { name: "Apply object correction" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add Correction" })).toBeEnabled()
@@ -166,7 +165,7 @@ describe("WorkbenchShell", () => {
     fireEvent.click(within(objectRegistry).getByRole("button", { name: /object b/i }))
 
     expect(within(objectRegistry).getByRole("button", { name: /object b/i })).toHaveAttribute("aria-current", "true")
-    expect(within(objectRegistry).getByText("H2")).toBeInTheDocument()
+    expect(within(objectRegistry).getAllByText("H2").length).toBeGreaterThan(0)
     expect(within(objectRegistry).getByText("B3LYP/def2-SVP")).toBeInTheDocument()
     expect(screen.getAllByText("unit_assumed").length).toBeGreaterThan(0)
     expect(screen.getByText("Fixture object B energy unit was assumed during projection.")).toBeInTheDocument()
@@ -208,7 +207,7 @@ describe("WorkbenchShell", () => {
     fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
 
     expect(await within(energyPanel).findByText("Correction terms")).toBeInTheDocument()
-    expect(within(energyPanel).getByText(/^corr-object-b-solvation-/)).toBeInTheDocument()
+    expect(within(energyPanel).getAllByText("solvation").length).toBeGreaterThan(0)
   })
 
   it("shows registry correction errors without locally appending corrections", async () => {
@@ -238,22 +237,22 @@ describe("WorkbenchShell", () => {
     const objectRegistry = screen.getByRole("region", { name: "Object Registry" })
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Open Workspace" }))
-    expect((await within(graphCanvas).findAllByText("path-a-b")).length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getByText("node-a -> node-b")).toBeInTheDocument()
+    expect(await within(graphCanvas).findByRole("button", { name: "Select path Object A -> Object B" })).toBeInTheDocument()
+    expect(within(graphCanvas).getAllByText("Object A -> Object B").length).toBeGreaterThan(0)
 
     fireEvent.click(within(objectRegistry).getByRole("button", { name: /object b/i }))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Add Node" }))
 
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getAllByText("object-b").length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
+    expect(within(graphCanvas).getAllByText("Object B").length).toBeGreaterThan(0)
     expect(within(graphCanvas).getByText("Disconnected nodes")).toBeInTheDocument()
 
-    const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
+    const nodeB = graphNodeButtonById(graphCanvas, "node-b")
     fireEvent.click(nodeB)
     await waitFor(() => expect(nodeB).toHaveAttribute("aria-current", "true"))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Connect" }))
     await waitFor(() => expect(nodeB).toHaveClass("graph-node-card--pending"))
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-web-3/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-web-3"))
 
     expect(await within(graphCanvas).findByText("No disconnected nodes")).toBeInTheDocument()
     expect(within(graphCanvas).getAllByText("2").length).toBeGreaterThan(0)
@@ -262,13 +261,13 @@ describe("WorkbenchShell", () => {
     await waitFor(() => expect(nodeB).toHaveAttribute("aria-current", "true"))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Connect" }))
     await waitFor(() => expect(nodeB).toHaveClass("graph-node-card--pending"))
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-web-3/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-web-3"))
     expect(within(graphCanvas).getAllByText("2").length).toBeGreaterThan(0)
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Set Path" }))
 
-    expect((await within(graphCanvas).findAllByText("path-web-main")).length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getAllByText("node-a -> node-b -> node-web-3").length).toBeGreaterThan(0)
+    expect((await within(graphCanvas).findAllByText("Object A -> Object B -> Object B")).length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getAllByText("Object A -> Object B -> Object B").length).toBeGreaterThan(0)
   })
 
   it("drags registered objects from the object registry into the graph canvas", async () => {
@@ -292,8 +291,8 @@ describe("WorkbenchShell", () => {
     fireEvent.dragOver(surface, { dataTransfer })
     dispatchDrop(surface, dataTransfer, 240, 180)
 
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getAllByText("object-b").length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
+    expect(within(graphCanvas).getAllByText("Object B").length).toBeGreaterThan(0)
     const addNodePayload = transport.payloads.find((payload) => payload.command === "workspace.add_node")
     expect(addNodePayload?.args).toMatchObject({
       chemical_object_ids: ["object-b"],
@@ -314,11 +313,12 @@ describe("WorkbenchShell", () => {
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
     mockCanvasSurfaceRect(surface, 600, 360)
     const dataTransfer = new TestDataTransfer([new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })])
+    const saveCountBeforeDrop = transport.payloads.filter((payload) => payload.command === "project.save_content").length
 
     fireEvent.dragOver(surface, { dataTransfer })
     dispatchDrop(surface, dataTransfer, 240, 180)
 
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
     const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
     expect(rawObjects).toHaveLength(1)
     expect(rawObjects[0].path).toMatch(/^inputs\/raw\/[a-f0-9]{12}-water\.xyz$/)
@@ -330,13 +330,20 @@ describe("WorkbenchShell", () => {
     if (!(rawFileRow instanceof HTMLElement)) {
       throw new Error("Project raw file row was not rendered.")
     }
-    expect(within(rawFileRow).getByText("Used in graph")).toBeInTheDocument()
-    expect(within(rawFileRow).getByText("On canvas: 1")).toBeInTheDocument()
+    expect(within(rawFileRow).queryByText("Used in graph")).not.toBeInTheDocument()
+    expect(within(rawFileRow).getByText("Graph")).toBeInTheDocument()
     expect(within(rawFileRow).queryByText(/Warnings:/)).not.toBeInTheDocument()
     expect(within(rawFileRow).queryByText("object-imported-water")).not.toBeInTheDocument()
     expect(within(rawFileRow).queryByText("node-web-3")).not.toBeInTheDocument()
     expect(transport.payloads.find((payload) => payload.command === "import.preview")?.args).toMatchObject({
-      source_paths: [rawObjects[0].path],
+      strict: false,
+      sources: [
+        {
+          kind: "inline_bytes",
+          filename: "water.xyz",
+          mime_type: "chemical/x-xyz",
+        },
+      ],
     })
     expect(transport.payloads.find((payload) => payload.command === "import.register_all")?.args).toMatchObject({
       batch_id: "import-batch-fixture-web-1",
@@ -346,19 +353,20 @@ describe("WorkbenchShell", () => {
       position: [240, 180],
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "Save Project" }))
-    await waitFor(() => expect(transport.payloads.some((payload) => payload.command === "project.save_content")).toBe(true))
+    await waitFor(() => {
+      expect(transport.payloads.filter((payload) => payload.command === "project.save_content").length).toBeGreaterThan(saveCountBeforeDrop)
+    })
     fireEvent.click(screen.getByRole("button", { name: /raw drop/i }))
 
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
     const restoredProjectFilesPanel = projectTreePanel()
     const restoredRawFileRow = within(restoredProjectFilesPanel).getByText(rawFileName).closest(".project-file-card")
     if (!(restoredRawFileRow instanceof HTMLElement)) {
       throw new Error("Restored project raw file row was not rendered.")
     }
     await waitFor(() => {
-      expect(within(restoredRawFileRow).getByText("Used in graph")).toBeInTheDocument()
-      expect(within(restoredRawFileRow).getByText("On canvas: 1")).toBeInTheDocument()
+      expect(within(restoredRawFileRow).queryByText("Used in graph")).not.toBeInTheDocument()
+      expect(within(restoredRawFileRow).getByText("Graph")).toBeInTheDocument()
       expect(within(restoredRawFileRow).queryByText("object-imported-water")).not.toBeInTheDocument()
       expect(within(restoredRawFileRow).queryByText("node-web-3")).not.toBeInTheDocument()
     })
@@ -447,12 +455,13 @@ describe("WorkbenchShell", () => {
       chemical_object_ids: ["object-imported-frame-2"],
       position: [420, 280],
     })
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
-    expect((await within(graphCanvas).findAllByText("node-web-4")).length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getAllByText("extxyz fixture").length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getByText("electronic -100.25 hartree")).toBeInTheDocument()
-    expect(within(graphCanvas).getByText("electronic -100.1 hartree")).toBeInTheDocument()
-    expect(within(graphCanvas).getAllByText("3 atoms · O H · 3D").length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-4")).toBeInTheDocument()
+    expect(within(graphCanvas).getAllByText("Frame 1").length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getAllByText("Frame 2").length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getAllByText("-100.25 hartree").length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getAllByText("-100.1 hartree").length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getAllByText("H2O").length).toBeGreaterThan(0)
 
     const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
     expect(rawObjects).toHaveLength(1)
@@ -462,8 +471,8 @@ describe("WorkbenchShell", () => {
     if (!(rawFileRow instanceof HTMLElement)) {
       throw new Error("Project raw file row was not rendered.")
     }
-    expect(within(rawFileRow).getByText("Used in graph")).toBeInTheDocument()
-    expect(within(rawFileRow).getByText("On canvas: 2")).toBeInTheDocument()
+    expect(within(rawFileRow).queryByText("Used in graph")).not.toBeInTheDocument()
+    expect(within(rawFileRow).getByText("Graph")).toBeInTheDocument()
     expect(within(rawFileRow).queryByText("object-imported-frame-1")).not.toBeInTheDocument()
     expect(within(rawFileRow).queryByText("object-imported-frame-2")).not.toBeInTheDocument()
   })
@@ -514,7 +523,7 @@ describe("WorkbenchShell", () => {
     const externalDrop = new TestDataTransfer([new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" })])
     fireEvent.dragOver(surface, { dataTransfer: externalDrop })
     dispatchDrop(surface, externalDrop, 240, 180)
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
     const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
     expect(rawObjects).toHaveLength(1)
 
@@ -539,9 +548,9 @@ describe("WorkbenchShell", () => {
       position: [360, 200],
     })
 
-    expect((await within(graphCanvas).findAllByText("node-web-4")).length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-4")).toBeInTheDocument()
 
-    fireEvent.click(within(rawFileRow).getByRole("button", { name: "Add to canvas" }))
+    fireEvent.click(rawFileRow)
 
     await waitFor(() => {
       expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(3)
@@ -603,7 +612,7 @@ describe("WorkbenchShell", () => {
       throw new Error("Project raw file row was not rendered.")
     }
     expect(within(rawFileRow).getByText("Error")).toBeInTheDocument()
-    expect(within(rawFileRow).getByText("Warnings: 1")).toBeInTheDocument()
+    expect(within(rawFileRow).queryByText("! 1")).not.toBeInTheDocument()
     expect(within(rawFileRow).queryByText("preview_failed")).not.toBeInTheDocument()
     expect(within(rawFileRow).queryByText("import.preview")).not.toBeInTheDocument()
     expect(transport.payloads.filter((payload) => payload.command === "import.register_all")).toHaveLength(0)
@@ -640,7 +649,7 @@ describe("WorkbenchShell", () => {
     fireEvent.dragOver(surface, { dataTransfer })
     dispatchDrop(surface, dataTransfer, 450, 210)
 
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
     expect(lastPayload(transport, "workspace.add_node")?.args).toMatchObject({
       chemical_object_ids: ["object-b"],
       position: [300, 180],
@@ -793,7 +802,7 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
     }))
@@ -803,18 +812,18 @@ describe("WorkbenchShell", () => {
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: [], edge_ids: [], path_ids: [] },
     }))
-    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).not.toHaveAttribute("aria-current", "true"))
+    await waitFor(() => expect(graphNodeButtonById(graphCanvas, "node-a")).not.toHaveAttribute("aria-current", "true"))
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Redo" }))
 
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
     }))
-    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true"))
+    await waitFor(() => expect(graphNodeButtonById(graphCanvas, "node-a")).toHaveAttribute("aria-current", "true"))
 
     openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
-    fireEvent.click(within(energyPanel).getByLabelText(/Object B node-b/))
+    fireEvent.click(within(energyPanel).getByLabelText(/Object B Valid/))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-b"], edge_ids: [], path_ids: [] },
     }))
@@ -830,17 +839,17 @@ describe("WorkbenchShell", () => {
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
     }))
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }), { shiftKey: true })
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-b"), { shiftKey: true })
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a", "node-b"], edge_ids: [], path_ids: [] },
     }))
     await waitFor(() => {
-      expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true")
-      expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true")
+      expect(graphNodeButtonById(graphCanvas, "node-a")).toHaveAttribute("aria-current", "true")
+      expect(graphNodeButtonById(graphCanvas, "node-b")).toHaveAttribute("aria-current", "true")
     })
 
     fireEvent.keyDown(surface, { key: "ArrowRight" })
@@ -930,7 +939,7 @@ describe("WorkbenchShell", () => {
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
-    const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
+    const nodeB = graphNodeButtonById(graphCanvas, "node-b")
 
     fireEvent.click(nodeB)
     await waitFor(() => expect(nodeB).toHaveAttribute("aria-current", "true"))
@@ -945,7 +954,7 @@ describe("WorkbenchShell", () => {
       node_id: "node-b",
       position: [420, 220],
     })
-    expect(nodeShell(await within(graphCanvas).findByRole("button", { name: /node-b/i }))).toHaveStyle({
+    expect(nodeShell(await findGraphNodeButtonById(graphCanvas, "node-b"))).toHaveStyle({
       left: "70%",
     })
   })
@@ -961,7 +970,7 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Zoom In" }))
     await within(graphCanvas).findByLabelText("120%")
-    const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
+    const nodeB = graphNodeButtonById(graphCanvas, "node-b")
 
     fireEvent.pointerDown(nodeB, { button: 0, clientX: 450, clientY: 210, pointerId: 1 })
     fireEvent.pointerMove(nodeB, { button: 0, clientX: 510, clientY: 270, pointerId: 1 })
@@ -986,9 +995,9 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(within(objectRegistry).getByRole("button", { name: /object b/i }))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Add Node" }))
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
-    const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
-    const nodeWeb = within(graphCanvas).getByRole("button", { name: /node-web-3/i })
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
+    const nodeB = graphNodeButtonById(graphCanvas, "node-b")
+    const nodeWeb = graphNodeButtonById(graphCanvas, "node-web-3")
     const handle = within(nodeShell(nodeB)).getByRole("button", { name: "Draw edge from Object B" })
     const computeCountBeforeConnect = transport.payloads.filter((payload) => payload.command === "energy.compute").length
     const restoreElementsFromPoint = mockElementsFromPoint([nodeWeb])
@@ -1016,7 +1025,7 @@ describe("WorkbenchShell", () => {
       openAnalysisDockTab("PES")
       const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
       expect((await within(energyPanel).findAllByText("Step delta")).length).toBeGreaterThan(0)
-      expect((await within(energyPanel).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+      expect((await within(energyPanel).findAllByText("Object B")).length).toBeGreaterThan(0)
       expect(within(graphCanvas).getByText("Active path updated (append-tail)")).toBeInTheDocument()
       expect(await within(graphCanvas).findByRole("button", { name: "Edge Object B to Object B" })).toBeInTheDocument()
       expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(0)
@@ -1033,25 +1042,25 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Object A -> Object B" }))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Delete Selected" }))
     await waitFor(() => {
-      expect(within(graphCanvas).queryByRole("button", { name: "Select path Fixture path" })).not.toBeInTheDocument()
+      expect(within(graphCanvas).queryByRole("button", { name: "Select path Object A -> Object B" })).not.toBeInTheDocument()
     })
 
-    const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
+    const nodeA = graphNodeButtonById(graphCanvas, "node-a")
     fireEvent.click(nodeA)
     await waitFor(() => expect(nodeA).toHaveAttribute("aria-current", "true"))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Connect" }))
     await waitFor(() => expect(nodeA).toHaveClass("graph-node-card--pending"))
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-b"))
 
     await waitFor(() => expect(lastPayload(transport, "workspace.set_path")?.args).toMatchObject({
       path_id: "path-web-main",
       node_ids: ["node-a", "node-b"],
     }))
     expect(within(graphCanvas).getByText("Active path updated (create)")).toBeInTheDocument()
-    expect(await within(graphCanvas).findByText("node-a -> node-b")).toBeInTheDocument()
+    expect((await within(graphCanvas).findAllByText("Object A -> Object B")).length).toBeGreaterThan(0)
   })
 
   it("keeps branch connections manual instead of rewriting the active path", async () => {
@@ -1067,10 +1076,10 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(within(objectRegistry).getByRole("button", { name: /object b/i }))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Add Node" }))
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
     const setPathCount = transport.payloads.filter((payload) => payload.command === "workspace.set_path").length
-    const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
-    const nodeWeb = within(graphCanvas).getByRole("button", { name: /node-web-3/i })
+    const nodeA = graphNodeButtonById(graphCanvas, "node-a")
+    const nodeWeb = graphNodeButtonById(graphCanvas, "node-web-3")
     const handle = within(nodeShell(nodeA)).getByRole("button", { name: "Draw edge from Object A" })
     const restoreElementsFromPoint = mockElementsFromPoint([nodeWeb])
     try {
@@ -1084,7 +1093,7 @@ describe("WorkbenchShell", () => {
       }))
       expect(transport.payloads.filter((payload) => payload.command === "workspace.set_path")).toHaveLength(setPathCount)
       expect(within(graphCanvas).getByText("Edge kept. Adjust path order manually (branch).")).toBeInTheDocument()
-      expect(within(graphCanvas).getByText("node-a -> node-b")).toBeInTheDocument()
+      expect(within(graphCanvas).getAllByText("Object A -> Object B").length).toBeGreaterThan(0)
     } finally {
       restoreElementsFromPoint()
     }
@@ -1108,7 +1117,7 @@ describe("WorkbenchShell", () => {
 
       expect(transport.payloads.filter((payload) => payload.command === "workspace.connect")).toHaveLength(connectCount)
 
-      const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
+      const nodeA = graphNodeButtonById(graphCanvas, "node-a")
       mockElementsFromPoint([nodeA])
       fireEvent.pointerDown(handle, { button: 0, clientX: 120, clientY: 160, pointerId: 9 })
       fireEvent.pointerMove(handle, { button: 0, clientX: 120, clientY: 160, pointerId: 9 })
@@ -1159,7 +1168,7 @@ describe("WorkbenchShell", () => {
     })
 
     const viewportCommandCount = transport.payloads.filter((payload) => payload.command === "workspace.set_viewport").length
-    const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
+    const nodeB = graphNodeButtonById(graphCanvas, "node-b")
     fireEvent.pointerDown(nodeB, { button: 0, clientX: 360, clientY: 160, pointerId: 2 })
     fireEvent.pointerMove(nodeB, { button: 0, clientX: 400, clientY: 200, pointerId: 2 })
     fireEvent.pointerUp(nodeB, { button: 0, clientX: 400, clientY: 200, pointerId: 2 })
@@ -1168,7 +1177,7 @@ describe("WorkbenchShell", () => {
     expect(lastPayload(transport, "workspace.move_node")?.args).toMatchObject({
       node_id: "node-b",
     })
-    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toBeInTheDocument())
+    await waitFor(() => expect(graphNodeButtonById(graphCanvas, "node-b")).toBeInTheDocument())
   })
 
   it("applies graph auto layout through stable workspace move commands", async () => {
@@ -1189,7 +1198,7 @@ describe("WorkbenchShell", () => {
     expect(viewportPayload?.args.viewport).toMatchObject({
       zoom: expect.any(Number),
     })
-    expect(nodeShell(await within(graphCanvas).findByRole("button", { name: /node-a/i }))).toHaveStyle({
+    expect(nodeShell(await findGraphNodeButtonById(graphCanvas, "node-a"))).toHaveStyle({
       left: "20%",
     })
 
@@ -1217,10 +1226,10 @@ describe("WorkbenchShell", () => {
     await waitFor(() => expect(lastPayload(transport, "workspace.remove")?.args).toMatchObject({
       edge_ids: ["edge-a-b"],
     }))
-    await waitFor(() => expect(within(graphCanvas).getByText("0")).toBeInTheDocument())
+    await waitFor(() => expect(within(graphCanvas).queryByRole("button", { name: "Edge Object A to Object B" })).not.toBeInTheDocument())
     expect(within(graphCanvas).queryByRole("button", { name: "Edge Object A to Object B" })).not.toBeInTheDocument()
-    expect(within(graphCanvas).getAllByText("node-a").length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getAllByText("node-b").length).toBeGreaterThan(0)
+    expect(graphNodeButtonById(graphCanvas, "node-a")).toBeInTheDocument()
+    expect(graphNodeButtonById(graphCanvas, "node-b")).toBeInTheDocument()
   })
 
   it("deletes selected graph nodes using shell cascade results", async () => {
@@ -1231,7 +1240,7 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"] },
     })
@@ -1244,10 +1253,10 @@ describe("WorkbenchShell", () => {
         node_ids: ["node-a"],
       })
     })
-    await waitFor(() => expect(within(graphCanvas).queryByRole("button", { name: /node-a/i })).not.toBeInTheDocument())
+    await waitFor(() => expect(queryGraphNodeButtonById(graphCanvas, "node-a")).not.toBeInTheDocument())
     expect(within(graphCanvas).queryByRole("button", { name: "Edge Object A to Object B" })).not.toBeInTheDocument()
     expect(within(graphCanvas).queryByText("path-a-b")).not.toBeInTheDocument()
-    expect(within(graphCanvas).getAllByText("node-b").length).toBeGreaterThan(0)
+    expect(graphNodeButtonById(graphCanvas, "node-b")).toBeInTheDocument()
   })
 
   it("edits selected graph edge labels through an Edge Label Draft", async () => {
@@ -1265,10 +1274,10 @@ describe("WorkbenchShell", () => {
     }))
     await waitFor(() => {
       const projectedEditor = within(graphCanvas).getByRole("form", { name: "Edge Label Editor" })
-      expect(within(projectedEditor).getByText("edge-a-b")).toBeInTheDocument()
+      expect(within(projectedEditor).getByText("Object A -> Object B")).toBeInTheDocument()
     })
     const editor = within(graphCanvas).getByRole("form", { name: "Edge Label Editor" })
-    expect(within(editor).getByText("edge-a-b")).toBeInTheDocument()
+    expect(within(editor).getByText("Object A -> Object B")).toBeInTheDocument()
     expect(within(editor).getByLabelText("Label")).toHaveValue("")
     await waitFor(() => expect(within(editor).getByRole("button", { name: "Apply" })).toBeDisabled())
 
@@ -1309,7 +1318,7 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Object A -> Object B" }))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { path_ids: ["path-a-b"] },
     }))
@@ -1321,9 +1330,9 @@ describe("WorkbenchShell", () => {
         path_ids: ["path-a-b"],
       })
     })
-    await waitFor(() => expect(within(graphCanvas).queryByText("path-a-b")).not.toBeInTheDocument())
-    expect(within(graphCanvas).getAllByText("node-a").length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getAllByText("node-b").length).toBeGreaterThan(0)
+    await waitFor(() => expect(within(graphCanvas).queryByRole("button", { name: "Select path Object A -> Object B" })).not.toBeInTheDocument())
+    expect(graphNodeButtonById(graphCanvas, "node-a")).toBeInTheDocument()
+    expect(graphNodeButtonById(graphCanvas, "node-b")).toBeInTheDocument()
     expect(within(graphCanvas).getByRole("button", { name: "Edge Object A to Object B" })).toBeInTheDocument()
     expect(within(graphCanvas).getByText("No paths")).toBeInTheDocument()
   })
@@ -1335,22 +1344,25 @@ describe("WorkbenchShell", () => {
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
-    const nodeA = within(graphCanvas).getByRole("button", { name: /node-a/i })
-    const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
+    const nodeA = graphNodeButtonById(graphCanvas, "node-a")
+    const nodeB = graphNodeButtonById(graphCanvas, "node-b")
 
     fireEvent.click(nodeA)
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
     }))
-    await waitFor(() => expect(within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })).toHaveTextContent("node-a"))
+    await waitFor(() => {
+      const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
+      expect(within(editor).getByDisplayValue("1")).toBeInTheDocument()
+    })
 
     fireEvent.click(nodeB, { shiftKey: true })
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a", "node-b"], edge_ids: [], path_ids: [] },
     }))
     await waitFor(() => {
-      expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true")
-      expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true")
+      expect(graphNodeButtonById(graphCanvas, "node-a")).toHaveAttribute("aria-current", "true")
+      expect(graphNodeButtonById(graphCanvas, "node-b")).toHaveAttribute("aria-current", "true")
     })
     expect(within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })).toHaveTextContent("Select a graph node to edit composition.")
 
@@ -1368,7 +1380,7 @@ describe("WorkbenchShell", () => {
     expect(within(graphCanvas).getByRole("form", { name: "Edge Label Editor" })).toHaveTextContent("Select an edge to edit its label.")
     expect(within(graphCanvas).getByRole("button", { name: "Connect" })).toBeDisabled()
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }), { shiftKey: true })
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Object A -> Object B" }), { shiftKey: true })
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"], edge_ids: ["edge-a-b"], path_ids: ["path-a-b"] },
     }))
@@ -1399,8 +1411,8 @@ describe("WorkbenchShell", () => {
       selection: { node_ids: ["node-a", "node-b"], edge_ids: [], path_ids: [] },
     }))
     await waitFor(() => expect(graphCanvas.querySelector(".graph-rubber-band")).not.toBeInTheDocument())
-    expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true")
-    expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true")
+    expect(graphNodeButtonById(graphCanvas, "node-a")).toHaveAttribute("aria-current", "true")
+    expect(graphNodeButtonById(graphCanvas, "node-b")).toHaveAttribute("aria-current", "true")
   })
 
   it("uses Delete and Backspace keys for the current graph selection without firing on empty selection", async () => {
@@ -1417,7 +1429,7 @@ describe("WorkbenchShell", () => {
 
     expect(transport.payloads.filter((payload) => payload.command === "workspace.remove")).toHaveLength(removeCountBeforeEmptyDelete)
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
     }))
@@ -1445,7 +1457,7 @@ describe("WorkbenchShell", () => {
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: "Connect" })).toBeEnabled())
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Connect" }))
     fireEvent.keyDown(surface, { key: "Escape" })
@@ -1454,7 +1466,7 @@ describe("WorkbenchShell", () => {
       selection: { node_ids: [], edge_ids: [], path_ids: [] },
     }))
     const connectCountBeforeNodeClick = transport.payloads.filter((payload) => payload.command === "workspace.connect").length
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-b"))
 
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-b"], edge_ids: [], path_ids: [] },
@@ -1471,17 +1483,17 @@ describe("WorkbenchShell", () => {
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     const surface = within(graphCanvas).getByLabelText("Graph canvas surface")
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
     }))
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }), { shiftKey: true })
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-b"), { shiftKey: true })
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a", "node-b"], edge_ids: [], path_ids: [] },
     }))
     await waitFor(() => {
-      expect(within(graphCanvas).getByRole("button", { name: /node-a/i })).toHaveAttribute("aria-current", "true")
-      expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true")
+      expect(graphNodeButtonById(graphCanvas, "node-a")).toHaveAttribute("aria-current", "true")
+      expect(graphNodeButtonById(graphCanvas, "node-b")).toHaveAttribute("aria-current", "true")
     })
     fireEvent.keyDown(surface, { key: "ArrowRight" })
 
@@ -1498,7 +1510,7 @@ describe("WorkbenchShell", () => {
     fireEvent.keyDown(surface, { key: "ArrowLeft" })
     expect(transport.payloads.filter((payload) => payload.command === "workspace.move_node")).toHaveLength(2)
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
     const removeCountBeforeInputDelete = transport.payloads.filter((payload) => payload.command === "workspace.remove").length
     fireEvent.keyDown(within(editor).getByLabelText("Coef"), { key: "Delete" })
@@ -1513,7 +1525,7 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-a"], edge_ids: [], path_ids: [] },
     }))
@@ -1536,8 +1548,8 @@ describe("WorkbenchShell", () => {
         { object_id: "object-b", coefficient: 2, role: "reagent", label: null, metadata: {} },
       ],
     }))
-    expect(within(graphCanvas).getAllByText("object-a + 2*object-b").length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getAllByText("Object A + Object B").length).toBeGreaterThan(0)
+    expect(graphNodeButtonById(graphCanvas, "node-a")).toHaveTextContent("Object A")
+    expect(graphNodeButtonById(graphCanvas, "node-a")).not.toHaveTextContent("node-a")
   })
 
   it("shows composition coefficient errors without sending workspace.set_node_composition", async () => {
@@ -1548,9 +1560,9 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
-    await waitFor(() => expect(editor).toHaveTextContent("node-a"))
+    await waitFor(() => expect(within(editor).getByDisplayValue("1")).toBeInTheDocument())
     fireEvent.change(within(editor).getByLabelText("Coef"), { target: { value: "0" } })
     fireEvent.click(within(editor).getByRole("button", { name: "Apply" }))
 
@@ -1567,7 +1579,7 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Object A -> Object B" }))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { path_ids: ["path-a-b"] },
     }))
@@ -1583,7 +1595,7 @@ describe("WorkbenchShell", () => {
       path_id: "path-a-b",
       node_ids: ["node-b", "node-a"],
     })
-    expect(await within(graphCanvas).findByText("node-b -> node-a")).toBeInTheDocument()
+    expect((await within(graphCanvas).findAllByText("Object B -> Object A")).length).toBeGreaterThan(0)
   })
 
   it("ignores unsupported graph canvas drops without shell commands", async () => {
@@ -1620,13 +1632,13 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     dropExternalFileOnCanvas(graphCanvas, new File(["2\nwater\n"], "water.xyz", { type: "chemical/x-xyz" }))
-    expect((await screen.findAllByText("object-imported-water")).length).toBeGreaterThan(0)
-    expect((await within(graphCanvas).findAllByText("node-web-3")).length).toBeGreaterThan(0)
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-b/i }))
+    expect((await screen.findAllByText("water.xyz")).length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-3")).toBeInTheDocument()
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-b"))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Connect" }))
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-web-3/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-web-3"))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "Set Path" }))
-    expect((await within(graphCanvas).findAllByText("path-web-main")).length).toBeGreaterThan(0)
+    expect((await within(graphCanvas).findAllByText("Object A -> Object B -> water.xyz")).length).toBeGreaterThan(0)
 
     openAnalysisDockTab("PES")
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
@@ -1634,7 +1646,7 @@ describe("WorkbenchShell", () => {
 
     expect((await within(energyPanel).findAllByText("missing_energy")).length).toBeGreaterThan(0)
     const rows = within(energyPanel).getAllByRole("row")
-    const missingRow = rows.find((row) => row.textContent?.includes("node-web-3"))
+    const missingRow = rows.find((row) => row.textContent?.includes("water.xyz") && row.textContent?.includes("missing_energy"))
     expect(missingRow?.textContent).toContain("missing_energy")
     expect(missingRow?.textContent).not.toContain("-5.2")
     expect(within(energyPanel).getAllByText("Missing").length).toBeGreaterThan(0)
@@ -1646,8 +1658,7 @@ describe("WorkbenchShell", () => {
   it("renders invalid shell command errors with the error code visible", async () => {
     renderWorkbench()
 
-    openAnalysisDockTab("Diagnostics")
-    fireEvent.click(screen.getByRole("button", { name: "Invalid command" }))
+    runInvalidCommand()
 
     expect(await screen.findByText("invalid_input")).toBeInTheDocument()
     expect(screen.getByText(/Unknown shell command/)).toBeInTheDocument()
@@ -1669,7 +1680,7 @@ describe("WorkbenchShell", () => {
     fireEvent.change(within(energyPanel).getByLabelText("Correction policy"), { target: { value: "all" } })
     fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
 
-    expect((await within(energyPanel).findAllByText("profile-path-a-b-electronic-kj_mol")).length).toBeGreaterThan(0)
+    expect((await within(energyPanel).findAllByText("Computed profile")).length).toBeGreaterThan(0)
     expect(within(energyPanel).getAllByText("kj_mol").length).toBeGreaterThan(0)
     expect(screen.getAllByText("corrections_empty").length).toBeGreaterThan(0)
     expect(within(energyPanel).getByText("Expression details")).toBeInTheDocument()
@@ -1686,16 +1697,16 @@ describe("WorkbenchShell", () => {
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
 
-    expect(within(energyPanel).getByLabelText(/Object A node-a/)).toHaveAttribute("tabindex", "0")
-    fireEvent.click(within(energyPanel).getByLabelText(/Object B node-b/))
+    expect(within(energyPanel).getByLabelText(/Object A Valid/)).toHaveAttribute("tabindex", "0")
+    fireEvent.click(within(energyPanel).getByLabelText(/Object B Valid/))
 
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { node_ids: ["node-b"], edge_ids: [], path_ids: [] },
     }))
-    await waitFor(() => expect(within(graphCanvas).getByRole("button", { name: /node-b/i })).toHaveAttribute("aria-current", "true"))
+    await waitFor(() => expect(graphNodeButtonById(graphCanvas, "node-b")).toHaveAttribute("aria-current", "true"))
     const pointDetail = within(energyPanel).getByLabelText("Point detail")
     expect(within(pointDetail).getByText("Object B")).toBeInTheDocument()
-    expect(within(pointDetail).getByText("node-b")).toBeInTheDocument()
+    expect(within(pointDetail).queryByText("node-b")).not.toBeInTheDocument()
     expect(within(pointDetail).getAllByText("-12.4 kcal_mol").length).toBeGreaterThan(0)
   })
 
@@ -1757,7 +1768,7 @@ describe("WorkbenchShell", () => {
       energy_key: "gibbs",
       energy_source: "thermochemistry",
     }))
-    expect((await within(energyPanel).findAllByText("profile-path-a-b-gibbs-thermochemistry-kcal_mol")).length).toBeGreaterThan(0)
+    expect((await within(energyPanel).findAllByText("Computed profile")).length).toBeGreaterThan(0)
   })
 
   it("shows composition coefficients in energy expression details after composition edits", async () => {
@@ -1767,7 +1778,7 @@ describe("WorkbenchShell", () => {
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: /node-a/i }))
+    fireEvent.click(graphNodeButtonById(graphCanvas, "node-a"))
     const editor = within(graphCanvas).getByRole("form", { name: "Node Composition Editor" })
     fireEvent.click(within(editor).getByRole("button", { name: "Add" }))
     const objectSelects = within(editor).getAllByLabelText("Object")
@@ -1781,7 +1792,7 @@ describe("WorkbenchShell", () => {
     const energyPanel = screen.getByRole("region", { name: "Energy Profile Panel" })
     fireEvent.click(within(energyPanel).getByRole("button", { name: "Compute" }))
 
-    expect(within(graphCanvas).getAllByText("object-a + 2*object-b").length).toBeGreaterThan(0)
+    expect(graphNodeButtonById(graphCanvas, "node-a")).toHaveTextContent("Object A")
     const expressionDetails = within(energyPanel).getByLabelText("Expression details")
     await waitFor(() => expect(within(expressionDetails).getAllByText("coef 2").length).toBeGreaterThan(0))
     expect(within(expressionDetails).getAllByText("electronic · energies").length).toBeGreaterThan(0)
@@ -1813,18 +1824,13 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
-    expect(await within(exportPanel).findByText("artifact-png-rxnflow-profile")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("artifact-cdxml-rxnflow-profile")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("artifact-xlsx-rxnflow-profile")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("artifact-csv-rxnflow-profile")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("artifact-svg-rxnflow-profile")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("fixture-png-energy-plot-v1")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("fixture-cdxml-energy-v1")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("fixture-xlsx-energy-table-v1")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("fixture-csv-energy-table-v1")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("fixture-svg-graph-snapshot-v1")).toBeInTheDocument()
-    expect(within(exportPanel).getAllByText("energy_table_schema_version")).toHaveLength(2)
-    expect(within(exportPanel).getAllByText("energy-table-v1")).toHaveLength(2)
+    expect((await within(exportPanel).findAllByText("rxnflow-profile.png")).length).toBeGreaterThan(0)
+    expect(within(exportPanel).getAllByText("rxnflow-profile.cdxml").length).toBeGreaterThan(0)
+    expect(within(exportPanel).getAllByText("rxnflow-profile.xlsx").length).toBeGreaterThan(0)
+    expect(within(exportPanel).getAllByText("rxnflow-profile.csv").length).toBeGreaterThan(0)
+    expect(within(exportPanel).getAllByText("rxnflow-profile.svg").length).toBeGreaterThan(0)
+    expect(within(exportPanel).queryByText("fixture-png-energy-plot-v1")).not.toBeInTheDocument()
+    expect(within(exportPanel).queryByText("energy_table_schema_version")).not.toBeInTheDocument()
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(5)
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[0]).toHaveAttribute("download", "rxnflow-profile.png")
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[0].getAttribute("href")).toMatch(/^data:image\/png;base64,/)
@@ -1837,8 +1843,7 @@ describe("WorkbenchShell", () => {
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[4]).toHaveAttribute("download", "rxnflow-profile.svg")
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })[4].getAttribute("href")).toMatch(/^data:image\/svg\+xml;base64,/)
     expect(screen.getAllByText("chemdraw_cdxml_only").length).toBeGreaterThan(0)
-    openAnalysisDockTab("Diagnostics")
-    expect(screen.getByText("5 artifacts indexed")).toBeInTheDocument()
+    expect(screen.queryByText("5 artifacts indexed")).not.toBeInTheDocument()
   })
 
   it("persists exported inline artifacts into the active browser project", async () => {
@@ -1855,13 +1860,13 @@ describe("WorkbenchShell", () => {
     openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
-    expect(await within(exportPanel).findByText("exports/rxnflow-profile.png")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("exports/rxnflow-profile.cdxml")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("exports/rxnflow-profile.xlsx")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("exports/rxnflow-profile.csv")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("exports/rxnflow-profile.svg")).toBeInTheDocument()
+    expect((await within(exportPanel).findAllByText("rxnflow-profile.png")).length).toBeGreaterThan(0)
+    expect(within(exportPanel).getAllByText("rxnflow-profile.cdxml").length).toBeGreaterThan(0)
+    expect(within(exportPanel).getAllByText("rxnflow-profile.xlsx").length).toBeGreaterThan(0)
+    expect(within(exportPanel).getAllByText("rxnflow-profile.csv").length).toBeGreaterThan(0)
+    expect(within(exportPanel).getAllByText("rxnflow-profile.svg").length).toBeGreaterThan(0)
     expect(within(exportPanel).getAllByText("Yes").length).toBeGreaterThanOrEqual(5)
-    expect(within(exportPanel).getAllByText(/sha256:[a-f0-9]{64}/i).length).toBeGreaterThanOrEqual(5)
+    expect(within(exportPanel).queryByText(/sha256:[a-f0-9]{64}/i)).not.toBeInTheDocument()
     const [project] = await repository.listProjects()
     await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.png")).resolves.toBe(true)
     await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.svg")).resolves.toBe(true)
@@ -1900,7 +1905,7 @@ describe("WorkbenchShell", () => {
     expect(within(exportPanel).getByText("Runtime metadata only")).toBeInTheDocument()
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
-    expect(await within(exportPanel).findByText("artifact-png-rxnflow-profile")).toBeInTheDocument()
+    expect((await within(exportPanel).findAllByText("rxnflow-profile.png")).length).toBeGreaterThan(0)
     expect(within(exportPanel).queryByRole("link", { name: "Download" })).not.toBeInTheDocument()
     expect(within(exportPanel).getAllByText("Download unavailable")).toHaveLength(5)
     const [project] = await repository.listProjects()
@@ -1922,7 +1927,7 @@ describe("WorkbenchShell", () => {
     openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
-    expect(await within(exportPanel).findByText("artifact-png-rxnflow-profile")).toBeInTheDocument()
+    expect((await within(exportPanel).findAllByText("rxnflow-profile.png")).length).toBeGreaterThan(0)
     expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(5)
     expect(within(exportPanel).getAllByText("No").length).toBeGreaterThanOrEqual(5)
     expect(screen.getAllByText("artifact_persistence_failed").length).toBeGreaterThan(0)
@@ -1942,7 +1947,7 @@ describe("WorkbenchShell", () => {
     expect(within(graphCanvas).getByText("No workspace graph")).toBeInTheDocument()
     dropExternalFileOnCanvas(graphCanvas, new File(["2\nwater"], "water.xyz", { type: "chemical/x-xyz" }))
 
-    expect((await within(graphCanvas).findAllByText("node-web-1")).length).toBeGreaterThan(0)
+    expect(await findGraphNodeButtonById(graphCanvas, "node-web-1")).toBeInTheDocument()
     const openIndex = transport.payloads.findIndex((payload) => payload.command === "workspace.open")
     const addIndex = transport.payloads.findIndex((payload) => payload.command === "workspace.add_node")
     expect(openIndex).toBeGreaterThanOrEqual(0)
@@ -1997,25 +2002,25 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByRole("status", { name: "Project notices" })).not.toBeInTheDocument()
     expect(screen.queryByText(/sha256:[a-f0-9]{64}/i)).not.toBeInTheDocument()
     const [project] = await repository.listProjects()
-    await expect(repository.listObjects(project.projectRef, projectContentIndexPath)).resolves.toHaveLength(1)
+    await waitFor(async () => {
+      await expect(repository.listObjects(project.projectRef, projectContentIndexPath)).resolves.toHaveLength(1)
+    })
     await expect(repository.listObjects(project.projectRef, chemicalObjectsPath)).resolves.toHaveLength(1)
   })
 
-  it("opens a project with missing content and saves it from the sidebar", async () => {
+  it("opens a project with missing content and repairs it automatically", async () => {
     const repository = new MemoryBrowserProjectRepository()
     const project = await repository.createProject({ name: "Needs Content" })
     renderWorkbench(repository)
 
     fireEvent.click(await screen.findByRole("button", { name: /needs content/i }))
 
-    expect(await screen.findByText("Project files need attention")).toBeInTheDocument()
-    expect(screen.getByText(/Project content file is missing/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Save Project" }))
-
     await waitFor(() => expect(screen.queryByText("Project files need attention")).not.toBeInTheDocument())
     expect(screen.queryByText("Persisted")).not.toBeInTheDocument()
     expect(screen.queryByText("Valid")).not.toBeInTheDocument()
-    await expect(repository.listObjects(project.projectRef, projectContentIndexPath)).resolves.toHaveLength(1)
+    await waitFor(async () => {
+      await expect(repository.listObjects(project.projectRef, projectContentIndexPath)).resolves.toHaveLength(1)
+    })
   })
 
   it("opens a browser project and restores the workbench automatically", async () => {
@@ -2039,7 +2044,7 @@ describe("WorkbenchShell", () => {
     expect(created.name).toBe("Bridge Later")
   })
 
-  it("saves the active restored project through one Save Project action", async () => {
+  it("auto-saves the active restored project", async () => {
     const repository = new MemoryBrowserProjectRepository()
     const transport = new RecordingProjectBridgeTransport()
     const project = await createProjectWithContent(repository, "Bridge Project")
@@ -2050,9 +2055,8 @@ describe("WorkbenchShell", () => {
     await expectProjectFolderActive(/bridge project/i)
     await expectEmptyProjectWorkbenchProjected()
 
-    fireEvent.click(screen.getByRole("button", { name: "Save Project" }))
-
     expect(screen.queryByText("Project content files are readable.")).not.toBeInTheDocument()
+    await waitFor(() => expect(transport.payloads.some((payload) => payload.command === "project.save_content")).toBe(true))
     const savePayload = transport.payloads.find((payload) => payload.command === "project.save_content")
     expect(savePayload?.args).toMatchObject({
       session_id: "session-fixture-web",
@@ -2072,6 +2076,7 @@ describe("WorkbenchShell", () => {
     await expectEmptyProjectWorkbenchProjected()
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
+    const saveCountBeforeGraphEdits = transport.payloads.filter((payload) => payload.command === "project.save_content").length
     const graphCanvas = screen.getByRole("region", { name: "Graph Canvas" })
     mockCanvasSurfaceRect(within(graphCanvas).getByLabelText("Graph canvas surface"), 600, 360)
 
@@ -2079,20 +2084,21 @@ describe("WorkbenchShell", () => {
     await waitFor(() => expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
       viewport: { zoom: 1.2 },
     }))
-    const nodeB = within(graphCanvas).getByRole("button", { name: /node-b/i })
+    const nodeB = graphNodeButtonById(graphCanvas, "node-b")
     fireEvent.pointerDown(nodeB, { button: 0, clientX: 360, clientY: 160, pointerId: 9 })
     fireEvent.pointerMove(nodeB, { button: 0, clientX: 430, clientY: 230, pointerId: 9 })
     fireEvent.pointerUp(nodeB, { button: 0, clientX: 430, clientY: 230, pointerId: 9 })
     await waitFor(() => expect(lastPayload(transport, "workspace.move_node")?.args).toMatchObject({
       node_id: "node-b",
     }))
-    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Fixture path" }))
+    fireEvent.click(within(graphCanvas).getByRole("button", { name: "Select path Object A -> Object B" }))
     await waitFor(() => expect(lastPayload(transport, "workspace.select")?.args).toMatchObject({
       selection: { path_ids: ["path-a-b"] },
     }))
 
-    fireEvent.click(screen.getByRole("button", { name: "Save Project" }))
-    await waitFor(() => expect(transport.payloads.some((payload) => payload.command === "project.save_content")).toBe(true))
+    await waitFor(() => {
+      expect(transport.payloads.filter((payload) => payload.command === "project.save_content").length).toBeGreaterThan(saveCountBeforeGraphEdits)
+    })
     await waitFor(async () => {
       const graphObject = await repository.readObject(project.projectRef, reactionGraphsPath)
       const workspaceObject = await repository.readObject(project.projectRef, workspacesPath)
@@ -2107,9 +2113,9 @@ describe("WorkbenchShell", () => {
     fireEvent.click(screen.getByRole("button", { name: /graph restore/i }))
 
     expect(await within(graphCanvas).findByText("120%")).toBeInTheDocument()
-    const restoredPathButton = within(graphCanvas).getByRole("button", { name: "Select path Fixture path" })
+    const restoredPathButton = within(graphCanvas).getByRole("button", { name: "Select path Object A -> Object B" })
     expect(restoredPathButton.closest("li")?.className).toContain("graph-path-list--selected")
-    expect(within(graphCanvas).getByText("node-a -> node-b")).toBeInTheDocument()
+    expect(within(graphCanvas).getAllByText("Object A -> Object B").length).toBeGreaterThan(0)
   })
 
   it("renders repository errors with code, message, and target visible", async () => {
@@ -2142,10 +2148,6 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /needs content/i }))
 
-    expect(await screen.findByText(/项目内容文件缺失/)).toBeInTheDocument()
-    expect(screen.getByText((content) => content.includes(".rxnflow/state/project-content.json"))).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "保存项目" }))
-
     await waitFor(() => expect(screen.queryByText(/项目内容文件缺失/)).not.toBeInTheDocument())
     expect(screen.queryByText("已保存")).not.toBeInTheDocument()
     expect(screen.queryByText("有效")).not.toBeInTheDocument()
@@ -2163,16 +2165,15 @@ describe("WorkbenchShell", () => {
     expect(screen.getByRole("region", { name: "图谱画布" })).toBeInTheDocument()
     expect(screen.getByText("暂无工作区图谱")).toBeInTheDocument()
     expect(screen.getByText(/可在此拖入原始输出文件/)).toBeInTheDocument()
-    openAnalysisDockTab("诊断")
-    fireEvent.click(screen.getByRole("button", { name: "运行 Fixture" }))
+    runFixtureCommand()
     await expectFixtureWorkbenchProjected()
     openAnalysisDockTab("对象")
-    expect(screen.getByText("fixture-parser")).toBeInTheDocument()
+    expect(screen.queryByText("fixture-parser")).not.toBeInTheDocument()
     const graphCanvas = screen.getByRole("region", { name: "图谱画布" })
     expect(within(graphCanvas).getByRole("button", { name: "添加节点" })).toBeEnabled()
-    expect(within(graphCanvas).getByText("node-a")).toBeInTheDocument()
-    expect(within(graphCanvas).getByText("object-a")).toBeInTheDocument()
-    expect(within(graphCanvas).getAllByText("path-a-b").length).toBeGreaterThan(0)
+    expect(graphNodeButtonById(graphCanvas, "node-a")).toBeInTheDocument()
+    expect(within(graphCanvas).getByText("Object A")).toBeInTheDocument()
+    expect(within(graphCanvas).getByRole("button", { name: "Select path Object A -> Object B" })).toBeInTheDocument()
 
     openAnalysisDockTab("势能面")
     const energyPanel = screen.getByRole("region", { name: "能量剖面面板" })
@@ -2212,11 +2213,19 @@ function renderWorkbench(
 }
 
 async function expectFixtureWorkbenchProjected() {
-  expect((await screen.findAllByText("graph-a-b")).length).toBeGreaterThan(0)
+  const graphCanvas = screen.getByRole("region", { name: /Graph Canvas|图谱画布/ })
+  await waitFor(() => {
+    expect(
+      within(graphCanvas)
+        .getAllByRole("button", { name: /Object A/i })
+        .some((element) => element.classList.contains("graph-node-card")),
+    ).toBe(true)
+  })
 }
 
 async function expectEmptyProjectWorkbenchProjected() {
-  expect((await screen.findAllByText("graph-project-main")).length).toBeGreaterThan(0)
+  const graphCanvas = screen.getByRole("region", { name: /Graph Canvas|图谱画布/ })
+  expect(await within(graphCanvas).findByText("No workspace graph")).toBeInTheDocument()
 }
 
 function openAnalysisDockTab(tabName: string) {
@@ -2225,9 +2234,15 @@ function openAnalysisDockTab(tabName: string) {
 }
 
 function runFixtureCommand() {
-  openAnalysisDockTab("Diagnostics")
-  const dock = screen.getByRole("complementary", { name: /Analysis Dock|分析区/ })
-  fireEvent.click(within(dock).getByRole("button", { name: "Fixture Run" }))
+  const testApi = window.__rxnflowWorkbenchTest
+  if (!testApi) throw new Error("Workbench test API is not available.")
+  void testApi.runFixture()
+}
+
+function runInvalidCommand() {
+  const testApi = window.__rxnflowWorkbenchTest
+  if (!testApi) throw new Error("Workbench test API is not available.")
+  void testApi.runInvalidCommand()
 }
 
 function mockCanvasSurfaceRect(element: HTMLElement, width = 900, height = 420) {
@@ -2271,6 +2286,23 @@ function mockElementsFromPoint(elements: Element[]) {
   return () => {
     document.elementsFromPoint = originalElementsFromPoint
   }
+}
+
+async function findGraphNodeButtonById(container: HTMLElement, nodeId: string): Promise<HTMLElement> {
+  await waitFor(() => expect(queryGraphNodeButtonById(container, nodeId)).toBeInTheDocument())
+  return graphNodeButtonById(container, nodeId)
+}
+
+function graphNodeButtonById(container: HTMLElement, nodeId: string): HTMLElement {
+  const node = queryGraphNodeButtonById(container, nodeId)
+  if (!node) {
+    throw new Error(`Graph node ${nodeId} was not rendered.`)
+  }
+  return node
+}
+
+function queryGraphNodeButtonById(container: HTMLElement, nodeId: string): HTMLElement | null {
+  return container.querySelector<HTMLElement>(`.graph-node-card[data-graph-node-id="${nodeId}"]`)
 }
 
 function nodeShell(nodeButton: HTMLElement): HTMLElement {

@@ -1,6 +1,7 @@
 import { Download, Eye, FileArchive } from "lucide-react"
 import { useMemo, useState } from "react"
-import type { EnergyProfileSummary, ExportFormat, ShellWarning, WorkbenchArtifactSummary, WorkspaceSummary } from "../shell"
+import type { EnergyProfileSummary, ExportFormat, ObjectSummary, ShellWarning, WorkbenchArtifactSummary, WorkspaceSummary } from "../shell"
+import { artifactDisplayName, graphNodeDisplayName, graphPathDisplayName, userFacingText, warningTargetDisplay } from "./displayNames"
 import { extensionForExportFormat, mimeTypeForExportFormat, reportExportFormats } from "./exportFormatCapabilities"
 import { useI18n, type MessageKey } from "./i18n"
 import { buildReportPreviewModel, type ReportPreviewModel, type ReportPreviewAssetKey, type ReportPreviewAssetStatus } from "./reportPreviewModel"
@@ -92,7 +93,7 @@ export function ReportExportPanel({
       </div>
 
       {viewMode === "preview" ? (
-        <ReportPreviewPanel model={preview} />
+        <ReportPreviewPanel model={preview} workspace={workspace} />
       ) : (
         <>
           <div className="export-format-grid" aria-label={t("reportExport.formats")}>
@@ -173,7 +174,7 @@ export function ReportExportPanel({
                 <p key={`${warning.code}-${warning.target ?? "target"}-${index}`}>
                   <code>{warning.code}</code>
                   <span>{warning.message}</span>
-                  {warning.target ? <small>{warning.target}</small> : null}
+                  {warningTargetDisplay(warning) ? <small>{warningTargetDisplay(warning)}</small> : null}
                 </p>
               ))}
             </div>
@@ -184,19 +185,19 @@ export function ReportExportPanel({
   )
 }
 
-function ReportPreviewPanel({ model }: { model: ReportPreviewModel }) {
+function ReportPreviewPanel({ model, workspace }: { model: ReportPreviewModel; workspace?: WorkspaceSummary | null }) {
   const { t } = useI18n()
+  const activePathLabel = activePathPreviewLabel(workspace, model.graph?.activePathId)
   return (
     <div className="report-preview-panel" aria-label={t("reportPreview.aria")}>
       <div className="report-preview-summary-grid">
-        <PreviewValue label={t("reportPreview.profile")} value={model.profile?.profileId ?? t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.profile")} value={model.profile ? t("energyPanel.profileReady") : t("reportPreview.none")} />
         <PreviewValue label={t("reportPreview.outputUnit")} value={model.profile?.outputUnit ?? t("reportPreview.none")} />
         <PreviewValue label={t("reportPreview.points")} value={model.profile ? String(model.profile.pointCount) : t("reportPreview.none")} />
         <PreviewValue label={t("reportPreview.missing")} value={model.profile ? String(model.profile.missingPointCount) : t("reportPreview.none")} />
         <PreviewValue label={t("reportPreview.corrections")} value={model.profile ? String(model.profile.correctionPointCount) : t("reportPreview.none")} />
-        <PreviewValue label={t("reportPreview.graph")} value={model.graph?.graphId ?? t("reportPreview.none")} />
         <PreviewValue label={t("reportPreview.graphCounts")} value={model.graph ? `${model.graph.nodeCount}/${model.graph.edgeCount}/${model.graph.pathCount}` : t("reportPreview.none")} />
-        <PreviewValue label={t("reportPreview.activePath")} value={model.graph?.activePathId ?? t("reportPreview.none")} />
+        <PreviewValue label={t("reportPreview.activePath")} value={activePathLabel ?? t("reportPreview.none")} />
         <PreviewValue label={t("reportPreview.persistence")} value={model.project.persistenceLabel === "browser-local" ? t("reportPreview.browserLocal") : t("reportPreview.downloadOnly")} />
       </div>
 
@@ -207,7 +208,7 @@ function ReportPreviewPanel({ model }: { model: ReportPreviewModel }) {
             <span>{t(assetLabelKey(asset.key))}</span>
             <code>{t(assetStatusKey(asset.status))}</code>
             <small>{asset.formats.length > 0 ? asset.formats.join(", ") : t("reportPreview.none")}</small>
-            <small>{asset.artifactIds.length > 0 ? asset.artifactIds.join(", ") : t("reportPreview.pendingArtifact")}</small>
+            <small>{asset.artifactIds.length > 0 ? t("reportExport.artifactCount", { count: asset.artifactIds.length }) : t("reportPreview.pendingArtifact")}</small>
           </p>
         ))}
       </div>
@@ -218,7 +219,7 @@ function ReportPreviewPanel({ model }: { model: ReportPreviewModel }) {
           <PreviewValue label={t("reportPreview.schema")} value={model.energyTable.schemaVersion} />
           <PreviewValue label={t("reportPreview.columns")} value={String(model.energyTable.columnCount)} />
           <PreviewValue label={t("reportPreview.rows")} value={String(model.energyTable.rowCount ?? t("reportPreview.none"))} />
-          <PreviewValue label={t("reportPreview.artifact")} value={model.energyTable.artifactId} />
+          <PreviewValue label={t("reportPreview.artifact")} value={model.energyTable.format.toUpperCase()} />
         </div>
       ) : null}
 
@@ -227,11 +228,10 @@ function ReportPreviewPanel({ model }: { model: ReportPreviewModel }) {
         {model.artifacts.length > 0 ? model.artifacts.map((artifact) => (
           <p key={artifact.id}>
             <code>{artifact.format}</code>
-            <span>{artifact.id}</span>
+            <span>{artifactDisplayName(artifact.format, artifact.path, artifact.format.toUpperCase())}</span>
             <small>{artifact.persisted ? t("reportExport.yes") : t("reportExport.no")}</small>
             <small>{artifact.hasInlineBytes ? t("reportExport.available") : t("reportExport.unavailable")}</small>
-            <small>{artifact.path ?? t("reportExport.inlineOnly")}</small>
-            <small>{artifact.checksum ?? t("reportExport.unavailable")}</small>
+            <small>{userFacingText(artifact.path) ?? t("reportExport.inlineOnly")}</small>
           </p>
         )) : <span className="report-preview-empty">{t("reportPreview.noArtifacts")}</span>}
       </div>
@@ -243,7 +243,7 @@ function ReportPreviewPanel({ model }: { model: ReportPreviewModel }) {
             <p key={`${warning.code}-${warning.target ?? "target"}-${index}`}>
               <code>{warning.code}</code>
               <span>{warning.message}</span>
-              {warning.target ? <small>{warning.target}</small> : null}
+              {userFacingText(warning.target) ? <small>{userFacingText(warning.target)}</small> : null}
             </p>
           ))}
         </div>
@@ -259,6 +259,15 @@ function PreviewValue({ label, value }: { label: string; value: string }) {
       <code>{value}</code>
     </div>
   )
+}
+
+function activePathPreviewLabel(workspace: WorkspaceSummary | null | undefined, activePathId?: string | null): string | null {
+  if (!workspace || !activePathId) return null
+  const path = workspace.graph.paths.find((item) => item.id === activePathId)
+  if (!path) return null
+  const emptyObjectMap = new Map<string, ObjectSummary>()
+  const nodeLabelById = new Map(workspace.graph.nodes.map((node) => [node.id, graphNodeDisplayName(node, emptyObjectMap)]))
+  return graphPathDisplayName(path, nodeLabelById, "Path")
 }
 
 function assetLabelKey(key: ReportPreviewAssetKey): MessageKey {
@@ -349,13 +358,13 @@ function ArtifactList({ artifacts, basename }: { artifacts: WorkbenchArtifactSum
         return (
           <article key={artifact.id} className="artifact-card">
             <div className="artifact-card-header">
-              <strong>{artifact.format}</strong>
-              <code>{artifact.id}</code>
+              <strong>{artifact.format.toUpperCase()}</strong>
+              <code>{fileName}</code>
             </div>
             <dl className="artifact-detail-grid">
               <div>
                 <dt>{t("reportExport.path")}</dt>
-                <dd>{artifact.path ?? t("reportExport.inlineOnly")}</dd>
+                <dd>{userFacingText(artifact.path) ?? t("reportExport.inlineOnly")}</dd>
               </div>
               <div>
                 <dt>{t("reportExport.inlineBytes")}</dt>
@@ -365,12 +374,7 @@ function ArtifactList({ artifacts, basename }: { artifacts: WorkbenchArtifactSum
                 <dt>{t("reportExport.persisted")}</dt>
                 <dd>{artifact.persisted ? t("reportExport.yes") : t("reportExport.no")}</dd>
               </div>
-              <div>
-                <dt>{t("reportExport.checksum")}</dt>
-                <dd>{artifact.checksum ?? t("reportExport.unavailable")}</dd>
-              </div>
             </dl>
-            <MetadataList metadata={artifact.metadata} />
             {downloadHref ? (
               <a className="artifact-download-link" href={downloadHref} download={fileName}>
                 <Download size={16} />
@@ -384,33 +388,6 @@ function ArtifactList({ artifacts, basename }: { artifacts: WorkbenchArtifactSum
       })}
     </div>
   )
-}
-
-function MetadataList({ metadata }: { metadata: WorkbenchArtifactSummary["metadata"] }) {
-  const { t } = useI18n()
-  const entries = Object.entries(metadata)
-  if (entries.length === 0) {
-    return null
-  }
-  return (
-    <div className="artifact-metadata">
-      <span>{t("reportExport.metadata")}</span>
-      {entries.map(([key, value]) => (
-        <p key={key}>
-          <code>{key}</code>
-          <span>{formatMetadataValue(value)}</span>
-        </p>
-      ))}
-    </div>
-  )
-}
-
-function formatMetadataValue(value: unknown): string {
-  if (value === null || value === undefined) return "null"
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value)
-  }
-  return JSON.stringify(value)
 }
 
 function downloadFileName(artifact: WorkbenchArtifactSummary, basename: string): string {

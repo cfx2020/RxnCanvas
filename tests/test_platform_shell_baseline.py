@@ -372,6 +372,13 @@ class PlatformShellBaselineTest(unittest.TestCase):
         self.assertEqual(len(payload["registered_object_ids"]), 1)
         self.assertEqual(payload["objects"][0]["label"], "Frame 2")
         self.assertEqual(payload["objects"][0]["coordinate_preview"]["atom_count"], 2)
+        self.assertEqual(
+            payload["objects"][0]["geometry"],
+            [
+                {"element": "H", "x": 0.0, "y": 0.0, "z": 0.0, "unit": "angstrom"},
+                {"element": "H", "x": 0.0, "y": 0.0, "z": 0.78, "unit": "angstrom"},
+            ],
+        )
         self.assertEqual(payload["objects"][0]["display_energy"]["value"], -1.4)
 
     def test_workspace_select_command_projects_selection_and_errors(self) -> None:

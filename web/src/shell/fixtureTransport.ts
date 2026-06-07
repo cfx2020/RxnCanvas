@@ -67,6 +67,20 @@ type RestoredDisplayEnergy = {
   unit: string
   reference?: string | null
 }
+type FixtureImportSource = {
+  path: string
+  filename: string
+  text?: string
+  byteSize?: number
+}
+type FixtureParsedMolecule = {
+  geometry: Array<{ element: string; x: number; y: number; z: number; unit: "angstrom" }>
+  charge: number | null
+  spinMultiplicity: number | null
+  energy: number | null
+  method: string
+  parserId: string
+}
 const fixtureProject = {
   id: "project-fixture-minimal-reaction",
   name: "Fixture Minimal Reaction",
@@ -76,6 +90,15 @@ const fixtureGraphId = "graph-a-b"
 const fixtureProfileId = "profile-a-b-electronic"
 const fixtureWorkspaceId = "workspace-fixture"
 const fixtureRegisteredObjectIds = ["object-imported-water"]
+const fixtureWaterGeometry = [
+  { element: "O", x: 0, y: 0, z: 0, unit: "angstrom" },
+  { element: "H", x: 0.92, y: 0, z: 0.32, unit: "angstrom" },
+  { element: "H", x: -0.28, y: 0.86, z: -0.18, unit: "angstrom" },
+]
+const fixtureH2Geometry = [
+  { element: "H", x: 0, y: 0, z: 0, unit: "angstrom" },
+  { element: "H", x: 0, y: 0, z: 0.74, unit: "angstrom" },
+]
 const fixtureMultiCandidateObjects: ObjectSummary[] = [
   {
     id: "object-imported-frame-1",
@@ -110,6 +133,7 @@ const fixtureMultiCandidateObjects: ObjectSummary[] = [
       elements: ["O", "H"],
       preview_kind: "text",
     },
+    geometry: fixtureWaterGeometry,
     provenance: {
       source_file_id: "raw-multi-extxyz",
       parser_id: "extxyz-ase",
@@ -153,6 +177,7 @@ const fixtureMultiCandidateObjects: ObjectSummary[] = [
       elements: ["O", "H"],
       preview_kind: "text",
     },
+    geometry: fixtureWaterGeometry,
     provenance: {
       source_file_id: "raw-multi-extxyz",
       parser_id: "extxyz-ase",
@@ -201,6 +226,13 @@ const initialFixtureObjects: ObjectSummary[] = [
       unit: "hartree",
       reference: "fixture imported object",
     },
+    coordinate_preview: {
+      atom_count: 3,
+      has3d: true,
+      elements: ["O", "H"],
+      preview_kind: "text",
+    },
+    geometry: fixtureWaterGeometry,
     provenance: {
       source_file_id: "raw-water-xyz",
       parser_id: "xyz-ase",
@@ -219,6 +251,8 @@ const initialFixtureObjects: ObjectSummary[] = [
 ]
 const fixtureImportBatch = importBatchSummary("needs_confirmation")
 let fixtureObjects: ObjectSummary[] = cloneObjects(initialFixtureObjects.slice(0, 2))
+let fixtureLastImportSourcePaths: string[] = ["transient/water.xyz"]
+let fixtureLastImportSources: FixtureImportSource[] = defaultFixtureImportSources()
 let fixtureProfile = profileSummary({
   pathId: "path-a-b",
   outputUnit: "kcal_mol",
@@ -1898,8 +1932,11 @@ function fixtureImportPreviewResponse(args: JsonObject): ShellResponse<ImportPre
     return invalidSessionResponse()
   }
 
-  const sourcePaths = sourcePathsFromArgs(args)
-  if (sourcePaths.length === 0) {
+  const sources = fixtureImportSourcesFromArgs(args)
+  const sourcePaths = sources.map((source) => source.path)
+  fixtureLastImportSources = sources
+  fixtureLastImportSourcePaths = sourcePaths
+  if (sources.length === 0) {
     return {
       ok: false,
       data: null,
@@ -1918,16 +1955,10 @@ function fixtureImportPreviewResponse(args: JsonObject): ShellResponse<ImportPre
     data: {
       command: "import.preview",
       session_id: fixtureSessionId,
-      batch: importBatchSummary("needs_confirmation", sourcePaths),
+      batch: importBatchSummary("needs_confirmation", sources),
     },
     error: null,
-    warnings: [
-      {
-        code: "unit_assumed",
-        message: "Fixture import preview uses hartree for the queued XYZ energy.",
-        target: sourcePaths[0],
-      },
-    ],
+    warnings: fixturePreviewResponseWarnings(sources[0]),
     artifacts: [],
   }
 }
@@ -1951,18 +1982,16 @@ function fixtureImportRegisterAllResponse(args: JsonObject): ShellResponse<Impor
     }
   }
 
-  for (const object of initialFixtureObjects.filter((item) => fixtureRegisteredObjectIds.includes(item.id))) {
-    if (!fixtureObjects.some((item) => item.id === object.id)) {
-      fixtureObjects = [...fixtureObjects, JSON.parse(JSON.stringify(object)) as ObjectSummary]
-    }
-  }
+  const importedObject = fixtureSingleImportObjectForSource(fixtureLastImportSources[0] ?? defaultFixtureImportSources()[0])
+  fixtureObjects = upsertFixtureObjects(fixtureObjects, [importedObject])
+  const registeredObjectIds = [importedObject.id]
   return {
     ok: true,
     data: {
       command: "import.register_all",
       session_id: fixtureSessionId,
-      batch: importBatchSummary("registered"),
-      registered_object_ids: fixtureRegisteredObjectIds,
+      batch: importBatchSummary("registered", fixtureLastImportSources),
+      registered_object_ids: registeredObjectIds,
       objects: cloneObjects(fixtureObjects),
     },
     error: null,
@@ -2018,11 +2047,7 @@ function fixtureImportRegisterSelectionResponse(args: JsonObject): ShellResponse
     }
   }
   const selectedObjects = objectIndices.map((index) => fixtureMultiCandidateObjects[index])
-  for (const object of selectedObjects) {
-    if (!fixtureObjects.some((item) => item.id === object.id)) {
-      fixtureObjects = [...fixtureObjects, JSON.parse(JSON.stringify(object)) as ObjectSummary]
-    }
-  }
+  fixtureObjects = upsertFixtureObjects(fixtureObjects, selectedObjects)
   const registeredObjectIds = selectedObjects.map((object) => object.id)
   return {
     ok: true,
@@ -2041,10 +2066,17 @@ function fixtureImportRegisterSelectionResponse(args: JsonObject): ShellResponse
 
 function importBatchSummary(
   successStatus: "needs_confirmation" | "registered",
-  sourcePaths: string[] = ["transient/water.xyz", "transient/bad-count.xyz"],
+  sourcesOrPaths: Array<FixtureImportSource | string> = defaultFixtureImportSources(),
 ): ImportBatchSummary {
-  const [successPath = "transient/water.xyz", failedPath = "transient/bad-count.xyz"] = sourcePaths
+  const sources = sourcesOrPaths.map(fixtureImportSourceFromValue)
+  const [successSource = defaultFixtureImportSources()[0], failedSource = defaultFixtureImportSources()[1]] = sources
+  const successPath = successSource.path
+  const failedPath = failedSource.path
   const multiCandidate = successPath.includes("multi")
+  const singleImportObject = fixtureSingleImportObjectForSource(successSource)
+  const successSourceName = successSource.filename
+  const successRawResourceId = singleImportObject.source_file_id ?? "raw-fixture-import"
+  const successWarnings = fixtureImportItemWarnings(singleImportObject, successSource)
   return {
     id: "import-batch-fixture-web-1",
     project_id: fixtureProject.id,
@@ -2054,13 +2086,13 @@ function importBatchSummary(
         source_path: successPath,
         status: successStatus,
         raw_resource: {
-          id: "raw-water-xyz",
+          id: successRawResourceId,
           kind: "raw_file",
-          path: "inputs/raw/water.xyz",
+          path: `inputs/raw/${successSourceName}`,
           checksum: "sha256:fixturewater00000000000000000000000000000000000000000000000000",
           metadata: {
-            source_name: "water.xyz",
-            byte_size: 74,
+            source_name: successSourceName,
+            byte_size: successSource.byteSize ?? 74,
           },
         },
         preview: {
@@ -2072,25 +2104,13 @@ function importBatchSummary(
             parseCandidateSummary(fixtureMultiCandidateObjects[0], 0),
             parseCandidateSummary(fixtureMultiCandidateObjects[1], 1),
           ] : [
-            parseCandidateSummary(initialFixtureObjects[2], 0),
+            parseCandidateSummary(singleImportObject, 0),
           ],
-          warnings: [
-            {
-              code: "missing_section",
-              message: "Fixture XYZ preview has no thermochemistry section.",
-              target: successPath,
-            },
-          ],
+          warnings: successWarnings,
         },
-        registered_object_ids: successStatus === "registered" ? fixtureRegisteredObjectIds : [],
+        registered_object_ids: successStatus === "registered" ? [singleImportObject.id] : [],
         error: null,
-        warnings: [
-          {
-            code: "missing_section",
-            message: "Fixture XYZ preview has no thermochemistry section.",
-            target: successPath,
-          },
-        ],
+        warnings: successWarnings,
       },
       {
         id: "import-item-bad-count",
@@ -2132,7 +2152,7 @@ function parseCandidateSummary(object: ObjectSummary, index: number): ParseCandi
     display_energy: channel ? {
       key: channel.key,
       source: channel.source,
-      value: index === 0 ? -1.0 : -0.95,
+      value: object.display_energy?.value ?? (index === 0 ? -1.0 : -0.95),
       unit: channel.unit,
       reference: channel.reference ?? null,
     } : null,
@@ -2145,6 +2165,270 @@ function parseCandidateSummary(object: ObjectSummary, index: number): ParseCandi
     role_hint: "unknown",
     warnings: object.warnings ?? [],
   }
+}
+
+function sourceNameFromPath(sourcePath: string): string {
+  return sourcePath.split("/").filter(Boolean).at(-1) ?? "imported-file"
+}
+
+function fixtureSingleImportObjectForSource(source: FixtureImportSource | string): ObjectSummary {
+  const sourceInput = fixtureImportSourceFromValue(source)
+  const sourcePath = sourceInput.path
+  const sourceName = sourceInput.filename
+  const normalized = sourceName.toLowerCase()
+  if (normalized.includes("water")) return initialFixtureObjects[2]
+  const parsed = sourceInput.text ? parseFixtureMolecule(sourceInput.text, sourceName) : null
+  const safeName = sourceName.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "imported-file"
+  const objectId = `object-imported-${safeName.replace(/\.[^.]+$/, "").toLowerCase()}`
+  const rawId = `raw-${safeName.replace(/\.[^.]+$/, "").toLowerCase()}`
+  if (parsed) {
+    const elements = uniqueStrings(parsed.geometry.map((atom) => atom.element))
+    const displayEnergy = parsed.energy === null ? null : {
+      key: "electronic",
+      source: "energies",
+      value: parsed.energy,
+      unit: "hartree",
+      reference: "fixture inline parser",
+    }
+    return {
+      id: objectId,
+      label: sourceName,
+      formula: formulaFromGeometry(parsed.geometry),
+      charge: parsed.charge,
+      spin_multiplicity: parsed.spinMultiplicity,
+      method: parsed.method,
+      source_file_id: rawId,
+      energy_keys: displayEnergy ? ["electronic"] : [],
+      thermochemistry_keys: [],
+      energy_channels: displayEnergy ? [
+        {
+          key: "electronic",
+          source: "energies",
+          label: "electronic (energies)",
+          unit: "hartree",
+          reference: "fixture inline parser",
+          object_ids: [objectId],
+        },
+      ] : [],
+      display_energy: displayEnergy,
+      coordinate_preview: {
+        atom_count: parsed.geometry.length,
+        has3d: true,
+        elements,
+        preview_kind: "text",
+      },
+      geometry: parsed.geometry,
+      provenance: {
+        source_file_id: rawId,
+        parser_id: parsed.parserId,
+        parser_version: "fixture-inline-web",
+        parsed_at: "2026-05-20T00:00:00Z",
+      },
+      correction_count: 0,
+      corrections: [],
+      warnings: [],
+    }
+  }
+  return {
+    id: objectId,
+    label: sourceName,
+    formula: null,
+    charge: null,
+    spin_multiplicity: null,
+    method: "fixture placeholder",
+    source_file_id: rawId,
+    energy_keys: [],
+    thermochemistry_keys: [],
+    energy_channels: [],
+    display_energy: null,
+    coordinate_preview: {
+      atom_count: 0,
+      has3d: false,
+      elements: [],
+      preview_kind: "unavailable",
+    },
+    geometry: [],
+    provenance: {
+      source_file_id: rawId,
+      parser_id: "fixture-placeholder",
+      parser_version: "fixture-web",
+      parsed_at: "2026-05-20T00:00:00Z",
+    },
+    correction_count: 0,
+    corrections: [],
+    warnings: [],
+  }
+}
+
+function fixtureImportItemWarnings(object: ObjectSummary, source: FixtureImportSource): ShellWarning[] {
+  if (object.id === "object-imported-water") {
+    return [
+      {
+        code: "missing_section",
+        message: "Fixture XYZ preview has no thermochemistry section.",
+        target: source.path,
+      },
+    ]
+  }
+  return object.warnings ?? []
+}
+
+function upsertFixtureObjects(
+  currentObjects: ObjectSummary[],
+  nextObjects: ObjectSummary[],
+): ObjectSummary[] {
+  const order: string[] = []
+  const byId = new Map<string, ObjectSummary>()
+  for (const object of currentObjects) {
+    if (!byId.has(object.id)) order.push(object.id)
+    byId.set(object.id, object)
+  }
+  for (const object of nextObjects) {
+    if (!byId.has(object.id)) order.push(object.id)
+    byId.set(object.id, JSON.parse(JSON.stringify(object)) as ObjectSummary)
+  }
+  return order
+    .map((id) => byId.get(id))
+    .filter((object): object is ObjectSummary => Boolean(object))
+}
+
+function fixturePreviewResponseWarnings(source: FixtureImportSource | undefined): ShellWarning[] {
+  if (!source || !source.filename.toLowerCase().includes("water")) return []
+  return [
+    {
+      code: "unit_assumed",
+      message: "Fixture import preview uses hartree for the queued XYZ energy.",
+      target: source.path,
+    },
+  ]
+}
+
+function parseFixtureMolecule(text: string, filename: string): FixtureParsedMolecule | null {
+  return parseGaussianLogMolecule(text) ?? parseXyzLikeMolecule(text, filename)
+}
+
+function parseGaussianLogMolecule(text: string): FixtureParsedMolecule | null {
+  const lines = text.split(/\r?\n/)
+  let currentBlock: FixtureParsedMolecule["geometry"] = []
+  let bestBlock: FixtureParsedMolecule["geometry"] = []
+  let collecting = false
+  let dashCount = 0
+
+  for (const line of lines) {
+    if (/^\s*(Standard|Input|Z-Matrix) orientation:/i.test(line)) {
+      currentBlock = []
+      collecting = true
+      dashCount = 0
+      continue
+    }
+    if (!collecting) continue
+    if (/^\s*-{5,}\s*$/.test(line)) {
+      dashCount += 1
+      if (dashCount >= 3) {
+        if (currentBlock.length > 0) bestBlock = currentBlock
+        collecting = false
+      }
+      continue
+    }
+    if (dashCount < 2) continue
+    const parts = line.trim().split(/\s+/)
+    if (parts.length < 6) continue
+    const atomicNumber = Number(parts[1])
+    const x = Number(parts[3])
+    const y = Number(parts[4])
+    const z = Number(parts[5])
+    const element = elementFromAtomicNumber(atomicNumber)
+    if (!element || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue
+    currentBlock.push({ element, x, y, z, unit: "angstrom" })
+  }
+  if (collecting && currentBlock.length > 0) bestBlock = currentBlock
+  if (bestBlock.length === 0) return null
+  return {
+    geometry: bestBlock,
+    charge: lastNumberMatch(text, /Charge\s*=\s*(-?\d+)/gi),
+    spinMultiplicity: lastNumberMatch(text, /Multiplicity\s*=\s*(\d+)/gi),
+    energy: lastNumberMatch(text, /SCF Done:\s+E\([^)]+\)\s*=\s*(-?\d+(?:\.\d+)?(?:[DE][+-]?\d+)?)/gi),
+    method: "Gaussian log",
+    parserId: "fixture-gaussian-inline",
+  }
+}
+
+function parseXyzLikeMolecule(text: string, filename: string): FixtureParsedMolecule | null {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0)
+  const atomCount = Number.parseInt(lines[0] ?? "", 10)
+  if (!Number.isInteger(atomCount) || atomCount <= 0 || lines.length < atomCount + 2) return null
+  const comment = lines[1] ?? ""
+  const geometry: FixtureParsedMolecule["geometry"] = []
+  for (const line of lines.slice(2, 2 + atomCount)) {
+    const parts = line.trim().split(/\s+/)
+    if (parts.length < 4) return null
+    const element = normalizeElementSymbol(parts[0])
+    const x = Number(parts[1])
+    const y = Number(parts[2])
+    const z = Number(parts[3])
+    if (!element || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null
+    geometry.push({ element, x, y, z, unit: "angstrom" })
+  }
+  return {
+    geometry,
+    charge: lastNumberMatch(comment, /charge\s*[=:]\s*(-?\d+)/gi),
+    spinMultiplicity: lastNumberMatch(comment, /(?:spin|multiplicity|spin_multiplicity)\s*[=:]\s*(\d+)/gi),
+    energy: lastNumberMatch(comment, /(?:energy|E)\s*[=:]\s*(-?\d+(?:\.\d+)?(?:[DE][+-]?\d+)?)/gi),
+    method: filename.toLowerCase().includes("extxyz") ? "extxyz inline" : "xyz inline",
+    parserId: filename.toLowerCase().includes("extxyz") ? "fixture-extxyz-inline" : "fixture-xyz-inline",
+  }
+}
+
+function lastNumberMatch(text: string, pattern: RegExp): number | null {
+  let value: number | null = null
+  for (const match of text.matchAll(pattern)) {
+    const parsed = Number(match[1]?.replace(/D/i, "E"))
+    if (Number.isFinite(parsed)) value = parsed
+  }
+  return value
+}
+
+function formulaFromGeometry(geometry: FixtureParsedMolecule["geometry"]): string | null {
+  if (geometry.length === 0) return null
+  const counts = new Map<string, number>()
+  for (const atom of geometry) {
+    counts.set(atom.element, (counts.get(atom.element) ?? 0) + 1)
+  }
+  return Array.from(counts.entries())
+    .sort(([left], [right]) => elementFormulaSortKey(left).localeCompare(elementFormulaSortKey(right)))
+    .map(([element, count]) => `${element}${count === 1 ? "" : count}`)
+    .join("")
+}
+
+function elementFormulaSortKey(element: string): string {
+  if (element === "C") return "00"
+  if (element === "H") return "01"
+  return `10-${element}`
+}
+
+function elementFromAtomicNumber(atomicNumber: number): string | null {
+  const elements: Record<number, string> = {
+    1: "H",
+    5: "B",
+    6: "C",
+    7: "N",
+    8: "O",
+    9: "F",
+    15: "P",
+    16: "S",
+    17: "Cl",
+    28: "Ni",
+    35: "Br",
+    46: "Pd",
+    53: "I",
+  }
+  return elements[atomicNumber] ?? null
+}
+
+function normalizeElementSymbol(value: string): string {
+  const normalized = value.trim()
+  if (!normalized) return ""
+  return normalized.slice(0, 1).toUpperCase() + normalized.slice(1, 2).toLowerCase()
 }
 
 function objectSummary(
@@ -2198,6 +2482,7 @@ function objectSummary(
       unit: "hartree",
       reference: "fixture-electronic",
     },
+    geometry: options.formula ? fixtureH2Geometry : [],
     coordinate_preview: {
       atom_count: options.formula ? 2 : 0,
       has3d: Boolean(options.formula),
@@ -2506,38 +2791,73 @@ function edgeTarget(edge: GraphEdgeSummary): string {
   return edge.to_node ?? edge.target ?? ""
 }
 
-function sourcePathsFromArgs(args: JsonObject): string[] {
+function defaultFixtureImportSources(): FixtureImportSource[] {
+  return [
+    fixtureImportSourceFromValue("transient/water.xyz"),
+    fixtureImportSourceFromValue("transient/bad-count.xyz"),
+  ]
+}
+
+function fixtureImportSourceFromValue(value: FixtureImportSource | string): FixtureImportSource {
+  if (typeof value !== "string") return value
+  return {
+    path: value,
+    filename: sourceNameFromPath(value),
+  }
+}
+
+function fixtureImportSourcesFromArgs(args: JsonObject): FixtureImportSource[] {
   if (Array.isArray(args.sources)) {
     return args.sources
-      .map((source) => {
-        if (!source || typeof source !== "object" || Array.isArray(source)) return ""
-        const sourceObject = source as JsonObject
-        if (sourceObject.kind === "inline_bytes" && typeof sourceObject.filename === "string") {
-          return `inline/${sourceObject.filename}`
-        }
-        if (sourceObject.kind === "path" && typeof sourceObject.source_path === "string") {
-          return sourceObject.source_path
-        }
-        return ""
-      })
-      .filter(Boolean)
+      .map(fixtureImportSourceFromJsonValue)
+      .filter((source): source is FixtureImportSource => Boolean(source))
   }
   if (args.source && typeof args.source === "object" && !Array.isArray(args.source)) {
-    const source = args.source as JsonObject
-    if (source.kind === "inline_bytes" && typeof source.filename === "string") {
-      return [`inline/${source.filename}`]
-    }
-    if (source.kind === "path" && typeof source.source_path === "string") {
-      return [source.source_path]
-    }
+    const source = fixtureImportSourceFromJsonValue(args.source)
+    return source ? [source] : []
   }
   if (Array.isArray(args.source_paths)) {
-    return args.source_paths.map(String).filter(Boolean)
+    return args.source_paths.map(String).filter(Boolean).map(fixtureImportSourceFromValue)
   }
   if (typeof args.source_path === "string" && args.source_path) {
-    return [args.source_path]
+    return [fixtureImportSourceFromValue(args.source_path)]
   }
   return []
+}
+
+function sourcePathsFromArgs(args: JsonObject): string[] {
+  return fixtureImportSourcesFromArgs(args).map((source) => source.path)
+}
+
+function fixtureImportSourceFromJsonValue(value: JsonValue): FixtureImportSource | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const source = value as JsonObject
+  if (source.kind === "inline_bytes" && typeof source.filename === "string") {
+    const text = typeof source.bytes_base64 === "string" ? textFromBase64(source.bytes_base64) : undefined
+    return {
+      path: `inline/${source.filename}`,
+      filename: source.filename,
+      text,
+      byteSize: text ? new TextEncoder().encode(text).byteLength : undefined,
+    }
+  }
+  if (source.kind === "path" && typeof source.source_path === "string") {
+    return fixtureImportSourceFromValue(source.source_path)
+  }
+  return null
+}
+
+function textFromBase64(value: string): string | undefined {
+  try {
+    const binary = atob(value)
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index)
+    }
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return undefined
+  }
 }
 
 function invalidSessionResponse<TData extends JsonObject = JsonObject>(): ShellResponse<TData> {

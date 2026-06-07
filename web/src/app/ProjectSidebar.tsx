@@ -1,14 +1,14 @@
 import {
   AlertTriangle,
   ChevronRight,
-  FileText,
   FolderOpen,
   FolderPlus,
+  MoreVertical,
   Plus,
   Save,
-  Upload,
+  Trash2,
 } from "lucide-react"
-import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react"
+import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
 import type { BrowserProjectRef } from "../repository"
 import type { ProjectSidebarState } from "./projectSidebarState"
 import type { ProjectFileEntry, ProjectFileKind, ProjectFileStatus } from "./projectFiles"
@@ -19,6 +19,7 @@ type ProjectSidebarProps = {
   state: ProjectSidebarState
   onCreateProject: (name: string) => Promise<void>
   onOpenProject: (projectRef: string) => Promise<void>
+  onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
 }
@@ -27,6 +28,7 @@ export function ProjectSidebar({
   state,
   onCreateProject,
   onOpenProject,
+  onDeleteProject,
   onImportProjectFiles,
   onAddProjectFileToCanvas,
 }: ProjectSidebarProps) {
@@ -56,11 +58,11 @@ export function ProjectSidebar({
     }
   }
 
-  const toggleProjectFolder = (projectRef: string) => {
+  const setProjectFolderExpanded = (projectRef: string, expanded: boolean) => {
     setExpandedProjectRefs((current) => {
       const next = new Set(current)
-      if (next.has(projectRef)) next.delete(projectRef)
-      else next.add(projectRef)
+      if (expanded) next.add(projectRef)
+      else next.delete(projectRef)
       return next
     })
   }
@@ -113,8 +115,9 @@ export function ProjectSidebar({
       <ProjectFoldersPanel
         state={state}
         expandedProjectRefs={expandedProjectRefs}
-        onToggleProjectFolder={toggleProjectFolder}
+        onSetProjectFolderExpanded={setProjectFolderExpanded}
         onOpenProject={onOpenProject}
+        onDeleteProject={onDeleteProject}
         onImportProjectFiles={onImportProjectFiles}
         onAddProjectFileToCanvas={onAddProjectFileToCanvas}
       />
@@ -125,8 +128,9 @@ export function ProjectSidebar({
 type ProjectFoldersPanelProps = {
   state: ProjectSidebarState
   expandedProjectRefs: Set<string>
-  onToggleProjectFolder: (projectRef: string) => void
+  onSetProjectFolderExpanded: (projectRef: string, expanded: boolean) => void
   onOpenProject: (projectRef: string) => Promise<void>
+  onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
 }
@@ -134,8 +138,9 @@ type ProjectFoldersPanelProps = {
 function ProjectFoldersPanel({
   state,
   expandedProjectRefs,
-  onToggleProjectFolder,
+  onSetProjectFolderExpanded,
   onOpenProject,
+  onDeleteProject,
   onImportProjectFiles,
   onAddProjectFileToCanvas,
 }: ProjectFoldersPanelProps) {
@@ -157,8 +162,9 @@ function ProjectFoldersPanel({
               projectFiles={project.projectRef === state.activeProjectRef ? state.projectFiles : []}
               persistence={state.persistence}
               validation={state.validation}
-              onToggleProjectFolder={onToggleProjectFolder}
+              onSetProjectFolderExpanded={onSetProjectFolderExpanded}
               onOpenProject={onOpenProject}
+              onDeleteProject={onDeleteProject}
               onImportProjectFiles={onImportProjectFiles}
               onAddProjectFileToCanvas={onAddProjectFileToCanvas}
             />
@@ -177,8 +183,9 @@ type ProjectFolderProps = {
   projectFiles: ProjectFileEntry[]
   persistence: ProjectSidebarState["persistence"]
   validation: ProjectSidebarState["validation"]
-  onToggleProjectFolder: (projectRef: string) => void
+  onSetProjectFolderExpanded: (projectRef: string, expanded: boolean) => void
   onOpenProject: (projectRef: string) => Promise<void>
+  onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
 }
@@ -191,14 +198,20 @@ function ProjectFolder({
   projectFiles,
   persistence,
   validation,
-  onToggleProjectFolder,
+  onSetProjectFolderExpanded,
   onOpenProject,
+  onDeleteProject,
   onImportProjectFiles,
   onAddProjectFileToCanvas,
 }: ProjectFolderProps) {
   const { t } = useI18n()
   const fileCount = projectFiles.length
   const projectAlerts = active ? projectFolderAlerts(persistence, validation, t) : []
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    if (isBusy) setMenuOpen(false)
+  }, [isBusy])
 
   const handleDragOver = (event: DragEvent<HTMLLIElement>) => {
     if (event.dataTransfer.files.length === 0) return
@@ -213,9 +226,27 @@ function ProjectFolder({
     void onImportProjectFiles(project.projectRef, files)
   }
 
+  const handleProjectClick = () => {
+    setMenuOpen(false)
+    if (active) {
+      onSetProjectFolderExpanded(project.projectRef, !expanded)
+      return
+    }
+    onSetProjectFolderExpanded(project.projectRef, true)
+    void onOpenProject(project.projectRef)
+  }
+
+  const handleDeleteProject = () => {
+    setMenuOpen(false)
+    if (!window.confirm(t("projectSidebar.projectFiles.confirmDeleteProject", { name: project.name }))) {
+      return
+    }
+    void onDeleteProject(project.projectRef)
+  }
+
   return (
     <li
-      className={`project-folder ${active ? "project-folder--active" : ""}`}
+      className={`project-folder ${active ? "project-folder--active" : ""} ${expanded ? "project-folder--expanded" : ""} ${menuOpen ? "project-folder--menu-open" : ""}`}
       role="treeitem"
       aria-expanded={expanded}
       onDragOver={handleDragOver}
@@ -224,20 +255,13 @@ function ProjectFolder({
       <div className="project-folder-row">
         <button
           type="button"
-          className="project-folder-toggle"
-          onClick={() => onToggleProjectFolder(project.projectRef)}
-          aria-label={t("projectSidebar.projectFiles.toggleFolder", { name: project.name })}
-          aria-expanded={expanded}
-        >
-          <ChevronRight size={15} />
-        </button>
-        <button
-          type="button"
           className="project-folder-main"
-          onClick={() => onOpenProject(project.projectRef)}
+          onClick={handleProjectClick}
           aria-current={active ? "true" : undefined}
+          aria-expanded={expanded}
           disabled={isBusy}
         >
+          <ChevronRight size={14} className="project-folder-disclosure" aria-hidden="true" />
           <FolderOpen size={17} />
           <span>
             <strong>{project.name}</strong>
@@ -248,36 +272,56 @@ function ProjectFolder({
             </small>
           </span>
         </button>
-        <button
-          type="button"
-          className="project-folder-import-button"
-          onClick={() => void onImportProjectFiles(project.projectRef)}
-          disabled={isBusy}
-          title={t("projectSidebar.projectFiles.importInto", { name: project.name })}
-          aria-label={t("projectSidebar.projectFiles.importInto", { name: project.name })}
-        >
-          <Plus size={15} />
-        </button>
+        <div className={`project-folder-actions ${menuOpen ? "project-folder-actions--open" : ""}`}>
+          <div className="project-folder-more">
+            <button
+              type="button"
+              className="project-folder-more-button"
+              onClick={() => setMenuOpen((current) => !current)}
+              disabled={isBusy}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label={t("projectSidebar.projectFiles.moreActions", { name: project.name })}
+              title={t("projectSidebar.projectFiles.moreActions", { name: project.name })}
+            >
+              <MoreVertical size={15} />
+            </button>
+            {menuOpen ? (
+              <div className="project-folder-menu" role="menu">
+                <button
+                  type="button"
+                  className="project-folder-menu-item project-folder-menu-item--danger"
+                  role="menuitem"
+                  onClick={handleDeleteProject}
+                >
+                  <Trash2 size={15} />
+                  <span>{t("projectSidebar.projectFiles.deleteProject")}</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="project-folder-import-button"
+            onClick={() => void onImportProjectFiles(project.projectRef)}
+            disabled={isBusy}
+            title={t("projectSidebar.projectFiles.importInto", { name: project.name })}
+            aria-label={t("projectSidebar.projectFiles.importInto", { name: project.name })}
+          >
+            <Plus size={15} />
+          </button>
+        </div>
       </div>
-      {expanded ? (
+      {expanded && active && (projectAlerts.length > 0 || fileCount > 0) ? (
         <div className="project-folder-contents" role="group">
-          {active ? (
-            <>
-              {projectAlerts.length > 0 ? <ProjectAlerts alerts={projectAlerts} /> : null}
-              {fileCount === 0 ? (
-                <p className="project-files-empty">{t("projectSidebar.projectFiles.empty")}</p>
-              ) : (
-                <ul className="project-file-list" role="group">
-                  {projectFiles.map((file) => (
-                    <ProjectFileRow key={file.id} file={file} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
-                  ))}
-                </ul>
-              )}
-            </>
-          ) : (
-            <p className="project-files-empty">{t("projectSidebar.projectFiles.openFolderHint")}</p>
-          )}
-          <p className="project-folder-drop-hint">{t("projectSidebar.projectFiles.dropHint")}</p>
+          {projectAlerts.length > 0 ? <ProjectAlerts alerts={projectAlerts} /> : null}
+          {fileCount > 0 ? (
+            <ul className="project-file-list" role="group">
+              {projectFiles.map((file) => (
+                <ProjectFileRow key={file.id} file={file} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
     </li>
@@ -291,11 +335,28 @@ type ProjectFileRowProps = {
 function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps) {
   const { t } = useI18n()
   const draggable = isDraggableRawProjectFile(file)
+  const kindBadge = projectFileKindBadge(file.kind)
+  const kindLabel = t(projectFileKindLabelKey(file.kind))
+  const compactBadges = projectFileCompactBadges(file, t)
+  const handleActivateFile = () => {
+    if (!draggable) return
+    void onAddProjectFileToCanvas(file)
+  }
+  const handleKeyDown = (event: KeyboardEvent<HTMLLIElement>) => {
+    if (!draggable || (event.key !== "Enter" && event.key !== " ")) return
+    event.preventDefault()
+    handleActivateFile()
+  }
+
   return (
     <li
-      className={`project-file-card project-file-card--${file.status} ${draggable ? "project-file-card--draggable" : ""}`}
+      className={`project-file-card project-file-card--${file.status} ${draggable ? "project-file-card--interactive" : ""}`}
       role="treeitem"
       draggable={draggable}
+      tabIndex={draggable ? 0 : undefined}
+      aria-label={projectFileAriaLabel(file, kindLabel, compactBadges, t)}
+      onClick={handleActivateFile}
+      onKeyDown={handleKeyDown}
       onDragStart={draggable ? (event) => {
         event.dataTransfer.effectAllowed = "copy"
         event.dataTransfer.setData(graphRawFileDropMimeType, serializeGraphRawFileDropPayload({
@@ -305,45 +366,24 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps)
         }))
       } : undefined}
     >
-      <div className="project-file-title-row">
-        <span className="project-file-icon" aria-hidden="true">
-          <FileText size={16} />
+      <span
+        className={`project-file-kind-badge project-file-kind-badge--${kindBadge.className}`}
+        title={kindLabel}
+        aria-hidden="true"
+      >
+        {kindBadge.label}
+      </span>
+      <span className="project-file-title">
+        <strong title={file.name}>{file.name}</strong>
+      </span>
+      {compactBadges.length > 0 ? (
+        <span className="project-file-compact-meta" aria-hidden="true">
+          {compactBadges.map((badge) => (
+            <span key={badge.id} className={`project-file-compact-badge project-file-compact-badge--${badge.tone}`}>
+              {badge.label}
+            </span>
+          ))}
         </span>
-        <span className="project-file-title">
-          <strong title={file.name}>{file.name}</strong>
-          <small>{projectFileTreeHint(file, t)}</small>
-        </span>
-      </div>
-      <div className="project-file-meta-row">
-        <span>{t(projectFileKindLabelKey(file.kind))}</span>
-        <span className={`project-file-status project-file-status--${file.status}`}>
-          {t(projectFileStatusLabelKey(file.status))}
-        </span>
-        {typeof file.byteSize === "number" ? (
-          <span>{formatFileByteSize(file.byteSize)}</span>
-        ) : null}
-      </div>
-      {projectFileUsageCount(file) > 0 ? (
-        <div className="project-file-usage-row">
-          {projectFileUsageSummary(file, t)}
-        </div>
-      ) : null}
-      {draggable ? (
-        <button
-          type="button"
-          className="project-file-add-button"
-          aria-label={t("projectSidebar.projectFiles.addToCanvas")}
-          title={t("projectSidebar.projectFiles.addToCanvas")}
-          onClick={() => void onAddProjectFileToCanvas(file)}
-        >
-          <Upload size={15} />
-          <span className="visually-hidden">{t("projectSidebar.projectFiles.addToCanvas")}</span>
-        </button>
-      ) : null}
-      {file.warnings.length > 0 ? (
-        <div className="project-file-warning-row" role="status">
-          {t("projectSidebar.projectFiles.warningCount", { count: file.warnings.length })}
-        </div>
       ) : null}
     </li>
   )
@@ -353,29 +393,56 @@ function isDraggableRawProjectFile(file: ProjectFileEntry): boolean {
   return file.path.startsWith("inputs/raw/") && file.kind !== "export-artifact"
 }
 
-function projectFileUsageCount(file: ProjectFileEntry): number {
-  return file.graphNodeIds.length || file.registeredObjectIds.length || file.artifactIds.length
+type ProjectFileCompactBadge = {
+  id: string
+  label: string
+  tone: "neutral" | "success" | "warning" | "error"
 }
 
-function projectFileTreeHint(file: ProjectFileEntry, t: Translate): string {
-  if (file.status === "used-in-graph" && file.graphNodeIds.length > 0) {
-    return t("projectSidebar.projectFiles.hint.usedInGraph", { count: file.graphNodeIds.length })
-  }
-  if (file.status === "registered" && file.registeredObjectIds.length > 0) {
-    return t("projectSidebar.projectFiles.hint.registered", { count: file.registeredObjectIds.length })
-  }
-  if (file.status === "previewed") return t("projectSidebar.projectFiles.hint.previewed")
-  return t("projectSidebar.projectFiles.hint.drag")
-}
+function projectFileCompactBadges(file: ProjectFileEntry, t: Translate): ProjectFileCompactBadge[] {
+  const badges: ProjectFileCompactBadge[] = []
 
-function projectFileUsageSummary(file: ProjectFileEntry, t: Translate): string {
   if (file.graphNodeIds.length > 0) {
-    return t("projectSidebar.projectFiles.usage.graphNodes", { count: file.graphNodeIds.length })
+    badges.push({
+      id: "graph-nodes",
+      label: t("projectSidebar.projectFiles.compact.inGraph"),
+      tone: "success",
+    })
+  } else if (file.registeredObjectIds.length > 0) {
+    badges.push({
+      id: "registered-objects",
+      label: t("projectSidebar.projectFiles.compact.parsed"),
+      tone: "success",
+    })
+  } else if (file.artifactIds.length > 0) {
+    badges.push({
+      id: "artifacts",
+      label: t("projectSidebar.projectFiles.compact.artifacts", { count: file.artifactIds.length }),
+      tone: "neutral",
+    })
+  } else if (file.status !== "stored") {
+    badges.push({
+      id: "status",
+      label: t(projectFileStatusLabelKey(file.status)),
+      tone: file.status === "error" ? "error" : "neutral",
+    })
   }
-  if (file.registeredObjectIds.length > 0) {
-    return t("projectSidebar.projectFiles.usage.objects", { count: file.registeredObjectIds.length })
-  }
-  return t("projectSidebar.projectFiles.usage.artifacts", { count: file.artifactIds.length })
+
+  return badges
+}
+
+function projectFileAriaLabel(
+  file: ProjectFileEntry,
+  kindLabel: string,
+  badges: ProjectFileCompactBadge[],
+  t: Translate,
+): string {
+  return [
+    file.name,
+    kindLabel,
+    t(projectFileStatusLabelKey(file.status)),
+    ...badges.map((badge) => badge.label),
+  ].join(", ")
 }
 
 type ProjectAlert = {
@@ -403,13 +470,6 @@ function ProjectAlerts({ alerts }: { alerts: ProjectAlert[] }) {
   )
 }
 
-function formatFileByteSize(byteSize: number): string {
-  if (byteSize < 1024) return `${byteSize} B`
-  const kib = byteSize / 1024
-  if (kib < 1024) return `${kib.toFixed(1)} KiB`
-  return `${(kib / 1024).toFixed(1)} MiB`
-}
-
 function formatProjectUpdatedAt(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -418,6 +478,16 @@ function formatProjectUpdatedAt(value: string): string {
     month: "short",
     day: "numeric",
   })
+}
+
+function projectFileKindBadge(kind: ProjectFileKind): { className: string; label: string } {
+  if (kind === "gaussian-log") return { className: "gaussian-log", label: "G" }
+  if (kind === "orca-output") return { className: "orca-output", label: "O" }
+  if (kind === "maple-output") return { className: "maple-output", label: "M" }
+  if (kind === "xyz") return { className: "xyz", label: "XYZ" }
+  if (kind === "extxyz") return { className: "extxyz", label: "X" }
+  if (kind === "export-artifact") return { className: "export-artifact", label: "E" }
+  return { className: "unknown", label: "?" }
 }
 
 function projectFileKindLabelKey(kind: ProjectFileKind): MessageKey {

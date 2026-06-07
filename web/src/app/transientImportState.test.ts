@@ -3,6 +3,7 @@ import {
   importPreviewArgs,
   importPreviewArgsFromFiles,
   initialTransientImportState,
+  mergeRegisteredObjects,
 } from "./transientImportState"
 
 describe("transientImportState", () => {
@@ -145,5 +146,37 @@ describe("transientImportState", () => {
         filename: "sample.log",
       }),
     ])
+  })
+
+  it("replaces stale registered object summaries when the same source is parsed again", () => {
+    const merged = mergeRegisteredObjects([
+      {
+        id: "object-imported-bfix6-ts",
+        label: "Bfix6-ts.log",
+        geometry: [],
+      },
+      {
+        id: "object-unchanged",
+        label: "Other",
+        geometry: [],
+      },
+    ], [
+      {
+        id: "object-imported-bfix6-ts",
+        label: "Bfix6-ts.log",
+        geometry: [
+          { element: "Ni", x: 0, y: 0, z: 0, unit: "angstrom" },
+        ],
+      },
+    ])
+
+    expect(merged).toHaveLength(2)
+    expect(merged[0]).toMatchObject({
+      id: "object-imported-bfix6-ts",
+      geometry: [
+        { element: "Ni", x: 0, y: 0, z: 0, unit: "angstrom" },
+      ],
+    })
+    expect(merged[1]).toMatchObject({ id: "object-unchanged" })
   })
 })

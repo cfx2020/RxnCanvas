@@ -7,6 +7,12 @@ export type ConsoleIssue = {
   text: string
 }
 
+type WorkbenchTestWindow = Window & {
+  __rxnflowWorkbenchTest?: {
+    runFixture: () => Promise<void>
+  }
+}
+
 export function collectConsoleIssues(page: Page): ConsoleIssue[] {
   const issues: ConsoleIssue[] = []
   page.on("console", (message) => {
@@ -160,21 +166,20 @@ export async function createAndSaveBrowserProject(page: Page, name: string) {
   const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
   await page.getByLabel("Project name").fill(name)
   await page.getByRole("button", { name: "Create Project" }).click()
-  await expect(sidebar.getByRole("heading", { name })).toBeVisible()
-  await expect(sidebar.getByText("Persisted", { exact: true })).toBeVisible()
-  await expect(sidebar.getByText("Valid", { exact: true })).toBeVisible()
-  await expect(sidebar.getByText(/sha256:[a-f0-9]{64}/i)).toBeVisible()
-
-  await page.getByRole("button", { name: "Save Project" }).click()
-  await expect(sidebar.getByText(/Project content files are readable/)).toBeVisible()
+  await expect(sidebar.getByRole("button", { name: new RegExp(name) })).toBeVisible()
+  await waitForAutoSave(page)
 }
 
 export async function openBrowserProject(page: Page, name: string) {
   const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
   await sidebar.getByRole("button", { name: new RegExp(name) }).click()
-  await expect(sidebar.getByRole("heading", { name })).toBeVisible()
-  await expect(sidebar.getByText("Persisted", { exact: true })).toBeVisible()
-  await expect(sidebar.getByText("Valid", { exact: true })).toBeVisible()
+  await expect(sidebar.getByRole("button", { name: new RegExp(name) })).toBeVisible()
+  await waitForAutoSave(page)
+}
+
+export async function waitForAutoSave(page: Page) {
+  await page.waitForTimeout(900)
+  await expect(page.getByText("Saving project...")).toHaveCount(0)
 }
 
 export type BrowserBundleDownload = {
@@ -254,10 +259,13 @@ function invalidBundleSample(kind: InvalidBundleSampleKind): {
 }
 
 export async function runFixture(page: Page) {
-  await openAnalysisDockTab(page, "Diagnostics")
-  await page.getByRole("button", { name: "Fixture Run" }).click()
-  await expect(page.getByText("graph-a-b").first()).toBeVisible()
+  await page.evaluate(async () => {
+    const api = (window as WorkbenchTestWindow).__rxnflowWorkbenchTest
+    if (!api) throw new Error("Workbench test API is not available.")
+    await api.runFixture()
+  })
   await expect(page.getByRole("region", { name: "Graph Canvas" })).toBeVisible()
+  await expect(page.getByRole("button", { name: /node-a/i })).toBeVisible()
   await openAnalysisDockTab(page, "Object")
   await expect(page.getByRole("region", { name: "Object Registry" })).toBeVisible()
   await openAnalysisDockTab(page, "PES")
@@ -675,9 +683,8 @@ export async function saveReloadAndRestoreGraphWorkspace(page: Page, projectName
 
   await selectGraphPathById(graphCanvas, "path-a-b")
 
-  await page.getByRole("button", { name: "Save Project" }).click()
+  await waitForAutoSave(page)
   await openProjectRail(page)
-  await expect(sidebar.getByText("Project content files are readable.")).toBeVisible()
 
   await page.reload({ waitUntil: "networkidle" })
   await openWorkbench(page)

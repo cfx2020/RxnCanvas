@@ -31,6 +31,7 @@ import {
   runFixture,
   saveReloadAndRestoreGraphWorkspace,
   nudgeFixtureNodeWithHistory,
+  waitForAutoSave,
 } from "./workbench-helpers"
 
 test.describe("RxnFlow Web Workbench E2E", () => {
@@ -114,9 +115,8 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await createAndSaveBrowserProject(page, projectName)
     await runFixture(page)
     await importSourcesToCanvas(page)
-    await page.getByRole("button", { name: "Save Project" }).click()
+    await waitForAutoSave(page)
     await openProjectRail(page)
-    await expect(page.getByText("Project content files are readable.")).toBeVisible()
 
     await page.reload({ waitUntil: "networkidle" })
     await openWorkbench(page)

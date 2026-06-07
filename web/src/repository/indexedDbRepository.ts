@@ -77,6 +77,22 @@ export class IndexedDbBrowserProjectRepository implements BrowserProjectReposito
     }
   }
 
+  async deleteProject(projectRef: string): Promise<void> {
+    const safeProjectRef = validateBrowserProjectRef(projectRef)
+
+    const db = await this.openDatabase()
+    try {
+      const transaction = db.transaction([projectStoreName, objectStoreName], "readwrite")
+      transaction.objectStore(projectStoreName).delete(safeProjectRef)
+      await deleteProjectObjectRecords(transaction.objectStore(objectStoreName), safeProjectRef)
+      await transactionDone(transaction)
+    } catch (error) {
+      throw mapStorageError(error)
+    } finally {
+      db.close()
+    }
+  }
+
   async readObject(projectRef: string, path: string): Promise<BrowserStorageObject> {
     const record = await this.getObjectRecord(projectRef, path)
     if (!record) {
@@ -243,6 +259,23 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
     transaction.oncomplete = () => resolve()
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
+  })
+}
+
+function deleteProjectObjectRecords(store: IDBObjectStore, projectRef: string): Promise<void> {
+  const index = store.index(objectProjectRefIndex)
+  return new Promise((resolve, reject) => {
+    const request = index.openCursor(IDBKeyRange.only(projectRef))
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        resolve()
+        return
+      }
+      cursor.delete()
+      cursor.continue()
+    }
   })
 }
 

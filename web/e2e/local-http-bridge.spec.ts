@@ -10,9 +10,11 @@ import {
   openWorkbench,
   openAnalysisDockTab,
   openProjectRail,
+  runFixture,
   closeSourceTray,
   openSourceTray,
   resetWorkbenchStorage,
+  waitForAutoSave,
 } from "./workbench-helpers"
 
 test.describe("RxnFlow local-http bridge E2E", () => {
@@ -34,10 +36,10 @@ test.describe("RxnFlow local-http bridge E2E", () => {
     const projectName = `Local HTTP E2E ${Date.now()}`
     await createAndSaveBrowserProject(page, projectName)
     await expect(page.getByText(projectName).first()).toBeVisible()
-    await page.getByRole("button", { name: "Save Project" }).click()
-    await expect(page.getByText("Project content files are readable.")).toBeVisible()
+    await waitForAutoSave(page)
 
-    await page.getByRole("button", { name: "Fixture Run" }).click()
+    await runFixture(page)
+    await openProjectRail(page)
     await openAnalysisDockTab(page, "Object")
     const objectRegistry = page.getByRole("region", { name: "Object Registry" })
     await expect(objectRegistry.getByRole("button", { name: /Fixture A/ })).toBeVisible()
@@ -147,8 +149,7 @@ test.describe("RxnFlow local-http bridge E2E", () => {
 
     const sidebar = await openProjectRail(page)
     await expect(sidebar.getByRole("heading", { name: projectName })).toBeVisible()
-    await page.getByRole("button", { name: "Save Project" }).click()
-    await expect(sidebar.getByText("Project content files are readable.")).toBeVisible()
+    await waitForAutoSave(page)
 
     await page.reload({ waitUntil: "networkidle" })
     await openWorkbench(page)

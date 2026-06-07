@@ -15,6 +15,7 @@ import type {
   ObjectSummary,
   WorkspaceSummary,
 } from "../shell"
+import { firstUserFacingName, graphNodeDisplayName, graphPathDisplayName, objectDisplayName, userFacingText, warningTargetDisplay } from "./displayNames"
 import { useI18n } from "./i18n"
 
 export type EnergyPanelOptions = {
@@ -91,11 +92,24 @@ export function EnergyProfilePanel({
     activeNodeId: null,
     pinnedNodeId: null,
   })
+  const objectById = useMemo(() => new Map(objects.map((object) => [object.id, object])), [objects])
+  const graphNodes = workspace?.graph.nodes ?? []
+  const nodeLabelById = useMemo(
+    () => new Map(graphNodes.map((node) => [node.id, graphNodeDisplayName(node, objectById)])),
+    [graphNodes, objectById],
+  )
   const paths = workspace?.graph.paths ?? []
+  const pathLabelById = useMemo(
+    () => new Map(paths.map((path) => [path.id, graphPathDisplayName(path, nodeLabelById)])),
+    [nodeLabelById, paths],
+  )
   const selectedPath = paths.find((path) => path.id === options.pathId)
   const baselineNodeIds = selectedPath?.node_ids ?? []
   const energyChannelOptions = energyChannelOptionsFromObjects(objects)
-  const points = profile?.points.map(normalizeEnergyPoint) ?? []
+  const points = useMemo(
+    () => profile?.points.map((point) => normalizeEnergyPoint(point, nodeLabelById)) ?? [],
+    [nodeLabelById, profile],
+  )
   const pointViews = useMemo(
     () => points.map((point, index) => {
       const previousPoint = index > 0 ? points[index - 1] : undefined
@@ -138,7 +152,7 @@ export function EnergyProfilePanel({
       <div className="energy-panel-header">
         <div>
           <p className="section-kicker">{t("energyPanel.section")}</p>
-          <h2>{profile?.id ?? t("energyPanel.noProfile")}</h2>
+          <h2>{profile ? t("energyPanel.profileReady") : t("energyPanel.noProfile")}</h2>
         </div>
         <span className="energy-unit-badge">{profile?.output_unit ?? options.outputUnit}</span>
       </div>
@@ -156,7 +170,7 @@ export function EnergyProfilePanel({
             ) : null}
             {paths.map((path) => (
               <option key={path.id} value={path.id}>
-                {path.id}
+                {pathLabelById.get(path.id) ?? t("energyPanel.path")}
               </option>
             ))}
           </select>
@@ -232,7 +246,7 @@ export function EnergyProfilePanel({
             <option value="">{t("energyPanel.defaultBaseline")}</option>
             {baselineNodeIds.map((nodeId) => (
               <option key={nodeId} value={nodeId}>
-                {nodeId}
+                {nodeLabelById.get(nodeId) ?? t("energyPanel.structure")}
               </option>
             ))}
           </select>
@@ -281,7 +295,7 @@ export function EnergyProfilePanel({
               type="text"
               value={options.correctionIds}
               onChange={(event) => onOptionsChange({ ...options, correctionIds: event.currentTarget.value })}
-              placeholder="corr-a, corr-b"
+              placeholder="solvation-a, resonance-b"
             />
           </label>
         ) : null}
@@ -300,9 +314,9 @@ export function EnergyProfilePanel({
       </div>
 
       <div className="energy-profile-summary">
-        <SummaryValue label={t("energyPanel.profile")} value={profile?.id} />
-        <SummaryValue label={t("energyPanel.path")} value={profile?.path_id ?? options.pathId} />
-        <SummaryValue label={t("energyPanel.baseline")} value={profile?.baseline_node_id} />
+        <SummaryValue label={t("energyPanel.profile")} value={profile ? t("energyPanel.profileReady") : t("energyPanel.noProfile")} />
+        <SummaryValue label={t("energyPanel.path")} value={pathLabelById.get(profile?.path_id ?? options.pathId)} />
+        <SummaryValue label={t("energyPanel.baseline")} value={profile?.baseline_node_id ? nodeLabelById.get(profile.baseline_node_id) : t("energyPanel.defaultBaseline")} />
         <SummaryValue label={t("energyPanel.points")} value={profile?.point_count} />
       </div>
 
@@ -321,7 +335,7 @@ export function EnergyProfilePanel({
             onPreviewPoint={previewPoint}
             onSelectPoint={selectPoint}
           />
-          <EnergyExpressionDetails points={points} />
+          <EnergyExpressionDetails points={points} objectById={objectById} />
         </>
       ) : (
         <div className="energy-empty-state">
@@ -338,7 +352,7 @@ export function EnergyProfilePanel({
             <p key={`${warning.code}-${warning.target ?? "target"}-${index}`}>
               <code>{warning.code}</code>
               <span>{warning.message}</span>
-              {warning.target ? <small>{warning.target}</small> : null}
+              {warningTargetDisplay(warning) ? <small>{warningTargetDisplay(warning)}</small> : null}
             </p>
           ))}
         </div>
@@ -412,7 +426,6 @@ function EnergyTable({
           <tr>
             <th>{t("energyPanel.pointStatus")}</th>
             <th>{t("energyPanel.structure")}</th>
-            <th>{t("energyPanel.node")}</th>
             <th>{t("energyPanel.relative")}</th>
             <th>{t("energyPanel.stepDelta")}</th>
             <th>{t("energyPanel.unit")}</th>
@@ -440,7 +453,6 @@ function EnergyTable({
                 </button>
               </td>
               <td>{point.label}</td>
-              <td><code>{point.nodeId}</code></td>
               <td>{point.value === undefined ? "" : formatEnergy(point.value)}</td>
               <td>{point.stepDelta === undefined ? "" : formatEnergy(point.stepDelta)}</td>
               <td>{point.unit ?? ""}</td>
@@ -476,7 +488,6 @@ function CurvePointDetail({ point }: { point?: EnergyCurvePointView }) {
       <header>
         <span>{t("energyPanel.pointDetail")}</span>
         <strong>{point.label}</strong>
-        <code>{point.nodeId}</code>
       </header>
       <dl>
         <div>
@@ -516,7 +527,13 @@ function CurvePointDetail({ point }: { point?: EnergyCurvePointView }) {
   )
 }
 
-function EnergyExpressionDetails({ points }: { points: NormalizedEnergyPoint[] }) {
+function EnergyExpressionDetails({
+  points,
+  objectById,
+}: {
+  points: NormalizedEnergyPoint[]
+  objectById: Map<string, ObjectSummary>
+}) {
   const { t } = useI18n()
   const pointsWithExpression = points.filter((point) => point.expression)
   if (pointsWithExpression.length === 0) return null
@@ -528,7 +545,6 @@ function EnergyExpressionDetails({ points }: { points: NormalizedEnergyPoint[] }
         <article key={point.nodeId} className="energy-expression-card">
           <header>
             <span>{point.label}</span>
-            <code>{point.nodeId}</code>
             <small>{formatEnergyValue(point.expression?.total)}</small>
           </header>
           {point.expression?.terms.length ? (
@@ -537,7 +553,7 @@ function EnergyExpressionDetails({ points }: { points: NormalizedEnergyPoint[] }
               components={point.expression.terms}
               renderComponent={(component) => (
                 <>
-                  <code>{component.object_label ?? component.object_id}</code>
+                  <code>{expressionObjectName(component.object_label, component.object_id, objectById)}</code>
                   <span>{t("energyPanel.coefficient")} {formatCoefficient(component.coefficient)}</span>
                   <span>{component.energy_key} · {component.energy_source}</span>
                   <strong>{formatEnergyValue(component.contribution)}</strong>
@@ -551,8 +567,8 @@ function EnergyExpressionDetails({ points }: { points: NormalizedEnergyPoint[] }
               components={point.expression.corrections}
               renderComponent={(component) => (
                 <>
-                  <code>{component.correction_id}</code>
-                  <span>{component.kind}</span>
+                  <code>{component.kind}</code>
+                  <span>{expressionObjectName(null, component.object_id, objectById)}</span>
                   <span>{t("energyPanel.coefficient")} {formatCoefficient(component.coefficient)}</span>
                   <strong>{formatEnergyValue(component.contribution)}</strong>
                 </>
@@ -560,7 +576,7 @@ function EnergyExpressionDetails({ points }: { points: NormalizedEnergyPoint[] }
             />
           ) : null}
           {point.expression?.missing.length ? (
-            <ExpressionMissingList missing={point.expression.missing} />
+            <ExpressionMissingList missing={point.expression.missing} objectById={objectById} />
           ) : null}
         </article>
       ))}
@@ -589,7 +605,13 @@ function ExpressionComponentList<TComponent extends EnergyComponentSummary | Cor
   )
 }
 
-function ExpressionMissingList({ missing }: { missing: EnergyExpressionMissingSummary[] }) {
+function ExpressionMissingList({
+  missing,
+  objectById,
+}: {
+  missing: EnergyExpressionMissingSummary[]
+  objectById: Map<string, ObjectSummary>
+}) {
   const { t } = useI18n()
   return (
     <div className="energy-expression-block missing">
@@ -597,7 +619,7 @@ function ExpressionMissingList({ missing }: { missing: EnergyExpressionMissingSu
       {missing.map((item, index) => (
         <p key={`${item.code}-${index}`}>
           <code>{item.code}</code>
-          {item.object_id ? <span>{item.object_id}</span> : null}
+          {item.object_id ? <span>{expressionObjectName(null, item.object_id, objectById)}</span> : null}
           {item.energy_key ? <span>{item.energy_key}</span> : null}
           {item.energy_source ? <span>{item.energy_source}</span> : null}
           <strong>{item.message}</strong>
@@ -664,7 +686,7 @@ function EnergyCurvePreview({
             key={point.nodeId}
             role="button"
             tabIndex={0}
-            aria-label={`${point.label} ${point.nodeId} ${pointStatusLabel(point.status, t)}`}
+            aria-label={`${point.label} ${pointStatusLabel(point.status, t)}`}
             className={markerClasses}
             onMouseEnter={() => onPreviewPoint(point.nodeId)}
             onMouseLeave={() => onPreviewPoint(null)}
@@ -692,12 +714,20 @@ function EnergyCurvePreview({
   )
 }
 
-function normalizeEnergyPoint(point: EnergyProfilePointSummary): NormalizedEnergyPoint {
+function normalizeEnergyPoint(
+  point: EnergyProfilePointSummary,
+  nodeLabelById: Map<string, string>,
+): NormalizedEnergyPoint {
+  const label = firstUserFacingName([
+    nodeLabelById.get(point.node_id),
+    point.label,
+    point.node_id,
+  ])
   const relative = point.relative_energy
   if (typeof relative === "number") {
     return {
       nodeId: point.node_id,
-      label: point.label,
+      label,
       value: relative,
       unit: point.unit ?? undefined,
       missingReason: point.missing_reason ?? undefined,
@@ -708,13 +738,25 @@ function normalizeEnergyPoint(point: EnergyProfilePointSummary): NormalizedEnerg
   const valueSummary = isEnergyValueSummary(relative) ? relative : undefined
   return {
     nodeId: point.node_id,
-    label: point.label,
+    label,
     value: valueSummary?.value,
     unit: valueSummary?.unit ?? point.unit ?? undefined,
     missingReason: point.missing_reason ?? undefined,
     expression: point.expression,
     warnings: point.warnings ?? [],
   }
+}
+
+function expressionObjectName(
+  label: string | null | undefined,
+  objectId: string,
+  objectById: Map<string, ObjectSummary>,
+): string {
+  return firstUserFacingName([
+    label,
+    objectDisplayName(objectById.get(objectId), ""),
+    userFacingText(objectId),
+  ])
 }
 
 function isEnergyValueSummary(value: unknown): value is EnergyValueSummary {

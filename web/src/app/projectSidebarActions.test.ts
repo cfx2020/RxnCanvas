@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { MemoryBrowserProjectRepository } from "../repository"
-import { createProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
+import { createProject, deleteProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
 import {
   chemicalObjectsPath,
   projectContentIndexPath,
@@ -86,6 +86,38 @@ describe("project sidebar repository actions", () => {
       checksum: created.lastWrite?.checksum,
     })
     expect(opened.projectFiles).toEqual([])
+  })
+
+  it("deletes the active project and clears the active sidebar state", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const created = await createProject(repository, initialProjectSidebarState, "Delete Me")
+    const projectRef = created.activeProjectRef ?? ""
+
+    const deleted = await deleteProject(repository, created, projectRef)
+
+    expect(deleted.status).toBe("ready")
+    expect(deleted.projects).toEqual([])
+    expect(deleted.activeProject).toBeUndefined()
+    expect(deleted.activeProjectRef).toBeUndefined()
+    expect(deleted.persistence).toBe("empty")
+    expect(deleted.validation.state).toBe("unknown")
+    expect(deleted.bridge.state).toBe("idle")
+    await expect(repository.listProjects()).resolves.toEqual([])
+  })
+
+  it("deletes an inactive project without clearing the active project", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const active = await createProject(repository, initialProjectSidebarState, "Keep Me")
+    const inactiveProject = await repository.createProject({ name: "Delete Me" })
+
+    const deleted = await deleteProject(repository, active, inactiveProject.projectRef)
+
+    expect(deleted.status).toBe("ready")
+    expect(deleted.projects).toHaveLength(1)
+    expect(deleted.activeProjectRef).toBe(active.activeProjectRef)
+    expect(deleted.activeProject?.name).toBe("Keep Me")
+    expect(deleted.persistence).toBe("persisted")
+    await expect(repository.listProjects()).resolves.toEqual([active.activeProject])
   })
 
   it("opens an existing project with projected raw files only", async () => {

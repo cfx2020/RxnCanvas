@@ -2431,6 +2431,7 @@ def _object_summary(obj: ChemicalObject) -> dict[str, Any]:
         "energy_channels": [_energy_channel_summary(channel) for channel in energy_channel_catalog((obj,))],
         "display_energy": _display_energy_summary(obj),
         "coordinate_preview": _coordinate_preview_summary(obj.geometry),
+        "geometry": _geometry_summary(obj.geometry),
         "correction_count": len(obj.corrections),
         "corrections": [_correction_summary(correction) for correction in obj.corrections],
         "provenance": (
@@ -2654,6 +2655,27 @@ def _coordinate_preview_summary(geometry: tuple[Any, ...]) -> dict[str, Any]:
         "elements": list(elements[:8]),
         "preview_kind": "text" if geometry else "unavailable",
     }
+
+
+def _geometry_summary(geometry: tuple[Any, ...]) -> list[dict[str, Any]]:
+    atoms: list[dict[str, Any]] = []
+    for atom in geometry:
+        element = getattr(atom, "element", None)
+        x = getattr(atom, "x", None)
+        y = getattr(atom, "y", None)
+        z = getattr(atom, "z", None)
+        if not isinstance(element, str):
+            continue
+        if not all(isinstance(value, (int, float)) for value in (x, y, z)):
+            continue
+        atoms.append({
+            "element": element,
+            "x": float(x),
+            "y": float(y),
+            "z": float(z),
+            "unit": getattr(atom, "unit", "angstrom"),
+        })
+    return atoms
 
 
 def _workspace_summary(workspace: WorkspaceSnapshot) -> dict[str, Any]:

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react"
 import { Check, GitBranch, Hand, LayoutDashboard, Link2, Maximize2, MousePointer2, Plus, Redo2, RotateCcw, Route, Trash2, Undo2, XCircle, ZoomIn, ZoomOut } from "lucide-react"
-import type { ParseCandidateSummary, ShellError, ShellWarning } from "../shell"
+import type { Atom3DSummary, ParseCandidateSummary, ShellError, ShellWarning } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
 import type { CanvasPoint, GraphEditorInteractionState, GraphEditorSelectionMode, PendingEdgeDraft } from "./graphEditorInteractionState"
 import {
@@ -13,6 +13,7 @@ import {
 import { createGraphLayoutPlan, type GraphLayoutPlan, type GraphLayoutWarning } from "./graphAutoLayout"
 import { graphObjectDragMimeType, parseGraphObjectDragPayload } from "./graphObjectDragPayload"
 import { graphRawFileDropMimeType, parseGraphRawFileDropPayload } from "./graphRawFileDropPayload"
+import { firstUserFacingName, graphNodeDisplayName, graphPathDisplayName, objectDisplayName, userFacingText, warningTargetDisplay } from "./displayNames"
 import {
   canvasPointToGraphNodePosition,
   graphNodeCssPosition,
@@ -44,6 +45,7 @@ import type { GraphPathOrderDraft } from "./graphPathOrderDraft"
 import type { CompositionDraftRow, CompositionDraftState } from "./compositionDraftState"
 import type { EdgeLabelDraftState } from "./edgeLabelDraftState"
 import { useI18n } from "./i18n"
+import { Molecule3DViewer } from "./Molecule3DViewer"
 
 export type AddObjectNodeRequest = {
   objectId?: string
@@ -109,25 +111,16 @@ export type ParseCandidateChooserState = {
 type CanvasChemicalNodeSummary = {
   nodeId: string
   structureName: string
-  objectIds: string[]
-  objectLabels: string[]
-  composition: Array<{ object_id: string; coefficient?: number }>
   formula?: string | null
   charge?: number | null
   spinMultiplicity?: number | null
-  method?: string | null
   displayEnergy?: {
     key: string
     source: string
     value?: number | null
     unit: string
   } | null
-  coordinatePreview?: {
-    atom_count: number
-    has3d: boolean
-    elements: string[]
-    preview_kind: string
-  } | null
+  geometry: Atom3DSummary[]
   warnings: ShellWarning[]
 }
 
@@ -268,6 +261,7 @@ export function GraphCanvas({
   const nodes = graph?.nodes ?? []
   const edges = graph?.edges ?? []
   const paths = graph?.paths ?? []
+  const objectById = new Map(state.objects.map((object) => [object.id, object]))
   const activeObject = state.objects.find((object) => object.id === activeObjectId) ?? state.objects[0]
   const selectionSize = interactionState.selection.nodeIds.length
     + interactionState.selection.edgeIds.length
@@ -283,6 +277,8 @@ export function GraphCanvas({
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId)
   const selectedEdgeSource = selectedEdge ? nodes.find((node) => node.id === edgeSource(selectedEdge)) : undefined
   const selectedEdgeTarget = selectedEdge ? nodes.find((node) => node.id === edgeTarget(selectedEdge)) : undefined
+  const selectedEdgeSourceLabel = graphNodeDisplayName(selectedEdgeSource, objectById, t("graphCanvas.none"))
+  const selectedEdgeTargetLabel = graphNodeDisplayName(selectedEdgeTarget, objectById, t("graphCanvas.none"))
   const selectedPathId = singleSelectedPathId
   const pendingConnectionFromId = interactionState.pendingEdge?.fromNodeId
   const graphReferences = {
@@ -638,14 +634,6 @@ export function GraphCanvas({
 
   return (
     <section className="graph-workspace" aria-label={t("graphCanvas.aria")} onKeyDown={handleKeyboardIntent}>
-      <div className="workspace-toolbar">
-        <div>
-          <p className="section-kicker">{t("graphCanvas.section")}</p>
-          <h2>{graph?.id ?? t("graphCanvas.awaiting")}</h2>
-        </div>
-        <span>{state.sessionId ?? t("graphCanvas.noSession")}</span>
-      </div>
-
       <div className="graph-command-bar" aria-label={t("graphCanvas.commands")}>
         <button type="button" onClick={onOpenWorkspace} disabled={!canUseWorkspace}>
           <GitBranch size={16} />
@@ -778,6 +766,7 @@ export function GraphCanvas({
                 <GraphEdgeLayer
                   nodes={nodes}
                   edges={edges}
+                  objectById={objectById}
                   selectedEdgeIds={selectedEdgeIds}
                   pendingEdge={interactionState.pendingEdge}
                   onSelectEdge={onSelectEdge}
@@ -842,12 +831,15 @@ export function GraphCanvas({
               <dd>{workspace?.preview.path_count ?? 0}</dd>
             </div>
           </dl>
-          <PreviewValue label={t("graphCanvas.activePath")} value={workspace?.active_path_id} />
+          <PreviewValue
+            label={t("graphCanvas.activePath")}
+            value={activePathDisplayName(workspace?.active_path_id, paths, nodes, objectById, t("graphCanvas.none"))}
+          />
           <PathAuthoringStatusNotice status={pathAuthoringStatus} />
           <EdgeLabelEditor
             edge={selectedEdge}
-            sourceLabel={selectedEdgeSource?.label}
-            targetLabel={selectedEdgeTarget?.label}
+            sourceLabel={selectedEdgeSourceLabel}
+            targetLabel={selectedEdgeTargetLabel}
             draft={edgeLabelDraft}
             pending={edgeLabelPending}
             error={edgeLabelError}
@@ -858,6 +850,8 @@ export function GraphCanvas({
           />
           <PathList
             paths={paths}
+            nodes={nodes}
+            objects={state.objects}
             activePathId={workspace?.active_path_id}
             selectedPathId={selectedPathId}
             selectedPathIds={selectedPathIds}
@@ -866,7 +860,11 @@ export function GraphCanvas({
             onMovePathDraftNode={onMovePathDraftNode}
             onApplyPathOrderDraft={onApplyPathOrderDraft}
           />
-          <PreviewWarnings disconnectedNodeIds={workspace?.preview.disconnected_node_ids ?? []} />
+          <PreviewWarnings
+            disconnectedNodeIds={workspace?.preview.disconnected_node_ids ?? []}
+            nodes={nodes}
+            objectById={objectById}
+          />
           <NodeCompositionEditor
             draft={compositionDraft}
             objects={state.objects}
@@ -914,7 +912,7 @@ function ParseCandidateChooser({
       </div>
       <div className="parse-candidate-chooser-source">
         <span>{t("graphCanvas.candidateChooser.file")}</span>
-        <code>{state.rawFilePath}</code>
+        <code>{userFacingText(state.rawFilePath) ?? state.rawFilePath}</code>
         <small>{t("graphCanvas.candidateChooser.count", { count: state.candidates.length })}</small>
       </div>
       <ul className="parse-candidate-list">
@@ -934,7 +932,6 @@ function ParseCandidateChooser({
                 />
                 <strong>{candidate.label}</strong>
               </label>
-              <code>{candidate.candidate_id}</code>
             </div>
             <dl className="parse-candidate-grid">
               <CandidateValue
@@ -979,7 +976,7 @@ function ParseCandidateChooser({
         <p className="parse-candidate-error" role="alert">
           <code>{state.error.code}</code>
           <span>{state.error.message}</span>
-          {state.error.target ? <small>{state.error.target}</small> : null}
+          {warningTargetDisplay(state.error) ? <small>{warningTargetDisplay(state.error)}</small> : null}
         </p>
       ) : null}
       <div className="parse-candidate-command-row">
@@ -1084,7 +1081,7 @@ function HistoryStatus({ controls }: { controls: GraphHistoryControls }) {
       <div className="graph-history-status graph-history-status--error" role="alert">
         <strong>{t("graphCanvas.historyError")}</strong>
         <span>{controls.error.message}</span>
-        {controls.error.target ? <small>{controls.error.target}</small> : null}
+        {warningTargetDisplay(controls.error) ? <small>{warningTargetDisplay(controls.error)}</small> : null}
       </div>
     )
   }
@@ -1492,30 +1489,37 @@ function GraphNodeButton({
         onClick={(event) => onClick(node.id, event)}
         aria-current={selected ? "true" : undefined}
       >
-        <span>{summary.structureName}</span>
-        <small>{summary.nodeId}</small>
-        <code>{formatCompositionSummary(summary.composition) || t("graphCanvas.noObject")}</code>
-        {summary.objectLabels.length > 0 ? <em>{summary.objectLabels.join(" + ")}</em> : null}
-        <span className="graph-node-detail-grid">
-          <GraphNodeDetail label={t("graphCanvas.node.formula")} value={summary.formula ?? t("graphCanvas.none")} />
-          <GraphNodeDetail label={t("graphCanvas.node.chargeSpin")} value={formatNodeChargeSpin(summary, t)} />
-          <GraphNodeDetail label={t("graphCanvas.node.method")} value={summary.method ?? t("graphCanvas.none")} />
-          <GraphNodeDetail label={t("graphCanvas.node.energy")} value={formatNodeDisplayEnergy(summary, t)} />
-          <GraphNodeDetail label={t("graphCanvas.node.atoms")} value={formatNodeCoordinatePreview(summary, t)} />
+        <span className="graph-node-title-row">
+          <span>{summary.structureName}</span>
+          {summary.warnings.length > 0 ? (
+            <span
+              className="graph-node-warning-dot"
+              title={t("graphCanvas.node.warningCount", { count: summary.warnings.length })}
+              aria-label={t("graphCanvas.node.warningCount", { count: summary.warnings.length })}
+            />
+          ) : null}
         </span>
-        {summary.warnings.length > 0 ? (
-          <span className="graph-node-warning-strip">
-            {summary.warnings.map((warning) => (
-              <code key={`${summary.nodeId}:${warning.code}:${warning.target ?? ""}`}>{warning.code}</code>
-            ))}
+        {summary.geometry.length > 0 ? (
+          <Molecule3DViewer atoms={summary.geometry} label={summary.structureName} />
+        ) : (
+          <span className="graph-node-structure-empty">{t("graphCanvas.node.noStructure")}</span>
+        )}
+        <span className="graph-node-metrics">
+          <GraphNodeDetail label={t("graphCanvas.node.energy")} value={formatNodeEnergyValue(summary, t)} />
+          <GraphNodeDetail label={t("graphCanvas.node.charge")} value={formatNullableNumber(summary.charge, t)} />
+          <GraphNodeDetail label={t("graphCanvas.node.spin")} value={formatNullableNumber(summary.spinMultiplicity, t)} />
+        </span>
+        {summary.formula ? (
+          <span className="graph-node-formula" title={summary.formula}>
+            {summary.formula}
           </span>
         ) : null}
       </button>
       <button
         type="button"
         className="graph-edge-connect-handle"
-        aria-label={t("graphCanvas.edgeHandle", { node: node.label })}
-        title={t("graphCanvas.edgeHandle", { node: node.label })}
+        aria-label={t("graphCanvas.edgeHandle", { node: summary.structureName })}
+        title={t("graphCanvas.edgeHandle", { node: summary.structureName })}
         data-graph-node-id={node.id}
         onPointerDown={(event) => onEdgeHandlePointerDown(node, event)}
         onPointerMove={(event) => onEdgeHandlePointerMove(event)}
@@ -1530,7 +1534,7 @@ function GraphNodeButton({
 
 function GraphNodeDetail({ label, value }: { label: string; value: string }) {
   return (
-    <span className="graph-node-detail-pill">
+    <span className="graph-node-metric-pill">
       <small>{label}</small>
       <b>{value}</b>
     </span>
@@ -1551,18 +1555,20 @@ function canvasChemicalNodeSummary(
     .map((objectId) => objectById.get(objectId))
     .filter((object): object is ObjectSummary => Boolean(object))
   const primaryObject = nodeObjects[0]
+  const structureName = firstUserFacingName([
+    primaryObject?.label,
+    node.label,
+    primaryObject?.source_file_id,
+    node.id,
+  ])
   return {
     nodeId: node.id,
-    structureName: node.label || primaryObject?.label || node.id,
-    objectIds,
-    objectLabels: nodeObjects.map((object) => object.label ?? object.id),
-    composition,
+    structureName,
     formula: summarizeNodeFormula(nodeObjects),
     charge: summarizeSharedNumber(nodeObjects.map((object) => object.charge)),
     spinMultiplicity: summarizeSharedNumber(nodeObjects.map((object) => object.spin_multiplicity)),
-    method: summarizeSharedString(nodeObjects.map((object) => object.method)),
     displayEnergy: summarizeNodeDisplayEnergy(nodeObjects),
-    coordinatePreview: summarizeNodeCoordinatePreview(nodeObjects),
+    geometry: summarizeNodeGeometry(nodeObjects),
     warnings: nodeObjects.flatMap((object) => object.warnings ?? []),
   }
 }
@@ -1583,12 +1589,6 @@ function summarizeSharedNumber(values: Array<number | null | undefined>): number
   const present = values.filter((value): value is number => typeof value === "number")
   if (present.length === 0) return null
   return present.every((value) => value === present[0]) ? present[0] : null
-}
-
-function summarizeSharedString(values: Array<string | null | undefined>): string | null {
-  const present = uniqueStrings(values.filter((value): value is string => Boolean(value)))
-  if (present.length === 0) return null
-  return present.length === 1 ? present[0] : present.join(" + ")
 }
 
 function summarizeNodeDisplayEnergy(objects: ObjectSummary[]): CanvasChemicalNodeSummary["displayEnergy"] {
@@ -1614,63 +1614,46 @@ function summarizeNodeDisplayEnergy(objects: ObjectSummary[]): CanvasChemicalNod
   return null
 }
 
-function summarizeNodeCoordinatePreview(objects: ObjectSummary[]): CanvasChemicalNodeSummary["coordinatePreview"] {
-  const previews = objects
-    .map((object) => object.coordinate_preview)
-    .filter((preview): preview is NonNullable<ObjectSummary["coordinate_preview"]> => Boolean(preview))
-    .filter((preview) => preview.preview_kind !== "unavailable")
-  if (previews.length === 0) return null
-  if (previews.length === 1) return previews[0]
-  return {
-    atom_count: previews.reduce((count, preview) => count + preview.atom_count, 0),
-    has3d: previews.some((preview) => preview.has3d),
-    elements: uniqueStrings(previews.flatMap((preview) => preview.elements)).slice(0, 5),
-    preview_kind: "text",
+function summarizeNodeGeometry(objects: ObjectSummary[]): Atom3DSummary[] {
+  for (const object of objects) {
+    const geometry = object.geometry?.filter(isRenderableAtom3D) ?? []
+    if (geometry.length > 0) return geometry
   }
+  return []
 }
 
-function formatNodeChargeSpin(
-  summary: CanvasChemicalNodeSummary,
-  t: ReturnType<typeof useI18n>["t"],
-): string {
-  const charge = summary.charge ?? t("graphCanvas.none")
-  const spin = summary.spinMultiplicity ?? t("graphCanvas.none")
-  return t("graphCanvas.node.chargeSpinValue", { charge, spin })
+function isRenderableAtom3D(atom: Atom3DSummary): atom is Atom3DSummary {
+  return Boolean(atom.element)
+    && Number.isFinite(atom.x)
+    && Number.isFinite(atom.y)
+    && Number.isFinite(atom.z)
 }
 
-function formatNodeDisplayEnergy(
+function formatNodeEnergyValue(
   summary: CanvasChemicalNodeSummary,
   t: ReturnType<typeof useI18n>["t"],
 ): string {
   const energy = summary.displayEnergy
   if (!energy) return t("graphCanvas.node.energyMissing")
-  if (typeof energy.value === "number") return `${energy.key} ${energy.value} ${energy.unit}`
-  return `${energy.key} · ${energy.unit}`
+  if (typeof energy.value === "number") return `${formatShortNumber(energy.value)} ${energy.unit}`
+  return energy.unit
 }
 
-function formatNodeCoordinatePreview(
-  summary: CanvasChemicalNodeSummary,
+function formatNullableNumber(
+  value: number | null | undefined,
   t: ReturnType<typeof useI18n>["t"],
 ): string {
-  const preview = summary.coordinatePreview
-  if (!preview || preview.preview_kind === "unavailable") return t("graphCanvas.node.coordinatesMissing")
-  const elements = preview.elements.length > 0 ? preview.elements.join(" ") : t("graphCanvas.none")
-  const dimensionality = preview.has3d ? t("graphCanvas.candidateChooser.has3d") : t("graphCanvas.candidateChooser.no3d")
-  return t("graphCanvas.candidateChooser.coordinateValue", {
-    count: preview.atom_count,
-    elements,
-    dimensionality,
-  })
+  return typeof value === "number" ? String(value) : t("graphCanvas.none")
+}
+
+function formatShortNumber(value: number): string {
+  if (!Number.isFinite(value)) return String(value)
+  if (Math.abs(value) >= 1000 || Math.abs(value) < 0.001) return value.toExponential(4)
+  return Number(value.toFixed(6)).toString()
 }
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)))
-}
-
-function formatCompositionSummary(composition: Array<{ object_id: string; coefficient?: number }>): string {
-  return composition
-    .map((term) => `${term.coefficient && term.coefficient !== 1 ? `${term.coefficient}*` : ""}${term.object_id}`)
-    .join(" + ")
 }
 
 function draggingNodePosition(
@@ -1694,12 +1677,14 @@ function isDraggingNode(interactionState: GraphEditorInteractionState, nodeId: s
 function GraphEdgeLayer({
   nodes,
   edges,
+  objectById,
   selectedEdgeIds,
   pendingEdge,
   onSelectEdge,
 }: {
   nodes: GraphNodeSummary[]
   edges: GraphEdgeSummary[]
+  objectById: Map<string, ObjectSummary>
   selectedEdgeIds: Set<string>
   pendingEdge?: PendingEdgeDraft | null
   onSelectEdge: (edgeId: string, mode?: GraphEditorSelectionMode) => void
@@ -1710,7 +1695,14 @@ function GraphEdgeLayer({
     if (!source || !target) return null
     const from = graphNodePosition(source)
     const to = graphNodePosition(target)
-    return { id: edge.id, from, to, sourceLabel: source.label, targetLabel: target.label, label: edge.label ?? null }
+    return {
+      id: edge.id,
+      from,
+      to,
+      sourceLabel: graphNodeDisplayName(source, objectById),
+      targetLabel: graphNodeDisplayName(target, objectById),
+      label: edge.label ?? null,
+    }
   }).filter(Boolean) as Array<{
     id: string
     from: { x: number; y: number }
@@ -1848,6 +1840,9 @@ function EdgeLabelEditor({
 }) {
   const { t } = useI18n()
   const disabled = !edge || !draft.edgeId || pending
+  const edgeName = edge
+    ? firstUserFacingName([edge.label, sourceLabel && targetLabel ? `${sourceLabel} -> ${targetLabel}` : null], t("graphCanvas.none"))
+    : t("graphCanvas.none")
   return (
     <form
       className="edge-label-editor"
@@ -1860,7 +1855,7 @@ function EdgeLabelEditor({
       <div className="edge-label-editor-header">
         <div>
           <span>{t("edgeLabelEditor.title")}</span>
-          <code>{edge?.id ?? t("graphCanvas.none")}</code>
+          <code>{edgeName}</code>
         </div>
         <small>{draft.dirty ? t("edgeLabelEditor.dirty") : t("edgeLabelEditor.clean")}</small>
       </div>
@@ -1891,7 +1886,7 @@ function EdgeLabelEditor({
         <p className="edge-label-error">
           <code>{error.code}</code>
           <span>{error.message}</span>
-          {error.target ? <small>{error.target}</small> : null}
+          {warningTargetDisplay(error) ? <small>{warningTargetDisplay(error)}</small> : null}
         </p>
       ) : null}
 
@@ -1935,6 +1930,8 @@ function PreviewValue({ label, value }: { label: string; value?: string | null }
 
 function PathList({
   paths,
+  nodes,
+  objects,
   activePathId,
   selectedPathId,
   selectedPathIds,
@@ -1944,6 +1941,8 @@ function PathList({
   onApplyPathOrderDraft,
 }: {
   paths: GraphPathSummary[]
+  nodes: GraphNodeSummary[]
+  objects: ObjectSummary[]
   activePathId?: string | null
   selectedPathId?: string
   selectedPathIds: Set<string>
@@ -1953,6 +1952,8 @@ function PathList({
   onApplyPathOrderDraft: () => void
 }) {
   const { t } = useI18n()
+  const objectById = new Map(objects.map((object) => [object.id, object]))
+  const nodeLabelById = new Map(nodes.map((node) => [node.id, graphNodeDisplayName(node, objectById)]))
   if (paths.length === 0) {
     return <p className="muted">{t("graphCanvas.noPaths")}</p>
   }
@@ -1962,24 +1963,25 @@ function PathList({
         const selected = selectedPathIds.has(path.id)
         const singleSelected = selectedPathId === path.id
         const draftNodeIds = singleSelected && pathOrderDraft?.pathId === path.id ? pathOrderDraft.nodeIds : path.node_ids
+        const routeLabel = path.node_ids.map((nodeId) => nodeLabelById.get(nodeId) ?? t("graphCanvas.none")).join(" -> ")
+        const pathName = graphPathDisplayName(path, nodeLabelById, t("graphCanvas.activePath"))
         return (
           <li key={path.id} className={`${path.id === activePathId ? "graph-path-list--active" : ""} ${selected ? "graph-path-list--selected" : ""}`}>
             <button
               type="button"
               className="graph-path-select"
-              aria-label={`Select path ${path.label ?? path.id}`}
+              aria-label={`Select path ${pathName}`}
               onClick={(event) => onSelectPath(path.id, path.node_ids, selectionModeFromMouseEvent(event))}
             >
-              <strong>{path.label ?? path.id}</strong>
-              <code>{path.id}</code>
-              <span>{path.node_ids.join(" -> ")}</span>
+              <strong>{pathName}</strong>
+              <span>{routeLabel}</span>
             </button>
             {singleSelected ? (
               <div className="graph-path-draft" aria-label={t("graphCanvas.pathOrderDraft")}>
                 <ol>
                   {draftNodeIds.map((nodeId, index) => (
                     <li key={nodeId}>
-                      <code>{nodeId}</code>
+                      <span>{nodeLabelById.get(nodeId) ?? t("graphCanvas.none")}</span>
                       <button type="button" onClick={() => onMovePathDraftNode(nodeId, "up")} disabled={index === 0}>
                         {t("graphCanvas.moveUp")}
                       </button>
@@ -2008,7 +2010,6 @@ function PathAuthoringStatusNotice({ status }: { status: PathAuthoringStatus }) 
     return (
       <p className="network-preview-ok path-authoring-status">
         <strong>{t("graphCanvas.pathAuthoring.auto", { reason: status.reason })}</strong>
-        <code>{status.pathId}</code>
       </p>
     )
   }
@@ -2028,16 +2029,25 @@ function PathAuthoringStatusNotice({ status }: { status: PathAuthoringStatus }) 
   )
 }
 
-function PreviewWarnings({ disconnectedNodeIds }: { disconnectedNodeIds: string[] }) {
+function PreviewWarnings({
+  disconnectedNodeIds,
+  nodes,
+  objectById,
+}: {
+  disconnectedNodeIds: string[]
+  nodes: GraphNodeSummary[]
+  objectById: Map<string, ObjectSummary>
+}) {
   const { t } = useI18n()
   if (disconnectedNodeIds.length === 0) {
     return <p className="network-preview-ok">{t("graphCanvas.noDisconnected")}</p>
   }
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
   return (
     <div className="network-preview-warning">
       <strong>{t("graphCanvas.disconnected")}</strong>
       {disconnectedNodeIds.map((nodeId) => (
-        <code key={nodeId}>{nodeId}</code>
+        <code key={nodeId}>{graphNodeDisplayName(nodeById.get(nodeId), objectById)}</code>
       ))}
     </div>
   )
@@ -2078,7 +2088,7 @@ function NodeCompositionEditor({
       <div className="composition-editor-header">
         <div>
           <span>{t("compositionEditor.title")}</span>
-          <code>{draft.nodeId ?? t("graphCanvas.none")}</code>
+          <code>{draft.nodeId ? t("compositionEditor.title") : t("graphCanvas.none")}</code>
         </div>
         <small>{draft.dirty ? t("compositionEditor.dirty") : t("compositionEditor.clean")}</small>
       </div>
@@ -2106,7 +2116,7 @@ function NodeCompositionEditor({
         <p className="composition-error">
           <code>{error.code}</code>
           <span>{error.message}</span>
-          {error.target ? <small>{error.target}</small> : null}
+          {warningTargetDisplay(error) ? <small>{warningTargetDisplay(error)}</small> : null}
         </p>
       ) : null}
 
@@ -2157,7 +2167,7 @@ function CompositionDraftRowEditor({
         >
           {objects.map((object) => (
             <option key={object.id} value={object.id}>
-              {object.label ?? object.id}
+              {objectDisplayName(object)}
             </option>
           ))}
         </select>
@@ -2212,6 +2222,20 @@ function CompositionDraftRowEditor({
 function isNodeInActivePath(nodeId: string, activePathId: string | null | undefined, paths: GraphPathSummary[]): boolean {
   const activePath = paths.find((path) => path.id === activePathId)
   return activePath?.node_ids.includes(nodeId) ?? false
+}
+
+function activePathDisplayName(
+  activePathId: string | null | undefined,
+  paths: GraphPathSummary[],
+  nodes: GraphNodeSummary[],
+  objectById: Map<string, ObjectSummary>,
+  fallback: string,
+): string | null {
+  if (!activePathId) return null
+  const activePath = paths.find((path) => path.id === activePathId)
+  if (!activePath) return null
+  const nodeLabelById = new Map(nodes.map((node) => [node.id, graphNodeDisplayName(node, objectById)]))
+  return graphPathDisplayName(activePath, nodeLabelById, fallback)
 }
 
 function clamp(value: number, min: number, max: number): number {

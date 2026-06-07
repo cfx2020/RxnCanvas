@@ -251,15 +251,126 @@ describe("ShellClient", () => {
       object_index: 0,
       label: "water.xyz",
       coordinate_preview: {
-        atom_count: 0,
-        has3d: false,
-        preview_kind: "unavailable",
+        atom_count: 3,
+        has3d: true,
+        preview_kind: "text",
       },
     })
     expect(response.data?.batch.items[0].warnings[0].code).toBe("missing_section")
     expect(response.data?.batch.items[1].error?.code).toBe("parse_failed")
     expect(response.warnings[0].code).toBe("unit_assumed")
     expect(() => JSON.stringify(response)).not.toThrow()
+  })
+
+  it("does not label non-water fixture imports as water", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+
+    const response = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        source_paths: ["inputs/raw/Bfix6-ts.log"],
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.data?.batch.items[0].preview?.candidates?.[0]).toMatchObject({
+      label: "Bfix6-ts.log",
+      coordinate_preview: {
+        preview_kind: "unavailable",
+      },
+    })
+  })
+
+  it("parses inline Gaussian fixture geometry for project-file graph drops", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const stalePreview = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        source_paths: ["inputs/raw/Bfix6-ts.log"],
+      },
+    })
+    const staleRegistered = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        batch_id: stalePreview.data?.batch.id ?? "",
+      },
+    })
+    const staleObject = staleRegistered.data?.objects.find((object) => object.label === "Bfix6-ts.log")
+    expect(staleObject?.geometry).toHaveLength(0)
+
+    const gaussianLog = [
+      " Charge = 0 Multiplicity = 1",
+      " SCF Done:  E(RB3LYP) =  -123.456789     A.U. after   10 cycles",
+      " Standard orientation:",
+      " ---------------------------------------------------------------------",
+      " Center     Atomic      Atomic             Coordinates (Angstroms)",
+      " Number     Number       Type             X           Y           Z",
+      " ---------------------------------------------------------------------",
+      "      1          6           0        0.000000    0.000000    0.000000",
+      "      2          1           0        0.000000    0.000000    1.089000",
+      " ---------------------------------------------------------------------",
+    ].join("\n")
+
+    const preview = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        sources: [
+          {
+            kind: "inline_bytes",
+            filename: "Bfix6-ts.log",
+            bytes_base64: btoa(gaussianLog),
+            mime_type: "text/plain",
+          },
+        ],
+      },
+    })
+
+    expect(preview.ok).toBe(true)
+    expect(preview.warnings).toHaveLength(0)
+    expect(preview.data?.batch.items[0].preview?.candidates?.[0]).toMatchObject({
+      label: "Bfix6-ts.log",
+      charge: 0,
+      spin_multiplicity: 1,
+      display_energy: {
+        value: -123.456789,
+        unit: "hartree",
+      },
+      coordinate_preview: {
+        atom_count: 2,
+        has3d: true,
+        preview_kind: "text",
+      },
+    })
+
+    const registered = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        batch_id: preview.data?.batch.id ?? "",
+      },
+    })
+
+    expect(registered.ok).toBe(true)
+    const importedObject = registered.data?.objects.find((object) => object.label === "Bfix6-ts.log")
+    expect(importedObject?.geometry).toHaveLength(2)
+    expect(importedObject).toMatchObject({
+      formula: "CH",
+      charge: 0,
+      spin_multiplicity: 1,
+      method: "Gaussian log",
+    })
   })
 
   it("registers the fixture import batch idempotently", async () => {
