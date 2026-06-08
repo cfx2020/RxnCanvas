@@ -30,7 +30,7 @@ describe("graphEditorInteractionState", () => {
   it("selects a node using the array selection protocol", () => {
     const state = selectGraphEditorNode(initialGraphEditorInteractionState, "node-a")
 
-    expect(state.mode).toBe("select")
+    expect(state.mode).toBe("pan")
     expect(state.selection).toEqual({
       nodeIds: ["node-a"],
       edgeIds: [],
@@ -121,7 +121,10 @@ describe("graphEditorInteractionState", () => {
 
   it("clears selection, pending edge, and rubber-band drafts together", () => {
     const pending = startGraphEditorConnection(selectGraphEditorNode(initialGraphEditorInteractionState, "node-a"))
-    const rubberBand = startGraphEditorRubberBand(selectGraphEditorNode(initialGraphEditorInteractionState, "node-a"), { x: 10, y: 10 })
+    const rubberBand = startGraphEditorRubberBand(
+      setGraphEditorMode(selectGraphEditorNode(initialGraphEditorInteractionState, "node-a"), "select"),
+      { x: 10, y: 10 },
+    )
 
     expect(clearGraphEditorSelection(pending)).toMatchObject({
       mode: "select",
@@ -241,13 +244,14 @@ describe("graphEditorInteractionState", () => {
   })
 
   it("tracks transient canvas dragging only in pan mode", () => {
-    const ignored = startGraphEditorCanvasDrag(initialGraphEditorInteractionState, { x: 0, y: 0 })
-    const pan = setGraphEditorMode(initialGraphEditorInteractionState, "pan")
+    const select = setGraphEditorMode(initialGraphEditorInteractionState, "select")
+    const ignored = startGraphEditorCanvasDrag(select, { x: 0, y: 0 })
+    const pan = initialGraphEditorInteractionState
     const started = startGraphEditorCanvasDrag(pan, { x: 10, y: 20 })
     const updated = updateGraphEditorCanvasDrag(started, { x: 30, y: 25 })
     const ended = endGraphEditorCanvasDrag(updated)
 
-    expect(ignored).toBe(initialGraphEditorInteractionState)
+    expect(ignored).toBe(select)
     expect(started.dragging).toEqual({
       kind: "canvas",
       origin: { x: 10, y: 20 },
@@ -262,7 +266,11 @@ describe("graphEditorInteractionState", () => {
   })
 
   it("tracks rubber-band drafts and resolves contained node ids", () => {
-    const started = startGraphEditorRubberBand(initialGraphEditorInteractionState, { x: 220, y: 180 }, "add")
+    const started = startGraphEditorRubberBand(
+      setGraphEditorMode(initialGraphEditorInteractionState, "select"),
+      { x: 220, y: 180 },
+      "add",
+    )
     const updated = updateGraphEditorRubberBand(started, { x: 80, y: 60 })
     const nodeIds = resolveGraphEditorRubberBandNodeIds(updated, [
       { id: "node-a", position: { x: 100, y: 100 } },
@@ -387,7 +395,7 @@ describe("graphEditorInteractionState", () => {
 
   it("prunes rubber-band drafts", () => {
     const state = updateGraphEditorRubberBand(
-      startGraphEditorRubberBand(initialGraphEditorInteractionState, { x: 10, y: 10 }),
+      startGraphEditorRubberBand(setGraphEditorMode(initialGraphEditorInteractionState, "select"), { x: 10, y: 10 }),
       { x: 120, y: 120 },
     )
     const pruned = pruneGraphEditorInteractionState(state, {

@@ -349,7 +349,7 @@ Readiness 规则：
 | Report Composer Manifest | `python3 -m unittest tests.test_report_manifest` | `ReportDocument` / `ReportAsset` 是 JSON-safe manifest/reference；`ReportAsset` 不含 bytes，缺失资产用 unavailable section 和 warnings 表达。 |
 | Download MIME / file names | `cd web && npm run test -- WorkbenchShell.test.tsx ShellClient.test.ts`；`cd web && npm run test:e2e` | Download link 使用 capability table 的 extension 和 MIME；fixture E2E 覆盖 PNG/CDXML/XLSX/CSV/SVG 五个 download link。 |
 | Browser-local persistence | `cd web && npm run test -- exportArtifactPersistence.test.ts WorkbenchShell.test.tsx`；`cd web && npm run test:e2e` | 带 inline bytes 的 supported artifacts 写入 `exports/...` 和 `export-artifacts-v1`；unsupported formats 不写 object 或 record。 |
-| Project restore | `cd web && npm run test:e2e`；`cd web && npm run test:e2e:local-http` | `Save Project` 后重开项目能恢复 graph/workspace/profile；导出 artifacts 继续由右侧 Export 面板管理，不进入左侧 Project Files。 |
+| Project restore | `cd web && npm run test:e2e`；`cd web && npm run test:e2e:local-http` | 自动保存后重开项目能恢复 graph/workspace/profile；导出 artifacts 继续由右侧 Export 面板管理，不进入左侧 Project Files。 |
 | Narrow preview/export layout | `cd web && npm run test:e2e` | `390x840` 下 Report Export / Preview 主链路可达，无 document-level horizontal overflow，Playwright screenshot/trace 只进入 gitignored output。 |
 | Future delivery writer discipline | docs + scope grep | 新增 PDF/PPTX/HTML/CDX writer 前必须消费 `ReportDocument` / `ReportAsset`，并定义 extension、MIME、writer id、metadata、persistence path 和 warning semantics；不得从 Web DOM/state/screenshot 直接生成正式报告。 |
 

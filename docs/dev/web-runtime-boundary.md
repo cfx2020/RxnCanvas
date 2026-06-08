@@ -53,7 +53,7 @@ Shell payload 必须是 JSON-safe 数据结构。`File`、`Blob`、`ArrayBuffer`
 Web MVP 第一版不购买云存储。项目持久化策略是：
 
 1. 浏览器端保存项目引用和本地对象，后续真实实现可选 IndexedDB、OPFS 或等价浏览器能力。
-2. 原始计算输出和 exports 由 Browser Project Repository 管理；主 UI 不展示 local-only/backend/runtime 实现名，Project Sidebar 只在未保存、保存失败、项目内容缺失或浅校验错误时展示提醒。
+2. 原始计算输出和 exports 由 Browser Project Repository 管理；主 UI 不展示 local-only/backend/runtime 实现名，Project Sidebar 只在保存失败、项目内容缺失或浅校验错误时展示提醒。
 3. 当前 Web UI 不把 `.rxnflow.zip` 作为主备份/分享入口；项目包 helper 只作为内部/CLI/后备迁移能力保留。
 4. Python core 的 `PlatformSession` 仍是进程内概念，不是跨请求、跨标签页或跨设备持久化机制。
 
@@ -141,7 +141,7 @@ Browser Project Repository 保存在浏览器 IndexedDB 中，Python bridge 不�
 - 打开 browser project 会更新 `ProjectSidebarState` 和 shallow validation，并在可用 content files 存在时自动创建/恢复 `PlatformSession`。
 - Web 从 Browser Project Repository 读取 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json`，编码为 `project.open(content_files, load_content=true)` 的 JSON-safe base64 payload。
 - Platform Shell 收到 `content_files` 后 materialize 到进程内临时 project directory，再复用既有 ProjectStore / ProjectContentStore 打开与校验流程。
-- 用户点击 `Save Project` 时，Web 调用 `project.save_content(include_content_files=true)`；Platform Shell 写回临时 project directory，并返回 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` bytes，Web 再覆盖写回 Browser Project Repository。
+- active browser project + shell session 的工作台变更进入自动保存时，Web 调用 `project.save_content(include_content_files=true)`；Platform Shell 写回临时 project directory，并返回 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` bytes，Web 再覆盖写回 Browser Project Repository。
 - `project.open(project_path)` 和 `project.save_content(session_id)` 的本地 filesystem 行为保持可用；`include_content_files=false` 时不返回 bytes payload。
 
 该桥接不实现 `.rxnflow.zip` bundle IO、云存储、账号同步、OPFS/chunking、Worker、Service Worker 或 browser_storage import adapter。Web 只搬运 content files bytes 和 checksum，不在前端解析或重写 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 领域内容。

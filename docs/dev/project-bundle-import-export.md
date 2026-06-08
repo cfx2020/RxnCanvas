@@ -12,7 +12,7 @@ last_reviewed: 2026-05-22
 
 ## 概述
 
-Project Bundle 是 `.rxnflow.zip` 项目包，用于核心/CLI备份、内部测试和后续可携带性方案参考。它是传输格式，不是 live storage：导出前如需保存当前运行态 session，调用方应先在同一进程中执行 `project.save_content`。当前 Web 工作台主流程已经改为 `Save Project`，不再在 Project Sidebar 暴露 Import Bundle / Export Bundle。
+Project Bundle 是 `.rxnflow.zip` 项目包，用于核心/CLI备份、内部测试和后续可携带性方案参考。它是传输格式，不是 live storage：导出前如需保存当前运行态 session，调用方应先在同一进程中执行 `project.save_content`。当前 Web 工作台主流程已经改为浏览器本地项目自动保存，不再在 Project Sidebar 暴露 Import Bundle / Export Bundle。
 
 bundle 内部结构固定为：
 
@@ -33,7 +33,7 @@ Web 工作台不调用 Python `ProjectBundleService`、`project.import_bundle` �
 - `web/src/app/projectBundleArchive.ts`：隔离 `fflate`，负责 `.rxnflow.zip` 读写、single-root、manifest required、allowed roots 和 path safety。
 - `web/src/app/projectBundleExport.ts`：从 active browser project 收集 `.rxnflow/`、`inputs/raw/`、`exports/` objects，生成 Blob 并触发 browser download。
 - `web/src/app/projectBundleImport.ts`：读取用户选择的 `.rxnflow.zip`，完整 archive 校验通过后创建新的 browser-local project 并写入 safe entries。
-- `web/src/app/ProjectSidebar.tsx`：当前不呈现 bundle import/export 操作；侧栏只保留 active project、Project Files 和 `Save Project` 主流程。
+- `web/src/app/ProjectSidebar.tsx`：当前不呈现 bundle import/export 操作；侧栏只保留 project list、Project Files、项目行导入入口和项目更多操作。
 
 Web helper import/export 不自动打开或保存 shell session。如果未来通过内部工具使用这些 helper，仍需先显式保存项目内容，再读取 repository bytes。
 
@@ -138,8 +138,8 @@ cd web && npm run test:e2e:local-http
 
 - Vitest component/unit：archive adapter、import/export actions、Project Sidebar 状态、roundtrip helper。
 - Build：TypeScript 和 Vite production build。
-- Default Playwright：fixture runtime 下 desktop/narrow Web workbench、Save Project restore、Project Files raw-only、console clean、无水平溢出。
-- Local-http Playwright：真实 Python bridge 下 raw input persistence、Save Project、project reopen restore、energy/export 主链路。
+- Default Playwright：fixture runtime 下 desktop/narrow Web workbench、自动保存 restore、Project Files raw-only、console clean、无水平溢出。
+- Local-http Playwright：真实 Python bridge 下 raw input persistence、自动保存、project reopen restore、energy/export 主链路。
 
 维护测试时，用户主流程要走真实 Project Sidebar / Graph Canvas / Export Panel；bundle helper 只负责内部 archive 输入输出，不应重新成为生产侧栏主入口。
 

@@ -2,7 +2,7 @@ import { createEvent, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import { initialCompositionDraftState } from "./compositionDraftState"
 import { initialEdgeLabelDraftState } from "./edgeLabelDraftState"
-import { initialGraphEditorInteractionState } from "./graphEditorInteractionState"
+import { initialGraphEditorInteractionState, type GraphEditorInteractionState } from "./graphEditorInteractionState"
 import {
   graphRawFileDropMimeType,
   serializeGraphRawFileDropPayload,
@@ -78,7 +78,7 @@ describe("GraphCanvas parse candidate chooser", () => {
 
     expect(screen.getByRole("region", { name: "Parse Candidate Chooser" })).toBeInTheDocument()
     expect(screen.getByText("Select structure candidate")).toBeInTheDocument()
-    expect(screen.getByText("multi.extxyz")).toBeInTheDocument()
+    expect(screen.getByText("multi")).toBeInTheDocument()
     expect(screen.getByText("2 candidates")).toBeInTheDocument()
     expect(screen.getByText("Frame 1")).toBeInTheDocument()
     expect(screen.queryByText("candidate-frame-1")).not.toBeInTheDocument()
@@ -165,11 +165,237 @@ describe("GraphCanvas molecule previews", () => {
       },
     })
 
-    const viewer = screen.getByRole("img", { name: "water.xyz 3D structure" })
+    const viewer = screen.getByRole("img", { name: "water 3D structure" })
     expect(viewer).toBeInTheDocument()
     expect(viewer.querySelector("canvas")).toBeInTheDocument()
     expect(screen.queryByText("node-water")).not.toBeInTheDocument()
     expect(screen.queryByText("object-water")).not.toBeInTheDocument()
+  })
+
+  it("selects a node when users click inside its 3D structure preview", () => {
+    const onSelectNode = vi.fn()
+    renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+      onSelectNode,
+    })
+
+    const viewer = screen.getByRole("img", { name: "A 3D structure" })
+    const canvas = viewer.querySelector("canvas")
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error("3D structure canvas was not rendered.")
+    }
+
+    fireEvent.click(canvas)
+
+    expect(onSelectNode).toHaveBeenCalledWith("node-a", "replace")
+  })
+
+  it("lets users collapse structure previews and choose the relative energy zero point", () => {
+    renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+    })
+
+    expect(screen.getByLabelText("Unit")).toHaveValue("kcal_mol")
+    expect(screen.getByText("12.55 kcal/mol")).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: "A 3D structure" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse structure preview for A" }))
+
+    expect(screen.queryByRole("img", { name: "A 3D structure" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Show structure preview for A" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for B" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Use B as zero point" }))
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for B" }))
+    expect(screen.getByRole("menuitem", { name: "B is the zero point" })).toBeInTheDocument()
+    expect(screen.getByText("-12.55 (0,1)")).toBeInTheDocument()
+  })
+
+  it("marks explicit barrier annotations between two nodes", () => {
+    const view = renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+    })
+
+    const targetNode = graphNodeCardById(view.container, "node-a")
+    const restoreElementsFromPoint = mockElementsFromPoint([targetNode])
+    try {
+      const handle = screen.getByRole("button", { name: "Drag barrier annotation from B" })
+      fireEvent.pointerDown(handle, { button: 0, clientX: 480, clientY: 270, pointerId: 21 })
+      fireEvent.pointerMove(handle, { button: 0, clientX: 120, clientY: 180, pointerId: 21 })
+      fireEvent.pointerUp(handle, { button: 0, clientX: 120, clientY: 180, pointerId: 21 })
+    } finally {
+      restoreElementsFromPoint()
+    }
+
+    expect(view.container.querySelector(".graph-barrier-arrow")).toBeInTheDocument()
+    expect(view.container.querySelector(".graph-barrier-guide")).toBeInTheDocument()
+    expect(screen.getByText("ΔE‡ 12.55")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Barrier annotation from B to A" }))
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Delete barrier annotation from B to A" }))
+
+    expect(screen.queryByText("ΔE‡ 12.55")).not.toBeInTheDocument()
+  })
+})
+
+describe("GraphCanvas graph edges", () => {
+  it("renders smooth bezier edges with left and right node handles", () => {
+    const state = {
+      ...initialWorkbenchDomainState,
+      sessionId: "session-1",
+      objects: [
+        {
+          id: "object-a",
+          label: "A.log",
+          formula: "H2",
+          charge: 0,
+          spin_multiplicity: 1,
+          energy_keys: ["electronic"],
+          thermochemistry_keys: [],
+          geometry: [{ element: "H", x: 0, y: 0, z: 0, unit: "angstrom" }],
+        },
+        {
+          id: "object-b",
+          label: "B.log",
+          formula: "H2",
+          charge: 0,
+          spin_multiplicity: 1,
+          energy_keys: ["electronic"],
+          thermochemistry_keys: [],
+          geometry: [{ element: "H", x: 0, y: 0, z: 0, unit: "angstrom" }],
+        },
+      ],
+      workspace: {
+        workspace_id: "workspace-1",
+        project_id: "project-1",
+        active_path_id: "path-a-b",
+        selection: { node_ids: [], edge_ids: [], path_ids: [] },
+        viewport: { x: 0, y: 0, zoom: 1 },
+        palette: [],
+        graph: {
+          id: "graph-1",
+          project_id: "project-1",
+          node_count: 2,
+          edge_count: 1,
+          path_count: 1,
+          nodes: [
+            { id: "node-a", kind: "species", label: "A.log", chemical_object_ids: ["object-a"], position: [120, 180] },
+            { id: "node-b", kind: "species", label: "B.log", chemical_object_ids: ["object-b"], position: [480, 180] },
+          ],
+          edges: [{ id: "edge-a-b", from_node: "node-a", to_node: "node-b", label: "TS" }],
+          paths: [{ id: "path-a-b", label: "path-a-b", node_ids: ["node-a", "node-b"] }],
+        },
+        preview: {
+          graph_id: "graph-1",
+          active_path_id: "path-a-b",
+          node_count: 2,
+          edge_count: 1,
+          path_count: 1,
+          disconnected_node_ids: [],
+          warnings: [],
+        },
+      },
+    } satisfies WorkbenchDomainState
+
+    const view = renderGraphCanvas(vi.fn(), { state })
+    const edgePath = view.container.querySelector(".graph-edge-line")
+    expect(edgePath?.tagName.toLowerCase()).toBe("path")
+    expect(edgePath).toHaveAttribute("d", expect.stringContaining(" C "))
+    expect(screen.getByRole("button", { name: "Drag path from A" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Drag path into A" })).toBeInTheDocument()
+  })
+
+  it("anchors reverse-direction edges on the visible sides of each node", () => {
+    const state = graphCanvasTwoNodeState()
+    state.workspace!.graph.edges = [{ id: "edge-b-a", from_node: "node-b", to_node: "node-a", label: "TS" }]
+    state.workspace!.graph.paths = [{ id: "path-b-a", label: "path-b-a", node_ids: ["node-b", "node-a"] }]
+
+    const view = renderGraphCanvas(vi.fn(), { state })
+    const edgePath = view.container.querySelector(".graph-edge-line")
+    const hitbox = screen.getByRole("button", { name: "Edge B to A: TS" })
+
+    expect(edgePath).toHaveAttribute("d", expect.stringMatching(/^M \d+(\.\d+)? 180 C /))
+    expect(edgePath).toHaveAttribute("d", expect.stringContaining(" 180"))
+    expect(view.container.querySelector(".graph-edge-label")).toHaveTextContent("TS")
+    expect(hitbox).toHaveStyle({
+      left: "300px",
+      top: "180px",
+    })
+  })
+
+  it("renders many-to-one and one-to-many bezier paths with node-relative energy labels", () => {
+    const state = graphCanvasReactionNetworkState()
+    const view = renderGraphCanvas(vi.fn(), { state })
+
+    const edgePaths = Array.from(view.container.querySelectorAll(".graph-edge-line"))
+    expect(edgePaths).toHaveLength(6)
+    expect(edgePaths.every((edgePath) => edgePath.tagName.toLowerCase() === "path")).toBe(true)
+    expect(edgePaths.every((edgePath) => edgePath.getAttribute("d")?.includes(" C "))).toBe(true)
+    expect(view.container.querySelectorAll(".graph-edge-connect-handle--left")).toHaveLength(7)
+    expect(view.container.querySelectorAll(".graph-edge-connect-handle--right")).toHaveLength(7)
+
+    expect(screen.getByRole("button", { name: "Edge Substrate to Pre-intermediate" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Edge Catalyst to Pre-intermediate" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Edge Post-intermediate to Product" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Edge Post-intermediate to Catalyst-release" })).toBeInTheDocument()
+    expect(screen.queryByText(/ΔE‡/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/ΔG‡/)).not.toBeInTheDocument()
+    expect(screen.getAllByText("0.00 kcal/mol").length).toBeGreaterThan(0)
+    expect(screen.getByText("18.83 kcal/mol")).toBeInTheDocument()
+    expect(screen.getByText("50.20 kcal/mol")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "hartree" } })
+    expect(screen.getByText("0.080000 Hartree")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "kj_mol" } })
+    expect(screen.getByText("210.04 kJ/mol")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Energy"), { target: { value: "free" } })
+    expect(screen.getByText("105.02 kJ/mol")).toBeInTheDocument()
+  })
+})
+
+describe("GraphCanvas drag previews", () => {
+  it("previews canvas panning before the viewport is persisted", () => {
+    const view = renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+      interactionState: {
+        ...initialGraphEditorInteractionState,
+        mode: "pan",
+        dragging: {
+          kind: "canvas",
+          origin: { x: 0, y: 0 },
+          current: { x: 40, y: 20 },
+        },
+      },
+    })
+
+    const layer = view.container.querySelector(".graph-viewport-layer")
+    expect(layer).toHaveStyle({
+      transform: "translate(6.667%, 5.556%) scale(1)",
+    })
+  })
+
+  it("keeps node drag previews continuous and only snaps persisted positions", () => {
+    const view = renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+      interactionState: {
+        ...initialGraphEditorInteractionState,
+        dragging: {
+          kind: "node",
+          nodeIds: ["node-a"],
+          origin: { x: 0, y: 0 },
+          current: { x: 13, y: 7 },
+        },
+      },
+    })
+
+    const shell = view.container.querySelector('.graph-node-card-shell[data-graph-node-id="node-a"]')
+    expect(shell).toHaveStyle({
+      left: "22.166666666666668%",
+      top: "51.94444444444445%",
+    })
   })
 })
 
@@ -177,10 +403,12 @@ function renderGraphCanvas(
   onAddRawFileNode: (request: AddRawFileNodeRequest) => void,
   options: {
     state?: WorkbenchDomainState
+    interactionState?: GraphEditorInteractionState
     candidateChooser?: ParseCandidateChooserState | null
     onToggleCandidateSelection?: (candidateId: string, selected: boolean) => void
     onConfirmCandidateChooser?: () => void
     onCancelCandidateChooser?: () => void
+    onSelectNode?: (nodeId: string, mode?: "replace" | "add" | "toggle") => void
   } = {},
 ) {
   return render(
@@ -190,7 +418,7 @@ function renderGraphCanvas(
           ...initialWorkbenchDomainState,
           sessionId: "session-1",
         }}
-        interactionState={initialGraphEditorInteractionState}
+        interactionState={options.interactionState ?? initialGraphEditorInteractionState}
         historyControls={{ canUndo: false, canRedo: false }}
         pathOrderDraft={null}
         edgeLabelDraft={initialEdgeLabelDraftState}
@@ -200,7 +428,7 @@ function renderGraphCanvas(
         compositionPending={false}
         compositionError={null}
         candidateChooser={options.candidateChooser ?? null}
-        onSelectNode={() => undefined}
+        onSelectNode={options.onSelectNode ?? (() => undefined)}
         onSelectEdge={() => undefined}
         onSelectPath={() => undefined}
         onMovePathDraftNode={() => undefined}
@@ -223,13 +451,13 @@ function renderGraphCanvas(
         onUpdatePointerEdge={() => undefined}
         onEndPointerEdge={() => undefined}
         onCancelPointerEdge={() => undefined}
-        onOpenWorkspace={() => undefined}
         onAddObjectNode={() => undefined}
         onAddRawFileNode={onAddRawFileNode}
         onToggleCandidateSelection={options.onToggleCandidateSelection ?? (() => undefined)}
         onConfirmCandidateChooser={options.onConfirmCandidateChooser ?? (() => undefined)}
         onCancelCandidateChooser={options.onCancelCandidateChooser ?? (() => undefined)}
         onMoveNode={() => undefined}
+        onUpdateNodeLabel={() => undefined}
         onNudgeNodes={() => undefined}
         onUndoHistory={() => undefined}
         onRedoHistory={() => undefined}
@@ -237,9 +465,8 @@ function renderGraphCanvas(
         onRemoveGraphItems={() => undefined}
         onClearSelection={() => undefined}
         onSetViewport={() => undefined}
+        onAutoFitViewport={() => undefined}
         onTogglePanMode={() => undefined}
-        onStartConnection={() => undefined}
-        onSetActivePath={() => undefined}
         onCompositionDraftRowChange={() => undefined}
         onAddCompositionDraftRow={() => undefined}
         onRemoveCompositionDraftRow={() => undefined}
@@ -248,6 +475,167 @@ function renderGraphCanvas(
       />
     </I18nProvider>,
   )
+}
+
+function graphCanvasTwoNodeState(): WorkbenchDomainState {
+  return {
+    ...initialWorkbenchDomainState,
+    sessionId: "session-1",
+    objects: [
+      {
+        id: "object-a",
+        label: "A.log",
+        formula: "H2",
+        charge: 0,
+        spin_multiplicity: 1,
+        energy_keys: ["electronic"],
+        thermochemistry_keys: [],
+        energies: {
+          electronic: {
+            value: -100,
+            unit: "hartree",
+          },
+        },
+        geometry: [{ element: "H", x: 0, y: 0, z: 0, unit: "angstrom" }],
+      },
+      {
+        id: "object-b",
+        label: "B.log",
+        formula: "H2",
+        charge: 0,
+        spin_multiplicity: 1,
+        energy_keys: ["electronic"],
+        thermochemistry_keys: [],
+        energies: {
+          electronic: {
+            value: -99.98,
+            unit: "hartree",
+          },
+        },
+        geometry: [{ element: "H", x: 0, y: 0, z: 0, unit: "angstrom" }],
+      },
+    ],
+    workspace: {
+      workspace_id: "workspace-1",
+      project_id: "project-1",
+      active_path_id: "path-a-b",
+      selection: { node_ids: [], edge_ids: [], path_ids: [] },
+      viewport: { x: 0, y: 0, zoom: 1 },
+      palette: [],
+      graph: {
+        id: "graph-1",
+        project_id: "project-1",
+        node_count: 2,
+        edge_count: 1,
+        path_count: 1,
+        nodes: [
+          { id: "node-a", kind: "species", label: "A.log", chemical_object_ids: ["object-a"], position: [120, 180] },
+          { id: "node-b", kind: "species", label: "B.log", chemical_object_ids: ["object-b"], position: [480, 180] },
+        ],
+        edges: [{ id: "edge-a-b", from_node: "node-a", to_node: "node-b", label: "TS" }],
+        paths: [{ id: "path-a-b", label: "path-a-b", node_ids: ["node-a", "node-b"] }],
+      },
+      preview: {
+        graph_id: "graph-1",
+        active_path_id: "path-a-b",
+        node_count: 2,
+        edge_count: 1,
+        path_count: 1,
+        disconnected_node_ids: [],
+        warnings: [],
+      },
+    },
+  }
+}
+
+function graphCanvasReactionNetworkState(): WorkbenchDomainState {
+  type ReactionFixtureNode = {
+    id: string
+    label: string
+    objectId: string
+    position: [number, number]
+  }
+  const nodes: ReactionFixtureNode[] = [
+    { id: "node-substrate", label: "Substrate.log", objectId: "object-substrate", position: [80, 110] },
+    { id: "node-catalyst", label: "Catalyst.log", objectId: "object-catalyst", position: [80, 260] },
+    { id: "node-pre", label: "Pre-intermediate.log", objectId: "object-pre", position: [230, 185] },
+    { id: "node-ts", label: "TS.log", objectId: "object-ts", position: [360, 185] },
+    { id: "node-post", label: "Post-intermediate.log", objectId: "object-post", position: [490, 185] },
+    { id: "node-product", label: "Product.log", objectId: "object-product", position: [590, 110] },
+    { id: "node-catalyst-release", label: "Catalyst-release.log", objectId: "object-catalyst-release", position: [590, 260] },
+  ]
+  return {
+    ...initialWorkbenchDomainState,
+    sessionId: "session-1",
+    objects: nodes.map((node, index) => ({
+      id: node.objectId,
+      label: node.label,
+      formula: index === 1 || index === 6 ? "NiL" : "C10H10",
+      charge: 0,
+      spin_multiplicity: 1,
+      method: "B3LYP/def2-SVP",
+      source_file_id: node.label,
+      energy_keys: ["electronic"],
+      thermochemistry_keys: ["gibbs"],
+      energies: {
+        electronic: {
+          value: node.id === "node-pre" ? -100.05 : node.id === "node-ts" ? -100.0 : -100.08,
+          unit: "hartree",
+        },
+      },
+      thermochemistry: {
+        gibbs: {
+          value: node.id === "node-pre" ? -99.96 : node.id === "node-ts" ? -99.95 : -99.99,
+          unit: "hartree",
+        },
+      },
+      geometry: [{ element: "C", x: index, y: 0, z: 0, unit: "angstrom" }],
+    })),
+    workspace: {
+      workspace_id: "workspace-1",
+      project_id: "project-1",
+      active_path_id: "path-catalytic-cycle",
+      selection: { node_ids: [], edge_ids: [], path_ids: [] },
+      viewport: { x: 0, y: 0, zoom: 1 },
+      palette: [],
+      graph: {
+        id: "graph-1",
+        project_id: "project-1",
+        node_count: nodes.length,
+        edge_count: 6,
+        path_count: 1,
+        nodes: nodes.map((node) => ({
+          id: node.id,
+          kind: "species",
+          label: node.label,
+          chemical_object_ids: [node.objectId],
+          position: node.position,
+        })),
+        edges: [
+          { id: "edge-substrate-pre", from_node: "node-substrate", to_node: "node-pre" },
+          { id: "edge-catalyst-pre", from_node: "node-catalyst", to_node: "node-pre" },
+          { id: "edge-pre-ts", from_node: "node-pre", to_node: "node-ts" },
+          { id: "edge-ts-post", from_node: "node-ts", to_node: "node-post" },
+          { id: "edge-post-product", from_node: "node-post", to_node: "node-product" },
+          { id: "edge-post-catalyst", from_node: "node-post", to_node: "node-catalyst-release" },
+        ],
+        paths: [{
+          id: "path-catalytic-cycle",
+          label: "catalytic-cycle",
+          node_ids: ["node-substrate", "node-pre", "node-ts", "node-post", "node-product"],
+        }],
+      },
+      preview: {
+        graph_id: "graph-1",
+        active_path_id: "path-catalytic-cycle",
+        node_count: nodes.length,
+        edge_count: 6,
+        path_count: 1,
+        disconnected_node_ids: [],
+        warnings: [],
+      },
+    },
+  } satisfies WorkbenchDomainState
 }
 
 const fixtureCandidateChooser: ParseCandidateChooserState = {
@@ -331,6 +719,22 @@ function mockSurfaceRect(element: HTMLElement, width: number, height: number) {
     height,
     toJSON: () => ({}),
   })
+}
+
+function graphNodeCardById(container: HTMLElement, nodeId: string): HTMLElement {
+  const node = container.querySelector<HTMLElement>(`.graph-node-card[data-graph-node-id="${nodeId}"]`)
+  if (!node) {
+    throw new Error(`Graph node ${nodeId} was not rendered.`)
+  }
+  return node
+}
+
+function mockElementsFromPoint(elements: Element[]) {
+  const originalElementsFromPoint = document.elementsFromPoint
+  document.elementsFromPoint = vi.fn(() => elements)
+  return () => {
+    document.elementsFromPoint = originalElementsFromPoint
+  }
 }
 
 class TestDataTransfer {

@@ -1153,6 +1153,17 @@ class PlatformShellBaselineTest(unittest.TestCase):
             self.assertEqual(moved_nodes[1]["position"], [240.0, 180.0])
             edge_id = connected.to_dict()["data"]["workspace"]["graph"]["edges"][0]["id"]
 
+            updated_node = service.run(
+                ShellCommand(
+                    "workspace.update_node",
+                    {"session_id": session_id, "node_id": node_ids[0], "label": "Reactant"},
+                )
+            )
+            self.assertTrue(updated_node.ok, updated_node.error)
+            updated_node_payload = updated_node.to_dict()
+            self.assertEqual(updated_node_payload["data"]["command"], "workspace.update_node")
+            self.assertEqual(updated_node_payload["data"]["workspace"]["graph"]["nodes"][0]["label"], "Reactant")
+
             selected_edge = service.run(
                 ShellCommand(
                     "workspace.select",

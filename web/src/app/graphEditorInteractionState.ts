@@ -80,7 +80,7 @@ export const initialGraphEditorSelection: GraphEditorSelection = {
 }
 
 export const initialGraphEditorInteractionState: GraphEditorInteractionState = {
-  mode: "select",
+  mode: "pan",
   selection: initialGraphEditorSelection,
   hover: null,
   dragging: null,
@@ -94,7 +94,7 @@ export function selectGraphEditorNode(
 ): GraphEditorInteractionState {
   return {
     ...state,
-    mode: state.pendingEdge ? "connect" : "select",
+    mode: state.pendingEdge ? "connect" : state.mode,
     selection: applyGraphEditorSelectionIntent(state.selection, { kind: "node", id: nodeId }, mode),
   }
 }

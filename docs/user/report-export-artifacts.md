@@ -12,7 +12,7 @@ last_reviewed: 2026-06-05
 
 ## 功能简介
 
-RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为五类文件：PNG 能量图、ChemDraw 可打开的 CDXML 能量图、XLSX 能量表工作簿、CSV 能量表，以及 SVG graph snapshot。导出入口在右侧 Analysis Dock 的 Export tab。Report Export 面板默认先显示 Preview，用来检查 graph/profile summary、报告资产 readiness、可复用 artifacts 和 warnings；切到 Export 后可以执行导出。导出结果会显示下载入口、metadata、warnings、保存状态和 checksum。
+RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为五类文件：PNG 能量图、ChemDraw 可打开的 CDXML 能量图、XLSX 能量表工作簿、CSV 能量表，以及 SVG graph snapshot。导出入口是顶部 `Export` 按钮打开的右侧 Report Export 面板。面板默认先显示 Preview，用来检查 graph/profile summary、报告资产 readiness、可复用 artifacts 和 warnings；切到 Export 后可以执行导出。导出结果会显示下载入口、metadata、warnings 和保存路径。
 
 当前导出是本地优先能力。浏览器项目中的 `exports/...` 文件保存在当前浏览器本地仓储中，不是云同步。
 
@@ -20,13 +20,13 @@ RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为�
 
 - 已经在 Web 工作台运行过 fixture 或打开了可用 session。
 - 图谱中已有 active path。
-- Energy Profile 面板已经成功 Compute，页面中有当前 profile。
+- 画布已有可自动计算的当前 profile。
 
 ## 如何使用
 
 1. 在 Web 工作台中确认图谱已有当前路径。
-2. 在右侧 Analysis Dock 切到 `PES`，点击 `Compute`，得到相对能量表和曲线。
-3. 切到 Analysis Dock 的 `Export`，先查看 `Preview`：
+2. 等待画布根据 active path 自动生成当前能量 profile。
+3. 点击顶部 `Export` 打开右侧 Report Export 面板，先查看 `Preview`：
    - `Report assets` 会显示 energy diagram、energy table、graph snapshot 是 `Ready` 还是 `Pending export`。
    - `Reusable artifacts` 会列出当前已有 artifact 的 format、id、inline bytes、persisted/path/checksum 状态。
    - `Preview warnings` 会保留导出 warning code、message 和 target。
@@ -44,7 +44,7 @@ RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为�
    - `Download`：直接下载当前 artifact。
    - `Path`：如果已经持久化，会显示 `exports/{basename}.{format}`。
    - `Persisted`：是否已写入当前 browser-local project。
-   - `Checksum`：保存后用于校验文件内容的 sha256。
+   - `Checksum`：保存后用于内部校验文件内容的 sha256；常规项目树不会显示它。
    - `Metadata`：writer、profile、path、schema version 等信息。
    - `Warnings`：导出过程中的说明或限制。
 
@@ -78,7 +78,7 @@ exports/rxnflow-profile.svg
 
 ### 备份和迁移
 
-浏览器本地 `exports/...` 不是云备份。当前 Web 主流程中，编辑态项目通过左侧 `Save Project` 保存；报告文件通过右侧 Export 面板下载或写入当前 browser-local project。CDXML、CSV、PNG、XLSX 和 SVG 不出现在左侧 Project Files 中。
+浏览器本地 `exports/...` 不是云备份。当前 Web 主流程中，编辑态项目通过自动保存写回当前 browser-local project；报告文件通过右侧 Export 面板下载或写入当前 browser-local project。CDXML、CSV、PNG、XLSX 和 SVG 不出现在左侧 Project Files 中。
 
 `.rxnflow.zip` 项目包能力仍保留给内部/CLI/后备迁移场景，但当前 Web 左侧主流程不再暴露 Import Bundle / Export Bundle 作为默认操作。
 
@@ -121,7 +121,7 @@ A: 第一列固定为结构名称。能量字段包括 Egas、Ggas、Ggas+1M、G
 
 Q: 网页版会自动云备份这些导出文件吗？
 
-A: 不会。当前 Web 工作台是 local-only。浏览器清数据、profile 损坏或换浏览器都可能导致 browser-local project 丢失。当前主流程先用 `Save Project` 保留本浏览器项目，跨设备备份/分享入口后续会重新设计。
+A: 不会。当前 Web 工作台是 local-only。浏览器清数据、profile 损坏或换浏览器都可能导致 browser-local project 丢失。当前主流程用自动保存保留本浏览器项目，跨设备备份/分享入口后续会重新设计。
 
 Q: 能导出 CSV 吗？
 

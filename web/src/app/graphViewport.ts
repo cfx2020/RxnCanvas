@@ -165,16 +165,14 @@ export function fitGraphViewportToNodes(
   const maxX = Math.max(...positions.map((position) => position.x))
   const minY = Math.min(...positions.map((position) => position.y))
   const maxY = Math.max(...positions.map((position) => position.y))
-  const padding = 120
-  const width = Math.max(1, maxX - minX + padding * 2)
-  const height = Math.max(1, maxY - minY + padding * 2)
-  const viewportAspect = size.width / size.height
-  const graphAspect = graphNodeLayoutBounds.width / graphNodeLayoutBounds.height
-  const responsiveFitScale = Math.min(1, viewportAspect / graphAspect)
+  const nodeChrome = graphFitNodeChrome(size)
+  const xSpanPixels = ((maxX - minX) / graphNodeLayoutBounds.width) * size.width
+  const ySpanPixels = ((maxY - minY) / graphNodeLayoutBounds.height) * size.height
   const zoom = clampGraphViewportZoom(Math.min(
-    graphNodeLayoutBounds.width / width,
-    graphNodeLayoutBounds.height / height,
-  ) * responsiveFitScale)
+    1,
+    size.width / Math.max(1, xSpanPixels + nodeChrome.width),
+    size.height / Math.max(1, ySpanPixels + nodeChrome.height),
+  ))
   const center = {
     x: (minX + maxX) / 2,
     y: (minY + maxY) / 2,
@@ -183,6 +181,16 @@ export function fitGraphViewportToNodes(
     x: center.x - graphNodeLayoutBounds.width / (2 * zoom),
     y: center.y - graphNodeLayoutBounds.height / (2 * zoom),
     zoom,
+  }
+}
+
+function graphFitNodeChrome(surfaceSize: GraphSurfaceSize): { width: number; height: number } {
+  const nodeWidth = clamp(surfaceSize.width * 0.24, 190, 236)
+  const nodeHeight = 286
+  const breathingRoom = 48
+  return {
+    width: nodeWidth + breathingRoom,
+    height: nodeHeight + breathingRoom,
   }
 }
 

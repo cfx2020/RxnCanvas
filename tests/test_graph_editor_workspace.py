@@ -287,6 +287,21 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
         self.assertEqual(edge.metadata, {"condition": "screening"})
         self.assertEqual(snapshot.selection.edge_ids, (edge_id,))
 
+    def test_update_node_label_preserves_composition_and_selection(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(_object("object-r"))
+        node = _add_species(workspace, workspace_id, "R.log", "object-r")
+        workspace.select(PROJECT_ID, workspace_id, WorkspaceSelection(node_ids=(node.id,)))
+
+        updated = workspace.update_node(PROJECT_ID, workspace_id, node.id, label="Reactant")
+
+        self.assertTrue(updated.ok, updated.error)
+        snapshot = updated.value
+        assert snapshot is not None
+        updated_node = snapshot.graph.nodes[0]
+        self.assertEqual(updated_node.label, "Reactant")
+        self.assertEqual(updated_node.composition[0].object_id, "object-r")
+        self.assertEqual(snapshot.selection.node_ids, (node.id,))
+
     def test_update_edge_label_can_clear_label(self) -> None:
         workspace, workspace_id = _workspace_with_objects(_object("object-r"), _object("object-p"))
         reactant = _add_species(workspace, workspace_id, "R", "object-r")

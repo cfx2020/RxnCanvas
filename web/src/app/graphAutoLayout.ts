@@ -8,7 +8,7 @@ import {
 } from "./graphNodeLayout"
 import { fitGraphViewportToNodes, type GraphViewport } from "./graphViewport"
 
-export type GraphLayoutStrategy = "layered-left-to-right" | "grid-compact"
+export type GraphLayoutStrategy = "layered-left-to-right" | "grid-compact" | "energy-ranked"
 
 export type GraphLayoutWarning = {
   code: string

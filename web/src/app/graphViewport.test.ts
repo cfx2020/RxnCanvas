@@ -121,7 +121,8 @@ describe("graphViewport", () => {
 
     expect(Number.isFinite(viewport.x)).toBe(true)
     expect(Number.isFinite(viewport.y)).toBe(true)
-    expect(viewport.zoom).toBeGreaterThan(1)
+    expect(viewport.zoom).toBeGreaterThanOrEqual(0.35)
+    expect(viewport.zoom).toBeLessThanOrEqual(1)
     expect(a.x).toBeGreaterThan(0)
     expect(a.y).toBeGreaterThan(0)
     expect(b.x).toBeLessThan(900)

@@ -11,7 +11,7 @@ export function firstUserFacingName(values: Array<string | null | undefined>, fa
 export function userFacingText(value: string | null | undefined): string | null {
   if (!value) return null
   const base = stripStoragePath(value.trim())
-  const cleaned = stripChecksumPrefix(base)
+  const cleaned = stripKnownSourceExtension(stripChecksumPrefix(base))
   if (!cleaned || looksLikeInternalId(cleaned)) return null
   return cleaned
 }
@@ -85,4 +85,8 @@ function stripStoragePath(value: string): string {
 
 function stripChecksumPrefix(value: string): string {
   return value.replace(/^[a-f0-9]{10,}[-_]/i, "")
+}
+
+function stripKnownSourceExtension(value: string): string {
+  return value.replace(/\.(?:log|out|xyz|extxyz)$/i, "")
 }

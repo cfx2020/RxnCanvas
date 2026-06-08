@@ -1,14 +1,13 @@
 import {
-  AlertTriangle,
   ChevronRight,
   FolderOpen,
   FolderPlus,
   MoreVertical,
   Plus,
-  Save,
   Trash2,
 } from "lucide-react"
-import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react"
+import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type RefObject } from "react"
+import { createPortal } from "react-dom"
 import type { BrowserProjectRef } from "../repository"
 import type { ProjectSidebarState } from "./projectSidebarState"
 import type { ProjectFileEntry, ProjectFileKind, ProjectFileStatus } from "./projectFiles"
@@ -17,7 +16,8 @@ import { useI18n, type MessageKey } from "./i18n"
 
 type ProjectSidebarProps = {
   state: ProjectSidebarState
-  onCreateProject: (name: string) => Promise<void>
+  collapsed: boolean
+  onCreateProject: (name: string) => void | Promise<void>
   onOpenProject: (projectRef: string) => Promise<void>
   onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
@@ -26,6 +26,7 @@ type ProjectSidebarProps = {
 
 export function ProjectSidebar({
   state,
+  collapsed,
   onCreateProject,
   onOpenProject,
   onDeleteProject,
@@ -68,53 +69,24 @@ export function ProjectSidebar({
   }
 
   return (
-    <aside className="project-sidebar" aria-label={t("projectSidebar.aria")} aria-busy={isBusy}>
-      <section className="rail-section drawer-command-section" aria-label={t("projectSidebar.createFormAria")}>
-        <button
-          type="button"
-          className="drawer-new-project-button"
-          onClick={() => setCreateOpen((current) => !current)}
-          aria-expanded={createOpen}
-        >
-          <FolderPlus size={18} />
-          <span>{t("projectSidebar.newProject")}</span>
-        </button>
-        {createOpen ? (
-          <form className="sidebar-create-form" aria-label={t("projectSidebar.createFormAria")} onSubmit={submitCreateProject}>
-            <label htmlFor="sidebar-project-name">{t("projectSidebar.projectName")}</label>
-            <input
-              id="sidebar-project-name"
-              ref={createInputRef}
-              value={projectName}
-              onChange={(event) => setProjectName(event.currentTarget.value)}
-              placeholder={t("projectSidebar.projectNamePlaceholder")}
-              disabled={isBusy}
-            />
-            <div className="sidebar-create-actions">
-              <button type="button" onClick={() => {
-                setCreateOpen(false)
-                setProjectName("")
-              }}>
-                {t("projectSidebar.cancelCreateProject")}
-              </button>
-              <button type="submit" disabled={isBusy}>
-                {t("projectSidebar.createProject")}
-              </button>
-            </div>
-          </form>
-        ) : null}
-        {state.error ? (
-          <div className="sidebar-error" role="alert">
-            <strong>{state.error.code}</strong>
-            <span>{state.error.message}</span>
-            {state.error.target ? <small>{state.error.target}</small> : null}
-          </div>
-        ) : null}
-      </section>
-
+    <aside
+      className={`project-sidebar ${collapsed ? "project-sidebar--collapsed" : ""}`}
+      aria-label={t("projectSidebar.aria")}
+      aria-busy={isBusy}
+    >
       <ProjectFoldersPanel
         state={state}
+        createOpen={createOpen}
+        projectName={projectName}
+        createInputRef={createInputRef}
         expandedProjectRefs={expandedProjectRefs}
+        onToggleCreateOpen={() => setCreateOpen((current) => !current)}
+        onProjectNameChange={setProjectName}
+        onSubmitCreateProject={submitCreateProject}
+        onCancelCreateProject={() => {
+          setCreateOpen(false)
+          setProjectName("")
+        }}
         onSetProjectFolderExpanded={setProjectFolderExpanded}
         onOpenProject={onOpenProject}
         onDeleteProject={onDeleteProject}
@@ -127,7 +99,14 @@ export function ProjectSidebar({
 
 type ProjectFoldersPanelProps = {
   state: ProjectSidebarState
+  createOpen: boolean
+  projectName: string
+  createInputRef: RefObject<HTMLInputElement | null>
   expandedProjectRefs: Set<string>
+  onToggleCreateOpen: () => void
+  onProjectNameChange: (name: string) => void
+  onSubmitCreateProject: (event: FormEvent<HTMLFormElement>) => void | Promise<void>
+  onCancelCreateProject: () => void
   onSetProjectFolderExpanded: (projectRef: string, expanded: boolean) => void
   onOpenProject: (projectRef: string) => Promise<void>
   onDeleteProject: (projectRef: string) => Promise<void>
@@ -137,7 +116,14 @@ type ProjectFoldersPanelProps = {
 
 function ProjectFoldersPanel({
   state,
+  createOpen,
+  projectName,
+  createInputRef,
   expandedProjectRefs,
+  onToggleCreateOpen,
+  onProjectNameChange,
+  onSubmitCreateProject,
+  onCancelCreateProject,
   onSetProjectFolderExpanded,
   onOpenProject,
   onDeleteProject,
@@ -145,9 +131,51 @@ function ProjectFoldersPanel({
   onAddProjectFileToCanvas,
 }: ProjectFoldersPanelProps) {
   const { t } = useI18n()
+  const isBusy = state.status === "loading"
   return (
     <section className="rail-section project-folder-section" aria-label={t("projectSidebar.projectsAria")}>
-      <p className="section-kicker">{t("projectSidebar.projectsSection")}</p>
+      <div className="project-folder-section-header">
+        <p className="section-kicker">{t("projectSidebar.projectsSection")}</p>
+        <button
+          type="button"
+          className="project-section-create-button"
+          onClick={onToggleCreateOpen}
+          aria-expanded={createOpen}
+          aria-label={t("projectSidebar.newProject")}
+          title={t("projectSidebar.newProject")}
+          disabled={isBusy}
+        >
+          <FolderPlus size={15} />
+        </button>
+      </div>
+      {createOpen ? (
+        <form className="sidebar-create-form" aria-label={t("projectSidebar.createFormAria")} onSubmit={onSubmitCreateProject}>
+          <label htmlFor="sidebar-project-name">{t("projectSidebar.projectName")}</label>
+          <input
+            id="sidebar-project-name"
+            ref={createInputRef}
+            value={projectName}
+            onChange={(event) => onProjectNameChange(event.currentTarget.value)}
+            placeholder={t("projectSidebar.projectNamePlaceholder")}
+            disabled={isBusy}
+          />
+          <div className="sidebar-create-actions">
+            <button type="button" onClick={onCancelCreateProject}>
+              {t("projectSidebar.cancelCreateProject")}
+            </button>
+            <button type="submit" disabled={isBusy}>
+              {t("projectSidebar.createProject")}
+            </button>
+          </div>
+        </form>
+      ) : null}
+      {state.error ? (
+        <div className="sidebar-error" role="alert">
+          <strong>{state.error.code}</strong>
+          <span>{state.error.message}</span>
+          {state.error.target ? <small>{state.error.target}</small> : null}
+        </div>
+      ) : null}
       {state.projects.length === 0 ? (
         <p className="muted">{t("projectSidebar.noProjects")}</p>
       ) : (
@@ -160,8 +188,6 @@ function ProjectFoldersPanel({
               active={project.projectRef === state.activeProjectRef}
               isBusy={state.status === "loading"}
               projectFiles={project.projectRef === state.activeProjectRef ? state.projectFiles : []}
-              persistence={state.persistence}
-              validation={state.validation}
               onSetProjectFolderExpanded={onSetProjectFolderExpanded}
               onOpenProject={onOpenProject}
               onDeleteProject={onDeleteProject}
@@ -181,8 +207,6 @@ type ProjectFolderProps = {
   active: boolean
   isBusy: boolean
   projectFiles: ProjectFileEntry[]
-  persistence: ProjectSidebarState["persistence"]
-  validation: ProjectSidebarState["validation"]
   onSetProjectFolderExpanded: (projectRef: string, expanded: boolean) => void
   onOpenProject: (projectRef: string) => Promise<void>
   onDeleteProject: (projectRef: string) => Promise<void>
@@ -196,8 +220,6 @@ function ProjectFolder({
   active,
   isBusy,
   projectFiles,
-  persistence,
-  validation,
   onSetProjectFolderExpanded,
   onOpenProject,
   onDeleteProject,
@@ -206,12 +228,53 @@ function ProjectFolder({
 }: ProjectFolderProps) {
   const { t } = useI18n()
   const fileCount = projectFiles.length
-  const projectAlerts = active ? projectFolderAlerts(persistence, validation, t) : []
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
+  const folderRef = useRef<HTMLLIElement | null>(null)
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (isBusy) setMenuOpen(false)
+    if (isBusy) {
+      setMenuOpen(false)
+    }
   }, [isBusy])
+
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const handleDocumentPointerDown = (event: PointerEvent) => {
+      const folder = folderRef.current
+      const popover = popoverRef.current
+      if (!folder || folder.contains(event.target as Node) || popover?.contains(event.target as Node)) return
+      setMenuOpen(false)
+    }
+    document.addEventListener("pointerdown", handleDocumentPointerDown, { capture: true })
+    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, { capture: true })
+  }, [menuOpen])
+
+  useEffect(() => {
+    if (active) return
+    setMenuOpen(false)
+  }, [active])
+
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const updateMenuPosition = () => {
+      const rect = menuButtonRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setMenuPosition({
+        top: Math.max(8, rect.top),
+        left: Math.min(window.innerWidth - 132, rect.right + 8),
+      })
+    }
+    updateMenuPosition()
+    window.addEventListener("resize", updateMenuPosition)
+    window.addEventListener("scroll", updateMenuPosition, true)
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition)
+      window.removeEventListener("scroll", updateMenuPosition, true)
+    }
+  }, [menuOpen])
 
   const handleDragOver = (event: DragEvent<HTMLLIElement>) => {
     if (event.dataTransfer.files.length === 0) return
@@ -238,14 +301,12 @@ function ProjectFolder({
 
   const handleDeleteProject = () => {
     setMenuOpen(false)
-    if (!window.confirm(t("projectSidebar.projectFiles.confirmDeleteProject", { name: project.name }))) {
-      return
-    }
     void onDeleteProject(project.projectRef)
   }
 
   return (
     <li
+      ref={folderRef}
       className={`project-folder ${active ? "project-folder--active" : ""} ${expanded ? "project-folder--expanded" : ""} ${menuOpen ? "project-folder--menu-open" : ""}`}
       role="treeitem"
       aria-expanded={expanded}
@@ -273,37 +334,33 @@ function ProjectFolder({
           </span>
         </button>
         <div className={`project-folder-actions ${menuOpen ? "project-folder-actions--open" : ""}`}>
-          <div className="project-folder-more">
-            <button
-              type="button"
-              className="project-folder-more-button"
-              onClick={() => setMenuOpen((current) => !current)}
-              disabled={isBusy}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              aria-label={t("projectSidebar.projectFiles.moreActions", { name: project.name })}
-              title={t("projectSidebar.projectFiles.moreActions", { name: project.name })}
-            >
-              <MoreVertical size={15} />
-            </button>
-            {menuOpen ? (
-              <div className="project-folder-menu" role="menu">
-                <button
-                  type="button"
-                  className="project-folder-menu-item project-folder-menu-item--danger"
-                  role="menuitem"
-                  onClick={handleDeleteProject}
-                >
-                  <Trash2 size={15} />
-                  <span>{t("projectSidebar.projectFiles.deleteProject")}</span>
-                </button>
-              </div>
-            ) : null}
-          </div>
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className="project-folder-more-button"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              setMenuPosition({
+                top: Math.max(8, rect.top),
+                left: Math.min(window.innerWidth - 132, rect.right + 8),
+              })
+              setMenuOpen((current) => !current)
+            }}
+            disabled={isBusy}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={t("projectSidebar.projectFiles.moreActions", { name: project.name })}
+            title={t("projectSidebar.projectFiles.moreActions", { name: project.name })}
+          >
+            <MoreVertical size={15} />
+          </button>
           <button
             type="button"
             className="project-folder-import-button"
-            onClick={() => void onImportProjectFiles(project.projectRef)}
+            onClick={() => {
+              setMenuOpen(false)
+              void onImportProjectFiles(project.projectRef)
+            }}
             disabled={isBusy}
             title={t("projectSidebar.projectFiles.importInto", { name: project.name })}
             aria-label={t("projectSidebar.projectFiles.importInto", { name: project.name })}
@@ -312,21 +369,42 @@ function ProjectFolder({
           </button>
         </div>
       </div>
-      {expanded && active && (projectAlerts.length > 0 || fileCount > 0) ? (
-        <div className="project-folder-contents" role="group">
-          {projectAlerts.length > 0 ? <ProjectAlerts alerts={projectAlerts} /> : null}
-          {fileCount > 0 ? (
-            <ul className="project-file-list" role="group">
-              {projectFiles.map((file) => (
-                <ProjectFileRow key={file.id} file={file} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
-              ))}
-            </ul>
-          ) : null}
-        </div>
+      {menuOpen ? createPortal(
+        <div
+          ref={popoverRef}
+          className="project-folder-popover"
+          role="menu"
+          aria-label={t("projectSidebar.projectFiles.moreActions", { name: project.name })}
+          style={menuPosition ? { top: `${menuPosition.top}px`, left: `${menuPosition.left}px` } : undefined}
+        >
+          <button
+            type="button"
+            className="project-folder-delete-action"
+            role="menuitem"
+            onClick={handleDeleteProject}
+            disabled={isBusy}
+          >
+            <Trash2 size={14} />
+            <span>{t("projectSidebar.projectFiles.deleteProject")}</span>
+          </button>
+        </div>,
+        document.body,
+      ) : null}
+      {active && fileCount > 0 ? (
+        <ul
+          className={`project-folder-contents ${expanded ? "project-folder-contents--expanded" : "project-folder-contents--collapsed"}`}
+          role="group"
+          aria-hidden={expanded ? "false" : "true"}
+        >
+          {projectFiles.map((file) => (
+            <ProjectFileRow key={file.id} file={file} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
+          ))}
+        </ul>
       ) : null}
     </li>
   )
 }
+
 type ProjectFileRowProps = {
   file: ProjectFileEntry
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
@@ -337,7 +415,6 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps)
   const draggable = isDraggableRawProjectFile(file)
   const kindBadge = projectFileKindBadge(file.kind)
   const kindLabel = t(projectFileKindLabelKey(file.kind))
-  const compactBadges = projectFileCompactBadges(file, t)
   const handleActivateFile = () => {
     if (!draggable) return
     void onAddProjectFileToCanvas(file)
@@ -354,7 +431,7 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps)
       role="treeitem"
       draggable={draggable}
       tabIndex={draggable ? 0 : undefined}
-      aria-label={projectFileAriaLabel(file, kindLabel, compactBadges, t)}
+      aria-label={projectFileAriaLabel(file, kindLabel, t)}
       onClick={handleActivateFile}
       onKeyDown={handleKeyDown}
       onDragStart={draggable ? (event) => {
@@ -376,14 +453,12 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps)
       <span className="project-file-title">
         <strong title={file.name}>{file.name}</strong>
       </span>
-      {compactBadges.length > 0 ? (
-        <span className="project-file-compact-meta" aria-hidden="true">
-          {compactBadges.map((badge) => (
-            <span key={badge.id} className={`project-file-compact-badge project-file-compact-badge--${badge.tone}`}>
-              {badge.label}
-            </span>
-          ))}
-        </span>
+      {file.warnings.length > 0 ? (
+        <span
+          className="project-file-warning-dot"
+          title={t("projectSidebar.projectFiles.warningCount", { count: file.warnings.length })}
+          aria-hidden="true"
+        />
       ) : null}
     </li>
   )
@@ -393,81 +468,19 @@ function isDraggableRawProjectFile(file: ProjectFileEntry): boolean {
   return file.path.startsWith("inputs/raw/") && file.kind !== "export-artifact"
 }
 
-type ProjectFileCompactBadge = {
-  id: string
-  label: string
-  tone: "neutral" | "success" | "warning" | "error"
-}
-
-function projectFileCompactBadges(file: ProjectFileEntry, t: Translate): ProjectFileCompactBadge[] {
-  const badges: ProjectFileCompactBadge[] = []
-
-  if (file.graphNodeIds.length > 0) {
-    badges.push({
-      id: "graph-nodes",
-      label: t("projectSidebar.projectFiles.compact.inGraph"),
-      tone: "success",
-    })
-  } else if (file.registeredObjectIds.length > 0) {
-    badges.push({
-      id: "registered-objects",
-      label: t("projectSidebar.projectFiles.compact.parsed"),
-      tone: "success",
-    })
-  } else if (file.artifactIds.length > 0) {
-    badges.push({
-      id: "artifacts",
-      label: t("projectSidebar.projectFiles.compact.artifacts", { count: file.artifactIds.length }),
-      tone: "neutral",
-    })
-  } else if (file.status !== "stored") {
-    badges.push({
-      id: "status",
-      label: t(projectFileStatusLabelKey(file.status)),
-      tone: file.status === "error" ? "error" : "neutral",
-    })
-  }
-
-  return badges
-}
-
 function projectFileAriaLabel(
   file: ProjectFileEntry,
   kindLabel: string,
-  badges: ProjectFileCompactBadge[],
   t: Translate,
 ): string {
   return [
     file.name,
     kindLabel,
     t(projectFileStatusLabelKey(file.status)),
-    ...badges.map((badge) => badge.label),
+    ...(file.warnings.length > 0
+      ? [t("projectSidebar.projectFiles.warningCount", { count: file.warnings.length })]
+      : []),
   ].join(", ")
-}
-
-type ProjectAlert = {
-  id: string
-  tone: "info" | "warning" | "error"
-  icon: "save" | "warning"
-  title: string
-  detail?: string
-}
-
-function ProjectAlerts({ alerts }: { alerts: ProjectAlert[] }) {
-  const { t } = useI18n()
-  return (
-    <div className="project-alert-list" role="status" aria-label={t("projectSidebar.notice.alertsAria")}>
-      {alerts.map((alert) => (
-        <div key={alert.id} className={`project-alert project-alert--${alert.tone}`}>
-          {alert.icon === "save" ? <Save size={15} /> : <AlertTriangle size={15} />}
-          <span>
-            <strong>{alert.title}</strong>
-            {alert.detail ? <small>{alert.detail}</small> : null}
-          </span>
-        </div>
-      ))}
-    </div>
-  )
 }
 
 function formatProjectUpdatedAt(value: string): string {
@@ -510,44 +523,3 @@ function projectFileStatusLabelKey(status: ProjectFileStatus): MessageKey {
 }
 
 type Translate = ReturnType<typeof useI18n>["t"]
-
-function projectFolderAlerts(
-  persistence: ProjectSidebarState["persistence"],
-  validation: ProjectSidebarState["validation"],
-  t: Translate,
-): ProjectAlert[] {
-  const alerts: ProjectAlert[] = []
-  if (persistence === "dirty") {
-    alerts.push({
-      id: "persistence-dirty",
-      tone: "warning",
-      icon: "save",
-      title: t("projectSidebar.notice.unsaved"),
-      detail: t("projectSidebar.notice.unsavedDetail"),
-    })
-  } else if (persistence === "saving") {
-    alerts.push({
-      id: "persistence-saving",
-      tone: "info",
-      icon: "save",
-      title: t("projectSidebar.notice.saving"),
-    })
-  } else if (persistence === "error") {
-    alerts.push({
-      id: "persistence-error",
-      tone: "error",
-      icon: "warning",
-      title: t("projectSidebar.notice.saveError"),
-    })
-  }
-  if (validation.state === "missing" || validation.state === "error") {
-    alerts.push({
-      id: `validation-${validation.state}`,
-      tone: "error",
-      icon: "warning",
-      title: t("projectSidebar.notice.projectFilesIssue"),
-      detail: t(validation.messageKey, validation.messageParams),
-    })
-  }
-  return alerts
-}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { memo, useEffect, useRef, useState } from "react"
 import type { PointerEvent } from "react"
 import * as THREE from "three"
 import type { Atom3DSummary } from "../shell"
@@ -6,10 +6,15 @@ import type { Atom3DSummary } from "../shell"
 type Molecule3DViewerProps = {
   atoms: Atom3DSummary[]
   label: string
+  variant?: "node" | "large"
+  interactiveMeasurements?: boolean
 }
 
 type RenderableAtom = Atom3DSummary & {
   element: string
+  x: number
+  y: number
+  z: number
 }
 
 type PointerRotationDraft = {
@@ -21,17 +26,27 @@ type PointerRotationDraft = {
 
 const yAxis = new THREE.Vector3(0, 1, 0)
 
-export function Molecule3DViewer({ atoms, label }: Molecule3DViewerProps) {
+export const Molecule3DViewer = memo(function Molecule3DViewer({
+  atoms,
+  label,
+  variant = "node",
+  interactiveMeasurements = false,
+}: Molecule3DViewerProps) {
   const containerRef = useRef<HTMLSpanElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const moleculeGroupRef = useRef<THREE.Group | null>(null)
+  const cameraRef = useRef<THREE.OrthographicCamera | null>(null)
   const dragRef = useRef<PointerRotationDraft | null>(null)
+  const renderSceneRef = useRef<(() => void) | null>(null)
   const [rendererState, setRendererState] = useState<"ready" | "fallback">("ready")
+  const [selectedAtomIndices, setSelectedAtomIndices] = useState<number[]>([])
 
   useEffect(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
-    const renderableAtoms = atoms.filter(isRenderableAtom3D)
+    const renderableAtoms = atoms
+      .map(normalizeRenderableAtom3D)
+      .filter((atom): atom is RenderableAtom => Boolean(atom))
     if (!canvas || !container || renderableAtoms.length === 0) return undefined
     if (!canAttemptWebGl()) {
       setRendererState("fallback")
@@ -51,6 +66,7 @@ export function Molecule3DViewer({ atoms, label }: Molecule3DViewerProps) {
     const camera = new THREE.OrthographicCamera(-2.4, 2.4, 1.55, -1.55, 0.1, 100)
     camera.position.set(0, 0, 7)
     camera.lookAt(0, 0, 0)
+    cameraRef.current = camera
 
     scene.add(new THREE.AmbientLight(0xffffff, 1.5))
     const keyLight = new THREE.DirectionalLight(0xffffff, 2.4)
@@ -66,9 +82,12 @@ export function Molecule3DViewer({ atoms, label }: Molecule3DViewerProps) {
     moleculeGroupRef.current = group
     scene.add(group)
 
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
-    let animationFrame = 0
     let disposed = false
+    const renderScene = () => {
+      if (disposed) return
+      renderer.render(scene, camera)
+    }
+    renderSceneRef.current = renderScene
 
     const resize = () => {
       const width = Math.max(1, Math.floor(container.clientWidth))
@@ -81,7 +100,7 @@ export function Molecule3DViewer({ atoms, label }: Molecule3DViewerProps) {
       camera.updateProjectionMatrix()
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
       renderer.setSize(width, height, false)
-      renderer.render(scene, camera)
+      renderScene()
     }
 
     const resizeObserver = typeof ResizeObserver !== "undefined"
@@ -90,19 +109,9 @@ export function Molecule3DViewer({ atoms, label }: Molecule3DViewerProps) {
     resizeObserver?.observe(container)
     resize()
 
-    const animate = () => {
-      if (disposed) return
-      if (!reducedMotion && !dragRef.current) {
-        group.rotation.y += 0.0045
-      }
-      renderer.render(scene, camera)
-      animationFrame = window.requestAnimationFrame(animate)
-    }
-    animationFrame = window.requestAnimationFrame(animate)
-
     return () => {
       disposed = true
-      window.cancelAnimationFrame(animationFrame)
+      renderSceneRef.current = null
       resizeObserver?.disconnect()
       moleculeGroupRef.current = null
       scene.traverse((object: THREE.Object3D) => {
@@ -116,6 +125,7 @@ export function Molecule3DViewer({ atoms, label }: Molecule3DViewerProps) {
         }
       })
       renderer.dispose()
+      cameraRef.current = null
     }
   }, [atoms])
 
@@ -145,20 +155,35 @@ export function Molecule3DViewer({ atoms, label }: Molecule3DViewerProps) {
     if (!group) return
     group.rotation.y = draft.rotationY + (event.clientX - draft.x) * 0.012
     group.rotation.x = clamp(draft.rotationX + (event.clientY - draft.y) * 0.012, -1.35, 1.35)
+    renderSceneRef.current?.()
   }
 
   const handlePointerEnd = (event: PointerEvent<HTMLSpanElement>) => {
-    if (dragRef.current) {
+    const draft = dragRef.current
+    if (draft) {
       stopPreviewEvent(event)
+      if (
+        interactiveMeasurements
+        && Math.hypot(event.clientX - draft.x, event.clientY - draft.y) < 4
+      ) {
+        const pickedAtomIndex = pickAtomIndex(event, canvasRef.current, cameraRef.current, moleculeGroupRef.current)
+        if (pickedAtomIndex !== null) {
+          setSelectedAtomIndices((current) => [...current.filter((index) => index !== pickedAtomIndex), pickedAtomIndex].slice(-4))
+        }
+      }
       dragRef.current = null
       event.currentTarget.releasePointerCapture?.(event.pointerId)
     }
   }
 
+  const measurement = interactiveMeasurements
+    ? moleculeMeasurementLabel(atoms, selectedAtomIndices)
+    : null
+
   return (
     <span
       ref={containerRef}
-      className="molecule-3d-viewer"
+      className={`molecule-3d-viewer molecule-3d-viewer--${variant}`}
       role="img"
       aria-label={`${label} 3D structure`}
       onPointerDown={handlePointerDown}
@@ -174,9 +199,12 @@ export function Molecule3DViewer({ atoms, label }: Molecule3DViewerProps) {
       {rendererState === "fallback" ? (
         <small className="molecule-3d-viewer-fallback">3D</small>
       ) : null}
+      {measurement ? (
+        <small className="molecule-3d-measurement">{measurement}</small>
+      ) : null}
     </span>
   )
-}
+})
 
 function buildMoleculeGroup(atoms: RenderableAtom[]): THREE.Group {
   const group = new THREE.Group()
@@ -203,10 +231,70 @@ function buildMoleculeGroup(atoms: RenderableAtom[]): THREE.Group {
     })
     const sphere = new THREE.Mesh(geometry, material)
     sphere.position.copy(positions[index])
+    sphere.userData.atomIndex = index
     group.add(sphere)
   })
 
   return group
+}
+
+function pickAtomIndex(
+  event: PointerEvent<HTMLSpanElement>,
+  canvas: HTMLCanvasElement | null,
+  camera: THREE.OrthographicCamera | null,
+  group: THREE.Group | null,
+): number | null {
+  if (!canvas || !camera || !group) return null
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return null
+  const pointer = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -(((event.clientY - rect.top) / rect.height) * 2 - 1),
+  )
+  const raycaster = new THREE.Raycaster()
+  raycaster.setFromCamera(pointer, camera)
+  const atomMeshes: THREE.Object3D[] = []
+  group.traverse((object) => {
+    if (typeof object.userData.atomIndex === "number") atomMeshes.push(object)
+  })
+  const hit = raycaster.intersectObjects(atomMeshes, false)[0]
+  const atomIndex = hit?.object.userData.atomIndex
+  return typeof atomIndex === "number" ? atomIndex : null
+}
+
+function moleculeMeasurementLabel(atoms: Atom3DSummary[], selectedAtomIndices: number[]): string | null {
+  const selectedAtoms = selectedAtomIndices
+    .map((index) => normalizeRenderableAtom3D(atoms[index]))
+    .filter((atom): atom is RenderableAtom => Boolean(atom))
+  if (selectedAtoms.length < 2) return null
+  if (selectedAtoms.length === 2) {
+    return `${atomDistance(selectedAtoms[0], selectedAtoms[1]).toFixed(3)} Å`
+  }
+  if (selectedAtoms.length === 3) {
+    return `${atomAngle(selectedAtoms[0], selectedAtoms[1], selectedAtoms[2]).toFixed(2)}°`
+  }
+  return `${atomDihedral(selectedAtoms[0], selectedAtoms[1], selectedAtoms[2], selectedAtoms[3]).toFixed(2)}°`
+}
+
+function atomAngle(a: RenderableAtom, b: RenderableAtom, c: RenderableAtom): number {
+  const ba = new THREE.Vector3(a.x - b.x, a.y - b.y, a.z - b.z).normalize()
+  const bc = new THREE.Vector3(c.x - b.x, c.y - b.y, c.z - b.z).normalize()
+  return THREE.MathUtils.radToDeg(Math.acos(clamp(ba.dot(bc), -1, 1)))
+}
+
+function atomDihedral(a: RenderableAtom, b: RenderableAtom, c: RenderableAtom, d: RenderableAtom): number {
+  const p0 = new THREE.Vector3(a.x, a.y, a.z)
+  const p1 = new THREE.Vector3(b.x, b.y, b.z)
+  const p2 = new THREE.Vector3(c.x, c.y, c.z)
+  const p3 = new THREE.Vector3(d.x, d.y, d.z)
+  const b0 = new THREE.Vector3().subVectors(p0, p1)
+  const b1 = new THREE.Vector3().subVectors(p2, p1).normalize()
+  const b2 = new THREE.Vector3().subVectors(p3, p2)
+  const v = b0.sub(b1.clone().multiplyScalar(b0.dot(b1)))
+  const w = b2.sub(b1.clone().multiplyScalar(b2.dot(b1)))
+  const x = v.dot(w)
+  const y = new THREE.Vector3().crossVectors(b1, v).dot(w)
+  return THREE.MathUtils.radToDeg(Math.atan2(y, x))
 }
 
 function createBondMesh(from: THREE.Vector3, to: THREE.Vector3): THREE.Mesh {
@@ -224,11 +312,18 @@ function createBondMesh(from: THREE.Vector3, to: THREE.Vector3): THREE.Mesh {
   return mesh
 }
 
-function isRenderableAtom3D(atom: Atom3DSummary): atom is RenderableAtom {
-  return Boolean(atom.element)
-    && Number.isFinite(atom.x)
-    && Number.isFinite(atom.y)
-    && Number.isFinite(atom.z)
+function normalizeRenderableAtom3D(atom: Atom3DSummary): RenderableAtom | null {
+  const x = Number(atom.x)
+  const y = Number(atom.y)
+  const z = Number(atom.z)
+  if (!atom.element || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null
+  return {
+    ...atom,
+    element: String(atom.element),
+    x,
+    y,
+    z,
+  }
 }
 
 function moleculeCenter(atoms: RenderableAtom[]): { x: number; y: number; z: number } {

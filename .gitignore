@@ -9,3 +9,5 @@ web/test-results/
 web/playwright-report-local-http/
 web/test-results-local-http/
 *.tsbuildinfo
+*.rxnflow.zip
+/Ni-fxc/

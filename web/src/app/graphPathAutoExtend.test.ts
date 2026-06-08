@@ -27,7 +27,7 @@ describe("graphPathAutoExtend", () => {
     })
   })
 
-  it("keeps branch, internal, cycle, stale, and repeated connections manual", () => {
+  it("keeps internal, cycle, stale node, and repeated connections manual", () => {
     expect(resolvePathAutoExtendIntent(workspace(), "node-a", "node-b")).toEqual({
       kind: "manual",
       reason: "no-change",
@@ -42,16 +42,24 @@ describe("graphPathAutoExtend", () => {
       kind: "manual",
       reason: "cycle",
     })
-    expect(resolvePathAutoExtendIntent(workspace(), "node-a", "node-c")).toEqual({
-      kind: "manual",
-      reason: "branch",
-    })
     expect(resolvePathAutoExtendIntent(workspace(), "node-a", "node-missing")).toEqual({
       kind: "manual",
-      reason: "stale-path",
+      reason: "no-change",
     })
+  })
+
+  it("turns branch and stale active paths into active connection paths", () => {
+    expect(resolvePathAutoExtendIntent(workspace(), "node-a", "node-c")).toEqual({
+      kind: "set-path",
+      pathId: "path-web-main-node-a-node-c",
+      nodeIds: ["node-a", "node-c"],
+      reason: "branch",
+    })
+
     expect(resolvePathAutoExtendIntent(workspace({ activePathId: "path-missing" }), "node-a", "node-b")).toEqual({
-      kind: "manual",
+      kind: "set-path",
+      pathId: "path-web-main",
+      nodeIds: ["node-a", "node-b"],
       reason: "stale-path",
     })
   })

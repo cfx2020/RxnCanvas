@@ -308,6 +308,10 @@ export const fixtureTransport: ShellTransport = {
       return fixtureWorkspaceSetNodeCompositionResponse(payload.args)
     }
 
+    if (payload.command === "workspace.update_node") {
+      return fixtureWorkspaceUpdateNodeResponse(payload.args)
+    }
+
     if (payload.command === "workspace.move_node") {
       return fixtureWorkspaceMoveNodeResponse(payload.args)
     }
@@ -585,6 +589,33 @@ function fixtureWorkspaceSetNodeCompositionResponse(args: JsonObject): ShellResp
     },
   })
   return workspaceCommandResponse("workspace.set_node_composition")
+}
+
+function fixtureWorkspaceUpdateNodeResponse(args: JsonObject): ShellResponse<WorkspaceCommandData> {
+  if (args.session_id !== fixtureSessionId) {
+    return invalidSessionResponse()
+  }
+  const nodeId = typeof args.node_id === "string" ? args.node_id : ""
+  if (!nodeId) {
+    return invalidWorkspaceInput("Node id is required.", "node_id")
+  }
+  if (!hasGraphNode(nodeId)) {
+    return invalidWorkspaceInput("Graph node does not exist.", "node_id", "graph_invalid")
+  }
+  const label = typeof args.label === "string" ? args.label.trim() : ""
+  if (!label) {
+    return invalidWorkspaceInput("Node label must be a non-empty string.", "node_label")
+  }
+  fixtureWorkspace = normalizeWorkspace({
+    ...fixtureWorkspace,
+    graph: {
+      ...fixtureWorkspace.graph,
+      nodes: fixtureWorkspace.graph.nodes.map((node) => (
+        node.id === nodeId ? { ...node, label } : node
+      )),
+    },
+  })
+  return workspaceCommandResponse("workspace.update_node")
 }
 
 function fixtureWorkspaceMoveNodeResponse(args: JsonObject): ShellResponse<WorkspaceCommandData> {
@@ -1165,6 +1196,7 @@ function fixtureChemicalObjectsSection(): JsonObject[] {
 
 function fixtureChemicalObject(objectId: string, index: number): JsonObject {
   const object = fixtureObjects.find((item) => item.id === objectId)
+  const geometry = Array.isArray(object?.geometry) ? object.geometry : []
   return {
     id: objectId,
     label: object?.label ?? objectId,
@@ -1172,7 +1204,7 @@ function fixtureChemicalObject(objectId: string, index: number): JsonObject {
     charge: object?.charge ?? null,
     spin_multiplicity: object?.spin_multiplicity ?? null,
     method: object?.method ?? null,
-    geometry: [],
+    geometry,
     energies: {
       electronic: {
         value: objectId === "object-b" ? -1.02 : -1.0 - index * 0.01,

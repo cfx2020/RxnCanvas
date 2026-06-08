@@ -4,16 +4,29 @@ import { browserProjectBackendId, type BrowserProjectRef } from "../repository"
 import { graphRawFileDropMimeType } from "./graphRawFileDropPayload"
 import { I18nProvider } from "./i18n"
 import { ProjectSidebar } from "./ProjectSidebar"
+import type { ProjectFileEntry } from "./projectFiles"
 import { initialProjectSidebarState, type ProjectSidebarState } from "./projectSidebarState"
 
 describe("ProjectSidebar", () => {
   it("shows the project drawer empty state without projects", () => {
     renderSidebar(initialProjectSidebarState)
 
+    expect(screen.queryByText("RXNFLOW")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "New Project" })).toBeInTheDocument()
     const panel = screen.getByRole("region", { name: "Projects" })
     expect(within(panel).getByText("No projects yet")).toBeInTheDocument()
     expect(screen.queryByText("No project loaded")).not.toBeInTheDocument()
+  })
+
+  it("keeps floating project drawer content mounted while collapsed", () => {
+    renderSidebar(initialProjectSidebarState, {
+      collapsed: true,
+    })
+
+    expect(screen.queryByText("Rf")).not.toBeInTheDocument()
+    expect(screen.queryByText("RXNFLOW")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "New Project" })).toBeInTheDocument()
+    expect(screen.getByRole("complementary", { name: "Project Sidebar" })).toHaveClass("project-sidebar--collapsed")
   })
 
   it("creates projects from the sidebar drawer action", () => {
@@ -71,6 +84,7 @@ describe("ProjectSidebar", () => {
     expect(within(panel).getByText("X")).toBeInTheDocument()
     expect(within(panel).queryByText("ExtXYZ")).not.toBeInTheDocument()
     expect(within(panel).queryByText("Stored")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("Graph")).not.toBeInTheDocument()
   })
 
   it("uses the project folder row itself to collapse and expand files", () => {
@@ -113,7 +127,9 @@ describe("ProjectSidebar", () => {
     fireEvent.click(folderButton)
 
     expect(folderButton).toHaveAttribute("aria-expanded", "false")
-    expect(within(panel).queryByText("water.extxyz")).not.toBeInTheDocument()
+    const collapsedContents = folderButton.closest(".project-folder")?.querySelector(".project-folder-contents")
+    expect(collapsedContents).toHaveAttribute("aria-hidden", "true")
+    expect(collapsedContents).toHaveClass("project-folder-contents--collapsed")
 
     fireEvent.click(folderButton)
 
@@ -149,7 +165,7 @@ describe("ProjectSidebar", () => {
     expect(within(panel).queryByText("Drop calculation files here to import into this project.")).not.toBeInTheDocument()
   })
 
-  it("shows project notices only for unsaved or invalid project state", () => {
+  it("keeps project persistence and validation notices out of the file tree", () => {
     const activeProject = browserProject("browser-project:project-1", "Pd Ni")
     renderSidebar({
       ...initialProjectSidebarState,
@@ -165,10 +181,10 @@ describe("ProjectSidebar", () => {
       },
     })
 
-    const notices = screen.getByRole("status", { name: "Project notices" })
-    expect(within(notices).getByText("Unsaved changes")).toBeInTheDocument()
-    expect(within(notices).getByText("Project files need attention")).toBeInTheDocument()
-    expect(within(notices).getByText(/Project content file is missing/)).toBeInTheDocument()
+    expect(screen.queryByRole("status", { name: "Project notices" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Project files need attention")).not.toBeInTheDocument()
+    expect(screen.queryByText(/Project content file is missing/)).not.toBeInTheDocument()
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument()
     expect(screen.queryByText("Persisted")).not.toBeInTheDocument()
     expect(screen.queryByText("Valid")).not.toBeInTheDocument()
   })
@@ -189,10 +205,9 @@ describe("ProjectSidebar", () => {
     expect(onImportProjectFiles).toHaveBeenCalledWith(activeProject.projectRef)
   })
 
-  it("opens project actions and deletes a project after confirmation", () => {
+  it("opens project actions and deletes a project from the compact menu", () => {
     const activeProject = browserProject("browser-project:project-1", "Pd Ni")
     const onDeleteProject = vi.fn(async () => undefined)
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true)
     renderSidebar({
       ...initialProjectSidebarState,
       status: "ready",
@@ -202,13 +217,55 @@ describe("ProjectSidebar", () => {
     }, vi.fn(), vi.fn(), vi.fn(), vi.fn(), onDeleteProject)
 
     fireEvent.click(screen.getByRole("button", { name: "Project actions" }))
+    expect(screen.getByRole("menuitem", { name: "Delete project" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
 
-    expect(confirmSpy).toHaveBeenCalledWith(
-      "Delete Pd Ni? This will remove the project and its stored files from this browser.",
-    )
     expect(onDeleteProject).toHaveBeenCalledWith(activeProject.projectRef)
-    confirmSpy.mockRestore()
+    expect(screen.queryByRole("menuitem", { name: "Delete project" })).not.toBeInTheDocument()
+  })
+
+  it("keeps project actions out of the file list layout", () => {
+    const activeProject = browserProject("browser-project:project-1", "Pd Ni")
+    renderSidebar({
+      ...initialProjectSidebarState,
+      status: "ready",
+      projects: [activeProject],
+      activeProjectRef: activeProject.projectRef,
+      activeProject,
+      projectFiles: [
+        {
+          id: "raw-abc123def456",
+          projectRef: activeProject.projectRef,
+          path: "inputs/raw/abc123def456-water.extxyz",
+          name: "water.extxyz",
+          kind: "extxyz",
+          byteSize: 128,
+          checksum: "sha256:abc123def4567890",
+          status: "stored",
+          rawResourceId: "raw-abc123def456",
+          registeredObjectIds: [],
+          graphNodeIds: [],
+          artifactIds: [],
+          warnings: [],
+        },
+      ],
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Project actions" }))
+
+    const folder = screen.getByRole("treeitem", { expanded: true })
+    const row = folder.querySelector(".project-folder-row")
+    const contents = folder.querySelector(".project-folder-contents")
+    const popover = document.body.querySelector(".project-folder-popover")
+    expect(row).toBeInstanceOf(HTMLElement)
+    expect(contents).toBeInstanceOf(HTMLElement)
+    expect(popover).toBeInstanceOf(HTMLElement)
+    expect(folder.querySelector(".project-folder-menu")).toBeNull()
+    expect(folder.querySelector(".project-folder-menu-anchor")).toBeNull()
+    expect(within(row as HTMLElement).queryByRole("button", { name: "Delete project" })).not.toBeInTheDocument()
+    expect(within(popover as HTMLElement).getByRole("menuitem", { name: "Delete project" })).toBeInTheDocument()
+    expect(folder).not.toContainElement(popover as HTMLElement)
+    expect(contents).not.toContainElement(within(popover as HTMLElement).getByRole("menuitem", { name: "Delete project" }))
   })
 
   it("opens the import tray with local files dropped onto a project folder", () => {
@@ -326,24 +383,47 @@ describe("ProjectSidebar", () => {
 
 function renderSidebar(
   state: ProjectSidebarState,
-  onAddProjectFileToCanvas = vi.fn(),
-  onImportProjectFiles = vi.fn(),
-  onCreateProject = vi.fn(),
-  onOpenProject: (projectRef: string) => Promise<void> = async () => undefined,
-  onDeleteProject: (projectRef: string) => Promise<void> = async () => undefined,
+  optionsOrOnAddProjectFileToCanvas: unknown = vi.fn(),
+  onImportProjectFiles: unknown = vi.fn(),
+  onCreateProject: unknown = vi.fn(),
+  onOpenProject: unknown = async () => undefined,
+  onDeleteProject: unknown = async () => undefined,
 ) {
+  const options: RenderSidebarOptions = isRenderSidebarOptions(optionsOrOnAddProjectFileToCanvas)
+    ? optionsOrOnAddProjectFileToCanvas
+    : {
+        onAddProjectFileToCanvas: optionsOrOnAddProjectFileToCanvas as RenderSidebarOptions["onAddProjectFileToCanvas"],
+        onImportProjectFiles: onImportProjectFiles as RenderSidebarOptions["onImportProjectFiles"],
+        onCreateProject: onCreateProject as RenderSidebarOptions["onCreateProject"],
+        onOpenProject: onOpenProject as RenderSidebarOptions["onOpenProject"],
+        onDeleteProject: onDeleteProject as RenderSidebarOptions["onDeleteProject"],
+      }
   return render(
     <I18nProvider initialLocale="en-US">
       <ProjectSidebar
         state={state}
-        onCreateProject={onCreateProject}
-        onOpenProject={onOpenProject}
-        onDeleteProject={onDeleteProject}
-        onImportProjectFiles={onImportProjectFiles}
-        onAddProjectFileToCanvas={onAddProjectFileToCanvas}
+        collapsed={options.collapsed ?? false}
+        onCreateProject={options.onCreateProject ?? vi.fn()}
+        onOpenProject={options.onOpenProject ?? (async () => undefined)}
+        onDeleteProject={options.onDeleteProject ?? (async () => undefined)}
+        onImportProjectFiles={options.onImportProjectFiles ?? vi.fn()}
+        onAddProjectFileToCanvas={options.onAddProjectFileToCanvas ?? vi.fn()}
       />
     </I18nProvider>,
   )
+}
+
+type RenderSidebarOptions = {
+  collapsed?: boolean
+  onAddProjectFileToCanvas?: (file: ProjectFileEntry) => void | Promise<void>
+  onImportProjectFiles?: (projectRef: string, files?: File[]) => void | Promise<void>
+  onCreateProject?: (name: string) => void | Promise<void>
+  onOpenProject?: (projectRef: string) => Promise<void>
+  onDeleteProject?: (projectRef: string) => Promise<void>
+}
+
+function isRenderSidebarOptions(value: unknown): value is RenderSidebarOptions {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 function browserProject(projectRef: string, name: string): BrowserProjectRef {

@@ -36,7 +36,9 @@ export async function openWorkbench(page: Page) {
 export async function expectWorkspaceFirstShellVisible(page: Page) {
   await expect(page.getByRole("region", { name: "Graph Canvas" })).toBeVisible()
   await expect(page.getByRole("navigation", { name: "Workbench commands" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Analysis" })).toHaveAttribute("aria-pressed", "false")
+  await expect(page.getByRole("button", { name: "Projects" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Export" })).toHaveAttribute("aria-pressed", "false")
+  await expect(page.getByRole("button", { name: "Analysis" })).toHaveCount(0)
 }
 
 export async function resetWorkbenchStorage(page: Page) {
@@ -97,25 +99,32 @@ export async function expectRegionVisible(page: Page, name: string | RegExp): Pr
   return region
 }
 
-export async function openAnalysisDockTab(page: Page, tabName: string) {
-  const analysisToggle = page.getByRole("button", { name: "Analysis" })
-  if (await analysisToggle.getAttribute("aria-pressed") !== "true") {
-    await analysisToggle.click()
+export async function openExportDock(page: Page): Promise<Locator> {
+  const exportToggle = page.getByRole("button", { name: "Export" })
+  if (await exportToggle.getAttribute("aria-pressed") !== "true") {
+    await exportToggle.click()
   }
-  const dock = page.getByRole("complementary", { name: "Analysis Dock" })
+  const dock = page.getByRole("complementary", { name: "Report Export Panel" })
   await expect(dock).toBeVisible()
-  const tab = dock.getByRole("tab", { name: tabName, exact: true })
-  await tab.click()
-  await expect(tab).toHaveAttribute("aria-selected", "true")
+  return dock
 }
 
-export async function closeAnalysisDock(page: Page) {
-  const analysisToggle = page.getByRole("button", { name: "Analysis" })
-  if (await analysisToggle.getAttribute("aria-pressed") === "true") {
-    await analysisToggle.click()
-    await expect(analysisToggle).toHaveAttribute("aria-pressed", "false")
+export async function openAnalysisDockTab(page: Page, tabName: string) {
+  if (tabName !== "Export") {
+    throw new Error(`Analysis Dock tab "${tabName}" was removed from the primary workbench UI.`)
+  }
+  return openExportDock(page)
+}
+
+export async function closeExportDock(page: Page) {
+  const exportToggle = page.getByRole("button", { name: "Export" })
+  if (await exportToggle.getAttribute("aria-pressed") === "true") {
+    await exportToggle.click()
+    await expect(exportToggle).toHaveAttribute("aria-pressed", "false")
   }
 }
+
+export const closeAnalysisDock = closeExportDock
 
 export async function closeProjectRail(page: Page) {
   const projectToggle = page.getByRole("button", { name: "Projects" })
@@ -136,24 +145,6 @@ export async function openProjectRail(page: Page) {
   return sidebar
 }
 
-export async function openSourceTray(page: Page) {
-  const sourceTray = page.getByRole("region", { name: "Source Tray" })
-  if (await sourceTray.isVisible()) {
-    return sourceTray
-  }
-  await page.getByRole("button", { name: "Sources" }).click()
-  await expect(sourceTray).toBeVisible()
-  return sourceTray
-}
-
-export async function closeSourceTray(page: Page) {
-  const sourceToggle = page.getByRole("button", { name: "Sources" })
-  if (await sourceToggle.getAttribute("aria-pressed") === "true") {
-    await sourceToggle.click()
-    await expect(sourceToggle).toHaveAttribute("aria-pressed", "false")
-  }
-}
-
 export async function attachViewportScreenshot(page: Page, testInfo: TestInfo, name: string) {
   const screenshot = await page.screenshot({ fullPage: false })
   await testInfo.attach(name, {
@@ -163,15 +154,19 @@ export async function attachViewportScreenshot(page: Page, testInfo: TestInfo, n
 }
 
 export async function createAndSaveBrowserProject(page: Page, name: string) {
-  const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
-  await page.getByLabel("Project name").fill(name)
-  await page.getByRole("button", { name: "Create Project" }).click()
+  const sidebar = await openProjectRail(page)
+  const newProjectButton = sidebar.getByRole("button", { name: "New Project" })
+  if (await newProjectButton.getAttribute("aria-expanded") !== "true") {
+    await newProjectButton.click()
+  }
+  await sidebar.getByLabel("Project name").fill(name)
+  await sidebar.getByRole("button", { name: "Create Project" }).click()
   await expect(sidebar.getByRole("button", { name: new RegExp(name) })).toBeVisible()
   await waitForAutoSave(page)
 }
 
 export async function openBrowserProject(page: Page, name: string) {
-  const sidebar = page.getByRole("complementary", { name: "Project Sidebar" })
+  const sidebar = await openProjectRail(page)
   await sidebar.getByRole("button", { name: new RegExp(name) }).click()
   await expect(sidebar.getByRole("button", { name: new RegExp(name) })).toBeVisible()
   await waitForAutoSave(page)
@@ -265,15 +260,12 @@ export async function runFixture(page: Page) {
     await api.runFixture()
   })
   await expect(page.getByRole("region", { name: "Graph Canvas" })).toBeVisible()
-  await expect(page.getByRole("button", { name: /node-a/i })).toBeVisible()
-  await openAnalysisDockTab(page, "Object")
-  await expect(page.getByRole("region", { name: "Object Registry" })).toBeVisible()
-  await openAnalysisDockTab(page, "PES")
-  await expect(page.getByRole("region", { name: "Energy Profile Panel" })).toBeVisible()
-  await openAnalysisDockTab(page, "Export")
-  await expect(page.getByRole("region", { name: "Report Export Panel" })).toBeVisible()
-  await openAnalysisDockTab(page, "PES")
-  await closeAnalysisDock(page)
+  await expect(page.locator('.graph-node-card[data-graph-node-id="node-a"]')).toBeVisible()
+  await expect(page.getByRole("region", { name: "Object Registry" })).toHaveCount(0)
+  await expect(page.getByRole("region", { name: "Energy Profile Panel" })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Connect" })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Set Path" })).toHaveCount(0)
+  await closeExportDock(page)
   await closeProjectRail(page)
 }
 
@@ -286,11 +278,6 @@ export async function dragRegisteredObjectToGraphCanvas(
     target?: { xRatio: number; yRatio: number }
   },
 ) {
-  await openAnalysisDockTab(page, "Object")
-  const objectRegistry = page.getByRole("region", { name: "Object Registry" })
-  const source = objectRegistry.getByRole("button", { name: options.objectName }).first()
-  await expect(source).toBeVisible()
-
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
   const surface = graphCanvas.getByLabel("Graph canvas surface")
   await expect(surface).toBeVisible()
@@ -383,7 +370,7 @@ export async function applyAutoLayoutAndReplayHistory(page: Page) {
   const viewportLayer = graphCanvas.locator(".graph-viewport-layer")
   const beforeTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
 
-  await graphCanvas.getByRole("button", { name: "Apply Layout" }).click()
+  await graphCanvas.getByRole("button", { name: "Arrange Nodes" }).click()
   await expect(graphCanvas.getByText("Layout applied")).toBeVisible()
   await expect(graphCanvas.getByRole("button", { name: "Undo" })).toHaveAttribute("title", "Undo Layout")
   await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(beforeTransform)
@@ -399,23 +386,6 @@ export async function applyAutoLayoutAndReplayHistory(page: Page) {
   await expect(graphCanvas.getByRole("button", { name: "Undo" })).toBeEnabled()
   await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).toBe(afterLayoutTransform)
   await expect(graphNodeById(graphCanvas, "node-b")).toBeVisible()
-}
-
-export async function createAndDeleteTemporaryGraphPath(page: Page) {
-  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
-  const preview = graphCanvas.getByLabel("Network Preview")
-
-  await graphCanvas.getByRole("button", { name: "Set Path" }).click()
-  await expect(graphCanvas.getByText("path-web-main").first()).toBeVisible()
-  await expect(preview.locator("dd").nth(2)).toHaveText("2")
-
-  await graphCanvas.getByRole("button", { name: "Select path Canvas path" }).click()
-  await graphCanvas.getByRole("button", { name: "Delete Selected" }).click()
-
-  await expect(graphCanvas.getByRole("button", { name: "Select path Canvas path" })).toHaveCount(0)
-  await expect(preview.locator("dd").nth(2)).toHaveText("1")
-  await expect(graphCanvas.getByText("Active path").locator("..")).toContainText("none")
-  await expect(graphCanvas.getByRole("button", { name: "Select path Fixture path" })).toBeVisible()
 }
 
 export async function editFixtureEdgeLabel(page: Page, label: string) {
@@ -462,7 +432,7 @@ export async function rubberBandDeleteTemporaryNodes(page: Page) {
   await expect(graphNodeById(graphCanvas, "node-web-3")).toHaveAttribute("aria-current", "true")
   await expect(graphNodeById(graphCanvas, "node-web-4")).toHaveAttribute("aria-current", "true")
 
-  await graphCanvas.getByRole("button", { name: "Delete Selected" }).click()
+  await graphCanvas.getByRole("button", { name: "Delete Selection" }).click()
   await expect(graphNodeById(graphCanvas, "node-web-3")).toHaveCount(0)
   await expect(graphNodeById(graphCanvas, "node-web-4")).toHaveCount(0)
   await expect(preview.locator("dd").nth(0)).toHaveText("2")
@@ -497,9 +467,8 @@ export async function exerciseGraphViewportControls(page: Page) {
   const surface = graphCanvas.getByLabel("Graph canvas surface")
   const viewportLayer = graphCanvas.locator(".graph-viewport-layer")
   const viewportZoomOutput = graphCanvas.locator(".graph-viewport-bar output")
-  const minimap = graphCanvas.getByTestId("graph-minimap")
 
-  await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
+  await graphCanvas.getByRole("button", { name: "Reset View", exact: true }).click()
   await expect(viewportZoomOutput).toHaveText("100%")
 
   await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
@@ -508,13 +477,11 @@ export async function exerciseGraphViewportControls(page: Page) {
   await graphCanvas.getByRole("button", { name: "Fit" }).click()
   await expect.poll(async () => viewportZoomOutput.textContent()).not.toBe("120%")
 
-  await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
+  await graphCanvas.getByRole("button", { name: "Reset View", exact: true }).click()
   await expect(viewportZoomOutput).toHaveText("100%")
 
-  await expect(graphCanvas.locator(".graph-minimap-panel")).toBeVisible()
-  await expect(minimap).toBeVisible()
-  await expect.poll(async () => minimap.locator(".graph-minimap-node").count()).toBeGreaterThanOrEqual(2)
-  await expect(minimap.locator(".graph-minimap-window")).toBeVisible()
+  await expect(graphCanvas.locator(".graph-minimap-panel")).toHaveCount(0)
+  await expect(graphCanvas.locator(".graph-minimap")).toHaveCount(0)
 
   const beforeWheelTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
   const surfaceBox = await surface.boundingBox()
@@ -533,71 +500,6 @@ export async function exerciseGraphViewportControls(page: Page) {
   })
   await expect(viewportZoomOutput).toHaveText("110%")
   await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(beforeWheelTransform)
-
-  const beforeMinimapTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
-  const minimapBox = await minimap.boundingBox()
-  expect(minimapBox).not.toBeNull()
-  await dispatchMinimapPointerTap(minimap, { xRatio: 0.72, yRatio: 0.58 })
-  await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(beforeMinimapTransform)
-
-  const beforeMinimapDragTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
-  await minimap.evaluate((element, points) => {
-    const target = element as HTMLElement & { setPointerCapture?: (pointerId: number) => void }
-    const rect = target.getBoundingClientRect()
-    const start = {
-      x: rect.left + rect.width * points.start.xRatio,
-      y: rect.top + rect.height * points.start.yRatio,
-    }
-    const end = {
-      x: rect.left + rect.width * points.end.xRatio,
-      y: rect.top + rect.height * points.end.yRatio,
-    }
-    const pointerId = 93
-    const originalSetPointerCapture = target.setPointerCapture
-    target.setPointerCapture = () => undefined
-    const dispatchPointer = (type: string, clientX: number, clientY: number, buttons: number) => {
-      target.dispatchEvent(new PointerEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        pointerId,
-        pointerType: "mouse",
-        isPrimary: true,
-        button: 0,
-        buttons,
-        clientX,
-        clientY,
-      }))
-    }
-
-    try {
-      dispatchPointer("pointerdown", start.x, start.y, 1)
-      dispatchPointer("pointermove", (start.x + end.x) / 2, (start.y + end.y) / 2, 1)
-      dispatchPointer("pointermove", end.x, end.y, 1)
-    } finally {
-      target.setPointerCapture = originalSetPointerCapture
-    }
-  }, {
-    start: { xRatio: 0.3, yRatio: 0.38 },
-    end: { xRatio: 0.62, yRatio: 0.63 },
-  })
-  await expect(minimap.locator(".graph-minimap-window--draft")).toBeVisible()
-  await minimap.evaluate((element, point) => {
-    const target = element as HTMLElement
-    const rect = target.getBoundingClientRect()
-    target.dispatchEvent(new PointerEvent("pointerup", {
-      bubbles: true,
-      cancelable: true,
-      pointerId: 93,
-      pointerType: "mouse",
-      isPrimary: true,
-      button: 0,
-      buttons: 0,
-      clientX: rect.left + rect.width * point.xRatio,
-      clientY: rect.top + rect.height * point.yRatio,
-    }))
-  }, { xRatio: 0.62, yRatio: 0.63 })
-  await expect(minimap.locator(".graph-minimap-window--draft")).toHaveCount(0)
-  await expect.poll(async () => viewportLayer.evaluate((element) => getComputedStyle(element).transform)).not.toBe(beforeMinimapDragTransform)
 
   const resetTransform = await viewportLayer.evaluate((element) => getComputedStyle(element).transform)
   await graphCanvas.getByRole("button", { name: "Pan" }).click()
@@ -646,7 +548,7 @@ export async function exerciseGraphViewportControls(page: Page) {
   await graphCanvas.getByRole("button", { name: "Pan" }).click()
   await expect(graphCanvas.getByRole("button", { name: "Pan" })).toHaveAttribute("aria-pressed", "false")
 
-  await graphCanvas.getByRole("button", { name: "Reset", exact: true }).click()
+  await graphCanvas.getByRole("button", { name: "Reset View", exact: true }).click()
   await expect(viewportZoomOutput).toHaveText("100%")
   await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
   await expect(viewportZoomOutput).toHaveText("120%")
@@ -664,17 +566,17 @@ export async function reorderFixturePathToReverse(page: Page) {
   const draft = graphCanvas.getByLabel("Path order draft")
   await draft.getByRole("button", { name: "Up" }).last().click()
   await draft.getByRole("button", { name: "Apply Path Order" }).click()
-  await expect(graphCanvas.getByText("node-b -> node-a")).toBeVisible()
+  await expect(graphCanvas.getByText("Object B -> Object A")).toBeVisible()
 }
 
 export async function deleteFixtureEdge(page: Page) {
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
   await graphCanvas.getByRole("button", { name: "Edge Object A to Object B" }).click()
-  await graphCanvas.getByRole("button", { name: "Delete Selected" }).click()
+  await graphCanvas.getByRole("button", { name: "Delete Selection" }).click()
   const preview = graphCanvas.getByLabel("Network Preview")
   await expect(preview.locator("dd").nth(1)).toHaveText("0")
-  await expect(graphCanvas.getByRole("button", { name: /node-a/i })).toBeVisible()
-  await expect(graphCanvas.getByRole("button", { name: /node-b/i })).toBeVisible()
+  await expect(graphNodeById(graphCanvas, "node-a")).toBeVisible()
+  await expect(graphNodeById(graphCanvas, "node-b")).toBeVisible()
 }
 
 export async function saveReloadAndRestoreGraphWorkspace(page: Page, projectName: string) {
@@ -691,7 +593,7 @@ export async function saveReloadAndRestoreGraphWorkspace(page: Page, projectName
   await openBrowserProject(page, projectName)
 
   await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("120%")
-  await expect(graphCanvas.getByText("node-b -> node-a")).toBeVisible()
+  await expect(graphCanvas.getByText("Object B -> Object A")).toBeVisible()
   await expect(graphCanvas.getByText("Active path").locator("..")).toContainText("path-a-b")
   await expect(graphCanvas.getByRole("button", { name: /Select path .*path-a-b/ })).toBeVisible()
   await expect(graphCanvas.getByRole("button", { name: "Edge Object A to Object B: TS scan" })).toBeVisible()
@@ -704,16 +606,16 @@ export async function exerciseNarrowGraphAdvancedControls(page: Page) {
   await expect(graphCanvas).toBeVisible()
   await graphCanvas.scrollIntoViewIfNeeded()
 
-  await expect(graphCanvas.getByRole("button", { name: "Apply Layout" })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Arrange Nodes" })).toBeVisible()
   await expect(graphCanvas.getByRole("button", { name: "Undo" })).toBeVisible()
   await expect(graphCanvas.getByRole("button", { name: "Redo" })).toBeVisible()
   await expect(graphCanvas.getByRole("button", { name: "Pan" })).toBeVisible()
   await expect(graphCanvas.getByRole("button", { name: "Zoom In" })).toBeVisible()
   await expect(graphCanvas.getByRole("button", { name: "Zoom Out" })).toBeVisible()
   await expect(graphCanvas.getByRole("button", { name: "Fit" })).toBeVisible()
-  await expect(graphCanvas.getByRole("button", { name: "Reset", exact: true })).toBeVisible()
+  await expect(graphCanvas.getByRole("button", { name: "Reset View", exact: true })).toBeVisible()
 
-  await clickGraphCanvasButton(graphCanvas, "Apply Layout")
+  await clickGraphCanvasButton(graphCanvas, "Arrange Nodes")
   await expect(graphCanvas.getByText("Layout applied")).toBeVisible()
   await expect(graphCanvas.getByRole("button", { name: "Undo" })).toBeEnabled()
   await clickGraphCanvasButton(graphCanvas, "Undo")
@@ -730,90 +632,83 @@ export async function exerciseNarrowGraphAdvancedControls(page: Page) {
   await expect(editor).toBeVisible()
   await expect(editor.getByLabel("Label")).toBeVisible()
 
-  await clickGraphCanvasButton(graphCanvas, "Reset", { exact: true })
+  await clickGraphCanvasButton(graphCanvas, "Reset View", { exact: true })
   await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("100%")
   await clickGraphCanvasButton(graphCanvas, "Zoom In")
   await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("120%")
-  await clickGraphCanvasButton(graphCanvas, "Reset", { exact: true })
+  await clickGraphCanvasButton(graphCanvas, "Reset View", { exact: true })
   await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("100%")
 }
 
 export async function importSourcesToCanvas(page: Page) {
-  const importInbox = await openSourceTray(page)
-  await importInbox.getByLabel("Select Files").setInputFiles([
-    {
-      name: "water.xyz",
-      mimeType: "chemical/x-xyz",
-      buffer: Buffer.from("2\nwater\nO 0 0 0\nH 0 0 1\n"),
-    },
-    {
-      name: "bad-count.xyz",
-      mimeType: "chemical/x-xyz",
-      buffer: Buffer.from("bad\n"),
-    },
-  ])
-  await importInbox.getByLabel("Expected format").selectOption("xyz")
-  await importInbox.getByLabel("Strict parser").check()
-  await importInbox.getByRole("button", { name: "Import to Canvas" }).click()
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  await dropExternalFileOnGraphCanvas(page, {
+    name: "water.xyz",
+    mimeType: "chemical/x-xyz",
+    text: "2\nwater\nO 0 0 0\nH 0 0 1\n",
+  })
 
-  await expect(importInbox.getByText("import-batch-fixture-web-1")).toBeVisible()
-  await expect(importInbox.getByText("inputs/raw/water.xyz")).toBeVisible()
-  await expect(importInbox.getByText("missing_section").first()).toBeVisible()
-  await expect(importInbox.getByText("parse_failed")).toBeVisible()
-  await expect(importInbox.getByText("object-imported-water").first()).toBeVisible()
-  await expect(page.getByRole("region", { name: "Graph Canvas" }).getByText("node-web-3").first()).toBeVisible()
-  await closeSourceTray(page)
+  await expect(graphNodeById(graphCanvas, "node-web-3")).toBeVisible()
+  await expect(graphCanvas.getByText("water.xyz").first()).toBeVisible()
+  await expect(graphCanvas.locator('[data-graph-node-id="node-web-3"]').first()).toBeVisible()
+  await expect(graphCanvas.getByText("No 3D geometry")).toHaveCount(0)
+}
+
+export async function dropExternalFileOnGraphCanvas(
+  page: Page,
+  file: { name: string; mimeType: string; text: string },
+) {
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  const surface = graphCanvas.getByLabel("Graph canvas surface")
+  await expect(surface).toBeVisible()
+  const box = await surface.boundingBox()
+  expect(box).not.toBeNull()
+  await surface.evaluate((element, payload) => {
+    const transfer = new DataTransfer()
+    transfer.items.add(new File([payload.text], payload.name, { type: payload.mimeType }))
+    const eventInit = {
+      bubbles: true,
+      cancelable: true,
+      clientX: payload.clientX,
+      clientY: payload.clientY,
+      dataTransfer: transfer,
+    }
+    element.dispatchEvent(new DragEvent("dragover", eventInit))
+    element.dispatchEvent(new DragEvent("drop", eventInit))
+  }, {
+    ...file,
+    clientX: box!.x + box!.width * 0.52,
+    clientY: box!.y + box!.height * 0.48,
+  })
 }
 
 export async function buildImportedWaterPath(page: Page) {
   const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
 
-  await expect(graphCanvas.getByText("node-web-3").first()).toBeVisible()
+  await expect(graphNodeById(graphCanvas, "node-web-3")).toBeVisible()
+  await expect(graphCanvas.getByText("water.xyz").first()).toBeVisible()
 
-  await clickGraphNodeById(graphCanvas, "node-b")
-  await clickGraphCanvasButton(graphCanvas, "Connect")
-  await clickGraphNodeById(graphCanvas, "node-web-3")
+  await drawGraphEdgeWithPointer(page, graphCanvas, "node-b", "node-web-3")
   await expect(graphCanvas.getByText("No disconnected nodes")).toBeVisible()
-
-  await clickGraphCanvasButton(graphCanvas, "Set Path")
-  await expect(graphCanvas.getByText("path-web-main").first()).toBeVisible()
-  await expect(graphCanvas.getByRole("button", { name: "Select path Canvas path" }))
-    .toContainText("node-a -> node-b -> node-web-3")
+  await expect(graphCanvas.getByRole("button", { name: /Select path .*Object A -> Object B -> water\.xyz/ }))
+    .toContainText("Object A -> Object B -> water.xyz")
 }
 
 export async function computeMissingEnergyProfile(page: Page) {
-  await openAnalysisDockTab(page, "PES")
-  const energyPanel = page.getByRole("region", { name: "Energy Profile Panel" })
-  await energyPanel.getByRole("button", { name: "Compute" }).click()
-  await expect(energyPanel.getByText("missing_energy").first()).toBeVisible()
-  await expect(energyPanel.getByRole("row").filter({ hasText: "node-web-3" })).toContainText("missing_energy")
+  const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
+  await expect(graphCanvas.getByText("water.xyz").first()).toBeVisible()
+  await expect(graphCanvas.getByText("Object A -> Object B -> water.xyz").first()).toBeVisible()
 }
 
 export async function exportFixtureProfile(page: Page) {
-  await openAnalysisDockTab(page, "Export")
-  const exportPanel = page.getByRole("region", { name: "Report Export Panel" })
+  const exportPanel = await openExportDock(page)
   await openReportExportMode(exportPanel)
   await exportPanel.getByRole("button", { name: "Export", exact: true }).click()
-  await expect(exportPanel.getByText("artifact-png-rxnflow-profile")).toBeVisible()
-  await expect(exportPanel.getByText("artifact-cdxml-rxnflow-profile")).toBeVisible()
-  await expect(exportPanel.getByText("artifact-xlsx-rxnflow-profile")).toBeVisible()
-  await expect(exportPanel.getByText("artifact-csv-rxnflow-profile")).toBeVisible()
-  await expect(exportPanel.getByText("artifact-svg-rxnflow-profile")).toBeVisible()
   await expect(exportPanel.getByText("exports/rxnflow-profile.png")).toBeVisible()
   await expect(exportPanel.getByText("exports/rxnflow-profile.cdxml")).toBeVisible()
   await expect(exportPanel.getByText("exports/rxnflow-profile.xlsx")).toBeVisible()
   await expect(exportPanel.getByText("exports/rxnflow-profile.csv")).toBeVisible()
   await expect(exportPanel.getByText("exports/rxnflow-profile.svg")).toBeVisible()
-  await expect(exportPanel.getByText("fixture-png-energy-plot-v1")).toBeVisible()
-  await expect(exportPanel.getByText("fixture-cdxml-energy-v1")).toBeVisible()
-  await expect(exportPanel.getByText("fixture-xlsx-energy-table-v1")).toBeVisible()
-  await expect(exportPanel.getByText("fixture-csv-energy-table-v1")).toBeVisible()
-  await expect(exportPanel.getByText("fixture-svg-graph-snapshot-v1")).toBeVisible()
-  await expect(exportPanel.getByText("energy_table_schema_version").first()).toBeVisible()
-  await expect(exportPanel.getByText("artifact_kind").first()).toBeVisible()
-  await expect(exportPanel.getByText("graph_snapshot")).toBeVisible()
-  await expect(exportPanel.getByText("energy-table-v1", { exact: true }).first()).toBeVisible()
-  await expect(exportPanel.getByText(/^sha256:[a-f0-9]{64}$/).first()).toBeVisible()
   await expect(exportPanel.getByText("Yes").first()).toBeVisible()
   await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(5)
   await expect(exportPanel.getByRole("link", { name: "Download" }).first()).toHaveAttribute("download", "rxnflow-profile.png")
@@ -830,8 +725,7 @@ export async function exportFixtureProfile(page: Page) {
 }
 
 export async function exportWithoutInlineBytes(page: Page) {
-  await openAnalysisDockTab(page, "Export")
-  const exportPanel = page.getByRole("region", { name: "Report Export Panel" })
+  const exportPanel = await openExportDock(page)
   await openReportExportMode(exportPanel)
   await exportPanel.getByLabel("Include bytes").uncheck()
   await exportPanel.getByRole("button", { name: "Export", exact: true }).click()
@@ -848,7 +742,7 @@ async function openReportExportMode(exportPanel: Locator) {
 }
 
 function graphNodeById(graphCanvas: Locator, nodeId: string): Locator {
-  return graphCanvas.getByRole("button", { name: new RegExp(`\\b${escapeRegExp(nodeId)}\\b`, "i") }).first()
+  return graphCanvas.locator(`.graph-node-card[data-graph-node-id="${nodeId}"]`).first()
 }
 
 async function selectGraphPathById(graphCanvas: Locator, pathId: string) {
@@ -893,7 +787,7 @@ async function clickGraphCanvasButton(
 async function scrollFloatingToolbarButtonIntoView(button: Locator) {
   await button.evaluate((element) => {
     const buttonElement = element as HTMLElement
-    const scroller = buttonElement.closest<HTMLElement>(".graph-command-bar, .graph-viewport-bar")
+    const scroller = buttonElement.closest<HTMLElement>(".graph-viewport-bar")
     if (!scroller) {
       buttonElement.scrollIntoView({ block: "nearest", inline: "nearest" })
       return
@@ -1062,8 +956,4 @@ async function rubberBandSelectGraphNodes(graphCanvas: Locator, nodeIds: string[
       target.setPointerCapture = originalSetPointerCapture
     }
   }, { left, top, right, bottom })
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }

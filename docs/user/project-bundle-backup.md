@@ -5,14 +5,14 @@ component: project-bundle-import-export
 status: current
 summary: RxnFlow .rxnflow.zip 项目备份包的内部/CLI边界
 tags: [project, backup, web-workbench, cli, bundle]
-last_reviewed: 2026-06-05
+last_reviewed: 2026-06-08
 ---
 
 # 项目备份包边界
 
 ## 功能简介
 
-RxnFlow core/CLI 仍保留 `.rxnflow.zip` 项目包能力，用于内部测试、CLI 备份和后续可携带性方案参考。当前 Web 工作台主流程已经改为 `Save Project` 保存当前 browser-local project，左侧不再暴露 Import Bundle / Export Bundle 作为默认用户入口。
+RxnFlow core/CLI 仍保留 `.rxnflow.zip` 项目包能力，用于内部测试、CLI 备份和后续可携带性方案参考。当前 Web 工作台主流程是自动保存当前 browser-local project，左侧不再暴露 Import Bundle / Export Bundle，也不提供手动 `Save Project` 按钮作为默认用户入口。
 
 项目包不是云同步，也不是实时保存；如果浏览器数据或本地目录被清理，仍然需要你自己保管导出的 zip。后续如重新开放 Web 项目分享，会以新的产品入口和提示重新设计。
 
@@ -22,12 +22,12 @@ RxnFlow core/CLI 仍保留 `.rxnflow.zip` 项目包能力，用于内部测试�
 - `inputs/raw/`
 - `exports/`
 
-项目根目录下额外放的 notes、脚本或临时文件不会进入 zip。Web 版也不会把云端账号、浏览器外文件、live session 或未保存的 bridge 改动写进 zip。
+项目根目录下额外放的 notes、脚本或临时文件不会进入 zip。Web 版也不会把云端账号、浏览器外文件或 live session 临时态写进 zip。
 
 ## Web 工作台当前口径
 
-- 保存当前编辑态项目：点击左侧 `Save Project`。
-- 继续处理已经导入的 raw 文件：在左侧 Project Files 点击 `Add to canvas` 或把 raw 文件拖到画布。
+- 保存当前编辑态项目：Web 工作台自动保存当前 browser-local project。
+- 继续处理已经导入的 raw 文件：在左侧 Project Files 点击文件行或把 raw 文件拖到画布。
 - 导出 PNG/CDXML/XLSX/CSV/SVG：使用右侧 Export 面板。
 - `.rxnflow.zip` 导入/导出不再是 Web 左侧主流程入口。
 
@@ -67,7 +67,7 @@ python3 -m rxnflow.cli project open --json --project-path /path/to/projects/<bun
 
 Q: Web 工作台现在还能直接导入/导出 `.rxnflow.zip` 吗？
 
-A: 当前左侧主流程不暴露 Import Bundle / Export Bundle。项目状态先通过 `Save Project` 保存，报告文件走右侧 Export 面板。项目包能力仍作为内部/CLI能力保留。
+A: 当前左侧主流程不暴露 Import Bundle / Export Bundle。项目状态由 Web 工作台自动保存，报告文件走右侧 Export 面板。项目包能力仍作为内部/CLI能力保留。
 
 Q: CLI 导出前需要保存吗？
 

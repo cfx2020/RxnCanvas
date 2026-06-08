@@ -246,6 +246,24 @@ class GraphEditorWorkspaceService:
             object_ids=_object_ids(self._available_objects(state)),
         )
 
+    def update_node(
+        self,
+        project_id: ID,
+        workspace_id: ID,
+        node_id: ID,
+        label: str,
+    ) -> Result[WorkspaceSnapshot]:
+        state_result = self._get_state(project_id, workspace_id)
+        if not state_result.ok or state_result.value is None:
+            assert state_result.error is not None
+            return err(state_result.error)
+        state = state_result.value
+        return self._apply_graph_patches(
+            state,
+            (GraphPatch("update_node", id=node_id, patch={"label": label}),),
+            object_ids=_object_ids(self._available_objects(state)),
+        )
+
     def connect_nodes(
         self,
         project_id: ID,

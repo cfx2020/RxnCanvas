@@ -89,7 +89,7 @@ export function projectFileEntriesWithWorkbenchProjection(
 
   const graphNodeIdsByEntryId = new Map<string, Set<string>>()
   for (const node of workbench.workspace?.graph.nodes ?? []) {
-    for (const objectId of node.chemical_object_ids ?? []) {
+    for (const objectId of graphNodeObjectIds(node)) {
       const entryIds = entryIdsByObjectId.get(objectId) ?? new Set<string>()
       for (const entryId of entryIds) {
         addMapSetValue(graphNodeIdsByEntryId, entryId, node.id)
@@ -108,6 +108,13 @@ export function projectFileEntriesWithWorkbenchProjection(
       graphNodeIds,
     }
   })
+}
+
+function graphNodeObjectIds(node: NonNullable<WorkbenchDomainState["workspace"]>["graph"]["nodes"][number]): string[] {
+  return Array.from(new Set([
+    ...(node.composition ?? []).map((term) => term.object_id),
+    ...(node.chemical_object_ids ?? []),
+  ].filter((value): value is string => Boolean(value))))
 }
 
 function rawProjectFileEntry(projectRef: string, object: BrowserStorageObject): ProjectFileEntry {

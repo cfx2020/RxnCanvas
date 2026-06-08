@@ -263,6 +263,8 @@ class PlatformShellService:
             return self._run_workspace_add_node(command)
         if command.name == "workspace.set_node_composition":
             return self._run_workspace_set_node_composition(command)
+        if command.name == "workspace.update_node":
+            return self._run_workspace_update_node(command)
         if command.name == "workspace.move_node":
             return self._run_workspace_move_node(command)
         if command.name == "workspace.remove":
@@ -878,6 +880,31 @@ class PlatformShellService:
             return _result_error_response(updated)
         return self._store_workspace(command.name, state, updated.value)
 
+    def _run_workspace_update_node(self, command: ShellCommand) -> ShellResponse:
+        resolved = self._resolve_state(command.args)
+        if isinstance(resolved, ShellResponse):
+            return resolved
+        state = resolved
+        if state.workspace is None:
+            return _invalid_input("Workspace must be opened before updating graph nodes.", "workspace_id")
+        node_id = _required_str(command.args, "node_id")
+        if node_id is None:
+            return _invalid_input("Node id is required.", "node_id")
+        label = _node_label_arg(command.args.get("label"))
+        if isinstance(label, ShellResponse):
+            return label
+        updated = self._kernel.workspace_service.update_node(
+            state.session.project_id or "",
+            state.workspace.workspace_id,
+            node_id,
+            label,
+        )
+        if not updated.ok or updated.value is None:
+            if updated.error and updated.error.code == "graph_invalid" and updated.error.target == node_id:
+                return _shell_error(updated.error.code, updated.error.message, "node_id")
+            return _result_error_response(updated)
+        return self._store_workspace(command.name, state, updated.value)
+
     def _run_workspace_move_node(self, command: ShellCommand) -> ShellResponse:
         resolved = self._resolve_state(command.args)
         if isinstance(resolved, ShellResponse):
@@ -1489,6 +1516,15 @@ def _edge_label_arg(value: Any) -> str | None | ShellResponse:
         return _invalid_input("Edge label must be a string or null.", "edge_label")
     text = value.strip()
     return text if text else None
+
+
+def _node_label_arg(value: Any) -> str | ShellResponse:
+    if not isinstance(value, str):
+        return _invalid_input("Node label must be a non-empty string.", "node_label")
+    text = value.strip()
+    if not text:
+        return _invalid_input("Node label must be a non-empty string.", "node_label")
+    return text
 
 
 def _edge_metadata_arg(value: Any) -> dict[str, Any] | ShellResponse:
