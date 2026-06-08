@@ -3,7 +3,7 @@ doc_type: requirement
 slug: web-workbench-shell
 pitch: 打开浏览器就能看到 RxnFlow 的工作台雏形
 status: current
-last_reviewed: 2026-06-08
+last_reviewed: 2026-06-09
 implemented_by:
   - web-workbench
 tags: [web, workbench, workspace-first-flow-shell, project-rail, project-tree-import, canvas-stage, analysis-dock, local-first, shell-client, project-sidebar, project-data-library, transient-import, canonical-import-data, parse-candidate-chooser, canvas-chemical-node, indexeddb, i18n, object-registry, correction-entry, graph-canvas, graph-object-drop, graph-node-layout, graph-layout-helper, graph-edge-path-editing, graph-edge-label-editing, graph-editor-free-edge-drawing, graph-path-authoring, graph-editor-multiselect-keyboard, graph-viewport-controls, graph-editor-wheel-navigation, graph-editor-lightweight-history, graph-editor-workspace-persistence, node-composition, energy-semantics, energy-profile, pes-preview, energy-step-delta, energy-curve-interaction, report-export, report-preview, export-readiness, workspace-first-qa-guides, workspace-first-user-guide, e2e, bridge-qa]
@@ -88,6 +88,7 @@ RxnFlow 的核心流程已经能在无界面的状态下跑通，但用户很难
 - 当前视觉风格不是长期定稿；后续可以替换配色、组件库、密度和面板细节。
 - 当前 Workbench Snapshot 只读，不是项目保存机制；active browser project + session 的工作台变更通过自动保存调用 `project.save_content(include_content_files=true)` 写回 Browser Project Repository。没有 session 时只补齐空 Project Content files。
 - 当前 Project Sidebar 不暴露 Project Bundle import/export 入口；Web bundle archive/import/export helper 仍保留在代码中作为内部可携带性适配层和测试工具，但不是用户主流程。
+- 当前 Project Files 只展示已导入项目的计算输出文件并支持点击/拖入画布；单个 raw file 删除入口尚未落地。后续实现删除 `X` 前，需要先定义删除 raw file 后对 registered objects、graph nodes、auto-save 和 project restore 的级联/保留规则，不能只删 Browser Repository 对象造成半删状态。
 - 当前迁移目标下，Project Data Library 展示的是项目内规范化对象/来源摘要，不是本地文件夹浏览器；浏览器 file/folder picker 只是导入入口，不作为长期项目权威。
 - 当前用户可见导入入口只有项目树导入和画布 drop：项目树负责把外部 loose file 加入 active project，画布 drop 负责 preview/register/add-node；没有单独的 Source Tray / Import Inbox 面板。
 - 当前主界面不提供 Analysis Dock / PES / Object / Diagnostics tab；Export 按钮只控制右侧 Report Export Panel 的展开/收起，不改变 `energy.compute`、`export.profile`、workspace command args、Project Content 或 Browser Project Repository schema。

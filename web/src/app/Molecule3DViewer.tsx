@@ -8,6 +8,7 @@ type Molecule3DViewerProps = {
   label: string
   variant?: "node" | "large"
   interactiveMeasurements?: boolean
+  infoLines?: string[]
 }
 
 type RenderableAtom = Atom3DSummary & {
@@ -31,6 +32,7 @@ export const Molecule3DViewer = memo(function Molecule3DViewer({
   label,
   variant = "node",
   interactiveMeasurements = false,
+  infoLines = [],
 }: Molecule3DViewerProps) {
   const containerRef = useRef<HTMLSpanElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -76,7 +78,7 @@ export const Molecule3DViewer = memo(function Molecule3DViewer({
     fillLight.position.set(-4, -3, 4)
     scene.add(fillLight)
 
-    const group = buildMoleculeGroup(renderableAtoms)
+    const group = buildMoleculeGroup(renderableAtoms, new Set(selectedAtomIndices))
     group.rotation.x = -0.34
     group.rotation.y = 0.54
     moleculeGroupRef.current = group
@@ -127,7 +129,7 @@ export const Molecule3DViewer = memo(function Molecule3DViewer({
       renderer.dispose()
       cameraRef.current = null
     }
-  }, [atoms])
+  }, [atoms, selectedAtomIndices])
 
   const stopPreviewEvent = (event: PointerEvent<HTMLSpanElement>) => {
     event.preventDefault()
@@ -179,6 +181,7 @@ export const Molecule3DViewer = memo(function Molecule3DViewer({
   const measurement = interactiveMeasurements
     ? moleculeMeasurementLabel(atoms, selectedAtomIndices)
     : null
+  const overlayLines = [...infoLines, ...(measurement ? [measurement] : [])]
 
   return (
     <span
@@ -199,14 +202,18 @@ export const Molecule3DViewer = memo(function Molecule3DViewer({
       {rendererState === "fallback" ? (
         <small className="molecule-3d-viewer-fallback">3D</small>
       ) : null}
-      {measurement ? (
-        <small className="molecule-3d-measurement">{measurement}</small>
+      {overlayLines.length > 0 ? (
+        <span className="molecule-3d-info-overlay" aria-live="polite">
+          {overlayLines.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+        </span>
       ) : null}
     </span>
   )
 })
 
-function buildMoleculeGroup(atoms: RenderableAtom[]): THREE.Group {
+function buildMoleculeGroup(atoms: RenderableAtom[], selectedAtomIndices: Set<number>): THREE.Group {
   const group = new THREE.Group()
   const visibleAtoms = atoms.slice(0, 180)
   const center = moleculeCenter(visibleAtoms)
@@ -223,16 +230,31 @@ function buildMoleculeGroup(atoms: RenderableAtom[]): THREE.Group {
 
   visibleAtoms.forEach((atom, index) => {
     const element = normalizeElementSymbol(atom.element)
-    const geometry = new THREE.SphereGeometry(elementSphereRadius(element), 32, 18)
+    const selected = selectedAtomIndices.has(index)
+    const geometry = new THREE.SphereGeometry(elementSphereRadius(element) * (selected ? 1.42 : 1), 32, 18)
     const material = new THREE.MeshStandardMaterial({
-      color: elementColor(element),
-      roughness: 0.42,
+      color: selected ? 0xffd166 : elementColor(element),
+      emissive: selected ? 0x7a4d00 : 0x000000,
+      emissiveIntensity: selected ? 0.32 : 0,
+      roughness: selected ? 0.28 : 0.42,
       metalness: element === "Ni" || element === "Pd" ? 0.24 : 0.04,
     })
     const sphere = new THREE.Mesh(geometry, material)
     sphere.position.copy(positions[index])
     sphere.userData.atomIndex = index
     group.add(sphere)
+    if (selected) {
+      const haloGeometry = new THREE.SphereGeometry(elementSphereRadius(element) * 1.75, 32, 12)
+      const haloMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffcf4d,
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+      })
+      const halo = new THREE.Mesh(haloGeometry, haloMaterial)
+      halo.position.copy(positions[index])
+      group.add(halo)
+    }
   })
 
   return group
@@ -264,16 +286,23 @@ function pickAtomIndex(
 
 function moleculeMeasurementLabel(atoms: Atom3DSummary[], selectedAtomIndices: number[]): string | null {
   const selectedAtoms = selectedAtomIndices
-    .map((index) => normalizeRenderableAtom3D(atoms[index]))
-    .filter((atom): atom is RenderableAtom => Boolean(atom))
+    .map((index) => {
+      const atom = normalizeRenderableAtom3D(atoms[index])
+      return atom ? { atom, label: atomSelectionLabel(atom, index) } : null
+    })
+    .filter((entry): entry is { atom: RenderableAtom; label: string } => Boolean(entry))
   if (selectedAtoms.length < 2) return null
   if (selectedAtoms.length === 2) {
-    return `${atomDistance(selectedAtoms[0], selectedAtoms[1]).toFixed(3)} Å`
+    return `B = ${atomDistance(selectedAtoms[0].atom, selectedAtoms[1].atom).toFixed(5)} (${selectedAtoms.map((entry) => entry.label).join(" ")})`
   }
   if (selectedAtoms.length === 3) {
-    return `${atomAngle(selectedAtoms[0], selectedAtoms[1], selectedAtoms[2]).toFixed(2)}°`
+    return `A = ${atomAngle(selectedAtoms[0].atom, selectedAtoms[1].atom, selectedAtoms[2].atom).toFixed(3)} (${selectedAtoms.map((entry) => entry.label).join(" ")})`
   }
-  return `${atomDihedral(selectedAtoms[0], selectedAtoms[1], selectedAtoms[2], selectedAtoms[3]).toFixed(2)}°`
+  return `D = ${atomDihedral(selectedAtoms[0].atom, selectedAtoms[1].atom, selectedAtoms[2].atom, selectedAtoms[3].atom).toFixed(3)} (${selectedAtoms.map((entry) => entry.label).join(" ")})`
+}
+
+function atomSelectionLabel(atom: RenderableAtom, index: number): string {
+  return `${normalizeElementSymbol(atom.element)}${index + 1}`
 }
 
 function atomAngle(a: RenderableAtom, b: RenderableAtom, c: RenderableAtom): number {

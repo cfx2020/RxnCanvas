@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react"
+import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactElement } from "react"
 import { Check, Hand, Maximize2, Minus, MoreHorizontal, MousePointer2, Plus, Redo2, RotateCcw, Trash2, Undo2, X, XCircle, ZoomIn, ZoomOut } from "lucide-react"
 import type { Atom3DSummary, ParseCandidateSummary, ShellError, ShellWarning } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
@@ -117,6 +117,8 @@ type CanvasChemicalNodeSummary = {
   formula?: string | null
   charge?: number | null
   spinMultiplicity?: number | null
+  atomCount: number
+  electronCount?: number | null
   displayEnergy?: ResolvedCanvasEnergy | null
   geometry: Atom3DSummary[]
   warnings: ShellWarning[]
@@ -179,6 +181,9 @@ type CanvasBarrierAnnotation = {
 
 type BarrierDragSession = {
   fromNodeId: string
+  origin: CanvasPoint
+  moved: boolean
+  wasActive: boolean
 }
 
 type GraphCanvasProps = {
@@ -308,6 +313,7 @@ export function GraphCanvas({
   const rubberBandRef = useRef<RubberBandSession | null>(null)
   const edgeDragRef = useRef<EdgeDragSession | null>(null)
   const barrierDragRef = useRef<BarrierDragSession | null>(null)
+  const suppressNextBarrierClickRef = useRef(false)
   const canvasSurfaceRef = useRef<HTMLDivElement | null>(null)
   const ignoreNextNodeClickRef = useRef<string | null>(null)
   const autoFitGraphKeyRef = useRef<string | null>(null)
@@ -800,18 +806,27 @@ export function GraphCanvas({
   const handleBarrierHandlePointerDown = useCallback((node: GraphNodeSummary, event: PointerEvent<HTMLButtonElement>) => {
     if (!canUseWorkspace || event.button !== 0) return
     event.stopPropagation()
-    barrierDragRef.current = { fromNodeId: node.id }
+    barrierDragRef.current = {
+      fromNodeId: node.id,
+      origin: { x: event.clientX, y: event.clientY },
+      moved: false,
+      wasActive: barrierDraftSourceNodeId === node.id,
+    }
     setBarrierDraftSourceNodeId(node.id)
     setSelectedBarrierAnnotationId(null)
     if (typeof event.currentTarget.setPointerCapture === "function") {
       event.currentTarget.setPointerCapture(event.pointerId)
     }
     event.preventDefault()
-  }, [canUseWorkspace])
+  }, [barrierDraftSourceNodeId, canUseWorkspace])
 
   const handleBarrierHandlePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
-    if (!barrierDragRef.current) return
+    const drag = barrierDragRef.current
+    if (!drag) return
     event.stopPropagation()
+    if (Math.hypot(event.clientX - drag.origin.x, event.clientY - drag.origin.y) > 4) {
+      drag.moved = true
+    }
     event.preventDefault()
   }, [])
 
@@ -820,9 +835,14 @@ export function GraphCanvas({
     if (!drag) return
     event.stopPropagation()
     barrierDragRef.current = null
-    const targetNodeId = nodeIdFromPoint(event.clientX, event.clientY, nodes, undefined)
-    if (targetNodeId) createBarrierAnnotation(drag.fromNodeId, targetNodeId)
-    setBarrierDraftSourceNodeId(null)
+    suppressNextBarrierClickRef.current = true
+    if (drag.moved) {
+      const targetNodeId = nodeIdFromPoint(event.clientX, event.clientY, nodes, undefined)
+      if (targetNodeId) createBarrierAnnotation(drag.fromNodeId, targetNodeId)
+      setBarrierDraftSourceNodeId(null)
+    } else if (drag.wasActive) {
+      setBarrierDraftSourceNodeId(null)
+    }
     event.preventDefault()
   }, [createBarrierAnnotation, nodes])
 
@@ -835,6 +855,10 @@ export function GraphCanvas({
   const handleBarrierHandleClick = useCallback((node: GraphNodeSummary, event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
+    if (suppressNextBarrierClickRef.current) {
+      suppressNextBarrierClickRef.current = false
+      return
+    }
     setBarrierDraftSourceNodeId((current) => current === node.id ? null : node.id)
     setSelectedBarrierAnnotationId(null)
   }, [])
@@ -1007,10 +1031,17 @@ export function GraphCanvas({
                 selectedEdgeIds={selectedEdgeIds}
                 selectedBarrierAnnotationId={selectedBarrierAnnotationId}
                 pendingEdge={interactionState.pendingEdge}
+                edgeLabelDraft={edgeLabelDraft}
+                edgeLabelPending={edgeLabelPending}
+                edgeLabelError={edgeLabelError}
                 onSelectEdge={(edgeId, mode) => {
                   setSelectedBarrierAnnotationId(null)
                   onSelectEdge(edgeId, mode)
                 }}
+                onEdgeLabelDraftChange={onEdgeLabelDraftChange}
+                onResetEdgeLabelDraft={onResetEdgeLabelDraft}
+                onClearEdgeLabelDraft={onClearEdgeLabelDraft}
+                onApplyEdgeLabelDraft={onApplyEdgeLabelDraft}
                 onSelectBarrierAnnotation={(annotationId) => {
                   setSelectedBarrierAnnotationId(annotationId)
                   onClearSelection()
@@ -1086,27 +1117,10 @@ export function GraphCanvas({
         </div>
 
         <PathAuthoringStatusNotice status={pathAuthoringStatus} />
-        {selectedEdge ? (
-          <div className="edge-label-floating-editor">
-            <EdgeLabelEditor
-              edge={selectedEdge}
-              sourceLabel={selectedEdgeSourceLabel}
-              targetLabel={selectedEdgeTargetLabel}
-              draft={edgeLabelDraft}
-              pending={edgeLabelPending}
-              error={edgeLabelError}
-              onDraftChange={onEdgeLabelDraftChange}
-              onReset={onResetEdgeLabelDraft}
-              onClear={onClearEdgeLabelDraft}
-              onApply={onApplyEdgeLabelDraft}
-            />
-          </div>
-        ) : null}
       </div>
       {expandedMolecule ? (
         <Molecule3DDialog
           summary={expandedMolecule}
-          chargeSpinLabel={formatCompactChargeSpin(expandedMolecule, t)}
           onClose={() => setExpandedMolecule(null)}
         />
       ) : null}
@@ -1382,7 +1396,7 @@ function GraphMinimap({
   const { t } = useI18n()
   const minimapRef = useRef<HTMLButtonElement | null>(null)
   const [draftPoint, setDraftPoint] = useState<GraphNodeLayoutPosition | null>(null)
-  const minimapSize = { width: 180, height: 108 }
+  const minimapSize = { width: 162, height: 98 }
   const geometry = useMemo(
     () => createGraphMinimapGeometry(nodes, viewport, minimapSize),
     [nodes, viewport],
@@ -1956,7 +1970,7 @@ const GraphNodeButton = memo(function GraphNodeButton({
         </span>
         {!collapsed && summary.formula ? (
           <span className="graph-node-formula" title={summary.formula}>
-            {summary.formula}
+            {renderFormula(summary.formula)}
           </span>
         ) : null}
         {barrierSource || barrierTarget ? (
@@ -2023,14 +2037,16 @@ function GraphNodeDetail({ label, value, emphasized = false }: { label: string; 
 
 function Molecule3DDialog({
   summary,
-  chargeSpinLabel,
   onClose,
 }: {
   summary: CanvasChemicalNodeSummary
-  chargeSpinLabel: string
   onClose: () => void
 }) {
   const { t } = useI18n()
+  const infoLines = [
+    `Charge ${formatNullableNumber(summary.charge, t)} / Multiplicity ${formatNullableNumber(summary.spinMultiplicity, t)}`,
+    `${summary.atomCount} atoms, ${summary.electronCount ?? t("graphCanvas.none")} electrons`,
+  ]
   return (
     <div className="molecule-3d-dialog-backdrop" role="presentation" onClick={onClose}>
       <section
@@ -2057,8 +2073,8 @@ function Molecule3DDialog({
             label={summary.structureName}
             variant="large"
             interactiveMeasurements
+            infoLines={infoLines}
           />
-          <span className="graph-node-charge-spin-overlay molecule-3d-dialog-charge-spin">{chargeSpinLabel}</span>
         </div>
       </section>
     </div>
@@ -2086,14 +2102,18 @@ function canvasChemicalNodeSummary(
     primaryObject?.source_file_id,
     node.id,
   ])
+  const geometry = summarizeNodeGeometry(nodeObjects)
+  const charge = summarizeSharedNumber(nodeObjects.map((object) => object.charge))
   return {
     nodeId: node.id,
     structureName,
     formula: summarizeNodeFormula(nodeObjects),
-    charge: summarizeSharedNumber(nodeObjects.map((object) => object.charge)),
+    charge,
     spinMultiplicity: summarizeSharedNumber(nodeObjects.map((object) => object.spin_multiplicity)),
+    atomCount: geometry.length,
+    electronCount: estimateNodeElectronCount(geometry, charge),
     displayEnergy: resolveCanvasNodeEnergy(composition, objectById, energyDisplayOptions),
-    geometry: summarizeNodeGeometry(nodeObjects),
+    geometry,
     warnings: nodeObjects.flatMap((object) => object.warnings ?? []),
   }
 }
@@ -2271,6 +2291,45 @@ function summarizeNodeGeometry(objects: ObjectSummary[]): Atom3DSummary[] {
     if (renderableGeometry.length > 0) return renderableGeometry
   }
   return []
+}
+
+function renderFormula(formula: string): Array<string | ReactElement> {
+  return formula.split(/(\d+)/g).filter(Boolean).map((part, index) => (
+    /^\d+$/.test(part)
+      ? <sub key={`${part}:${index}`}>{part}</sub>
+      : part
+  ))
+}
+
+function estimateNodeElectronCount(geometry: Atom3DSummary[], charge: number | null): number | null {
+  if (geometry.length === 0) return null
+  let total = 0
+  for (const atom of geometry) {
+    const atomicNumber = atomicNumberForElement(String(atom.element ?? ""))
+    if (!atomicNumber) return null
+    total += atomicNumber
+  }
+  return total - (charge ?? 0)
+}
+
+function atomicNumberForElement(value: string): number | null {
+  const element = value.trim().slice(0, 1).toUpperCase() + value.trim().slice(1, 2).toLowerCase()
+  const atomicNumbers: Record<string, number> = {
+    H: 1,
+    B: 5,
+    C: 6,
+    N: 7,
+    O: 8,
+    F: 9,
+    P: 15,
+    S: 16,
+    Cl: 17,
+    Br: 35,
+    I: 53,
+    Ni: 28,
+    Pd: 46,
+  }
+  return atomicNumbers[element] ?? null
 }
 
 function normalizeRenderableAtom3D(atom: Atom3DSummary): Atom3DSummary | null {
@@ -2540,7 +2599,14 @@ function GraphEdgeLayer({
   selectedEdgeIds,
   selectedBarrierAnnotationId,
   pendingEdge,
+  edgeLabelDraft,
+  edgeLabelPending,
+  edgeLabelError,
   onSelectEdge,
+  onEdgeLabelDraftChange,
+  onResetEdgeLabelDraft,
+  onClearEdgeLabelDraft,
+  onApplyEdgeLabelDraft,
   onSelectBarrierAnnotation,
   onRemoveBarrierAnnotation,
 }: {
@@ -2555,7 +2621,14 @@ function GraphEdgeLayer({
   selectedEdgeIds: Set<string>
   selectedBarrierAnnotationId?: string | null
   pendingEdge?: PendingEdgeDraft | null
+  edgeLabelDraft: EdgeLabelDraftState
+  edgeLabelPending: boolean
+  edgeLabelError: ShellError | null
   onSelectEdge: (edgeId: string, mode?: GraphEditorSelectionMode) => void
+  onEdgeLabelDraftChange: (label: string) => void
+  onResetEdgeLabelDraft: () => void
+  onClearEdgeLabelDraft: () => void
+  onApplyEdgeLabelDraft: () => void
   onSelectBarrierAnnotation: (annotationId: string) => void
   onRemoveBarrierAnnotation: (annotationId: string) => void
 }) {
@@ -2673,16 +2746,35 @@ function GraphEdgeLayer({
           aria-hidden="true"
         />
       ))}
-      {curvedSegments.map((segment) => segment.label ? (
-        <span
-          key={`${segment.id}:label`}
-          className="graph-edge-label"
-          style={edgeScreenPointStyle(segment.labelPoint, viewport, svgSize)}
-          aria-hidden="true"
-        >
-          {segment.label}
-        </span>
-      ) : null)}
+      {curvedSegments.map((segment) => {
+        const selected = selectedEdgeIds.has(segment.id)
+        if (selected) {
+          return (
+            <EdgeInlineLabelEditor
+              key={`${segment.id}:label-editor`}
+              segment={segment}
+              draft={edgeLabelDraft}
+              pending={edgeLabelPending}
+              error={edgeLabelError}
+              style={edgeScreenPointStyle(segment.labelPoint, viewport, svgSize)}
+              onDraftChange={onEdgeLabelDraftChange}
+              onReset={onResetEdgeLabelDraft}
+              onClear={onClearEdgeLabelDraft}
+              onApply={onApplyEdgeLabelDraft}
+            />
+          )
+        }
+        return segment.label ? (
+          <span
+            key={`${segment.id}:label`}
+            className="graph-edge-label"
+            style={edgeScreenPointStyle(segment.labelPoint, viewport, svgSize)}
+            aria-hidden="true"
+          >
+            {segment.label}
+          </span>
+        ) : null
+      })}
       {barrierSegments.map((segment) => (
         <span
           key={`${segment.id}:label`}
@@ -2746,6 +2838,79 @@ function GraphEdgeLayer({
         )
       })}
     </div>
+  )
+}
+
+function EdgeInlineLabelEditor({
+  segment,
+  draft,
+  pending,
+  error,
+  style,
+  onDraftChange,
+  onReset,
+  onClear,
+  onApply,
+}: {
+  segment: GraphEdgeSegment
+  draft: EdgeLabelDraftState
+  pending: boolean
+  error: ShellError | null
+  style: { left: string; top: string }
+  onDraftChange: (label: string) => void
+  onReset: () => void
+  onClear: () => void
+  onApply: () => void
+}) {
+  const { t } = useI18n()
+  const value = draft.edgeId === segment.id ? draft.label : segment.label ?? ""
+  const dirty = draft.edgeId === segment.id && draft.dirty
+  const disabled = pending || draft.edgeId !== segment.id
+  const submit = () => {
+    if (!dirty || disabled) return
+    onApply()
+  }
+  return (
+    <form
+      className={`graph-edge-inline-label-editor ${error ? "graph-edge-inline-label-editor--error" : ""}`}
+      style={style}
+      aria-label={t("edgeLabelEditor.aria")}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+      onSubmit={(event) => {
+        event.preventDefault()
+        submit()
+      }}
+    >
+      <input
+        type="text"
+        value={value}
+        disabled={disabled}
+        placeholder={t("edgeLabelEditor.placeholder")}
+        aria-label={t("edgeLabelEditor.label")}
+        autoFocus
+        onChange={(event) => onDraftChange(event.currentTarget.value)}
+        onBlur={submit}
+        onKeyDown={(event) => {
+          event.stopPropagation()
+          if (event.key === "Escape") {
+            onReset()
+            event.currentTarget.blur()
+          }
+        }}
+      />
+      <button
+        type="button"
+        disabled={disabled || !value}
+        aria-label={t("edgeLabelEditor.clear")}
+        title={t("edgeLabelEditor.clear")}
+        onClick={onClear}
+      >
+        <X size={11} aria-hidden="true" />
+      </button>
+      {pending ? <small>{t("edgeLabelEditor.applying")}</small> : null}
+      {error ? <small>{error.code}</small> : null}
+    </form>
   )
 }
 

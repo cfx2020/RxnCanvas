@@ -476,7 +476,9 @@ describe("WorkbenchShell", () => {
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "More actions for Frame 1" }))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "More actions for Frame 2" }))
     expect(within(graphCanvas).getAllByText("-62813.70 kcal/mol").length).toBeGreaterThan(0)
-    expect(within(graphCanvas).getAllByText("H2O").length).toBeGreaterThan(0)
+    expect(
+      Array.from(graphCanvas.querySelectorAll(".graph-node-formula")).some((formula) => formula.textContent === "H2O"),
+    ).toBe(true)
 
     const rawObjects = await repository.listObjects(project.projectRef, "inputs/raw")
     expect(rawObjects).toHaveLength(1)

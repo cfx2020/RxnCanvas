@@ -3,7 +3,7 @@ doc_type: issue-fix-note
 slug: web-workbench-ui-polish
 component: web-workbench-shell
 status: fixed
-fixed_at: 2026-06-08
+fixed_at: 2026-06-09
 tags: [web-workbench, project-sidebar, graph-canvas, path-authoring, molecule-3d-viewer, qa]
 ---
 
@@ -57,13 +57,21 @@ tags: [web-workbench, project-sidebar, graph-canvas, path-authoring, molecule-3d
 - Graph Canvas 能垒标注改为从节点底部端口发起；拖拽到目标节点生成标注，同时提供“点击底部端口 -> 点击目标节点”的备用入口。能垒标注显示 `ΔE‡ 12.55` 这种无正号、无单位格式；标注可选中并通过 X 删除。
 - Graph node 视觉更新：节点端口缩小，节点宽度收窄；相对能标签使用 `ΔE` / `ΔG` 等符号；3D 预览角标只显示 `0,1`，不再写 `q` / `spin`。
 - Molecule 3D 大视图已接入：节点结构区域右上角可打开大视图，大视图保留左下角电荷/自旋，并支持点选 2/3/4 个原子显示键长、键角和二面角。
+- Project Sidebar 宽度收窄为 `264px`，项目新增按钮只在项目标题行 hover/focus 时显示，项目更多/导入按钮只在对应项目行 hover/focus/menu-open 时显示；active/stored/registered/used-in-graph 文件行不再用整行底色制造“未 hover 也高亮”的错觉。
+- Graph Canvas 节点进一步收窄，左右 edge 端口和底部能垒端口统一为实际 `10px x 10px`，并清除浏览器默认 button padding，避免左右端口比底部端口更大的问题。
+- Edge Label Editing 从旧的大号浮动卡片改为选中 edge 后在线条中点显示紧凑 input；旧 `.edge-label-floating-editor` 不再渲染在主画布。
+- Canvas node formula 使用 `<sub>` 渲染数字下标；测试改为按 formula 元素 `textContent` 校验，避免视觉下标破坏语义断言。
+- Molecule 3D 大视图改成更接近 GaussianView 的深色结构窗口；左下角显示 `Charge / Multiplicity`、原子数和估算电子数，点选原子时高亮被选原子并用 `B/A/D = ... (C1 Ni2 ...)` 格式展示键长、键角或二面角。
+- 右下角小地图降噪为更轻的 `168px` 半透明面板、浅边框和更小圆角，避免边框看起来像一块沉重的旧 UI 卡片。
 
 ## 验证
 
 - `cd web && npm run test -- src/app/ProjectSidebar.test.tsx src/app/WorkbenchShell.test.tsx src/app/GraphCanvas.test.tsx src/app/graphPathAutoExtend.test.ts`（72 passed / 25 skipped）
 - `cd web && npm run test -- src/app/GraphCanvas.test.tsx src/app/graphViewport.test.ts src/app/WorkbenchShell.test.tsx`（70 passed / 25 skipped）
 - `cd web && npm run test`（30 files passed；262 passed / 25 skipped）
+- `cd web && npm run test -- src/app/GraphCanvas.test.tsx src/app/WorkbenchShell.test.tsx src/app/ProjectSidebar.test.tsx`（71 passed / 25 skipped）
 - `python3 -m unittest tests.test_import_preview_parser_regression`（9 tests passed）
+- `git diff --check`
 - `cd web && npm run build`
 - Browser 验证 `http://127.0.0.1:5173/`：
   - 打开 `Ni-fxc-alpha` 后 `nodeCount=3`、`viewerCount=3`、`no3dCount=0`，不需要重新拖入文件才显示 3D。
@@ -83,11 +91,20 @@ tags: [web-workbench, project-sidebar, graph-canvas, path-authoring, molecule-3d
   - 最新 Browser 复验 `http://127.0.0.1:5173/?qa=cold-ui-polish-fresh`：打开 `Ni-fxc-alpha` 后 `nodeCount=2`、`edgeHitElement=BUTTON.graph-edge-hitbox`、右下 `.graph-minimap-panel` 存在；浅色 canvas layout 为 `radial-gradient(... 32px 32px)` 点阵。
   - 最新 Browser 复验：普通 scroll 让 `.graph-viewport-layer` transform 平移但 zoom 文本保持 `93%`；Reset / Zoom In 分别回到 `100%` 和 `120%`。
   - 最新 Browser 复验：选择模式下点击 3D canvas 后节点 `aria-current=true`，点击画布空白处后所有节点 `aria-current=null`。
-  - 最新 Browser 复验：点击 edge hitbox 后 `.graph-edge-hitbox--selected` 出现，并显示 `.edge-label-floating-editor`。
+  - 最新 Browser 复验：点击 edge hitbox 后 `.graph-edge-hitbox--selected` 出现，并显示 `.graph-edge-inline-label-editor`。
   - 最新 Browser 复验：点击节点底部能垒端口再点击目标节点生成 `ΔE‡ 12.55`；选中后出现删除按钮，点击后 `barrierCount=0`。
   - 最新 Browser 复验：打开大 3D 结构视图后 overlay 为 `0,1`；点选两个原子后出现键长测量文本 `1.950 Å`。
+- Playwright smoke `http://127.0.0.1:5173/?qa=cold-ui-polish-fresh`：
+  - fixture graph 初始化后 `nodeCount=2`、`edgeCount=1`。
+  - `.project-sidebar` rect 为 `264 x 744`。
+  - 左右 edge 端口和底部能垒端口 rect 均为 `10 x 10`，computed `padding=0px`。
+  - formula `H2` 渲染为 1 个 `<sub>`。
+  - `.edge-label-floating-editor` 数量为 0；点击 edge 后 `.graph-edge-inline-label-editor` 数量为 1，`.graph-edge-hitbox--selected` 数量为 1。
+  - 3D 大视图打开后 `.molecule-3d-dialog` 存在，左下 overlay 为 `Charge 0 / Multiplicity 1` 和 `2 atoms, 2 electrons`，旧 `.molecule-3d-measurement` 数量为 0。
+  - `.graph-viewport-bar` 无 overflow；`.graph-minimap-panel` rect 为 `168 x 106`，border 为 `1px solid rgba(23, 28, 31, 0.12)`，console application error/warn 为空。
 
 ## 剩余边界
 
 - Vite build 仍提示单个 JS chunk 超过 500 kB；这是后续 code splitting / lazy load 工作，不影响本轮 UI 行为修复。
 - Browser screenshot / macOS `screencapture` 在当前 Codex in-app browser 环境中无法产出截图（CDP screenshot 超时，系统截图返回 display image 失败）；本轮浏览器验收使用 DOM snapshot、computed style、console logs 和 CUA click 证据。后续若继续做拖拽/框选验收，可以补专门的 Playwright/CUA 交互脚本。
+- 项目文件行右侧删除 `X` 没有在本轮加假按钮：当前仓储只有低层 `deleteObject(projectRef, path)`，还缺少“删除 raw file 后如何处理已登记对象、图谱节点、自动保存和恢复”的完整产品语义。应作为后续 Project File Delete feature 设计后实现。
