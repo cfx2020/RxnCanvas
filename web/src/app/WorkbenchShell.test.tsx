@@ -1,13 +1,13 @@
 import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import { unzipSync } from "fflate"
-import { BrowserProjectRepositoryError, checksumBrowserStorageBytes, MemoryBrowserProjectRepository, type BrowserStorageObject } from "../repository"
+import { BrowserProjectRepositoryError, checksumBrowserStorageBytes, MemoryBrowserProjectRepository, type BrowserProjectRef, type BrowserStorageObject } from "../repository"
 import { ShellClient, fixtureTransport, type ShellCommandPayload, type ShellResponse, type ShellRuntimeInfo, type ShellTransport, type WorkbenchSnapshotData } from "../shell"
 import { graphObjectDragMimeType } from "./graphObjectDragPayload"
 import { graphRawFileDropMimeType } from "./graphRawFileDropPayload"
 import { WorkbenchShell } from "./WorkbenchShell"
 import { I18nProvider, type SupportedLocale } from "./i18n"
-import { chemicalObjectsPath, exportArtifactsPath, projectContentIndexPath, reactionGraphsPath, workspacesPath } from "./projectContentBridge"
+import { chemicalObjectsPath, exportArtifactsPath, projectContentIndexPath, projectIdFromBrowserProject, reactionGraphsPath, workspacesPath } from "./projectContentBridge"
 import {
   createBrowserProjectBundleArchive,
   readBrowserProjectBundleArchive,
@@ -2156,6 +2156,40 @@ describe("WorkbenchShell", () => {
     expect(created.name).toBe("Bridge Later")
   })
 
+  it("rehydrates restored Gaussian logs before computing free energy", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const transport = new RecordingProjectBridgeTransport()
+    const project = await createProjectWithContent(repository, "Gaussian Free Energy")
+    await writeLegacyGaussianLogProject(repository, project)
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /gaussian free energy/i }))
+
+    await waitFor(() => expect(lastPayload(transport, "import.register_all")).toBeTruthy())
+    const graphCanvas = await screen.findByRole("region", { name: "Graph Canvas" })
+    expect(await within(graphCanvas).findByText("Bfix6-ts")).toBeInTheDocument()
+
+    const energySelect = within(graphCanvas).getByLabelText("Energy")
+    fireEvent.change(energySelect, { target: { value: "free" } })
+    await waitFor(() => expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
+      energy_key: "ggas",
+      energy_source: "thermochemistry",
+      correction_policy: { mode: "none" },
+    }))
+    await waitFor(() => expect(within(graphCanvas).getByText("△G")).toBeInTheDocument())
+    expect(within(graphCanvas).getByText("0.00 kcal/mol")).toBeInTheDocument()
+    expect(within(graphCanvas).queryByText("missing")).not.toBeInTheDocument()
+
+    fireEvent.change(energySelect, { target: { value: "solvation" } })
+    await waitFor(() => expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
+      energy_key: "gsol",
+      energy_source: "thermochemistry",
+      correction_policy: { mode: "none" },
+    }))
+    await waitFor(() => expect(within(graphCanvas).getByText("△Gsol")).toBeInTheDocument())
+    expect(within(graphCanvas).getByText("missing")).toBeInTheDocument()
+  })
+
   it("auto-saves the active restored project", async () => {
     const repository = new MemoryBrowserProjectRepository()
     const transport = new RecordingProjectBridgeTransport()
@@ -2748,6 +2782,188 @@ async function createProjectWithContent(
     throw new Error("Project was not created.")
   }
   return state.activeProject
+}
+
+async function writeLegacyGaussianLogProject(
+  repository: MemoryBrowserProjectRepository,
+  project: BrowserProjectRef,
+) {
+  const projectId = projectIdFromBrowserProject(project)
+  const rawLogText = gaussianLogText({
+    scf: -646.320000,
+    free: -646.310000,
+  })
+  const rawBytes = new TextEncoder().encode(rawLogText) as Uint8Array<ArrayBuffer>
+  const rawChecksum = await checksumBrowserStorageBytes(rawBytes)
+  const sectionTexts = {
+    [chemicalObjectsPath]: jsonText({
+      schema_version: "chemical-objects-v1",
+      project_id: projectId,
+      objects: [{
+        id: "object-legacy-bfix6-ts",
+        label: "Bfix6-ts.log",
+        formula: "CH",
+        charge: 0,
+        spin_multiplicity: 1,
+        method: "Gaussian log",
+        geometry: [
+          { element: "C", x: 0, y: 0, z: 0, unit: "angstrom" },
+          { element: "H", x: 0, y: 0, z: 1.089, unit: "angstrom" },
+        ],
+        energies: {
+          electronic: { value: -646.320000, unit: "hartree", reference: "legacy saved electronic" },
+        },
+        thermochemistry: {},
+        source_file_id: "Bfix6-ts.log",
+        corrections: [],
+        provenance: {
+          source_file_id: "Bfix6-ts.log",
+          parser_id: "gaussian-log",
+          parser_version: "legacy-web",
+          parsed_at: "2026-06-09T00:00:00Z",
+        },
+        registry_fingerprint: null,
+      }],
+    }),
+    [reactionGraphsPath]: jsonText({
+      schema_version: "reaction-graphs-v1",
+      project_id: projectId,
+      graphs: [{
+        id: "graph-legacy-gaussian",
+        project_id: projectId,
+        nodes: [{
+          id: "node-legacy-bfix6-ts",
+          kind: "species",
+          label: "Bfix6-ts",
+          chemical_object_ids: ["object-legacy-bfix6-ts"],
+          composition: [{ object_id: "object-legacy-bfix6-ts", coefficient: 1, role: "species", label: "Bfix6-ts" }],
+          position: [260, 180],
+          metadata: {},
+        }],
+        edges: [],
+        paths: [{ id: "path-legacy-gaussian", label: "Bfix6-ts", node_ids: ["node-legacy-bfix6-ts"] }],
+      }],
+    }),
+    [workspacesPath]: jsonText({
+      schema_version: "workspaces-v1",
+      project_id: projectId,
+      workspaces: [{
+        workspace_id: "workspace-legacy-gaussian",
+        project_id: projectId,
+        graph_id: "graph-legacy-gaussian",
+        selection: { node_ids: [], edge_ids: [], path_ids: [] },
+        viewport: { x: 0, y: 0, zoom: 1 },
+        active_path_id: "path-legacy-gaussian",
+        updated_at: "2026-06-09T00:00:00Z",
+      }],
+    }),
+    ".rxnflow/state/energy-profiles.json": jsonText({
+      schema_version: "energy-profiles-v1",
+      project_id: projectId,
+      profiles: [],
+    }),
+    ".rxnflow/state/import-ledger.json": jsonText({
+      schema_version: "import-ledger-v1",
+      project_id: projectId,
+      batches: [],
+    }),
+    [exportArtifactsPath]: jsonText({
+      schema_version: "export-artifacts-v1",
+      project_id: projectId,
+      artifacts: [],
+    }),
+  }
+  const contentFiles = await Promise.all(Object.entries(sectionTexts).map(async ([path, text]) => ({
+    kind: sectionKindForPath(path),
+    path,
+    checksum: await checksumBrowserStorageBytes(new TextEncoder().encode(text) as Uint8Array<ArrayBuffer>),
+    text,
+  })))
+  const indexText = jsonText({
+    schema_version: "project-content-v1",
+    project_id: projectId,
+    updated_at: "2026-06-09T00:00:00Z",
+    files: contentFiles.map(({ kind, path, checksum }) => ({
+      kind,
+      path,
+      checksum,
+      updated_at: "2026-06-09T00:00:00Z",
+    })),
+  })
+  const manifestText = jsonText({
+    id: projectId,
+    name: project.name,
+    created_at: project.createdAt,
+    updated_at: "2026-06-09T00:00:00Z",
+    schema_version: "project-v1",
+    resources: [{
+      id: rawChecksum.replace(/^sha256:/, "raw-").slice(0, 16),
+      kind: "raw_file",
+      path: "inputs/raw/Bfix6-ts.log",
+      checksum: rawChecksum,
+      metadata: {
+        source_name: "Bfix6-ts.log",
+        byte_size: rawBytes.byteLength,
+      },
+    }],
+  })
+  await writeText(repository, project.projectRef, ".rxnflow/manifest.json", manifestText, { kind: "project_manifest" })
+  await writeText(repository, project.projectRef, ".rxnflow/state/project-content.json", indexText, { kind: "project_content_index" })
+  for (const file of contentFiles) {
+    await writeText(repository, project.projectRef, file.path, file.text, { kind: file.kind })
+  }
+  await repository.writeObject(project.projectRef, {
+    path: "inputs/raw/Bfix6-ts.log",
+    bytes: rawBytes,
+    checksum: rawChecksum,
+    metadata: {
+      kind: "raw_file",
+      source_name: "Bfix6-ts.log",
+      mime_type: "text/plain",
+    },
+  })
+}
+
+async function writeText(
+  repository: MemoryBrowserProjectRepository,
+  projectRef: string,
+  path: string,
+  text: string,
+  metadata: Record<string, string>,
+) {
+  const bytes = new TextEncoder().encode(text) as Uint8Array<ArrayBuffer>
+  await repository.writeObject(projectRef, {
+    path,
+    bytes,
+    checksum: await checksumBrowserStorageBytes(bytes),
+    metadata,
+  })
+}
+
+function sectionKindForPath(path: string): string {
+  if (path === chemicalObjectsPath) return "chemical_objects"
+  if (path === reactionGraphsPath) return "reaction_graphs"
+  if (path === workspacesPath) return "workspaces"
+  if (path.endsWith("energy-profiles.json")) return "energy_profiles"
+  if (path.endsWith("import-ledger.json")) return "import_ledger"
+  if (path === exportArtifactsPath) return "export_artifacts"
+  throw new Error(`Unknown project content path: ${path}`)
+}
+
+function gaussianLogText(input: { scf: number; free: number }): string {
+  return [
+    " Charge = 0 Multiplicity = 1",
+    ` SCF Done:  E(RB3LYP) =  ${input.scf.toFixed(6)}     A.U. after   10 cycles`,
+    ` Sum of electronic and thermal Free Energies=        ${input.free.toFixed(6)}`,
+    " Standard orientation:",
+    " ---------------------------------------------------------------------",
+    " Center     Atomic      Atomic             Coordinates (Angstroms)",
+    " Number     Number       Type             X           Y           Z",
+    " ---------------------------------------------------------------------",
+    "      1          6           0        0.000000    0.000000    0.000000",
+    "      2          1           0        0.000000    0.000000    1.089000",
+    " ---------------------------------------------------------------------",
+  ].join("\n")
 }
 
 async function createBundleFile(input: {

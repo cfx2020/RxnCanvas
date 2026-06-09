@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { CSSProperties, DragEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactElement } from "react"
 import { Check, Hand, Maximize2, Minus, MoreHorizontal, MousePointer2, Plus, Redo2, RotateCcw, Trash2, Undo2, X, XCircle, ZoomIn, ZoomOut } from "lucide-react"
-import type { Atom3DSummary, ParseCandidateSummary, ShellError, ShellWarning } from "../shell"
+import type { Atom3DSummary, EnergyProfilePointSummary, EnergyProfileSummary, ParseCandidateSummary, ShellError, ShellWarning } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
 import type { CanvasPoint, GraphEditorInteractionState, GraphEditorSelectionMode, PendingEdgeDraft } from "./graphEditorInteractionState"
 import {
@@ -127,7 +127,7 @@ type CanvasChemicalNodeSummary = {
 export type CanvasEnergyMode = "electronic" | "free" | "solvation" | "corrected"
 export type CanvasEnergyUnit = "hartree" | "kcal_mol" | "kj_mol"
 
-type CanvasEnergyDisplayOptions = {
+export type CanvasEnergyDisplayOptions = {
   mode: CanvasEnergyMode
   unit: CanvasEnergyUnit
 }
@@ -223,7 +223,9 @@ type GraphCanvasProps = {
   compositionDraft: CompositionDraftState
   compositionPending: boolean
   compositionError: ShellError | null
+  energyDisplayOptions: CanvasEnergyDisplayOptions
   candidateChooser: ParseCandidateChooserState | null
+  onEnergyDisplayOptionsChange: (options: CanvasEnergyDisplayOptions) => void
   onSelectNode: (nodeId: string, mode?: GraphEditorSelectionMode) => void
   onSelectEdge: (edgeId: string, mode?: GraphEditorSelectionMode) => void
   onSelectPath: (pathId: string, nodeIds: string[], mode?: GraphEditorSelectionMode) => void
@@ -284,7 +286,9 @@ export function GraphCanvas({
   compositionDraft,
   compositionPending,
   compositionError,
+  energyDisplayOptions,
   candidateChooser,
+  onEnergyDisplayOptionsChange,
   onSelectNode,
   onSelectEdge,
   onSelectPath,
@@ -365,10 +369,6 @@ export function GraphCanvas({
   const pendingDirectEdgeTargetId = directEdgeGesture.kind === "connect" ? directEdgeGesture.toNodeId : null
   const viewport = normalizeGraphViewport(workspace?.viewport)
   const panActive = interactionState.mode === "pan"
-  const [energyDisplayOptions, setEnergyDisplayOptions] = useState<CanvasEnergyDisplayOptions>({
-    mode: "electronic",
-    unit: "kcal_mol",
-  })
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(() => new Set())
   const [energyReferenceNodeId, setEnergyReferenceNodeId] = useState<string | null>(null)
   const [pendingBarrierDraft, setPendingBarrierDraft] = useState<PendingBarrierDraft | null>(null)
@@ -402,8 +402,8 @@ export function GraphCanvas({
     ? energyReferenceNodeId
     : defaultEnergyReferenceNodeId
   const relativeEnergyByNodeId = useMemo(
-    () => relativeEnergyValuesByNodeId(nodes, nodeSummaryById, effectiveEnergyReferenceNodeId),
-    [effectiveEnergyReferenceNodeId, nodeSummaryById, nodes],
+    () => relativeEnergyValuesByNodeId(nodes, nodeSummaryById, effectiveEnergyReferenceNodeId, state.profile, energyDisplayOptions),
+    [effectiveEnergyReferenceNodeId, energyDisplayOptions, nodeSummaryById, nodes, state.profile],
   )
   const displayNodes = useMemo(
     () => graphNodesWithDragPreview(nodes, interactionState),
@@ -1023,10 +1023,10 @@ export function GraphCanvas({
               value={energyDisplayOptions.mode}
               onChange={(event) => {
                 const mode = event.currentTarget.value as CanvasEnergyMode
-                setEnergyDisplayOptions((current) => ({
-                  ...current,
+                onEnergyDisplayOptionsChange({
+                  ...energyDisplayOptions,
                   mode,
-                }))
+                })
               }}
             >
               <option value="electronic">{t("graphCanvas.energyMode.electronic")}</option>
@@ -1041,10 +1041,10 @@ export function GraphCanvas({
               value={energyDisplayOptions.unit}
               onChange={(event) => {
                 const unit = event.currentTarget.value as CanvasEnergyUnit
-                setEnergyDisplayOptions((current) => ({
-                  ...current,
+                onEnergyDisplayOptionsChange({
+                  ...energyDisplayOptions,
                   unit,
-                }))
+                })
               }}
             >
               <option value="hartree">{t("graphCanvas.energyUnit.hartree")}</option>
@@ -1229,6 +1229,7 @@ export function GraphCanvas({
                       dragging={isDraggingNode(interactionState, node.id)}
                       displayPosition={graphNodePosition(displayNodes.find((displayNode) => displayNode.id === node.id) ?? node)}
                       relativeEnergy={relativeEnergyByNodeId.get(node.id) ?? null}
+                      energyDisplayMode={energyDisplayOptions.mode}
                       energyReference={node.id === effectiveEnergyReferenceNodeId}
                       cardSize={nodeSizeById[node.id] ?? null}
                       viewportZoom={displayViewport.zoom}
@@ -1906,6 +1907,23 @@ function relativeEnergyValuesByNodeId(
   nodes: GraphNodeSummary[],
   nodeSummaryById: Map<string, CanvasChemicalNodeSummary>,
   referenceNodeId: string | null,
+  profile: EnergyProfileSummary | undefined,
+  options: CanvasEnergyDisplayOptions,
+): Map<string, ResolvedCanvasEnergy> {
+  const profileValues = relativeEnergyValuesFromProfile(nodes, referenceNodeId, profile, options)
+  const fallbackValues = relativeEnergyValuesFromNodeSummaries(nodes, nodeSummaryById, referenceNodeId)
+  if (!profileValues) return fallbackValues
+  const values = new Map(profileValues)
+  for (const [nodeId, value] of fallbackValues) {
+    if (!values.has(nodeId)) values.set(nodeId, value)
+  }
+  return values
+}
+
+function relativeEnergyValuesFromNodeSummaries(
+  nodes: GraphNodeSummary[],
+  nodeSummaryById: Map<string, CanvasChemicalNodeSummary>,
+  referenceNodeId: string | null,
 ): Map<string, ResolvedCanvasEnergy> {
   const referenceEnergy = referenceNodeId
     ? nodeSummaryById.get(referenceNodeId)?.displayEnergy ?? null
@@ -1923,6 +1941,93 @@ function relativeEnergyValuesByNodeId(
     })
   }
   return values
+}
+
+function relativeEnergyValuesFromProfile(
+  nodes: GraphNodeSummary[],
+  referenceNodeId: string | null,
+  profile: EnergyProfileSummary | undefined,
+  options: CanvasEnergyDisplayOptions,
+): Map<string, ResolvedCanvasEnergy> | null {
+  if (!profile || !profileMatchesCanvasEnergyOptions(profile, options)) return null
+  const profileUnit = normalizeEnergyUnit(profile.output_unit)
+  if (!profileUnit || profileUnit !== options.unit) return null
+  const pointByNodeId = new Map(profile.points.map((point) => [point.node_id, point]))
+  if (!nodes.some((node) => pointByNodeId.has(node.id))) return null
+
+  const referencePoint = referenceNodeId ? pointByNodeId.get(referenceNodeId) : undefined
+  if (!referencePoint) return null
+  const referenceAbsoluteValue = profilePointAbsoluteEnergyValue(referencePoint, options.unit)
+  const referenceRelativeValue = profilePointRelativeEnergyValue(referencePoint, profile.output_unit, options.unit)
+  const values = new Map<string, ResolvedCanvasEnergy>()
+  for (const node of nodes) {
+    const point = pointByNodeId.get(node.id)
+    if (!point) continue
+    const absoluteValue = profilePointAbsoluteEnergyValue(point, options.unit)
+    const relativeValueFromAbsolute = referenceAbsoluteValue !== null && absoluteValue !== null
+      ? absoluteValue - referenceAbsoluteValue
+      : null
+    const pointRelativeValue = profilePointRelativeEnergyValue(point, profile.output_unit, options.unit)
+    const relativeValueFromProfile = referenceRelativeValue !== null && pointRelativeValue !== null
+      ? pointRelativeValue - referenceRelativeValue
+      : null
+    const relativeValue = relativeValueFromAbsolute ?? relativeValueFromProfile
+    if (relativeValue === null || !isPlausibleRelativeEnergyValue(relativeValue, options.unit)) continue
+    values.set(node.id, {
+      key: profile.energy_key ?? canvasEnergyModeKey(options.mode),
+      source: String(profile.energy_source ?? "profile"),
+      value: relativeValue,
+      unit: options.unit,
+      mode: options.mode,
+    })
+  }
+  return values
+}
+
+function profileMatchesCanvasEnergyOptions(
+  profile: EnergyProfileSummary,
+  options: CanvasEnergyDisplayOptions,
+): boolean {
+  if (normalizeEnergyUnit(profile.output_unit) !== options.unit) return false
+  const correctionMode = String(profile.correction_policy?.mode ?? "none")
+  if (options.mode === "corrected") {
+    return correctionMode !== "none"
+  }
+  if (correctionMode !== "none") return false
+  return profileCanvasEnergyMode(profile) === options.mode
+}
+
+function profileCanvasEnergyMode(profile: EnergyProfileSummary): CanvasEnergyMode {
+  const key = normalizeEnergyKey(profile.energy_key ?? "")
+  if (["gsol", "solution_free_energy", "solvation_free_energy"].includes(key)) return "solvation"
+  if (["ggas", "ggas_1m", "gibbs", "free_energy", "gibbs_free_energy"].includes(key)) return "free"
+  return "electronic"
+}
+
+function normalizeEnergyKey(key: string): string {
+  return key.trim().toLowerCase().replace(/[/-]/g, "_")
+}
+
+function profilePointAbsoluteEnergyValue(
+  point: EnergyProfilePointSummary,
+  unit: CanvasEnergyUnit,
+): number | null {
+  const energy = energyValueFromUnknown(point.expression?.total)
+  if (!energy) return null
+  return convertEnergyValue(energy.value, energy.unit, unit)
+}
+
+function profilePointRelativeEnergyValue(
+  point: EnergyProfilePointSummary,
+  profileUnit: string,
+  unit: CanvasEnergyUnit,
+): number | null {
+  if (typeof point.relative_energy === "number") {
+    return convertEnergyValue(point.relative_energy, profileUnit, unit)
+  }
+  const energy = energyValueFromUnknown(point.relative_energy)
+  if (!energy) return null
+  return convertEnergyValue(energy.value, energy.unit, unit)
 }
 
 function isPlausibleRelativeEnergyValue(value: number, unit: CanvasEnergyUnit): boolean {
@@ -1946,6 +2051,7 @@ const GraphNodeButton = memo(function GraphNodeButton({
   dragging,
   displayPosition,
   relativeEnergy,
+  energyDisplayMode,
   energyReference,
   cardSize,
   viewportZoom,
@@ -1982,6 +2088,7 @@ const GraphNodeButton = memo(function GraphNodeButton({
   dragging: boolean
   displayPosition: GraphNodeLayoutPosition
   relativeEnergy: ResolvedCanvasEnergy | null
+  energyDisplayMode: CanvasEnergyMode
   energyReference: boolean
   cardSize: GraphNodeCardSize | null
   viewportZoom: number
@@ -2105,7 +2212,7 @@ const GraphNodeButton = memo(function GraphNodeButton({
     : t("graphCanvas.node.collapseStructure", { node: summary.structureName })
   const compactSummary = `${formatCompactRelativeNodeEnergyValue(relativeEnergy, t)} (${formatNullableNumber(summary.charge, t)},${formatNullableNumber(summary.spinMultiplicity, t)})`
   const chargeSpinOverlay = formatCompactChargeSpin(summary, t)
-  const relativeEnergyLabel = relativeEnergySymbol(energyDisplayModeFromEnergy(relativeEnergy))
+  const relativeEnergyLabel = relativeEnergySymbol(energyDisplayMode)
   return (
     <div
       className={`graph-node-card-shell ${dragging ? "graph-node-card-shell--dragging" : ""}`}
@@ -2484,8 +2591,6 @@ function resolveObjectCanvasEnergy(
   if (mode === "solvation") {
     return energyFromObjectRecord(object, "thermochemistry", ["gsol", "solution_free_energy", "solvation_free_energy"])
       ?? displayEnergyFallback(object, "thermochemistry", ["gsol", "solution_free_energy", "solvation_free_energy"])
-      ?? energyFromObjectRecord(object, "energies", ["gsol"])
-      ?? correctionEnergySum(object, (kind) => kind === "solvation")
   }
   const base = resolveObjectCanvasEnergy(object, "electronic")
   if (!base) return null
@@ -2506,7 +2611,7 @@ function energyFromObjectRecord(
 ): { value: number; unit: string } | null {
   const record = jsonObjectRecord(object[source])
   if (!record) return null
-  for (const key of [...preferredKeys, ...Object.keys(record)]) {
+  for (const key of preferredKeys) {
     const value = energyValueFromUnknown(record[key])
     if (value) return value
   }
@@ -2709,10 +2814,6 @@ function formatCompactChargeSpin(
   t: ReturnType<typeof useI18n>["t"],
 ): string {
   return `${formatNullableNumber(summary.charge, t)},${formatNullableNumber(summary.spinMultiplicity, t)}`
-}
-
-function energyDisplayModeFromEnergy(energy: ResolvedCanvasEnergy | null | undefined): CanvasEnergyMode {
-  return energy?.mode ?? "electronic"
 }
 
 function relativeEnergySymbol(mode: CanvasEnergyMode): string {

@@ -79,6 +79,7 @@ type FixtureParsedMolecule = {
   charge: number | null
   spinMultiplicity: number | null
   energy: number | null
+  freeEnergy: number | null
   method: string
   parserId: string
 }
@@ -218,8 +219,26 @@ const initialFixtureObjects: ObjectSummary[] = [
     spin_multiplicity: 1,
     method: "xyz geometry",
     source_file_id: "raw-water-xyz",
+    energies: {
+      electronic: {
+        value: -1.2,
+        unit: "hartree",
+        reference: "fixture imported object",
+      },
+    },
+    thermochemistry: {},
     energy_keys: ["electronic"],
     thermochemistry_keys: [],
+    energy_channels: [
+      {
+        key: "electronic",
+        source: "energies",
+        label: "electronic (energies)",
+        unit: "hartree",
+        reference: "fixture imported object",
+        object_ids: ["object-imported-water"],
+      },
+    ],
     display_energy: {
       key: "electronic",
       source: "energies",
@@ -1362,6 +1381,8 @@ function fixtureChemicalObjectsSection(): JsonObject[] {
 function fixtureChemicalObject(objectId: string, index: number): JsonObject {
   const object = fixtureObjects.find((item) => item.id === objectId)
   const geometry = Array.isArray(object?.geometry) ? object.geometry : []
+  const energies = jsonRecord(object?.energies as JsonValue | undefined)
+  const thermochemistry = jsonRecord(object?.thermochemistry as JsonValue | undefined)
   return {
     id: objectId,
     label: object?.label ?? objectId,
@@ -1370,14 +1391,16 @@ function fixtureChemicalObject(objectId: string, index: number): JsonObject {
     spin_multiplicity: object?.spin_multiplicity ?? null,
     method: object?.method ?? null,
     geometry,
-    energies: {
-      electronic: {
-        value: objectId === "object-b" ? -1.02 : -1.0 - index * 0.01,
-        unit: "hartree",
-        reference: "fixture-electronic",
-      },
-    },
-    thermochemistry: {},
+    energies: Object.keys(energies).length > 0
+      ? energies
+      : {
+          electronic: {
+            value: objectId === "object-b" ? -1.02 : -1.0 - index * 0.01,
+            unit: "hartree",
+            reference: "fixture-electronic",
+          },
+        },
+    thermochemistry,
     source_file_id: object?.source_file_id ?? "fixture-source",
     corrections: (object?.corrections ?? []).map((correction) => ({
       id: correction.id,
@@ -2392,13 +2415,30 @@ function fixtureSingleImportObjectForSource(source: FixtureImportSource | string
   const rawId = `raw-${safeName.replace(/\.[^.]+$/, "").toLowerCase()}`
   if (parsed) {
     const elements = uniqueStrings(parsed.geometry.map((atom) => atom.element))
-    const displayEnergy = parsed.energy === null ? null : {
-      key: "electronic",
-      source: "energies",
-      value: parsed.energy,
-      unit: "hartree",
-      reference: "fixture inline parser",
+    const energies: JsonObject = parsed.energy === null ? {} : {
+      electronic: {
+        value: parsed.energy,
+        unit: "hartree",
+        reference: "fixture inline parser",
+      },
+      egas: {
+        value: parsed.energy,
+        unit: "hartree",
+        reference: "fixture inline parser",
+      },
     }
+    const thermochemistry: JsonObject = parsed.freeEnergy === null ? {} : {
+      ggas: {
+        value: parsed.freeEnergy,
+        unit: "hartree",
+        reference: "Gaussian Sum of electronic and thermal Free Energies",
+      },
+    }
+    const energyChannels = [
+      ...energyChannelsFromRecord(energies, "energies", objectId),
+      ...energyChannelsFromRecord(thermochemistry, "thermochemistry", objectId),
+    ]
+    const displayEnergy = displayEnergyFromRecords(energies, thermochemistry)
     return {
       id: objectId,
       label: sourceName,
@@ -2407,18 +2447,11 @@ function fixtureSingleImportObjectForSource(source: FixtureImportSource | string
       spin_multiplicity: parsed.spinMultiplicity,
       method: parsed.method,
       source_file_id: rawId,
-      energy_keys: displayEnergy ? ["electronic"] : [],
-      thermochemistry_keys: [],
-      energy_channels: displayEnergy ? [
-        {
-          key: "electronic",
-          source: "energies",
-          label: "electronic (energies)",
-          unit: "hartree",
-          reference: "fixture inline parser",
-          object_ids: [objectId],
-        },
-      ] : [],
+      energies,
+      thermochemistry,
+      energy_keys: Object.keys(energies),
+      thermochemistry_keys: Object.keys(thermochemistry),
+      energy_channels: energyChannels,
       display_energy: displayEnergy,
       coordinate_preview: {
         atom_count: parsed.geometry.length,
@@ -2448,6 +2481,8 @@ function fixtureSingleImportObjectForSource(source: FixtureImportSource | string
     source_file_id: rawId,
     energy_keys: [],
     thermochemistry_keys: [],
+    energies: {},
+    thermochemistry: {},
     energy_channels: [],
     display_energy: null,
     coordinate_preview: {
@@ -2557,6 +2592,7 @@ function parseGaussianLogMolecule(text: string): FixtureParsedMolecule | null {
     charge: lastNumberMatch(text, /Charge\s*=\s*(-?\d+)/gi),
     spinMultiplicity: lastNumberMatch(text, /Multiplicity\s*=\s*(\d+)/gi),
     energy: lastNumberMatch(text, /SCF Done:\s+E\([^)]+\)\s*=\s*(-?\d+(?:\.\d+)?(?:[DE][+-]?\d+)?)/gi),
+    freeEnergy: lastNumberMatch(text, /Sum of electronic and thermal Free Energies\s*=\s*(-?\d+(?:\.\d+)?(?:[DE][+-]?\d+)?)/gi),
     method: "Gaussian log",
     parserId: "fixture-gaussian-inline",
   }
@@ -2583,6 +2619,7 @@ function parseXyzLikeMolecule(text: string, filename: string): FixtureParsedMole
     charge: lastNumberMatch(comment, /charge\s*[=:]\s*(-?\d+)/gi),
     spinMultiplicity: lastNumberMatch(comment, /(?:spin|multiplicity|spin_multiplicity)\s*[=:]\s*(\d+)/gi),
     energy: lastNumberMatch(comment, /(?:energy|E)\s*[=:]\s*(-?\d+(?:\.\d+)?(?:[DE][+-]?\d+)?)/gi),
+    freeEnergy: null,
     method: filename.toLowerCase().includes("extxyz") ? "extxyz inline" : "xyz inline",
     parserId: filename.toLowerCase().includes("extxyz") ? "fixture-extxyz-inline" : "fixture-xyz-inline",
   }
@@ -2656,6 +2693,8 @@ function objectSummary(
   const energyKeys: JsonValue[] = ["electronic"]
   const thermochemistryKeys: JsonValue[] = ["gibbs"]
   const sourceFileId = options.source_file_id ?? "fixture-source"
+  const electronicValue = id === "object-b" ? -1.02 : -1
+  const gibbsValue = id === "object-b" ? -1.018 : -0.998
   return {
     id,
     label,
@@ -2664,6 +2703,20 @@ function objectSummary(
     spin_multiplicity: options.spin_multiplicity ?? null,
     method: options.method ?? null,
     source_file_id: sourceFileId,
+    energies: {
+      electronic: {
+        value: electronicValue,
+        unit: "hartree",
+        reference: "fixture-electronic",
+      },
+    },
+    thermochemistry: {
+      gibbs: {
+        value: gibbsValue,
+        unit: "hartree",
+        reference: "fixture-gibbs",
+      },
+    },
     energy_keys: energyKeys,
     thermochemistry_keys: thermochemistryKeys,
     energy_channels: [
@@ -2687,7 +2740,7 @@ function objectSummary(
     display_energy: {
       key: "electronic",
       source: "energies",
-      value: id === "object-b" ? -1.02 : -1,
+      value: electronicValue,
       unit: "hartree",
       reference: "fixture-electronic",
     },

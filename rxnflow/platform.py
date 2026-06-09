@@ -2478,6 +2478,8 @@ def _object_summary(obj: ChemicalObject) -> dict[str, Any]:
         "spin_multiplicity": obj.spin_multiplicity,
         "method": obj.method,
         "source_file_id": obj.source_file_id,
+        "energies": _energy_mapping_summary(obj.energies),
+        "thermochemistry": _energy_mapping_summary(obj.thermochemistry),
         "energy_keys": sorted(obj.energies),
         "thermochemistry_keys": sorted(obj.thermochemistry),
         "energy_channels": [_energy_channel_summary(channel) for channel in energy_channel_catalog((obj,))],
@@ -2588,6 +2590,14 @@ def _energy_channel_summary(channel: EnergyChannel) -> dict[str, Any]:
         "unit": channel.unit,
         "reference": channel.reference,
         "object_ids": list(channel.object_ids),
+    }
+
+
+def _energy_mapping_summary(values: dict[str, EnergyValue]) -> dict[str, Any]:
+    return {
+        str(key): _energy_value_summary(value)
+        for key, value in sorted(values.items())
+        if _energy_value_summary(value) is not None
     }
 
 

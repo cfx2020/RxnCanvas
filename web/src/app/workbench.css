@@ -4056,7 +4056,7 @@ button {
   padding: 0;
   overflow: hidden;
   --rail-space: calc(var(--drawer-width) + var(--floating-gap));
-  --dock-space: calc(var(--dock-width) + var(--floating-gap));
+  --dock-space: var(--dock-width);
   --canvas-left-space: var(--drawer-width);
   --canvas-right-space: var(--dock-space);
 }

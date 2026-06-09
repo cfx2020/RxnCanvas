@@ -88,7 +88,7 @@ import {
   type GraphPathOrderDraft,
   type GraphPathOrderMoveDirection,
 } from "./graphPathOrderDraft"
-import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type ParseCandidateChooserState, type PathAuthoringStatus, type RemoveGraphItemsRequest, type UpdateGraphNodeLabelRequest } from "./GraphCanvas"
+import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type CanvasEnergyDisplayOptions, type CanvasEnergyMode, type CanvasEnergyUnit, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type ParseCandidateChooserState, type PathAuthoringStatus, type RemoveGraphItemsRequest, type UpdateGraphNodeLabelRequest } from "./GraphCanvas"
 import {
   importPreviewArgsFromFiles,
   filesToWebImportFiles,
@@ -199,11 +199,15 @@ export function WorkbenchShell({
   const [compositionPending, setCompositionPending] = useState(false)
   const [compositionError, setCompositionError] = useState<ShellError | null>(null)
   const [parseCandidateChooser, setParseCandidateChooser] = useState<ParseCandidateChooserState | null>(null)
+  const [canvasEnergyDisplayOptions, setCanvasEnergyDisplayOptions] = useState<CanvasEnergyDisplayOptions>({
+    mode: "electronic",
+    unit: "kcal_mol",
+  })
   const [energyPanelOptions, setEnergyPanelOptions] = useState<EnergyPanelOptions>({
     pathId: "",
     outputUnit: "kcal_mol",
     energyKey: "electronic",
-    energySource: "auto",
+    energySource: "energies",
     baselineNodeId: "",
     correctionPolicyMode: "none",
     correctionKinds: ["solvation", "resonance", "manual"],
@@ -531,12 +535,16 @@ export function WorkbenchShell({
         continue
       }
       const hydratedObjects = registerResponse.data.objects.filter((object) => hasRenderableGeometry(object.geometry))
-      const hydratedObject = hydratedObjects.find((object) => (
+      const namedHydratedObjects = hydratedObjects.filter((object) => (
         hydrationNamesMatch(object.label, file.name)
         || hydrationNamesMatch(object.source_file_id, file.name)
         || hydrationNamesMatch(object.label, file.sourceName)
         || hydrationNamesMatch(object.source_file_id, file.sourceName)
-      )) ?? hydratedObjects[0]
+      ))
+      const hydratedObject = namedHydratedObjects.find((object) => !objectNeedsRawHydration(object))
+        ?? hydratedObjects.find((object) => !objectNeedsRawHydration(object))
+        ?? namedHydratedObjects[0]
+        ?? hydratedObjects[0]
       if (!hydratedObject) {
         continue
       }
@@ -2316,6 +2324,11 @@ export function WorkbenchShell({
     ))
   }, [])
 
+  const updateCanvasEnergyDisplayOptions = useCallback((options: CanvasEnergyDisplayOptions) => {
+    setCanvasEnergyDisplayOptions(options)
+    setEnergyPanelOptions((current) => energyOptionsFromCanvasEnergyDisplayOptions(current, options))
+  }, [])
+
   const startRubberBand = useCallback((origin: CanvasPoint, mode: "replace" | "add") => {
     setGraphEditorInteraction((current) => startGraphEditorRubberBand(current, origin, mode))
   }, [])
@@ -2733,7 +2746,9 @@ export function WorkbenchShell({
               compositionDraft={compositionDraft}
               compositionPending={compositionPending}
               compositionError={compositionError}
+              energyDisplayOptions={canvasEnergyDisplayOptions}
               candidateChooser={parseCandidateChooser}
+              onEnergyDisplayOptionsChange={updateCanvasEnergyDisplayOptions}
               onSelectNode={selectGraphNode}
               onSelectEdge={selectGraphEdge}
               onSelectPath={selectGraphPath}
@@ -2993,6 +3008,7 @@ function reusableProjectFileObjects(
   return file.registeredObjectIds
     .map((objectId) => objectById.get(objectId))
     .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object))
+    .filter((object) => !objectNeedsRawHydration(object))
     .sort((left, right) => projectFileReusableObjectScore(right) - projectFileReusableObjectScore(left))
 }
 
@@ -3662,6 +3678,56 @@ function energyOptionsForWorkspace(
   }
 }
 
+function energyOptionsFromCanvasEnergyDisplayOptions(
+  current: EnergyPanelOptions,
+  options: CanvasEnergyDisplayOptions,
+): EnergyPanelOptions {
+  const channel = energyChannelForCanvasEnergyMode(options.mode)
+  return {
+    ...current,
+    ...channel,
+    outputUnit: energyOutputUnitFromCanvasEnergyUnit(options.unit, current.outputUnit),
+  }
+}
+
+function energyChannelForCanvasEnergyMode(
+  mode: CanvasEnergyMode,
+): Pick<EnergyPanelOptions, "energyKey" | "energySource" | "correctionPolicyMode"> {
+  if (mode === "free") {
+    return {
+      energyKey: "ggas",
+      energySource: "thermochemistry",
+      correctionPolicyMode: "none",
+    }
+  }
+  if (mode === "solvation") {
+    return {
+      energyKey: "gsol",
+      energySource: "thermochemistry",
+      correctionPolicyMode: "none",
+    }
+  }
+  if (mode === "corrected") {
+    return {
+      energyKey: "electronic",
+      energySource: "energies",
+      correctionPolicyMode: "all",
+    }
+  }
+  return {
+    energyKey: "electronic",
+    energySource: "energies",
+    correctionPolicyMode: "none",
+  }
+}
+
+function energyOutputUnitFromCanvasEnergyUnit(
+  unit: CanvasEnergyUnit,
+  fallback: EnergyPanelOptions["outputUnit"],
+): EnergyPanelOptions["outputUnit"] {
+  return unit === "kcal_mol" || unit === "kj_mol" ? unit : fallback
+}
+
 type PesComputeTarget = {
   signature: string
   sessionId: string
@@ -3915,7 +3981,7 @@ function restoredGeometryHydrationFiles(
   const missingNames = new Set<string>()
   const objectById = new Map(state.objects.map((object) => [object.id, object]))
   for (const object of state.objects) {
-    if (hasRenderableGeometry(object.geometry)) continue
+    if (!objectNeedsRawHydration(object)) continue
     addNormalizedName(missingNames, object.label)
     addNormalizedName(missingNames, object.source_file_id)
   }
@@ -3992,7 +4058,72 @@ function graphNodeNeedsGeometryHydration(
     .map((objectId) => objectById.get(objectId))
     .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object))
   if (nodeObjects.length === 0) return true
-  return nodeObjects.every((object) => !hasRenderableGeometry(object.geometry))
+  return nodeObjects.some((object) => objectNeedsRawHydration(object))
+}
+
+function objectNeedsRawHydration(object: WorkbenchDomainState["objects"][number]): boolean {
+  if (!hasRenderableGeometry(object.geometry)) return true
+  if (!isLogLikeComputationalObject(object)) return false
+  return !objectHasElectronicEnergyChannel(object) || !objectHasGasFreeEnergyChannel(object)
+}
+
+function isLogLikeComputationalObject(object: WorkbenchDomainState["objects"][number]): boolean {
+  const candidates = [
+    object.label,
+    object.source_file_id,
+    object.provenance?.source_file_id,
+    object.provenance?.parser_id,
+  ]
+  return candidates.some((value) => typeof value === "string" && (
+    /\.(log|out)$/i.test(value)
+    || value.toLowerCase().includes("gaussian")
+    || value.toLowerCase().includes("orca")
+  ))
+}
+
+function objectHasElectronicEnergyChannel(object: WorkbenchDomainState["objects"][number]): boolean {
+  return objectEnergyKeys(object).some((key) => ["egas", "electronic", "scf"].includes(key))
+}
+
+function objectHasGasFreeEnergyChannel(object: WorkbenchDomainState["objects"][number]): boolean {
+  return objectThermochemistryKeys(object).some((key) => (
+    ["ggas", "ggas_1m", "gibbs", "free_energy", "gibbs_free_energy"].includes(key)
+  ))
+}
+
+function objectEnergyKeys(object: WorkbenchDomainState["objects"][number]): string[] {
+  return uniqueStrings([
+    ...jsonStringValues(object.energy_keys),
+    ...energyChannelKeys(object, "energies"),
+    object.display_energy?.source === "energies" ? object.display_energy.key : null,
+  ]).map(normalizeHydrationEnergyKey)
+}
+
+function objectThermochemistryKeys(object: WorkbenchDomainState["objects"][number]): string[] {
+  return uniqueStrings([
+    ...jsonStringValues(object.thermochemistry_keys),
+    ...energyChannelKeys(object, "thermochemistry"),
+    object.display_energy?.source === "thermochemistry" ? object.display_energy.key : null,
+  ]).map(normalizeHydrationEnergyKey)
+}
+
+function energyChannelKeys(
+  object: WorkbenchDomainState["objects"][number],
+  source: "energies" | "thermochemistry",
+): string[] {
+  return (object.energy_channels ?? [])
+    .filter((channel) => channel.source === source)
+    .map((channel) => channel.key)
+}
+
+function jsonStringValues(values: unknown): string[] {
+  return Array.isArray(values)
+    ? values.filter((value): value is string => typeof value === "string")
+    : []
+}
+
+function normalizeHydrationEnergyKey(value: string): string {
+  return value.trim().toLowerCase().replace(/[/-]/g, "_")
 }
 
 function isRawHydrationFile(file: ProjectFileEntry): boolean {

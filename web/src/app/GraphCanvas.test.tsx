@@ -1,4 +1,5 @@
-import { createEvent, fireEvent, render, screen } from "@testing-library/react"
+import { createEvent, fireEvent, render, screen, within } from "@testing-library/react"
+import { useState } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { initialCompositionDraftState } from "./compositionDraftState"
 import { edgeLabelDraftFromEdge, initialEdgeLabelDraftState } from "./edgeLabelDraftState"
@@ -10,6 +11,7 @@ import {
 import {
   GraphCanvas,
   type AddRawFileNodeRequest,
+  type CanvasEnergyDisplayOptions,
   type ParseCandidateChooserState,
 } from "./GraphCanvas"
 import type { GraphLayoutPlan } from "./graphAutoLayout"
@@ -471,6 +473,108 @@ describe("GraphCanvas graph edges", () => {
     expect(screen.getByText("105.02 kJ/mol")).toBeInTheDocument()
   })
 
+  it("keeps missing free energy labeled as free energy", () => {
+    const state = graphCanvasTwoNodeState()
+    state.profile = {
+      id: "profile-free-missing",
+      graph_id: "graph-1",
+      path_id: "path-a-b",
+      point_count: 2,
+      energy_key: "ggas",
+      energy_source: "thermochemistry",
+      correction_policy: { mode: "none" },
+      output_unit: "kcal_mol",
+      baseline_node_id: "node-a",
+      points: [
+        {
+          node_id: "node-a",
+          label: "A",
+          relative_energy: { value: 0, unit: "kcal_mol" },
+          expression: {
+            node_id: "node-a",
+            terms: [],
+            corrections: [],
+            total: { value: -10, unit: "kcal_mol" },
+            missing: [],
+          },
+        },
+        {
+          node_id: "node-b",
+          label: "B",
+          relative_energy: null,
+          missing_reason: "missing_energy",
+          expression: {
+            node_id: "node-b",
+            terms: [],
+            corrections: [],
+            missing: [{ code: "missing_energy", message: "Missing ggas." }],
+          },
+        },
+      ],
+    }
+
+    renderGraphCanvas(vi.fn(), {
+      state,
+      energyDisplayOptions: { mode: "free", unit: "kcal_mol" },
+    })
+
+    const nodeB = graphNodeCardById(document.body, "node-b")
+    expect(within(nodeB).getByText("△G")).toBeInTheDocument()
+    expect(within(nodeB).getByText("missing")).toBeInTheDocument()
+    expect(within(nodeB).queryByText("△E")).not.toBeInTheDocument()
+  })
+
+  it("does not use single-object solvation corrections as solution free energy", () => {
+    const state = graphCanvasTwoNodeState()
+    state.objects = state.objects.map((object, index) => ({
+      ...object,
+      corrections: [{
+        id: `corr-solv-${index}`,
+        kind: "solvation",
+        energy: { value: index === 0 ? 0 : 0.01, unit: "hartree" },
+        created_at: "2026-06-09T00:00:00.000Z",
+      }],
+    }))
+
+    renderGraphCanvas(vi.fn(), {
+      state,
+      energyDisplayOptions: { mode: "solvation", unit: "kcal_mol" },
+    })
+
+    const nodeB = graphNodeCardById(document.body, "node-b")
+    expect(within(nodeB).getByText("△Gsol")).toBeInTheDocument()
+    expect(within(nodeB).getByText("missing")).toBeInTheDocument()
+    expect(screen.queryByText("6.28 kcal/mol")).not.toBeInTheDocument()
+  })
+
+  it("does not read solvation free energy from the electronic energy record", () => {
+    const state = graphCanvasTwoNodeState()
+    state.objects = state.objects.map((object, index) => ({
+      ...object,
+      energy_keys: [...(object.energy_keys ?? []), "gsol"],
+      energies: {
+        electronic: {
+          value: index === 0 ? -100 : -99.98,
+          unit: "hartree",
+        },
+        gsol: {
+          value: index === 0 ? -100 : -99.99,
+          unit: "hartree",
+        },
+      },
+    }))
+
+    renderGraphCanvas(vi.fn(), {
+      state,
+      energyDisplayOptions: { mode: "solvation", unit: "kcal_mol" },
+    })
+
+    const nodeB = graphNodeCardById(document.body, "node-b")
+    expect(within(nodeB).getByText("△Gsol")).toBeInTheDocument()
+    expect(within(nodeB).getByText("missing")).toBeInTheDocument()
+    expect(screen.queryByText("6.28 kcal/mol")).not.toBeInTheDocument()
+  })
+
   it("lays out energy diagrams from the zero point toward connected products", () => {
     const onApplyAutoLayout = vi.fn()
     renderGraphCanvas(vi.fn(), {
@@ -576,6 +680,8 @@ function renderGraphCanvas(
   options: {
     state?: WorkbenchDomainState
     interactionState?: GraphEditorInteractionState
+    energyDisplayOptions?: CanvasEnergyDisplayOptions
+    onEnergyDisplayOptionsChange?: (options: CanvasEnergyDisplayOptions) => void
     candidateChooser?: ParseCandidateChooserState | null
     onToggleCandidateSelection?: (candidateId: string, selected: boolean) => void
     onConfirmCandidateChooser?: () => void
@@ -591,8 +697,15 @@ function renderGraphCanvas(
     onApplyAutoLayout?: (plan: GraphLayoutPlan) => void
   } = {},
 ) {
-  return render(
-    <I18nProvider initialLocale="en-US">
+  function GraphCanvasHarness() {
+    const [energyDisplayOptions, setEnergyDisplayOptions] = useState<CanvasEnergyDisplayOptions>(
+      options.energyDisplayOptions ?? { mode: "electronic", unit: "kcal_mol" },
+    )
+    const handleEnergyDisplayOptionsChange = (nextOptions: CanvasEnergyDisplayOptions) => {
+      setEnergyDisplayOptions(nextOptions)
+      options.onEnergyDisplayOptionsChange?.(nextOptions)
+    }
+    return (
       <GraphCanvas
         state={options.state ?? {
           ...initialWorkbenchDomainState,
@@ -607,7 +720,9 @@ function renderGraphCanvas(
         compositionDraft={initialCompositionDraftState}
         compositionPending={false}
         compositionError={null}
+        energyDisplayOptions={energyDisplayOptions}
         candidateChooser={options.candidateChooser ?? null}
+        onEnergyDisplayOptionsChange={handleEnergyDisplayOptionsChange}
         onSelectNode={options.onSelectNode ?? (() => undefined)}
         onSelectEdge={options.onSelectEdge ?? (() => undefined)}
         onSelectPath={() => undefined}
@@ -653,6 +768,12 @@ function renderGraphCanvas(
         onResetCompositionDraft={() => undefined}
         onApplyCompositionDraft={() => undefined}
       />
+    )
+  }
+
+  return render(
+    <I18nProvider initialLocale="en-US">
+      <GraphCanvasHarness />
     </I18nProvider>,
   )
 }
