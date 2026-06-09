@@ -148,6 +148,24 @@ describe("graphViewport", () => {
     expect(geometry?.viewportWindow.top).toBeCloseTo(30 * geometry!.scale + geometry!.offset.y)
   })
 
+  it("keeps minimap content geometry stable while the viewport pans", () => {
+    const nodes = [
+      node({ id: "node-a", position: [120, 160] }),
+      node({ id: "node-b", position: [360, 220] }),
+    ]
+    const first = createGraphMinimapGeometry(nodes, { x: 0, y: 0, zoom: 1 }, { width: 180, height: 108 })
+    const panned = createGraphMinimapGeometry(nodes, { x: -180, y: 80, zoom: 1 }, { width: 180, height: 108 })
+
+    expect(first).not.toBeNull()
+    expect(panned).not.toBeNull()
+    expect(panned?.scale).toBeCloseTo(first!.scale)
+    expect(panned?.offset.x).toBeCloseTo(first!.offset.x)
+    expect(panned?.offset.y).toBeCloseTo(first!.offset.y)
+    expect(panned?.nodes).toEqual(first!.nodes)
+    expect(panned?.viewportWindow.left).toBeCloseTo(-180 * first!.scale + first!.offset.x)
+    expect(panned?.viewportWindow.top).toBeCloseTo(80 * first!.scale + first!.offset.y)
+  })
+
   it("maps minimap points back to graph points and viewport centers", () => {
     const geometry = createGraphMinimapGeometry(
       [

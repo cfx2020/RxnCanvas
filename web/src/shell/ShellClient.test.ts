@@ -659,6 +659,121 @@ describe("ShellClient", () => {
     expect(removedNode.data?.workspace.selection?.node_ids).toEqual([])
   })
 
+  it("allocates fixture graph node ids without reusing existing ids after deletion", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const sessionId = fixtureResponse.data?.session_id ?? ""
+
+    await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.open",
+      args: { session_id: sessionId },
+    })
+    await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.add_node",
+      args: {
+        session_id: sessionId,
+        kind: "species",
+        label: "First added node",
+        chemical_object_ids: ["object-a"],
+      },
+    })
+    await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.add_node",
+      args: {
+        session_id: sessionId,
+        kind: "species",
+        label: "Second added node",
+        chemical_object_ids: ["object-b"],
+      },
+    })
+    await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.remove",
+      args: {
+        session_id: sessionId,
+        node_ids: ["node-web-3"],
+      },
+    })
+
+    const added = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.add_node",
+      args: {
+        session_id: sessionId,
+        kind: "species",
+        label: "Replacement node",
+        chemical_object_ids: ["object-a"],
+      },
+    })
+
+    expect(added.ok).toBe(true)
+    expect(added.data?.workspace.graph.nodes.map((node) => node.id)).toEqual([
+      "node-a",
+      "node-b",
+      "node-web-4",
+      "node-web-5",
+    ])
+  })
+
+  it("repairs duplicate graph ids when opening persisted project content", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const response = await shellClient.run({
+      command: "project.open",
+      args: {
+        content_files: [
+          projectContentFile(".rxnflow/state/reaction-graphs.json", {
+            graphs: [
+              {
+                id: "graph-duplicate",
+                project_id: "project-duplicate",
+                nodes: [
+                  { id: "node-web-3", kind: "species", label: "TS", position: [120, 160] },
+                  { id: "node-web-3", kind: "species", label: "TS copy", position: [360, 160] },
+                ],
+                edges: [
+                  { id: "edge-duplicate", from_node: "node-web-3", to_node: "node-web-3" },
+                ],
+                paths: [
+                  { id: "path-duplicate", label: "Path", node_ids: ["node-web-3", "node-web-3"] },
+                ],
+              },
+            ],
+          }),
+          projectContentFile(".rxnflow/state/workspaces.json", {
+            workspaces: [
+              {
+                workspace_id: "workspace-duplicate",
+                project_id: "project-duplicate",
+                graph_id: "graph-duplicate",
+                active_path_id: "path-duplicate",
+                selection: {},
+                viewport: { x: 0, y: 0, zoom: 1 },
+              },
+            ],
+          }),
+        ],
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    const opened = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.open",
+      args: { session_id: "session-fixture-web" },
+    })
+
+    expect(opened.ok).toBe(true)
+    expect(opened.data?.workspace.graph.nodes.map((node) => node.id)).toEqual([
+      "node-web-3",
+      "node-web-3-2",
+    ])
+    expect(opened.data?.workspace.graph.edges[0]).toMatchObject({
+      from_node: "node-web-3",
+      to_node: "node-web-3-2",
+    })
+    expect(opened.data?.workspace.graph.paths[0].node_ids).toEqual(["node-web-3", "node-web-3-2"])
+  })
+
   it("returns structured errors for invalid fixture workspace selections", async () => {
     const shellClient = new ShellClient(fixtureTransport)
     const fixtureResponse = await shellClient.run<FixtureRunData>({
@@ -1225,3 +1340,11 @@ describe("ShellClient", () => {
     expect(response.error?.target).toBe("formats")
   })
 })
+
+function projectContentFile(path: string, value: unknown) {
+  return {
+    path,
+    bytes_base64: btoa(JSON.stringify(value)),
+    metadata: {},
+  }
+}

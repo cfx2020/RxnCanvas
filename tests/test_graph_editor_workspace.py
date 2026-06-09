@@ -132,6 +132,32 @@ class GraphEditorWorkspaceTest(unittest.TestCase):
         self.assertEqual(node.position, (120.0, 80.0))
         self.assertEqual(node.metadata, {"role": "substrate"})
 
+    def test_add_node_allocates_unique_generated_id_after_deletion(self) -> None:
+        workspace, workspace_id = _workspace_with_objects(
+            _object("object-a", label="A"),
+            _object("object-b", label="B"),
+        )
+        first = _add_species(workspace, workspace_id, "A", "object-a")
+        second = _add_species(workspace, workspace_id, "B", "object-b")
+        removed = workspace.remove_items(PROJECT_ID, workspace_id, node_ids=(first.id,))
+        self.assertTrue(removed.ok, removed.error)
+
+        added = workspace.add_node(
+            PROJECT_ID,
+            workspace_id,
+            NodePlacement(
+                kind="species",
+                label="B",
+                chemical_object_ids=("object-b",),
+            ),
+        )
+
+        self.assertTrue(added.ok, added.error)
+        node_ids = [node.id for node in added.value.graph.nodes]  # type: ignore[union-attr]
+        self.assertEqual(len(node_ids), len(set(node_ids)))
+        self.assertIn(second.id, node_ids)
+        self.assertNotEqual(added.value.graph.nodes[-1].id, second.id)  # type: ignore[union-attr]
+
     def test_set_node_composition_updates_existing_node_and_preserves_projection(self) -> None:
         workspace, workspace_id = _workspace_with_objects(
             _object("object-a", label="A"),

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactElement } from "react"
+import type { CSSProperties, DragEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactElement } from "react"
 import { Check, Hand, Maximize2, Minus, MoreHorizontal, MousePointer2, Plus, Redo2, RotateCcw, Trash2, Undo2, X, XCircle, ZoomIn, ZoomOut } from "lucide-react"
 import type { Atom3DSummary, ParseCandidateSummary, ShellError, ShellWarning } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
@@ -161,6 +161,7 @@ type GraphBarrierAnnotationSegment = {
   arrowPath: string
   guidePath: string
   label: string
+  defaultLabel: string
   labelPoint: GraphNodeLayoutPosition
   hitPoint: GraphNodeLayoutPosition
   sourceLabel: string
@@ -177,6 +178,7 @@ type CanvasBarrierAnnotation = {
   id: string
   sourceNodeId: string
   targetNodeId: string
+  label?: string | null
 }
 
 type BarrierDragSession = {
@@ -184,6 +186,27 @@ type BarrierDragSession = {
   origin: CanvasPoint
   moved: boolean
   wasActive: boolean
+}
+
+type NodeResizeSession = {
+  nodeId: string
+  origin: CanvasPoint
+  size: GraphNodeCardSize
+}
+
+type GraphNodeCardSize = {
+  width: number
+  height: number
+}
+
+type EdgeDragSession = {
+  fromNodeId: string
+}
+
+type PendingBarrierDraft = {
+  fromNodeId: string
+  pointerGraphPosition: GraphNodeLayoutPosition
+  targetNodeId: string | null
 }
 
 type GraphCanvasProps = {
@@ -326,17 +349,10 @@ export function GraphCanvas({
   const selectionSize = interactionState.selection.nodeIds.length
     + interactionState.selection.edgeIds.length
     + interactionState.selection.pathIds.length
-  const singleSelectedEdgeId = selectionSize === 1 ? interactionState.selection.edgeIds[0] : undefined
   const singleSelectedPathId = selectionSize === 1 ? interactionState.selection.pathIds[0] : undefined
   const selectedNodeIds = useMemo(() => new Set(interactionState.selection.nodeIds), [interactionState.selection.nodeIds])
   const selectedEdgeIds = useMemo(() => new Set(interactionState.selection.edgeIds), [interactionState.selection.edgeIds])
   const selectedPathIds = useMemo(() => new Set(interactionState.selection.pathIds), [interactionState.selection.pathIds])
-  const selectedEdgeId = singleSelectedEdgeId
-  const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId)
-  const selectedEdgeSource = selectedEdge ? nodes.find((node) => node.id === edgeSource(selectedEdge)) : undefined
-  const selectedEdgeTarget = selectedEdge ? nodes.find((node) => node.id === edgeTarget(selectedEdge)) : undefined
-  const selectedEdgeSourceLabel = graphNodeDisplayName(selectedEdgeSource, objectById, t("graphCanvas.none"))
-  const selectedEdgeTargetLabel = graphNodeDisplayName(selectedEdgeTarget, objectById, t("graphCanvas.none"))
   const selectedPathId = singleSelectedPathId
   const pendingConnectionFromId = interactionState.pendingEdge?.fromNodeId
   const graphReferences = {
@@ -348,8 +364,6 @@ export function GraphCanvas({
   const directEdgeGesture = resolveGraphEditorDirectEdgeGesture(interactionState, graphReferences)
   const pendingDirectEdgeTargetId = directEdgeGesture.kind === "connect" ? directEdgeGesture.toNodeId : null
   const viewport = normalizeGraphViewport(workspace?.viewport)
-  const displayViewport = canvasDragPreviewViewport(interactionState, viewport)
-  const zoomPercent = Math.round(viewport.zoom * 100)
   const panActive = interactionState.mode === "pan"
   const [energyDisplayOptions, setEnergyDisplayOptions] = useState<CanvasEnergyDisplayOptions>({
     mode: "electronic",
@@ -357,11 +371,21 @@ export function GraphCanvas({
   })
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(() => new Set())
   const [energyReferenceNodeId, setEnergyReferenceNodeId] = useState<string | null>(null)
-  const [barrierDraftSourceNodeId, setBarrierDraftSourceNodeId] = useState<string | null>(null)
+  const [pendingBarrierDraft, setPendingBarrierDraft] = useState<PendingBarrierDraft | null>(null)
   const [barrierAnnotations, setBarrierAnnotations] = useState<CanvasBarrierAnnotation[]>([])
   const [selectedBarrierAnnotationId, setSelectedBarrierAnnotationId] = useState<string | null>(null)
+  const [editingEdgeLabelId, setEditingEdgeLabelId] = useState<string | null>(null)
   const [expandedMolecule, setExpandedMolecule] = useState<CanvasChemicalNodeSummary | null>(null)
+  const [nodeSizeById, setNodeSizeById] = useState<Record<string, GraphNodeCardSize>>({})
+  const [minimapPreviewViewport, setMinimapPreviewViewport] = useState<GraphViewport | null>(null)
   const [edgeMetrics, setEdgeMetrics] = useState<GraphEdgeMetrics>(() => defaultGraphEdgeMetrics)
+  const nodeSizeSignature = useMemo(
+    () => Object.entries(nodeSizeById)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([nodeId, size]) => `${nodeId}:${Math.round(size.width)}x${Math.round(size.height)}`)
+      .join("|"),
+    [nodeSizeById],
+  )
   const canUseWorkspace = Boolean(state.sessionId)
   const canRemoveSelection = selectionSize > 0 || Boolean(selectedBarrierAnnotationId)
   const objectDropEnabled = canUseWorkspace && state.objects.length > 0
@@ -385,6 +409,8 @@ export function GraphCanvas({
     () => graphNodesWithDragPreview(nodes, interactionState),
     [interactionState, nodes],
   )
+  const displayViewport = minimapPreviewViewport ?? canvasDragPreviewViewport(interactionState, viewport)
+  const zoomPercent = Math.round(displayViewport.zoom * 100)
 
   const handleZoom = (direction: "in" | "out") => {
     onSetViewport(zoomGraphViewport(viewport, direction))
@@ -394,12 +420,22 @@ export function GraphCanvas({
     onSetViewport(fitGraphViewportToNodes(displayNodes, surfaceSizeFromElement(element)))
   }
 
+  const handleResetViewport = () => {
+    const surface = canvasSurfaceRef.current
+    if (surface && displayNodes.length > 0) {
+      onSetViewport(fitGraphViewportToNodes(displayNodes, surfaceSizeFromElement(surface)))
+      return
+    }
+    onSetViewport(resetGraphViewport())
+  }
+
   const handleEnergyLayout = () => {
     if (!graph) return
     onApplyAutoLayout(createEnergyRankedLayoutPlan({
       graph,
       paths,
-      nodeSummaryById,
+      referenceNodeId: effectiveEnergyReferenceNodeId,
+      relativeEnergyByNodeId,
       surfaceSize: edgeMetrics.surfaceSize,
       fitAfterLayout: true,
     }))
@@ -407,21 +443,32 @@ export function GraphCanvas({
 
   const clearCanvasSelection = useCallback(() => {
     setSelectedBarrierAnnotationId(null)
+    setEditingEdgeLabelId(null)
     onClearSelection()
   }, [onClearSelection])
 
   const removeCurrentSelection = useCallback(() => {
+    setEditingEdgeLabelId(null)
     if (selectedBarrierAnnotationId) {
       setBarrierAnnotations((current) => current.filter((annotation) => annotation.id !== selectedBarrierAnnotationId))
       setSelectedBarrierAnnotationId(null)
       return
     }
-    onRemoveGraphItems({
+    void onRemoveGraphItems({
       nodeIds: interactionState.selection.nodeIds,
       edgeIds: interactionState.selection.edgeIds,
       pathIds: interactionState.selection.pathIds,
     })
   }, [interactionState.selection.edgeIds, interactionState.selection.nodeIds, interactionState.selection.pathIds, onRemoveGraphItems, selectedBarrierAnnotationId])
+
+  const removeNodeFromCanvas = useCallback((nodeId: string) => {
+    setEditingEdgeLabelId(null)
+    setSelectedBarrierAnnotationId(null)
+    setBarrierAnnotations((current) => current.filter((annotation) => (
+      annotation.sourceNodeId !== nodeId && annotation.targetNodeId !== nodeId
+    )))
+    void onRemoveGraphItems({ nodeIds: [nodeId], edgeIds: [], pathIds: [] })
+  }, [onRemoveGraphItems])
 
   const handleKeyboardIntent = (event: KeyboardEvent<HTMLElement>) => {
     if (!canUseWorkspace || !isGraphKeyboardScopeTarget(event.target)) return
@@ -502,7 +549,7 @@ export function GraphCanvas({
       resizeObserver?.disconnect()
       window.removeEventListener("resize", updateEdgeMetrics)
     }
-  }, [nodes.length, viewport.zoom])
+  }, [nodeSizeSignature, nodes.length, viewport.zoom])
 
   useEffect(() => {
     if (!canUseWorkspace || !graph) return
@@ -526,11 +573,11 @@ export function GraphCanvas({
   }, [energyReferenceNodeId, nodes])
 
   useEffect(() => {
-    if (!barrierDraftSourceNodeId) return
-    if (!nodes.some((node) => node.id === barrierDraftSourceNodeId)) {
-      setBarrierDraftSourceNodeId(null)
+    if (!pendingBarrierDraft) return
+    if (!nodes.some((node) => node.id === pendingBarrierDraft.fromNodeId)) {
+      setPendingBarrierDraft(null)
     }
-  }, [barrierDraftSourceNodeId, nodes])
+  }, [nodes, pendingBarrierDraft])
 
   useEffect(() => {
     if (barrierAnnotations.length === 0 && !selectedBarrierAnnotationId) return
@@ -546,6 +593,29 @@ export function GraphCanvas({
       setSelectedBarrierAnnotationId(null)
     }
   }, [barrierAnnotations, nodeIdSignature, selectedBarrierAnnotationId])
+
+  useEffect(() => {
+    if (Object.keys(nodeSizeById).length === 0) return
+    const nodeIds = new Set(nodes.map((node) => node.id))
+    setNodeSizeById((current) => {
+      const next = Object.fromEntries(Object.entries(current).filter(([nodeId]) => nodeIds.has(nodeId)))
+      return Object.keys(next).length === Object.keys(current).length ? current : next
+    })
+  }, [nodeSizeById, nodes])
+
+  useEffect(() => {
+    if (!editingEdgeLabelId) return
+    if (!edges.some((edge) => edge.id === editingEdgeLabelId)) {
+      setEditingEdgeLabelId(null)
+    }
+  }, [edges, editingEdgeLabelId])
+
+  useEffect(() => {
+    if (!minimapPreviewViewport) return
+    if (graphViewportNearlyEqual(minimapPreviewViewport, viewport)) {
+      setMinimapPreviewViewport(null)
+    }
+  }, [minimapPreviewViewport, viewport])
 
   const toggleNodeCollapsed = useCallback((nodeId: string) => {
     setCollapsedNodeIds((current) => {
@@ -570,12 +640,21 @@ export function GraphCanvas({
     return true
   }, [])
 
-  const completeBarrierAnnotation = useCallback((targetNodeId: string) => {
-    if (!barrierDraftSourceNodeId) return false
-    createBarrierAnnotation(barrierDraftSourceNodeId, targetNodeId)
-    setBarrierDraftSourceNodeId(null)
-    return true
-  }, [barrierDraftSourceNodeId, createBarrierAnnotation])
+  const updateBarrierAnnotationLabel = useCallback((annotationId: string, label: string | null) => {
+    setBarrierAnnotations((current) => current.map((annotation) => (
+      annotation.id === annotationId ? { ...annotation, label } : annotation
+    )))
+  }, [])
+
+  const resizeNodeCard = useCallback((nodeId: string, size: GraphNodeCardSize) => {
+    setNodeSizeById((current) => ({
+      ...current,
+      [nodeId]: {
+        width: Math.round(clamp(size.width, graphNodeCardSizeBounds.minWidth, graphNodeCardSizeBounds.maxWidth)),
+        height: Math.round(clamp(size.height, graphNodeCardSizeBounds.minHeight, graphNodeCardSizeBounds.maxHeight)),
+      },
+    }))
+  }, [])
 
   const handleCanvasPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (!canUseWorkspace || event.button !== 0 || !isCanvasPanStartTarget(event.target)) return
@@ -597,16 +676,6 @@ export function GraphCanvas({
     }
     if (typeof event.currentTarget.setPointerCapture === "function") {
       event.currentTarget.setPointerCapture(event.pointerId)
-    }
-  }
-
-  const handleCanvasPointerDownCapture = (event: PointerEvent<HTMLDivElement>) => {
-    if (!barrierDraftSourceNodeId || event.button !== 0) return
-    const targetNodeId = nodeIdFromPoint(event.clientX, event.clientY, nodes)
-    if (!targetNodeId) return
-    if (completeBarrierAnnotation(targetNodeId)) {
-      event.preventDefault()
-      event.stopPropagation()
     }
   }
 
@@ -750,13 +819,9 @@ export function GraphCanvas({
       ignoreNextNodeClickRef.current = null
       return
     }
-    if (completeBarrierAnnotation(nodeId)) {
-      event.preventDefault()
-      return
-    }
     setSelectedBarrierAnnotationId(null)
     onSelectNode(nodeId, selectionModeFromMouseEvent(event))
-  }, [completeBarrierAnnotation, onSelectNode])
+  }, [onSelectNode])
 
   const handleNodePointerCancel = useCallback((node: GraphNodeSummary) => {
     const drag = nodeDragRef.current
@@ -779,29 +844,120 @@ export function GraphCanvas({
     event.preventDefault()
   }, [canUseWorkspace, onStartPointerEdge, viewport])
 
-  const handleEdgeHandlePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+  const updateEdgeDragFromClientPoint = useCallback((clientX: number, clientY: number) => {
     const drag = edgeDragRef.current
-    if (!drag) return
-    event.stopPropagation()
-    const position = pointFromPointerEvent(event, viewport, { snap: false })
-    onUpdatePointerEdge(position, nodeIdFromPoint(event.clientX, event.clientY, nodes, drag.fromNodeId))
-    event.preventDefault()
+    if (!drag) return false
+    const position = pointFromClientPoint(clientX, clientY, viewport, { snap: false })
+    onUpdatePointerEdge(position, nodeIdFromPoint(clientX, clientY, nodes, drag.fromNodeId))
+    return true
   }, [nodes, onUpdatePointerEdge, viewport])
 
-  const handleEdgeHandlePointerUp = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+  const finishEdgeDragAtClientPoint = useCallback((clientX: number, clientY: number) => {
     const drag = edgeDragRef.current
-    if (!drag) return
-    event.stopPropagation()
+    if (!drag) return false
     edgeDragRef.current = null
-    onEndPointerEdge(nodeIdFromPoint(event.clientX, event.clientY, nodes, drag.fromNodeId))
-    event.preventDefault()
+    onEndPointerEdge(nodeIdFromPoint(clientX, clientY, nodes, drag.fromNodeId))
+    return true
   }, [nodes, onEndPointerEdge])
+
+  const handleEdgeHandlePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    if (!updateEdgeDragFromClientPoint(event.clientX, event.clientY)) return
+    event.stopPropagation()
+    event.preventDefault()
+  }, [updateEdgeDragFromClientPoint])
+
+  const handleEdgeHandlePointerUp = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    if (!finishEdgeDragAtClientPoint(event.clientX, event.clientY)) return
+    event.stopPropagation()
+    event.preventDefault()
+  }, [finishEdgeDragAtClientPoint])
 
   const handleEdgeHandlePointerCancel = useCallback(() => {
     if (!edgeDragRef.current) return
     edgeDragRef.current = null
     onCancelPointerEdge()
   }, [onCancelPointerEdge])
+
+  useEffect(() => {
+    if (!interactionState.pendingEdge || interactionState.pendingEdge.source !== "pointer") return undefined
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
+      if (!updateEdgeDragFromClientPoint(event.clientX, event.clientY)) return
+      event.preventDefault()
+    }
+    const handlePointerUp = (event: globalThis.PointerEvent) => {
+      if (!finishEdgeDragAtClientPoint(event.clientX, event.clientY)) return
+      event.preventDefault()
+    }
+    const handlePointerCancel = () => {
+      if (!edgeDragRef.current) return
+      edgeDragRef.current = null
+      onCancelPointerEdge()
+    }
+    window.addEventListener("pointermove", handlePointerMove, { capture: true })
+    window.addEventListener("pointerup", handlePointerUp, { capture: true })
+    window.addEventListener("pointercancel", handlePointerCancel, { capture: true })
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove, { capture: true })
+      window.removeEventListener("pointerup", handlePointerUp, { capture: true })
+      window.removeEventListener("pointercancel", handlePointerCancel, { capture: true })
+    }
+  }, [finishEdgeDragAtClientPoint, interactionState.pendingEdge, onCancelPointerEdge, updateEdgeDragFromClientPoint])
+
+  const updateBarrierDragFromClientPoint = useCallback((clientX: number, clientY: number) => {
+    const drag = barrierDragRef.current
+    if (!drag) return false
+    if (Math.hypot(clientX - drag.origin.x, clientY - drag.origin.y) > 4) {
+      drag.moved = true
+    }
+    setPendingBarrierDraft({
+      fromNodeId: drag.fromNodeId,
+      pointerGraphPosition: pointFromClientPoint(clientX, clientY, viewport, { snap: false }),
+      targetNodeId: nodeIdFromPoint(clientX, clientY, nodes, drag.fromNodeId),
+    })
+    return true
+  }, [nodes, viewport])
+
+  const finishBarrierDragAtClientPoint = useCallback((clientX: number, clientY: number) => {
+    const drag = barrierDragRef.current
+    if (!drag) return false
+    barrierDragRef.current = null
+    suppressNextBarrierClickRef.current = true
+    if (drag.moved) {
+      const targetNodeId = nodeIdFromPoint(clientX, clientY, nodes, drag.fromNodeId)
+      if (targetNodeId) createBarrierAnnotation(drag.fromNodeId, targetNodeId)
+      setPendingBarrierDraft(null)
+    } else if (drag.wasActive) {
+      setPendingBarrierDraft(null)
+    } else {
+      setPendingBarrierDraft(null)
+    }
+    return true
+  }, [createBarrierAnnotation, nodes])
+
+  useEffect(() => {
+    if (!pendingBarrierDraft) return undefined
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
+      if (!updateBarrierDragFromClientPoint(event.clientX, event.clientY)) return
+      event.preventDefault()
+    }
+    const handlePointerUp = (event: globalThis.PointerEvent) => {
+      if (!finishBarrierDragAtClientPoint(event.clientX, event.clientY)) return
+      event.preventDefault()
+    }
+    const handlePointerCancel = () => {
+      if (!barrierDragRef.current) return
+      barrierDragRef.current = null
+      setPendingBarrierDraft(null)
+    }
+    window.addEventListener("pointermove", handlePointerMove, { capture: true })
+    window.addEventListener("pointerup", handlePointerUp, { capture: true })
+    window.addEventListener("pointercancel", handlePointerCancel, { capture: true })
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove, { capture: true })
+      window.removeEventListener("pointerup", handlePointerUp, { capture: true })
+      window.removeEventListener("pointercancel", handlePointerCancel, { capture: true })
+    }
+  }, [finishBarrierDragAtClientPoint, pendingBarrierDraft, updateBarrierDragFromClientPoint])
 
   const handleBarrierHandlePointerDown = useCallback((node: GraphNodeSummary, event: PointerEvent<HTMLButtonElement>) => {
     if (!canUseWorkspace || event.button !== 0) return
@@ -810,56 +966,45 @@ export function GraphCanvas({
       fromNodeId: node.id,
       origin: { x: event.clientX, y: event.clientY },
       moved: false,
-      wasActive: barrierDraftSourceNodeId === node.id,
+      wasActive: pendingBarrierDraft?.fromNodeId === node.id,
     }
-    setBarrierDraftSourceNodeId(node.id)
+    setPendingBarrierDraft({
+      fromNodeId: node.id,
+      pointerGraphPosition: pointFromPointerEvent(event, viewport, { snap: false }),
+      targetNodeId: null,
+    })
     setSelectedBarrierAnnotationId(null)
     if (typeof event.currentTarget.setPointerCapture === "function") {
       event.currentTarget.setPointerCapture(event.pointerId)
     }
     event.preventDefault()
-  }, [barrierDraftSourceNodeId, canUseWorkspace])
+  }, [canUseWorkspace, pendingBarrierDraft?.fromNodeId, viewport])
 
   const handleBarrierHandlePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
-    const drag = barrierDragRef.current
-    if (!drag) return
+    if (!updateBarrierDragFromClientPoint(event.clientX, event.clientY)) return
     event.stopPropagation()
-    if (Math.hypot(event.clientX - drag.origin.x, event.clientY - drag.origin.y) > 4) {
-      drag.moved = true
-    }
     event.preventDefault()
-  }, [])
+  }, [updateBarrierDragFromClientPoint])
 
   const handleBarrierHandlePointerUp = useCallback((event: PointerEvent<HTMLButtonElement>) => {
-    const drag = barrierDragRef.current
-    if (!drag) return
+    if (!finishBarrierDragAtClientPoint(event.clientX, event.clientY)) return
     event.stopPropagation()
-    barrierDragRef.current = null
-    suppressNextBarrierClickRef.current = true
-    if (drag.moved) {
-      const targetNodeId = nodeIdFromPoint(event.clientX, event.clientY, nodes, undefined)
-      if (targetNodeId) createBarrierAnnotation(drag.fromNodeId, targetNodeId)
-      setBarrierDraftSourceNodeId(null)
-    } else if (drag.wasActive) {
-      setBarrierDraftSourceNodeId(null)
-    }
     event.preventDefault()
-  }, [createBarrierAnnotation, nodes])
+  }, [finishBarrierDragAtClientPoint])
 
   const handleBarrierHandlePointerCancel = useCallback(() => {
     if (!barrierDragRef.current) return
     barrierDragRef.current = null
-    setBarrierDraftSourceNodeId(null)
+    setPendingBarrierDraft(null)
   }, [])
 
-  const handleBarrierHandleClick = useCallback((node: GraphNodeSummary, event: MouseEvent<HTMLButtonElement>) => {
+  const handleBarrierHandleClick = useCallback((_node: GraphNodeSummary, event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
     if (suppressNextBarrierClickRef.current) {
       suppressNextBarrierClickRef.current = false
       return
     }
-    setBarrierDraftSourceNodeId((current) => current === node.id ? null : node.id)
     setSelectedBarrierAnnotationId(null)
   }, [])
 
@@ -991,7 +1136,7 @@ export function GraphCanvas({
         >
           <span>{t("graphCanvas.energyLayoutShort")}</span>
         </button>
-        <button type="button" onClick={() => onSetViewport(resetGraphViewport())} disabled={!canUseWorkspace} title={t("graphCanvas.resetView")}>
+        <button type="button" onClick={handleResetViewport} disabled={!canUseWorkspace} title={t("graphCanvas.resetView")}>
           <RotateCcw size={16} />
           <span className="visually-hidden">{t("graphCanvas.resetView")}</span>
         </button>
@@ -1005,7 +1150,6 @@ export function GraphCanvas({
           tabIndex={canUseWorkspace ? 0 : undefined}
           onDragOver={handleCanvasDragOver}
           onDrop={handleCanvasDrop}
-          onPointerDownCapture={handleCanvasPointerDownCapture}
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handleCanvasPointerMove}
           onPointerUp={handleCanvasPointerUp}
@@ -1031,12 +1175,20 @@ export function GraphCanvas({
                 selectedEdgeIds={selectedEdgeIds}
                 selectedBarrierAnnotationId={selectedBarrierAnnotationId}
                 pendingEdge={interactionState.pendingEdge}
+                pendingBarrier={pendingBarrierDraft}
                 edgeLabelDraft={edgeLabelDraft}
                 edgeLabelPending={edgeLabelPending}
                 edgeLabelError={edgeLabelError}
                 onSelectEdge={(edgeId, mode) => {
                   setSelectedBarrierAnnotationId(null)
+                  setEditingEdgeLabelId(null)
                   onSelectEdge(edgeId, mode)
+                }}
+                editingEdgeLabelId={editingEdgeLabelId}
+                onEditEdgeLabel={(edgeId) => {
+                  setSelectedBarrierAnnotationId(null)
+                  setEditingEdgeLabelId(edgeId)
+                  onSelectEdge(edgeId, "replace")
                 }}
                 onEdgeLabelDraftChange={onEdgeLabelDraftChange}
                 onResetEdgeLabelDraft={onResetEdgeLabelDraft}
@@ -1050,6 +1202,7 @@ export function GraphCanvas({
                   setBarrierAnnotations((current) => current.filter((annotation) => annotation.id !== annotationId))
                   setSelectedBarrierAnnotationId((current) => current === annotationId ? null : current)
                 }}
+                onUpdateBarrierAnnotationLabel={updateBarrierAnnotationLabel}
               />
               <div className="graph-viewport-layer" style={{ transform: graphViewportCssTransform(displayViewport) }}>
                 {rubberBandRectangle ? (
@@ -1068,20 +1221,22 @@ export function GraphCanvas({
                       selected={selectedNodeIds.has(node.id)}
                       pending={node.id === pendingConnectionFromId}
                       pendingTarget={node.id === pendingDirectEdgeTargetId}
-                      barrierSource={barrierDraftSourceNodeId === node.id}
-                      barrierTarget={Boolean(barrierDraftSourceNodeId && barrierDraftSourceNodeId !== node.id)}
+                      barrierSource={pendingBarrierDraft?.fromNodeId === node.id}
+                      barrierTarget={Boolean(pendingBarrierDraft && pendingBarrierDraft.fromNodeId !== node.id)}
                       collapsed={collapsedNodeIds.has(node.id)}
                       activePath={isNodeInActivePath(node.id, workspace?.active_path_id, paths)}
                       dragging={isDraggingNode(interactionState, node.id)}
                       displayPosition={graphNodePosition(displayNodes.find((displayNode) => displayNode.id === node.id) ?? node)}
                       relativeEnergy={relativeEnergyByNodeId.get(node.id) ?? null}
                       energyReference={node.id === effectiveEnergyReferenceNodeId}
+                      cardSize={nodeSizeById[node.id] ?? null}
+                      viewportZoom={displayViewport.zoom}
                       onPointerDown={handleNodePointerDown}
                       onPointerMove={handleNodePointerMove}
                       onPointerUp={handleNodePointerUp}
                       onPointerCancel={handleNodePointerCancel}
                       onUpdateLabel={onUpdateNodeLabel}
-                      onRemoveNode={(nodeId) => onRemoveGraphItems({ nodeIds: [nodeId], edgeIds: [], pathIds: [] })}
+                      onRemoveNode={removeNodeFromCanvas}
                       onToggleCollapsed={toggleNodeCollapsed}
                       onSetEnergyReference={setEnergyReferenceNodeId}
                       onOpenStructure={setExpandedMolecule}
@@ -1094,6 +1249,7 @@ export function GraphCanvas({
                       onBarrierHandlePointerUp={handleBarrierHandlePointerUp}
                       onBarrierHandlePointerCancel={handleBarrierHandlePointerCancel}
                       onBarrierHandleClick={handleBarrierHandleClick}
+                      onResizeNode={resizeNodeCard}
                       onClick={handleNodeClick}
                     />
                   ))}
@@ -1102,7 +1258,11 @@ export function GraphCanvas({
               <GraphMinimap
                 nodes={displayNodes}
                 viewport={displayViewport}
-                onSetViewport={onSetViewport}
+                onPreviewViewport={setMinimapPreviewViewport}
+                onCommitViewport={(nextViewport) => {
+                  setMinimapPreviewViewport(nextViewport)
+                  onSetViewport(nextViewport)
+                }}
               />
             </>
           )}
@@ -1387,14 +1547,20 @@ function graphLayoutStatusLabel(
 function GraphMinimap({
   nodes,
   viewport,
-  onSetViewport,
+  onPreviewViewport,
+  onCommitViewport,
 }: {
   nodes: GraphNodeSummary[]
   viewport: GraphViewport
-  onSetViewport: (viewport: GraphViewport) => void
+  onPreviewViewport: (viewport: GraphViewport | null) => void
+  onCommitViewport: (viewport: GraphViewport) => void
 }) {
   const { t } = useI18n()
   const minimapRef = useRef<HTMLButtonElement | null>(null)
+  const dragGeometryRef = useRef<NonNullable<ReturnType<typeof createGraphMinimapGeometry>> | null>(null)
+  const dragViewportRef = useRef<GraphViewport | null>(null)
+  const previewFrameRef = useRef<number | null>(null)
+  const pendingPreviewRef = useRef<{ point: GraphNodeLayoutPosition; viewport: GraphViewport } | null>(null)
   const [draftPoint, setDraftPoint] = useState<GraphNodeLayoutPosition | null>(null)
   const minimapSize = { width: 162, height: 98 }
   const geometry = useMemo(
@@ -1409,6 +1575,13 @@ function GraphMinimap({
       minimapSize,
     )
   }, [draftPoint, geometry, nodes, viewport])
+  useEffect(() => () => {
+    if (previewFrameRef.current !== null) {
+      window.cancelAnimationFrame(previewFrameRef.current)
+      previewFrameRef.current = null
+    }
+    pendingPreviewRef.current = null
+  }, [])
   if (!geometry) return null
 
   const pointFromEvent = (event: PointerEvent<HTMLButtonElement>): GraphNodeLayoutPosition => {
@@ -1418,10 +1591,38 @@ function GraphMinimap({
       y: clamp(event.clientY - rect.top, 0, rect.height),
     }
   }
-  const applyPoint = (point: GraphNodeLayoutPosition) => {
-    onSetViewport(graphViewportFromMinimapPoint(viewport, point, geometry))
+  const applyPoint = (
+    point: GraphNodeLayoutPosition,
+    sourceGeometry: NonNullable<ReturnType<typeof createGraphMinimapGeometry>> = geometry,
+    sourceViewport: GraphViewport = viewport,
+  ) => {
+    const nextViewport = graphViewportFromMinimapPoint(sourceViewport, point, sourceGeometry)
+    return nextViewport
   }
-
+  const cancelScheduledPreview = () => {
+    if (previewFrameRef.current === null) return
+    window.cancelAnimationFrame(previewFrameRef.current)
+    previewFrameRef.current = null
+  }
+  const schedulePreview = (
+    point: GraphNodeLayoutPosition,
+    sourceGeometry: NonNullable<ReturnType<typeof createGraphMinimapGeometry>> = geometry,
+    sourceViewport: GraphViewport = viewport,
+  ) => {
+    pendingPreviewRef.current = {
+      point,
+      viewport: applyPoint(point, sourceGeometry, sourceViewport),
+    }
+    if (previewFrameRef.current !== null) return
+    previewFrameRef.current = window.requestAnimationFrame(() => {
+      previewFrameRef.current = null
+      const pending = pendingPreviewRef.current
+      pendingPreviewRef.current = null
+      if (!pending) return
+      setDraftPoint(pending.point)
+      onPreviewViewport(pending.viewport)
+    })
+  }
   return (
     <section className="graph-minimap-panel" aria-label={t("graphCanvas.minimapAria")}>
       <button
@@ -1433,23 +1634,39 @@ function GraphMinimap({
           if (event.button !== 0) return
           event.stopPropagation()
           const point = pointFromEvent(event)
-          setDraftPoint(point)
+          dragGeometryRef.current = geometry
+          dragViewportRef.current = viewport
+          schedulePreview(point, geometry, viewport)
           event.currentTarget.setPointerCapture?.(event.pointerId)
         }}
         onPointerMove={(event) => {
-          if (!draftPoint) return
-          event.stopPropagation()
-          setDraftPoint(pointFromEvent(event))
-        }}
-        onPointerUp={(event) => {
-          if (!draftPoint) return
+          if (!dragGeometryRef.current) return
           event.stopPropagation()
           const point = pointFromEvent(event)
+          schedulePreview(point, dragGeometryRef.current, dragViewportRef.current ?? viewport)
+        }}
+        onPointerUp={(event) => {
+          if (!dragGeometryRef.current) return
+          event.stopPropagation()
+          const point = pointFromEvent(event)
+          cancelScheduledPreview()
+          pendingPreviewRef.current = null
           setDraftPoint(null)
-          applyPoint(point)
+          const nextViewport = applyPoint(point, dragGeometryRef.current ?? geometry, dragViewportRef.current ?? viewport)
+          onPreviewViewport(nextViewport)
+          dragGeometryRef.current = null
+          dragViewportRef.current = null
+          onCommitViewport(nextViewport)
           event.currentTarget.releasePointerCapture?.(event.pointerId)
         }}
-        onPointerCancel={() => setDraftPoint(null)}
+        onPointerCancel={() => {
+          cancelScheduledPreview()
+          pendingPreviewRef.current = null
+          dragGeometryRef.current = null
+          dragViewportRef.current = null
+          setDraftPoint(null)
+          onPreviewViewport(null)
+        }}
       >
         <span className="graph-minimap-bounds" aria-hidden="true" />
         {geometry.nodes.map((node) => (
@@ -1486,10 +1703,6 @@ type RubberBandSession = {
   origin: CanvasPoint
   dragging: boolean
   mode: "replace" | "add"
-}
-
-type EdgeDragSession = {
-  fromNodeId: string
 }
 
 function hasGraphObjectDragPayload(dataTransfer: DataTransfer): boolean {
@@ -1535,12 +1748,12 @@ function firstDataTransferFile(dataTransfer: DataTransfer): File | null {
 
 function isCanvasPanStartTarget(target: EventTarget): boolean {
   if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
-  return !target.closest(".graph-node-card, .graph-edge-connect-handle, .graph-barrier-connect-handle, .graph-edge-hitbox, .graph-barrier-hitbox, .graph-minimap-panel, .edge-label-floating-editor, .parse-candidate-chooser")
+  return !target.closest(".graph-node-card, .graph-edge-connect-handle, .graph-barrier-connect-handle, .graph-edge-hitbox, .graph-edge-hit-line, .graph-edge-label, .graph-edge-inline-label-editor, .graph-barrier-hit-line, .graph-barrier-label, .graph-minimap-panel, .parse-candidate-chooser")
 }
 
 function isGraphKeyboardScopeTarget(target: EventTarget): boolean {
   if (!(target instanceof HTMLElement) && !(target instanceof SVGElement)) return false
-  return Boolean(target.closest(".graph-canvas-surface, .graph-node-card, .graph-edge-hitbox, .graph-barrier-hitbox, .graph-path-select"))
+  return Boolean(target.closest(".graph-canvas-surface, .graph-node-card, .graph-edge-hitbox, .graph-edge-hit-line, .graph-edge-label, .graph-edge-inline-label-editor, .graph-barrier-hit-line, .graph-barrier-label, .graph-path-select"))
 }
 
 function isCanvasViewportInputTarget(target: EventTarget): boolean {
@@ -1563,10 +1776,26 @@ function pointFromPointerEvent(
   const snap = options.snap ?? true
   if (!surface) {
     const fallback = { x: event.clientX, y: event.clientY }
-    return snap ? canvasPointToGraphNodePosition(fallback) : clampGraphNodeLayoutPosition(fallback)
+    return snap ? canvasPointToGraphNodePosition(fallback) : fallback
   }
   const point = graphPointFromClientPoint(surface, event.clientX, event.clientY, viewport)
-  return snap ? canvasPointToGraphNodePosition(point) : clampGraphNodeLayoutPosition(point)
+  return snap ? canvasPointToGraphNodePosition(point) : point
+}
+
+function pointFromClientPoint(
+  clientX: number,
+  clientY: number,
+  viewport: GraphViewport,
+  options: { snap?: boolean } = {},
+): CanvasPoint {
+  const surface = document.querySelector(".graph-canvas-surface") as HTMLElement | null
+  const snap = options.snap ?? true
+  if (!surface) {
+    const fallback = { x: clientX, y: clientY }
+    return snap ? canvasPointToGraphNodePosition(fallback) : fallback
+  }
+  const point = graphPointFromClientPoint(surface, clientX, clientY, viewport)
+  return snap ? canvasPointToGraphNodePosition(point) : point
 }
 
 function graphPointFromClientPoint(
@@ -1580,8 +1809,8 @@ function graphPointFromClientPoint(
     return { x: clientX, y: clientY }
   }
   const surfacePoint = {
-    x: clamp(clientX - rect.left, 0, rect.width),
-    y: clamp(clientY - rect.top, 0, rect.height),
+    x: clientX - rect.left,
+    y: clientY - rect.top,
   }
   return screenPointToGraphPoint(surfacePoint, surfaceSizeFromElement(surface), viewport)
 }
@@ -1684,12 +1913,22 @@ function relativeEnergyValuesByNodeId(
   for (const node of nodes) {
     const energy = nodeSummaryById.get(node.id)?.displayEnergy
     if (!energy || energy.unit !== referenceEnergy.unit || energy.mode !== referenceEnergy.mode) continue
+    const relativeValue = energy.value - referenceEnergy.value
+    if (!isPlausibleRelativeEnergyValue(relativeValue, energy.unit)) continue
     values.set(node.id, {
       ...energy,
-      value: energy.value - referenceEnergy.value,
+      value: relativeValue,
     })
   }
   return values
+}
+
+function isPlausibleRelativeEnergyValue(value: number, unit: CanvasEnergyUnit): boolean {
+  if (!Number.isFinite(value)) return false
+  const magnitude = Math.abs(value)
+  if (unit === "hartree") return magnitude <= 20
+  if (unit === "kj_mol") return magnitude <= 42000
+  return magnitude <= 10000
 }
 
 const GraphNodeButton = memo(function GraphNodeButton({
@@ -1706,6 +1945,8 @@ const GraphNodeButton = memo(function GraphNodeButton({
   displayPosition,
   relativeEnergy,
   energyReference,
+  cardSize,
+  viewportZoom,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -1724,6 +1965,7 @@ const GraphNodeButton = memo(function GraphNodeButton({
   onBarrierHandlePointerUp,
   onBarrierHandlePointerCancel,
   onBarrierHandleClick,
+  onResizeNode,
   onClick,
 }: {
   node: GraphNodeSummary
@@ -1739,6 +1981,8 @@ const GraphNodeButton = memo(function GraphNodeButton({
   displayPosition: GraphNodeLayoutPosition
   relativeEnergy: ResolvedCanvasEnergy | null
   energyReference: boolean
+  cardSize: GraphNodeCardSize | null
+  viewportZoom: number
   onPointerDown: (node: GraphNodeSummary, event: PointerEvent<HTMLElement>) => void
   onPointerMove: (node: GraphNodeSummary, event: PointerEvent<HTMLElement>) => void
   onPointerUp: (node: GraphNodeSummary, event: PointerEvent<HTMLElement>) => void
@@ -1757,12 +2001,15 @@ const GraphNodeButton = memo(function GraphNodeButton({
   onBarrierHandlePointerUp: (event: PointerEvent<HTMLButtonElement>) => void
   onBarrierHandlePointerCancel: () => void
   onBarrierHandleClick: (node: GraphNodeSummary, event: MouseEvent<HTMLButtonElement>) => void
+  onResizeNode: (nodeId: string, size: GraphNodeCardSize) => void
   onClick: (nodeId: string, event: MouseEvent<HTMLElement>) => void
 }) {
   const { t } = useI18n()
   const [draftLabel, setDraftLabel] = useState(summary.structureName)
   const [menuOpen, setMenuOpen] = useState(false)
   const cardRef = useRef<HTMLDivElement | null>(null)
+  const resizeDragRef = useRef<NodeResizeSession | null>(null)
+  const resizeCleanupRef = useRef<(() => void) | null>(null)
   useEffect(() => {
     if (!selected) setDraftLabel(summary.structureName)
   }, [selected, summary.structureName])
@@ -1776,7 +2023,74 @@ const GraphNodeButton = memo(function GraphNodeButton({
     document.addEventListener("pointerdown", handleDocumentPointerDown, { capture: true })
     return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, { capture: true })
   }, [menuOpen])
+  useEffect(() => () => {
+    resizeCleanupRef.current?.()
+    resizeCleanupRef.current = null
+  }, [])
   const position = graphNodeCssPosition(displayPosition)
+  const shellStyle = {
+    ...position,
+    ...(cardSize ? {
+      "--graph-node-width": `${cardSize.width}px`,
+      "--graph-node-height": `${cardSize.height}px`,
+    } : {}),
+  } as CSSProperties
+  const applyNodeResize = (clientX: number, clientY: number): boolean => {
+    const resize = resizeDragRef.current
+    if (!resize || resize.nodeId !== node.id) return false
+    const scale = Math.max(viewportZoom, 0.001)
+    onResizeNode(node.id, {
+      width: clamp(resize.size.width + (clientX - resize.origin.x) / scale, graphNodeCardSizeBounds.minWidth, graphNodeCardSizeBounds.maxWidth),
+      height: clamp(resize.size.height + (clientY - resize.origin.y) / scale, graphNodeCardSizeBounds.minHeight, graphNodeCardSizeBounds.maxHeight),
+    })
+    return true
+  }
+  const finishNodeResize = () => {
+    resizeDragRef.current = null
+    resizeCleanupRef.current?.()
+    resizeCleanupRef.current = null
+  }
+  const startNodeResize = (event: PointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    event.preventDefault()
+    if (collapsed || event.button !== 0) return
+    resizeCleanupRef.current?.()
+    resizeDragRef.current = {
+      nodeId: node.id,
+      origin: { x: event.clientX, y: event.clientY },
+      size: cardSize ?? defaultGraphNodeCardSize,
+    }
+    const handleWindowPointerMove = (nativeEvent: globalThis.PointerEvent) => {
+      if (!applyNodeResize(nativeEvent.clientX, nativeEvent.clientY)) return
+      nativeEvent.preventDefault()
+    }
+    const handleWindowPointerEnd = (nativeEvent: globalThis.PointerEvent) => {
+      if (!resizeDragRef.current) return
+      nativeEvent.preventDefault()
+      finishNodeResize()
+    }
+    window.addEventListener("pointermove", handleWindowPointerMove, { capture: true })
+    window.addEventListener("pointerup", handleWindowPointerEnd, { capture: true })
+    window.addEventListener("pointercancel", handleWindowPointerEnd, { capture: true })
+    resizeCleanupRef.current = () => {
+      window.removeEventListener("pointermove", handleWindowPointerMove, { capture: true })
+      window.removeEventListener("pointerup", handleWindowPointerEnd, { capture: true })
+      window.removeEventListener("pointercancel", handleWindowPointerEnd, { capture: true })
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+  const updateNodeResize = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!applyNodeResize(event.clientX, event.clientY)) return
+    event.stopPropagation()
+    event.preventDefault()
+  }
+  const endNodeResize = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!resizeDragRef.current) return
+    event.stopPropagation()
+    event.preventDefault()
+    finishNodeResize()
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+  }
   const applyLabel = () => {
     const label = draftLabel.trim() || summary.structureName
     if (label !== summary.structureName) {
@@ -1789,19 +2103,11 @@ const GraphNodeButton = memo(function GraphNodeButton({
     : t("graphCanvas.node.collapseStructure", { node: summary.structureName })
   const compactSummary = `${formatCompactRelativeNodeEnergyValue(relativeEnergy, t)} (${formatNullableNumber(summary.charge, t)},${formatNullableNumber(summary.spinMultiplicity, t)})`
   const chargeSpinOverlay = formatCompactChargeSpin(summary, t)
-  const relativeEnergyLabel = relativeEnergySymbol(energyDisplayModeFromEnergy(relativeEnergy ?? summary.displayEnergy))
-  const handleBarrierStructurePick = (event: PointerEvent<HTMLElement> | MouseEvent<HTMLElement>) => {
-    if (!barrierSource && !barrierTarget) return
-    const target = event.target
-    if (!(target instanceof Element) || !target.closest(".molecule-3d-viewer")) return
-    event.preventDefault()
-    event.stopPropagation()
-    onClick(node.id, event as unknown as MouseEvent<HTMLElement>)
-  }
+  const relativeEnergyLabel = relativeEnergySymbol(energyDisplayModeFromEnergy(relativeEnergy))
   return (
     <div
       className={`graph-node-card-shell ${dragging ? "graph-node-card-shell--dragging" : ""}`}
-      style={position}
+      style={shellStyle}
       data-graph-node-id={node.id}
     >
       <div
@@ -1811,8 +2117,6 @@ const GraphNodeButton = memo(function GraphNodeButton({
         className={`graph-node-card ${collapsed ? "graph-node-card--collapsed" : ""} ${selected ? "graph-node-card--selected" : ""} ${pending ? "graph-node-card--pending" : ""} ${pendingTarget ? "graph-node-card--pending-target" : ""} ${barrierSource ? "graph-node-card--barrier-source" : ""} ${barrierTarget ? "graph-node-card--barrier-target" : ""} ${activePath ? "graph-node-card--path" : ""} ${dragging ? "graph-node-card--dragging" : ""}`}
         data-graph-node-id={node.id}
         onPointerDown={(event) => onPointerDown(node, event)}
-        onPointerDownCapture={handleBarrierStructurePick}
-        onMouseDownCapture={handleBarrierStructurePick}
         onPointerMove={(event) => onPointerMove(node, event)}
         onPointerUp={(event) => onPointerUp(node, event)}
         onPointerCancel={() => onPointerCancel(node)}
@@ -1973,20 +2277,6 @@ const GraphNodeButton = memo(function GraphNodeButton({
             {renderFormula(summary.formula)}
           </span>
         ) : null}
-        {barrierSource || barrierTarget ? (
-          <button
-            type="button"
-            className={`graph-node-barrier-pick-button ${barrierSource ? "graph-node-barrier-pick-button--source" : "graph-node-barrier-pick-button--target"}`}
-            aria-label={barrierSource
-              ? t("graphCanvas.node.cancelBarrierPick", { node: summary.structureName })
-              : t("graphCanvas.node.pickBarrierTarget", { node: summary.structureName })}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation()
-              onClick(node.id, event as unknown as MouseEvent<HTMLElement>)
-            }}
-          />
-        ) : null}
       </div>
       <button
         type="button"
@@ -1994,10 +2284,11 @@ const GraphNodeButton = memo(function GraphNodeButton({
         aria-label={t("graphCanvas.edgeHandleInto", { node: summary.structureName })}
         title={t("graphCanvas.edgeHandleInto", { node: summary.structureName })}
         data-graph-node-id={node.id}
-        onPointerDown={(event) => onEdgeHandlePointerDown(node, event)}
-        onPointerMove={(event) => onEdgeHandlePointerMove(event)}
-        onPointerUp={(event) => onEdgeHandlePointerUp(event)}
-        onPointerCancel={onEdgeHandlePointerCancel}
+        tabIndex={-1}
+        onPointerDown={(event) => {
+          event.stopPropagation()
+          event.preventDefault()
+        }}
       />
       <button
         type="button"
@@ -2016,12 +2307,25 @@ const GraphNodeButton = memo(function GraphNodeButton({
         aria-label={t("graphCanvas.barrierHandle", { node: summary.structureName })}
         title={t("graphCanvas.barrierHandle", { node: summary.structureName })}
         data-graph-node-id={node.id}
+        data-graph-barrier-handle="true"
         onPointerDown={(event) => onBarrierHandlePointerDown(node, event)}
         onPointerMove={(event) => onBarrierHandlePointerMove(event)}
         onPointerUp={(event) => onBarrierHandlePointerUp(event)}
         onPointerCancel={onBarrierHandlePointerCancel}
         onClick={(event) => onBarrierHandleClick(node, event)}
       />
+      {!collapsed ? (
+        <button
+          type="button"
+          className="graph-node-resize-handle"
+          aria-label={t("graphCanvas.node.resize", { node: summary.structureName })}
+          title={t("graphCanvas.node.resize", { node: summary.structureName })}
+          onPointerDown={startNodeResize}
+          onPointerMove={updateNodeResize}
+          onPointerUp={endNodeResize}
+          onPointerCancel={endNodeResize}
+        />
+      ) : null}
     </div>
   )
 })
@@ -2168,15 +2472,18 @@ function resolveObjectCanvasEnergy(
   mode: CanvasEnergyMode,
 ): { value: number; unit: string } | null {
   if (mode === "electronic") {
-    return energyFromObjectRecord(object, "energies", ["electronic"])
-      ?? displayEnergyFallback(object, "energies", ["electronic"])
+    return energyFromObjectRecord(object, "energies", ["egas", "electronic", "scf"])
+      ?? displayEnergyFallback(object, "energies", ["egas", "electronic", "scf"])
   }
   if (mode === "free") {
-    return energyFromObjectRecord(object, "thermochemistry", ["gibbs", "free_energy", "gibbs_free_energy"])
-      ?? displayEnergyFallback(object, "thermochemistry", ["gibbs", "free_energy", "gibbs_free_energy"])
+    return energyFromObjectRecord(object, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy", "ggas_1m"])
+      ?? displayEnergyFallback(object, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy", "ggas_1m"])
   }
   if (mode === "solvation") {
-    return correctionEnergySum(object, (kind) => kind === "solvation")
+    return energyFromObjectRecord(object, "thermochemistry", ["gsol", "solution_free_energy", "solvation_free_energy"])
+      ?? displayEnergyFallback(object, "thermochemistry", ["gsol", "solution_free_energy", "solvation_free_energy"])
+      ?? energyFromObjectRecord(object, "energies", ["gsol"])
+      ?? correctionEnergySum(object, (kind) => kind === "solvation")
   }
   const base = resolveObjectCanvasEnergy(object, "electronic")
   if (!base) return null
@@ -2275,10 +2582,10 @@ function normalizeEnergyUnit(unit: string): CanvasEnergyUnit | null {
 }
 
 function canvasEnergyModeKey(mode: CanvasEnergyMode): string {
-  if (mode === "free") return "gibbs"
-  if (mode === "solvation") return "solvation"
+  if (mode === "free") return "ggas"
+  if (mode === "solvation") return "gsol"
   if (mode === "corrected") return "corrected"
-  return "electronic"
+  return "egas"
 }
 
 function summarizeNodeGeometry(objects: ObjectSummary[]): Atom3DSummary[] {
@@ -2407,10 +2714,17 @@ function energyDisplayModeFromEnergy(energy: ResolvedCanvasEnergy | null | undef
 }
 
 function relativeEnergySymbol(mode: CanvasEnergyMode): string {
-  if (mode === "free") return "ΔG"
-  if (mode === "solvation") return "ΔEsolv"
-  if (mode === "corrected") return "ΔEcorr"
-  return "ΔE"
+  if (mode === "free") return "△G"
+  if (mode === "solvation") return "△Gsol"
+  if (mode === "corrected") return "△Ecorr"
+  return "△E"
+}
+
+function barrierEnergySymbol(mode: CanvasEnergyMode): string {
+  if (mode === "free") return "△G"
+  if (mode === "solvation") return "△Gsol"
+  if (mode === "corrected") return "△Ecorr"
+  return "△E"
 }
 
 function formatNullableNumber(
@@ -2437,10 +2751,10 @@ function draggingNodePosition(
   const dragging = interactionState.dragging
   if (!dragging || dragging.kind !== "node" || !dragging.nodeIds.includes(node.id)) return undefined
   const nodeOrigin = graphNodePosition(node)
-  return clampGraphNodeLayoutPosition({
+  return {
     x: nodeOrigin.x + dragging.current.x - dragging.origin.x,
     y: nodeOrigin.y + dragging.current.y - dragging.origin.y,
-  })
+  }
 }
 
 function graphNodesWithDragPreview(
@@ -2460,20 +2774,23 @@ function graphNodesWithDragPreview(
 function createEnergyRankedLayoutPlan({
   graph,
   paths,
-  nodeSummaryById,
+  referenceNodeId,
+  relativeEnergyByNodeId,
   surfaceSize,
   fitAfterLayout,
 }: {
   graph: NonNullable<WorkbenchDomainState["workspace"]>["graph"]
   paths: GraphPathSummary[]
-  nodeSummaryById: Map<string, CanvasChemicalNodeSummary>
+  referenceNodeId: string | null
+  relativeEnergyByNodeId: Map<string, ResolvedCanvasEnergy>
   surfaceSize: GraphSurfaceSize
   fitAfterLayout: boolean
 }): GraphLayoutPlan {
   const nodes = graph.nodes
-  const order = energyLayoutNodeOrder(nodes, paths)
+  const nodeLayers = energyLayoutNodeLayers(graph, paths, referenceNodeId)
+  const order = energyLayoutNodeOrder(nodes, paths, nodeLayers)
   const energies = nodes
-    .map((node) => nodeSummaryById.get(node.id)?.displayEnergy?.value)
+    .map((node) => relativeEnergyByNodeId.get(node.id)?.value)
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
   const minEnergy = energies.length > 0 ? Math.min(...energies) : 0
   const maxEnergy = energies.length > 0 ? Math.max(...energies) : 0
@@ -2487,10 +2804,12 @@ function createEnergyRankedLayoutPlan({
   order.forEach((nodeId, index) => {
     const node = nodes.find((item) => item.id === nodeId)
     if (!node) return
-    const energy = nodeSummaryById.get(nodeId)?.displayEnergy?.value
-    const x = order.length === 1
-      ? graphNodeLayoutBounds.width / 2
-      : xPadding + (index / (order.length - 1)) * (graphNodeLayoutBounds.width - xPadding * 2)
+    const energy = relativeEnergyByNodeId.get(nodeId)?.value
+    const layer = nodeLayers.get(nodeId) ?? index
+    const maxLayer = Math.max(...Array.from(nodeLayers.values()), order.length - 1, 0)
+    const x = order.length === 1 || maxLayer === 0
+      ? xPadding
+      : xPadding + (layer / maxLayer) * (graphNodeLayoutBounds.width - xPadding * 2)
     const y = typeof energy === "number" && Number.isFinite(energy) && span > 0
       ? yBottom - ((energy - minEnergy) / span) * (yBottom - yTop)
       : graphNodeLayoutBounds.height / 2
@@ -2543,6 +2862,7 @@ function createEnergyRankedLayoutPlan({
 function energyLayoutNodeOrder(
   nodes: GraphNodeSummary[],
   paths: GraphPathSummary[],
+  nodeLayers: Map<string, number>,
 ): string[] {
   const nodeIds = new Set(nodes.map((node) => node.id))
   const pathOrder = [...paths]
@@ -2560,10 +2880,90 @@ function energyLayoutNodeOrder(
     .sort((left, right) => {
       const leftPosition = graphNodePosition(left)
       const rightPosition = graphNodePosition(right)
-      return leftPosition.x - rightPosition.x || leftPosition.y - rightPosition.y || left.id.localeCompare(right.id)
+      return (nodeLayers.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (nodeLayers.get(right.id) ?? Number.MAX_SAFE_INTEGER)
+        || leftPosition.x - rightPosition.x
+        || leftPosition.y - rightPosition.y
+        || left.id.localeCompare(right.id)
     })
     .map((node) => node.id)
-  return [...ordered, ...remaining]
+  const stableRank = new Map([...ordered, ...remaining].map((nodeId, index) => [nodeId, index]))
+  return [...ordered, ...remaining].sort((left, right) => {
+    const leftLayer = nodeLayers.get(left) ?? Number.MAX_SAFE_INTEGER
+    const rightLayer = nodeLayers.get(right) ?? Number.MAX_SAFE_INTEGER
+    if (leftLayer !== rightLayer) return leftLayer - rightLayer
+    return (stableRank.get(left) ?? 0) - (stableRank.get(right) ?? 0)
+  })
+}
+
+function energyLayoutNodeLayers(
+  graph: NonNullable<WorkbenchDomainState["workspace"]>["graph"],
+  paths: GraphPathSummary[],
+  referenceNodeId: string | null,
+): Map<string, number> {
+  const nodeIds = graph.nodes.map((node) => node.id)
+  const validNodeIds = new Set(nodeIds)
+  if (nodeIds.length === 0) return new Map()
+  const reference = referenceNodeId && validNodeIds.has(referenceNodeId)
+    ? referenceNodeId
+    : defaultEnergyReferenceNodeIdForGraph(graph.nodes, paths, paths[0]?.id) ?? nodeIds[0]
+  const outgoing = new Map(nodeIds.map((nodeId) => [nodeId, [] as string[]]))
+  const undirected = new Map(nodeIds.map((nodeId) => [nodeId, [] as string[]]))
+  for (const edge of graph.edges) {
+    const source = edgeSource(edge)
+    const target = edgeTarget(edge)
+    if (!validNodeIds.has(source) || !validNodeIds.has(target) || source === target) continue
+    outgoing.get(source)?.push(target)
+    undirected.get(source)?.push(target)
+    undirected.get(target)?.push(source)
+  }
+  const layers = new Map<string, number>([[reference, 0]])
+  assignEnergyLayoutLayersFrom(reference, outgoing, layers)
+  assignEnergyLayoutLayersFrom(reference, undirected, layers)
+  const pathOrder = energyLayoutPathOrder(paths, validNodeIds)
+  let nextLayer = Math.max(0, ...layers.values()) + 1
+  for (const nodeId of pathOrder) {
+    if (layers.has(nodeId)) continue
+    layers.set(nodeId, nextLayer)
+    assignEnergyLayoutLayersFrom(nodeId, outgoing, layers)
+    nextLayer = Math.max(nextLayer, ...layers.values()) + 1
+  }
+  for (const node of graph.nodes) {
+    if (layers.has(node.id)) continue
+    layers.set(node.id, nextLayer)
+    nextLayer += 1
+  }
+  return layers
+}
+
+function assignEnergyLayoutLayersFrom(
+  startNodeId: string,
+  adjacency: Map<string, string[]>,
+  layers: Map<string, number>,
+): void {
+  const queue = [startNodeId]
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!
+    const baseLayer = layers.get(nodeId) ?? 0
+    for (const target of [...(adjacency.get(nodeId) ?? [])].sort()) {
+      const nextLayer = baseLayer + 1
+      const existing = layers.get(target)
+      if (existing !== undefined && existing <= nextLayer) continue
+      layers.set(target, nextLayer)
+      queue.push(target)
+    }
+  }
+}
+
+function energyLayoutPathOrder(paths: GraphPathSummary[], validNodeIds: Set<string>): string[] {
+  const seen = new Set<string>()
+  return [...paths]
+    .sort((left, right) => right.node_ids.length - left.node_ids.length)
+    .flatMap((path) => path.node_ids)
+    .filter((nodeId) => {
+      if (!validNodeIds.has(nodeId) || seen.has(nodeId)) return false
+      seen.add(nodeId)
+      return true
+    })
 }
 
 function sameTuplePosition(left: [number, number], right: [number, number]): boolean {
@@ -2598,17 +2998,21 @@ function GraphEdgeLayer({
   viewport,
   selectedEdgeIds,
   selectedBarrierAnnotationId,
+  editingEdgeLabelId,
   pendingEdge,
+  pendingBarrier,
   edgeLabelDraft,
   edgeLabelPending,
   edgeLabelError,
   onSelectEdge,
+  onEditEdgeLabel,
   onEdgeLabelDraftChange,
   onResetEdgeLabelDraft,
   onClearEdgeLabelDraft,
   onApplyEdgeLabelDraft,
   onSelectBarrierAnnotation,
   onRemoveBarrierAnnotation,
+  onUpdateBarrierAnnotationLabel,
 }: {
   nodes: GraphNodeSummary[]
   edges: GraphEdgeSummary[]
@@ -2620,17 +3024,21 @@ function GraphEdgeLayer({
   viewport: GraphViewport
   selectedEdgeIds: Set<string>
   selectedBarrierAnnotationId?: string | null
+  editingEdgeLabelId?: string | null
   pendingEdge?: PendingEdgeDraft | null
+  pendingBarrier?: PendingBarrierDraft | null
   edgeLabelDraft: EdgeLabelDraftState
   edgeLabelPending: boolean
   edgeLabelError: ShellError | null
   onSelectEdge: (edgeId: string, mode?: GraphEditorSelectionMode) => void
+  onEditEdgeLabel: (edgeId: string) => void
   onEdgeLabelDraftChange: (label: string) => void
   onResetEdgeLabelDraft: () => void
   onClearEdgeLabelDraft: () => void
   onApplyEdgeLabelDraft: () => void
   onSelectBarrierAnnotation: (annotationId: string) => void
   onRemoveBarrierAnnotation: (annotationId: string) => void
+  onUpdateBarrierAnnotationLabel: (annotationId: string, label: string | null) => void
 }) {
   const { t } = useI18n()
   const segments = edges.map((edge) => {
@@ -2674,8 +3082,11 @@ function GraphEdgeLayer({
       edgeMetrics,
     })
   })
-  const pendingSegment = pendingEdgeSegment(nodes, pendingEdge ?? null, edgeMetrics)
   const svgSize = edgeMetrics.surfaceSize
+  const pendingSegment = pendingEdgeSegment(nodes, pendingEdge ?? null, edgeMetrics)
+  const pendingBarrierSegment = pendingBarrier
+    ? pendingBarrierAnnotationSegment(nodes, pendingBarrier, edgeMetrics, viewport, svgSize)
+    : null
   const barrierSegments = barrierAnnotations
     .map((annotation) => createBarrierAnnotationSegment(annotation, nodes, nodeSummaryById, relativeEnergyByNodeId, edgeMetrics, viewport, svgSize))
     .filter((segment): segment is GraphBarrierAnnotationSegment => Boolean(segment))
@@ -2716,21 +3127,82 @@ function GraphEdgeLayer({
         {curvedSegments.map((segment) => (
           <g key={segment.id} className={selectedEdgeIds.has(segment.id) ? "graph-edge--selected" : ""}>
             <path
+              className="graph-edge-hit-line"
+              d={graphEdgeScreenPath(segment, viewport, svgSize)}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+                event.preventDefault()
+              }}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSelectEdge(segment.id, selectionModeFromMouseEvent(event as unknown as MouseEvent<HTMLElement>))
+              }}
+            />
+            <path
               className="graph-edge-line"
               d={graphEdgeScreenPath(segment, viewport, svgSize)}
             />
           </g>
         ))}
+        {pendingBarrierSegment ? (
+          <path className="graph-barrier-pending-line" d={pendingBarrierSegment.path} />
+        ) : null}
         {barrierSegments.map((segment) => (
           <g
             key={segment.id}
             className={`graph-barrier-annotation ${selectedBarrierAnnotationId === segment.id ? "graph-barrier-annotation--selected" : ""}`}
           >
+            <path
+              className="graph-barrier-hit-line"
+              d={segment.guidePath}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+                onSelectBarrierAnnotation(segment.id)
+                event.preventDefault()
+              }}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSelectBarrierAnnotation(segment.id)
+              }}
+            />
+            <path
+              className="graph-barrier-hit-line"
+              d={segment.arrowPath}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+                onSelectBarrierAnnotation(segment.id)
+                event.preventDefault()
+              }}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSelectBarrierAnnotation(segment.id)
+              }}
+            />
             <path className="graph-barrier-guide" d={segment.guidePath} />
             <path className="graph-barrier-arrow" d={segment.arrowPath} />
           </g>
         ))}
       </svg>
+      {barrierSegments.map((segment) => (
+        <button
+          key={`${segment.id}:hitbox`}
+          type="button"
+          aria-label={t("graphCanvas.barrier.select", {
+            source: segment.sourceLabel,
+            target: segment.targetLabel,
+          })}
+          className={`graph-barrier-hitbox ${selectedBarrierAnnotationId === segment.id ? "graph-barrier-hitbox--selected" : ""}`}
+          style={{ left: `${segment.hitPoint.x}px`, top: `${segment.hitPoint.y}px` }}
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            onSelectBarrierAnnotation(segment.id)
+          }}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSelectBarrierAnnotation(segment.id)
+          }}
+        />
+      ))}
       {pendingSegment ? (
         <span
           className="graph-edge-end-marker graph-edge-end-marker--pending"
@@ -2748,7 +3220,8 @@ function GraphEdgeLayer({
       ))}
       {curvedSegments.map((segment) => {
         const selected = selectedEdgeIds.has(segment.id)
-        if (selected) {
+        const editing = editingEdgeLabelId === segment.id
+        if (editing) {
           return (
             <EdgeInlineLabelEditor
               key={`${segment.id}:label-editor`}
@@ -2764,42 +3237,57 @@ function GraphEdgeLayer({
             />
           )
         }
-        return segment.label ? (
-          <span
+        return segment.label || selected ? (
+          <button
+            type="button"
             key={`${segment.id}:label`}
-            className="graph-edge-label"
+            className={`graph-edge-label ${selected ? "graph-edge-label--selected" : ""} ${segment.label ? "" : "graph-edge-label--placeholder"}`}
             style={edgeScreenPointStyle(segment.labelPoint, viewport, svgSize)}
-            aria-hidden="true"
+            aria-label={t("graphCanvas.edge.editLabel", {
+              source: segment.sourceLabel,
+              target: segment.targetLabel,
+            })}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+              event.preventDefault()
+            }}
+            onClick={(event) => {
+              event.stopPropagation()
+              onEditEdgeLabel(segment.id)
+            }}
           >
-            {segment.label}
-          </span>
+            {segment.label || t("edgeLabelEditor.placeholder")}
+          </button>
         ) : null
       })}
-      {barrierSegments.map((segment) => (
-        <span
-          key={`${segment.id}:label`}
-          className={`graph-barrier-label ${selectedBarrierAnnotationId === segment.id ? "graph-barrier-label--selected" : ""}`}
+      {barrierSegments.map((segment) => selectedBarrierAnnotationId === segment.id ? (
+        <BarrierInlineLabelEditor
+          key={`${segment.id}:label-editor`}
+          segment={segment}
           style={{ left: `${segment.labelPoint.x}px`, top: `${segment.labelPoint.y}px` }}
-          aria-hidden="true"
-        >
-          {segment.label}
-        </span>
-      ))}
-      {barrierSegments.map((segment) => (
+          onApply={(label) => onUpdateBarrierAnnotationLabel(segment.id, label)}
+        />
+      ) : (
         <button
-          key={`${segment.id}:hitbox`}
+          key={`${segment.id}:label`}
           type="button"
-          aria-label={t("graphCanvas.barrier.select", {
+          className="graph-barrier-label"
+          style={{ left: `${segment.labelPoint.x}px`, top: `${segment.labelPoint.y}px` }}
+          aria-label={t("graphCanvas.barrier.editLabel", {
             source: segment.sourceLabel,
             target: segment.targetLabel,
           })}
-          className={`graph-barrier-hitbox ${selectedBarrierAnnotationId === segment.id ? "graph-barrier-hitbox--selected" : ""}`}
-          style={{ left: `${segment.hitPoint.x}px`, top: `${segment.hitPoint.y}px` }}
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            onSelectBarrierAnnotation(segment.id)
+          }}
           onClick={(event) => {
             event.stopPropagation()
             onSelectBarrierAnnotation(segment.id)
           }}
-        />
+        >
+          {segment.label}
+        </button>
       ))}
       {barrierSegments.map((segment) => selectedBarrierAnnotationId === segment.id ? (
         <button
@@ -2816,7 +3304,10 @@ function GraphEdgeLayer({
             event.preventDefault()
             onRemoveBarrierAnnotation(segment.id)
           }}
-          onClick={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            onRemoveBarrierAnnotation(segment.id)
+          }}
         >
           <X size={11} aria-hidden="true" />
         </button>
@@ -2830,6 +3321,10 @@ function GraphEdgeLayer({
             aria-label={`Edge ${segment.sourceLabel} to ${segment.targetLabel}${segment.label ? `: ${segment.label}` : ""}`}
             className={`graph-edge-hitbox ${selected ? "graph-edge-hitbox--selected" : ""}`}
             style={edgeScreenPointStyle(segment.hitPoint, viewport, svgSize)}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+              event.preventDefault()
+            }}
             onClick={(event) => {
               event.stopPropagation()
               onSelectEdge(segment.id, selectionModeFromMouseEvent(event))
@@ -2866,10 +3361,19 @@ function EdgeInlineLabelEditor({
   const value = draft.edgeId === segment.id ? draft.label : segment.label ?? ""
   const dirty = draft.edgeId === segment.id && draft.dirty
   const disabled = pending || draft.edgeId !== segment.id
-  const submit = () => {
-    if (!dirty || disabled) return
-    onApply()
-  }
+  const submittedRef = useRef(false)
+  const latestSubmitStateRef = useRef({ dirty, disabled, onApply })
+  useEffect(() => {
+    latestSubmitStateRef.current = { dirty, disabled, onApply }
+    if (!dirty) submittedRef.current = false
+  }, [dirty, disabled, onApply])
+  const submit = useCallback(() => {
+    const latest = latestSubmitStateRef.current
+    if (submittedRef.current || !latest.dirty || latest.disabled) return
+    submittedRef.current = true
+    latest.onApply()
+  }, [])
+  useEffect(() => () => submit(), [submit])
   return (
     <form
       className={`graph-edge-inline-label-editor ${error ? "graph-edge-inline-label-editor--error" : ""}`}
@@ -2890,7 +3394,7 @@ function EdgeInlineLabelEditor({
         aria-label={t("edgeLabelEditor.label")}
         autoFocus
         onChange={(event) => onDraftChange(event.currentTarget.value)}
-        onBlur={submit}
+        onBlur={() => window.setTimeout(submit, 0)}
         onKeyDown={(event) => {
           event.stopPropagation()
           if (event.key === "Escape") {
@@ -2914,6 +3418,79 @@ function EdgeInlineLabelEditor({
   )
 }
 
+function BarrierInlineLabelEditor({
+  segment,
+  style,
+  onApply,
+}: {
+  segment: GraphBarrierAnnotationSegment
+  style: { left: string; top: string }
+  onApply: (label: string | null) => void
+}) {
+  const { t } = useI18n()
+  const [value, setValue] = useState(segment.label)
+  const submittedRef = useRef(false)
+  const latestSubmitStateRef = useRef({
+    value: segment.label,
+    defaultLabel: segment.defaultLabel,
+    label: segment.label,
+    onApply,
+  })
+  useEffect(() => {
+    setValue(segment.label)
+    submittedRef.current = false
+  }, [segment.label])
+  useEffect(() => {
+    latestSubmitStateRef.current = {
+      value,
+      defaultLabel: segment.defaultLabel,
+      label: segment.label,
+      onApply,
+    }
+  }, [onApply, segment.defaultLabel, segment.label, value])
+  const submit = useCallback(() => {
+    if (submittedRef.current) return
+    const latest = latestSubmitStateRef.current
+    const nextValue = latest.value.trim()
+    const nextLabel = nextValue && nextValue !== latest.defaultLabel ? nextValue : null
+    const currentLabel = latest.label === latest.defaultLabel ? null : latest.label
+    if (nextLabel === currentLabel) return
+    submittedRef.current = true
+    latest.onApply(nextLabel)
+  }, [])
+  useEffect(() => () => submit(), [submit])
+  return (
+    <form
+      className="graph-barrier-label graph-barrier-label--selected graph-barrier-inline-label-editor"
+      style={style}
+      aria-label={t("graphCanvas.barrier.editor")}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+      onSubmit={(event) => {
+        event.preventDefault()
+        submit()
+      }}
+    >
+      <input
+        type="text"
+        value={value}
+        aria-label={t("graphCanvas.barrier.label")}
+        placeholder={segment.defaultLabel}
+        autoFocus
+        onChange={(event) => setValue(event.currentTarget.value)}
+        onBlur={() => window.setTimeout(submit, 0)}
+        onKeyDown={(event) => {
+          event.stopPropagation()
+          if (event.key === "Escape") {
+            setValue(segment.label)
+            event.currentTarget.blur()
+          }
+        }}
+      />
+    </form>
+  )
+}
+
 function createBarrierAnnotationSegment(
   annotation: CanvasBarrierAnnotation,
   nodes: GraphNodeSummary[],
@@ -2926,21 +3503,13 @@ function createBarrierAnnotationSegment(
   const source = nodes.find((node) => node.id === annotation.sourceNodeId)
   const target = nodes.find((node) => node.id === annotation.targetNodeId)
   if (!source || !target) return null
-  const sourceEnergy = relativeEnergyByNodeId.get(source.id) ?? nodeSummaryById.get(source.id)?.displayEnergy ?? null
-  const targetEnergy = relativeEnergyByNodeId.get(target.id) ?? nodeSummaryById.get(target.id)?.displayEnergy ?? null
+  const sourceEnergy = relativeEnergyByNodeId.get(source.id) ?? null
+  const targetEnergy = relativeEnergyByNodeId.get(target.id) ?? null
   if (!sourceEnergy || !targetEnergy || sourceEnergy.unit !== targetEnergy.unit) return null
   const sourcePosition = graphNodePosition(source)
   const targetPosition = graphNodePosition(target)
-  const sourceBottom = graphPointToScreenPoint(
-    { x: sourcePosition.x, y: sourcePosition.y + edgeMetrics.nodeHalfHeight },
-    surfaceSize,
-    viewport,
-  )
-  const targetRight = graphPointToScreenPoint(
-    { x: targetPosition.x + edgeMetrics.nodeHalfWidth, y: targetPosition.y },
-    surfaceSize,
-    viewport,
-  )
+  const sourceBottom = graphPointToScreenPoint(graphNodeBottomAnchor(sourcePosition, edgeMetrics), surfaceSize, viewport)
+  const targetRight = graphPointToScreenPoint(graphNodeEdgeAnchor(targetPosition, "right", edgeMetrics), surfaceSize, viewport)
   const arrowX = clamp(sourceBottom.x, 34, Math.max(34, surfaceSize.width - 34))
   const sourceY = clamp(sourceBottom.y + 18, 26, Math.max(26, surfaceSize.height - 26))
   const targetY = clamp(targetRight.y, 26, Math.max(26, surfaceSize.height - 26))
@@ -2948,15 +3517,21 @@ function createBarrierAnnotationSegment(
   const bottomY = Math.max(sourceY, targetY)
   const arrowTop = topY === bottomY ? Math.max(18, topY - 26) : topY
   const arrowBottom = topY === bottomY ? Math.min(surfaceSize.height - 18, bottomY + 26) : bottomY
-  const labelValue = sourceEnergy.value - targetEnergy.value
-  const label = `${relativeEnergySymbol(sourceEnergy.mode)}‡ ${formatCanvasEnergyValue(labelValue, sourceEnergy.unit)}`
+  const labelValue = targetEnergy.value - sourceEnergy.value
+  const defaultLabel = `${barrierEnergySymbol(sourceEnergy.mode)}‡ ${formatCanvasEnergyValue(labelValue, sourceEnergy.unit)}`
   const targetGuideY = sourceY > targetY ? arrowTop : arrowBottom
   const labelY = (arrowTop + arrowBottom) / 2
   return {
     id: annotation.id,
     arrowPath: `M ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(arrowTop)} L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(arrowBottom)}`,
-    guidePath: `M ${roundPathCoordinate(targetRight.x)} ${roundPathCoordinate(targetRight.y)} L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(targetGuideY)}`,
-    label,
+    guidePath: [
+      `M ${roundPathCoordinate(sourceBottom.x)} ${roundPathCoordinate(sourceBottom.y)}`,
+      `L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(sourceY)}`,
+      `M ${roundPathCoordinate(targetRight.x)} ${roundPathCoordinate(targetRight.y)}`,
+      `L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(targetGuideY)}`,
+    ].join(" "),
+    label: annotation.label?.trim() || defaultLabel,
+    defaultLabel,
     labelPoint: {
       x: arrowX,
       y: labelY,
@@ -2964,6 +3539,41 @@ function createBarrierAnnotationSegment(
     hitPoint: { x: arrowX, y: labelY },
     sourceLabel: nodeSummaryById.get(source.id)?.structureName ?? source.label ?? source.id,
     targetLabel: nodeSummaryById.get(target.id)?.structureName ?? target.label ?? target.id,
+  }
+}
+
+function pendingBarrierAnnotationSegment(
+  nodes: GraphNodeSummary[],
+  pendingBarrier: PendingBarrierDraft,
+  edgeMetrics: GraphEdgeMetrics,
+  viewport: GraphViewport,
+  surfaceSize: GraphSurfaceSize,
+): { path: string } | null {
+  const source = nodes.find((node) => node.id === pendingBarrier.fromNodeId)
+  if (!source) return null
+  const sourcePosition = graphNodePosition(source)
+  const target = pendingBarrier.targetNodeId
+    ? nodes.find((node) => node.id === pendingBarrier.targetNodeId)
+    : undefined
+  const targetPosition = target ? graphNodePosition(target) : pendingBarrier.pointerGraphPosition
+  const from = graphPointToScreenPoint(
+    { x: sourcePosition.x, y: sourcePosition.y + edgeMetrics.nodeHalfHeight },
+    surfaceSize,
+    viewport,
+  )
+  const to = graphPointToScreenPoint(
+    target
+      ? { x: targetPosition.x + edgeMetrics.nodeHalfWidth, y: targetPosition.y }
+      : targetPosition,
+    surfaceSize,
+    viewport,
+  )
+  const vertical = Math.abs(to.y - from.y)
+  const bend = clamp(Math.max(36, vertical * 0.42), 36, 120)
+  const controlFrom = { x: from.x, y: from.y + (to.y >= from.y ? bend : -bend) }
+  const controlTo = { x: to.x, y: to.y + (to.y >= from.y ? -bend : bend) }
+  return {
+    path: `M ${roundPathCoordinate(from.x)} ${roundPathCoordinate(from.y)} C ${roundPathCoordinate(controlFrom.x)} ${roundPathCoordinate(controlFrom.y)}, ${roundPathCoordinate(controlTo.x)} ${roundPathCoordinate(controlTo.y)}, ${roundPathCoordinate(to.x)} ${roundPathCoordinate(to.y)}`,
   }
 }
 
@@ -3028,27 +3638,23 @@ function createGraphEdgeSegment({
   targetAnchored?: boolean
 }): GraphEdgeSegment {
   const siblingOffset = (siblingIndex - (siblingCount - 1) / 2) * 18
-  const sourceSide = targetPosition.x < sourcePosition.x ? "left" : "right"
-  const targetSide = sourceSide === "right" ? "left" : "right"
-  const from = graphNodeEdgeAnchor(sourcePosition, sourceSide, edgeMetrics.nodeHalfWidth, siblingOffset)
+  const from = graphNodeEdgeAnchor(sourcePosition, "right", edgeMetrics, siblingOffset)
   const to = targetAnchored
-    ? graphNodeEdgeAnchor(targetPosition, targetSide, edgeMetrics.nodeHalfWidth, siblingOffset)
+    ? graphNodeEdgeAnchor(targetPosition, "left", edgeMetrics, siblingOffset)
     : {
-      x: clamp(targetPosition.x, 0, graphNodeLayoutBounds.width),
-      y: clamp(targetPosition.y, 0, graphNodeLayoutBounds.height),
+      x: targetPosition.x,
+      y: targetPosition.y,
     }
   const horizontalDistance = Math.abs(to.x - from.x)
   const verticalDistance = Math.abs(to.y - from.y)
   const controlDistance = edgeControlDistance(horizontalDistance, verticalDistance)
-  const sourceDirection = sourceSide === "right" ? 1 : -1
-  const targetDirection = targetSide === "right" ? 1 : -1
   const controlFrom = {
-    x: clamp(from.x + controlDistance * sourceDirection, 0, graphNodeLayoutBounds.width),
-    y: clamp(from.y, 0, graphNodeLayoutBounds.height),
+    x: from.x + controlDistance,
+    y: from.y,
   }
   const controlTo = {
-    x: clamp(to.x + controlDistance * targetDirection, 0, graphNodeLayoutBounds.width),
-    y: clamp(to.y, 0, graphNodeLayoutBounds.height),
+    x: to.x - controlDistance,
+    y: to.y,
   }
   const hitPoint = cubicBezierPoint(from, controlFrom, controlTo, to, 0.5)
   const labelPoint = cubicBezierPoint(from, controlFrom, controlTo, to, 0.48)
@@ -3062,7 +3668,7 @@ function createGraphEdgeSegment({
     controlTo,
     labelPoint: {
       x: labelPoint.x,
-      y: labelPoint.y - 12,
+      y: labelPoint.y,
     },
     hitPoint,
     path: `M ${roundPathCoordinate(from.x)} ${roundPathCoordinate(from.y)} C ${roundPathCoordinate(controlFrom.x)} ${roundPathCoordinate(controlFrom.y)}, ${roundPathCoordinate(controlTo.x)} ${roundPathCoordinate(controlTo.y)}, ${roundPathCoordinate(to.x)} ${roundPathCoordinate(to.y)}`,
@@ -3073,19 +3679,29 @@ function createGraphEdgeSegment({
 }
 
 function edgeControlDistance(horizontalDistance: number, verticalDistance: number): number {
-  const baseDistance = Math.max(horizontalDistance, verticalDistance * 0.42)
-  return clamp(baseDistance * 0.42, 18, 150)
+  const baseDistance = Math.max(horizontalDistance, verticalDistance * 0.22)
+  return clamp(baseDistance * 0.34, 8, 96)
 }
 
 function graphNodeEdgeAnchor(
   position: GraphNodeLayoutPosition,
   side: "left" | "right",
-  halfNodeWidth: number,
+  edgeMetrics: GraphEdgeMetrics,
   verticalOffset = 0,
 ): GraphNodeLayoutPosition {
   return {
-    x: clamp(position.x + (side === "right" ? halfNodeWidth : -halfNodeWidth), 8, graphNodeLayoutBounds.width - 8),
-    y: clamp(position.y + verticalOffset, 12, graphNodeLayoutBounds.height - 12),
+    x: position.x + (side === "right" ? edgeMetrics.nodeHalfWidth : -edgeMetrics.nodeHalfWidth),
+    y: position.y + verticalOffset,
+  }
+}
+
+function graphNodeBottomAnchor(
+  position: GraphNodeLayoutPosition,
+  edgeMetrics: GraphEdgeMetrics,
+): GraphNodeLayoutPosition {
+  return {
+    x: position.x,
+    y: position.y + edgeMetrics.nodeHalfHeight,
   }
 }
 
@@ -3096,6 +3712,18 @@ const defaultGraphEdgeMetrics: GraphEdgeMetrics = {
   },
   nodeHalfWidth: 95,
   nodeHalfHeight: 92,
+}
+
+const defaultGraphNodeCardSize: GraphNodeCardSize = {
+  width: 218,
+  height: 244,
+}
+
+const graphNodeCardSizeBounds = {
+  minWidth: 190,
+  maxWidth: 360,
+  minHeight: 214,
+  maxHeight: 460,
 }
 
 function graphEdgeMetricsFromSurface(surface: HTMLElement, viewportZoom: number): GraphEdgeMetrics {
@@ -3160,111 +3788,18 @@ function nodeIdFromPoint(
   clientX: number,
   clientY: number,
   nodes: GraphNodeSummary[],
-  fallbackNodeId?: string,
+  excludedNodeId?: string,
 ): string | null {
   const validNodeIds = new Set(nodes.map((node) => node.id))
   if (typeof document.elementsFromPoint !== "function") {
-    return fallbackNodeId && validNodeIds.has(fallbackNodeId) ? fallbackNodeId : null
+    return null
   }
   for (const element of document.elementsFromPoint(clientX, clientY)) {
     const nodeElement = element.closest<HTMLElement>("[data-graph-node-id]")
     const nodeId = nodeElement?.dataset.graphNodeId
-    if (nodeId && validNodeIds.has(nodeId)) return nodeId
+    if (nodeId && nodeId !== excludedNodeId && validNodeIds.has(nodeId)) return nodeId
   }
   return null
-}
-
-function EdgeLabelEditor({
-  edge,
-  sourceLabel,
-  targetLabel,
-  draft,
-  pending,
-  error,
-  onDraftChange,
-  onReset,
-  onClear,
-  onApply,
-}: {
-  edge?: GraphEdgeSummary
-  sourceLabel?: string
-  targetLabel?: string
-  draft: EdgeLabelDraftState
-  pending: boolean
-  error: ShellError | null
-  onDraftChange: (label: string) => void
-  onReset: () => void
-  onClear: () => void
-  onApply: () => void
-}) {
-  const { t } = useI18n()
-  const disabled = !edge || !draft.edgeId || pending
-  const edgeName = edge
-    ? firstUserFacingName([edge.label, sourceLabel && targetLabel ? `${sourceLabel} -> ${targetLabel}` : null], t("graphCanvas.none"))
-    : t("graphCanvas.none")
-  return (
-    <form
-      className="edge-label-editor"
-      aria-label={t("edgeLabelEditor.aria")}
-      onSubmit={(event) => {
-        event.preventDefault()
-        onApply()
-      }}
-    >
-      <div className="edge-label-editor-header">
-        <div>
-          <span>{t("edgeLabelEditor.title")}</span>
-          <code>{edgeName}</code>
-        </div>
-        <small>{draft.dirty ? t("edgeLabelEditor.dirty") : t("edgeLabelEditor.clean")}</small>
-      </div>
-
-      {edge ? (
-        <>
-          <p className="edge-label-route">
-            <code>{sourceLabel ?? edgeSource(edge)}</code>
-            <span>{t("edgeLabelEditor.to")}</span>
-            <code>{targetLabel ?? edgeTarget(edge)}</code>
-          </p>
-          <label>
-            <span>{t("edgeLabelEditor.label")}</span>
-            <input
-              type="text"
-              value={draft.label}
-              onChange={(event) => onDraftChange(event.currentTarget.value)}
-              disabled={disabled}
-              placeholder={t("edgeLabelEditor.placeholder")}
-            />
-          </label>
-        </>
-      ) : (
-        <p className="muted">{t("edgeLabelEditor.empty")}</p>
-      )}
-
-      {error ? (
-        <p className="edge-label-error">
-          <code>{error.code}</code>
-          <span>{error.message}</span>
-          {warningTargetDisplay(error) ? <small>{warningTargetDisplay(error)}</small> : null}
-        </p>
-      ) : null}
-
-      <div className="edge-label-command-row">
-        <button type="button" onClick={onClear} disabled={disabled || !draft.label}>
-          <XCircle size={15} />
-          <span>{t("edgeLabelEditor.clear")}</span>
-        </button>
-        <button type="button" onClick={onReset} disabled={disabled || !draft.dirty}>
-          <RotateCcw size={15} />
-          <span>{t("edgeLabelEditor.reset")}</span>
-        </button>
-        <button type="submit" disabled={disabled || !draft.dirty}>
-          <Check size={15} />
-          <span>{pending ? t("edgeLabelEditor.applying") : t("edgeLabelEditor.apply")}</span>
-        </button>
-      </div>
-    </form>
-  )
 }
 
 function graphEdgeScreenPath(
@@ -3605,6 +4140,12 @@ function clamp(value: number, min: number, max: number): number {
 
 function tuplePosition(position: GraphNodeLayoutPosition): [number, number] {
   return [position.x, position.y]
+}
+
+function graphViewportNearlyEqual(left: GraphViewport, right: GraphViewport): boolean {
+  return Math.abs(left.x - right.x) < 0.001
+    && Math.abs(left.y - right.y) < 0.001
+    && Math.abs(left.zoom - right.zoom) < 0.001
 }
 
 function pointerDistance(origin: CanvasPoint, current: CanvasPoint): number {

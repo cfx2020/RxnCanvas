@@ -1,9 +1,9 @@
 ---
 doc_type: roadmap
 slug: rxnflow-report-export-quality
-status: completed
+status: active
 created: 2026-05-21
-last_reviewed: 2026-05-22
+last_reviewed: 2026-06-09
 tags: [rxnflow, report-export, energy-table, energy-diagram, cdxml, xlsx, png]
 related_requirements: [web-workbench-shell, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform, web-workbench]
@@ -29,6 +29,7 @@ RxnFlow 已经有 `ReportExportService` baseline：它能从已加载的 `Energy
 - CDXML compatibility：生成可由 ChemDraw 打开的 XML 文档，固定 `fonttable`、`colortable`、`page`、`graphic`、`arrow`、`t/s` 文本节点和 ID/BoundingBox 规则。
 - Web report QA：验证 Report Export Panel 在 fixture 和 local-http 模式下对 PNG/CDXML/XLSX 的下载、persisted 状态、checksum、metadata 和 warnings 展示。
 - Documentation / user guidance：记录表格字段口径、ChemDraw 打开方式、当前 CDX/CDXML 支持边界和 artifact 持久化路径。
+- Ir-style gas/solution workbook template：用 `Ir/20260331-Ir-test.xlsx` 的 `Shermo_New` 结构作为通用模板页，支持 gas log + solution electronic log 配对后的 `Egas`、`Ggas`、`Ggas+1M`、`Esol`、`Gsol` 输出。
 
 ### 明确不做
 
@@ -153,6 +154,7 @@ ExportRequest(
 输出 workbook 至少包含：
 
 - `Energy Table`：结构表，第一行可选 title，下一行 column labels，冻结首列/表头。
+- `Shermo_New`：面向计算化学审阅的模板页，保留 Egas/Ggas/Ggas+1M/Esol/Gsol 的列位置，并用 Excel 公式表达 kcal/mol 换算和 `Gsol = Ggas+1M - Egas + Esol`。
 - `Energy Profile`：node id、label、absolute value/unit、relative value/unit、missing reason。
 - `Warnings`：有 warnings 时才生成，列为 code/message/target。
 
@@ -160,6 +162,7 @@ ExportRequest(
 
 - XLSX writer 只消费已构造的 rows/profile，不调用 parser、registry、graph 或 energy engine。
 - workbook 中 derived kcal/mol 值可以写计算后的数值；后续若引入 Excel 公式，公式必须有测试覆盖，不能破坏 cached value 检查。
+- `Shermo_New` 中尚未实现的 Shermo / Whitesides 熵校正列必须保持空白或显式占位说明，不得用普通自由能数据冒充校正后数据。
 - writer dependency 缺失必须返回 `export_failed target=dependency`，不能 import-time 崩溃。
 
 ### 4.3 Energy Diagram Route Contract
@@ -260,6 +263,8 @@ type ShellArtifact = {
 4. `export-cdxml-chemdraw-compat`：补 CDXML 兼容性 fixture 与 ChemDraw 对象结构回归，明确 CDX 不支持边界。**状态：done**，已落地 CDXML root/page/group document shape、generated id uniqueness、graphic/arrow/text 的 Z/BoundingBox/LineWidth/justification 回归、missing point 不生成假 state line、`cdx` unsupported guard；不引入 ChemDraw GUI、PyQt、Open Babel、RDKit、CDX 或 molecule-level CDXML。
 5. `web-report-export-verification`：补 Web fixture/local-http 导出回归，覆盖 inline download、persisted checksum、warnings 和窄屏布局。**状态：done**，已落地 PNG/CDXML/XLSX download MIME、writer metadata、`energy-table-v1` schema metadata、browser-local persisted checksum、unsupported `cdx` persistence guard、include-bytes-off、persistence failure、local-http 真实 writer ids 和窄屏 E2E；Web 仍不生成导出 bytes。
 6. `report-export-guides`：补开发者/用户指南，同步 acceptance 后的现状文档。**状态：done**，已补 `docs/dev/report-export-artifacts.md` 和 `docs/user/report-export-artifacts.md`，覆盖 core/Shell/Web artifact contract、Energy Table 字段口径、Web 操作、PNG/CDXML/XLSX 用途、CDXML/CDX 边界、Download/Persisted/Checksum/Metadata/Warnings 语义和 `exports/...` 保存路径。
+7. `ir-gas-solution-workbook-template`：用 Ir 文件夹的真实 Gaussian gas/solution log 和 `Shermo_New` 样表补通用 XLSX 模板页，确保 `Gsol` 公式和 cached value 可验证。**状态：done**，已以 `rxnflow.solution_pairs` 和 `_write_shermo_template_sheet()` 落地，真实 Ir 导出验证通过；Shermo/Whitesides 仍不计算。
+8. `shermo-whitesides-export-columns`：后续把 Shermo 与 Whitesides 校正数据接入表格显示和导出。**状态：planned**，依赖 energy chemistry semantics 中的校正模型；参考资料：`https://831447.xyz/p/2025/shermo`、`https://831447.xyz/p/2025/whitesides`。
 
 ## 6. 排期 / 推进顺序
 
@@ -276,3 +281,4 @@ type ShellArtifact = {
 - CDXML 官方生态同时存在 XML `.cdxml` 和二进制 `.cdx`。CDXML 可以用标准 XML writer 和 ChemDraw DTD 形状回归推进；CDX 二进制写入/转换风险更高，不应和首轮 CDXML 兼容混在一个 feature。
 - 如果后续用户需要 CSV，建议作为 `export-csv-energy-table` 独立 feature，从 `EnergyTableColumn` / `EnergyTableRow` 直接写，不改 Web Report Export Panel 默认格式。
 - 如果后续需要组合报告，应另起 `rxnflow-report-composer` roadmap，覆盖图谱截图、能量曲线、表格、项目 metadata 和多格式报告，不塞进当前导出质量路线。
+- 2026-06-09 用户明确 Shermo / Whitesides 可先不实现，但必须进入 roadmap；因此本 roadmap 重新打开为 active，直到 Ir 模板输出和后续校正项规划完成验收。

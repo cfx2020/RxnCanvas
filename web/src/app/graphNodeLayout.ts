@@ -19,10 +19,9 @@ export const graphNodeLayoutBounds: GraphNodeLayoutBounds = {
 
 export function graphNodePosition(node: GraphNodeSummary): GraphNodeLayoutPosition {
   if (Array.isArray(node.position) && node.position.length === 2) {
-    return clampGraphNodeLayoutPosition({
-      x: Number(node.position[0]),
-      y: Number(node.position[1]),
-    })
+    const x = Number(node.position[0])
+    const y = Number(node.position[1])
+    if (Number.isFinite(x) && Number.isFinite(y)) return { x, y }
   }
   const match = node.id.match(/(\d+)$/)
   const index = match ? Number(match[1]) : 1
@@ -35,15 +34,14 @@ export function graphNodePosition(node: GraphNodeSummary): GraphNodeLayoutPositi
 export function graphNodeCssPosition(
   position: GraphNodeLayoutPosition,
 ): { left: string; top: string } {
-  const clamped = clampGraphNodeLayoutPosition(position)
   return {
-    left: `${(clamped.x / graphNodeLayoutBounds.width) * 100}%`,
-    top: `${(clamped.y / graphNodeLayoutBounds.height) * 100}%`,
+    left: `${(finiteOrZero(position.x) / graphNodeLayoutBounds.width) * 100}%`,
+    top: `${(finiteOrZero(position.y) / graphNodeLayoutBounds.height) * 100}%`,
   }
 }
 
 export function canvasPointToGraphNodePosition(point: GraphNodeLayoutPosition): GraphNodeLayoutPosition {
-  return snapGraphNodeLayoutPosition(clampGraphNodeLayoutPosition(point))
+  return snapGraphNodeLayoutPosition(point)
 }
 
 export function moveGraphNodePosition(
@@ -60,10 +58,10 @@ export function snapGraphNodeLayoutPosition(
   position: GraphNodeLayoutPosition,
 ): GraphNodeLayoutPosition {
   const grid = graphNodeLayoutBounds.grid
-  return clampGraphNodeLayoutPosition({
-    x: Math.round(position.x / grid) * grid,
-    y: Math.round(position.y / grid) * grid,
-  })
+  return {
+    x: Math.round(finiteOrZero(position.x) / grid) * grid,
+    y: Math.round(finiteOrZero(position.y) / grid) * grid,
+  }
 }
 
 export function clampGraphNodeLayoutPosition(
@@ -78,4 +76,8 @@ export function clampGraphNodeLayoutPosition(
 function clampFinite(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min
   return Math.min(max, Math.max(min, value))
+}
+
+function finiteOrZero(value: number): number {
+  return Number.isFinite(value) ? value : 0
 }

@@ -1,7 +1,7 @@
 import { createEvent, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import { initialCompositionDraftState } from "./compositionDraftState"
-import { initialEdgeLabelDraftState } from "./edgeLabelDraftState"
+import { edgeLabelDraftFromEdge, initialEdgeLabelDraftState } from "./edgeLabelDraftState"
 import { initialGraphEditorInteractionState, type GraphEditorInteractionState } from "./graphEditorInteractionState"
 import {
   graphRawFileDropMimeType,
@@ -12,6 +12,7 @@ import {
   type AddRawFileNodeRequest,
   type ParseCandidateChooserState,
 } from "./GraphCanvas"
+import type { GraphLayoutPlan } from "./graphAutoLayout"
 import { I18nProvider } from "./i18n"
 import { initialWorkbenchDomainState, type WorkbenchDomainState } from "./workbenchState"
 
@@ -217,25 +218,57 @@ describe("GraphCanvas molecule previews", () => {
       state: graphCanvasTwoNodeState(),
     })
 
-    const targetNode = graphNodeCardById(view.container, "node-a")
+    const targetNode = graphNodeCardById(view.container, "node-b")
     const restoreElementsFromPoint = mockElementsFromPoint([targetNode])
     try {
-      const handle = screen.getByRole("button", { name: "Drag barrier annotation from B" })
-      fireEvent.pointerDown(handle, { button: 0, clientX: 480, clientY: 270, pointerId: 21 })
-      fireEvent.pointerMove(handle, { button: 0, clientX: 120, clientY: 180, pointerId: 21 })
-      fireEvent.pointerUp(handle, { button: 0, clientX: 120, clientY: 180, pointerId: 21 })
+      const handle = screen.getByRole("button", { name: "Drag barrier annotation from A" })
+      fireEvent.pointerDown(handle, { button: 0, clientX: 120, clientY: 270, pointerId: 21 })
+      fireEvent.pointerMove(handle, { button: 0, clientX: 480, clientY: 180, pointerId: 21 })
+      expect(view.container.querySelector(".graph-node-barrier-pick-button")).not.toBeInTheDocument()
+      fireEvent.pointerUp(handle, { button: 0, clientX: 480, clientY: 180, pointerId: 21 })
     } finally {
       restoreElementsFromPoint()
     }
 
     expect(view.container.querySelector(".graph-barrier-arrow")).toBeInTheDocument()
     expect(view.container.querySelector(".graph-barrier-guide")).toBeInTheDocument()
-    expect(screen.getByText("ΔE‡ 12.55")).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "Barrier label" })).toHaveValue("△E‡ 12.55")
 
-    fireEvent.click(screen.getByRole("button", { name: "Barrier annotation from B to A" }))
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Delete barrier annotation from B to A" }))
+    fireEvent.click(screen.getByRole("button", { name: "Barrier annotation from A to B" }))
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Delete barrier annotation from A to B" }))
 
-    expect(screen.queryByText("ΔE‡ 12.55")).not.toBeInTheDocument()
+    expect(screen.queryByRole("textbox", { name: "Barrier label" })).not.toBeInTheDocument()
+  })
+
+  it("edits explicit barrier annotation labels inline", () => {
+    const view = renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+    })
+
+    const targetNode = graphNodeCardById(view.container, "node-b")
+    const restoreElementsFromPoint = mockElementsFromPoint([targetNode])
+    try {
+      const handle = screen.getByRole("button", { name: "Drag barrier annotation from A" })
+      fireEvent.pointerDown(handle, { button: 0, clientX: 120, clientY: 270, pointerId: 22 })
+      fireEvent.pointerMove(handle, { button: 0, clientX: 480, clientY: 180, pointerId: 22 })
+      fireEvent.pointerUp(handle, { button: 0, clientX: 480, clientY: 180, pointerId: 22 })
+    } finally {
+      restoreElementsFromPoint()
+    }
+
+    const labelInput = screen.getByRole("textbox", { name: "Barrier label" })
+    fireEvent.change(labelInput, { target: { value: "OA barrier" } })
+    fireEvent.blur(labelInput)
+
+    expect(screen.getByRole("textbox", { name: "Barrier label" })).toHaveValue("OA barrier")
+
+    fireEvent.click(graphNodeCardById(view.container, "node-a"))
+
+    expect(screen.getByRole("button", { name: "Edit barrier label from A to B" })).toHaveTextContent("OA barrier")
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit barrier label from A to B" }))
+
+    expect(screen.getByRole("textbox", { name: "Barrier label" })).toHaveValue("OA barrier")
   })
 })
 
@@ -306,7 +339,7 @@ describe("GraphCanvas graph edges", () => {
     expect(screen.getByRole("button", { name: "Drag path into A" })).toBeInTheDocument()
   })
 
-  it("anchors reverse-direction edges on the visible sides of each node", () => {
+  it("keeps reverse-direction edges fixed from source output to target input", () => {
     const state = graphCanvasTwoNodeState()
     state.workspace!.graph.edges = [{ id: "edge-b-a", from_node: "node-b", to_node: "node-a", label: "TS" }]
     state.workspace!.graph.paths = [{ id: "path-b-a", label: "path-b-a", node_ids: ["node-b", "node-a"] }]
@@ -315,13 +348,95 @@ describe("GraphCanvas graph edges", () => {
     const edgePath = view.container.querySelector(".graph-edge-line")
     const hitbox = screen.getByRole("button", { name: "Edge B to A: TS" })
 
-    expect(edgePath).toHaveAttribute("d", expect.stringMatching(/^M \d+(\.\d+)? 180 C /))
-    expect(edgePath).toHaveAttribute("d", expect.stringContaining(" 180"))
+    expect(edgePath).toHaveAttribute("d", expect.stringMatching(/^M 57\d 180 C /))
+    expect(edgePath).toHaveAttribute("d", expect.stringMatching(/2\d 180$/))
     expect(view.container.querySelector(".graph-edge-label")).toHaveTextContent("TS")
+    expect(screen.getByRole("button", { name: "Edit edge label from B to A" })).toBeInTheDocument()
     expect(hitbox).toHaveStyle({
       left: "300px",
       top: "180px",
     })
+  })
+
+  it("starts path drags only from the fixed right-side output handle", () => {
+    const onStartPointerEdge = vi.fn()
+    renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+      onStartPointerEdge,
+    })
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Drag path into A" }), {
+      button: 0,
+      clientX: 100,
+      clientY: 180,
+      pointerId: 31,
+    })
+
+    expect(onStartPointerEdge).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Drag path from A" }), {
+      button: 0,
+      clientX: 240,
+      clientY: 180,
+      pointerId: 32,
+    })
+
+    expect(onStartPointerEdge).toHaveBeenCalledWith("node-a", expect.objectContaining({
+      x: expect.any(Number),
+      y: expect.any(Number),
+    }))
+  })
+
+  it("selects labeled graph edges from the inline label and transparent hit target", () => {
+    const onSelectEdge = vi.fn()
+    const state = graphCanvasTwoNodeState()
+
+    renderGraphCanvas(vi.fn(), {
+      state,
+      onSelectEdge,
+    })
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Edit edge label from A to B" }), { button: 0 })
+    expect(onSelectEdge).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit edge label from A to B" }))
+    expect(onSelectEdge).toHaveBeenCalledWith("edge-a-b", "replace")
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Edge A to B: TS" }), { button: 0 })
+    expect(onSelectEdge).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole("button", { name: "Edge A to B: TS" }))
+    expect(onSelectEdge).toHaveBeenLastCalledWith("edge-a-b", "replace")
+  })
+
+  it("selects an edge from the line without opening label editing", () => {
+    const onSelectEdge = vi.fn()
+    const state = graphCanvasTwoNodeState()
+    state.workspace!.selection = { node_ids: [], edge_ids: ["edge-a-b"], path_ids: [] }
+
+    renderGraphCanvas(vi.fn(), {
+      state,
+      edgeLabelDraft: edgeLabelDraftFromEdge(state.workspace!.graph.edges[0]),
+      onSelectEdge,
+    })
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Edge A to B: TS" }), { button: 0 })
+
+    expect(onSelectEdge).not.toHaveBeenCalled()
+    expect(screen.queryByRole("textbox", { name: "Label" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Edge A to B: TS" }))
+
+    expect(onSelectEdge).toHaveBeenCalledWith("edge-a-b", "replace")
+    expect(screen.queryByRole("textbox", { name: "Label" })).not.toBeInTheDocument()
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Edit edge label from A to B" }), { button: 0 })
+
+    expect(screen.queryByRole("textbox", { name: "Label" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit edge label from A to B" }))
+
+    expect(screen.getByRole("textbox", { name: "Label" })).toHaveValue("TS")
   })
 
   it("renders many-to-one and one-to-many bezier paths with node-relative energy labels", () => {
@@ -339,8 +454,8 @@ describe("GraphCanvas graph edges", () => {
     expect(screen.getByRole("button", { name: "Edge Catalyst to Pre-intermediate" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Edge Post-intermediate to Product" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Edge Post-intermediate to Catalyst-release" })).toBeInTheDocument()
-    expect(screen.queryByText(/ΔE‡/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/ΔG‡/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/△E‡/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/△G‡/)).not.toBeInTheDocument()
     expect(screen.getAllByText("0.00 kcal/mol").length).toBeGreaterThan(0)
     expect(screen.getByText("18.83 kcal/mol")).toBeInTheDocument()
     expect(screen.getByText("50.20 kcal/mol")).toBeInTheDocument()
@@ -353,6 +468,27 @@ describe("GraphCanvas graph edges", () => {
 
     fireEvent.change(screen.getByLabelText("Energy"), { target: { value: "free" } })
     expect(screen.getByText("105.02 kJ/mol")).toBeInTheDocument()
+  })
+
+  it("lays out energy diagrams from the zero point toward connected products", () => {
+    const onApplyAutoLayout = vi.fn()
+    renderGraphCanvas(vi.fn(), {
+      state: graphCanvasReactionNetworkState(),
+      onApplyAutoLayout,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Energy" }))
+
+    expect(onApplyAutoLayout).toHaveBeenCalledTimes(1)
+    const plan = onApplyAutoLayout.mock.calls[0][0] as GraphLayoutPlan
+    expect(plan.strategy).toBe("energy-ranked")
+    expect(plan.nodePositions["node-substrate"][0]).toBe(110)
+    expect(plan.nodePositions["node-pre"][0]).toBeGreaterThan(plan.nodePositions["node-substrate"][0])
+    expect(plan.nodePositions["node-ts"][0]).toBeGreaterThan(plan.nodePositions["node-pre"][0])
+    expect(plan.nodePositions["node-post"][0]).toBeGreaterThan(plan.nodePositions["node-ts"][0])
+    expect(plan.nodePositions["node-product"][0]).toBeGreaterThan(plan.nodePositions["node-post"][0])
+    expect(plan.nodePositions["node-catalyst"][0]).toBeGreaterThan(plan.nodePositions["node-substrate"][0])
+    expect(plan.nodePositions["node-substrate"][1]).toBeGreaterThan(plan.nodePositions["node-ts"][1])
   })
 })
 
@@ -397,6 +533,41 @@ describe("GraphCanvas drag previews", () => {
       top: "51.94444444444445%",
     })
   })
+
+  it("previews minimap navigation locally and commits viewport only on release", () => {
+    const onSetViewport = vi.fn()
+    const view = renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+      onSetViewport,
+    })
+    const minimap = screen.getByRole("button", { name: "Navigate graph minimap" })
+    mockSurfaceRect(minimap, 162, 98)
+
+    fireEvent.pointerDown(minimap, {
+      button: 0,
+      clientX: 42,
+      clientY: 34,
+      pointerId: 33,
+    })
+    fireEvent.pointerMove(minimap, {
+      button: 0,
+      clientX: 80,
+      clientY: 52,
+      pointerId: 33,
+    })
+
+    expect(onSetViewport).not.toHaveBeenCalled()
+
+    fireEvent.pointerUp(minimap, {
+      button: 0,
+      clientX: 80,
+      clientY: 52,
+      pointerId: 33,
+    })
+
+    expect(onSetViewport).toHaveBeenCalledTimes(1)
+    expect(view.container.querySelector(".graph-minimap-window--draft")).not.toBeInTheDocument()
+  })
 })
 
 function renderGraphCanvas(
@@ -409,6 +580,14 @@ function renderGraphCanvas(
     onConfirmCandidateChooser?: () => void
     onCancelCandidateChooser?: () => void
     onSelectNode?: (nodeId: string, mode?: "replace" | "add" | "toggle") => void
+    onSelectEdge?: (edgeId: string, mode?: "replace" | "add" | "toggle") => void
+    onRemoveGraphItems?: (request: { nodeIds: string[]; edgeIds: string[]; pathIds: string[] }) => void
+    edgeLabelDraft?: ReturnType<typeof edgeLabelDraftFromEdge>
+    onStartPointerEdge?: (nodeId: string, position: { x: number; y: number }) => void
+    onUpdatePointerEdge?: (position: { x: number; y: number }, targetNodeId: string | null) => void
+    onEndPointerEdge?: (targetNodeId: string | null) => void
+    onSetViewport?: (viewport: { x: number; y: number; zoom: number }) => void
+    onApplyAutoLayout?: (plan: GraphLayoutPlan) => void
   } = {},
 ) {
   return render(
@@ -421,7 +600,7 @@ function renderGraphCanvas(
         interactionState={options.interactionState ?? initialGraphEditorInteractionState}
         historyControls={{ canUndo: false, canRedo: false }}
         pathOrderDraft={null}
-        edgeLabelDraft={initialEdgeLabelDraftState}
+        edgeLabelDraft={options.edgeLabelDraft ?? initialEdgeLabelDraftState}
         edgeLabelPending={false}
         edgeLabelError={null}
         compositionDraft={initialCompositionDraftState}
@@ -429,7 +608,7 @@ function renderGraphCanvas(
         compositionError={null}
         candidateChooser={options.candidateChooser ?? null}
         onSelectNode={options.onSelectNode ?? (() => undefined)}
-        onSelectEdge={() => undefined}
+        onSelectEdge={options.onSelectEdge ?? (() => undefined)}
         onSelectPath={() => undefined}
         onMovePathDraftNode={() => undefined}
         onApplyPathOrderDraft={() => undefined}
@@ -447,9 +626,9 @@ function renderGraphCanvas(
         onUpdateRubberBand={() => undefined}
         onEndRubberBand={() => undefined}
         onCancelRubberBand={() => undefined}
-        onStartPointerEdge={() => undefined}
-        onUpdatePointerEdge={() => undefined}
-        onEndPointerEdge={() => undefined}
+        onStartPointerEdge={options.onStartPointerEdge ?? (() => undefined)}
+        onUpdatePointerEdge={options.onUpdatePointerEdge ?? (() => undefined)}
+        onEndPointerEdge={options.onEndPointerEdge ?? (() => undefined)}
         onCancelPointerEdge={() => undefined}
         onAddObjectNode={() => undefined}
         onAddRawFileNode={onAddRawFileNode}
@@ -461,10 +640,10 @@ function renderGraphCanvas(
         onNudgeNodes={() => undefined}
         onUndoHistory={() => undefined}
         onRedoHistory={() => undefined}
-        onApplyAutoLayout={() => undefined}
-        onRemoveGraphItems={() => undefined}
+        onApplyAutoLayout={options.onApplyAutoLayout ?? (() => undefined)}
+        onRemoveGraphItems={options.onRemoveGraphItems ?? (() => undefined)}
         onClearSelection={() => undefined}
-        onSetViewport={() => undefined}
+        onSetViewport={options.onSetViewport ?? (() => undefined)}
         onAutoFitViewport={() => undefined}
         onTogglePanMode={() => undefined}
         onCompositionDraftRowChange={() => undefined}

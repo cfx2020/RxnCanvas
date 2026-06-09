@@ -253,6 +253,7 @@ const fixtureImportBatch = importBatchSummary("needs_confirmation")
 let fixtureObjects: ObjectSummary[] = cloneObjects(initialFixtureObjects.slice(0, 2))
 let fixtureLastImportSourcePaths: string[] = ["transient/water.xyz"]
 let fixtureLastImportSources: FixtureImportSource[] = defaultFixtureImportSources()
+let fixtureNextGraphNodeIndex = 1
 let fixtureProfile = profileSummary({
   pathId: "path-a-b",
   outputUnit: "kcal_mol",
@@ -354,6 +355,7 @@ export const fixtureTransport: ShellTransport = {
 
 function fixtureRunResponse(): ShellResponse<FixtureRunData> {
   fixtureWorkspace = baseWorkspaceSummary()
+  resetFixtureGraphNodeIndex()
   fixtureArtifacts = []
   fixtureProjectManifest = null
   fixtureObjects = cloneObjects(initialFixtureObjects.slice(0, 2))
@@ -449,6 +451,7 @@ function fixtureProjectOpenResponse(args: JsonObject): ShellResponse {
   fixtureProjectManifest = projectManifestFromProjectContentFiles(args.content_files)
   const projectId = fixtureProjectId()
   fixtureWorkspace = workspaceFromProjectContentFiles(args.content_files) ?? emptyWorkspaceSummary(projectId)
+  resetFixtureGraphNodeIndex()
   fixtureObjects = objectSummariesFromProjectContentFiles(args.content_files) ?? []
   fixtureArtifacts = artifactSummariesFromProjectContentFiles(args.content_files)
   fixtureProfile = profileSummary({
@@ -539,12 +542,16 @@ function fixtureWorkspaceAddNodeResponse(args: JsonObject): ShellResponse<Worksp
     ? args.chemical_object_ids.map(String).filter(Boolean)
     : []
   const composition = compositionTermsFromArgs(args.composition, objectIds)
-  const nodeIndex = fixtureWorkspace.graph.nodes.length + 1
+  const explicitNodeId = typeof args.node_id === "string" && args.node_id ? args.node_id : null
+  if (explicitNodeId && fixtureWorkspace.graph.nodes.some((node) => node.id === explicitNodeId)) {
+    return invalidWorkspaceInput("Graph node already exists.", "node_id", "graph_invalid")
+  }
+  const nodeIndex = reserveNextFixtureGraphNodeIndex()
   const position = Array.isArray(args.position) && args.position.length === 2
     ? [Number(args.position[0]), Number(args.position[1])] as [number, number]
     : [120 + nodeIndex * 120, 160] as [number, number]
   const node: GraphNodeSummary = {
-    id: `node-web-${nodeIndex}`,
+    id: explicitNodeId ?? `node-web-${nodeIndex}`,
     kind,
     label,
     chemical_object_ids: objectIds,
@@ -795,8 +802,12 @@ function fixtureWorkspaceConnectResponse(args: JsonObject): ShellResponse<Worksp
     (edge) => edgeSource(edge) === fromNodeId && edgeTarget(edge) === toNodeId,
   )
   if (!exists) {
+    const explicitEdgeId = typeof args.edge_id === "string" && args.edge_id ? args.edge_id : null
+    if (explicitEdgeId && fixtureWorkspace.graph.edges.some((edge) => edge.id === explicitEdgeId)) {
+      return invalidWorkspaceInput("Graph edge already exists.", "edge_id", "graph_invalid")
+    }
     const edge: GraphEdgeSummary = {
-      id: `edge-${fromNodeId}-${toNodeId}`,
+      id: explicitEdgeId ?? nextFixtureGraphEdgeId(fromNodeId, toNodeId),
       from_node: fromNodeId,
       to_node: toNodeId,
       label: typeof args.label === "string" ? args.label : null,
@@ -811,6 +822,36 @@ function fixtureWorkspaceConnectResponse(args: JsonObject): ShellResponse<Worksp
     })
   }
   return workspaceCommandResponse("workspace.connect")
+}
+
+function resetFixtureGraphNodeIndex(): void {
+  const used = new Set(fixtureWorkspace.graph.nodes.map((node) => node.id))
+  let index = fixtureWorkspace.graph.nodes.length + 1
+  while (used.has(`node-web-${index}`)) {
+    index += 1
+  }
+  fixtureNextGraphNodeIndex = index
+}
+
+function reserveNextFixtureGraphNodeIndex(): number {
+  const used = new Set(fixtureWorkspace.graph.nodes.map((node) => node.id))
+  let index = fixtureNextGraphNodeIndex
+  while (used.has(`node-web-${index}`)) {
+    index += 1
+  }
+  fixtureNextGraphNodeIndex = index + 1
+  return index
+}
+
+function nextFixtureGraphEdgeId(fromNodeId: string, toNodeId: string): string {
+  const used = new Set(fixtureWorkspace.graph.edges.map((edge) => edge.id))
+  const baseId = `edge-${fromNodeId}-${toNodeId}`
+  if (!used.has(baseId)) return baseId
+  let index = fixtureWorkspace.graph.edges.length + 1
+  while (used.has(`${baseId}-${index}`)) {
+    index += 1
+  }
+  return `${baseId}-${index}`
 }
 
 function fixtureWorkspaceSetPathResponse(args: JsonObject): ShellResponse<WorkspaceCommandData> {
@@ -2633,37 +2674,127 @@ function emptyWorkspaceSummary(projectId: string): WorkspaceSummary {
 }
 
 function normalizeWorkspace(workspace: WorkspaceSummary): WorkspaceSummary {
-  const disconnectedNodeIds = disconnectedNodes(workspace.graph.nodes, workspace.graph.edges)
+  const repairedGraph = repairDuplicateGraphIds(workspace.graph)
+  const activePathId = workspace.active_path_id ?? null
+  const repairedWorkspace = {
+    ...workspace,
+    active_path_id: activePathId && repairedGraph.paths.some((path) => path.id === activePathId)
+      ? activePathId
+      : null,
+    graph: repairedGraph,
+  }
+  const disconnectedNodeIds = disconnectedNodes(repairedWorkspace.graph.nodes, repairedWorkspace.graph.edges)
   const warnings = disconnectedNodeIds.map((nodeId) => ({
     code: "disconnected_node",
     message: "Fixture graph node is not connected to any edge.",
     target: nodeId,
   }))
-  const selection = pruneWorkspaceSelection(workspace.selection ?? {
+  const selection = pruneWorkspaceSelection(repairedWorkspace.selection ?? {
     node_ids: [],
     edge_ids: [],
     path_ids: [],
-  }, workspace)
+  }, repairedWorkspace)
   return {
-    ...workspace,
+    ...repairedWorkspace,
     selection,
-    viewport: workspace.viewport ?? { x: 0, y: 0, zoom: 1 },
+    viewport: repairedWorkspace.viewport ?? { x: 0, y: 0, zoom: 1 },
     graph: {
-      ...workspace.graph,
-      node_count: workspace.graph.nodes.length,
-      edge_count: workspace.graph.edges.length,
-      path_count: workspace.graph.paths.length,
+      ...repairedWorkspace.graph,
+      node_count: repairedWorkspace.graph.nodes.length,
+      edge_count: repairedWorkspace.graph.edges.length,
+      path_count: repairedWorkspace.graph.paths.length,
     },
     preview: {
-      graph_id: workspace.graph.id,
-      active_path_id: workspace.active_path_id ?? null,
-      node_count: workspace.graph.nodes.length,
-      edge_count: workspace.graph.edges.length,
-      path_count: workspace.graph.paths.length,
+      graph_id: repairedWorkspace.graph.id,
+      active_path_id: repairedWorkspace.active_path_id ?? null,
+      node_count: repairedWorkspace.graph.nodes.length,
+      edge_count: repairedWorkspace.graph.edges.length,
+      path_count: repairedWorkspace.graph.paths.length,
       disconnected_node_ids: disconnectedNodeIds,
       warnings,
     },
   }
+}
+
+function repairDuplicateGraphIds(graph: WorkspaceSummary["graph"]): WorkspaceSummary["graph"] {
+  const nodeIds = new Set<string>()
+  const nodeIdMap = new Map<string, string[]>()
+  const nodes = graph.nodes.map((node) => {
+    const repairedId = uniqueGraphId(node.id, nodeIds)
+    nodeIds.add(repairedId)
+    const mapped = nodeIdMap.get(node.id) ?? []
+    mapped.push(repairedId)
+    nodeIdMap.set(node.id, mapped)
+    return repairedId === node.id ? node : { ...node, id: repairedId }
+  })
+  const nodeRefCounts = new Map<string, number>()
+  const edgeIds = new Set<string>()
+  const edges = graph.edges
+    .map((edge) => {
+      const fromNode = nextMappedGraphNodeId(edgeSource(edge), nodeIdMap, nodeRefCounts)
+      const toNode = nextMappedGraphNodeId(edgeTarget(edge), nodeIdMap, nodeRefCounts)
+      if (!fromNode || !toNode) return null
+      const repairedId = uniqueGraphId(edge.id, edgeIds)
+      edgeIds.add(repairedId)
+      return graphEdgeWithEndpoints({ ...edge, id: repairedId }, fromNode, toNode)
+    })
+    .filter((edge): edge is GraphEdgeSummary => Boolean(edge))
+  const pathIds = new Set<string>()
+  const paths = graph.paths.map((path) => {
+    const pathNodeRefCounts = new Map<string, number>()
+    const nodeIds = path.node_ids
+      .map((nodeId) => nextMappedGraphNodeId(nodeId, nodeIdMap, pathNodeRefCounts))
+      .filter((nodeId): nodeId is string => Boolean(nodeId))
+    const repairedId = uniqueGraphId(path.id, pathIds)
+    pathIds.add(repairedId)
+    return repairedId === path.id && nodeIds.every((nodeId, index) => nodeId === path.node_ids[index])
+      ? path
+      : { ...path, id: repairedId, node_ids: nodeIds }
+  })
+  return {
+    ...graph,
+    nodes,
+    edges,
+    paths,
+  }
+}
+
+function graphEdgeWithEndpoints(edge: GraphEdgeSummary, fromNodeId: string, toNodeId: string): GraphEdgeSummary {
+  if ("source" in edge || "target" in edge) {
+    const { from_node: _fromNode, to_node: _toNode, ...rest } = edge
+    return {
+      ...rest,
+      source: fromNodeId,
+      target: toNodeId,
+    }
+  }
+  const { source: _source, target: _target, ...rest } = edge
+  return {
+    ...rest,
+    from_node: fromNodeId,
+    to_node: toNodeId,
+  }
+}
+
+function uniqueGraphId(id: string, usedIds: Set<string>): string {
+  if (!usedIds.has(id)) return id
+  let index = 2
+  while (usedIds.has(`${id}-${index}`)) {
+    index += 1
+  }
+  return `${id}-${index}`
+}
+
+function nextMappedGraphNodeId(
+  nodeId: string,
+  nodeIdMap: Map<string, string[]>,
+  refCounts: Map<string, number>,
+): string | null {
+  const mappedIds = nodeIdMap.get(nodeId)
+  if (!mappedIds || mappedIds.length === 0) return null
+  const index = refCounts.get(nodeId) ?? 0
+  refCounts.set(nodeId, index + 1)
+  return mappedIds[Math.min(index, mappedIds.length - 1)] ?? null
 }
 
 function disconnectedNodes(nodes: GraphNodeSummary[], edges: GraphEdgeSummary[]): string[] {

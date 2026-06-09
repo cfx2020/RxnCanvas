@@ -5,6 +5,7 @@ import {
   MoreVertical,
   Plus,
   Trash2,
+  X,
 } from "lucide-react"
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type RefObject } from "react"
 import { createPortal } from "react-dom"
@@ -22,6 +23,7 @@ type ProjectSidebarProps = {
   onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
+  onDeleteProjectFile: (file: ProjectFileEntry) => void | Promise<void>
 }
 
 export function ProjectSidebar({
@@ -32,6 +34,7 @@ export function ProjectSidebar({
   onDeleteProject,
   onImportProjectFiles,
   onAddProjectFileToCanvas,
+  onDeleteProjectFile,
 }: ProjectSidebarProps) {
   const { t } = useI18n()
   const isBusy = state.status === "loading"
@@ -92,6 +95,7 @@ export function ProjectSidebar({
         onDeleteProject={onDeleteProject}
         onImportProjectFiles={onImportProjectFiles}
         onAddProjectFileToCanvas={onAddProjectFileToCanvas}
+        onDeleteProjectFile={onDeleteProjectFile}
       />
     </aside>
   )
@@ -112,6 +116,7 @@ type ProjectFoldersPanelProps = {
   onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
+  onDeleteProjectFile: (file: ProjectFileEntry) => void | Promise<void>
 }
 
 function ProjectFoldersPanel({
@@ -129,6 +134,7 @@ function ProjectFoldersPanel({
   onDeleteProject,
   onImportProjectFiles,
   onAddProjectFileToCanvas,
+  onDeleteProjectFile,
 }: ProjectFoldersPanelProps) {
   const { t } = useI18n()
   const isBusy = state.status === "loading"
@@ -193,6 +199,7 @@ function ProjectFoldersPanel({
               onDeleteProject={onDeleteProject}
               onImportProjectFiles={onImportProjectFiles}
               onAddProjectFileToCanvas={onAddProjectFileToCanvas}
+              onDeleteProjectFile={onDeleteProjectFile}
             />
           ))}
         </ul>
@@ -212,6 +219,7 @@ type ProjectFolderProps = {
   onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
+  onDeleteProjectFile: (file: ProjectFileEntry) => void | Promise<void>
 }
 
 function ProjectFolder({
@@ -225,6 +233,7 @@ function ProjectFolder({
   onDeleteProject,
   onImportProjectFiles,
   onAddProjectFileToCanvas,
+  onDeleteProjectFile,
 }: ProjectFolderProps) {
   const { t } = useI18n()
   const fileCount = projectFiles.length
@@ -397,7 +406,12 @@ function ProjectFolder({
           aria-hidden={expanded ? "false" : "true"}
         >
           {projectFiles.map((file) => (
-            <ProjectFileRow key={file.id} file={file} onAddProjectFileToCanvas={onAddProjectFileToCanvas} />
+            <ProjectFileRow
+              key={file.id}
+              file={file}
+              onAddProjectFileToCanvas={onAddProjectFileToCanvas}
+              onDeleteProjectFile={onDeleteProjectFile}
+            />
           ))}
         </ul>
       ) : null}
@@ -408,9 +422,10 @@ function ProjectFolder({
 type ProjectFileRowProps = {
   file: ProjectFileEntry
   onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
+  onDeleteProjectFile: (file: ProjectFileEntry) => void | Promise<void>
 }
 
-function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps) {
+function ProjectFileRow({ file, onAddProjectFileToCanvas, onDeleteProjectFile }: ProjectFileRowProps) {
   const { t } = useI18n()
   const draggable = isDraggableRawProjectFile(file)
   const kindBadge = projectFileKindBadge(file.kind)
@@ -460,6 +475,20 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas }: ProjectFileRowProps)
           aria-hidden="true"
         />
       ) : null}
+      <button
+        type="button"
+        className="project-file-delete-button"
+        aria-label={t("projectSidebar.projectFiles.deleteFile", { name: file.name })}
+        title={t("projectSidebar.projectFiles.deleteFile", { name: file.name })}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          void onDeleteProjectFile(file)
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <X size={12} aria-hidden="true" />
+      </button>
     </li>
   )
 }

@@ -24,6 +24,7 @@ from .models import (
     ReactionPath,
 )
 from .result import Result, err, ok
+from .solution_pairs import STANDARD_STATE_1M_HARTREE, structure_display_name, with_paired_solution_free_energies
 from .workspace import CanvasViewport, WorkspaceSelection, WorkspaceSnapshot
 
 
@@ -424,9 +425,10 @@ def build_energy_table_rows(
 ) -> tuple[EnergyTableRow, ...]:
     """Build structure-first energy table rows without recomputing energies."""
 
+    resolved_objects = with_paired_solution_free_energies(objects)
     rows: list[EnergyTableRow] = []
     rows.extend(table_rows)
-    rows.extend(_row_from_chemical_object(obj) for obj in objects)
+    rows.extend(_row_from_chemical_object(obj) for obj in resolved_objects)
 
     if not rows and profile is not None:
         rows.extend(_row_from_energy_point(point) for point in profile.points)
@@ -680,6 +682,7 @@ def _render_xlsx(
     }
 
     _write_energy_table_sheet(workbook, rows, title, formats)
+    _write_shermo_template_sheet(workbook, rows, title, formats)
 
     if profile is not None:
         _write_energy_profile_sheet(workbook, profile, formats)
@@ -1046,6 +1049,244 @@ def _write_energy_table_sheet(
     _set_energy_table_column_widths(table_sheet, ENERGY_TABLE_COLUMNS)
 
 
+def _write_shermo_template_sheet(
+    workbook: Any,
+    rows: tuple[EnergyTableRow, ...],
+    title: str | None,
+    formats: dict[str, Any],
+) -> None:
+    template_sheet = workbook.add_worksheet("Shermo_New")
+    header_format = formats["header"]
+    number_format = formats["number"]
+    text_format = formats["text"]
+    formula_format = workbook.add_format({"num_format": "0.000000", "border": 1, "font_color": "#1f4e79"})
+    note_format = workbook.add_format({"italic": True, "font_color": "#64748b"})
+
+    headers = (
+        None,
+        "Egas",
+        None,
+        "basis function",
+        "Ggas",
+        None,
+        "Ggas+1M",
+        None,
+        "Ggas(shermo)",
+        None,
+        "Ggas(shermo+1M)",
+        None,
+        "Esol",
+        None,
+        "basis function",
+        "Sgau,tran",
+        "Swhit,tran",
+        "Sgau,tran -Swhit,tran",
+        "T*(Sgau,tran -Swhit,tran)/1000",
+        "RT*0.239006/1000",
+        "Gsol",
+    )
+    for column_index, header in enumerate(headers):
+        if header is None:
+            template_sheet.write_blank(0, column_index, None, header_format)
+            continue
+        template_sheet.write(0, column_index, header, header_format)
+
+    for row_index, table_row in enumerate(rows, start=1):
+        _write_shermo_template_data_row(template_sheet, row_index, table_row, number_format, text_format, formula_format)
+
+    if rows:
+        delta_header_row = len(rows) + 2
+        _write_shermo_template_delta_header(template_sheet, delta_header_row, header_format)
+        baseline_values = rows[0].values
+        for offset, table_row in enumerate(rows, start=1):
+            sheet_row = delta_header_row + offset
+            data_row = offset + 1
+            _write_shermo_template_delta_row(
+                template_sheet,
+                sheet_row,
+                data_row,
+                table_row,
+                baseline_values,
+                number_format,
+                text_format,
+                formula_format,
+            )
+    else:
+        template_sheet.write(2, 0, "No energy rows available.", note_format)
+
+    metadata_row = len(rows) * 2 + 5 if rows else 4
+    template_sheet.write(metadata_row, 0, "Template note", header_format)
+    template_sheet.write(
+        metadata_row + 1,
+        0,
+        "Gsol uses Ggas+1M - Egas + Esol. Shermo and Whitesides correction columns are reserved for a future roadmap item.",
+        note_format,
+    )
+    if title:
+        template_sheet.write(metadata_row + 2, 0, "Title", header_format)
+        template_sheet.write(metadata_row + 2, 1, title, text_format)
+
+    template_sheet.freeze_panes(1, 1)
+    template_sheet.set_column(0, 0, 22)
+    template_sheet.set_column(1, 20, 16)
+
+
+def _write_shermo_template_data_row(
+    sheet: Any,
+    row: int,
+    table_row: EnergyTableRow,
+    number_format: Any,
+    text_format: Any,
+    formula_format: Any,
+) -> None:
+    values = table_row.values
+    sheet.write(row, 0, table_row.structure_name, text_format)
+    _write_cell(sheet, row, 1, values.get("egas_hartree"), number_format, text_format)
+    _write_formula_if_source_present(sheet, row, 2, f"=B{row + 1}*{HARTREE_TO_KCAL_MOL:.12g}", values.get("egas_kcal_mol"), values.get("egas_hartree"), formula_format, text_format)
+    _write_cell(sheet, row, 3, values.get("gas_basis_functions"), number_format, text_format)
+    _write_cell(sheet, row, 4, values.get("ggas_hartree"), number_format, text_format)
+    _write_formula_if_source_present(sheet, row, 5, f"=E{row + 1}*{HARTREE_TO_KCAL_MOL:.12g}", values.get("ggas_kcal_mol"), values.get("ggas_hartree"), formula_format, text_format)
+    _write_formula_if_source_present(sheet, row, 6, f"=E{row + 1}+{STANDARD_STATE_1M_HARTREE:.12g}", values.get("ggas_1m_hartree"), values.get("ggas_hartree"), formula_format, text_format)
+    _write_formula_if_source_present(sheet, row, 7, f"=G{row + 1}*{HARTREE_TO_KCAL_MOL:.12g}", values.get("ggas_1m_kcal_mol"), values.get("ggas_1m_hartree"), formula_format, text_format)
+    _write_cell(sheet, row, 8, values.get("ggas_shermo_hartree"), number_format, text_format)
+    _write_formula_if_source_present(sheet, row, 9, f"=I{row + 1}*{HARTREE_TO_KCAL_MOL:.12g}", values.get("ggas_shermo_kcal_mol"), values.get("ggas_shermo_hartree"), formula_format, text_format)
+    _write_formula_if_source_present(sheet, row, 10, f"=I{row + 1}+{STANDARD_STATE_1M_HARTREE:.12g}", values.get("ggas_shermo_1m_hartree"), values.get("ggas_shermo_hartree"), formula_format, text_format)
+    _write_formula_if_source_present(sheet, row, 11, f"=K{row + 1}*{HARTREE_TO_KCAL_MOL:.12g}", values.get("ggas_shermo_1m_kcal_mol"), values.get("ggas_shermo_1m_hartree"), formula_format, text_format)
+    _write_cell(sheet, row, 12, values.get("esol_hartree"), number_format, text_format)
+    _write_formula_if_source_present(sheet, row, 13, f"=M{row + 1}*{HARTREE_TO_KCAL_MOL:.12g}", values.get("esol_kcal_mol"), values.get("esol_hartree"), formula_format, text_format)
+    _write_cell(sheet, row, 14, values.get("solution_basis_functions"), number_format, text_format)
+    for column in range(15, 20):
+        sheet.write_blank(row, column, None, text_format)
+    has_solution_formula_inputs = (
+        values.get("egas_kcal_mol") is not None
+        and values.get("ggas_1m_kcal_mol") is not None
+        and values.get("esol_kcal_mol") is not None
+    )
+    _write_formula_if_source_present(
+        sheet,
+        row,
+        20,
+        f"=H{row + 1}-C{row + 1}+N{row + 1}",
+        values.get("gsol_kcal_mol"),
+        has_solution_formula_inputs,
+        formula_format,
+        text_format,
+    )
+
+
+def _write_shermo_template_delta_header(sheet: Any, row: int, header_format: Any) -> None:
+    headers = (
+        None,
+        "Delta Egas",
+        None,
+        "basis function",
+        "Delta Ggas",
+        None,
+        "Delta Ggas+1M",
+        None,
+        "Delta Ggas(shermo)",
+        None,
+        "Delta Ggas(shermo)+1M",
+        None,
+        "Delta Esol",
+        None,
+        "basis function",
+        "Delta Sgau,tran",
+        "Delta Swhit,tran",
+        "Delta Sgau,tran - Delta Swhit,tran",
+        "T*(Delta Sgau,tran - Delta Swhit,tran)/1000",
+        "RT*0.239006/1000",
+        "Gsol relative to first row",
+    )
+    for column_index, header in enumerate(headers):
+        if header is None:
+            sheet.write_blank(row, column_index, None, header_format)
+            continue
+        sheet.write(row, column_index, header, header_format)
+
+
+def _write_shermo_template_delta_row(
+    sheet: Any,
+    row: int,
+    data_row: int,
+    table_row: EnergyTableRow,
+    baseline_values: dict[str, Any],
+    number_format: Any,
+    text_format: Any,
+    formula_format: Any,
+) -> None:
+    sheet.write(row, 0, table_row.structure_name, text_format)
+    data_excel_row = data_row + 1
+    for column_index in (1, 2, 4, 5, 6, 7, 12, 13):
+        column_letter = _xlsx_column_name(column_index)
+        source_key = _shermo_delta_source_key(column_index)
+        cached = _numeric_delta(
+            table_row.values.get(source_key) if source_key is not None else None,
+            baseline_values.get(source_key) if source_key is not None else None,
+        )
+        formula = f"={column_letter}{data_excel_row}-{column_letter}2"
+        if cached is None:
+            sheet.write_blank(row, column_index, None, text_format)
+        else:
+            sheet.write_formula(row, column_index, formula, formula_format, cached)
+    for column_index in (3, 8, 9, 10, 11, 14, 15, 16, 17, 18, 19, 21, 22, 23):
+        sheet.write_blank(row, column_index, None, text_format)
+    gsol_delta = _numeric_delta(table_row.values.get("gsol_kcal_mol"), baseline_values.get("gsol_kcal_mol"))
+    if gsol_delta is None:
+        sheet.write_blank(row, 20, None, text_format)
+    else:
+        sheet.write_formula(row, 20, f"=U{data_excel_row}-U2", formula_format, gsol_delta)
+
+
+def _shermo_delta_source_key(column_index: int) -> str | None:
+    return {
+        1: "egas_hartree",
+        2: "egas_kcal_mol",
+        4: "ggas_hartree",
+        5: "ggas_kcal_mol",
+        6: "ggas_1m_hartree",
+        7: "ggas_1m_kcal_mol",
+        12: "esol_hartree",
+        13: "esol_kcal_mol",
+    }.get(column_index)
+
+
+def _write_formula_if_source_present(
+    sheet: Any,
+    row: int,
+    column: int,
+    formula: str,
+    cached_value: Any,
+    source_value: Any,
+    formula_format: Any,
+    text_format: Any,
+) -> None:
+    if source_value is None or source_value is False:
+        sheet.write_blank(row, column, None, text_format)
+        return
+    if isinstance(cached_value, (int, float)):
+        sheet.write_formula(row, column, formula, formula_format, float(cached_value))
+        return
+    sheet.write_formula(row, column, formula, formula_format)
+
+
+def _numeric_delta(value: Any, baseline: Any) -> float | None:
+    if not isinstance(value, (int, float)) or not isinstance(baseline, (int, float)):
+        return None
+    return float(value) - float(baseline)
+
+
+def _xlsx_column_name(index: int) -> str:
+    """Return an Excel column name for a zero-based column index."""
+
+    value = index + 1
+    letters = ""
+    while value:
+        value, remainder = divmod(value - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
 def _write_group_header_row(
     sheet: Any,
     row: int,
@@ -1352,7 +1593,8 @@ def _render_cdxml(
                 "arrow",
                 {
                     "id": str(object_id),
-                    "ArrowheadType": "Solid",
+                    "ArrowheadType": "NoHead",
+                    "LineType": "Dashed",
                     "Tail3D": f"{previous[0]:.1f} {previous[1]:.1f} 0",
                     "Head3D": f"{line_start:.1f} {y:.1f} 0",
                     "BoundingBox": _cdxml_bbox(previous[0], previous[1], line_start, y),
@@ -1534,8 +1776,7 @@ def _format_cdxml_energy_value(value: float, unit: EnergyUnit, decimals: int) ->
 
 
 def _format_cdxml_step_delta(value: float, unit: EnergyUnit, decimals: int) -> str:
-    sign = "+" if value >= 0 else ""
-    return f"dE {sign}{value:.{decimals}f} {_unit_label(unit)}"
+    return f"Delta E {value:.{decimals}f} {_unit_label(unit)}"
 
 
 def _format_cdxml_missing_marker(reason: str | None, options: CdxmlDiagramOptions) -> str:
@@ -1583,7 +1824,7 @@ def _row_from_chemical_object(obj: ChemicalObject) -> EnergyTableRow:
     _add_energy_pair(values, "esol", obj.energies.get("esol"))
     _add_energy_pair(values, "gsol", obj.thermochemistry.get("gsol") or obj.energies.get("gsol"))
     return EnergyTableRow(
-        structure_name=obj.label or obj.id,
+        structure_name=structure_display_name(obj),
         values=values,
         object_id=obj.id,
     )

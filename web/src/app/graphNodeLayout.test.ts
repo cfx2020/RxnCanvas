@@ -24,11 +24,11 @@ describe("graphNodeLayout", () => {
     })
   })
 
-  it("snaps and clamps positions to the virtual canvas bounds", () => {
+  it("snaps positions without clamping them to the visible virtual canvas", () => {
     expect(snapGraphNodeLayoutPosition({ x: 127, y: 173 })).toEqual({ x: 120, y: 180 })
     expect(canvasPointToGraphNodePosition({ x: -30, y: 999 })).toEqual({
-      x: 0,
-      y: graphNodeLayoutBounds.height,
+      x: -20,
+      y: 1000,
     })
   })
 

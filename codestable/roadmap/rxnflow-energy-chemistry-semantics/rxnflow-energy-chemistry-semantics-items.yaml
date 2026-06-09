@@ -65,3 +65,11 @@ items:
     feature: 2026-05-22-energy-curve-interaction-polish
     minimal_loop: false
     notes: 已落地 Energy Curve Point marker、Curve Point Detail、keyboard/click point interaction、missing/correction/selected 状态、曲线点/表格行通过 workspace.select 联动 Graph Canvas selected node、Report Export Readiness、双语文案和桌面/窄屏浏览器 QA；不前端重算能量、不保存 point UI state、不新增 shell command/schema/export format/chart dependency 或导出 writer 改动
+
+  - slug: shermo-whitesides-correction-model
+    description: 建立 Shermo / Whitesides 熵校正的领域模型、provenance、profile 显示字段和导出通道
+    depends_on: [energy-expression-engine, energy-profile-provenance-details]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 用户允许先不实现；参考 https://831447.xyz/p/2025/shermo 与 https://831447.xyz/p/2025/whitesides，后续实现必须显式记录温度、标准态、熵项来源、单位换算和适用范围

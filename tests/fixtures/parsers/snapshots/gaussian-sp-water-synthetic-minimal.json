@@ -10,13 +10,19 @@
         "H"
       ],
       "energies": {
-        "electronic": {
-          "reference": "cclib scfenergies converted from eV",
+        "egas": {
+          "reference": "gas electronic energy from Gaussian SCF Done parsed from raw text",
           "unit": "hartree",
-          "value": -74.99999670361889
+          "value": -75.0
+        },
+        "electronic": {
+          "reference": "Gaussian SCF Done energy parsed from raw text",
+          "unit": "hartree",
+          "value": -75.0
         }
       },
       "energy_keys": [
+        "egas",
         "electronic"
       ],
       "formula": null,

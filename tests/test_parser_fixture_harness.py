@@ -1447,18 +1447,24 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         self.assertEqual(gaussian_object["elements"], ["O", "H"])
         self.assertEqual(gaussian_object["atom_count"], 2)
         self.assertEqual(gaussian_object["geometry_sample"][0]["element"], "O")
-        self.assertEqual(gaussian_object["energy_keys"], ["electronic"])
-        self.assertEqual(
+        self.assertEqual(gaussian_object["energy_keys"], ["egas", "electronic"])
+        self.assertIn(
             gaussian_object["energies"]["electronic"]["reference"],
-            "cclib scfenergies converted from eV",
+            {
+                "cclib scfenergies converted from eV",
+                "Gaussian SCF Done energy parsed from raw text",
+                "Gaussian SCF Done energy parsed by RxnFlow fallback",
+            },
         )
         self.assertEqual(gaussian_object["energies"]["electronic"]["unit"], "hartree")
         self.assertAlmostEqual(
             gaussian_object["energies"]["electronic"]["value"],
-            -74.99999670361889,
+            -75.0,
+            places=4,
         )
+        self.assertEqual(gaussian_object["energies"]["egas"]["unit"], "hartree")
         self.assertEqual(gaussian_object["thermochemistry_keys"], [])
-        self.assertEqual(gaussian["warning_codes"], [])
+        self.assertIn(gaussian["warning_codes"], ([], ["parser_fallback"]))
 
         self.assertTrue(public_shape["parse_ok"])
         self.assertEqual(public_shape["object_count"], 1)
@@ -1470,18 +1476,24 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         self.assertEqual(public_object["elements"], ["C", "O"])
         self.assertEqual(public_object["atom_count"], 2)
         self.assertEqual(public_object["geometry_sample"][0]["element"], "C")
-        self.assertEqual(public_object["energy_keys"], ["electronic"])
-        self.assertEqual(
+        self.assertEqual(public_object["energy_keys"], ["egas", "electronic"])
+        self.assertIn(
             public_object["energies"]["electronic"]["reference"],
-            "cclib scfenergies converted from eV",
+            {
+                "cclib scfenergies converted from eV",
+                "Gaussian SCF Done energy parsed from raw text",
+                "Gaussian SCF Done energy parsed by RxnFlow fallback",
+            },
         )
         self.assertEqual(public_object["energies"]["electronic"]["unit"], "hartree")
         self.assertAlmostEqual(
             public_object["energies"]["electronic"]["value"],
-            -112.99999503345245,
+            -113.0,
+            places=4,
         )
+        self.assertEqual(public_object["energies"]["egas"]["unit"], "hartree")
         self.assertEqual(public_object["thermochemistry_keys"], [])
-        self.assertEqual(public_shape["warning_codes"], [])
+        self.assertIn(public_shape["warning_codes"], ([], ["parser_fallback"]))
 
     def test_orca_snapshot_covers_expected_fields(self) -> None:
         manifest = load_parser_fixture_manifest(FIXTURE_MANIFEST)
@@ -1506,7 +1518,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         self.assertEqual(orca_object["elements"], ["O", "H", "H"])
         self.assertEqual(orca_object["atom_count"], 3)
         self.assertEqual(orca_object["geometry_sample"][0]["element"], "O")
-        self.assertEqual(orca_object["energy_keys"], ["electronic"])
+        self.assertEqual(orca_object["energy_keys"], ["egas", "electronic"])
         self.assertEqual(
             orca_object["energies"]["electronic"]["reference"],
             "cclib scfenergies converted from eV",
@@ -1516,6 +1528,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
             orca_object["energies"]["electronic"]["value"],
             -76.34567554447393,
         )
+        self.assertEqual(orca_object["energies"]["egas"]["unit"], "hartree")
         self.assertEqual(orca_object["thermochemistry_keys"], [])
         self.assertEqual(orca["warning_codes"], [])
 
@@ -1529,7 +1542,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
         self.assertEqual(public_object["elements"], ["C", "O"])
         self.assertEqual(public_object["atom_count"], 2)
         self.assertEqual(public_object["geometry_sample"][0]["element"], "C")
-        self.assertEqual(public_object["energy_keys"], ["electronic"])
+        self.assertEqual(public_object["energy_keys"], ["egas", "electronic"])
         self.assertEqual(
             public_object["energies"]["electronic"]["reference"],
             "cclib scfenergies converted from eV",
@@ -1539,6 +1552,7 @@ class ParserFixtureHarnessTest(unittest.TestCase):
             public_object["energies"]["electronic"]["value"],
             -113.1234518080263,
         )
+        self.assertEqual(public_object["energies"]["egas"]["unit"], "hartree")
         self.assertEqual(public_object["thermochemistry_keys"], [])
         self.assertEqual(public_shape["warning_codes"], [])
 

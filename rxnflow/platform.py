@@ -57,6 +57,7 @@ from .project import ProjectStore
 from .project_bundle import ProjectBundleService, ProjectBundleSummary
 from .registry import ChemicalRegistry
 from .result import Result
+from .solution_pairs import with_paired_solution_free_energies
 from .workspace import CanvasViewport, GraphEditorWorkspaceService, NodePlacement, WorkspaceSelection, WorkspaceSnapshot
 
 
@@ -802,7 +803,10 @@ class PlatformShellService:
                 {
                     "batch": _import_batch_summary(confirmed.value),
                     "registered_object_ids": object_ids,
-                    "objects": [_object_summary(obj) for obj in objects],
+                    "objects": [
+                        _object_summary(obj)
+                        for obj in with_paired_solution_free_energies(objects)
+                    ],
                 },
                 state=updated,
             ),
@@ -840,9 +844,12 @@ class PlatformShellService:
         composition = _optional_composition_terms(command.args.get("composition"))
         if isinstance(composition, ShellResponse):
             return composition
+        node_id_arg = command.args.get("node_id") or command.args.get("id")
+        node_id = node_id_arg if isinstance(node_id_arg, str) and node_id_arg else None
         placement = NodePlacement(
             kind=kind,  # type: ignore[arg-type]
             label=label,
+            id=node_id,
             chemical_object_ids=_tuple_of_str(command.args.get("chemical_object_ids", ())),
             position=_position(command.args.get("position")),
             metadata=dict(command.args.get("metadata") or {}),
@@ -1043,11 +1050,14 @@ class PlatformShellService:
             return _invalid_input("Source node id is required.", "from_node_id")
         if to_node_id is None:
             return _invalid_input("Target node id is required.", "to_node_id")
+        edge_id_arg = command.args.get("edge_id") or command.args.get("id")
+        edge_id = edge_id_arg if isinstance(edge_id_arg, str) and edge_id_arg else None
         updated = self._kernel.workspace_service.connect_nodes(
             state.session.project_id or "",
             state.workspace.workspace_id,
             from_node_id,
             to_node_id,
+            edge_id=edge_id,
             label=command.args.get("label"),
             metadata=dict(command.args.get("metadata") or {}),
         )
@@ -1107,7 +1117,7 @@ class PlatformShellService:
             state.session.project_id or "",
             state.graph,
             path_id,
-            state.objects,
+            with_paired_solution_free_energies(state.objects),
             options,
         )
         if not profile.ok or profile.value is None:
@@ -1157,7 +1167,7 @@ class PlatformShellService:
                 graph=state.graph,
                 workspace=state.workspace,
                 profile=state.profile,
-                objects=state.objects,
+                objects=with_paired_solution_free_energies(state.objects),
                 destination_dir=command.args.get("destination_dir"),
                 basename=command.args.get("basename"),
                 title=command.args.get("title"),
@@ -2255,7 +2265,10 @@ def _fixture_data(
         {
             "project": _project_summary(value.project),
             "object_count": len(value.objects),
-            "objects": [_object_summary(obj) for obj in value.objects],
+            "objects": [
+                _object_summary(obj)
+                for obj in with_paired_solution_free_energies(value.objects)
+            ],
             "graph": _graph_summary(value.graph),
             "profile": _profile_summary(value.profile),
         },
@@ -2348,7 +2361,10 @@ def _workbench_snapshot_payload(
             "profiles": content_counts["profile_count"],
             "artifacts": content_counts["artifact_count"],
         },
-        "objects": [_object_summary(obj) for obj in state.objects],
+        "objects": [
+            _object_summary(obj)
+            for obj in with_paired_solution_free_energies(state.objects)
+        ],
         "imports": [_import_batch_summary(batch) for batch in state.import_batches],
         "workspace": _workspace_summary(state.workspace) if state.workspace is not None else None,
         "profile": _profile_summary(state.profile) if state.profile is not None else None,

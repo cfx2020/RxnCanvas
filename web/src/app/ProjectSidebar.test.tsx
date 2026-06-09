@@ -379,6 +379,48 @@ describe("ProjectSidebar", () => {
     fireEvent.keyDown(row, { key: "Enter" })
     expect(onAddProjectFileToCanvas).toHaveBeenCalledTimes(2)
   })
+
+  it("deletes a project raw file from the row action without adding it to the canvas", () => {
+    const activeProject = browserProject("browser-project:project-1", "Pd Ni")
+    const onAddProjectFileToCanvas = vi.fn()
+    const onDeleteProjectFile = vi.fn()
+    renderSidebar({
+      ...initialProjectSidebarState,
+      status: "ready",
+      projects: [activeProject],
+      activeProjectRef: activeProject.projectRef,
+      activeProject,
+      projectFiles: [
+        {
+          id: "raw-abc123def456",
+          projectRef: activeProject.projectRef,
+          path: "inputs/raw/abc123def456-water.extxyz",
+          name: "water.extxyz",
+          kind: "extxyz",
+          byteSize: 128,
+          checksum: "sha256:abc123def4567890",
+          status: "stored",
+          rawResourceId: "raw-abc123def456",
+          registeredObjectIds: [],
+          graphNodeIds: [],
+          artifactIds: [],
+          warnings: [],
+        },
+      ],
+    }, {
+      onAddProjectFileToCanvas,
+      onDeleteProjectFile,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove water.extxyz from project" }))
+
+    expect(onDeleteProjectFile).toHaveBeenCalledTimes(1)
+    expect(onDeleteProjectFile.mock.calls[0]?.[0]).toMatchObject({
+      id: "raw-abc123def456",
+      path: "inputs/raw/abc123def456-water.extxyz",
+    })
+    expect(onAddProjectFileToCanvas).not.toHaveBeenCalled()
+  })
 })
 
 function renderSidebar(
@@ -408,6 +450,7 @@ function renderSidebar(
         onDeleteProject={options.onDeleteProject ?? (async () => undefined)}
         onImportProjectFiles={options.onImportProjectFiles ?? vi.fn()}
         onAddProjectFileToCanvas={options.onAddProjectFileToCanvas ?? vi.fn()}
+        onDeleteProjectFile={options.onDeleteProjectFile ?? vi.fn()}
       />
     </I18nProvider>,
   )
@@ -420,6 +463,7 @@ type RenderSidebarOptions = {
   onCreateProject?: (name: string) => void | Promise<void>
   onOpenProject?: (projectRef: string) => Promise<void>
   onDeleteProject?: (projectRef: string) => Promise<void>
+  onDeleteProjectFile?: (file: ProjectFileEntry) => void | Promise<void>
 }
 
 function isRenderSidebarOptions(value: unknown): value is RenderSidebarOptions {

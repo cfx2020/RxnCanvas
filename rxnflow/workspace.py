@@ -82,6 +82,7 @@ class WorkspaceSnapshot:
 class NodePlacement:
     kind: ReactionNodeKind
     label: str
+    id: ID | None = None
     chemical_object_ids: tuple[ID, ...] = ()
     position: tuple[float, float] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -214,7 +215,7 @@ class GraphEditorWorkspaceService:
             return err(state_result.error)
         state = state_result.value
         node = ReactionNode(
-            id=_node_id(state.graph, placement),
+            id=placement.id or _node_id(state.graph, placement),
             kind=placement.kind,
             label=placement.label,
             chemical_object_ids=placement.chemical_object_ids,
@@ -270,6 +271,7 @@ class GraphEditorWorkspaceService:
         workspace_id: ID,
         from_node_id: ID,
         to_node_id: ID,
+        edge_id: ID | None = None,
         label: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> Result[WorkspaceSnapshot]:
@@ -279,7 +281,7 @@ class GraphEditorWorkspaceService:
             return err(state_result.error)
         state = state_result.value
         edge = ReactionEdge(
-            id=_edge_id(state.graph, from_node_id, to_node_id),
+            id=edge_id or _edge_id(state.graph, from_node_id, to_node_id),
             from_node=from_node_id,
             to_node=to_node_id,
             label=label,
@@ -503,15 +505,25 @@ def _workspace_id(graph_id: ID) -> ID:
 
 
 def _node_id(graph: ReactionGraph, placement: NodePlacement) -> ID:
-    payload = f"{graph.id}:{placement.kind}:{placement.label}:{len(graph.nodes) + 1}".encode(
-        "utf-8"
-    )
-    return f"node-{hashlib.sha256(payload).hexdigest()[:12]}"
+    existing = {node.id for node in graph.nodes}
+    index = len(graph.nodes) + 1
+    while True:
+        payload = f"{graph.id}:{placement.kind}:{placement.label}:{index}".encode("utf-8")
+        node_id = f"node-{hashlib.sha256(payload).hexdigest()[:12]}"
+        if node_id not in existing:
+            return node_id
+        index += 1
 
 
 def _edge_id(graph: ReactionGraph, from_node_id: ID, to_node_id: ID) -> ID:
-    payload = f"{graph.id}:{from_node_id}:{to_node_id}:{len(graph.edges) + 1}".encode("utf-8")
-    return f"edge-{hashlib.sha256(payload).hexdigest()[:12]}"
+    existing = {edge.id for edge in graph.edges}
+    index = len(graph.edges) + 1
+    while True:
+        payload = f"{graph.id}:{from_node_id}:{to_node_id}:{index}".encode("utf-8")
+        edge_id = f"edge-{hashlib.sha256(payload).hexdigest()[:12]}"
+        if edge_id not in existing:
+            return edge_id
+        index += 1
 
 
 def _remove_item_ids(

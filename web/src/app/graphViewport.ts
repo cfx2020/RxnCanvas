@@ -305,21 +305,15 @@ function clampPointToSurface(
 
 function graphMinimapBoundsForNodesAndViewport(
   nodes: GraphNodeSummary[],
-  viewport: GraphViewport,
+  _viewport: GraphViewport,
 ): GraphMinimapBounds {
   const positions = nodes.map((node) => graphNodePosition(node))
-  const visibleBounds = {
-    left: viewport.x,
-    top: viewport.y,
-    right: viewport.x + graphNodeLayoutBounds.width / viewport.zoom,
-    bottom: viewport.y + graphNodeLayoutBounds.height / viewport.zoom,
-  }
   const nodePadding = 48
   return {
-    left: Math.min(...positions.map((position) => position.x), visibleBounds.left) - nodePadding,
-    top: Math.min(...positions.map((position) => position.y), visibleBounds.top) - nodePadding,
-    right: Math.max(...positions.map((position) => position.x), visibleBounds.right) + nodePadding,
-    bottom: Math.max(...positions.map((position) => position.y), visibleBounds.bottom) + nodePadding,
+    left: Math.min(...positions.map((position) => position.x), 0) - nodePadding,
+    top: Math.min(...positions.map((position) => position.y), 0) - nodePadding,
+    right: Math.max(...positions.map((position) => position.x), graphNodeLayoutBounds.width) + nodePadding,
+    bottom: Math.max(...positions.map((position) => position.y), graphNodeLayoutBounds.height) + nodePadding,
   }
 }
 

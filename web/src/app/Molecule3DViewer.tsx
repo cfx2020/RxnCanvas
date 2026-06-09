@@ -63,6 +63,7 @@ export const Molecule3DViewer = memo(function Molecule3DViewer({
       return undefined
     }
     setRendererState("ready")
+    renderer.setClearColor(0xf7faf9, 0)
 
     const scene = new THREE.Scene()
     const camera = new THREE.OrthographicCamera(-2.4, 2.4, 1.55, -1.55, 0.1, 100)

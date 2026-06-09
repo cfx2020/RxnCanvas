@@ -8,7 +8,7 @@ import {
   type BrowserProjectRepositoryErrorPayload,
   type BrowserStorageObject,
 } from "../repository"
-import type { EnergyComputeData, ExportProfileData, FixtureRunData, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, ImportRegisterSelectionData, JsonObject, ParseCandidateSummary, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary, WorkspaceSummary } from "../shell"
+import type { EnergyComputeData, ExportProfileData, FixtureRunData, GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, ImportRegisterSelectionData, JsonObject, ParseCandidateSummary, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary, WorkspaceSummary } from "../shell"
 import {
   addCompositionDraftRow,
   compositionDraftFromSelectedNode,
@@ -67,13 +67,16 @@ import {
   initialGraphEditorHistoryState,
   peekGraphEditorHistoryEntry,
   pushGraphEditorHistoryEntry,
+  snapshotGraphEditorGraph,
   snapshotGraphEditorNodePositions,
   snapshotGraphEditorSelection,
   staleGraphEditorHistoryReference,
   startGraphEditorHistoryReplay,
   type GraphEditorHistoryEntry,
+  type GraphEditorHistoryRemoveEntry,
   type GraphEditorHistoryNodeEntry,
   type GraphEditorHistoryState,
+  type GraphEditorGraphSnapshot,
 } from "./graphEditorHistory"
 import type { GraphLayoutPlan } from "./graphAutoLayout"
 import { canvasPointToGraphNodePosition, graphNodePosition, moveGraphNodePosition } from "./graphNodeLayout"
@@ -792,6 +795,33 @@ export function WorkbenchShell({
     [projectRepository, replaceProjectSidebarState, resetGraphEditorHistory],
   )
 
+  const deleteSidebarProjectFile = useCallback(
+    async (file: ProjectFileEntry) => {
+      const current = projectSidebarStateRef.current
+      if (!current.activeProject || current.activeProject.projectRef !== file.projectRef) return
+      const optimisticState: ProjectSidebarState = {
+        ...current,
+        error: undefined,
+        projectFiles: current.projectFiles.filter((item) => item.path !== file.path),
+      }
+      replaceProjectSidebarState(optimisticState)
+      try {
+        await projectRepository.deleteObject(file.projectRef, file.path)
+        replaceProjectSidebarState(await refreshProjects(projectRepository, projectSidebarStateRef.current))
+      } catch (error) {
+        replaceProjectSidebarState({
+          ...projectSidebarStateRef.current,
+          error: {
+            code: "storage_failed",
+            message: error instanceof Error ? error.message : "Project file delete failed.",
+            target: file.path,
+          },
+        })
+      }
+    },
+    [projectRepository, replaceProjectSidebarState],
+  )
+
   const saveSidebarBridgeSession = useCallback(async (): Promise<boolean> => {
     const activeProject = projectSidebarStateRef.current.activeProject
     const sessionId = workbenchStateRef.current.sessionId
@@ -1200,6 +1230,50 @@ export function WorkbenchShell({
     replaceProjectSidebarState(nextState)
   }, [replaceProjectSidebarState])
 
+  const addReusableProjectFileObjectNode = useCallback(async (
+    file: ProjectFileEntry,
+    position: [number, number],
+  ): Promise<boolean> => {
+    const reusableObjects = reusableProjectFileObjects(file, workbenchStateRef.current)
+    if (reusableObjects.length === 0) return false
+    const primaryObject = reusableObjects[0]
+    const reusableObjectIds = reusableObjects.map((object) => object.id)
+    const sessionId = workbenchStateRef.current.sessionId
+    if (!sessionId || !primaryObject) return false
+    if (!(await ensureWorkspaceReady(sessionId))) return true
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.add_node",
+      args: {
+        session_id: sessionId,
+        kind: "species",
+        label: primaryObject.label ?? primaryObject.id,
+        chemical_object_ids: [primaryObject.id],
+        position,
+      },
+    })
+    applyWorkspaceResponse(addNodeResponse)
+    if (!addNodeResponse.ok || !addNodeResponse.data) {
+      updateProjectFileEntry(file.path, {
+        status: "error",
+        registeredObjectIds: reusableObjectIds,
+        warnings: projectFileWarningMessagesFromError(
+          addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node"),
+        ),
+      })
+      return true
+    }
+    const latestWorkspace = addNodeResponse.data.workspace
+    updateProjectFileEntry(file.path, {
+      status: "used-in-graph",
+      registeredObjectIds: reusableObjectIds,
+      graphNodeIds: reusableObjectIds.flatMap((objectId) => graphNodeIdsForObject(latestWorkspace, objectId)),
+      warnings: [],
+    })
+    resetGraphEditorHistory()
+    return true
+  }, [applyWorkspaceResponse, ensureWorkspaceReady, resetGraphEditorHistory, shellClient, updateProjectFileEntry])
+
   const addRawFileNode = useCallback(async (request: AddRawFileNodeRequest) => {
     const sessionId = workbenchState.sessionId
     const activeProject = projectSidebarStateRef.current.activeProject
@@ -1211,6 +1285,13 @@ export function WorkbenchShell({
     if (!activeProject) {
       applyDropImportError(shellError("active_project_required", "Active browser project is required before dropping raw files.", "active_project"))
       return
+    }
+    if (request.source.kind === "project-file") {
+      const source = request.source
+      const projectFile = projectSidebarStateRef.current.projectFiles.find((file) => (
+        file.id === source.projectFileId || file.path === source.path
+      ))
+      if (projectFile && await addReusableProjectFileObjectNode(projectFile, request.position)) return
     }
 
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
@@ -1429,10 +1510,11 @@ export function WorkbenchShell({
       graphNodeIds: graphNodeIdsForObject(addNodeResponse.data.workspace, registeredObjectId),
     })
     resetGraphEditorHistory()
-  }, [applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, transientImportState.expectedFormat, transientImportState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
+  }, [addReusableProjectFileObjectNode, applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, transientImportState.expectedFormat, transientImportState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
 
   const addProjectFileToCanvas = useCallback(async (file: ProjectFileEntry) => {
     const baseNodeCount = workbenchStateRef.current.workspace?.graph.nodes.length ?? 0
+    if (await addReusableProjectFileObjectNode(file, registeredImportNodePosition(baseNodeCount, 0))) return
     await addRawFileNode({
       source: {
         kind: "project-file",
@@ -1441,7 +1523,7 @@ export function WorkbenchShell({
       },
       position: registeredImportNodePosition(baseNodeCount, 0),
     })
-  }, [addRawFileNode])
+  }, [addRawFileNode, addReusableProjectFileObjectNode])
 
   const cancelParseCandidateChooser = useCallback(() => {
     setParseCandidateChooser(null)
@@ -2032,6 +2114,7 @@ export function WorkbenchShell({
   const removeGraphItems = useCallback(async (request: RemoveGraphItemsRequest) => {
     const sessionId = workbenchState.sessionId
     if (!sessionId || (request.nodeIds.length === 0 && request.edgeIds.length === 0 && request.pathIds.length === 0)) return
+    const before = snapshotGraphEditorGraph(workbenchState.workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.remove",
@@ -2044,9 +2127,16 @@ export function WorkbenchShell({
     })
     applyWorkspaceResponse(response)
     if (response.ok && response.data) {
-      resetGraphEditorHistory()
+      pushGraphEditorHistory({
+        id: nextGraphEditorHistoryEntryId("remove"),
+        kind: "remove",
+        label: t("graphCanvas.history.delete"),
+        before,
+        after: snapshotGraphEditorGraph(response.data.workspace),
+        createdAt: new Date().toISOString(),
+      })
     }
-  }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
+  }, [applyWorkspaceResponse, nextGraphEditorHistoryEntryId, pushGraphEditorHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const setGraphViewport = useCallback(async (viewport: GraphViewport) => {
     const sessionId = workbenchState.sessionId
@@ -2140,6 +2230,7 @@ export function WorkbenchShell({
       direction,
       sessionId,
       shellClient,
+      workspace,
       applyWorkspaceResponse,
     })
     if (!replayResult.ok) {
@@ -2589,6 +2680,7 @@ export function WorkbenchShell({
             onDeleteProject={deleteSidebarProject}
             onImportProjectFiles={openProjectImport}
             onAddProjectFileToCanvas={addProjectFileToCanvas}
+            onDeleteProjectFile={deleteSidebarProjectFile}
           />
         </section>
         <section className="canvas-stage" aria-label={t("workbench.flow.canvasStage")}>
@@ -2865,6 +2957,32 @@ function graphNodeIdsForObject(workspace: WorkspaceSummary, objectId: string): s
     .map((node) => node.id)
 }
 
+function reusableProjectFileObjects(
+  file: ProjectFileEntry,
+  workbench: WorkbenchDomainState,
+): WorkbenchDomainState["objects"] {
+  if (file.registeredObjectIds.length === 0 || workbench.objects.length === 0) return []
+  const objectById = new Map(workbench.objects.map((object) => [object.id, object]))
+  return file.registeredObjectIds
+    .map((objectId) => objectById.get(objectId))
+    .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object))
+    .sort((left, right) => projectFileReusableObjectScore(right) - projectFileReusableObjectScore(left))
+}
+
+function projectFileReusableObjectScore(object: WorkbenchDomainState["objects"][number]): number {
+  let score = 0
+  if (hasRenderableGeometry(object.geometry)) score += 1000
+  if (object.coordinate_preview?.has3d) score += 140
+  if (object.display_energy && Number.isFinite(object.display_energy.value)) score += 120
+  if ((object.energy_channels ?? []).length > 0) score += 80
+  if (object.formula) score += 30
+  if (typeof object.charge === "number") score += 12
+  if (typeof object.spin_multiplicity === "number") score += 12
+  if (object.source_file_id || object.provenance?.source_file_id) score += 8
+  if ((object.warnings ?? []).length > 0) score -= Math.min(60, (object.warnings ?? []).length * 8)
+  return score
+}
+
 function graphNodeObjectIds(node: WorkspaceSummary["graph"]["nodes"][number]): string[] {
   return Array.from(new Set([
     ...(node.composition ?? []).map((term) => term.object_id),
@@ -2968,12 +3086,14 @@ async function replayGraphEditorHistoryEntry({
   direction,
   sessionId,
   shellClient,
+  workspace,
   applyWorkspaceResponse,
 }: {
   entry: GraphEditorHistoryEntry
   direction: "undo" | "redo"
   sessionId: string
   shellClient: ShellClient
+  workspace: WorkspaceSummary
   applyWorkspaceResponse: (response: Awaited<ReturnType<ShellClient["run"]>>) => void
 }): Promise<{ ok: true } | { ok: false; error?: ShellError | null }> {
   if (entry.kind === "viewport") {
@@ -3003,6 +3123,17 @@ async function replayGraphEditorHistoryEntry({
     })
     applyWorkspaceResponse(response)
     return response.ok && response.data ? { ok: true } : { ok: false, error: response.error }
+  }
+
+  if (entry.kind === "remove") {
+    return replayGraphRemoveHistoryEntry({
+      entry,
+      direction,
+      sessionId,
+      shellClient,
+      workspace,
+      applyWorkspaceResponse,
+    })
   }
 
   const target = (direction === "undo" ? entry.before : entry.after) as GraphEditorHistoryNodeEntry["before"]
@@ -3037,6 +3168,406 @@ async function replayGraphEditorHistoryEntry({
   }
 
   return { ok: true }
+}
+
+async function replayGraphRemoveHistoryEntry({
+  entry,
+  direction,
+  sessionId,
+  shellClient,
+  workspace,
+  applyWorkspaceResponse,
+}: {
+  entry: GraphEditorHistoryRemoveEntry
+  direction: "undo" | "redo"
+  sessionId: string
+  shellClient: ShellClient
+  workspace: WorkspaceSummary
+  applyWorkspaceResponse: (response: Awaited<ReturnType<ShellClient["run"]>>) => void
+}): Promise<{ ok: true } | { ok: false; error?: ShellError | null }> {
+  if (direction === "undo") {
+    return restoreGraphSnapshot({
+      snapshot: entry.before,
+      sessionId,
+      shellClient,
+      workspace,
+      applyWorkspaceResponse,
+    })
+  }
+
+  return removeGraphSnapshotDelta({
+    before: entry.before,
+    after: entry.after,
+    sessionId,
+    shellClient,
+    workspace,
+    applyWorkspaceResponse,
+  })
+}
+
+async function restoreGraphSnapshot({
+  snapshot,
+  sessionId,
+  shellClient,
+  workspace,
+  applyWorkspaceResponse,
+}: {
+  snapshot: GraphEditorGraphSnapshot
+  sessionId: string
+  shellClient: ShellClient
+  workspace: WorkspaceSummary
+  applyWorkspaceResponse: (response: Awaited<ReturnType<ShellClient["run"]>>) => void
+}): Promise<{ ok: true } | { ok: false; error?: ShellError | null }> {
+  let currentWorkspace = workspace
+  const nodeIdMap = new Map<string, string>()
+  const usedCurrentNodeIds = new Set<string>()
+
+  for (const targetNode of snapshot.nodes) {
+    const currentNode = findCurrentNodeForSnapshot(targetNode, currentWorkspace, usedCurrentNodeIds)
+    if (currentNode) {
+      nodeIdMap.set(targetNode.id, currentNode.id)
+      usedCurrentNodeIds.add(currentNode.id)
+      continue
+    }
+
+    const previousNodeIds = new Set(currentWorkspace.graph.nodes.map((node) => node.id))
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.add_node",
+      args: {
+        session_id: sessionId,
+        node_id: targetNode.id,
+        kind: targetNode.kind,
+        label: targetNode.label,
+        chemical_object_ids: targetNode.chemical_object_ids ?? [],
+        composition: targetNode.composition ?? [],
+        position: targetNode.position ?? null,
+        metadata: graphJsonObject(targetNode.metadata),
+      },
+    })
+    applyWorkspaceResponse(response)
+    if (!response.ok || !response.data) {
+      return { ok: false, error: response.error }
+    }
+    currentWorkspace = response.data.workspace
+    const restoredNode = currentWorkspace.graph.nodes.find((node) => !previousNodeIds.has(node.id))
+      ?? findCurrentNodeForSnapshot(targetNode, currentWorkspace, usedCurrentNodeIds)
+    if (!restoredNode) {
+      return {
+        ok: false,
+        error: shellError("graph_history_replay_failed", "Restored graph node could not be matched.", targetNode.id),
+      }
+    }
+    nodeIdMap.set(targetNode.id, restoredNode.id)
+    usedCurrentNodeIds.add(restoredNode.id)
+  }
+
+  for (const targetEdge of snapshot.edges) {
+    const sourceNodeId = nodeIdMap.get(workbenchEdgeSource(targetEdge))
+    const targetNodeId = nodeIdMap.get(workbenchEdgeTarget(targetEdge))
+    if (!sourceNodeId || !targetNodeId) continue
+
+    const existingEdge = findCurrentEdgeForSnapshot(targetEdge, currentWorkspace, nodeIdMap)
+    if (existingEdge) {
+      if ((existingEdge.label ?? null) !== (targetEdge.label ?? null)) {
+        const response = await shellClient.run<WorkspaceCommandData>({
+          command: "workspace.update_edge",
+          args: {
+            session_id: sessionId,
+            edge_id: existingEdge.id,
+            label: targetEdge.label ?? null,
+            metadata: graphJsonObject(targetEdge.metadata),
+          },
+        })
+        applyWorkspaceResponse(response)
+        if (!response.ok || !response.data) return { ok: false, error: response.error }
+        currentWorkspace = response.data.workspace
+      }
+      continue
+    }
+
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.connect",
+      args: {
+        session_id: sessionId,
+        edge_id: targetEdge.id,
+        from_node_id: sourceNodeId,
+        to_node_id: targetNodeId,
+        label: targetEdge.label ?? null,
+        metadata: graphJsonObject(targetEdge.metadata),
+      },
+    })
+    applyWorkspaceResponse(response)
+    if (!response.ok || !response.data) {
+      return { ok: false, error: response.error }
+    }
+    currentWorkspace = response.data.workspace
+  }
+
+  for (const targetPath of snapshot.paths) {
+    const mappedNodeIds = targetPath.node_ids
+      .map((nodeId) => nodeIdMap.get(nodeId))
+      .filter((nodeId): nodeId is string => Boolean(nodeId))
+    if (mappedNodeIds.length !== targetPath.node_ids.length) continue
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_path",
+      args: {
+        session_id: sessionId,
+        path_id: targetPath.id,
+        node_ids: mappedNodeIds,
+        label: targetPath.label ?? targetPath.id,
+      },
+    })
+    applyWorkspaceResponse(response)
+    if (!response.ok || !response.data) {
+      return { ok: false, error: response.error }
+    }
+    currentWorkspace = response.data.workspace
+  }
+
+  if (snapshot.activePathId) {
+    const activePath = snapshot.paths.find((path) => path.id === snapshot.activePathId)
+    if (activePath) {
+      const mappedNodeIds = activePath.node_ids
+        .map((nodeId) => nodeIdMap.get(nodeId))
+        .filter((nodeId): nodeId is string => Boolean(nodeId))
+      if (mappedNodeIds.length === activePath.node_ids.length) {
+        const response = await shellClient.run<WorkspaceCommandData>({
+          command: "workspace.set_path",
+          args: {
+            session_id: sessionId,
+            path_id: activePath.id,
+            node_ids: mappedNodeIds,
+            label: activePath.label ?? activePath.id,
+          },
+        })
+        applyWorkspaceResponse(response)
+        if (!response.ok || !response.data) return { ok: false, error: response.error }
+        currentWorkspace = response.data.workspace
+      }
+    }
+  }
+
+  if (snapshot.viewport) {
+    const response = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.set_viewport",
+      args: {
+        session_id: sessionId,
+        viewport: snapshot.viewport,
+      },
+    })
+    applyWorkspaceResponse(response)
+    if (!response.ok || !response.data) return { ok: false, error: response.error }
+    currentWorkspace = response.data.workspace
+  }
+
+  const edgeIdMap = edgeIdMapForSnapshot(snapshot, currentWorkspace, nodeIdMap)
+  const pathIdSet = new Set(currentWorkspace.graph.paths.map((path) => path.id))
+  const selection = {
+    node_ids: snapshot.selection.nodeIds
+      .map((nodeId) => nodeIdMap.get(nodeId))
+      .filter((nodeId): nodeId is string => Boolean(nodeId)),
+    edge_ids: snapshot.selection.edgeIds
+      .map((edgeId) => edgeIdMap.get(edgeId))
+      .filter((edgeId): edgeId is string => Boolean(edgeId)),
+    path_ids: snapshot.selection.pathIds.filter((pathId) => pathIdSet.has(pathId)),
+  }
+  const response = await shellClient.run<WorkspaceCommandData>({
+    command: "workspace.select",
+    args: {
+      session_id: sessionId,
+      selection,
+    },
+  })
+  applyWorkspaceResponse(response)
+  if (!response.ok || !response.data) return { ok: false, error: response.error }
+  return { ok: true }
+}
+
+async function removeGraphSnapshotDelta({
+  before,
+  after,
+  sessionId,
+  shellClient,
+  workspace,
+  applyWorkspaceResponse,
+}: {
+  before: GraphEditorGraphSnapshot
+  after: GraphEditorGraphSnapshot
+  sessionId: string
+  shellClient: ShellClient
+  workspace: WorkspaceSummary
+  applyWorkspaceResponse: (response: Awaited<ReturnType<ShellClient["run"]>>) => void
+}): Promise<{ ok: true } | { ok: false; error?: ShellError | null }> {
+  const beforeToCurrentNodeIds = nodeIdMapBetweenSnapshots(before.nodes, workspace)
+  const afterEquivalentNodeIds = new Set<string>()
+  for (const afterNode of after.nodes) {
+    const currentNode = findCurrentNodeForSnapshot(afterNode, workspace, afterEquivalentNodeIds)
+    if (currentNode) afterEquivalentNodeIds.add(currentNode.id)
+  }
+
+  const nodeIds = before.nodes
+    .filter((node) => !hasEquivalentNodeInSnapshot(node, after.nodes))
+    .map((node) => beforeToCurrentNodeIds.get(node.id))
+    .filter((nodeId): nodeId is string => typeof nodeId === "string" && !afterEquivalentNodeIds.has(nodeId))
+
+  const edgeIds = before.edges
+    .filter((edge) => !hasEquivalentEdgeInSnapshot(edge, after.edges, before.nodes, after.nodes))
+    .map((edge) => findCurrentEdgeForSnapshot(edge, workspace, beforeToCurrentNodeIds)?.id)
+    .filter((edgeId): edgeId is string => Boolean(edgeId))
+
+  const pathIds = before.paths
+    .filter((path) => !hasEquivalentPathInSnapshot(path, after.paths, before.nodes, after.nodes))
+    .map((path) => findCurrentPathForSnapshot(path, workspace, beforeToCurrentNodeIds)?.id)
+    .filter((pathId): pathId is string => Boolean(pathId))
+
+  if (nodeIds.length === 0 && edgeIds.length === 0 && pathIds.length === 0) {
+    return { ok: true }
+  }
+
+  const response = await shellClient.run<WorkspaceCommandData>({
+    command: "workspace.remove",
+    args: {
+      session_id: sessionId,
+      node_ids: nodeIds,
+      edge_ids: edgeIds,
+      path_ids: pathIds,
+    },
+  })
+  applyWorkspaceResponse(response)
+  return response.ok && response.data ? { ok: true } : { ok: false, error: response.error }
+}
+
+function findCurrentNodeForSnapshot(
+  targetNode: GraphNodeSummary,
+  workspace: WorkspaceSummary,
+  usedCurrentNodeIds: Set<string>,
+): GraphNodeSummary | null {
+  const sameId = workspace.graph.nodes.find((node) => node.id === targetNode.id && !usedCurrentNodeIds.has(node.id))
+  if (sameId) return sameId
+  return workspace.graph.nodes.find((node) => !usedCurrentNodeIds.has(node.id) && graphNodesEquivalent(node, targetNode)) ?? null
+}
+
+function nodeIdMapBetweenSnapshots(nodes: GraphNodeSummary[], workspace: WorkspaceSummary): Map<string, string> {
+  const idMap = new Map<string, string>()
+  const usedCurrentNodeIds = new Set<string>()
+  for (const node of nodes) {
+    const currentNode = findCurrentNodeForSnapshot(node, workspace, usedCurrentNodeIds)
+    if (!currentNode) continue
+    idMap.set(node.id, currentNode.id)
+    usedCurrentNodeIds.add(currentNode.id)
+  }
+  return idMap
+}
+
+function edgeIdMapForSnapshot(
+  snapshot: GraphEditorGraphSnapshot,
+  workspace: WorkspaceSummary,
+  nodeIdMap: Map<string, string>,
+): Map<string, string> {
+  const idMap = new Map<string, string>()
+  const usedCurrentEdgeIds = new Set<string>()
+  for (const edge of snapshot.edges) {
+    const currentEdge = findCurrentEdgeForSnapshot(edge, workspace, nodeIdMap, usedCurrentEdgeIds)
+    if (!currentEdge) continue
+    idMap.set(edge.id, currentEdge.id)
+    usedCurrentEdgeIds.add(currentEdge.id)
+  }
+  return idMap
+}
+
+function findCurrentEdgeForSnapshot(
+  targetEdge: GraphEdgeSummary,
+  workspace: WorkspaceSummary,
+  nodeIdMap: Map<string, string>,
+  usedCurrentEdgeIds: Set<string> = new Set(),
+): GraphEdgeSummary | null {
+  const sameId = workspace.graph.edges.find((edge) => edge.id === targetEdge.id && !usedCurrentEdgeIds.has(edge.id))
+  if (sameId) return sameId
+  const sourceNodeId = nodeIdMap.get(workbenchEdgeSource(targetEdge))
+  const targetNodeId = nodeIdMap.get(workbenchEdgeTarget(targetEdge))
+  if (!sourceNodeId || !targetNodeId) return null
+  return workspace.graph.edges.find((edge) => (
+    !usedCurrentEdgeIds.has(edge.id)
+    && workbenchEdgeSource(edge) === sourceNodeId
+    && workbenchEdgeTarget(edge) === targetNodeId
+    && (edge.label ?? null) === (targetEdge.label ?? null)
+  )) ?? workspace.graph.edges.find((edge) => (
+    !usedCurrentEdgeIds.has(edge.id)
+    && workbenchEdgeSource(edge) === sourceNodeId
+    && workbenchEdgeTarget(edge) === targetNodeId
+  )) ?? null
+}
+
+function findCurrentPathForSnapshot(
+  targetPath: GraphPathSummary,
+  workspace: WorkspaceSummary,
+  nodeIdMap: Map<string, string>,
+): GraphPathSummary | null {
+  const sameId = workspace.graph.paths.find((path) => path.id === targetPath.id)
+  if (sameId) return sameId
+  const mappedNodeIds = targetPath.node_ids.map((nodeId) => nodeIdMap.get(nodeId))
+  if (mappedNodeIds.some((nodeId) => !nodeId)) return null
+  return workspace.graph.paths.find((path) => (
+    path.node_ids.join("\n") === mappedNodeIds.join("\n")
+    && (path.label ?? null) === (targetPath.label ?? null)
+  )) ?? null
+}
+
+function hasEquivalentNodeInSnapshot(node: GraphNodeSummary, nodes: GraphNodeSummary[]): boolean {
+  return nodes.some((candidate) => graphNodesEquivalent(node, candidate))
+}
+
+function hasEquivalentEdgeInSnapshot(
+  edge: GraphEdgeSummary,
+  edges: GraphEdgeSummary[],
+  beforeNodes: GraphNodeSummary[],
+  afterNodes: GraphNodeSummary[],
+): boolean {
+  const sourceNode = beforeNodes.find((node) => node.id === workbenchEdgeSource(edge))
+  const targetNode = beforeNodes.find((node) => node.id === workbenchEdgeTarget(edge))
+  return edges.some((candidate) => {
+    const candidateSource = afterNodes.find((node) => node.id === workbenchEdgeSource(candidate))
+    const candidateTarget = afterNodes.find((node) => node.id === workbenchEdgeTarget(candidate))
+    return Boolean(sourceNode && targetNode && candidateSource && candidateTarget)
+      && graphNodesEquivalent(sourceNode as GraphNodeSummary, candidateSource as GraphNodeSummary)
+      && graphNodesEquivalent(targetNode as GraphNodeSummary, candidateTarget as GraphNodeSummary)
+      && (edge.label ?? null) === (candidate.label ?? null)
+  })
+}
+
+function hasEquivalentPathInSnapshot(
+  path: GraphPathSummary,
+  paths: GraphPathSummary[],
+  beforeNodes: GraphNodeSummary[],
+  afterNodes: GraphNodeSummary[],
+): boolean {
+  return paths.some((candidate) => (
+    (path.label ?? null) === (candidate.label ?? null)
+    && path.node_ids.length === candidate.node_ids.length
+    && path.node_ids.every((nodeId, index) => {
+      const beforeNode = beforeNodes.find((node) => node.id === nodeId)
+      const afterNode = afterNodes.find((node) => node.id === candidate.node_ids[index])
+      return Boolean(beforeNode && afterNode) && graphNodesEquivalent(beforeNode as GraphNodeSummary, afterNode as GraphNodeSummary)
+    })
+  ))
+}
+
+function graphNodesEquivalent(left: GraphNodeSummary, right: GraphNodeSummary): boolean {
+  return left.kind === right.kind
+    && left.label === right.label
+    && sameGraphNodePosition(left.position, right.position)
+    && stableJson(left.chemical_object_ids ?? []) === stableJson(right.chemical_object_ids ?? [])
+    && stableJson(left.composition ?? []) === stableJson(right.composition ?? [])
+}
+
+function sameGraphNodePosition(left: GraphNodeSummary["position"], right: GraphNodeSummary["position"]): boolean {
+  if (!left && !right) return true
+  if (!left || !right) return false
+  return Math.abs(left[0] - right[0]) < 0.001 && Math.abs(left[1] - right[1]) < 0.001
+}
+
+function graphJsonObject(value: unknown): JsonObject {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {}
 }
 
 function isSingleNodeSelection(selection: WorkspaceSelectionSummary | null | undefined): boolean {

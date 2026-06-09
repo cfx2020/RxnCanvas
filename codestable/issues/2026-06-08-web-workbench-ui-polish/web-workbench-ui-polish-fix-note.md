@@ -54,8 +54,8 @@ tags: [web-workbench, project-sidebar, graph-canvas, path-authoring, molecule-3d
 - Graph Canvas 触控板语义更新：普通 wheel / 双指滚动只平移画布，`ctrl/meta` pinch-style wheel 才缩放；默认工具保持平移模式。
 - Graph Canvas selection 修复：节点 3D preview 内部 canvas 不再吞掉节点选择，选择模式下点击结构区域也会选中节点；点击画布空白处会清空节点、edge、path 或能垒标注选择。
 - Graph Canvas edge hitbox 修复：viewport layer 透明区域不再盖住 edge hitbox，edge 中心点现在命中 `button.graph-edge-hitbox`，点击线条可选中 edge 并打开浮动标签编辑器。
-- Graph Canvas 能垒标注改为从节点底部端口发起；拖拽到目标节点生成标注，同时提供“点击底部端口 -> 点击目标节点”的备用入口。能垒标注显示 `ΔE‡ 12.55` 这种无正号、无单位格式；标注可选中并通过 X 删除。
-- Graph node 视觉更新：节点端口缩小，节点宽度收窄；相对能标签使用 `ΔE` / `ΔG` 等符号；3D 预览角标只显示 `0,1`，不再写 `q` / `spin`。
+- Graph Canvas 能垒标注改为从节点底部端口拖拽发起；拖到目标节点后生成垂直双箭头标注。能垒标注显示 `▲E‡ 12.55` 这种无正号、无单位格式；标注可选中、可直接编辑，并通过 X 删除。
+- Graph node 视觉更新：节点端口缩小，节点宽度收窄；相对能标签使用 `▲E` / `▲G` 等符号；3D 预览角标只显示 `0,1`，不再写 `q` / `spin`。
 - Molecule 3D 大视图已接入：节点结构区域右上角可打开大视图，大视图保留左下角电荷/自旋，并支持点选 2/3/4 个原子显示键长、键角和二面角。
 - Project Sidebar 宽度收窄为 `264px`，项目新增按钮只在项目标题行 hover/focus 时显示，项目更多/导入按钮只在对应项目行 hover/focus/menu-open 时显示；active/stored/registered/used-in-graph 文件行不再用整行底色制造“未 hover 也高亮”的错觉。
 - Graph Canvas 节点进一步收窄，左右 edge 端口和底部能垒端口统一为实际 `10px x 10px`，并清除浏览器默认 button padding，避免左右端口比底部端口更大的问题。
@@ -92,7 +92,7 @@ tags: [web-workbench, project-sidebar, graph-canvas, path-authoring, molecule-3d
   - 最新 Browser 复验：普通 scroll 让 `.graph-viewport-layer` transform 平移但 zoom 文本保持 `93%`；Reset / Zoom In 分别回到 `100%` 和 `120%`。
   - 最新 Browser 复验：选择模式下点击 3D canvas 后节点 `aria-current=true`，点击画布空白处后所有节点 `aria-current=null`。
   - 最新 Browser 复验：点击 edge hitbox 后 `.graph-edge-hitbox--selected` 出现，并显示 `.graph-edge-inline-label-editor`。
-  - 最新 Browser 复验：点击节点底部能垒端口再点击目标节点生成 `ΔE‡ 12.55`；选中后出现删除按钮，点击后 `barrierCount=0`。
+  - 最新 Browser 复验：从节点底部能垒端口拖到目标节点生成 `▲E‡ 12.55`；选中后出现删除按钮，点击后 `barrierCount=0`。
   - 最新 Browser 复验：打开大 3D 结构视图后 overlay 为 `0,1`；点选两个原子后出现键长测量文本 `1.950 Å`。
 - Playwright smoke `http://127.0.0.1:5173/?qa=cold-ui-polish-fresh`：
   - fixture graph 初始化后 `nodeCount=2`、`edgeCount=1`。
@@ -108,3 +108,161 @@ tags: [web-workbench, project-sidebar, graph-canvas, path-authoring, molecule-3d
 - Vite build 仍提示单个 JS chunk 超过 500 kB；这是后续 code splitting / lazy load 工作，不影响本轮 UI 行为修复。
 - Browser screenshot / macOS `screencapture` 在当前 Codex in-app browser 环境中无法产出截图（CDP screenshot 超时，系统截图返回 display image 失败）；本轮浏览器验收使用 DOM snapshot、computed style、console logs 和 CUA click 证据。后续若继续做拖拽/框选验收，可以补专门的 Playwright/CUA 交互脚本。
 - 项目文件行右侧删除 `X` 没有在本轮加假按钮：当前仓储只有低层 `deleteObject(projectRef, path)`，还缺少“删除 raw file 后如何处理已登记对象、图谱节点、自动保存和恢复”的完整产品语义。应作为后续 Project File Delete feature 设计后实现。
+
+## 2026-06-09 补充修复：能垒标注、边命中和浅色 3D 弹窗
+
+### 用户反馈
+
+- 节点底部圆点应像左右连接点一样支持拖出曲线，松手后生成垂直双箭头能垒标注。
+- 双箭头标签后面不应出现椭圆背景，且标签应可直接编辑。
+- 已标注文字的曲线 / 能垒应能选中和删除。
+- 重新拖入节点并连线后，节点上的 `▲E` 不应退回绝对能量。
+- 浅色模式下大 3D 结构窗口不应使用突兀深色背景。
+- 删除节点后撤回按钮需要可用。
+
+### 修复
+
+- Bottom barrier handle 的拖拽逻辑改为与 edge handle 同级的 pointer session：pointer move 实时更新 pending barrier path，pointer up 命中目标节点后生成 `CanvasBarrierAnnotation`。
+- Barrier 双箭头不再落在源节点卡片正中穿过 3D 预览；现在从节点底部引出到节点外侧，再绘制垂直双箭头和虚线参考线，标签命中点不再被 3D canvas 遮挡。
+- `.graph-edge-layer` 提到节点层上方，但整层保持 `pointer-events: none`，只让具体 edge/barrier hitbox、label 和 SVG hit-line 接事件；修复 graph edge / barrier label 看得到但被节点 3D canvas 盖住、真实浏览器点不到的问题。
+- Barrier 标签从胶囊按钮改为透明文本；选中编辑态只保留细下划线 input，不再有竖椭圆背景。
+- Barrier 标注新增透明 hitbox，点击 label / hitbox 可进入编辑态；删除按钮同时处理 `pointerdown` 和真实 `click`，修复浏览器点击删除无效的问题。
+- Web 侧 canvas energy resolver 增加 `egas` / `ggas` / `gsol` 优先键：电子能读 `egas`，气态自由能读 `ggas`，溶剂化自由能读 `gsol`，避免重新创建节点后相对能显示退化。
+- 浅色模式的大 3D 弹窗 backdrop / viewer 改为浅色玻璃背景；深色背景只在 dark theme 下启用。
+- Fixture transport 的 workspace normalize 将 `active_path_id: undefined` 收敛为 `null`，测试 helper 的 base64 生成移除 Node `Buffer` 依赖，恢复 Web build。
+- Fixture transport 的 `node-web-*` 生成从“当前节点数量 + 1”改成单调递增计数；`fixture.run` 和打开项目内容时会重置到当前图谱之后，删除节点再从项目文件重新拖入不会复用旧 node id，避免 React 重复 key 导致节点/标签/相对能状态串位。
+
+### 验证
+
+- `cd web && npm run test -- GraphCanvas.test.tsx WorkbenchShell.test.tsx --run -t "barrier|traffic-light deletion|graph edges|relative energy"`（7 passed）
+- `cd web && npm run test -- WorkbenchShell.test.tsx --run -t "reuses project raw file rows"`（1 passed）
+- `cd web && npm run test -- GraphCanvas.test.tsx WorkbenchShell.test.tsx --run -t "barrier|traffic-light deletion|graph edges|relative energy|reuses project raw file rows"`（8 passed）
+- `cd web && npm run test -- GraphCanvas.test.tsx --run`（12 passed）
+- `cd web && npm run test -- --run`（30 files passed；267 passed / 25 skipped）
+- `cd web && npm run build`（passed；仍有 Vite chunk size warning）
+- Browser 验证 `http://127.0.0.1:5173/?qa=cold-ui-polish-fresh`：
+  - 页面 title 为 `RxnFlow Workbench`；当前 app 交互未新增相关运行错误，历史 console 中保留的重复 key 记录已在本轮定位并修复。
+  - 打开 `Ni-fxc-alpha` 后画布有 3 个 graph nodes。
+  - 从第一个节点底部 barrier handle 拖到第二个节点右侧后，DOM 出现 1 条 `.graph-barrier-arrow`、1 条 `.graph-barrier-guide`、1 个 `.graph-barrier-hitbox` 和 1 个 `.graph-barrier-delete-button`。
+  - Barrier label computed background 为透明；编辑 input 可改为 `OA`。
+  - 调整后 barrier label 命中堆栈顶部为 input / label / hitbox，3D canvas 已降到其后，不再覆盖标注。
+  - 点击 barrier 删除按钮后，`.graph-barrier-arrow`、`.graph-barrier-hitbox`、`.graph-barrier-delete-button`、`.graph-barrier-label` 均回到 0。
+  - 打开大 3D view 后，浅色模式 backdrop 为 `rgba(244, 247, 248, 0.72)`，viewer 背景为 `rgb(247, 250, 249)`。
+  - 复验真实页面时发现历史 console error 中存在重复 key `node-web-3`，已定位为 Web fixture 删除节点后 id 复用并修复；新增测试覆盖“拖入 node-web-3 -> 删除 -> 再拖入同一项目文件 -> 生成 node-web-4/后续 id”。
+  - 真实页面从第一个节点底部能垒端口拖到目标节点后生成 1 个 barrier arrow / guide / hitbox / delete button；默认标签 input 值为 `▲E‡ 6.28` 且背景透明。
+  - 点击 barrier 删除按钮后，barrier arrow / hitbox / label / delete button 均变为 0。
+  - 真实页面普通 edge hitbox 可选中，选中后出现 inline label editor；点击“删除选中项”后 edge hitbox 和 inline editor 均变为 0，撤销按钮显示“撤销 删除”且可用。
+  - 真实页面通过节点红灯删除节点后，节点数 `3 -> 2`，撤销按钮可用；点击撤销后节点数恢复为 `3`。
+  - 真实页面打开大 3D view 后，浅色模式 backdrop 为 `rgba(244, 247, 248, 0.72)`，dialog 为 `rgba(251, 253, 255, 0.98)`，viewer 为 `rgb(247, 250, 249)`，信息层显示 `Charge 0 / Multiplicity 1` 和原子/电子数。
+
+### 剩余边界
+
+- 本轮已在浏览器里删除普通 edge 和 graph node，并通过撤销恢复；验证后图谱节点数回到删除前状态。
+- Codex in-app browser 的 CDP screenshot 在当前页面仍超时，截图证据未产出；本轮使用 DOM snapshot、computed style、console logs 和真实 CUA drag/click 验证。
+
+## 2026-06-09 补充修复：标签一致性、小地图稳定性和节点尺寸
+
+### 用户反馈
+
+- 普通曲线标签和能垒标签风格需要统一为画布上 `OA` 那种胶囊样式；编辑标签后点击空白处应自动保存，标签应贴着曲线/双箭头中心。
+- 画布边缘仍像有隐藏空气墙，节点拖到边缘不够自然。
+- 右下角小地图拖动预览框时，画布视图和预览框不匹配，拖动时需要实时同步。
+- 相对能符号里的 Delta 不应是实心三角。
+- 节点默认尺寸偏小，3D 结构和标题看不清；节点需要可手动调整大小，左上角红绿灯按钮更轻。
+- 侧边栏文件名在有空间时仍被省略，`Bfix6-ts...` 这类显示不合理。
+
+### 修复
+
+- 普通 edge label 和 barrier label 共用紧凑胶囊样式；edge inline editor 和 barrier inline editor 都支持 blur / unmount 自动提交，点击画布空白即可保存，不再必须按回车。
+- Edge label point 直接取 Bezier 曲线中点附近坐标，不再人为上移；barrier label point 固定在垂直双箭头中心。
+- Barrier 默认标签从 `▲E‡` 改为 `△E‡` / `△G‡` 系列；节点相对能标签也同步改为 `△E` / `△G`，避免显示成实心三角。
+- Graph node 坐标处理移除旧的虚拟画布 clamp：恢复已有位置、拖拽预览、松手吸附、edge 锚点和 screen-to-graph 换算都允许负坐标和超过旧 `600 x 360` 边界的坐标。
+- Reset View 在已有节点时改为 Fit Nodes，避免重置到原点后节点落到侧边栏或不可操作区域；测试断言同步更新为新语义。
+- 右下角 minimap 的世界边界改为只由默认画布范围和节点内容决定，不再把当前 viewport 纳入边界，避免拖动时坐标系随 viewport 变形；拖动过程中 `onSetViewport` 实时触发。
+- 节点默认卡片和 3D viewer 尺寸增大；新增右下角 resize handle，节点可在画布上手动拉大/缩小，resize 会同步刷新 edge metrics。
+- 节点红绿灯按钮尺寸进一步压缩，`X` 删除图标保留但只在 hover/focus 时显现，减少标题栏占位感。
+- Project Files 文件名从强制单行 ellipsis 改为最多两行显示；删除按钮和 warning dot 继续绝对定位，只在 hover/focus 时覆盖右侧，不再永久挤占文件名宽度。
+
+### 验证
+
+- `cd web && npm run test -- graphViewport.test.ts GraphCanvas.test.tsx graphNodeLayout.test.ts WorkbenchShell.test.tsx --run`（4 files passed；80 passed / 25 skipped）
+- `cd web && npm run test -- --run`（30 files passed；270 passed / 25 skipped）
+- `cd web && npm run build`（passed；仍有既有 Vite chunk size warning）
+- `git diff --check`
+- Browser 验证 `http://127.0.0.1:5173/?qa=cold-ui-polish-fresh`：
+  - 页面 title 为 `RxnFlow Workbench`，console error/warn 为空。
+  - 打开 `Ni-fxc-alpha` 后 3 个 Project Files 均完整显示为 `Bfix6-ts.log`、`Bfix6-tsf.log`、`Bfix6-tsr.log`。
+  - 图谱节点显示 `△E`，不再显示实心三角；3 个节点均在画布内可见，右侧节点未被裁切。
+  - 从节点底部 barrier handle 拖到另一节点后生成 1 条 barrier annotation；默认 editor value 为 `△E‡ 12.55`，编辑为 `TS barrier` 后点击空白处自动保存。
+  - 普通 edge label 点击后进入 inline editor，编辑为 `OA` 后点击空白处自动保存，editor 消失，标签保留为胶囊样式。
+  - 节点 resize handle 真实拖动后，卡片从约 `229 x 237` 增大到约 `327 x 348`，内部 3D viewer 同步增大到约 `307 x 252`。
+  - Minimap 拖动前后 `.graph-viewport-layer` transform 实时变化；修复后拖动目标点与 minimap viewport window 中心一致。
+  - 通过真实拖拽把节点推向右下可视边缘，节点可以部分越过可视底边，不再被旧虚拟画布边界硬挡住；代码层面单元测试覆盖了负坐标和超出旧边界坐标不再 clamp。
+
+### 剩余边界
+
+- Vite build 仍提示单个 JS chunk 超过 500 kB，属于后续 code splitting / lazy load 范围。
+- 节点拖动到浏览器窗口外的坐标受 in-app browser 自动化限制，浏览器验证只能覆盖视口内边缘；无 clamp 行为已由 `graphNodeLayout` / `graphViewport` 单元测试覆盖。
+
+## 2026-06-09 补充修复：端口语义、边选择和小地图提交节流
+
+### 用户反馈
+
+- 小地图拖动预览框时，画布移动仍然卡。
+- 从节点小圆点长按拖线时会先选中线段；选中线段应只由点击线段触发，修改标签应只由点击椭圆标签触发。
+- 左右小圆点必须有固定语义：左侧为输入，右侧为输出；节点移动后连线关系不应自动换边。
+
+### 修复
+
+- Graph minimap 拖动改成 `requestAnimationFrame` 合并预览更新：拖动中只更新 UI-only preview viewport，释放时才调用 `onSetViewport` 提交到 workspace，避免每个 pointer move 都写入项目状态。
+- Edge hit line / hitbox 的 `pointerdown` 现在只阻止画布拖拽，不再选择 edge；真正选择 edge 只发生在 `click`。
+- Edge label 胶囊的 `pointerdown` 不再进入编辑，只有 `click` 标签胶囊才设置 `editingEdgeLabelId` 并打开 inline editor。
+- 左侧 edge handle 保留为输入端口，只阻止事件冒泡，不发起拖线；右侧 handle 才调用 `onStartPointerEdge`。
+- Edge segment 锚点固定为 source 右端口到 target 左端口，不再根据节点相对位置切换左右端口。
+- 复核节点坐标系后保留节点 position 作为卡片中心点：edge 锚点使用中心 `± nodeHalfWidth`；能垒底部锚点改为中心 `+ nodeHalfHeight`，对应真实底部中央。
+- Workbench 导出测试中 `chemdraw_cdxml_only` 的断言改为等待异步导出索引稳定，消除完整测试偶发失败。
+
+### 验证
+
+- `cd web && npm run test -- GraphCanvas.test.tsx --run`（17 passed）
+- `cd web && npm run test -- WorkbenchShell.test.tsx --run -t "exports profile artifacts"`（1 passed / 72 skipped）
+- `cd web && npm run test -- GraphCanvas.test.tsx graphViewport.test.ts WorkbenchShell.test.tsx --run`（78 passed / 25 skipped）
+- `cd web && npm run test -- --run`（30 files passed；273 passed / 25 skipped）
+- `cd web && npm run build`（passed；仍有既有 Vite chunk size warning）
+- `git diff --check`
+- Browser 验证 `http://127.0.0.1:5173/?qa=cold-ui-polish-fresh`：
+  - 打开 `Ni-fxc-alpha` 后有 3 个节点、4 条测试过程中生成的 edge、1 个 minimap，页面 title 为 `RxnFlow Workbench`。
+  - 右侧输出端口命中堆栈顶部为 `.graph-edge-connect-handle--right`，其下才是 `.graph-edge-hit-line`；边线不再抢端口拖拽。
+  - 从 `Bfix6-tsr` 右侧输出端口拖到 `Bfix6-tsf` 左侧输入端口后，edge 数量从 3 变为 4，且没有打开 edge label editor。
+  - 点击 `.graph-edge-hitbox` 后只选中 edge，`.graph-edge-inline-label-editor` 数量为 0；点击同一 edge 的胶囊标签后才出现 1 个 inline editor。
+  - 逐条检查 SVG path 端点：每条 edge 的起点最近端口都是 source 的 right handle，终点最近端口都是 target 的 left handle，距离均小于 0.2px。
+  - 拖动 minimap viewport window 后 `.graph-viewport-layer` transform 发生变化，释放后 `.graph-minimap-window--draft` 数量为 0。
+
+### 剩余边界
+
+- Browser dev log API 仍返回一条旧时间戳 `2026-06-09T06:15:14.350Z` 的 Vite HMR `Maximum update depth exceeded` 记录；刷新和本轮交互没有生成新的相关 app error。
+- 本轮真实浏览器拖线验证会在本地 fixture project 中新增一条测试 edge；这是当前 browser-local 项目状态，不影响源码测试和构建。
+
+## 2026-06-09 补充修复：能量布局 0 点左置
+
+### 用户反馈
+
+- 能量布局应始终把当前 `△E 0.00` 的参考结构放在画布左边。
+- 后续节点应根据图谱连线关系向右展开，而不是单纯按能量高低或已有画布位置横向排序。
+
+### 修复
+
+- `Energy Layout` 现在把当前能量参考节点作为 layer 0；若用户没有手动指定参考节点，则继续使用当前路径里的默认 0 点。
+- 横向坐标改为从参考节点出发，按 directed edge / path 连通关系分层：参考节点在最左侧，直接相连的后继进入右侧下一层，后续节点继续向右展开。
+- 纵向坐标继续使用当前显示模式下的相对能量值，因此势能面仍然保持“高能在上、低能在下”的视觉语义。
+- 对未从参考节点有向可达的节点，布局会按无向连通关系、path order 和原有位置兜底，但仍只给非负 layer，避免任何节点跑到 0 点左侧。
+
+### 验证
+
+- `cd web && npm run test -- GraphCanvas.test.tsx --run`（18 passed）
+- `cd web && npm run build`（passed；仍有既有 Vite chunk size warning）
+- Browser 验证 `http://127.0.0.1:5173/?qa=cold-ui-polish-fresh`：
+  - 打开 `Ni-fxc-alpha` 后画布有 3 个节点，`能量布局` 按钮可用。
+  - 点击 `能量布局` 后，`Bfix6-tsr` 显示 `△E 0.00 kcal/mol`，其屏幕 `x=370.6`，为当前 3 个节点里的最小 x。
+  - 与 0 点相连的 `Bfix6-ts` 和 `Bfix6-tsf` 被排到右侧同一后继层，屏幕 `x=579.7`。
+  - Browser console error/warn 为空；CDP screenshot 在当前 in-app browser 环境中仍超时，因此本轮沿用 DOM 坐标和 console 证据。

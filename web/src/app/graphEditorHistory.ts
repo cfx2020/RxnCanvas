@@ -1,9 +1,9 @@
 import type { ShellError } from "../shell"
-import type { GraphNodeSummary } from "./workbenchState"
+import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, WorkspaceSummary } from "./workbenchState"
 import { graphNodePosition } from "./graphNodeLayout"
 import { normalizeGraphViewport, type GraphViewport } from "./graphViewport"
 
-export type GraphEditorHistoryKind = "layout" | "viewport" | "selection" | "nudge"
+export type GraphEditorHistoryKind = "layout" | "viewport" | "selection" | "nudge" | "remove"
 
 export type GraphEditorNodePositionSnapshot = {
   nodeId: string
@@ -45,10 +45,29 @@ export type GraphEditorHistorySelectionEntry = {
   createdAt: string
 }
 
+export type GraphEditorGraphSnapshot = {
+  nodes: GraphNodeSummary[]
+  edges: GraphEdgeSummary[]
+  paths: GraphPathSummary[]
+  activePathId?: string | null
+  viewport?: GraphViewport | null
+  selection: GraphEditorSelectionSnapshot
+}
+
+export type GraphEditorHistoryRemoveEntry = {
+  id: string
+  kind: "remove"
+  label: string
+  before: GraphEditorGraphSnapshot
+  after: GraphEditorGraphSnapshot
+  createdAt: string
+}
+
 export type GraphEditorHistoryEntry =
   | GraphEditorHistoryNodeEntry
   | GraphEditorHistoryViewportEntry
   | GraphEditorHistorySelectionEntry
+  | GraphEditorHistoryRemoveEntry
 
 export type GraphEditorHistoryState = {
   undo: GraphEditorHistoryEntry[]
@@ -167,6 +186,7 @@ export function graphEditorHistoryReplayLabel(
 export function isGraphEditorHistoryEntryNoop(entry: GraphEditorHistoryEntry): boolean {
   if (entry.kind === "viewport") return sameViewport(entry.before, entry.after)
   if (entry.kind === "selection") return sameSelectionSnapshot(entry.before, entry.after)
+  if (entry.kind === "remove") return sameGraphSnapshot(entry.before, entry.after)
   return sameNodePositionSnapshots(entry.before, entry.after)
     && sameOptionalViewport(entry.beforeViewport ?? null, entry.afterViewport ?? null)
 }
@@ -179,6 +199,7 @@ export function staleGraphEditorHistoryReference(
   const validEdgeIds = new Set(references.edgeIds)
   const validPathIds = new Set(references.pathIds)
   if (entry.kind === "viewport") return null
+  if (entry.kind === "remove") return null
   if (entry.kind === "selection") {
     return staleId(entry.before.nodeIds, validNodeIds, "node_id")
       ?? staleId(entry.before.edgeIds, validEdgeIds, "edge_id")
@@ -189,6 +210,17 @@ export function staleGraphEditorHistoryReference(
   }
   return staleId(entry.before.map((item) => item.nodeId), validNodeIds, "node_id")
     ?? staleId(entry.after.map((item) => item.nodeId), validNodeIds, "node_id")
+}
+
+export function snapshotGraphEditorGraph(workspace: WorkspaceSummary | null | undefined): GraphEditorGraphSnapshot {
+  return {
+    nodes: (workspace?.graph.nodes ?? []).map((node) => ({ ...node })),
+    edges: (workspace?.graph.edges ?? []).map((edge) => ({ ...edge })),
+    paths: (workspace?.graph.paths ?? []).map((path) => ({ ...path, node_ids: [...path.node_ids] })),
+    activePathId: workspace?.active_path_id ?? null,
+    viewport: workspace?.viewport ? normalizeGraphViewport(workspace.viewport) : null,
+    selection: snapshotGraphEditorSelection(workspace?.selection),
+  }
 }
 
 export function snapshotGraphEditorSelection(selection?: {
@@ -250,6 +282,24 @@ function sameSelectionSnapshot(
   return sameStringArray(left.nodeIds, right.nodeIds)
     && sameStringArray(left.edgeIds, right.edgeIds)
     && sameStringArray(left.pathIds, right.pathIds)
+}
+
+function sameGraphSnapshot(left: GraphEditorGraphSnapshot, right: GraphEditorGraphSnapshot): boolean {
+  return JSON.stringify({
+    nodes: left.nodes,
+    edges: left.edges,
+    paths: left.paths,
+    activePathId: left.activePathId ?? null,
+    viewport: left.viewport ? normalizeGraphViewport(left.viewport) : null,
+    selection: left.selection,
+  }) === JSON.stringify({
+    nodes: right.nodes,
+    edges: right.edges,
+    paths: right.paths,
+    activePathId: right.activePathId ?? null,
+    viewport: right.viewport ? normalizeGraphViewport(right.viewport) : null,
+    selection: right.selection,
+  })
 }
 
 function sameViewport(left: GraphViewport, right: GraphViewport): boolean {

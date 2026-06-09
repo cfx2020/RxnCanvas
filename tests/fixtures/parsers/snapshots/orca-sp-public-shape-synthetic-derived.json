@@ -10,6 +10,11 @@
         "O"
       ],
       "energies": {
+        "egas": {
+          "reference": "gas electronic energy from cclib scfenergies converted from eV",
+          "unit": "hartree",
+          "value": -113.1234518080263
+        },
         "electronic": {
           "reference": "cclib scfenergies converted from eV",
           "unit": "hartree",
@@ -17,6 +22,7 @@
         }
       },
       "energy_keys": [
+        "egas",
         "electronic"
       ],
       "formula": null,

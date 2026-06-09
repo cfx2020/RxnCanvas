@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable
 
@@ -52,6 +53,16 @@ class _CclibPlugin:
     ) -> Result[ParseResult]:
         try:
             data = self._backend(raw_file)
+        except (ImportError, ModuleNotFoundError) as exc:
+            if self._format == "gaussian-log":
+                return _parse_gaussian_text_fallback(raw_file, self.id, self.version, exc)
+            return err(
+                RxnFlowError(
+                    code="parse_failed",
+                    message=f"cclib is required to parse this output: {exc}.",
+                    target=raw_file.target(),
+                )
+            )
         except FileNotFoundError as exc:
             return err(
                 RxnFlowError(
@@ -138,11 +149,24 @@ def _map_cclib_data(raw_file: RawFile, data: Any) -> Result[ChemicalObjectDraft]
     energies: dict[str, EnergyValue] = {}
     scfenergies = getattr(data, "scfenergies", None)
     if scfenergies is not None and len(scfenergies) > 0:
+        scf_hartree = float(scfenergies[-1]) * EV_TO_HARTREE
         energies["electronic"] = EnergyValue(
-            float(scfenergies[-1]) * EV_TO_HARTREE,
+            scf_hartree,
             "hartree",
             reference="cclib scfenergies converted from eV",
         )
+        if _looks_like_solution_file(raw_file.name):
+            energies["esol"] = EnergyValue(
+                scf_hartree,
+                "hartree",
+                reference="solution electronic energy from cclib scfenergies converted from eV",
+            )
+        else:
+            energies["egas"] = EnergyValue(
+                scf_hartree,
+                "hartree",
+                reference="gas electronic energy from cclib scfenergies converted from eV",
+            )
     else:
         warnings.append(
             RxnFlowWarning(
@@ -152,6 +176,26 @@ def _map_cclib_data(raw_file: RawFile, data: Any) -> Result[ChemicalObjectDraft]
             )
         )
 
+    thermochemistry: dict[str, EnergyValue] = {}
+    freeenergy = getattr(data, "freeenergy", None)
+    if freeenergy is not None:
+        try:
+            ggas_hartree = float(freeenergy)
+            thermochemistry["ggas"] = EnergyValue(
+                ggas_hartree,
+                "hartree",
+                reference="cclib freeenergy",
+            )
+            thermochemistry["ggas_1m"] = EnergyValue(
+                ggas_hartree + STANDARD_STATE_1M_HARTREE,
+                "hartree",
+                reference="cclib freeenergy plus 1M standard-state correction",
+            )
+        except (TypeError, ValueError):
+            pass
+
+    _apply_gaussian_text_energy_overrides(raw_file, energies, thermochemistry)
+
     return ok(
         ChemicalObjectDraft(
             label=raw_file.name,
@@ -160,9 +204,227 @@ def _map_cclib_data(raw_file: RawFile, data: Any) -> Result[ChemicalObjectDraft]
             method=_method_from_metadata(getattr(data, "metadata", {})),
             geometry=geometry_result.value,
             energies=energies,
+            thermochemistry=thermochemistry,
         ),
         warnings=tuple(warnings),
     )
+
+
+STANDARD_STATE_1M_HARTREE = 0.003019
+
+
+def _apply_gaussian_text_energy_overrides(
+    raw_file: RawFile,
+    energies: dict[str, EnergyValue],
+    thermochemistry: dict[str, EnergyValue],
+) -> None:
+    """Prefer exact Gaussian Hartree values over cclib's eV conversion."""
+
+    text_result = read_raw_text(raw_file)
+    if not text_result.ok or text_result.value is None:
+        return
+    text = text_result.value
+    scf_hartree = _last_float_match(_SCF_DONE_PATTERN, text)
+    if scf_hartree is not None:
+        energies["electronic"] = EnergyValue(
+            scf_hartree,
+            "hartree",
+            reference="Gaussian SCF Done energy parsed from raw text",
+        )
+        if _looks_like_solution_file(raw_file.name):
+            energies["esol"] = EnergyValue(
+                scf_hartree,
+                "hartree",
+                reference="solution electronic energy from Gaussian SCF Done parsed from raw text",
+            )
+            energies.pop("egas", None)
+        else:
+            energies["egas"] = EnergyValue(
+                scf_hartree,
+                "hartree",
+                reference="gas electronic energy from Gaussian SCF Done parsed from raw text",
+            )
+            energies.pop("esol", None)
+
+    ggas_hartree = _last_float_match(_GAUSSIAN_FREE_ENERGY_PATTERN, text)
+    if ggas_hartree is not None:
+        thermochemistry["ggas"] = EnergyValue(
+            ggas_hartree,
+            "hartree",
+            reference="Gaussian Sum of electronic and thermal Free Energies parsed from raw text",
+        )
+        thermochemistry["ggas_1m"] = EnergyValue(
+            ggas_hartree + STANDARD_STATE_1M_HARTREE,
+            "hartree",
+            reference="Gaussian gas free energy plus 1M standard-state correction",
+        )
+
+
+def _parse_gaussian_text_fallback(
+    raw_file: RawFile,
+    parser_id: str,
+    parser_version: str,
+    import_error: BaseException,
+) -> Result[ParseResult]:
+    text_result = read_raw_text(raw_file)
+    if not text_result.ok or text_result.value is None:
+        return err(text_result.error or RxnFlowError("invalid_input", "RawFile has no text content.", target=raw_file.target()))
+    text = text_result.value
+    geometry = _gaussian_geometry_from_text(raw_file, text)
+    if not geometry.ok or geometry.value is None:
+        return geometry
+
+    warnings = [
+        RxnFlowWarning(
+            code="parser_fallback",
+            message=f"cclib is unavailable; parsed Gaussian text with RxnFlow fallback: {import_error}.",
+            target=raw_file.target(),
+        )
+    ]
+    energies: dict[str, EnergyValue] = {}
+    scf_hartree = _last_float_match(_SCF_DONE_PATTERN, text)
+    if scf_hartree is None:
+        warnings.append(
+            RxnFlowWarning(
+                code="missing_section",
+                message="Gaussian text does not include an SCF Done energy.",
+                target=raw_file.target(),
+            )
+        )
+    else:
+        energies["electronic"] = EnergyValue(
+            scf_hartree,
+            "hartree",
+            reference="Gaussian SCF Done energy parsed by RxnFlow fallback",
+        )
+        if _looks_like_solution_file(raw_file.name):
+            energies["esol"] = EnergyValue(
+                scf_hartree,
+                "hartree",
+                reference="solution electronic energy from Gaussian SCF Done parsed by RxnFlow fallback",
+            )
+        else:
+            energies["egas"] = EnergyValue(
+                scf_hartree,
+                "hartree",
+                reference="gas electronic energy from Gaussian SCF Done parsed by RxnFlow fallback",
+            )
+
+    thermochemistry: dict[str, EnergyValue] = {}
+    ggas_hartree = _last_float_match(_GAUSSIAN_FREE_ENERGY_PATTERN, text)
+    if ggas_hartree is not None:
+        thermochemistry["ggas"] = EnergyValue(
+            ggas_hartree,
+            "hartree",
+            reference="Gaussian Sum of electronic and thermal Free Energies parsed by RxnFlow fallback",
+        )
+        thermochemistry["ggas_1m"] = EnergyValue(
+            ggas_hartree + STANDARD_STATE_1M_HARTREE,
+            "hartree",
+            reference="Gaussian gas free energy plus 1M standard-state correction",
+        )
+
+    charge, multiplicity = _gaussian_charge_multiplicity(text)
+    return ok(
+        ParseResult(
+            objects=(
+                ChemicalObjectDraft(
+                    label=raw_file.name,
+                    charge=charge,
+                    spin_multiplicity=multiplicity,
+                    method=_gaussian_method_from_text(text),
+                    geometry=geometry.value,
+                    energies=energies,
+                    thermochemistry=thermochemistry,
+                ),
+            ),
+            provenance=Provenance(raw_file.id, parser_id, parser_version, PARSER_TIME),
+        ),
+        warnings=tuple(warnings),
+    )
+
+
+_SCF_DONE_PATTERN = re.compile(r"SCF Done:\s+E\([^)]+\)\s+=\s*([-+]?\d+(?:\.\d+)?(?:[DEde][-+]?\d+)?)")
+_GAUSSIAN_FREE_ENERGY_PATTERN = re.compile(
+    r"Sum of electronic and thermal Free Energies=\s*([-+]?\d+(?:\.\d+)?(?:[DEde][-+]?\d+)?)"
+)
+_GAUSSIAN_CHARGE_MULT_PATTERN = re.compile(r"Charge\s*=\s*([-+]?\d+)\s+Multiplicity\s*=\s*(\d+)")
+_GAUSSIAN_ROUTE_PATTERN = re.compile(r"^\s*#\s*[PpNnTt]?\s+(.+)$", re.MULTILINE)
+
+
+def _last_float_match(pattern: re.Pattern[str], text: str) -> float | None:
+    matches = pattern.findall(text)
+    if not matches:
+        return None
+    return float(str(matches[-1]).replace("D", "E").replace("d", "e"))
+
+
+def _gaussian_charge_multiplicity(text: str) -> tuple[int | None, int | None]:
+    matches = _GAUSSIAN_CHARGE_MULT_PATTERN.findall(text)
+    if not matches:
+        return None, None
+    charge, multiplicity = matches[-1]
+    return int(charge), int(multiplicity)
+
+
+def _gaussian_method_from_text(text: str) -> str | None:
+    match = _GAUSSIAN_ROUTE_PATTERN.search(text)
+    if match is None:
+        return None
+    route = match.group(1).strip()
+    for token in route.split():
+        if "/" in token:
+            method = token.split("/", 1)[0].strip()
+            return _KNOWN_DFT_FUNCTIONALS.get(method.upper().replace("_", "-"), method)
+    return None
+
+
+def _gaussian_geometry_from_text(raw_file: RawFile, text: str) -> Result[tuple[Atom3D, ...]]:
+    lines = text.splitlines()
+    best_atoms: tuple[Atom3D, ...] = ()
+    for index, line in enumerate(lines):
+        if "Standard orientation:" not in line and "Input orientation:" not in line:
+            continue
+        atoms = _gaussian_orientation_block(lines, index + 1)
+        if atoms:
+            best_atoms = atoms
+    if best_atoms:
+        return ok(best_atoms)
+    return err(
+        RxnFlowError(
+            code="parse_failed",
+            message="Gaussian output must include a Standard orientation or Input orientation coordinate block.",
+            target=raw_file.target(),
+        )
+    )
+
+
+def _gaussian_orientation_block(lines: list[str], start: int) -> tuple[Atom3D, ...]:
+    dash_count = 0
+    atoms: list[Atom3D] = []
+    for line in lines[start:]:
+        if set(line.strip()) == {"-"}:
+            dash_count += 1
+            if dash_count >= 3:
+                break
+            continue
+        if dash_count < 2:
+            continue
+        parts = line.split()
+        if len(parts) < 6:
+            continue
+        try:
+            atomic_number = int(parts[1])
+            x, y, z = float(parts[3]), float(parts[4]), float(parts[5])
+        except ValueError:
+            continue
+        atoms.append(Atom3D(_symbol_from_atomic_number(atomic_number), x, y, z))
+    return tuple(atoms)
+
+
+def _looks_like_solution_file(name: str) -> bool:
+    stem = Path(name).stem.lower()
+    return stem.endswith("-sol") or stem.endswith("_sol") or stem.endswith(".sol") or stem.endswith(" sol")
 
 
 def _geometry_from_cclib(raw_file: RawFile, data: Any) -> Result[tuple[Atom3D, ...]]:

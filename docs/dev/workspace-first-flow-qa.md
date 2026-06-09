@@ -5,7 +5,7 @@ component: web-workbench-shell
 status: current
 summary: Workspace-first Web 工作台主流程的 QA matrix、命令和证据边界
 tags: [web-workbench, workspace-first, qa, e2e, playwright, local-http, local-first]
-last_reviewed: 2026-06-08
+last_reviewed: 2026-06-09
 ---
 
 # Workspace-First Flow QA
@@ -70,6 +70,8 @@ Playwright 产物只写入 gitignored 目录：
 - `web/playwright-report-local-http/`
 
 这些 screenshot、trace 和 HTML report 不进入 Project Content、Browser Project Repository 或报告导出索引。
+
+Codex in-app Browser 可用于本地页面健康检查、DOM snapshot、console log、locator/CUA 交互和坐标验证；但在当前本地 Vite/Three.js 页面上，CDP `Page.captureScreenshot` 偶发或持续超时是已知自动化通道限制。遇到截图超时时，先确认页面身份、非空白、framework overlay absent、console clean 和目标交互证据；需要图像证据时改跑 Playwright E2E/smoke 产出 gitignored screenshot，不把 CDP 截图超时当成 RxnFlow UI 崩溃。
 
 ## 维护规则
 

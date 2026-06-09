@@ -5,7 +5,7 @@ component: web-graph-editor
 status: current
 summary: Web Graph Editor 高级交互的 Playwright QA 命令、覆盖范围和输出边界
 tags: [web, graph-editor, e2e, playwright, local-http]
-last_reviewed: 2026-06-05
+last_reviewed: 2026-06-09
 ---
 
 # Graph Editor E2E QA
@@ -66,10 +66,13 @@ Playwright 产物只写入 gitignored 目录：
 
 这些 screenshot、trace 和 HTML report 不进入 Project Content、Browser Project Repository 或报告导出索引。
 
+Codex in-app Browser 适合做 Graph Canvas 的页面身份、DOM 坐标、console 和真实点击/拖拽 smoke；但当前本地 Vite + Three.js 画布上，CDP screenshot 可能超时。截图失败时不要放宽 Graph Canvas 行为断言；用 DOM/坐标/console 证明交互，再用项目 Playwright E2E 生成 gitignored screenshot/trace。
+
 ## 维护规则
 
 - helper 名称描述用户动作，例如 `editFixtureEdgeLabel`、`rubberBandDeleteTemporaryNodes`，不要暴露 React 内部函数名。
 - 优先使用 role、label、button text 和可访问区域；pointer / wheel / drag 这类输入可用局部 DOM event helper。
 - 测试只通过 UI 触发 Shell command，不直接 mutate `WorkbenchDomainState`、IndexedDB bytes、Project Content files 或 ShellResponse。
 - 断言用户可观察结果：node/edge/path 可见、3D 结构可见、direct edge handle 可用、viewport zoom/transform、active path、自动保存后重开恢复。
+- 能量布局入口只验证 PES 视图语义：当前 `△E 0.00` 参考节点应在最左层，后继节点按 graph edge/path 连通关系向右展开，纵向仍按当前相对能量显示模式排序。
 - E2E 不为测试便利新增生产按钮或测试专用 UI。

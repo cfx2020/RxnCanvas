@@ -20,7 +20,7 @@
   --blueprint: #0d6374;
   --surface-glass: rgba(251, 253, 255, 0.88);
   --shadow: 0 12px 34px rgba(22, 33, 40, 0.12);
-  --drawer-width: 264px;
+  --drawer-width: 238px;
   --drawer-collapsed-width: 72px;
   --dock-width: 392px;
   --floating-gap: 18px;
@@ -634,12 +634,13 @@ button {
 }
 
 .project-folder-row:hover,
-.project-folder-row:focus-within {
+.project-folder-row:focus-within,
+.project-folder--menu-open > .project-folder-row {
   background: rgba(23, 28, 31, 0.045);
 }
 
 .project-folder--active .project-folder-row {
-  background: rgba(13, 99, 116, 0.045);
+  background: rgba(13, 99, 116, 0.032);
 }
 
 .project-folder-import-button,
@@ -764,7 +765,7 @@ button {
   align-items: center;
   gap: 7px;
   border-radius: 8px;
-  padding: 0 66px 0 5px;
+  padding: 0 54px 0 5px;
   text-align: left;
   width: 100%;
 }
@@ -982,14 +983,14 @@ button {
   position: relative;
   min-width: 0;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 8px;
+  grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
-  gap: 7px;
-  min-height: 30px;
+  gap: 6px;
+  min-height: 32px;
   border: 0;
   border-radius: 7px;
   background: transparent;
-  padding: 2px 6px;
+  padding: 2px 8px 2px 6px;
   transition: background 90ms ease, box-shadow 90ms ease;
 }
 
@@ -1073,23 +1074,65 @@ button {
 }
 
 .project-file-title strong {
-  display: block;
+  display: -webkit-box;
   min-width: 0;
   overflow: hidden;
   color: var(--ink);
-  font-size: 0.8rem;
+  font-size: 0.84rem;
   line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-break: break-word;
 }
 
 .project-file-warning-dot {
+  position: absolute;
+  right: 8px;
+  top: 50%;
   width: 7px;
   height: 7px;
-  justify-self: end;
   border-radius: 999px;
   background: var(--amber);
   box-shadow: 0 0 0 2px rgba(194, 119, 42, 0.14);
+  transform: translateY(-50%);
+  transition: opacity 100ms ease;
+}
+
+.project-file-delete-button {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(3px, -50%);
+  transition: opacity 100ms ease, transform 120ms ease, background 100ms ease, color 100ms ease;
+}
+
+.project-file-card:hover .project-file-warning-dot,
+.project-file-card:focus-within .project-file-warning-dot {
+  opacity: 0;
+}
+
+.project-file-card:hover .project-file-delete-button,
+.project-file-card:focus-within .project-file-delete-button {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(0, -50%);
+}
+
+.project-file-delete-button:hover,
+.project-file-delete-button:focus-visible {
+  background: rgba(180, 35, 24, 0.1);
+  color: #b42318;
 }
 
 .sidebar-error {
@@ -1823,7 +1866,7 @@ button {
   background: transparent;
   transform-origin: 0 0;
   will-change: transform;
-  z-index: 2;
+  z-index: 4;
   pointer-events: none;
 }
 
@@ -1843,7 +1886,7 @@ button {
 }
 
 .graph-edge-layer {
-  z-index: 1;
+  z-index: 3;
   pointer-events: none;
 }
 
@@ -1851,6 +1894,7 @@ button {
   position: absolute;
   inset: 0;
   overflow: visible;
+  pointer-events: none;
 }
 
 .graph-edge-line {
@@ -1860,10 +1904,23 @@ button {
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.graph-edge-hit-line {
+  stroke: transparent;
+  stroke-width: 24;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  cursor: pointer;
+  pointer-events: stroke;
+  vector-effect: non-scaling-stroke;
 }
 
 .graph-edge-hitbox {
   position: absolute;
+  z-index: 4;
   width: 28px;
   height: 28px;
   transform: translate(-50%, -50%);
@@ -1874,9 +1931,10 @@ button {
   pointer-events: auto;
 }
 
-.graph-edge-label {
+.graph-edge-label,
+.graph-barrier-label {
   position: absolute;
-  z-index: 2;
+  z-index: 6;
   max-width: 180px;
   transform: translate(-50%, -50%);
   border: 1px solid rgba(31, 33, 29, 0.1);
@@ -1884,12 +1942,28 @@ button {
   background: rgba(251, 253, 255, 0.9);
   color: var(--ink);
   box-shadow: 0 6px 14px rgba(53, 46, 31, 0.12);
-  padding: 2px 7px;
+  padding: 3px 9px;
   font-size: 0.72rem;
   font-weight: 900;
   line-height: 1.15;
-  pointer-events: none;
+  pointer-events: auto;
   white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+}
+
+.graph-edge-label--selected {
+  border-color: rgba(13, 99, 116, 0.28);
+  box-shadow: 0 0 0 3px rgba(13, 99, 116, 0.08), 0 6px 14px rgba(53, 46, 31, 0.12);
+}
+
+.graph-edge-label--placeholder {
+  color: var(--muted);
+  font-weight: 820;
+}
+
+.graph-barrier-label {
+  color: var(--oxide);
 }
 
 .graph-edge-inline-label-editor {
@@ -1978,6 +2052,7 @@ button {
   stroke-dasharray: 5 5;
   fill: none;
   vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 
 .graph-barrier-arrow {
@@ -1986,6 +2061,25 @@ button {
   fill: none;
   marker-start: url("#graph-barrier-arrowhead");
   marker-end: url("#graph-barrier-arrowhead");
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.graph-barrier-hit-line {
+  stroke: transparent;
+  stroke-width: 18;
+  fill: none;
+  cursor: pointer;
+  pointer-events: stroke;
+  vector-effect: non-scaling-stroke;
+}
+
+.graph-barrier-pending-line {
+  stroke: var(--oxide);
+  stroke-width: 2.2;
+  stroke-dasharray: 5 4;
+  fill: none;
+  stroke-linecap: round;
   vector-effect: non-scaling-stroke;
 }
 
@@ -1998,45 +2092,54 @@ button {
   stroke-width: 2.8;
 }
 
-.graph-barrier-label {
-  position: absolute;
-  z-index: 3;
-  transform: translate(-50%, -50%);
-  border: 1px solid rgba(154, 58, 45, 0.18);
-  border-radius: 999px;
-  background: rgba(255, 247, 238, 0.94);
-  color: var(--oxide);
-  box-shadow: 0 8px 18px rgba(154, 58, 45, 0.16);
-  padding: 3px 8px;
-  font-size: 0.72rem;
-  font-weight: 920;
-  pointer-events: none;
-  white-space: nowrap;
+.graph-barrier-label--selected {
+  border-color: rgba(154, 58, 45, 0.28);
+  background: rgba(255, 247, 238, 0.96);
+  box-shadow: 0 8px 18px rgba(154, 58, 45, 0.14);
 }
 
-.graph-barrier-label--selected {
-  border-color: rgba(154, 58, 45, 0.36);
-  box-shadow: 0 0 0 3px rgba(154, 58, 45, 0.12), 0 8px 18px rgba(154, 58, 45, 0.16);
+.graph-barrier-inline-label-editor {
+  display: inline-flex;
+  align-items: center;
+  max-width: none;
+  padding: 3px 8px;
+}
+
+.graph-barrier-inline-label-editor input {
+  width: 12ch;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--oxide);
+  padding: 0;
+  font: inherit;
+  font-weight: 920;
+  text-align: center;
+  outline: 0;
 }
 
 .graph-barrier-hitbox {
   position: absolute;
-  z-index: 4;
+  z-index: 2;
   width: 34px;
-  height: 72px;
+  height: 34px;
   transform: translate(-50%, -50%);
   border: 0;
   border-radius: 999px;
-  background: rgba(154, 58, 45, 0.01);
-  cursor: pointer;
+  background: transparent;
+  padding: 0;
   pointer-events: auto;
+  cursor: pointer;
 }
 
-.graph-barrier-hitbox:focus-visible,
-.graph-barrier-hitbox--selected {
+.graph-barrier-hitbox:focus-visible {
   outline: 2px solid rgba(154, 58, 45, 0.34);
   outline-offset: 2px;
-  background: rgba(154, 58, 45, 0.08);
+}
+
+.graph-barrier-hitbox--selected {
+  outline: 0;
+  background: transparent;
 }
 
 .graph-barrier-delete-button {
@@ -2063,7 +2166,8 @@ button {
 
 .graph-node-card-shell {
   position: absolute;
-  width: clamp(154px, 15vw, 184px);
+  width: var(--graph-node-width, clamp(200px, 18vw, 238px));
+  min-width: 190px;
   transform: translate(-50%, -50%);
   pointer-events: auto;
   will-change: transform;
@@ -2076,13 +2180,13 @@ button {
 .graph-node-card {
   position: relative;
   width: 100%;
-  min-height: 178px;
+  min-height: var(--graph-node-height, 238px);
   min-width: 0;
   display: grid;
-  grid-template-rows: auto minmax(96px, 1fr) auto auto;
-  gap: 6px;
+  grid-template-rows: auto minmax(132px, 1fr) auto auto;
+  gap: 7px;
   border: 2px solid var(--line);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--paper);
   color: var(--ink);
   padding: 8px;
@@ -2129,24 +2233,6 @@ button {
   outline-offset: 4px;
 }
 
-.graph-node-barrier-pick-button {
-  position: absolute;
-  inset: 0;
-  z-index: 6;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  padding: 0;
-  cursor: crosshair;
-}
-
-.graph-node-barrier-pick-button:hover,
-.graph-node-barrier-pick-button:focus-visible {
-  outline: 2px solid rgba(223, 179, 94, 0.46);
-  outline-offset: 3px;
-  background: rgba(223, 179, 94, 0.06);
-}
-
 .graph-node-card--path {
   box-shadow: inset 0 0 0 2px rgba(83, 98, 74, 0.28), 0 8px 20px rgba(53, 46, 31, 0.1);
 }
@@ -2176,7 +2262,7 @@ button {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 800;
   line-height: 1.18;
 }
@@ -2191,14 +2277,14 @@ button {
 .graph-node-traffic-actions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
 }
 
 .graph-node-traffic-button {
   position: relative;
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
+  width: 17px;
+  height: 17px;
+  min-width: 17px;
   display: grid;
   place-items: center;
   border: 0;
@@ -2210,8 +2296,8 @@ button {
 
 .graph-node-traffic-button::before {
   content: "";
-  width: 13px;
-  height: 13px;
+  width: 9px;
+  height: 9px;
   border: 1px solid rgba(23, 28, 31, 0.16);
   border-radius: 999px;
   background: var(--traffic-color);
@@ -2219,6 +2305,8 @@ button {
 }
 
 .graph-node-traffic-button svg {
+  width: 8px;
+  height: 8px;
   position: absolute;
   inset: 0;
   margin: auto;
@@ -2336,6 +2424,7 @@ button {
 .graph-node-structure-frame {
   position: relative;
   min-width: 0;
+  min-height: 0;
   display: block;
 }
 
@@ -2343,7 +2432,8 @@ button {
 .graph-node-structure-empty {
   position: relative;
   min-width: 0;
-  height: 96px;
+  height: 100%;
+  min-height: 132px;
   display: block;
   border: 1px solid rgba(23, 28, 31, 0.1);
   border-radius: 10px;
@@ -2362,10 +2452,8 @@ button {
   height: 100%;
   min-height: 480px;
   border-radius: 8px;
-  background:
-    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.1), transparent 38%),
-    #1d2528;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: #f7faf9;
+  box-shadow: inset 0 0 0 1px rgba(23, 28, 31, 0.08);
 }
 
 .molecule-3d-viewer:active {
@@ -2434,8 +2522,8 @@ button {
   z-index: 120;
   display: grid;
   place-items: center;
-  background: rgba(8, 12, 12, 0.46);
-  backdrop-filter: blur(10px);
+  background: rgba(244, 247, 248, 0.72);
+  backdrop-filter: blur(12px);
   padding: 28px;
 }
 
@@ -2486,6 +2574,22 @@ button {
   position: relative;
   min-height: 0;
   padding: 0;
+  background: #f7faf9;
+}
+
+.molecule-3d-dialog-viewer .molecule-3d-viewer--large {
+  background: #f7faf9;
+}
+
+.workbench-shell[data-theme="light"] .molecule-3d-dialog-backdrop {
+  background: rgba(244, 247, 248, 0.72);
+}
+
+.workbench-shell[data-theme="light"] .molecule-3d-dialog,
+.workbench-shell[data-theme="light"] .molecule-3d-dialog-viewer,
+.workbench-shell[data-theme="light"] .molecule-3d-dialog-viewer .molecule-3d-viewer--large {
+  background: #f7faf9;
+  color: #172026;
 }
 
 .molecule-3d-dialog-charge-spin {
@@ -2497,6 +2601,14 @@ button {
 .workbench-shell[data-theme="dark"] .molecule-3d-dialog {
   border-color: rgba(240, 244, 239, 0.1);
   background: rgba(17, 24, 23, 0.98);
+}
+
+.workbench-shell[data-theme="dark"] .molecule-3d-dialog-backdrop {
+  background: rgba(8, 12, 12, 0.54);
+}
+
+.workbench-shell[data-theme="dark"] .molecule-3d-dialog-viewer {
+  background: #111817;
 }
 
 .workbench-shell[data-theme="dark"] .molecule-3d-measurement,
@@ -2565,10 +2677,10 @@ button {
 }
 
 .graph-node-expanded-summary .graph-node-metric-pill {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 5px;
+  max-width: 100%;
   padding: 4px 6px;
 }
 
@@ -2614,7 +2726,6 @@ button {
 .graph-node-metric-pill--emphasized b {
   color: var(--blueprint);
   font-size: 0.74rem;
-  text-align: right;
   white-space: nowrap;
 }
 
@@ -2656,64 +2767,122 @@ button {
 .graph-edge-connect-handle {
   position: absolute;
   top: 50%;
-  width: 10px;
-  height: 10px;
+  width: 24px;
+  height: 24px;
   min-width: 0;
   display: grid;
   place-items: center;
   transform: translateY(-50%);
-  border: 2px solid rgba(39, 89, 106, 0.78);
+  border: 0;
   border-radius: 999px;
-  background: var(--paper);
+  background: transparent;
   color: var(--blueprint);
-  box-shadow: 0 0 0 3px rgba(251, 253, 255, 0.92), 0 4px 10px rgba(53, 46, 31, 0.14);
+  box-shadow: none;
   padding: 0;
   appearance: none;
   cursor: crosshair;
   pointer-events: auto;
   touch-action: none;
+  z-index: 6;
+}
+
+.graph-edge-connect-handle::before,
+.graph-barrier-connect-handle::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border: 2px solid rgba(39, 89, 106, 0.78);
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: 0 0 0 3px rgba(251, 253, 255, 0.92), 0 4px 10px rgba(53, 46, 31, 0.14);
 }
 
 .graph-edge-connect-handle--left {
-  left: -5px;
+  left: -12px;
 }
 
 .graph-edge-connect-handle--right {
-  right: -5px;
+  right: -12px;
 }
 
 .graph-edge-connect-handle:hover,
 .graph-edge-connect-handle:focus-visible {
+  outline: 3px solid rgba(194, 119, 42, 0.2);
+  outline-offset: -3px;
+}
+
+.graph-edge-connect-handle:hover::before,
+.graph-edge-connect-handle:focus-visible::before {
   border-color: var(--amber);
   background: #fff7e4;
-  outline: 3px solid rgba(194, 119, 42, 0.2);
-  outline-offset: 3px;
 }
 
 .graph-barrier-connect-handle {
   position: absolute;
   left: 50%;
-  bottom: -5px;
-  width: 10px;
-  height: 10px;
+  bottom: -12px;
+  width: 24px;
+  height: 24px;
   min-width: 0;
+  display: grid;
+  place-items: center;
   transform: translateX(-50%);
-  border: 2px solid rgba(154, 58, 45, 0.82);
+  border: 0;
   border-radius: 999px;
-  background: var(--paper);
-  box-shadow: 0 0 0 3px rgba(251, 253, 255, 0.92), 0 4px 10px rgba(154, 58, 45, 0.14);
+  background: transparent;
+  box-shadow: none;
   padding: 0;
   appearance: none;
   cursor: crosshair;
   pointer-events: auto;
   touch-action: none;
+  z-index: 6;
+}
+
+.graph-barrier-connect-handle::before {
+  border-color: rgba(154, 58, 45, 0.82);
+  box-shadow: 0 0 0 3px rgba(251, 253, 255, 0.92), 0 4px 10px rgba(154, 58, 45, 0.14);
 }
 
 .graph-barrier-connect-handle:hover,
 .graph-barrier-connect-handle:focus-visible {
-  background: #fff0e8;
   outline: 3px solid rgba(154, 58, 45, 0.18);
-  outline-offset: 3px;
+  outline-offset: -3px;
+}
+
+.graph-barrier-connect-handle:hover::before,
+.graph-barrier-connect-handle:focus-visible::before {
+  background: #fff0e8;
+}
+
+.graph-node-resize-handle {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 7;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, transparent 46%, rgba(13, 99, 116, 0.28) 46%, rgba(13, 99, 116, 0.28) 54%, transparent 54%),
+    linear-gradient(135deg, transparent 62%, rgba(13, 99, 116, 0.2) 62%, rgba(13, 99, 116, 0.2) 70%, transparent 70%);
+  padding: 0;
+  cursor: nwse-resize;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.graph-node-card-shell:hover .graph-node-resize-handle,
+.graph-node-card-shell:focus-within .graph-node-resize-handle {
+  opacity: 1;
+}
+
+.graph-node-resize-handle:focus-visible {
+  opacity: 1;
+  outline: 2px solid rgba(13, 99, 116, 0.24);
+  outline-offset: 1px;
 }
 
 .graph-edge-pending-line {
@@ -2879,138 +3048,6 @@ button {
   border-left: 4px solid var(--amber);
   background: rgba(194, 119, 42, 0.1);
   padding: 8px;
-}
-
-.edge-label-editor {
-  min-width: 0;
-  display: grid;
-  gap: 9px;
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
-}
-
-.edge-label-editor-header {
-  min-width: 0;
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.edge-label-editor-header div {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.edge-label-editor-header span,
-.edge-label-editor label span {
-  color: var(--sage);
-  font-size: 0.78rem;
-  font-weight: 900;
-}
-
-.edge-label-editor-header code,
-.edge-label-route code {
-  color: var(--blueprint);
-  overflow-wrap: anywhere;
-}
-
-.edge-label-editor-header small {
-  min-height: 24px;
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid rgba(39, 89, 106, 0.18);
-  background: rgba(39, 89, 106, 0.08);
-  color: var(--blueprint);
-  padding: 0 7px;
-  font-size: 0.72rem;
-  font-weight: 900;
-}
-
-.edge-label-route {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 7px;
-  margin: 0;
-  border: 1px solid rgba(31, 33, 29, 0.1);
-  background: rgba(255, 250, 240, 0.76);
-  padding: 7px;
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-
-.edge-label-route span {
-  color: var(--muted);
-  font-weight: 800;
-}
-
-.edge-label-editor label {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.edge-label-editor input {
-  min-width: 0;
-  min-height: 32px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  padding: 0 8px;
-  font-size: 0.8rem;
-}
-
-.edge-label-command-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
-}
-
-.edge-label-command-row button {
-  min-width: 0;
-  min-height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 0.74rem;
-  font-weight: 900;
-}
-
-.edge-label-command-row button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.edge-label-command-row button[type="submit"] {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper);
-}
-
-.edge-label-error {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 5px 7px;
-  border-left: 4px solid var(--oxide);
-  background: rgba(141, 53, 39, 0.1);
-  color: var(--oxide);
-  padding: 8px;
-  margin: 0;
-  font-size: 0.78rem;
-}
-
-.edge-label-error code,
-.edge-label-error span,
-.edge-label-error small {
-  overflow-wrap: anywhere;
 }
 
 .composition-editor {
@@ -4200,8 +4237,6 @@ button {
   }
 
   .composition-command-row,
-  .edge-label-command-row,
-  .edge-label-route,
   .composition-row,
   .energy-command-row,
   .report-export-command-row,
@@ -4212,11 +4247,11 @@ button {
   }
 
   .graph-node-card-shell {
-    width: clamp(156px, 42%, 190px);
+    width: var(--graph-node-width, clamp(184px, 52%, 218px));
   }
 
   .graph-node-card {
-    min-height: 164px;
+    min-height: var(--graph-node-height, 226px);
     padding: 8px;
   }
 
@@ -4227,7 +4262,7 @@ button {
 
   .molecule-3d-viewer,
   .graph-node-structure-empty {
-    height: 88px;
+    min-height: 124px;
   }
 
   .parse-candidate-chooser {
@@ -4492,7 +4527,7 @@ button {
   height: 100%;
   min-height: 0;
   display: block;
-  padding: 96px 0 0;
+  padding: 0;
   background-color: #fbfcfb;
   background-image: radial-gradient(rgba(13, 99, 116, 0.065) 0.8px, transparent 0.8px);
   background-position: 0 0;
@@ -4547,7 +4582,8 @@ button {
 }
 
 .workbench-shell[data-theme="dark"] .graph-node-charge-spin-overlay,
-.workbench-shell[data-theme="dark"] .graph-edge-label {
+.workbench-shell[data-theme="dark"] .graph-edge-label,
+.workbench-shell[data-theme="dark"] .graph-barrier-label {
   border-color: rgba(240, 244, 239, 0.12);
   background: rgba(13, 20, 19, 0.82);
   color: var(--ink-soft);
@@ -4563,8 +4599,11 @@ button {
   color: var(--ink-soft);
 }
 
-.workbench-shell[data-theme="dark"] .graph-barrier-label {
-  background: rgba(43, 20, 18, 0.92);
+.workbench-shell[data-theme="dark"] .molecule-3d-viewer--large {
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.1), transparent 38%),
+    #1d2528;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .graph-canvas-surface--pan {
@@ -4630,25 +4669,25 @@ button {
   right: 18px;
   bottom: 18px;
   z-index: 12;
-  width: 168px;
-  border: 1px solid rgba(23, 28, 31, 0.12);
-  border-radius: 9px;
-  background: rgba(251, 253, 255, 0.74);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 10px 26px rgba(22, 33, 40, 0.1);
-  padding: 3px;
+  width: 154px;
+  border: 1px solid rgba(23, 28, 31, 0.08);
+  border-radius: 10px;
+  background: rgba(251, 253, 255, 0.58);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 22px rgba(22, 33, 40, 0.08);
+  padding: 4px;
 }
 
 .graph-minimap {
   position: relative;
-  width: 162px;
-  height: 98px;
+  width: 146px;
+  height: 88px;
   display: block;
   overflow: hidden;
   border: 0;
-  border-radius: 7px;
-  background-color: rgba(251, 253, 255, 0.54);
-  background-image: radial-gradient(rgba(13, 99, 116, 0.1) 0.6px, transparent 0.6px);
+  border-radius: 8px;
+  background-color: rgba(251, 253, 255, 0.42);
+  background-image: radial-gradient(rgba(13, 99, 116, 0.12) 0.7px, transparent 0.7px);
   background-size: 12px 12px;
   padding: 0;
   cursor: crosshair;
@@ -4658,7 +4697,7 @@ button {
 .graph-minimap-bounds {
   position: absolute;
   inset: 5px;
-  border: 1px solid rgba(23, 28, 31, 0.08);
+  border: 1px solid rgba(23, 28, 31, 0.06);
   border-radius: 6px;
 }
 
@@ -4693,25 +4732,6 @@ button {
 .workbench-shell[data-theme="dark"] .graph-minimap {
   background-color: rgba(13, 20, 19, 0.7);
   background-image: radial-gradient(rgba(123, 199, 214, 0.18) 0.7px, transparent 0.7px);
-}
-
-.edge-label-floating-editor {
-  position: absolute;
-  left: 18px;
-  bottom: 18px;
-  z-index: 16;
-  width: min(330px, calc(100% - 232px));
-  border: 1px solid rgba(205, 216, 223, 0.9);
-  border-radius: 12px;
-  background: rgba(251, 253, 255, 0.92);
-  backdrop-filter: blur(14px);
-  box-shadow: var(--shadow);
-  padding: 10px;
-}
-
-.workbench-shell[data-theme="dark"] .edge-label-floating-editor {
-  border-color: rgba(240, 244, 239, 0.1);
-  background: rgba(17, 24, 23, 0.92);
 }
 
 .path-authoring-status {
