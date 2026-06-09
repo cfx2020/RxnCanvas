@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
+import { unzipSync } from "fflate"
 import { createConfiguredShellRuntime, createHttpShellTransport, fixtureTransport, ShellClient } from "."
 import type {
   EnergyComputeData,
@@ -1293,7 +1294,13 @@ describe("ShellClient", () => {
       svg_width: 720,
       svg_height: 432,
     })
-    expect(atob(response.artifacts[4].bytes_base64 ?? "")).toContain("<svg")
+    expect(base64Bytes(response.artifacts[0].bytes_base64 ?? "").slice(0, 8)).toEqual(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]))
+    expect(base64Text(response.artifacts[1].bytes_base64 ?? "")).toContain("<CDXML")
+    expect(base64Text(response.artifacts[1].bytes_base64 ?? "")).toContain("Fixture Export")
+    const workbookFiles = unzipSync(base64Bytes(response.artifacts[2].bytes_base64 ?? ""))
+    expect(Object.keys(workbookFiles).sort()).toContain("xl/workbook.xml")
+    expect(new TextDecoder().decode(workbookFiles["xl/worksheets/sheet1.xml"])).toContain("Object A")
+    expect(base64Text(response.artifacts[4].bytes_base64 ?? "")).toContain("<svg")
     expect(response.warnings[0].code).toBe("chemdraw_cdxml_only")
     expect(() => JSON.stringify(response)).not.toThrow()
   })
@@ -1347,4 +1354,17 @@ function projectContentFile(path: string, value: unknown) {
     bytes_base64: btoa(JSON.stringify(value)),
     metadata: {},
   }
+}
+
+function base64Bytes(value: string): Uint8Array {
+  const binary = atob(value)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+function base64Text(value: string): string {
+  return new TextDecoder().decode(base64Bytes(value))
 }

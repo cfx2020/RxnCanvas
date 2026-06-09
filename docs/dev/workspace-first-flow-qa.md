@@ -48,7 +48,7 @@ git diff --check
 | `fixture-desktop-project-restore` | fixture | desktop `1280x720` | `workbench-journey.spec.ts` | 自动保存、重开 project、Project Files raw-only、graph/workspace/path/viewport/3D 结构恢复 | Python bridge roundtrip、Project Content deep validation |
 | `fixture-narrow-workbench-flow` | fixture | narrow `390x840` | `workbench-journey.spec.ts` | 窄屏首屏项目栏默认收起、主动作可达、graph/export 可用、无页面级水平溢出 | 桌面复杂手势覆盖、真实 bridge |
 | `fixture-graph-editor-matrix` | fixture | desktop + narrow | `workbench-journey.spec.ts` | object drag/drop、node drag、path delete、direct edge、rubber-band、keyboard nudge、viewport wheel/history、project restore | Python bridge、真实 parser/export writer |
-| `local-http-bridge-smoke` | local-http | desktop `1280x720` | `npm run test:e2e:local-http` | 本地 inline parser preview、graph/path、自动保存、energy compute、PNG/CDXML/XLSX/CSV/SVG export projection、download MIME、writer metadata、artifact persistence | 复杂 graph gestures、完整 Gaussian/ORCA/MAPLE/XYZ/extxyz 认证、大文件 chunking |
+| `local-http-bridge-smoke` | local-http | desktop `1280x720` | `npm run test:e2e:local-http` | 本地 inline parser preview、graph/path、自动保存、energy compute、Web-visible PNG/CDXML/XLSX export projection、download MIME、artifact persistence | 复杂 graph gestures、完整 Gaussian/ORCA/MAPLE/XYZ/extxyz 认证、大文件 chunking |
 | `local-http-project-restore` | local-http | desktop `1280x720` | `npm run test:e2e:local-http` | raw input persistence、自动保存、重新打开 project、graph/workspace restore、project file retention | 所有 graph gestures、云同步 |
 | `manual-user-journey` | manual | desktop + narrow | `docs/user/workspace-first-workbench.md` | 用户能按指南从创建项目走到自动保存、重开恢复和右侧导出 | 自动化覆盖以外的真实长文件、大文件、私有模板或跨设备云同步 |
 
@@ -77,7 +77,7 @@ Codex in-app Browser 可用于本地页面健康检查、DOM snapshot、console 
 
 - E2E 只通过 UI、可访问 role/label/text 和公开浏览器 API 操作。
 - 不直接 mutate `WorkbenchDomainState`、ShellResponse、Project Content files 或 Browser Project Repository bytes。
-- 断言用户可观察结果：顶部菜单状态、项目栏展开/收起、Project Files 文件名/格式图标/警告点、Graph Canvas 3D 结构节点/path、Export artifact 和 Download link。
+- 断言用户可观察结果：顶部菜单状态、项目栏展开/收起、Project Files 文件名/格式图标/警告点、Graph Canvas 3D 结构节点/path、Export PNG/CDXML/XLSX 文件和 Download link。
 - Project Files 行不应断言可见 `Graph`、`Previewed`、`Error` 等状态文字；状态可以通过 aria-label 和状态 class 验证。
 - 图谱连接测试应优先从节点左右连接点直接拖线到另一个节点；主界面不再提供单独 `Connect` / `Set Path` 按钮。无歧义连线应自动创建或延长 active path，旧项目里只有线性 edge 没有 path 时，打开项目应自动修复 active path。
 - Graph Canvas edge 应渲染为 SVG Bezier `path`，不是直线 `line`；多输入/多输出连接应保留左右锚点语义，并允许多条 edge 共用同一个目标或来源节点。

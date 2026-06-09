@@ -23,7 +23,7 @@ describe("export format capabilities", () => {
       "cdx",
     ])
     expect(supportedExportFormats()).toEqual(["png", "cdxml", "xlsx", "csv", "svg"])
-    expect(reportExportFormats()).toEqual(["png", "cdxml", "xlsx", "csv", "svg"])
+    expect(reportExportFormats()).toEqual(["png", "cdxml", "xlsx"])
     expect(exportFormatCapability("csv")).toMatchObject({
       extension: "csv",
       mimeType: "text/csv",
@@ -31,7 +31,7 @@ describe("export format capabilities", () => {
       fixtureWriterId: "fixture-csv-energy-table-v1",
       status: "supported",
       supportsBrowserPersistence: true,
-      webDefaultEnabled: true,
+      webDefaultEnabled: false,
     })
     expect(exportFormatCapability("svg")).toMatchObject({
       status: "supported",
@@ -39,7 +39,7 @@ describe("export format capabilities", () => {
       writerId: "python-svg-graph-snapshot-v1",
       fixtureWriterId: "fixture-svg-graph-snapshot-v1",
       supportsBrowserPersistence: true,
-      webDefaultEnabled: true,
+      webDefaultEnabled: false,
     })
     expect(exportFormatCapability("cdx")?.unsupportedReason).toContain("CDX binary")
   })
@@ -60,6 +60,8 @@ describe("export format capabilities", () => {
     expect(reportExportFormats()).not.toContain("pdf")
     expect(reportExportFormats()).not.toContain("pptx")
     expect(reportExportFormats()).not.toContain("cdx")
+    expect(reportExportFormats()).not.toContain("csv")
+    expect(reportExportFormats()).not.toContain("svg")
     expect(exportFormatCapability("pdf")?.artifactKind).toBe("report_document")
     expect(exportFormatCapability("pptx")?.artifactKind).toBe("report_document")
     expect(exportFormatCapability("cdx")?.artifactKind).toBe("external_conversion")

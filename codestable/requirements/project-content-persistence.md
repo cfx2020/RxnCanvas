@@ -17,7 +17,7 @@ tags: [project, persistence, restore, local-storage, import-ledger, energy-profi
 - 作为一个整理多批计算输出的人，我希望导入预览、失败记录和已确认对象能跟项目一起保存，而不是重启后重新梳理。
 - 作为一个用 agent 搭反应图的人，我希望对象、图谱和画布工作状态能落在项目目录里，方便下次继续编辑。
 - 作为一个比较反应路径能量的人，我希望已计算的 EnergyProfile、缺失点和 warnings 能跟项目一起保存，方便下次直接查看或导出，而不是重新计算后才知道当时的结果。
-- 作为一个反复导出报告的人，我希望已经写入项目 `exports/` 下的 PNG、CDXML、XLSX、CSV、SVG 导出文件能被项目索引记住格式、路径、checksum 和 metadata，方便下次打开项目时知道有哪些可复用报告 artifact。
+- 作为一个反复导出报告的人，我希望已经写入项目 `exports/` 下的导出文件能被项目索引记住格式、路径、checksum 和 metadata，方便下次打开项目时保留内部恢复和校验依据；当前 Web 普通导出面板只显示 PNG、CDXML 和 XLSX。
 - 作为一个长期维护项目文件的人，我希望系统能告诉我项目内容文件是否缺失、checksum 是否不一致、引用是否断掉，反应节点组成或能量表达式是否损坏，而不是等到加载失败时才逐个排查。
 - 作为一个先用本地项目验证流程的人，我希望保存的数据是普通项目文件，能被测试、备份和后续 Web/桌面壳层复用。
 - 作为一个用 CLI 或 agent 继续项目的人，我希望打开项目时能恢复已保存的对象、导入记录、图谱、workspace、energy profile 和导出索引，并且能把当前 session 再保存回项目内容文件。
@@ -42,7 +42,7 @@ Web Workbench 还提供真实 Browser Project Repository。它位于 `web/src/re
 
 Web Workbench Project Sidebar 已接入该 repository。用户可以在左侧栏列出 browser-local projects，新建 project，打开已有 project，并自动保存 / 覆盖 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` 真实 Project Content files。创建 browser project 时 Web 会写入空的 `project-v1` manifest、`project-content-v1` index 和 6 个空 section files；打开已有 project 时 Web 会先把这些 bytes 作为 `project.open(content_files)` payload 交给 shell 恢复 core session，再把恢复后的 snapshot 投影到 UI；active project + session 变化会防抖调用 `project.save_content(include_content_files=true)` 写回 Browser Project Repository。persistence、bridge、shallow validation 和 checksum 仍是内部状态依据；侧边栏正常状态下只展示 project list、active project 和 Project Files，只有保存失败、项目内容缺失或浅校验错误时显示 Project notices，不再把 local-only、backend、checksum、手动 `Save Project` 或 Project Bundle 当成主 UI 入口。
 
-Web Workbench Report Export Panel 已能在 active browser project 下把 `export.profile` 返回的 PNG/CDXML/XLSX/CSV/SVG inline bytes 写入 Browser Project Repository 的 `exports/{basename}.{format}` object。写入成功后，Web 会 upsert `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中 export artifacts section 的 checksum，让 Project Sidebar shallow validation 在内部保持 valid；正常 valid 结果不在侧栏常驻显示。该能力只持久化已由 ShellResponse 返回的 bytes，不在前端生成报告文件，也不自动调用 `project.save_content`；当前 session 的 Project Content 保存由 Web 工作台自动保存流程完成。
+Web Workbench Report Export Panel 已能在 active browser project 下把 `export.profile` 返回的 inline bytes 写入 Browser Project Repository 的 `exports/{basename}.{format}` object。当前 Web 普通导出面板只请求 PNG/CDXML/XLSX；底层 persistence helper 仍能处理 core supported 的 CSV/SVG。写入成功后，Web 会 upsert `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中 export artifacts section 的 checksum，让 Project Sidebar shallow validation 在内部保持 valid；正常 valid 结果不在侧栏常驻显示。该能力只持久化已由 ShellResponse 返回的 bytes，不在前端生成报告文件，也不自动调用 `project.save_content`；当前 session 的 Project Content 保存由 Web 工作台自动保存流程完成。
 
 Web Workbench 还保留 Browser Bundle Archive Adapter。它位于 `web/src/app/projectBundleArchive.ts`，使用隔离的 `fflate` dependency boundary 从 project-relative bytes entries 生成 `.rxnflow.zip` bytes，或读取 `.rxnflow.zip` bytes 并返回 safe project-relative entries 与 shallow bundle summary。adapter 复刻核心 Project Bundle 的 single-root、manifest required、allowed roots、`inputs/raw/`、duplicate、`__MACOSX` 和 symlink safety 语义，但当前只作为内部 helper / 测试能力存在，不作为 Project Sidebar 主流程。
 

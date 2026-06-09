@@ -62,7 +62,7 @@ export const exportFormatCapabilities: readonly ExportFormatCapability[] = [
     artifactKind: "energy_table",
     supportsInlineBytes: true,
     supportsBrowserPersistence: true,
-    webDefaultEnabled: true,
+    webDefaultEnabled: false,
     status: "supported",
   },
   {
@@ -74,7 +74,7 @@ export const exportFormatCapabilities: readonly ExportFormatCapability[] = [
     artifactKind: "graph_snapshot",
     supportsInlineBytes: true,
     supportsBrowserPersistence: true,
-    webDefaultEnabled: true,
+    webDefaultEnabled: false,
     status: "supported",
   },
   {

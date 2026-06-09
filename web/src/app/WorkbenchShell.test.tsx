@@ -1,5 +1,6 @@
 import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
+import { unzipSync } from "fflate"
 import { BrowserProjectRepositoryError, checksumBrowserStorageBytes, MemoryBrowserProjectRepository, type BrowserStorageObject } from "../repository"
 import { ShellClient, fixtureTransport, type ShellCommandPayload, type ShellResponse, type ShellRuntimeInfo, type ShellTransport, type WorkbenchSnapshotData } from "../shell"
 import { graphObjectDragMimeType } from "./graphObjectDragPayload"
@@ -105,10 +106,11 @@ describe("WorkbenchShell", () => {
     fireEvent.click(projectButton)
     expect(shell).toHaveAttribute("data-project-rail", "open")
 
-    fireEvent.click(screen.getByRole("button", { name: "Export" }))
+    const exportDockButton = screen.getAllByRole("button", { name: "Export" })[0]
+    fireEvent.click(exportDockButton)
     expect(shell).toHaveAttribute("data-inspector", "open")
     expect(shell).toHaveAttribute("data-export-dock", "report")
-    fireEvent.click(screen.getByRole("button", { name: "Export" }))
+    fireEvent.click(exportDockButton)
     expect(shell).toHaveAttribute("data-inspector", "closed")
   })
 
@@ -1943,47 +1945,43 @@ describe("WorkbenchShell", () => {
 
     openAnalysisDockTab("Export")
     const emptyExportPanel = screen.getByRole("region", { name: "Report Export Panel" })
-    openExportMode(emptyExportPanel)
     expect(within(emptyExportPanel).getByRole("button", { name: "Export" })).toBeDisabled()
 
     runFixtureCommand()
     await expectFixtureWorkbenchProjected()
     openAnalysisDockTab("Export")
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
-    openExportMode(exportPanel)
-    expect(within(exportPanel).getByRole("button", { name: "Preview mode" })).toHaveAttribute("aria-pressed", "false")
-    expect(within(exportPanel).getByLabelText("png")).toBeChecked()
-    expect(within(exportPanel).getByLabelText("cdxml")).toBeChecked()
-    expect(within(exportPanel).getByLabelText("xlsx")).toBeChecked()
-    expect(within(exportPanel).getByLabelText("csv")).toBeChecked()
-    expect(within(exportPanel).getByLabelText("svg")).toBeChecked()
-    expect(within(exportPanel).getByLabelText("Include bytes")).toBeChecked()
-    expect(within(exportPanel).getByText("Export readiness")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("Not browser-local persisted")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("CDXML only; no CDX")).toBeInTheDocument()
+    expect(within(exportPanel).getByLabelText("PNG")).toBeChecked()
+    expect(within(exportPanel).getByLabelText("CDXML")).toBeChecked()
+    expect(within(exportPanel).getByLabelText("XLSX")).toBeChecked()
+    expect(within(exportPanel).queryByLabelText("CSV")).not.toBeInTheDocument()
+    expect(within(exportPanel).queryByLabelText("SVG")).not.toBeInTheDocument()
+    expect(within(exportPanel).queryByText("Export readiness")).not.toBeInTheDocument()
+    expect(within(exportPanel).queryByText("Preview")).not.toBeInTheDocument()
+    expect(within(exportPanel).queryByText("Include bytes")).not.toBeInTheDocument()
 
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
     expect((await within(exportPanel).findAllByText("rxnflow-profile.png")).length).toBeGreaterThan(0)
     expect(within(exportPanel).getAllByText("rxnflow-profile.cdxml").length).toBeGreaterThan(0)
     expect(within(exportPanel).getAllByText("rxnflow-profile.xlsx").length).toBeGreaterThan(0)
-    expect(within(exportPanel).getAllByText("rxnflow-profile.csv").length).toBeGreaterThan(0)
-    expect(within(exportPanel).getAllByText("rxnflow-profile.svg").length).toBeGreaterThan(0)
+    expect(within(exportPanel).queryByText("rxnflow-profile.csv")).not.toBeInTheDocument()
+    expect(within(exportPanel).queryByText("rxnflow-profile.svg")).not.toBeInTheDocument()
     expect(within(exportPanel).queryByText("fixture-png-energy-plot-v1")).not.toBeInTheDocument()
     expect(within(exportPanel).queryByText("energy_table_schema_version")).not.toBeInTheDocument()
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(5)
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[0]).toHaveAttribute("download", "rxnflow-profile.png")
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[0].getAttribute("href")).toMatch(/^data:image\/png;base64,/)
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[1]).toHaveAttribute("download", "rxnflow-profile.cdxml")
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[1].getAttribute("href")).toMatch(/^data:chemical\/x-cdxml;base64,/)
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[2]).toHaveAttribute("download", "rxnflow-profile.xlsx")
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[2].getAttribute("href")).toMatch(/^data:application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet;base64,/)
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[3]).toHaveAttribute("download", "rxnflow-profile.csv")
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[3].getAttribute("href")).toMatch(/^data:text\/csv;base64,/)
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[4]).toHaveAttribute("download", "rxnflow-profile.svg")
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })[4].getAttribute("href")).toMatch(/^data:image\/svg\+xml;base64,/)
-    await waitFor(() => expect(screen.getAllByText("chemdraw_cdxml_only").length).toBeGreaterThan(0))
-    expect(screen.queryByText("5 artifacts indexed")).not.toBeInTheDocument()
+    expect(within(exportPanel).queryByText(/sha256:[a-f0-9]{64}/i)).not.toBeInTheDocument()
+    const downloads = within(exportPanel).getAllByRole("link", { name: "Download" })
+    expect(downloads).toHaveLength(3)
+    expect(downloads[0]).toHaveAttribute("download", "rxnflow-profile.png")
+    expect(downloads[0].getAttribute("href")).toMatch(/^data:image\/png;base64,/)
+    expect(downloads[1]).toHaveAttribute("download", "rxnflow-profile.cdxml")
+    expect(downloads[1].getAttribute("href")).toMatch(/^data:chemical\/x-cdxml;base64,/)
+    expect(downloads[2]).toHaveAttribute("download", "rxnflow-profile.xlsx")
+    expect(downloads[2].getAttribute("href")).toMatch(/^data:application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet;base64,/)
+    expect(dataUrlBytes(downloads[0].getAttribute("href") ?? "").slice(0, 8)).toEqual(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]))
+    expect(dataUrlText(downloads[1].getAttribute("href") ?? "")).toContain("<CDXML")
+    const workbookFiles = unzipSync(dataUrlBytes(downloads[2].getAttribute("href") ?? ""))
+    expect(new TextDecoder().decode(workbookFiles["xl/worksheets/sheet1.xml"])).toContain("Object A")
   })
 
   it("persists exported inline artifacts into the active browser project", async () => {
@@ -1997,61 +1995,37 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     openAnalysisDockTab("Export")
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
-    openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
     expect((await within(exportPanel).findAllByText("rxnflow-profile.png")).length).toBeGreaterThan(0)
     expect(within(exportPanel).getAllByText("rxnflow-profile.cdxml").length).toBeGreaterThan(0)
     expect(within(exportPanel).getAllByText("rxnflow-profile.xlsx").length).toBeGreaterThan(0)
-    expect(within(exportPanel).getAllByText("rxnflow-profile.csv").length).toBeGreaterThan(0)
-    expect(within(exportPanel).getAllByText("rxnflow-profile.svg").length).toBeGreaterThan(0)
-    expect(within(exportPanel).getAllByText("Yes").length).toBeGreaterThanOrEqual(5)
+    expect(within(exportPanel).queryByText("rxnflow-profile.csv")).not.toBeInTheDocument()
+    expect(within(exportPanel).queryByText("rxnflow-profile.svg")).not.toBeInTheDocument()
     expect(within(exportPanel).queryByText(/sha256:[a-f0-9]{64}/i)).not.toBeInTheDocument()
     const [project] = await repository.listProjects()
     await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.png")).resolves.toBe(true)
-    await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.svg")).resolves.toBe(true)
+    await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.cdxml")).resolves.toBe(true)
+    await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.xlsx")).resolves.toBe(true)
+    await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.svg")).resolves.toBe(false)
     const exportIndex = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, exportArtifactsPath)).bytes))
-    expect(exportIndex.artifacts).toHaveLength(5)
+    expect(exportIndex.artifacts).toHaveLength(3)
     expect(exportIndex.artifacts[0]).toMatchObject({
       id: "artifact-cdxml-rxnflow-profile",
       path: "exports/rxnflow-profile.cdxml",
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
     expect(exportIndex.artifacts[1]).toMatchObject({
-      id: "artifact-csv-rxnflow-profile",
-      path: "exports/rxnflow-profile.csv",
+      id: "artifact-png-rxnflow-profile",
+      path: "exports/rxnflow-profile.png",
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
-    expect(exportIndex.artifacts.find((artifact: { id: string }) => artifact.id === "artifact-svg-rxnflow-profile")).toMatchObject({
-      id: "artifact-svg-rxnflow-profile",
-      path: "exports/rxnflow-profile.svg",
+    expect(exportIndex.artifacts[2]).toMatchObject({
+      id: "artifact-xlsx-rxnflow-profile",
+      path: "exports/rxnflow-profile.xlsx",
       checksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     })
     expect(screen.queryByText("Project content files are readable.")).not.toBeInTheDocument()
-  })
-
-  it("shows exported artifacts without download links when inline bytes are disabled", async () => {
-    const repository = new MemoryBrowserProjectRepository()
-    await createProjectWithContent(repository, "No Bytes")
-    renderWorkbench(repository)
-
-    fireEvent.click(await screen.findByRole("button", { name: /no bytes/i }))
-    runFixtureCommand()
-    await expectFixtureWorkbenchProjected()
-    openAnalysisDockTab("Export")
-    const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
-    openExportMode(exportPanel)
-    fireEvent.click(within(exportPanel).getByLabelText("Include bytes"))
-    expect(within(exportPanel).getByText("Runtime metadata only")).toBeInTheDocument()
-    fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
-
-    expect((await within(exportPanel).findAllByText("rxnflow-profile.png")).length).toBeGreaterThan(0)
-    expect(within(exportPanel).queryByRole("link", { name: "Download" })).not.toBeInTheDocument()
-    expect(within(exportPanel).getAllByText("Download unavailable")).toHaveLength(5)
-    const [project] = await repository.listProjects()
-    await expect(repository.exists(project.projectRef, "exports/rxnflow-profile.png")).resolves.toBe(false)
-    const exportIndex = JSON.parse(new TextDecoder().decode((await repository.readObject(project.projectRef, exportArtifactsPath)).bytes))
-    expect(exportIndex.artifacts).toHaveLength(0)
   })
 
   it("keeps runtime export artifacts visible when browser persistence fails", async () => {
@@ -2064,15 +2038,13 @@ describe("WorkbenchShell", () => {
     await expectFixtureWorkbenchProjected()
     openAnalysisDockTab("Export")
     const exportPanel = screen.getByRole("region", { name: "Report Export Panel" })
-    openExportMode(exportPanel)
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
     expect((await within(exportPanel).findAllByText("rxnflow-profile.png")).length).toBeGreaterThan(0)
-    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(5)
-    expect(within(exportPanel).getAllByText("No").length).toBeGreaterThanOrEqual(5)
-    expect(screen.getAllByText("artifact_persistence_failed").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Browser local storage quota would be exceeded.").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("exports").length).toBeGreaterThan(0)
+    expect(within(exportPanel).getAllByRole("link", { name: "Download" })).toHaveLength(3)
+    expect(within(exportPanel).queryByText("rxnflow-profile.csv")).not.toBeInTheDocument()
+    expect(screen.queryByText("artifact_persistence_failed")).not.toBeInTheDocument()
+    expect(screen.queryByText("Browser local storage quota would be exceeded.")).not.toBeInTheDocument()
   })
 
   it("opens an empty workspace before adding imported files to the canvas", async () => {
@@ -2356,14 +2328,9 @@ describe("WorkbenchShell", () => {
     openAnalysisDockTab("导出")
     const exportPanel = screen.getByRole("region", { name: "报告导出面板" })
     expect(within(exportPanel).getByText("报告导出")).toBeInTheDocument()
-    openExportMode(exportPanel, "导出模式")
     expect(within(exportPanel).getByRole("button", { name: "导出" })).toBeEnabled()
   })
 })
-
-function openExportMode(exportPanel: HTMLElement, label = "Export mode") {
-  fireEvent.click(within(exportPanel).getByRole("button", { name: label }))
-}
 
 function renderWorkbench(
   projectRepository = new MemoryBrowserProjectRepository(),
@@ -2383,6 +2350,20 @@ function renderWorkbench(
       />
     </I18nProvider>,
   )
+}
+
+function dataUrlBytes(value: string): Uint8Array {
+  const [, base64 = ""] = value.split(",", 2)
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+function dataUrlText(value: string): string {
+  return new TextDecoder().decode(dataUrlBytes(value))
 }
 
 async function expectFixtureWorkbenchProjected() {
@@ -2405,9 +2386,10 @@ function openAnalysisDockTab(tabName: string) {
   if (tabName !== "Export" && tabName !== "导出") {
     throw new Error(`Only the report export dock remains in the workspace shell. Requested: ${tabName}`)
   }
-  const shell = screen.getByRole("main", { name: /rxnflow web workbench|rxnflow web 工作台/i })
-  if (shell.getAttribute("data-inspector") === "open") return
-  fireEvent.click(screen.getByRole("button", { name: tabName }))
+  const panelName = tabName === "导出" ? "报告导出面板" : "Report Export Panel"
+  if (screen.queryByRole("region", { name: panelName })) return
+  const header = screen.getByRole("banner")
+  fireEvent.click(within(header).getByRole("button", { name: tabName }))
 }
 
 function runFixtureCommand() {

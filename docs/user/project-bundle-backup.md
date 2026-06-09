@@ -28,7 +28,7 @@ RxnFlow core/CLI 仍保留 `.rxnflow.zip` 项目包能力，用于内部测试�
 
 - 保存当前编辑态项目：Web 工作台自动保存当前 browser-local project。
 - 继续处理已经导入的 raw 文件：在左侧 Project Files 点击文件行或把 raw 文件拖到画布。
-- 导出 PNG/CDXML/XLSX/CSV/SVG：使用右侧 Export 面板。
+- 导出 PNG/CDXML/XLSX：使用右侧 Export 面板。CSV/SVG 仍是底层 writer 能力，不在当前 Web 普通导出面板显示。
 - `.rxnflow.zip` 导入/导出不再是 Web 左侧主流程入口。
 
 ## CLI 导出

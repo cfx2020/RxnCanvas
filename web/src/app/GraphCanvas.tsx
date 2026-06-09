@@ -1132,6 +1132,7 @@ export function GraphCanvas({
           onClick={handleEnergyLayout}
           disabled={!canUseWorkspace || nodes.length === 0}
           title={t("graphCanvas.energyLayout")}
+          aria-label={t("graphCanvas.energyLayout")}
           className="graph-viewport-text-button"
         >
           <span>{t("graphCanvas.energyLayoutShort")}</span>
@@ -1629,6 +1630,7 @@ function GraphMinimap({
         ref={minimapRef}
         type="button"
         className="graph-minimap"
+        data-testid="graph-minimap"
         aria-label={t("graphCanvas.minimapNavigate")}
         onPointerDown={(event) => {
           if (event.button !== 0) return
@@ -3279,7 +3281,7 @@ function GraphEdgeLayer({
           })}
           onPointerDown={(event) => {
             event.stopPropagation()
-            onSelectBarrierAnnotation(segment.id)
+            event.preventDefault()
           }}
           onClick={(event) => {
             event.stopPropagation()
@@ -3289,29 +3291,6 @@ function GraphEdgeLayer({
           {segment.label}
         </button>
       ))}
-      {barrierSegments.map((segment) => selectedBarrierAnnotationId === segment.id ? (
-        <button
-          key={`${segment.id}:delete`}
-          type="button"
-          aria-label={t("graphCanvas.barrier.delete", {
-            source: segment.sourceLabel,
-            target: segment.targetLabel,
-          })}
-          className="graph-barrier-delete-button"
-          style={{ left: `${segment.labelPoint.x + 58}px`, top: `${segment.labelPoint.y}px` }}
-          onPointerDown={(event) => {
-            event.stopPropagation()
-            event.preventDefault()
-            onRemoveBarrierAnnotation(segment.id)
-          }}
-          onClick={(event) => {
-            event.stopPropagation()
-            onRemoveBarrierAnnotation(segment.id)
-          }}
-        >
-          <X size={11} aria-hidden="true" />
-        </button>
-      ) : null)}
       {curvedSegments.map((segment) => {
         const selected = selectedEdgeIds.has(segment.id)
         return (

@@ -233,11 +233,12 @@ describe("GraphCanvas molecule previews", () => {
     expect(view.container.querySelector(".graph-barrier-arrow")).toBeInTheDocument()
     expect(view.container.querySelector(".graph-barrier-guide")).toBeInTheDocument()
     expect(screen.getByRole("textbox", { name: "Barrier label" })).toHaveValue("△E‡ 12.55")
+    expect(view.container.querySelector(".graph-barrier-delete-button")).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "Barrier annotation from A to B" }))
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Delete barrier annotation from A to B" }))
+    fireEvent.click(screen.getByRole("button", { name: "Delete Selection" }))
 
     expect(screen.queryByRole("textbox", { name: "Barrier label" })).not.toBeInTheDocument()
+    expect(view.container.querySelector(".graph-barrier-arrow")).not.toBeInTheDocument()
   })
 
   it("edits explicit barrier annotation labels inline", () => {
@@ -477,7 +478,7 @@ describe("GraphCanvas graph edges", () => {
       onApplyAutoLayout,
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "Energy" }))
+    fireEvent.click(screen.getByRole("button", { name: "Layout by energy" }))
 
     expect(onApplyAutoLayout).toHaveBeenCalledTimes(1)
     const plan = onApplyAutoLayout.mock.calls[0][0] as GraphLayoutPlan

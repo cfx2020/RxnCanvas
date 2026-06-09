@@ -3,137 +3,80 @@ doc_type: user-guide
 slug: report-export-artifacts
 component: report-export-guides
 status: current
-summary: 如何在 RxnFlow Web 工作台导出报告 artifacts
-tags: [report-export, web-workbench, cdxml, xlsx, csv, svg, local-first]
-last_reviewed: 2026-06-05
+summary: 如何在 RxnFlow Web 工作台导出 PNG、CDXML 和 XLSX 文件
+tags: [report-export, web-workbench, png, cdxml, xlsx, local-first]
+last_reviewed: 2026-06-09
 ---
 
-# 导出 PNG、CDXML、XLSX、CSV 和 SVG 报告文件
+# 导出报告文件
 
 ## 功能简介
 
-RxnFlow Web 工作台当前可以把当前能量剖面和图谱快照导出为五类文件：PNG 能量图、ChemDraw 可打开的 CDXML 能量图、XLSX 能量表工作簿、CSV 能量表，以及 SVG graph snapshot。导出入口是顶部 `Export` 按钮打开的右侧 Report Export 面板。面板默认先显示 Preview，用来检查 graph/profile summary、报告资产 readiness、可复用 artifacts 和 warnings；切到 Export 后可以执行导出。导出结果会显示下载入口、metadata、warnings 和保存路径。
+RxnFlow Web 工作台当前的导出面板只做一件事：把当前能量剖面导出为文件并提供下载。
 
-当前导出是本地优先能力。浏览器项目中的 `exports/...` 文件保存在当前浏览器本地仓储中，不是云同步。
-
-## 前置条件
-
-- 已经在 Web 工作台运行过 fixture 或打开了可用 session。
-- 图谱中已有 active path。
-- 画布已有可自动计算的当前 profile。
-
-## 如何使用
-
-1. 在 Web 工作台中确认图谱已有当前路径。
-2. 等待画布根据 active path 自动生成当前能量 profile。
-3. 点击顶部 `Export` 打开右侧 Report Export 面板，先查看 `Preview`：
-   - `Report assets` 会显示 energy diagram、energy table、graph snapshot 是 `Ready` 还是 `Pending export`。
-   - `Reusable artifacts` 会列出当前已有 artifact 的 format、id、inline bytes、persisted/path/checksum 状态。
-   - `Preview warnings` 会保留导出 warning code、message 和 target。
-4. 在 Report Export 面板切到 `Export` 模式，选择需要的格式：
-   - `png`
-   - `cdxml`
-   - `xlsx`
-   - `csv`
-   - `svg`
-5. 保持 `Include bytes` 开启，才能在浏览器中看到 Download link。
-6. 根据需要修改 `Basename` 和 `Report title`。
-7. 点击 `Export`。
-8. 回到 `Preview`，确认 energy table 和 graph snapshot 等资产从 `Pending export` 变成 `Ready`。
-9. 在 artifact card 中查看每个导出文件：
-   - `Download`：直接下载当前 artifact。
-   - `Path`：如果已经持久化，会显示 `exports/{basename}.{format}`。
-   - `Persisted`：是否已写入当前 browser-local project。
-   - `Checksum`：保存后用于内部校验文件内容的 sha256；常规项目树不会显示它。
-   - `Metadata`：writer、profile、path、schema version 等信息。
-   - `Warnings`：导出过程中的说明或限制。
-
-## 格式说明
+当前 Web 面板显示三种格式：
 
 | 格式 | 用途 | 当前边界 |
 |---|---|---|
-| PNG | 快速放进文档、汇报或聊天中查看能量图。 | 位图，不适合在 ChemDraw 中编辑对象。 |
-| CDXML | 用 ChemDraw 打开和编辑能量图线条、结构名、相对能量、相邻 `dE`、missing reason 和 correction marker。 | 当前是 `.cdxml` XML 文件，不是 `.cdx` 二进制文件；不包含分子结构、原子/键或反应式编辑语义。 |
-| XLSX | 查看结构优先的能量表、Energy Profile 和 warnings。 | 当前不套用你的私有 Excel 模板；缺失字段留空，不自动补 0。 |
-| CSV | 把结构优先的能量表交给脚本、表格软件或其他数据流程。 | UTF-8 单表 CSV；没有公式、多 sheet、样式或私有模板；缺失字段为空 cell。 |
-| SVG | 保存当前反应图谱的 graph snapshot，适合放入报告、网页或矢量编辑流程。 | 由 core 根据 graph/workspace 投影生成，不是 Web 画布截图；包含节点、边、active path、selection 和 viewport metadata，不包含 hover 或拖拽中的临时状态。 |
+| PNG | 快速放进文档、汇报或聊天中查看能量图。 | 位图，不适合在 ChemDraw 中编辑。 |
+| CDXML | 用 ChemDraw 打开能量图文本和线条。 | 当前是 `.cdxml` XML 文件，不是 `.cdx`；只包含结构名称、相对能量和能量差等能量图元素，不包含分子级原子/键结构。 |
+| XLSX | 导出结构优先的能量表。 | 第一列是结构名称；当前不套用你的私有 Excel 模板，缺失字段留空。 |
 
-RxnFlow 内部仍记录了 PDF、PPTX 和 CDX 的格式能力边界，但这些格式当前不会出现在 Web 导出勾选项里，也不会生成文件。后续若开放 PDF/PPTX，会先基于内部 `ReportDocument` manifest 做 writer，而不是把当前网页预览截图直接当作正式报告。
+CSV 和 SVG 在底层 core 仍保留 writer 能力，但当前 Web 主界面不显示这两个格式。这样导出面板不会再混入不清楚用途的 graph snapshot 或脚本数据格式。
+
+## 如何使用
+
+1. 在画布上完成节点和路径连接。
+2. 等待当前能量剖面自动计算完成。
+3. 点击右上角 `导出` 打开右侧导出面板。
+4. 勾选需要的格式：PNG、CDXML、XLSX。
+5. 根据需要修改文件名基底和报告标题。
+6. 点击 `导出`。
+7. 在导出的文件列表里点击 `下载`。
+
+导出面板不会显示 preview、readiness、checksum、writer id、metadata 或 persisted 状态。这些信息仍保留在内部数据结构和测试里，但不应该占用普通用户界面。
 
 ## 保存位置
 
-有 active browser project 且 `Include bytes` 开启时，Web 会把导出文件保存到当前浏览器本地项目：
+在 Web 工作台中，下载链接直接来自当前 runtime 返回的文件 bytes。若当前项目处于 browser-local 项目中，Web 还会把这些 bytes 写入浏览器本地项目的 `exports/` 下：
 
 ```text
 exports/rxnflow-profile.png
 exports/rxnflow-profile.cdxml
 exports/rxnflow-profile.xlsx
-exports/rxnflow-profile.csv
-exports/rxnflow-profile.svg
 ```
 
-`Basename` 改成别的值后，路径中的 `rxnflow-profile` 也会跟着改变。重复导出同名文件会覆盖同一路径或更新同一条记录，不会自动生成历史版本。
-
-如果没有 active browser project，或关闭了 `Include bytes`，页面仍会显示 runtime artifact metadata，但不会写入 `exports/...`。
-
-### 备份和迁移
-
-浏览器本地 `exports/...` 不是云备份。当前 Web 主流程中，编辑态项目通过自动保存写回当前 browser-local project；报告文件通过右侧 Export 面板下载或写入当前 browser-local project。CDXML、CSV、PNG、XLSX 和 SVG 不出现在左侧 Project Files 中。
-
-`.rxnflow.zip` 项目包能力仍保留给内部/CLI/后备迁移场景，但当前 Web 左侧主流程不再暴露 Import Bundle / Export Bundle 作为默认操作。
-
-## Preview 状态含义
-
-| 状态 | 含义 |
-|---|---|
-| Ready | 当前 runtime 或 browser-local artifacts 中已经有可复用资产。 |
-| Pending export | 当前 profile/graph 已经足够生成资产，但还没有对应导出 artifact。 |
-| Needs review | 当前 profile 含 missing point 或 warning，需要导出前人工检查。 |
-| Unavailable | 缺少 profile、graph 或必要输入，当前还不能判断或生成该资产。 |
-
-Preview 只读取页面已有的 profile、workspace、artifacts 和 warnings，不会生成文件、不保存项目，也不会重新计算能量或重排图谱。
+这些文件不显示在左侧 Project Files 里。左侧 Project Files 只放用户导入并可拖到画布的计算输出文件，例如 `.log`、`.out`、`.xyz`、`.extxyz`。
 
 ## 常见问题
 
-Q: 为什么没有 Download link？
+Q: 为什么没有 CSV？
 
-A: 通常是 `Include bytes` 没有开启，或 Shell 返回的 artifact 没有 inline bytes。开启 `Include bytes` 后重新导出。
+A: 当前 Web 主流程先收敛到 PNG、CDXML 和 XLSX。CSV writer 仍在 core 中，可供后续 CLI、脚本或高级导出入口复用，但普通导出面板暂时不显示。
 
-Q: `Persisted: no` 是什么意思？
+Q: SVG 是导出什么？
 
-A: 当前 artifact 还没有写入 browser-local project。可能是没有打开浏览器本地项目、关闭了 `Include bytes`，或浏览器本地写入失败。
-
-Q: checksum 有什么用？
-
-A: checksum 是文件内容的 sha256 指纹，用于判断保存后的 artifact 是否和索引记录一致。
+A: SVG writer 是底层 graph snapshot 能力，不是当前画布截图，也不是用户要交给 ChemDraw 的能量图。因此当前 Web 面板先隐藏它，避免和报告导出混在一起。
 
 Q: CDXML 和 CDX 有什么区别？
 
-A: CDXML 是 XML 格式，当前 RxnFlow 支持导出 `.cdxml`。CDX 是 ChemDraw 的二进制格式，当前不支持，也不会出现在 Web 导出勾选项里。需要 CDX 时，先在 ChemDraw 中打开 CDXML，再由 ChemDraw 另存为 CDX。
+A: CDXML 是 XML 格式，当前 RxnFlow 支持导出 `.cdxml`。CDX 是 ChemDraw 的二进制格式，当前不支持。需要 CDX 时，先在 ChemDraw 中打开 CDXML，再由 ChemDraw 另存为 CDX。
 
-Q: CDXML 里会包含哪些能量信息？
+Q: CDXML 里有什么？
 
-A: 当前 CDXML 能量图包含每个 state 的结构名称和相对能量，也会在相邻有效 state 之间标出 `dE`。如果某个 point 缺失能量，会显示 missing reason，不会把缺失点当作 0；如果某个 point 使用了校正项，会显示 `corr xN` marker。
+A: 当前 CDXML 只做最小能量图导出：结构名称、相对能量、相邻能量差和必要的 missing/correction 标记。它不是分子结构 ChemDraw 文件。
 
 Q: XLSX 第一列是什么？
 
-A: 第一列固定为结构名称。能量字段包括 Egas、Ggas、Ggas+1M、Ggas(shermo)、Ggas(shermo+1M)、Esol、Gsol、relative energy 和 missing reason 等。当前没有数据的字段留空。
+A: 第一列固定为结构名称。能量字段来自当前能量表契约；没有数据的字段留空，不自动补 0。
 
-Q: 网页版会自动云备份这些导出文件吗？
+Q: 网页版会自动云备份导出文件吗？
 
-A: 不会。当前 Web 工作台是 local-only。浏览器清数据、profile 损坏或换浏览器都可能导致 browser-local project 丢失。当前主流程用自动保存保留本浏览器项目，跨设备备份/分享入口后续会重新设计。
-
-Q: 能导出 CSV 吗？
-
-A: 可以。CSV 使用和 XLSX 一样的 `energy-table-v1` 表格字段，第一列固定为结构名称，缺失字段为空 cell，不自动补 0 或 NA。
-
-Q: 能导出 SVG 吗？
-
-A: 可以。SVG 是 graph snapshot artifact，反映当前 workspace graph、active path、selection 和 viewport。它不是浏览器 DOM/canvas 截图，也不会包含 hover、正在拖动的连线草稿或历史记录。
+A: 不会。当前 Web 工作台是 local-first。浏览器本地项目不是云同步，也不是跨设备备份。需要长期保存时，请下载导出的 PNG、CDXML、XLSX 文件。
 
 Q: 能导出 PDF、PPTX、CDX 或完整报告吗？
 
-A: 当前不能。当前可执行导出是 PNG、CDXML、XLSX、CSV 和 SVG。内部已经有组合报告 manifest 用来约束后续 PDF/PPTX/HTML 等 writer，但它不是用户可下载的完整报告文件；PDF、PPTX 和 CDX 仍属于后续独立功能。PDF/PPTX 需要先明确排版和依赖策略，CDX 需要可靠转换或 writer 后才会开放。
+A: 当前不能。PDF/PPTX/CDX 需要单独设计 writer、依赖和验收方式，不能直接拿当前网页 DOM 或截图当正式报告。
 
 ## 相关功能
 

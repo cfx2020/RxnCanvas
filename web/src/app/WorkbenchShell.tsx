@@ -964,12 +964,39 @@ export function WorkbenchShell({
       return
     }
 
-    const snapshotResponse = await shellClient.run<WorkbenchSnapshotData>({
+    let snapshotResponse = await shellClient.run<WorkbenchSnapshotData>({
       command: "workbench.snapshot",
       args: {
         session_id: fixtureResponse.data.session_id,
       },
     })
+    if (snapshotResponse.ok && snapshotResponse.data && !snapshotResponse.data.workspace) {
+      const workspaceResponse = await shellClient.run<WorkspaceCommandData>({
+        command: "workspace.open",
+        args: {
+          session_id: fixtureResponse.data.session_id,
+        },
+      })
+      if (!workspaceResponse.ok || !workspaceResponse.data) {
+        setWorkbenchState({
+          ...initialWorkbenchDomainState,
+          status: "error",
+          warnings: workspaceResponse.warnings,
+          error: workspaceResponse.error ?? {
+            code: "invalid_input",
+            message: "Fixture workspace could not be opened.",
+            target: "workspace.open",
+          },
+        })
+        return
+      }
+      snapshotResponse = await shellClient.run<WorkbenchSnapshotData>({
+        command: "workbench.snapshot",
+        args: {
+          session_id: fixtureResponse.data.session_id,
+        },
+      })
+    }
     resetGraphEditorHistory()
     setWorkbenchState(projectWorkbenchSnapshot(snapshotResponse))
   }, [resetGraphEditorHistory, shellClient])
@@ -3822,12 +3849,8 @@ function InspectorPanel({
       <div className="export-dock-panel">
         <ReportExportPanel
           artifacts={state.artifacts}
-          profile={state.profile}
-          workspace={state.workspace}
           options={reportExportOptions}
           disabled={!state.sessionId || !state.profile}
-          warnings={state.warnings}
-          hasActiveBrowserProject={Boolean(state.sessionId && hasActiveBrowserProject)}
           onOptionsChange={onReportExportOptionsChange}
           onExport={onRunReportExport}
         />

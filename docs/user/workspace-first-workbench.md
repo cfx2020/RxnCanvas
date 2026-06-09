@@ -41,13 +41,11 @@ http://127.0.0.1:5173/
 5. 如果解析结果只有一个对象，画布会按落点创建节点；如果有多个对象或多帧候选，先在候选选择器里选择要放到画布的结构。
 6. 在画布上从节点连接点拖线到另一个节点。节点左侧和右侧都提供连接点，画布会以平滑曲线显示 edge。无歧义时会自动创建或延长 active path；有分叉或重复节点时，后续会进入单独的路径编辑入口处理。当前主界面不再提供单独的 `Connect` / `Set Path` 按钮。
 7. 画布会跟随 active path 自动维护当前能量 profile，节点卡和路径预览优先显示结构名、能量、电荷、自旋和 3D 结构。当前主流程不再单独打开 PES 面板手动 Compute。
-8. 点击顶部 `Export` 打开右侧导出面板，先看 `Preview`，再切到 `Export` 模式导出：
+8. 点击顶部 `Export` 打开右侧导出面板，导出当前 profile：
    - PNG
    - CDXML
    - XLSX
-   - CSV
-   - SVG
-9. 保持 `Include bytes` 开启，导出后确认每个 artifact 有 `Download` 和 `exports/...` path。checksum 等低频校验信息属于内部数据，不应常驻占用左侧项目树。
+9. 导出后确认每个文件都有 `Download` 链接。checksum、writer metadata 和持久化状态属于内部数据，不应常驻占用普通导出界面或左侧项目树。
 10. 等待自动保存完成后，刷新页面或重新打开同一 browser-local project，确认项目文件、画布节点、边、path、viewport、3D 结构和 PES/profile 状态能恢复。若旧项目只保存了线性 edge 而没有 path，Web 工作台会在打开时自动修复为当前 active path。
 11. 继续从左侧 Project Files 点击文件行，或把项目文件拖回画布，确认已有项目文件可以再次生成画布节点而不重复写入 raw object。
 
@@ -59,7 +57,7 @@ http://127.0.0.1:5173/
 - `.rxnflow.zip` 项目包能力仍保留在内部/CLI/备份文档中，但不再是 Web 左侧主流程入口。
 - CDXML 导出当前只支持 `.cdxml` XML 文件，不支持 `.cdx` 二进制文件，也不包含分子级原子/键编辑语义。
 - 当前 parser smoke 只证明 fixture 或 local-http 本地开发链路可用；local-http inline preview 当前单文件上限为 12MiB，可覆盖 `Ni-fxc` 这类 10MiB 内 Gaussian log，但不等于完整认证 Gaussian、ORCA、MAPLE、XYZ 或 extxyz 的全部真实输出。
-- PNG、CDXML、XLSX、CSV 和 SVG artifacts 只在 `Include bytes` 开启且有 active browser project 时写入项目 `exports/...`。
+- Web 导出面板当前只显示 PNG、CDXML 和 XLSX；CSV/SVG 仍属于底层 writer 能力，不在普通导出面板显示。
 
 ## 常见问题
 
@@ -69,7 +67,7 @@ A: 不需要。当前保存到浏览器本地仓储。但这不是云备份，�
 
 Q: 重新打开项目后应该恢复哪些内容？
 
-A: 重新打开项目后，Project Files 里只显示项目 raw 输入文件；画布节点、边、路径、viewport、对象和 profile 会从项目内容恢复。导出的 PNG/CDXML/XLSX/CSV/SVG 仍归右侧 Export 面板管理。
+A: 重新打开项目后，Project Files 里只显示项目 raw 输入文件；画布节点、边、路径、viewport、对象和 profile 会从项目内容恢复。导出的 PNG/CDXML/XLSX 仍归右侧 Export 面板管理。
 
 Q: 为什么没有 `Connect` 或 `Set Path` 按钮？
 
@@ -77,7 +75,7 @@ A: 当前口径是“连接就是路径”：从节点连接点拖线到另一�
 
 Q: 为什么 Project Files 里没有 CDXML、CSV、PNG 或 XLSX？
 
-A: 左侧 Project Files 只服务导入画布的原始计算输出文件。CDXML、CSV、PNG、XLSX 和 SVG 是报告导出 artifacts，放在右侧 Export 面板查看和下载。
+A: 左侧 Project Files 只服务导入画布的原始计算输出文件。CDXML、PNG 和 XLSX 是报告导出文件，放在右侧 Export 面板查看和下载。
 
 Q: CDXML 能直接当 ChemDraw 结构文件编辑吗？
 

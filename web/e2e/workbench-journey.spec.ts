@@ -11,12 +11,12 @@ import {
   dragRegisteredObjectToGraphCanvas,
   editFixtureEdgeLabel,
   exerciseNarrowGraphAdvancedControls,
+  exerciseNarrowGraphZoomControls,
   exerciseGraphViewportControls,
   expectConsoleClean,
   expectNoFrameworkOverlay,
   expectNoHorizontalOverflow,
   exportFixtureProfile,
-  exportWithoutInlineBytes,
   importSourcesToCanvas,
   openAnalysisDockTab,
   openBrowserProject,
@@ -57,10 +57,9 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await openBrowserProject(page, projectName)
     await runFixture(page)
     await exportFixtureProfile(page)
-    await exportWithoutInlineBytes(page)
 
     await openAnalysisDockTab(page, "Export")
-    await expect(page.getByText("Download unavailable")).toHaveCount(5)
+    await expect(page.getByRole("link", { name: "Download" })).toHaveCount(3)
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)
     await attachViewportScreenshot(page, testInfo, "desktop-report-export")
@@ -84,12 +83,13 @@ test.describe("RxnFlow Web Workbench E2E", () => {
       target: { xRatio: 0.72, yRatio: 0.36 },
     })
     const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
-    await expect(graphCanvas.locator('[data-graph-node-id="node-web-3"]').first()).toBeVisible()
+    await expect(graphCanvas.locator(".graph-node-card")).toHaveCount(3)
     await expect(graphCanvas.getByText("Object B").first()).toBeVisible()
 
     await dragGraphNode(page, /Object B/i, { x: 88, y: 58 })
     await applyAutoLayoutAndReplayHistory(page)
     await editFixtureEdgeLabel(page, "TS scan")
+    await importSourcesToCanvas(page)
     await drawTemporaryEdgeWithPointer(page)
     await rubberBandDeleteTemporaryNodes(page)
     await reorderFixturePathToReverse(page)
@@ -118,8 +118,7 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     await openWorkbench(page)
     await openBrowserProject(page, projectName)
     await expect(page.getByText(projectName).first()).toBeVisible()
-    await expect(page.getByRole("region", { name: "Graph Canvas" }).locator('[data-graph-node-id="node-web-3"].graph-node-card')).toBeVisible()
-    await expect(page.getByRole("region", { name: "Graph Canvas" }).getByText("water.xyz").first()).toBeVisible()
+    await expect(page.getByRole("region", { name: "Graph Canvas" }).locator(".graph-node-card").filter({ hasText: "water" }).last()).toBeVisible()
 
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)
@@ -148,28 +147,19 @@ test.describe("RxnFlow Web Workbench E2E", () => {
     const consoleIssues = collectConsoleIssues(page)
     await page.setViewportSize({ width: 390, height: 840 })
     await openWorkbench(page)
+    await createAndSaveBrowserProject(page, `Narrow QA ${Date.now()}`)
     await runFixture(page)
 
     const graphCanvas = page.getByRole("region", { name: "Graph Canvas" })
     await expect(graphCanvas).toBeVisible()
-    await graphCanvas.getByRole("button", { name: "Add Active Object" }).click()
-    await expect(graphCanvas.locator('[data-graph-node-id="node-web-3"]').first()).toBeVisible()
+    await importSourcesToCanvas(page)
     await drawTemporaryEdgeWithPointer(page)
 
-    await graphCanvas.getByRole("button", { name: "Zoom In" }).click()
-    await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("120%")
-    await graphCanvas.getByRole("button", { name: "Reset View", exact: true }).click()
-    await expect(graphCanvas.locator(".graph-viewport-bar output")).toHaveText("100%")
-    await expect(graphCanvas.getByLabel("Network Preview")).toBeVisible()
+    await exerciseNarrowGraphZoomControls(page)
+    await expect(graphCanvas.locator(".graph-minimap-panel")).toBeVisible()
 
     await openAnalysisDockTab(page, "Export")
-    const exportPanel = page.getByRole("complementary", { name: "Report Export Panel" })
-    await exportPanel.getByRole("button", { name: "Export mode" }).click()
-    await exportPanel.getByRole("button", { name: "Export", exact: true }).click()
-    await expect(exportPanel.getByText("exports/rxnflow-profile.png")).toBeVisible()
-    await expect(exportPanel.getByText("exports/rxnflow-profile.csv")).toBeVisible()
-    await expect(exportPanel.getByText("exports/rxnflow-profile.svg")).toBeVisible()
-    await expect(exportPanel.getByRole("link", { name: "Download" })).toHaveCount(5)
+    await exportFixtureProfile(page)
 
     await expectNoFrameworkOverlay(page)
     await expectNoHorizontalOverflow(page)

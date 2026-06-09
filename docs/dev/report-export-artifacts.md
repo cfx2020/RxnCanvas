@@ -3,26 +3,36 @@ doc_type: dev-guide
 slug: report-export-artifacts
 component: report-export-guides
 status: current
-summary: 如何生成、组合、投影和持久化 RxnFlow 报告导出 artifacts
-tags: [report-export, artifacts, report-document, cdxml, xlsx, csv, svg, platform-shell, web]
-last_reviewed: 2026-06-02
+summary: RxnFlow 报告导出 artifact 的生成、投影、下载和持久化契约
+tags: [report-export, artifacts, report-document, png, cdxml, xlsx, csv, svg, platform-shell, web]
+last_reviewed: 2026-06-09
 ---
 
 # Report Export Artifacts
 
 ## 概述
 
-RxnFlow 报告导出当前可执行五种 artifact：PNG 能量图、ChemDraw/CDXML 能量图、XLSX 能量表工作簿、CSV 能量表和 SVG graph snapshot。核心层负责生成 bytes 或写入目标目录，也提供 JSON-safe `ReportDocument` manifest 用来组合已有 profile、table rows、graph snapshot 和 artifact metadata。Platform Shell 负责把 artifact 投影成 JSON-safe response，Web 工作台只展示、下载和在 browser-local project 下持久化已有 inline bytes。
+RxnFlow core 当前支持五种可执行导出格式：
 
-这份指南面向贡献者和集成方。它说明当前 API、字段、路径、格式能力矩阵、Report Composer Manifest、Web Preview 投影和边界，不覆盖未来 PDF/PPTX/HTML/CDX writer。
+- PNG energy diagram
+- CDXML energy diagram
+- XLSX energy table workbook
+- CSV energy table
+- SVG graph snapshot
 
-## 前置依赖
+Web 工作台的用户导出面板当前只暴露 PNG、CDXML 和 XLSX。CSV 和 SVG 仍是 core / shell supported formats，但不属于当前 Web 主 UI 默认格式。
 
-- PNG writer 依赖 Pillow，XLSX writer 依赖 XlsxWriter；CSV 和 SVG writer 使用 Python 标准库；外部依赖在 writer 内延迟 import，缺失时返回 `export_failed target=dependency`。
-- PNG 和 CDXML 导出需要 `EnergyProfile`。
-- XLSX 和 CSV 导出至少需要 `EnergyProfile`、`ChemicalObject` 或显式 `EnergyTableRow`。
-- SVG 导出需要 `ReactionGraph` 或 `WorkspaceSnapshot`；有 workspace 时优先使用 workspace graph、viewport、selection 和 active path。
-- Web download 和 browser-local persistence 需要 Shell artifact 带 `bytes_base64`，也就是 `include_bytes=true`。
+Platform Shell 负责把 core artifact 投影为 JSON-safe `ShellArtifact`；Web 只显示可下载文件，不展示 writer id、checksum、metadata、readiness、Preview mode 或 artifact debug dashboard。
+
+## 依赖与输入
+
+- PNG writer 依赖 Pillow。
+- XLSX writer 依赖 XlsxWriter。
+- CSV 和 SVG writer 使用 Python 标准库。
+- PNG 和 CDXML 需要 `EnergyProfile`。
+- XLSX 和 CSV 至少需要 `EnergyProfile`、`ChemicalObject` 或显式 `EnergyTableRow`。
+- SVG 需要 `ReactionGraph` 或 `WorkspaceSnapshot`。
+- Web download 需要 Shell artifact 带 `bytes_base64`，也就是 `include_bytes=true`。
 
 ## 快速上手
 
@@ -31,8 +41,7 @@ RxnFlow 报告导出当前可执行五种 artifact：PNG 能量图、ChemDraw/CD
 ```python
 from rxnflow.export import ExportRequest, ReportExportService
 
-service = ReportExportService()
-result = service.export(
+result = ReportExportService().export(
     "project-id",
     ExportRequest(
         formats=("png", "cdxml", "xlsx", "csv", "svg"),
@@ -48,65 +57,19 @@ assert result.ok, result.error
 artifacts = result.value
 ```
 
-写入本地项目目录的 `exports/`：
+Web 主界面只请求当前默认格式：
 
 ```python
-from pathlib import Path
-from rxnflow.export import ExportRequest, ReportExportService
-
-project_path = Path("/path/to/project")
-result = ReportExportService().export(
-    "project-id",
-    ExportRequest(
-        formats=("png", "cdxml", "xlsx", "csv", "svg"),
-        graph=graph,
-        workspace=workspace,
-        profile=profile,
-        objects=objects,
-        destination_dir=project_path / "exports",
-        basename="rxnflow-profile",
-    ),
+ShellCommand(
+    "export.profile",
+    {
+        "session_id": session_id,
+        "formats": ["png", "cdxml", "xlsx"],
+        "include_bytes": True,
+        "basename": "rxnflow-profile",
+        "title": "Relative energy profile",
+    },
 )
-```
-
-通过 Platform Shell 获取 Web 可下载的 inline artifacts：
-
-```python
-from rxnflow.platform import AppKernel, PlatformShellService, ShellCommand
-
-service = PlatformShellService(AppKernel())
-response = service.run(
-    ShellCommand(
-        "export.profile",
-        {
-            "session_id": session_id,
-            "formats": ["png", "cdxml", "xlsx", "csv", "svg"],
-            "include_bytes": True,
-            "basename": "rxnflow-profile",
-            "title": "Relative energy profile",
-        },
-    )
-)
-assert response.ok, response.error
-```
-
-组合 core 侧报告 manifest：
-
-```python
-from rxnflow.report_manifest import ReportComposerRequest, ReportComposerService
-
-result = ReportComposerService().compose(
-    ReportComposerRequest(
-        project_id="project-id",
-        title="Relative energy report",
-        profile=profile,
-        table_rows=table_rows,
-        artifacts=artifacts,
-        artifact_records=artifact_records,
-    )
-)
-assert result.ok, result.error
-document = result.value
 ```
 
 ## 核心概念
@@ -114,16 +77,14 @@ document = result.value
 | 概念 | 说明 |
 |---|---|
 | `ExportRequest` | 核心导出请求，包含 formats、graph、workspace、profile、objects、table_rows、destination_dir、basename、title 和 options。 |
-| `ExportArtifact` | 核心运行时结果，可含 bytes 或本地 path；不是长期项目内容。 |
+| `ExportArtifact` | core runtime 结果，可含 bytes 或本地 path；不是长期项目内容。 |
 | `ShellArtifact` | Platform Shell JSON-safe 投影；`include_bytes=true` 时用 `bytes_base64` 承载 inline bytes。 |
 | `ExportArtifactRecord` | Project Content 中的长期索引记录，只保存 id、format、`exports/...` path、checksum、metadata 和 created_at。 |
 | Browser Export Object | Web Browser Project Repository 中的 `exports/{basename}.{extension}` bytes object。 |
 | Export Format Capability | 导出格式能力记录，包含 format、extension、MIME、writer、artifact kind、inline/persistence/default 状态和 supported/unsupported 状态。 |
 | ReportDocument | core 侧组合报告 manifest，记录 section、JSON-safe data、asset references、metadata 和 warnings；不是 writer 输出文件。 |
-| ReportAsset | `ReportDocument` 内的 artifact 引用，只保存 id、format、kind、path/checksum/metadata，不保存 bytes。 |
-| Report Preview Model | Web UI-only view model，由当前 workspace/profile/artifacts/warnings/options 派生，用来显示 report asset readiness 和 artifact reuse；不是 core report composer。 |
 
-当前 supported `ExportFormat` 允许：
+当前 supported `ExportFormat`：
 
 - `png`
 - `cdxml`
@@ -131,47 +92,30 @@ document = result.value
 - `csv`
 - `svg`
 
-当前 CDXML writer 是 `rxnflow-cdxml-energy-v1`。它输出 ChemDraw 可打开的能量图对象，包含结构名称、relative value + unit、相邻 `dE` label、missing marker / reason 和 `corr xN` correction marker。`dE` 只从相邻两个有效 relative energy point 派生；missing point 不补 0、不生成 state line，也不会跨 missing point 画 connector 或 delta。correction marker 只来自 `EnergyPoint.expression.corrections.length`，不重新求和 correction contribution。
+当前 Web default export formats：
 
-能力矩阵还记录后续格式入口，但它们当前不可执行：
+- `png`
+- `cdxml`
+- `xlsx`
 
-| format | status | extension | MIME | 说明 |
+PDF、PPTX 和 CDX 当前只是 capability table 中的 unsupported delivery boundary。请求这些格式返回 `invalid_input target=formats`；只有未来 writer 已进入 supported set 但运行时依赖缺失时，才使用 `export_failed target=dependency`。
+
+## Format Capability
+
+| format | core status | Web panel | artifact kind | writer |
 |---|---|---|---|---|
-| `pdf` | unsupported | `.pdf` | `application/pdf` | PDF writer 依赖和渲染边界尚未决定。 |
-| `pptx` | unsupported | `.pptx` | PowerPoint MIME | PPTX writer 依赖和 slide contract 尚未决定。 |
-| `cdx` | unsupported | `.cdx` | `chemical/x-cdx` | ChemDraw CDX binary writer/converter 尚不可用。 |
+| `png` | supported | visible | `energy_diagram` | `pillow-energy-plot-v1` |
+| `cdxml` | supported | visible | `energy_diagram` | `rxnflow-cdxml-energy-v1` |
+| `xlsx` | supported | visible | `energy_table` | `xlsxwriter-energy-workbook-v1` |
+| `csv` | supported | hidden | `energy_table` | `python-csv-energy-table-v1` |
+| `svg` | supported | hidden | `graph_snapshot` | `python-svg-graph-snapshot-v1` |
+| `pdf` | unsupported | hidden | `report_document` | none |
+| `pptx` | unsupported | hidden | `report_document` | none |
+| `cdx` | unsupported | hidden | `external_conversion` | none |
 
-### Delivery Format Boundary
+`web/src/app/exportFormatCapabilities.ts` is the Web source of truth. `reportExportFormats()` must return only Web-visible formats, currently `["png", "cdxml", "xlsx"]`. `supportedExportFormats()` may still include CSV/SVG for shell tests, persistence helpers, and future advanced flows.
 
-PDF、PPTX 和 CDX 当前只是 capability table 中的 unsupported delivery boundary，不是可执行 writer。请求这些格式仍返回 `invalid_input target=formats`，`details.supported` 只列 `png`、`cdxml`、`xlsx`、`csv` 和 `svg`。只有当未来某个 delivery writer 已经进入 supported set、但运行时依赖缺失时，才使用 `export_failed target=dependency`。
-
-未来开放文档级 writer 时必须先消费 `ReportDocument` / `ReportAsset`，并补齐 extension、MIME、`writer_id`、metadata、persistence path 和 warning semantics。不要从 Web preview DOM、React state、Browser Blob 或 graph canvas screenshot 直接生成正式报告文件。
-
-| format | 当前边界 | 未来进入条件 |
-|---|---|---|
-| `pdf` | unsupported `report_document`。候选路线包括 `ReportDocument -> HTML/print layout -> Playwright/WeasyPrint` 或 direct PDF layout。 | 明确运行位置、本地/CI/Vercel 依赖策略、纸张尺寸、分页、字体、asset embedding 和可验证/可跳过规则。 |
-| `pptx` | unsupported `report_document`。python-pptx 可作为候选，但当前没有 slide contract。 | 明确 slide size、章节到 slide 的映射、editable table/image/diagram 策略、SVG rasterization/embedding 和依赖缺失 fallback。 |
-| `cdx` | unsupported `external_conversion`。当前 ChemDraw 路径是 CDXML，不是 CDX binary。 | 需要可靠 writer/converter、license、平台可用性、conversion 输入输出、失败 fallback 和 ChemDraw 兼容回归。 |
-| `svg` | supported `graph_snapshot` asset，可被后续 writer 引用。 | 继续保持 valid XML/SVG，无远程资源、script、`foreignObject` 或 Web transient state。 |
-
-## 接口参考
-
-### `ExportRequest`
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `formats` | `tuple[str, ...]` | 需要导出的格式，当前支持 `png`、`cdxml`、`xlsx`、`csv`、`svg`。 |
-| `graph` | `ReactionGraph | None` | SVG graph snapshot 的图谱来源；无 workspace 时由 graph 提供节点、边、路径和 node position。 |
-| `workspace` | `WorkspaceSnapshot | None` | SVG graph snapshot 的首选来源，提供 graph、viewport、selection 和 active path；Web `export.profile` 会传当前 workspace。 |
-| `profile` | `EnergyProfile | None` | PNG/CDXML 必需；XLSX 可用来写 Energy Profile sheet；CSV 可用来补 profile relative 字段。 |
-| `objects` | `tuple[ChemicalObject, ...]` | XLSX/CSV energy table 的对象来源之一。 |
-| `table_rows` | `tuple[EnergyTableRow, ...]` | 显式表格行，适合传入 basis function、shermo/Whitesides 等 parser 尚未结构化字段。 |
-| `destination_dir` | `str | Path | None` | 存在时写出 `{basename}.{format}` 文件；不存在时只返回 bytes。 |
-| `basename` | `str | None` | 文件名主体；必须是安全文件名。 |
-| `title` | `str | None` | 写入图和 workbook 的显示标题。 |
-| `options` | `dict` | 当前可用于 CDXML diagram options。 |
-
-### Energy Table Contract
+## Energy Table Contract
 
 当前 schema version 是 `energy-table-v1`。第一列始终是结构名称：
 
@@ -188,18 +132,7 @@ PDF、PPTX 和 CDX 当前只是 capability table 中的 unsupported delivery bou
 | `gsol_hartree` / `gsol_kcal_mol` | `Gsol` | 溶液相 Gibbs 能量。 |
 | `relative_energy` / `relative_unit` / `missing_reason` | Profile | 能量剖面相对能量和缺失原因。 |
 
-使用 helper 查询列：
-
-```python
-from rxnflow.export import energy_table_columns_by_key
-
-columns = energy_table_columns_by_key()
-assert columns["structure_name"].label == "Structure"
-```
-
-常见 workbook 表头可用 `normalize_energy_table_header()` 映射到 column key。`Sgau/Swhit/RT` 等 entropy 原始列当前返回 `None`，不要自动当作能量列。
-
-### Artifact Metadata
+## Artifact Metadata
 
 每个 artifact metadata 至少包含：
 
@@ -219,37 +152,53 @@ assert columns["structure_name"].label == "Structure"
 - `basename`
 - `warnings`
 
-XLSX 和 CSV 额外包含：
+XLSX 和 CSV 额外包含 `energy_table_schema_version`、`energy_table_column_count` 和 `energy_table_row_count`。
 
-- `energy_table_schema_version`
-- `energy_table_column_count`
-- `energy_table_row_count`
+SVG 额外包含 workspace、node/edge/path count、active path、selection、viewport 和 svg dimension metadata。
 
-SVG 额外包含：
+这些 metadata 用于 shell projection、browser-local persistence 和测试断言。普通 Web 导出面板不直接显示 metadata。
 
-- `workspace_id`
-- `node_count`
-- `edge_count`
-- `path_count`
-- `active_path_id`
-- `selected_node_count`
-- `selected_edge_count`
-- `selected_path_count`
-- `viewport_x`
-- `viewport_y`
-- `viewport_zoom`
-- `svg_width`
-- `svg_height`
+## Web Export Panel Contract
 
-当前 writer ids：
+`web/src/app/ReportExportPanel.tsx` 只负责：
 
-- PNG：`pillow-energy-plot-v1`
-- CDXML：`rxnflow-cdxml-energy-v1`
-- XLSX：`xlsxwriter-energy-workbook-v1`
-- CSV：`python-csv-energy-table-v1`
-- SVG：`python-svg-graph-snapshot-v1`
+- 展示 Web-visible format checkbox。
+- 编辑 basename / title。
+- 触发 `export.profile`。
+- 展示返回 artifact 的 format、文件名和 download link。
 
-### Report Composer Manifest
+它不负责：
+
+- Preview mode。
+- readiness summary。
+- warning/debug dashboard。
+- checksum / writer metadata / persisted state display。
+- 前端生成 PNG/CDXML/XLSX bytes。
+- DOM/canvas screenshot。
+- File System Access API、OPFS、JSZip、云存储或账号系统。
+
+`WorkbenchShell` 仍把 inline artifacts 写入 active browser project 的 `exports/{basename}.{format}`，并维护 `export-artifacts-v1` browser-local index。这个 persistence 是项目恢复和内部校验能力，不应该反向污染普通导出 UI。
+
+## Browser-local Persistence
+
+Web browser-local persistence 的路径固定为：
+
+```text
+exports/{basename}.png
+exports/{basename}.cdxml
+exports/{basename}.xlsx
+```
+
+如果调用方显式请求 CSV/SVG，persistence helper 仍可处理 supported formats：
+
+```text
+exports/{basename}.csv
+exports/{basename}.svg
+```
+
+同一 id 或 path 重复写入时 upsert，不创建历史版本。
+
+## Report Composer Manifest
 
 `rxnflow.report_manifest` 提供 core-only 组合报告中间层。它只消费调用方已经拥有的 `EnergyProfile`、显式 `EnergyTableRow`、`ExportArtifact` 和可选 `ExportArtifactRecord`，不调用 parser/import/register/energy compute，也不重新生成 PNG/CDXML/XLSX/CSV/SVG bytes。
 
@@ -259,127 +208,38 @@ SVG 额外包含：
 summary -> graph -> energy_profile -> energy_table -> artifacts -> warnings
 ```
 
-缺少 graph snapshot、energy table rows 或 profile 时，composer 不伪造资产；对应 section 会保留并标记 `data.status="unavailable"`，同时在 `document.warnings` 中给出 warning。`ReportAsset` 只引用已有 artifact id，并可从 `ExportArtifactRecord` 合并项目相对 `exports/...` path 和 checksum。它不包含 `bytes`、`Path`、Browser `Blob`、React state 或 DOM node。
+缺少 graph snapshot、energy table rows 或 profile 时，composer 不伪造资产；对应 section 会保留并标记 `data.status="unavailable"`，同时在 `document.warnings` 中给出 warning。
 
-如果 request metadata、artifact metadata 或 section data 中出现非 JSON-safe 值，composer 返回 `invalid_input`，不会静默过滤。`report_document_to_dict()` 可把 manifest 投影成可 `json.dumps(..., allow_nan=False)` 的 dict。
+未来开放 PDF/PPTX/HTML writer 时必须从 `ReportDocument` / `ReportAsset` 输入开始，并定义 extension、MIME、writer id、metadata、persistence path 和 warning semantics。不要从 Web DOM、React state、Browser Blob 或 graph canvas screenshot 直接生成正式报告文件。
 
-## 常见场景
-
-### 添加手工表格行
-
-```python
-from rxnflow.export import EnergyTableRow, ExportRequest
-
-manual_row = EnergyTableRow(
-    "TS1",
-    {
-        "gas_basis_functions": 1234,
-        "ggas_shermo_1m_hartree": -399.123456,
-        "relative_energy": 18.2,
-        "relative_unit": "kcal_mol",
-    },
-    node_id="node-ts1",
-)
-
-request = ExportRequest(
-    formats=("xlsx", "csv"),
-    profile=profile,
-    table_rows=(manual_row,),
-)
-```
-
-显式 `table_rows` 优先；profile merge 只补缺失的 relative 字段，不覆盖已有手工值。未提供字段保持空白/absent，不写 0。
-
-### 让 Web 能下载 artifacts
-
-Platform Shell 的 `export.profile` 默认不内联 bytes。Web 下载和 browser-local persistence 需要：
-
-```python
-{"include_bytes": True}
-```
-
-Shell artifact 会得到 `bytes_base64`；Web 再把它变成 data URL download link。Web 不在浏览器里生成 PNG/CDXML/XLSX/CSV/SVG bytes。
-
-### 让项目内容索引记录导出文件
-
-长期 `ExportArtifactRecord` 只记录已经位于项目 `exports/` 下的文件。核心保存 session 时会跳过 bytes-only、项目外路径或缺失文件，并返回 warning。
-
-Web browser-local persistence 的路径固定为：
-
-```text
-exports/{basename}.png
-exports/{basename}.cdxml
-exports/{basename}.xlsx
-exports/{basename}.csv
-exports/{basename}.svg
-```
-
-同一 id 或 path 重复写入时 upsert，不创建历史版本。
-
-### Web Report Preview 投影
-
-Web `ReportExportPanel` 默认进入 Preview mode。`web/src/app/reportPreviewModel.ts` 的 `buildReportPreviewModel()` 只消费当前 Web projection：
-
-- `WorkbenchDomainState.workspace`
-- `WorkbenchDomainState.profile`
-- `WorkbenchDomainState.artifacts`
-- Shell/profile warnings
-- Report Export options
-- active browser project 布尔状态
-
-Preview mode 不调用 Shell command，不读取 Browser Project Repository，不生成 PNG/CDXML/XLSX/CSV/SVG bytes，也不写 Project Content、localStorage 或 `export-artifacts-v1`。
-
-Readiness 规则：
-
-- energy diagram：有 profile 且没有 missing point 时，已有 PNG/CDXML artifact 为 ready；没有 artifact 但 profile 可用时为 pending；missing point 时为 warning。
-- energy table：读取 XLSX/CSV artifact metadata 中的 `energy_table_schema_version=energy-table-v1`、`energy_table_column_count` 和 `energy_table_row_count`；没有 artifact 时不在前端重算 CSV rows。
-- graph snapshot：读取 SVG artifact metadata 中的 `artifact_kind=graph_snapshot`；没有 artifact 时不做 DOM/canvas capture 或 graph layout。
-- artifact reuse list：只展示现有 artifact 的 format、id、persisted、hasInlineBytes、path 和 checksum。
-
-## Report Preview Delivery QA Matrix
-
-报告预览交付路线的回归证据分散在 core、Web helper 和 Playwright 中。改动相关模块时按风险选择命令，不需要每次都跑完整矩阵。
+## QA Matrix
 
 | 风险 | 推荐检查 | 覆盖信号 |
 |---|---|---|
-| Export format capability / unsupported boundary | `python3 -m unittest tests.test_report_export_baseline`；`cd web && npm run test -- exportFormatCapabilities.test.ts exportArtifactPersistence.test.ts` | `png/cdxml/xlsx/csv/svg` 是 supported set；`pdf/pptx/cdx` 只保留 unsupported capability，不进入 Web 默认格式或 browser persistence。 |
-| CSV energy table | `python3 -m unittest tests.test_report_export_baseline`；`cd web && npm run test -- exportArtifactPersistence.test.ts` | CSV 使用 `energy-table-v1`，第一列是 `structure_name`，MIME 为 `text/csv`，browser-local path 为 `exports/{basename}.csv`。 |
-| SVG graph snapshot | `python3 -m unittest tests.test_report_export_baseline`；`cd web && npm run test -- exportArtifactPersistence.test.ts reportPreviewModel.test.ts` | SVG metadata 为 `artifact_kind=graph_snapshot`，MIME 为 `image/svg+xml`，不含 remote resource、script 或 `foreignObject`，Preview 只读取 artifact metadata。 |
-| Report Preview model | `cd web && npm run test -- reportPreviewModel.test.ts WorkbenchShell.test.tsx` | Preview mode 显示 graph/profile summary、energy table readiness、graph snapshot readiness、artifact reuse 和 warnings；不生成 bytes、不保存项目。 |
-| Report Composer Manifest | `python3 -m unittest tests.test_report_manifest` | `ReportDocument` / `ReportAsset` 是 JSON-safe manifest/reference；`ReportAsset` 不含 bytes，缺失资产用 unavailable section 和 warnings 表达。 |
-| Download MIME / file names | `cd web && npm run test -- WorkbenchShell.test.tsx ShellClient.test.ts`；`cd web && npm run test:e2e` | Download link 使用 capability table 的 extension 和 MIME；fixture E2E 覆盖 PNG/CDXML/XLSX/CSV/SVG 五个 download link。 |
-| Browser-local persistence | `cd web && npm run test -- exportArtifactPersistence.test.ts WorkbenchShell.test.tsx`；`cd web && npm run test:e2e` | 带 inline bytes 的 supported artifacts 写入 `exports/...` 和 `export-artifacts-v1`；unsupported formats 不写 object 或 record。 |
-| Project restore | `cd web && npm run test:e2e`；`cd web && npm run test:e2e:local-http` | 自动保存后重开项目能恢复 graph/workspace/profile；导出 artifacts 继续由右侧 Export 面板管理，不进入左侧 Project Files。 |
-| Narrow preview/export layout | `cd web && npm run test:e2e` | `390x840` 下 Report Export / Preview 主链路可达，无 document-level horizontal overflow，Playwright screenshot/trace 只进入 gitignored output。 |
-| Future delivery writer discipline | docs + scope grep | 新增 PDF/PPTX/HTML/CDX writer 前必须消费 `ReportDocument` / `ReportAsset`，并定义 extension、MIME、writer id、metadata、persistence path 和 warning semantics；不得从 Web DOM/state/screenshot 直接生成正式报告。 |
+| Core export baseline | `python3 -m unittest tests.test_report_export_baseline` | PNG/CDXML/XLSX/CSV/SVG writer contract，PDF/PPTX/CDX unsupported boundary。 |
+| Web format visibility | `cd web && npm run test -- exportFormatCapabilities.test.ts WorkbenchShell.test.tsx --run` | Web 面板只显示 PNG/CDXML/XLSX；CSV/SVG 不在普通 UI。 |
+| Download MIME / file bytes | `cd web && npm run test -- ShellClient.test.ts WorkbenchShell.test.tsx --run` | PNG data URL MIME、CDXML XML text、XLSX zip bytes 均有效。 |
+| Browser-local persistence | `cd web && npm run test -- exportArtifactPersistence.test.ts WorkbenchShell.test.tsx --run` | inline artifacts 写入 `exports/...` 和 `export-artifacts-v1`；unsupported formats 不写 object 或 record。 |
+| E2E fixture / local-http | `cd web && npm run test:e2e`; `cd web && npm run test:e2e:local-http` | 真实页面导出只出现 PNG/CDXML/XLSX download links，Project Files 不显示导出物。 |
+| Future delivery writer discipline | docs + scope grep | 新增 PDF/PPTX/HTML/CDX writer 前必须消费 ReportDocument / ReportAsset，不从 Web DOM/state/screenshot 生成正式报告。 |
 
 基础命令：
 
 ```bash
 python3 -m unittest tests.test_report_export_baseline tests.test_report_manifest
-cd web && npm run test -- exportFormatCapabilities.test.ts exportArtifactPersistence.test.ts reportPreviewModel.test.ts WorkbenchShell.test.tsx ShellClient.test.ts
+cd web && npm run test -- exportFormatCapabilities.test.ts exportArtifactPersistence.test.ts WorkbenchShell.test.tsx ShellClient.test.ts --run
 cd web && npm run build
-cd web && npm run test:e2e
-cd web && npm run test:e2e:local-http
 ```
 
-`npm run test:e2e:local-http` 会启动真实本地 Python bridge。需要指定解释器时使用：
+## 已知限制
 
-```bash
-cd web && RXNFLOW_E2E_PYTHON=/path/to/python3 npm run test:e2e:local-http
-```
-
-## 已知限制与注意事项
-
-- 当前不支持 `.cdx` binary。CDXML 是 XML 格式，可由 ChemDraw 打开和编辑能量图对象；它不是 ChemDraw 二进制 CDX。
-- 当前 CDXML 只生成能量图对象和文本标注，包括结构名称、相对能量、相邻 `dE`、missing reason 和 correction marker；不生成 molecule-level CDXML、反应式结构、bond/atom 语义或 ChemDraw 编辑器。
-- SVG graph snapshot 是 core projection，不是 Web DOM/canvas screenshot；它不包含 hover、pending edge、rubber-band、minimap draft、history stack、远程资源、script 或 `foreignObject`。
-- 当前不支持 PDF、PPTX、DOCX、HTML report 或 CDX writer；PDF/PPTX/CDX 只在 Export Format Capability 中记录为 unsupported 状态。`ReportDocument` 是内部 manifest，不等于用户可下载的完整报告文件。未开放格式是 `invalid_input target=formats`；已开放 writer 的依赖缺失才是 `export_failed target=dependency`。
+- 当前 Web 面板不显示 CSV/SVG；core 仍保留 writer。
+- 当前不支持 `.cdx` binary。CDXML 是 XML 格式，可由 ChemDraw 打开和编辑能量图对象。
+- 当前 CDXML 只生成能量图对象和文本标注，不生成 molecule-level CDXML、反应式结构、bond/atom 语义或 ChemDraw 编辑器。
+- SVG graph snapshot 是 core projection，不是 Web DOM/canvas screenshot。
 - XLSX workbook 不读取用户私有模板；Energy Table 缺失字段留空。
-- CSV 是 UTF-8 单表 artifact，不包含公式、多 sheet、样式或用户私有模板；Energy Table 缺失字段写为空 cell。
 - Web Report Export Panel 不调用 `project.save_content`，也不自动创建 Python filesystem artifact。
-- Web Report Preview Mode 只是 readiness 投影，不是 `ReportDocument` / composer manifest，不定义 PDF/PPTX/HTML 输出结构。
-- Browser Project Repository 是 local-only，不是云备份。跨设备迁移仍依赖 `.rxnflow.zip` 手动备份路线。
+- Browser Project Repository 是 local-only，不是云备份。
 
 ## 相关文档
 
@@ -388,4 +248,3 @@ cd web && RXNFLOW_E2E_PYTHON=/path/to/python3 npm run test:e2e:local-http
 - `docs/dev/platform-project-open-save.md`
 - `codestable/architecture/core-platform.md`
 - `codestable/architecture/web-workbench.md`
-- `codestable/roadmap/rxnflow-report-export-quality/rxnflow-report-export-quality-roadmap.md`

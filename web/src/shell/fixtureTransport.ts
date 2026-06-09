@@ -38,6 +38,7 @@ import {
   isSupportedExportFormat,
   writerIdForExportFormat,
 } from "../app/exportFormatCapabilities"
+import { strToU8, zipSync } from "fflate"
 
 export type FixtureRunData = JsonObject & {
   command: "fixture.run"
@@ -1093,8 +1094,8 @@ function fixtureArtifact(
       ...(format === "xlsx" || format === "csv"
         ? {
           energy_table_schema_version: "energy-table-v1",
-          energy_table_column_count: 20,
-          energy_table_row_count: 2,
+          energy_table_column_count: 4,
+          energy_table_row_count: fixtureProfile.points.length,
         }
         : {}),
       ...(format === "svg"
@@ -1119,9 +1120,21 @@ function fixtureArtifact(
 }
 
 function fixtureArtifactBytes(format: ExportFormat, basename: string, title: string): string {
+  if (format === "png") {
+    return fixturePngArtifactBytes()
+  }
+  if (format === "cdxml") {
+    return btoaUnicode(fixtureCdxmlArtifactText(title))
+  }
+  if (format === "xlsx") {
+    return bytesToBase64(fixtureXlsxArtifactBytes(title))
+  }
+  if (format === "csv") {
+    return btoaUnicode(fixtureCsvArtifactText())
+  }
   if (format === "svg") {
     const viewport = fixtureWorkspace.viewport ?? { x: 0, y: 0, zoom: 1 }
-    return btoaAscii(
+    return btoaUnicode(
       `<?xml version="1.0" encoding="UTF-8"?>\n`
       + `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="432" viewBox="0 0 720 432" data-rxnflow-artifact="graph-snapshot" data-graph-id="${fixtureWorkspace.graph.id}">`
       + `<title>${escapeXml(title)}</title>`
@@ -1132,7 +1145,118 @@ function fixtureArtifactBytes(format: ExportFormat, basename: string, title: str
     )
   }
   const payload = `RxnFlow fixture ${format} export\nbasename=${basename}\ntitle=${title}\nprofile=${fixtureProfile.id}\n`
-  return btoaAscii(payload)
+  return btoaUnicode(payload)
+}
+
+function fixturePngArtifactBytes(): string {
+  return "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"
+}
+
+function fixtureCdxmlArtifactText(title: string): string {
+  const rows = fixtureEnergyRows()
+  const lines = rows.map((row, index) => {
+    const x = 96 + index * 190
+    const y = 232 - row.relative
+    const next = rows[index + 1]
+    const nextY = next ? 232 - next.relative : null
+    const delta = next ? next.relative - row.relative : null
+    return [
+      `<graphic id="${10 + index}" GraphicType="Line" LineType="Solid" BoundingBox="${x} ${y} ${x + 72} ${y}" color="3" LineWidth="2" />`,
+      `<t id="${30 + index}" p="${x - 10} ${y - 28}" BoundingBox="${x - 10} ${y - 28} ${x + 130} ${y - 10}"><s font="3" size="10" color="2">${escapeXml(row.label)}</s></t>`,
+      `<t id="${40 + index}" p="${x - 8} ${y + 12}" BoundingBox="${x - 8} ${y + 12} ${x + 140} ${y + 30}"><s font="3" size="9" color="3">ΔE ${formatFixtureNumber(row.relative)} kcal/mol</s></t>`,
+      delta === null || nextY === null ? "" : `<t id="${50 + index}" p="${x + 82} ${(y + nextY) / 2}" BoundingBox="${x + 82} ${(y + nextY) / 2} ${x + 190} ${(y + nextY) / 2 + 18}"><s font="3" size="8" color="4">dE ${formatFixtureNumber(delta)}</s></t>`,
+    ].filter(Boolean).join("")
+  }).join("")
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd">',
+    '<CDXML CreationProgram="RxnFlow" Name="RxnFlow Energy Diagram" BoundingBox="0 0 720 420" LabelFont="3" LabelSize="10" CaptionFont="3" CaptionSize="10" LineWidth="1" color="2" bgcolor="1">',
+    '<colortable><color r="1" g="1" b="1" /><color r="0" g="0" b="0" /><color r="0.10" g="0.34" b="0.55" /><color r="0.70" g="0.28" b="0.20" /></colortable>',
+    '<fonttable><font id="3" charset="iso-8859-1" name="Arial" /></fonttable>',
+    '<page id="1" BoundingBox="0 0 720 420">',
+    '<group id="2" Integral="yes" BoundingBox="0 0 720 420">',
+    `<t id="3" p="72 32" BoundingBox="72 32 520 50"><s font="3" size="14" color="2">${escapeXml(title || "RxnFlow energy profile")}</s></t>`,
+    lines,
+    '</group></page></CDXML>',
+    "",
+  ].join("\n")
+}
+
+function fixtureCsvArtifactText(): string {
+  return [
+    "Structure,Relative energy (kcal/mol),Charge,Multiplicity",
+    ...fixtureEnergyRows().map((row) => `${row.label},${formatFixtureNumber(row.relative)},${row.charge},${row.multiplicity}`),
+    "",
+  ].join("\n")
+}
+
+function fixtureXlsxArtifactBytes(title: string): Uint8Array {
+  const rows = [
+    ["Structure", "Relative energy (kcal/mol)", "Charge", "Multiplicity"],
+    ...fixtureEnergyRows().map((row) => [row.label, row.relative, row.charge, row.multiplicity]),
+  ]
+  const worksheetRows = [
+    `<row r="1"><c r="A1" t="inlineStr"><is><t>${escapeXml(title || "RxnFlow energy profile")}</t></is></c></row>`,
+    ...rows.map((row, rowIndex) => {
+      const sheetRow = rowIndex + 3
+      const cells = row.map((value, columnIndex) => xlsxCell(sheetRow, columnIndex, value)).join("")
+      return `<row r="${sheetRow}">${cells}</row>`
+    }),
+  ].join("")
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`
+    + `<dimension ref="A1:D${rows.length + 2}" />`
+    + `<sheetViews><sheetView workbookViewId="0" /></sheetViews>`
+    + `<sheetData>${worksheetRows}</sheetData>`
+    + `</worksheet>`
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`
+    + `<sheets><sheet name="Energy" sheetId="1" r:id="rId1" /></sheets></workbook>`
+  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+    + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml" />`
+    + `</Relationships>`
+  const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+    + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml" />`
+    + `</Relationships>`
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`
+    + `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />`
+    + `<Default Extension="xml" ContentType="application/xml" />`
+    + `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml" />`
+    + `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml" />`
+    + `</Types>`
+  return zipSync({
+    "[Content_Types].xml": strToU8(contentTypesXml),
+    "_rels/.rels": strToU8(relsXml),
+    "xl/workbook.xml": strToU8(workbookXml),
+    "xl/_rels/workbook.xml.rels": strToU8(workbookRelsXml),
+    "xl/worksheets/sheet1.xml": strToU8(sheetXml),
+  }, { level: 0 })
+}
+
+function fixtureEnergyRows(): Array<{ label: string; relative: number; charge: number; multiplicity: number }> {
+  return fixtureProfile.points.map((point, index) => ({
+    label: point.label || `State ${index + 1}`,
+    relative: typeof point.relative_energy === "object" && point.relative_energy !== null
+      ? Number(point.relative_energy.value)
+      : typeof point.relative_energy === "number" ? point.relative_energy : 0,
+    charge: 0,
+    multiplicity: 1,
+  }))
+}
+
+function xlsxCell(row: number, columnIndex: number, value: string | number): string {
+  const cellRef = `${String.fromCharCode(65 + columnIndex)}${row}`
+  if (typeof value === "number") {
+    return `<c r="${cellRef}"><v>${value}</v></c>`
+  }
+  return `<c r="${cellRef}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`
+}
+
+function formatFixtureNumber(value: number): string {
+  return Number.isFinite(value) ? value.toFixed(2) : ""
 }
 
 function escapeXml(value: string): string {
@@ -1646,6 +1770,18 @@ function btoaAscii(value: string): string {
     output += index + 2 < value.length ? alphabet[triplet & 0x3f] : "="
   }
   return output
+}
+
+function btoaUnicode(value: string): string {
+  return bytesToBase64(new TextEncoder().encode(value))
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ""
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoaAscii(binary)
 }
 
 function atobAscii(value: string): string {

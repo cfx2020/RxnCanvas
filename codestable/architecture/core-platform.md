@@ -4,7 +4,7 @@ slug: core-platform
 status: current
 created: 2026-05-02
 last_reviewed: 2026-06-06
-tags: [core, fixture, domain-model, energy-profile, energy-channel-catalog, energy-profile-persistence, import-workflow, transient-import, canonical-import-data, import-register-selection, shell-candidate-projection, graph-editor-workspace, graph-editor-node-layout, graph-editor-edge-path-editing, graph-editor-edge-label, graph-editor-workspace-persistence, workspace-move-node, workspace-remove, workspace-remove-path, workspace-update-edge, workspace-select, report-export, report-preview-delivery-qa, platform-shell, cli, local-http-shell-bridge, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, parser-public-fixture-decision-ledger, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
+tags: [core, fixture, domain-model, energy-profile, energy-channel-catalog, energy-profile-persistence, import-workflow, transient-import, canonical-import-data, import-register-selection, shell-candidate-projection, graph-editor-workspace, graph-editor-node-layout, graph-editor-edge-path-editing, graph-editor-edge-label, graph-editor-workspace-persistence, workspace-move-node, workspace-remove, workspace-remove-path, workspace-update-edge, workspace-select, report-export, platform-shell, cli, local-http-shell-bridge, project-content, project-content-validation, migration, chemical-object-persistence, reaction-graph-workspace-persistence, import-ledger-persistence, export-artifact-index-persistence, project-bundle, browser-storage, web-runtime-boundary, parser-fixture-harness, parser-public-fixture-decision-ledger, xyz-extxyz-fixture-coverage, gaussian-cclib-fixture-coverage, orca-cclib-fixture-coverage, maple-fixture-coverage, parser-support-matrix-diagnostics, parser-corpus-docs, import-preview-parser-regression]
 ---
 
 # Core Platform
@@ -101,7 +101,7 @@ RxnFlow 当前已经落地十三类核心能力，并在 Platform Shell 边界�
 4. PNG 和 CDXML 共用 Energy Diagram Route；route 会从 `EnergyProfile.points` 派生 state label、relative value、step delta、correction count、missing reason 和 padded energy bounds；missing point 形成断点和 warning，不编造相对能量。
 5. 支持 bytes-only 返回，也支持写入已有 destination_dir 并返回 artifact.path。
 6. 通过 Export Format Capability 记录 `png/cdxml/xlsx/csv/svg/pdf/pptx/cdx` 的 extension、MIME、writer、artifact kind、inline/browser persistence、Web 默认状态和 supported/experimental/unsupported 状态；当前可执行 supported set 为 `png/cdxml/xlsx/csv/svg`。
-7. 通过 `docs/dev/report-export-artifacts.md` 和 `docs/user/report-export-artifacts.md` 记录开发者 API、Report Preview Delivery QA Matrix、Web 操作、PNG/CDXML/XLSX/CSV/SVG 格式用途、Export Format Capability、CDXML/CDX 边界、Energy Table/graph snapshot 字段口径、`exports/...` artifact 保存路径和 `.rxnflow.zip` 手动备份/迁移边界。
+7. 通过 `docs/dev/report-export-artifacts.md` 和 `docs/user/report-export-artifacts.md` 记录开发者 API、Web-visible PNG/CDXML/XLSX 导出操作、core supported CSV/SVG writer 边界、Export Format Capability、CDXML/CDX 边界、Energy Table/graph snapshot 字段口径、`exports/...` artifact 保存路径和 `.rxnflow.zip` 手动备份/迁移边界。
 
 第十类是 Platform Shell：
 
@@ -518,7 +518,7 @@ Report Export 当前使用以下稳定协议：
 - CDXML energy diagram：写带 `CreationProgram`、font/color、page header/footer 和 group geometry 的 CDXML document；state line 使用 `graphic GraphicType="Line"`，connector 使用 `arrow`，label/value/step delta/missing/correction marker 文本使用 `t` + `s`；relative value 和 step delta 带单位，correction marker 使用 `corr xN`，missing reason 可显示为 `missing: {reason}`；generated object id 单文档唯一，group/graphic/arrow/text 均带 `Z`，graphic/arrow/text 带稳定 BoundingBox / LineWidth / justification 属性
 - SVG graph snapshot：从 `ReactionGraph` / 可选 `WorkspaceSnapshot` 稳定投影生成 valid UTF-8 SVG XML，保留 node position、edge label、active path、selection 和 viewport；不读取 Web DOM、GraphCanvas transient state、hover、pending edge、rubber-band、minimap draft 或 history stack，不嵌入 script、foreignObject 或远程资源
 - 文件输出：默认 bytes-only；提供 destination_dir 和 basename 时写入 `<basename>.<format>`，basename 不允许路径分隔符或 `..`
-- 指南入口：开发者指南为 `docs/dev/report-export-artifacts.md`，用户指南为 `docs/user/report-export-artifacts.md`；开发者指南中的 Report Preview Delivery QA Matrix 将 Python export/manifest tests、Web unit/component tests、build、fixture E2E、local-http E2E 和文档检查映射到 CSV/SVG/preview/manifest/persistence/bundle/unsupported boundary 风险
+- 指南入口：开发者指南为 `docs/dev/report-export-artifacts.md`，用户指南为 `docs/user/report-export-artifacts.md`；开发者指南中的 QA Matrix 将 Python export/manifest tests、Web unit/component tests、build、fixture E2E、local-http E2E 和文档检查映射到 Web-visible PNG/CDXML/XLSX、core CSV/SVG writer、manifest/persistence/bundle/unsupported boundary 风险
 
 Platform Shell 当前使用以下稳定协议：
 
