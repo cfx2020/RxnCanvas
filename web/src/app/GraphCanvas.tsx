@@ -42,6 +42,7 @@ import type { PathAutoExtendResult } from "./graphPathAutoExtend"
 import type { GraphPathOrderDraft } from "./graphPathOrderDraft"
 import type { CompositionDraftRow, CompositionDraftState } from "./compositionDraftState"
 import type { EdgeLabelDraftState } from "./edgeLabelDraftState"
+import { convertEnergyValue, energyValueFromUnknown, normalizeEnergyUnit, resolveObjectEnergyValue } from "./energyValues"
 import { useI18n } from "./i18n"
 import { Molecule3DViewer } from "./Molecule3DViewer"
 
@@ -54,7 +55,9 @@ export type AddRawFileNodeRequest = {
   source:
     | { kind: "external-file"; file: File }
     | { kind: "project-file"; projectFileId: string; path: string }
+    | { kind: "project-files"; files: Array<{ projectFileId: string; path: string }> }
   position: [number, number]
+  addNode?: boolean
 }
 
 export type MoveGraphNodeRequest = {
@@ -89,6 +92,14 @@ export type PathAuthoringStatus =
   | { state: "auto"; pathId: string; reason: Extract<PathAutoExtendResult, { kind: "set-path" }>["reason"] }
   | { state: "manual"; reason: Extract<PathAutoExtendResult, { kind: "manual" }>["reason"] }
   | { state: "error"; error: ShellError }
+
+export type NodeSolutionLogPairCandidate = {
+  nodeId: string
+  projectFileId: string
+  path: string
+  name: string
+  paired: boolean
+}
 
 export type GraphHistoryControls = {
   canUndo: boolean
@@ -270,6 +281,8 @@ type GraphCanvasProps = {
   onRemoveCompositionDraftRow: (index: number) => void
   onResetCompositionDraft: () => void
   onApplyCompositionDraft: () => void
+  solutionLogPairCandidates?: NodeSolutionLogPairCandidate[]
+  onPairSolutionLog?: (candidate: NodeSolutionLogPairCandidate) => void | Promise<void>
 }
 
 export function GraphCanvas({
@@ -333,6 +346,8 @@ export function GraphCanvas({
   onRemoveCompositionDraftRow,
   onResetCompositionDraft,
   onApplyCompositionDraft,
+  solutionLogPairCandidates = [],
+  onPairSolutionLog,
 }: GraphCanvasProps) {
   const { t } = useI18n()
   const nodeDragRef = useRef<NodeDragSession | null>(null)
@@ -342,6 +357,10 @@ export function GraphCanvas({
   const barrierDragRef = useRef<BarrierDragSession | null>(null)
   const suppressNextBarrierClickRef = useRef(false)
   const canvasSurfaceRef = useRef<HTMLDivElement | null>(null)
+  const wheelPreviewViewportRef = useRef<GraphViewport | null>(null)
+  const wheelPendingViewportRef = useRef<GraphViewport | null>(null)
+  const wheelPreviewFrameRef = useRef<number | null>(null)
+  const wheelCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const ignoreNextNodeClickRef = useRef<string | null>(null)
   const autoFitGraphKeyRef = useRef<string | null>(null)
   const workspace = state.workspace
@@ -357,6 +376,15 @@ export function GraphCanvas({
   const selectedNodeIds = useMemo(() => new Set(interactionState.selection.nodeIds), [interactionState.selection.nodeIds])
   const selectedEdgeIds = useMemo(() => new Set(interactionState.selection.edgeIds), [interactionState.selection.edgeIds])
   const selectedPathIds = useMemo(() => new Set(interactionState.selection.pathIds), [interactionState.selection.pathIds])
+  const solutionLogPairCandidatesByNodeId = useMemo(() => {
+    const byNodeId = new Map<string, NodeSolutionLogPairCandidate[]>()
+    for (const candidate of solutionLogPairCandidates) {
+      const current = byNodeId.get(candidate.nodeId) ?? []
+      current.push(candidate)
+      byNodeId.set(candidate.nodeId, current)
+    }
+    return byNodeId
+  }, [solutionLogPairCandidates])
   const selectedPathId = singleSelectedPathId
   const pendingConnectionFromId = interactionState.pendingEdge?.fromNodeId
   const graphReferences = {
@@ -378,6 +406,7 @@ export function GraphCanvas({
   const [expandedMolecule, setExpandedMolecule] = useState<CanvasChemicalNodeSummary | null>(null)
   const [nodeSizeById, setNodeSizeById] = useState<Record<string, GraphNodeCardSize>>({})
   const [minimapPreviewViewport, setMinimapPreviewViewport] = useState<GraphViewport | null>(null)
+  const [wheelPreviewViewport, setWheelPreviewViewport] = useState<GraphViewport | null>(null)
   const [edgeMetrics, setEdgeMetrics] = useState<GraphEdgeMetrics>(() => defaultGraphEdgeMetrics)
   const nodeSizeSignature = useMemo(
     () => Object.entries(nodeSizeById)
@@ -409,7 +438,7 @@ export function GraphCanvas({
     () => graphNodesWithDragPreview(nodes, interactionState),
     [interactionState, nodes],
   )
-  const displayViewport = minimapPreviewViewport ?? canvasDragPreviewViewport(interactionState, viewport)
+  const displayViewport = minimapPreviewViewport ?? wheelPreviewViewport ?? canvasDragPreviewViewport(interactionState, viewport)
   const zoomPercent = Math.round(displayViewport.zoom * 100)
 
   const handleZoom = (direction: "in" | "out") => {
@@ -499,6 +528,45 @@ export function GraphCanvas({
     })
   }
 
+  const clearWheelPreviewTimers = useCallback(() => {
+    if (wheelPreviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(wheelPreviewFrameRef.current)
+      wheelPreviewFrameRef.current = null
+    }
+    if (wheelCommitTimerRef.current !== null) {
+      clearTimeout(wheelCommitTimerRef.current)
+      wheelCommitTimerRef.current = null
+    }
+  }, [])
+
+  const commitWheelViewport = useCallback((nextViewport: GraphViewport) => {
+    wheelPendingViewportRef.current = null
+    wheelCommitTimerRef.current = null
+    onSetViewport(nextViewport)
+  }, [onSetViewport])
+
+  const previewWheelViewport = useCallback((nextViewport: GraphViewport) => {
+    wheelPendingViewportRef.current = nextViewport
+    if (wheelPreviewFrameRef.current === null) {
+      wheelPreviewFrameRef.current = window.requestAnimationFrame(() => {
+        wheelPreviewFrameRef.current = null
+        const pending = wheelPendingViewportRef.current
+        if (!pending) return
+        wheelPreviewViewportRef.current = pending
+        setWheelPreviewViewport(pending)
+      })
+    }
+    if (wheelCommitTimerRef.current !== null) {
+      clearTimeout(wheelCommitTimerRef.current)
+    }
+    wheelCommitTimerRef.current = setTimeout(() => {
+      const committed = wheelPendingViewportRef.current ?? wheelPreviewViewportRef.current
+      if (committed) {
+        commitWheelViewport(committed)
+      }
+    }, 120)
+  }, [commitWheelViewport])
+
   const handleCanvasWheel = useCallback((event: WheelEvent) => {
     const surface = canvasSurfaceRef.current
     if (!surface) return
@@ -506,9 +574,10 @@ export function GraphCanvas({
     const surfacePoint = surfacePointFromClientPoint(surface, event.clientX, event.clientY)
     event.preventDefault()
     const surfaceSize = surfaceSizeFromElement(surface)
+    const baseViewport = wheelPendingViewportRef.current ?? wheelPreviewViewportRef.current ?? viewport
     if (event.ctrlKey || event.metaKey) {
-      onSetViewport(zoomGraphViewportAtScreenPoint(
-        viewport,
+      previewWheelViewport(zoomGraphViewportAtScreenPoint(
+        baseViewport,
         surfaceSize,
         surfacePoint,
         event.deltaY,
@@ -517,11 +586,11 @@ export function GraphCanvas({
       return
     }
     const graphDelta = {
-      x: (event.deltaX / Math.max(surfaceSize.width, 1)) * graphNodeLayoutBounds.width / viewport.zoom,
-      y: (event.deltaY / Math.max(surfaceSize.height, 1)) * graphNodeLayoutBounds.height / viewport.zoom,
+      x: (event.deltaX / Math.max(surfaceSize.width, 1)) * graphNodeLayoutBounds.width / baseViewport.zoom,
+      y: (event.deltaY / Math.max(surfaceSize.height, 1)) * graphNodeLayoutBounds.height / baseViewport.zoom,
     }
-    onSetViewport(panGraphViewport(viewport, { x: -graphDelta.x, y: -graphDelta.y }))
-  }, [canUseWorkspace, nodes.length, onSetViewport, viewport])
+    previewWheelViewport(panGraphViewport(baseViewport, { x: -graphDelta.x, y: -graphDelta.y }))
+  }, [canUseWorkspace, nodes.length, previewWheelViewport, viewport])
 
   useEffect(() => {
     const surface = canvasSurfaceRef.current
@@ -529,6 +598,31 @@ export function GraphCanvas({
     surface.addEventListener("wheel", handleCanvasWheel, { passive: false })
     return () => surface.removeEventListener("wheel", handleCanvasWheel)
   }, [handleCanvasWheel])
+
+  useEffect(() => clearWheelPreviewTimers, [clearWheelPreviewTimers])
+
+  useEffect(() => {
+    if (!wheelPreviewViewport) return
+    if (graphViewportNearlyEqual(wheelPreviewViewport, viewport)) {
+      wheelPreviewViewportRef.current = null
+      wheelPendingViewportRef.current = null
+      setWheelPreviewViewport(null)
+    }
+  }, [viewport, wheelPreviewViewport])
+
+  useEffect(() => {
+    if (wheelPreviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(wheelPreviewFrameRef.current)
+      wheelPreviewFrameRef.current = null
+    }
+    if (wheelCommitTimerRef.current !== null) {
+      clearTimeout(wheelCommitTimerRef.current)
+      wheelCommitTimerRef.current = null
+    }
+    wheelPreviewViewportRef.current = null
+    wheelPendingViewportRef.current = null
+    setWheelPreviewViewport(null)
+  }, [workspace?.workspace_id, graph?.id])
 
   useEffect(() => {
     const surface = canvasSurfaceRef.current
@@ -1241,6 +1335,8 @@ export function GraphCanvas({
                       onRemoveNode={removeNodeFromCanvas}
                       onToggleCollapsed={toggleNodeCollapsed}
                       onSetEnergyReference={setEnergyReferenceNodeId}
+                      solutionLogPairCandidates={solutionLogPairCandidatesByNodeId.get(node.id) ?? []}
+                      onPairSolutionLog={onPairSolutionLog}
                       onOpenStructure={setExpandedMolecule}
                       onEdgeHandlePointerDown={handleEdgeHandlePointerDown}
                       onEdgeHandlePointerMove={handleEdgeHandlePointerMove}
@@ -1733,6 +1829,15 @@ function rawFileNodeRequestFromDrop(
       position,
     }
   }
+  if (projectFilePayload?.kind === "project-files") {
+    return {
+      source: {
+        kind: "project-files",
+        files: projectFilePayload.files,
+      },
+      position,
+    }
+  }
   const file = firstDataTransferFile(event.dataTransfer)
   if (file) {
     return {
@@ -2063,6 +2168,8 @@ const GraphNodeButton = memo(function GraphNodeButton({
   onRemoveNode,
   onToggleCollapsed,
   onSetEnergyReference,
+  solutionLogPairCandidates,
+  onPairSolutionLog,
   onOpenStructure,
   onEdgeHandlePointerDown,
   onEdgeHandlePointerMove,
@@ -2100,6 +2207,8 @@ const GraphNodeButton = memo(function GraphNodeButton({
   onRemoveNode: (nodeId: string) => void
   onToggleCollapsed: (nodeId: string) => void
   onSetEnergyReference: (nodeId: string) => void
+  solutionLogPairCandidates: NodeSolutionLogPairCandidate[]
+  onPairSolutionLog?: (candidate: NodeSolutionLogPairCandidate) => void | Promise<void>
   onOpenStructure: (summary: CanvasChemicalNodeSummary) => void
   onEdgeHandlePointerDown: (node: GraphNodeSummary, event: PointerEvent<HTMLButtonElement>) => void
   onEdgeHandlePointerMove: (event: PointerEvent<HTMLButtonElement>) => void
@@ -2213,6 +2322,13 @@ const GraphNodeButton = memo(function GraphNodeButton({
   const compactSummary = `${formatCompactRelativeNodeEnergyValue(relativeEnergy, t)} (${formatNullableNumber(summary.charge, t)},${formatNullableNumber(summary.spinMultiplicity, t)})`
   const chargeSpinOverlay = formatCompactChargeSpin(summary, t)
   const relativeEnergyLabel = relativeEnergySymbol(energyDisplayMode)
+  const unpairedSolutionCandidate = energyDisplayMode === "solvation"
+    ? solutionLogPairCandidates.find((candidate) => !candidate.paired)
+    : undefined
+  const showWarningDot = summary.warnings.length > 0 || Boolean(unpairedSolutionCandidate)
+  const warningDotLabel = unpairedSolutionCandidate
+    ? t("graphCanvas.node.pairSolutionLog", { file: unpairedSolutionCandidate.name })
+    : t("graphCanvas.node.warningCount", { count: summary.warnings.length })
   return (
     <div
       className={`graph-node-card-shell ${dragging ? "graph-node-card-shell--dragging" : ""}`}
@@ -2308,11 +2424,11 @@ const GraphNodeButton = memo(function GraphNodeButton({
           ) : (
             <span title={summary.structureName}>{summary.structureName}</span>
           )}
-          {summary.warnings.length > 0 ? (
+          {showWarningDot ? (
             <span
               className="graph-node-warning-dot"
-              title={t("graphCanvas.node.warningCount", { count: summary.warnings.length })}
-              aria-label={t("graphCanvas.node.warningCount", { count: summary.warnings.length })}
+              title={warningDotLabel}
+              aria-label={warningDotLabel}
             />
           ) : null}
           {menuOpen ? (
@@ -2340,6 +2456,28 @@ const GraphNodeButton = memo(function GraphNodeButton({
                   ? t("graphCanvas.node.referencePoint", { node: summary.structureName })
                   : t("graphCanvas.node.setReferencePoint", { node: summary.structureName })}</span>
               </button>
+              {solutionLogPairCandidates.length > 0 ? (
+                <div className="graph-node-action-menu-section" role="group" aria-label={t("graphCanvas.node.solutionLogs")}>
+                  <span className="graph-node-action-menu-section-title">{t("graphCanvas.node.solutionLogs")}</span>
+                  {solutionLogPairCandidates.map((candidate) => (
+                    <button
+                      key={`${candidate.projectFileId}:${candidate.path}`}
+                      type="button"
+                      role="menuitem"
+                      className={candidate.paired ? "graph-node-action-menu-item--active" : ""}
+                      onClick={() => {
+                        void onPairSolutionLog?.(candidate)
+                        setMenuOpen(false)
+                      }}
+                      disabled={!onPairSolutionLog}
+                    >
+                      <span>{candidate.paired
+                        ? t("graphCanvas.node.solutionLogPaired", { file: candidate.name })
+                        : t("graphCanvas.node.pairSolutionLog", { file: candidate.name })}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </span>
@@ -2527,7 +2665,9 @@ function canvasChemicalNodeSummary(
     electronCount: estimateNodeElectronCount(geometry, charge),
     displayEnergy: resolveCanvasNodeEnergy(composition, objectById, energyDisplayOptions),
     geometry,
-    warnings: nodeObjects.flatMap((object) => object.warnings ?? []),
+    warnings: nodeObjects
+      .flatMap((object) => object.warnings ?? [])
+      .filter((warning) => warning.code !== "solution_log_paired"),
   }
 }
 
@@ -2580,112 +2720,7 @@ function resolveObjectCanvasEnergy(
   object: ObjectSummary,
   mode: CanvasEnergyMode,
 ): { value: number; unit: string } | null {
-  if (mode === "electronic") {
-    return energyFromObjectRecord(object, "energies", ["egas", "electronic", "scf"])
-      ?? displayEnergyFallback(object, "energies", ["egas", "electronic", "scf"])
-  }
-  if (mode === "free") {
-    return energyFromObjectRecord(object, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy", "ggas_1m"])
-      ?? displayEnergyFallback(object, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy", "ggas_1m"])
-  }
-  if (mode === "solvation") {
-    return energyFromObjectRecord(object, "thermochemistry", ["gsol", "solution_free_energy", "solvation_free_energy"])
-      ?? displayEnergyFallback(object, "thermochemistry", ["gsol", "solution_free_energy", "solvation_free_energy"])
-  }
-  const base = resolveObjectCanvasEnergy(object, "electronic")
-  if (!base) return null
-  const corrections = correctionEnergySum(object, () => true)
-  if (!corrections) return base
-  const correctionInBaseUnit = convertEnergyValue(corrections.value, corrections.unit, normalizeEnergyUnit(base.unit) ?? "hartree")
-  if (correctionInBaseUnit === null) return base
-  return {
-    value: base.value + correctionInBaseUnit,
-    unit: base.unit,
-  }
-}
-
-function energyFromObjectRecord(
-  object: ObjectSummary,
-  source: "energies" | "thermochemistry",
-  preferredKeys: string[],
-): { value: number; unit: string } | null {
-  const record = jsonObjectRecord(object[source])
-  if (!record) return null
-  for (const key of preferredKeys) {
-    const value = energyValueFromUnknown(record[key])
-    if (value) return value
-  }
-  return null
-}
-
-function displayEnergyFallback(
-  object: ObjectSummary,
-  source: "energies" | "thermochemistry",
-  preferredKeys: string[],
-): { value: number; unit: string } | null {
-  const energy = object.display_energy
-  if (!energy || energy.source !== source) return null
-  if (preferredKeys.length > 0 && !preferredKeys.includes(energy.key)) return null
-  return {
-    value: energy.value,
-    unit: energy.unit,
-  }
-}
-
-function correctionEnergySum(
-  object: ObjectSummary,
-  include: (kind: string) => boolean,
-): { value: number; unit: string } | null {
-  let sumHartree = 0
-  let count = 0
-  for (const correction of object.corrections ?? []) {
-    if (!include(String(correction.kind))) continue
-    const energy = correction.energy
-    if (!energy) continue
-    const valueHartree = convertEnergyValue(energy.value, energy.unit, "hartree")
-    if (valueHartree === null) continue
-    sumHartree += valueHartree
-    count += 1
-  }
-  return count > 0 ? { value: sumHartree, unit: "hartree" } : null
-}
-
-function jsonObjectRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-}
-
-function energyValueFromUnknown(value: unknown): { value: number; unit: string } | null {
-  const record = jsonObjectRecord(value)
-  if (!record) return null
-  const numericValue = Number(record.value)
-  const unit = typeof record.unit === "string" ? record.unit : ""
-  if (!Number.isFinite(numericValue) || !unit) return null
-  return { value: numericValue, unit }
-}
-
-const hartreeToKcalMol = 627.5094740631
-
-function convertEnergyValue(value: number, fromUnit: string, toUnit: CanvasEnergyUnit): number | null {
-  const normalizedFrom = normalizeEnergyUnit(fromUnit)
-  if (!normalizedFrom) return null
-  const valueHartree = normalizedFrom === "hartree"
-    ? value
-    : normalizedFrom === "kcal_mol"
-      ? value / hartreeToKcalMol
-      : value / (hartreeToKcalMol * 4.184)
-  if (toUnit === "hartree") return valueHartree
-  if (toUnit === "kcal_mol") return valueHartree * hartreeToKcalMol
-  return valueHartree * hartreeToKcalMol * 4.184
-}
-
-function normalizeEnergyUnit(unit: string): CanvasEnergyUnit | null {
-  const normalized = unit.trim().toLowerCase().replace(/[/-]/g, "_")
-  if (normalized === "hartree" || normalized === "eh") return "hartree"
-  if (normalized === "kcal_mol" || normalized === "kcalmol") return "kcal_mol"
-  if (normalized === "kj_mol" || normalized === "kjmol") return "kj_mol"
-  return null
+  return resolveObjectEnergyValue(object, mode)
 }
 
 function canvasEnergyModeKey(mode: CanvasEnergyMode): string {
@@ -2817,17 +2852,17 @@ function formatCompactChargeSpin(
 }
 
 function relativeEnergySymbol(mode: CanvasEnergyMode): string {
-  if (mode === "free") return "△G"
-  if (mode === "solvation") return "△Gsol"
-  if (mode === "corrected") return "△Ecorr"
-  return "△E"
+  if (mode === "free") return "ΔG"
+  if (mode === "solvation") return "ΔGsol"
+  if (mode === "corrected") return "ΔEcorr"
+  return "ΔE"
 }
 
 function barrierEnergySymbol(mode: CanvasEnergyMode): string {
-  if (mode === "free") return "△G"
-  if (mode === "solvation") return "△Gsol"
-  if (mode === "corrected") return "△Ecorr"
-  return "△E"
+  if (mode === "free") return "ΔG"
+  if (mode === "solvation") return "ΔGsol"
+  if (mode === "corrected") return "ΔEcorr"
+  return "ΔE"
 }
 
 function formatNullableNumber(

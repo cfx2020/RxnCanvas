@@ -569,7 +569,8 @@ button {
   margin: 0;
 }
 
-.project-section-create-button {
+.project-section-create-button,
+.project-section-folder-button {
   width: 30px;
   height: 30px;
   display: grid;
@@ -588,19 +589,24 @@ button {
 
 .project-folder-section-header:hover .project-section-create-button,
 .project-folder-section-header:focus-within .project-section-create-button,
-.project-section-create-button[aria-expanded="true"] {
+.project-section-create-button[aria-expanded="true"],
+.project-folder-section-header:hover .project-section-folder-button,
+.project-folder-section-header:focus-within .project-section-folder-button {
   opacity: 1;
   transform: translateX(0);
 }
 
 .project-section-create-button:hover,
-.project-section-create-button[aria-expanded="true"] {
+.project-section-create-button[aria-expanded="true"],
+.project-section-folder-button:hover,
+.project-section-folder-button:focus-visible {
   background: rgba(13, 99, 116, 0.1);
   color: var(--blueprint);
 }
 
 @media (hover: none) {
-  .project-section-create-button {
+  .project-section-create-button,
+  .project-section-folder-button {
     opacity: 1;
     pointer-events: auto;
     transform: translateX(0);
@@ -1016,6 +1022,15 @@ button {
   background: rgba(23, 28, 31, 0.055);
 }
 
+.project-file-card--selected {
+  background: rgba(13, 99, 116, 0.105);
+  box-shadow: inset 0 0 0 1px rgba(13, 99, 116, 0.18);
+}
+
+.project-file-card--selected:hover {
+  background: rgba(13, 99, 116, 0.13);
+}
+
 .project-file-card--interactive {
   cursor: pointer;
   touch-action: manipulation;
@@ -1223,12 +1238,209 @@ button {
   align-self: start;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(520px, 1fr);
+  grid-template-rows: max-content minmax(520px, 1fr);
   gap: 10px;
 }
 
 .canvas-stage-stack {
   width: 100%;
+}
+
+.workbench-view-switcher {
+  position: absolute;
+  top: 11px;
+  left: 50%;
+  z-index: 70;
+  transform: translateX(-50%);
+  width: max-content;
+  height: max-content;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid rgba(23, 28, 31, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 3px;
+  box-shadow: 0 8px 18px rgba(22, 33, 40, 0.08);
+}
+
+.workbench-shell[data-theme="dark"] .workbench-view-switcher {
+  border-color: rgba(240, 244, 239, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+.workbench-view-switcher button {
+  min-height: 28px;
+  min-width: 72px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 12px;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.workbench-view-switcher button:hover,
+.workbench-view-switcher button:focus-visible {
+  color: var(--ink);
+}
+
+.workbench-view-switcher-button--active {
+  background: var(--ink) !important;
+  color: var(--paper) !important;
+  box-shadow: 0 5px 12px rgba(22, 33, 40, 0.14);
+}
+
+.workbench-energy-table-panel {
+  min-width: 0;
+  min-height: 520px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  border: 1px solid rgba(205, 216, 223, 0.76);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+  padding: calc(var(--workbench-topbar-height, 58px) + 24px) 16px 16px;
+  box-shadow: 0 14px 34px rgba(22, 33, 40, 0.08);
+}
+
+.workbench-shell[data-theme="dark"] .workbench-energy-table-panel {
+  border-color: rgba(123, 199, 214, 0.14);
+  background: rgba(10, 16, 15, 0.74);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+}
+
+.workbench-energy-table-header {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.workbench-energy-table-header h2 {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.workbench-energy-table-header > span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(13, 99, 116, 0.14);
+  border-radius: 999px;
+  background: rgba(13, 99, 116, 0.08);
+  color: var(--blueprint);
+  padding: 0 10px;
+  font-size: 0.74rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.workbench-energy-table-empty {
+  min-height: 220px;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  border: 1px dashed rgba(13, 99, 116, 0.22);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.workbench-energy-table-empty strong {
+  color: var(--ink);
+}
+
+.workbench-energy-table-wrap {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid rgba(31, 33, 29, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.workbench-shell[data-theme="dark"] .workbench-energy-table-wrap {
+  border-color: rgba(240, 244, 239, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.workbench-energy-table {
+  width: 100%;
+  min-width: 1560px;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.workbench-energy-table--path {
+  min-width: 920px;
+}
+
+.workbench-energy-table-section {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.workbench-energy-table-section > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workbench-energy-table-section h3 {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.workbench-energy-table-section span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
+.workbench-energy-table th,
+.workbench-energy-table td {
+  border-right: 1px solid rgba(31, 33, 29, 0.09);
+  border-bottom: 1px solid rgba(31, 33, 29, 0.09);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.workbench-energy-table th:last-child,
+.workbench-energy-table td:last-child {
+  border-right: 0;
+}
+
+.workbench-energy-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(243, 247, 247, 0.96);
+  color: var(--sage);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.workbench-shell[data-theme="dark"] .workbench-energy-table thead th {
+  background: rgba(13, 24, 23, 0.96);
+}
+
+.workbench-energy-table tbody th {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.workbench-energy-table-row--active td,
+.workbench-energy-table-row--active th {
+  background: rgba(13, 99, 116, 0.08);
 }
 
 .object-registry-panel {
@@ -2320,14 +2532,16 @@ button {
   top: calc(100% + 7px);
   left: 0;
   z-index: 7;
-  min-width: min(226px, calc(100vw - 48px));
+  min-width: min(214px, calc(100vw - 48px));
   display: grid;
-  gap: 4px;
+  gap: 5px;
   border: 1px solid rgba(23, 28, 31, 0.12);
-  border-radius: 10px;
-  background: rgba(251, 253, 255, 0.98);
+  border-radius: 9px;
+  background: rgba(251, 253, 255, 0.985);
   box-shadow: 0 14px 30px rgba(22, 33, 40, 0.16);
   padding: 6px;
+  color: var(--ink);
+  font-size: 0.74rem;
 }
 
 .graph-node-action-menu-value {
@@ -2341,13 +2555,15 @@ button {
 .graph-node-action-menu-value span {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 820;
+  font-weight: 760;
+  letter-spacing: 0;
 }
 
 .graph-node-action-menu-value strong {
   min-width: 0;
   color: var(--ink);
   font-size: 0.74rem;
+  font-weight: 760;
   overflow-wrap: anywhere;
 }
 
@@ -2361,7 +2577,23 @@ button {
   padding: 0 7px;
   text-align: left;
   font-size: 0.74rem;
-  font-weight: 820;
+  font-weight: 740;
+  letter-spacing: 0;
+}
+
+.graph-node-action-menu-section {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid rgba(23, 28, 31, 0.08);
+  padding-top: 5px;
+}
+
+.graph-node-action-menu-section-title {
+  padding: 0 7px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 760;
+  letter-spacing: 0;
 }
 
 .graph-node-action-menu button:hover,
@@ -4311,6 +4543,16 @@ button {
 .workbench-shell[data-theme="dark"] .project-sidebar,
 .workbench-shell[data-theme="dark"] .inspector-panel {
   background: rgba(17, 24, 23, 0.94);
+}
+
+.workbench-shell[data-theme="dark"] .graph-node-action-menu {
+  border-color: rgba(240, 244, 239, 0.12);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.36);
+}
+
+.workbench-shell[data-theme="dark"] .graph-node-action-menu-value,
+.workbench-shell[data-theme="dark"] .graph-node-action-menu-section {
+  border-color: rgba(240, 244, 239, 0.1);
 }
 
 .workbench-shell[data-theme="dark"] .inspector-panel {

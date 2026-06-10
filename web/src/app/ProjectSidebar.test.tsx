@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import { browserProjectBackendId, type BrowserProjectRef } from "../repository"
-import { graphRawFileDropMimeType } from "./graphRawFileDropPayload"
+import { graphRawFileDropMimeType, parseGraphRawFileDropPayload } from "./graphRawFileDropPayload"
 import { I18nProvider } from "./i18n"
 import { ProjectSidebar } from "./ProjectSidebar"
 import type { ProjectFileEntry } from "./projectFiles"
@@ -41,6 +41,17 @@ describe("ProjectSidebar", () => {
     fireEvent.click(within(form).getByRole("button", { name: "Create Project" }))
 
     expect(onCreateProject).toHaveBeenCalledWith("Catalyst Screen")
+  })
+
+  it("opens an existing folder from the project header action", () => {
+    const onOpenExistingFolder = vi.fn()
+    renderSidebar(initialProjectSidebarState, {
+      onOpenExistingFolder,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Existing Folder" }))
+
+    expect(onOpenExistingFolder).toHaveBeenCalledTimes(1)
   })
 
   it("renders raw inputs from project file state", () => {
@@ -336,9 +347,44 @@ describe("ProjectSidebar", () => {
     )
   })
 
-  it("can add a project raw file to the canvas from the file row", () => {
+  it("serializes selected project raw files as a batch drag payload", () => {
     const activeProject = browserProject("browser-project:project-1", "Pd Ni")
-    const onAddProjectFileToCanvas = vi.fn()
+    renderSidebar({
+      ...initialProjectSidebarState,
+      status: "ready",
+      projects: [activeProject],
+      activeProjectRef: activeProject.projectRef,
+      activeProject,
+      projectFiles: [
+        projectFile(activeProject.projectRef, "raw-a", "inputs/raw/aaaa-water.log", "water.log"),
+        projectFile(activeProject.projectRef, "raw-b", "inputs/raw/bbbb-methane.log", "methane.log"),
+      ],
+    })
+
+    const waterRow = screen.getByText("water.log").closest(".project-file-card")
+    const methaneRow = screen.getByText("methane.log").closest(".project-file-card")
+    if (!(waterRow instanceof HTMLElement) || !(methaneRow instanceof HTMLElement)) {
+      throw new Error("Project file rows were not rendered.")
+    }
+    fireEvent.click(waterRow, { metaKey: true })
+    fireEvent.click(methaneRow, { metaKey: true })
+    const dataTransfer = new TestDataTransfer()
+
+    fireEvent.dragStart(methaneRow, { dataTransfer })
+
+    expect(waterRow).toHaveClass("project-file-card--selected")
+    expect(methaneRow).toHaveClass("project-file-card--selected")
+    expect(parseGraphRawFileDropPayload(dataTransfer.getData(graphRawFileDropMimeType))).toEqual({
+      kind: "project-files",
+      files: [
+        { projectFileId: "raw-a", path: "inputs/raw/aaaa-water.log" },
+        { projectFileId: "raw-b", path: "inputs/raw/bbbb-methane.log" },
+      ],
+    })
+  })
+
+  it("selects project raw files without adding them to the canvas", () => {
+    const activeProject = browserProject("browser-project:project-1", "Pd Ni")
     renderSidebar({
       ...initialProjectSidebarState,
       status: "ready",
@@ -362,7 +408,7 @@ describe("ProjectSidebar", () => {
           warnings: [],
         },
       ],
-    }, onAddProjectFileToCanvas)
+    })
 
     const row = screen.getByText("water.extxyz").closest(".project-file-card")
     if (!(row instanceof HTMLElement)) {
@@ -370,19 +416,44 @@ describe("ProjectSidebar", () => {
     }
     fireEvent.click(row)
 
-    expect(onAddProjectFileToCanvas).toHaveBeenCalledTimes(1)
-    expect(onAddProjectFileToCanvas.mock.calls[0]?.[0]).toMatchObject({
-      id: "raw-abc123def456",
-      path: "inputs/raw/abc123def456-water.extxyz",
-    })
+    expect(row).toHaveClass("project-file-card--selected")
 
     fireEvent.keyDown(row, { key: "Enter" })
-    expect(onAddProjectFileToCanvas).toHaveBeenCalledTimes(2)
+    expect(row).toHaveClass("project-file-card--selected")
+  })
+
+  it("supports shift range project raw file selection", () => {
+    const activeProject = browserProject("browser-project:project-1", "Pd Ni")
+    renderSidebar({
+      ...initialProjectSidebarState,
+      status: "ready",
+      projects: [activeProject],
+      activeProjectRef: activeProject.projectRef,
+      activeProject,
+      projectFiles: [
+        projectFile(activeProject.projectRef, "raw-a", "inputs/raw/aaaa-a.log", "a.log"),
+        projectFile(activeProject.projectRef, "raw-b", "inputs/raw/bbbb-b.log", "b.log"),
+        projectFile(activeProject.projectRef, "raw-c", "inputs/raw/cccc-c.log", "c.log"),
+      ],
+    })
+
+    const aRow = screen.getByText("a.log").closest(".project-file-card")
+    const bRow = screen.getByText("b.log").closest(".project-file-card")
+    const cRow = screen.getByText("c.log").closest(".project-file-card")
+    if (!(aRow instanceof HTMLElement) || !(bRow instanceof HTMLElement) || !(cRow instanceof HTMLElement)) {
+      throw new Error("Project file rows were not rendered.")
+    }
+
+    fireEvent.click(aRow)
+    fireEvent.click(cRow, { shiftKey: true })
+
+    expect(aRow).toHaveClass("project-file-card--selected")
+    expect(bRow).toHaveClass("project-file-card--selected")
+    expect(cRow).toHaveClass("project-file-card--selected")
   })
 
   it("deletes a project raw file from the row action without adding it to the canvas", () => {
     const activeProject = browserProject("browser-project:project-1", "Pd Ni")
-    const onAddProjectFileToCanvas = vi.fn()
     const onDeleteProjectFile = vi.fn()
     renderSidebar({
       ...initialProjectSidebarState,
@@ -408,7 +479,6 @@ describe("ProjectSidebar", () => {
         },
       ],
     }, {
-      onAddProjectFileToCanvas,
       onDeleteProjectFile,
     })
 
@@ -419,24 +489,23 @@ describe("ProjectSidebar", () => {
       id: "raw-abc123def456",
       path: "inputs/raw/abc123def456-water.extxyz",
     })
-    expect(onAddProjectFileToCanvas).not.toHaveBeenCalled()
   })
 })
 
 function renderSidebar(
   state: ProjectSidebarState,
-  optionsOrOnAddProjectFileToCanvas: unknown = vi.fn(),
+  optionsOrOnImportProjectFiles: unknown = vi.fn(),
   onImportProjectFiles: unknown = vi.fn(),
   onCreateProject: unknown = vi.fn(),
   onOpenProject: unknown = async () => undefined,
   onDeleteProject: unknown = async () => undefined,
 ) {
-  const options: RenderSidebarOptions = isRenderSidebarOptions(optionsOrOnAddProjectFileToCanvas)
-    ? optionsOrOnAddProjectFileToCanvas
+  const options: RenderSidebarOptions = isRenderSidebarOptions(optionsOrOnImportProjectFiles)
+    ? optionsOrOnImportProjectFiles
     : {
-        onAddProjectFileToCanvas: optionsOrOnAddProjectFileToCanvas as RenderSidebarOptions["onAddProjectFileToCanvas"],
         onImportProjectFiles: onImportProjectFiles as RenderSidebarOptions["onImportProjectFiles"],
         onCreateProject: onCreateProject as RenderSidebarOptions["onCreateProject"],
+        onOpenExistingFolder: vi.fn(),
         onOpenProject: onOpenProject as RenderSidebarOptions["onOpenProject"],
         onDeleteProject: onDeleteProject as RenderSidebarOptions["onDeleteProject"],
       }
@@ -446,10 +515,10 @@ function renderSidebar(
         state={state}
         collapsed={options.collapsed ?? false}
         onCreateProject={options.onCreateProject ?? vi.fn()}
+        onOpenExistingFolder={options.onOpenExistingFolder ?? vi.fn()}
         onOpenProject={options.onOpenProject ?? (async () => undefined)}
         onDeleteProject={options.onDeleteProject ?? (async () => undefined)}
         onImportProjectFiles={options.onImportProjectFiles ?? vi.fn()}
-        onAddProjectFileToCanvas={options.onAddProjectFileToCanvas ?? vi.fn()}
         onDeleteProjectFile={options.onDeleteProjectFile ?? vi.fn()}
       />
     </I18nProvider>,
@@ -458,9 +527,9 @@ function renderSidebar(
 
 type RenderSidebarOptions = {
   collapsed?: boolean
-  onAddProjectFileToCanvas?: (file: ProjectFileEntry) => void | Promise<void>
   onImportProjectFiles?: (projectRef: string, files?: File[]) => void | Promise<void>
   onCreateProject?: (name: string) => void | Promise<void>
+  onOpenExistingFolder?: () => void | Promise<void>
   onOpenProject?: (projectRef: string) => Promise<void>
   onDeleteProject?: (projectRef: string) => Promise<void>
   onDeleteProjectFile?: (file: ProjectFileEntry) => void | Promise<void>
@@ -479,6 +548,24 @@ function browserProject(projectRef: string, name: string): BrowserProjectRef {
     createdAt: "2026-06-03T00:00:00.000Z",
     updatedAt: "2026-06-03T00:00:00.000Z",
     localOnly: true,
+  }
+}
+
+function projectFile(projectRef: string, id: string, path: string, name: string): ProjectFileEntry {
+  return {
+    id,
+    projectRef,
+    path,
+    name,
+    kind: "gaussian-log",
+    byteSize: 128,
+    checksum: `sha256:${id}`,
+    status: "stored",
+    rawResourceId: id,
+    registeredObjectIds: [],
+    graphNodeIds: [],
+    artifactIds: [],
+    warnings: [],
   }
 }
 

@@ -80,6 +80,7 @@ type FixtureParsedMolecule = {
   spinMultiplicity: number | null
   energy: number | null
   freeEnergy: number | null
+  basisFunctionCount: number | null
   method: string
   parserId: string
 }
@@ -470,9 +471,14 @@ function fixtureProjectOpenResponse(args: JsonObject): ShellResponse {
   }
   fixtureProjectManifest = projectManifestFromProjectContentFiles(args.content_files)
   const projectId = fixtureProjectId()
-  fixtureWorkspace = workspaceFromProjectContentFiles(args.content_files) ?? emptyWorkspaceSummary(projectId)
+  const projectWorkspace = workspaceFromProjectContentFiles(args.content_files)
+  fixtureWorkspace = projectWorkspace && !isDemoFixtureWorkspace(projectWorkspace)
+    ? projectWorkspace
+    : emptyWorkspaceSummary(projectId)
   resetFixtureGraphNodeIndex()
-  fixtureObjects = objectSummariesFromProjectContentFiles(args.content_files) ?? []
+  fixtureObjects = isDemoFixtureWorkspace(projectWorkspace)
+    ? []
+    : withFixturePairedSolutionFreeEnergies(objectSummariesFromProjectContentFiles(args.content_files) ?? [])
   fixtureArtifacts = artifactSummariesFromProjectContentFiles(args.content_files)
   fixtureProfile = profileSummary({
     pathId: fixtureWorkspace.active_path_id ?? fixtureWorkspace.graph.paths[0]?.id ?? "",
@@ -1499,6 +1505,17 @@ function workspaceFromProjectContentFiles(files: JsonValue[]): WorkspaceSummary 
   })
 }
 
+function isDemoFixtureWorkspace(workspace: WorkspaceSummary | null): boolean {
+  if (!workspace) return false
+  const nodeIds = new Set(workspace.graph.nodes.map((node) => node.id))
+  const objectIds = new Set(workspace.graph.nodes.flatMap((node) => node.chemical_object_ids ?? []))
+  return nodeIds.has("node-a")
+    && nodeIds.has("node-b")
+    && objectIds.has("object-a")
+    && objectIds.has("object-b")
+    && workspace.graph.edges.some((edge) => edge.from_node === "node-a" && edge.to_node === "node-b")
+}
+
 function objectSummariesFromProjectContentFiles(files: JsonValue[]): ObjectSummary[] | null {
   const section = projectContentJson(files, ".rxnflow/state/chemical-objects.json")
   const rawObjects = section?.objects
@@ -2214,9 +2231,11 @@ function fixtureImportRegisterAllResponse(args: JsonObject): ShellResponse<Impor
     }
   }
 
-  const importedObject = fixtureSingleImportObjectForSource(fixtureLastImportSources[0] ?? defaultFixtureImportSources()[0])
-  fixtureObjects = upsertFixtureObjects(fixtureObjects, [importedObject])
-  const registeredObjectIds = [importedObject.id]
+  const importedObjects = fixtureLastImportSources
+    .filter((source) => !fixtureImportSourceHasParseError(source))
+    .map(fixtureSingleImportObjectForSource)
+  fixtureObjects = withFixturePairedSolutionFreeEnergies(upsertFixtureObjects(fixtureObjects, importedObjects))
+  const registeredObjectIds = importedObjects.map((object) => object.id)
   return {
     ok: true,
     data: {
@@ -2279,7 +2298,7 @@ function fixtureImportRegisterSelectionResponse(args: JsonObject): ShellResponse
     }
   }
   const selectedObjects = objectIndices.map((index) => fixtureMultiCandidateObjects[index])
-  fixtureObjects = upsertFixtureObjects(fixtureObjects, selectedObjects)
+  fixtureObjects = withFixturePairedSolutionFreeEnergies(upsertFixtureObjects(fixtureObjects, selectedObjects))
   const registeredObjectIds = selectedObjects.map((object) => object.id)
   return {
     ok: true,
@@ -2301,74 +2320,99 @@ function importBatchSummary(
   sourcesOrPaths: Array<FixtureImportSource | string> = defaultFixtureImportSources(),
 ): ImportBatchSummary {
   const sources = sourcesOrPaths.map(fixtureImportSourceFromValue)
-  const [successSource = defaultFixtureImportSources()[0], failedSource = defaultFixtureImportSources()[1]] = sources
-  const successPath = successSource.path
-  const failedPath = failedSource.path
-  const multiCandidate = successPath.includes("multi")
-  const singleImportObject = fixtureSingleImportObjectForSource(successSource)
-  const successSourceName = successSource.filename
-  const successRawResourceId = singleImportObject.source_file_id ?? "raw-fixture-import"
-  const successWarnings = fixtureImportItemWarnings(singleImportObject, successSource)
   return {
     id: "import-batch-fixture-web-1",
     project_id: fixtureProject.id,
-    items: [
-      {
-        id: "import-item-water",
-        source_path: successPath,
-        status: successStatus,
-        raw_resource: {
-          id: successRawResourceId,
-          kind: "raw_file",
-          path: `inputs/raw/${successSourceName}`,
-          checksum: "sha256:fixturewater00000000000000000000000000000000000000000000000000",
-          metadata: {
-            source_name: successSourceName,
-            byte_size: successSource.byteSize ?? 74,
-          },
-        },
-        preview: {
-          raw_resource_id: multiCandidate ? "raw-multi-extxyz" : "raw-water-xyz",
-          parser_id: multiCandidate ? "extxyz-ase" : "xyz-ase",
-          parser_version: "fixture-web",
-          object_count: multiCandidate ? 2 : 1,
-          candidates: multiCandidate ? [
-            parseCandidateSummary(fixtureMultiCandidateObjects[0], 0),
-            parseCandidateSummary(fixtureMultiCandidateObjects[1], 1),
-          ] : [
-            parseCandidateSummary(singleImportObject, 0),
-          ],
-          warnings: successWarnings,
-        },
-        registered_object_ids: successStatus === "registered" ? [singleImportObject.id] : [],
-        error: null,
-        warnings: successWarnings,
-      },
-      {
-        id: "import-item-bad-count",
-        source_path: failedPath,
-        status: "failed",
-        raw_resource: {
-          id: "raw-bad-count-xyz",
-          kind: "raw_file",
-          path: "inputs/raw/bad-count.xyz",
-          checksum: "sha256:fixturebad000000000000000000000000000000000000000000000000000",
-          metadata: {
-            source_name: "bad-count.xyz",
-            byte_size: 40,
-          },
-        },
-        preview: null,
-        registered_object_ids: [],
-        error: {
-          code: "parse_failed",
-          message: "XYZ atom count does not match coordinate rows.",
-          target: failedPath,
-        },
-        warnings: [],
-      },
-    ],
+    items: sources.map((source, index) => fixtureImportItemSummary(source, index, successStatus)),
   }
+}
+
+function fixtureImportItemSummary(
+  source: FixtureImportSource,
+  index: number,
+  successStatus: "needs_confirmation" | "registered",
+): ImportBatchSummary["items"][number] {
+  const sourcePath = source.path
+  const sourceName = source.filename
+  if (fixtureImportSourceHasParseError(source)) {
+    return {
+      id: fixtureImportItemId(source, index),
+      source_path: sourcePath,
+      source_name: sourceName,
+      status: "failed",
+      raw_resource: {
+        id: fixtureRawResourceIdForSource(source),
+        kind: "raw_file",
+        path: `inputs/raw/${sourceName}`,
+        checksum: "sha256:fixturebad000000000000000000000000000000000000000000000000000",
+        metadata: {
+          source_name: sourceName,
+          byte_size: source.byteSize ?? 40,
+        },
+      },
+      preview: null,
+      registered_object_ids: [],
+      error: {
+        code: "parse_failed",
+        message: "XYZ atom count does not match coordinate rows.",
+        target: sourcePath,
+      },
+      warnings: [],
+    }
+  }
+
+  const multiCandidate = sourcePath.includes("multi")
+  const singleImportObject = fixtureSingleImportObjectForSource(source)
+  const warnings = fixtureImportItemWarnings(singleImportObject, source)
+  return {
+    id: fixtureImportItemId(source, index),
+    source_path: sourcePath,
+    source_name: sourceName,
+    status: successStatus,
+    raw_resource: {
+      id: singleImportObject.source_file_id ?? fixtureRawResourceIdForSource(source),
+      kind: "raw_file",
+      path: `inputs/raw/${sourceName}`,
+      checksum: fixtureChecksumForSource(source),
+      metadata: {
+        source_name: sourceName,
+        byte_size: source.byteSize ?? 74,
+      },
+    },
+    preview: {
+      raw_resource_id: multiCandidate ? "raw-multi-extxyz" : singleImportObject.source_file_id ?? fixtureRawResourceIdForSource(source),
+      parser_id: multiCandidate ? "extxyz-ase" : String(singleImportObject.provenance?.parser_id ?? "fixture-inline"),
+      parser_version: "fixture-web",
+      object_count: multiCandidate ? 2 : 1,
+      candidates: multiCandidate ? [
+        parseCandidateSummary(fixtureMultiCandidateObjects[0], 0),
+        parseCandidateSummary(fixtureMultiCandidateObjects[1], 1),
+      ] : [
+        parseCandidateSummary(singleImportObject, 0),
+      ],
+      warnings,
+    },
+    registered_object_ids: successStatus === "registered" ? [singleImportObject.id] : [],
+    error: null,
+    warnings,
+  }
+}
+
+function fixtureImportItemId(source: FixtureImportSource, index: number): string {
+  if (index === 0) return "import-item-water"
+  return `import-item-${slugId(source.filename || source.path)}`
+}
+
+function fixtureImportSourceHasParseError(source: FixtureImportSource): boolean {
+  return source.path.toLowerCase().includes("bad-count")
+}
+
+function fixtureRawResourceIdForSource(source: FixtureImportSource): string {
+  return `raw-${slugId(source.filename.replace(/\.[^.]+$/, ""))}`
+}
+
+function fixtureChecksumForSource(source: FixtureImportSource): string {
+  return `sha256:fixture${slugId(source.filename).replace(/-/g, "").slice(0, 16).padEnd(56, "0")}`
 }
 
 function parseCandidateSummary(object: ObjectSummary, index: number): ParseCandidateSummary {
@@ -2410,6 +2454,7 @@ function fixtureSingleImportObjectForSource(source: FixtureImportSource | string
   const normalized = sourceName.toLowerCase()
   if (normalized.includes("water")) return initialFixtureObjects[2]
   const parsed = sourceInput.text ? parseFixtureMolecule(sourceInput.text, sourceName) : null
+  const solutionFile = fixtureSourceLooksLikeSolutionFile(sourceName)
   const safeName = sourceName.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "imported-file"
   const objectId = `object-imported-${safeName.replace(/\.[^.]+$/, "").toLowerCase()}`
   const rawId = `raw-${safeName.replace(/\.[^.]+$/, "").toLowerCase()}`
@@ -2421,13 +2466,13 @@ function fixtureSingleImportObjectForSource(source: FixtureImportSource | string
         unit: "hartree",
         reference: "fixture inline parser",
       },
-      egas: {
+      [solutionFile ? "esol" : "egas"]: {
         value: parsed.energy,
         unit: "hartree",
-        reference: "fixture inline parser",
+        reference: solutionFile ? "fixture paired solution single point" : "fixture inline parser",
       },
     }
-    const thermochemistry: JsonObject = parsed.freeEnergy === null ? {} : {
+    const thermochemistry: JsonObject = parsed.freeEnergy === null || solutionFile ? {} : {
       ggas: {
         value: parsed.freeEnergy,
         unit: "hartree",
@@ -2439,12 +2484,13 @@ function fixtureSingleImportObjectForSource(source: FixtureImportSource | string
       ...energyChannelsFromRecord(thermochemistry, "thermochemistry", objectId),
     ]
     const displayEnergy = displayEnergyFromRecords(energies, thermochemistry)
-    return {
+    return finalizeFixtureObjectEnergyFields({
       id: objectId,
       label: sourceName,
       formula: formulaFromGeometry(parsed.geometry),
       charge: parsed.charge,
       spin_multiplicity: parsed.spinMultiplicity,
+      basis_function_count: parsed.basisFunctionCount,
       method: parsed.method,
       source_file_id: rawId,
       energies,
@@ -2469,7 +2515,7 @@ function fixtureSingleImportObjectForSource(source: FixtureImportSource | string
       correction_count: 0,
       corrections: [],
       warnings: [],
-    }
+    })
   }
   return {
     id: objectId,
@@ -2536,6 +2582,228 @@ function upsertFixtureObjects(
     .filter((object): object is ObjectSummary => Boolean(object))
 }
 
+function withFixturePairedSolutionFreeEnergies(objects: ObjectSummary[]): ObjectSummary[] {
+  const objectList = objects.map(finalizeFixtureObjectEnergyFields)
+  const solutionByKey = new Map<string, ObjectSummary>()
+  for (const object of objectList) {
+    const key = fixtureSolutionPairKey(object)
+    if (key && fixtureObjectLooksLikeSolutionFile(object)) {
+      solutionByKey.set(key, object)
+    }
+  }
+
+  const pairedSolutionIds = new Set<string>()
+  const enriched: ObjectSummary[] = []
+  for (const object of objectList) {
+    const key = fixtureSolutionPairKey(object)
+    if (!key || fixtureObjectLooksLikeSolutionFile(object)) continue
+    const solution = solutionByKey.get(key)
+    if (!solution) {
+      enriched.push(object)
+      continue
+    }
+    pairedSolutionIds.add(solution.id)
+    enriched.push(fixtureObjectWithSolutionFreeEnergy(object, solution))
+  }
+
+  for (const object of objectList) {
+    if (pairedSolutionIds.has(object.id)) continue
+    if (enriched.some((existing) => existing.id === object.id)) continue
+    enriched.push(object)
+  }
+  return enriched
+}
+
+function fixtureObjectWithSolutionFreeEnergy(gas: ObjectSummary, solution: ObjectSummary): ObjectSummary {
+  const energies = { ...jsonRecord(gas.energies as JsonValue | undefined) }
+  const thermochemistry = { ...jsonRecord(gas.thermochemistry as JsonValue | undefined) }
+  const solutionEnergies = jsonRecord(solution.energies as JsonValue | undefined)
+  const egas = energyValueFromAnyRecord(energies, ["egas", "electronic"])
+  const esol = energyValueFromAnyRecord(solutionEnergies, ["esol", "electronic"])
+  let ggas = energyValueFromAnyRecord(thermochemistry, ["ggas_1m", "ggas"])
+    ?? energyValueFromAnyRecord(energies, ["ggas_1m", "ggas"])
+
+  if (esol) {
+    energies.esol = {
+      value: esol.value,
+      unit: esol.unit,
+      reference: esol.reference ?? `solution electronic energy from paired object ${solution.id}`,
+    }
+  }
+  if (egas) {
+    energies.egas = {
+      value: egas.value,
+      unit: egas.unit,
+      reference: egas.reference ?? `gas electronic energy from paired object ${gas.id}`,
+    }
+  }
+  if (!thermochemistry.ggas_1m && thermochemistry.ggas && isEnergyJsonObject(thermochemistry.ggas)) {
+    const rawGgas = thermochemistry.ggas as JsonObject
+    const rawUnit = typeof rawGgas.unit === "string" ? rawGgas.unit : "hartree"
+    thermochemistry.ggas_1m = {
+      value: Number(rawGgas.value) + convertFixtureEnergyValue(0.003019, "hartree", rawUnit),
+      unit: rawUnit,
+      reference: "gas free energy plus 1M standard-state correction",
+    }
+    ggas = energyValueFromAnyRecord(thermochemistry, ["ggas_1m"])
+  }
+
+  if (egas && ggas && esol) {
+    thermochemistry.gsol = {
+      value: (
+        convertFixtureEnergyValue(ggas.value, ggas.unit, "kcal_mol")
+        - convertFixtureEnergyValue(egas.value, egas.unit, "kcal_mol")
+        + convertFixtureEnergyValue(esol.value, esol.unit, "kcal_mol")
+      ),
+      unit: "kcal_mol",
+      reference: `Gsol = Ggas(1M) - Egas + Esol from paired solution log ${solution.id}`,
+    }
+  }
+
+  return finalizeFixtureObjectEnergyFields({
+    ...gas,
+    label: fixtureStructureDisplayName(gas),
+    energies,
+    thermochemistry,
+    warnings: uniqueWarnings([
+      ...(gas.warnings ?? []),
+      {
+        code: "solution_log_paired",
+        message: `Paired solution log ${solution.label ?? solution.id}.`,
+        target: solution.source_file_id ?? solution.id,
+      },
+    ]),
+  })
+}
+
+function finalizeFixtureObjectEnergyFields(object: ObjectSummary): ObjectSummary {
+  const energies = jsonRecord(object.energies as JsonValue | undefined)
+  const thermochemistry = { ...jsonRecord(object.thermochemistry as JsonValue | undefined) }
+  if (!thermochemistry.ggas_1m && thermochemistry.ggas && isEnergyJsonObject(thermochemistry.ggas)) {
+    const rawGgas = thermochemistry.ggas as JsonObject
+    const rawUnit = typeof rawGgas.unit === "string" ? rawGgas.unit : "hartree"
+    thermochemistry.ggas_1m = {
+      value: Number(rawGgas.value) + convertFixtureEnergyValue(0.003019, "hartree", rawUnit),
+      unit: rawUnit,
+      reference: "gas free energy plus 1M standard-state correction",
+    }
+  }
+  const projectedEnergyChannels = (object.energy_channels ?? [])
+    .filter((channel): channel is EnergyChannelSummary => Boolean(channel && channel.key && channel.source && channel.unit))
+  const recordEnergyChannels = [
+    ...energyChannelsFromRecord(energies, "energies", object.id),
+    ...energyChannelsFromRecord(thermochemistry, "thermochemistry", object.id),
+  ]
+  const displayEnergy = displayEnergyFromRecords(energies, thermochemistry) ?? object.display_energy ?? null
+  return {
+    ...object,
+    energies,
+    thermochemistry,
+    energy_keys: Object.keys(energies).length > 0
+      ? Object.keys(energies)
+      : (object.energy_keys ?? []),
+    thermochemistry_keys: Object.keys(thermochemistry).length > 0
+      ? Object.keys(thermochemistry)
+      : (object.thermochemistry_keys ?? []),
+    energy_channels: recordEnergyChannels.length > 0 ? recordEnergyChannels : projectedEnergyChannels,
+    display_energy: displayEnergy,
+  }
+}
+
+function fixtureSourceLooksLikeSolutionFile(name: string | null | undefined): boolean {
+  const stem = fixtureSourceStem(name)
+  return Boolean(stem && fixtureSolutionSuffix(stem))
+}
+
+function fixtureObjectLooksLikeSolutionFile(object: ObjectSummary): boolean {
+  return fixtureSourceLooksLikeSolutionFile(object.label)
+    || fixtureSourceLooksLikeSolutionFile(object.source_file_id)
+    || fixtureSourceLooksLikeSolutionFile(object.provenance?.source_file_id)
+}
+
+function fixtureSolutionPairKey(object: ObjectSummary): string | null {
+  const values = [
+    object.label,
+    object.source_file_id,
+    object.provenance?.source_file_id,
+    object.id,
+  ].filter((value): value is string => Boolean(value))
+  for (const value of values) {
+    const stem = fixtureSourceStem(value)
+    if (!stem) continue
+    const suffix = fixtureSolutionSuffix(stem)
+    const key = (suffix ? stem.slice(0, -suffix.length) : stem).trim().toLowerCase()
+    if (key) return key
+  }
+  return null
+}
+
+function fixtureStructureDisplayName(object: ObjectSummary): string {
+  const label = typeof object.label === "string" && object.label ? object.label : object.id
+  const stem = fixtureSourceStem(label)
+  if (!stem) return label
+  const suffix = fixtureSolutionSuffix(stem)
+  return (suffix ? stem.slice(0, -suffix.length) : stem).trim() || label
+}
+
+function fixtureSourceStem(value: string | null | undefined): string {
+  if (!value) return ""
+  const base = value.split("/").filter(Boolean).at(-1) ?? value
+  return base.replace(/\.[^.]+$/, "").trim()
+}
+
+function fixtureSolutionSuffix(stem: string): string | null {
+  const lower = stem.toLowerCase()
+  for (const suffix of ["-sol", "_sol", ".sol", " sol"]) {
+    if (lower.endsWith(suffix)) return suffix
+  }
+  return null
+}
+
+function energyValueFromAnyRecord(
+  record: JsonObject,
+  keys: string[],
+): { value: number; unit: string; reference: string | null } | null {
+  for (const key of keys) {
+    const value = record[key]
+    if (!isEnergyJsonObject(value)) continue
+    const numericValue = Number(value.value)
+    const unit = typeof value.unit === "string" ? value.unit : ""
+    if (!Number.isFinite(numericValue) || !unit) continue
+    return {
+      value: numericValue,
+      unit,
+      reference: typeof value.reference === "string" ? value.reference : null,
+    }
+  }
+  return null
+}
+
+function isEnergyJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value))
+}
+
+function convertFixtureEnergyValue(value: number, fromUnit: string, toUnit: string): number {
+  if (fromUnit === toUnit) return value
+  if (fromUnit === "hartree" && toUnit === "kcal_mol") return value * hartreeToKcalMol
+  if (fromUnit === "kcal_mol" && toUnit === "hartree") return value / hartreeToKcalMol
+  if (fromUnit === "kcal_mol" && toUnit === "kj_mol") return value * 4.184
+  if (fromUnit === "kj_mol" && toUnit === "kcal_mol") return value / 4.184
+  if (fromUnit === "hartree" && toUnit === "kj_mol") return value * hartreeToKcalMol * 4.184
+  if (fromUnit === "kj_mol" && toUnit === "hartree") return value / 4.184 / hartreeToKcalMol
+  return value
+}
+
+function uniqueWarnings(warnings: ShellWarning[]): ShellWarning[] {
+  const seen = new Set<string>()
+  return warnings.filter((warning) => {
+    const key = `${warning.code}|${warning.target ?? ""}|${warning.message}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function fixturePreviewResponseWarnings(source: FixtureImportSource | undefined): ShellWarning[] {
   if (!source || !source.filename.toLowerCase().includes("water")) return []
   return [
@@ -2593,6 +2861,7 @@ function parseGaussianLogMolecule(text: string): FixtureParsedMolecule | null {
     spinMultiplicity: lastNumberMatch(text, /Multiplicity\s*=\s*(\d+)/gi),
     energy: lastNumberMatch(text, /SCF Done:\s+E\([^)]+\)\s*=\s*(-?\d+(?:\.\d+)?(?:[DE][+-]?\d+)?)/gi),
     freeEnergy: lastNumberMatch(text, /Sum of electronic and thermal Free Energies\s*=\s*(-?\d+(?:\.\d+)?(?:[DE][+-]?\d+)?)/gi),
+    basisFunctionCount: lastNumberMatch(text, /(\d+)\s+basis\s+functions\b/gi),
     method: "Gaussian log",
     parserId: "fixture-gaussian-inline",
   }
@@ -2620,6 +2889,7 @@ function parseXyzLikeMolecule(text: string, filename: string): FixtureParsedMole
     spinMultiplicity: lastNumberMatch(comment, /(?:spin|multiplicity|spin_multiplicity)\s*[=:]\s*(\d+)/gi),
     energy: lastNumberMatch(comment, /(?:energy|E)\s*[=:]\s*(-?\d+(?:\.\d+)?(?:[DE][+-]?\d+)?)/gi),
     freeEnergy: null,
+    basisFunctionCount: null,
     method: filename.toLowerCase().includes("extxyz") ? "extxyz inline" : "xyz inline",
     parserId: filename.toLowerCase().includes("extxyz") ? "fixture-extxyz-inline" : "fixture-xyz-inline",
   }
@@ -2667,6 +2937,7 @@ function elementFromAtomicNumber(atomicNumber: number): string | null {
     35: "Br",
     46: "Pd",
     53: "I",
+    77: "Ir",
   }
   return elements[atomicNumber] ?? null
 }

@@ -3,7 +3,7 @@ import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, WorkspaceSum
 import { graphNodePosition } from "./graphNodeLayout"
 import { normalizeGraphViewport, type GraphViewport } from "./graphViewport"
 
-export type GraphEditorHistoryKind = "layout" | "viewport" | "selection" | "nudge" | "remove"
+export type GraphEditorHistoryKind = "layout" | "viewport" | "selection" | "nudge" | "remove" | "graph"
 
 export type GraphEditorNodePositionSnapshot = {
   nodeId: string
@@ -63,11 +63,21 @@ export type GraphEditorHistoryRemoveEntry = {
   createdAt: string
 }
 
+export type GraphEditorHistoryGraphEntry = {
+  id: string
+  kind: "graph"
+  label: string
+  before: GraphEditorGraphSnapshot
+  after: GraphEditorGraphSnapshot
+  createdAt: string
+}
+
 export type GraphEditorHistoryEntry =
   | GraphEditorHistoryNodeEntry
   | GraphEditorHistoryViewportEntry
   | GraphEditorHistorySelectionEntry
   | GraphEditorHistoryRemoveEntry
+  | GraphEditorHistoryGraphEntry
 
 export type GraphEditorHistoryState = {
   undo: GraphEditorHistoryEntry[]
@@ -186,7 +196,7 @@ export function graphEditorHistoryReplayLabel(
 export function isGraphEditorHistoryEntryNoop(entry: GraphEditorHistoryEntry): boolean {
   if (entry.kind === "viewport") return sameViewport(entry.before, entry.after)
   if (entry.kind === "selection") return sameSelectionSnapshot(entry.before, entry.after)
-  if (entry.kind === "remove") return sameGraphSnapshot(entry.before, entry.after)
+  if (entry.kind === "remove" || entry.kind === "graph") return sameGraphSnapshot(entry.before, entry.after)
   return sameNodePositionSnapshots(entry.before, entry.after)
     && sameOptionalViewport(entry.beforeViewport ?? null, entry.afterViewport ?? null)
 }
@@ -199,7 +209,7 @@ export function staleGraphEditorHistoryReference(
   const validEdgeIds = new Set(references.edgeIds)
   const validPathIds = new Set(references.pathIds)
   if (entry.kind === "viewport") return null
-  if (entry.kind === "remove") return null
+  if (entry.kind === "remove" || entry.kind === "graph") return null
   if (entry.kind === "selection") {
     return staleId(entry.before.nodeIds, validNodeIds, "node_id")
       ?? staleId(entry.before.edgeIds, validEdgeIds, "edge_id")

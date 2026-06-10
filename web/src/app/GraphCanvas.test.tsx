@@ -1,4 +1,4 @@
-import { createEvent, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, createEvent, fireEvent, render, screen, within } from "@testing-library/react"
 import { useState } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { initialCompositionDraftState } from "./compositionDraftState"
@@ -234,7 +234,7 @@ describe("GraphCanvas molecule previews", () => {
 
     expect(view.container.querySelector(".graph-barrier-arrow")).toBeInTheDocument()
     expect(view.container.querySelector(".graph-barrier-guide")).toBeInTheDocument()
-    expect(screen.getByRole("textbox", { name: "Barrier label" })).toHaveValue("△E‡ 12.55")
+    expect(screen.getByRole("textbox", { name: "Barrier label" })).toHaveValue("ΔE‡ 12.55")
     expect(view.container.querySelector(".graph-barrier-delete-button")).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Delete Selection" }))
@@ -457,8 +457,8 @@ describe("GraphCanvas graph edges", () => {
     expect(screen.getByRole("button", { name: "Edge Catalyst to Pre-intermediate" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Edge Post-intermediate to Product" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Edge Post-intermediate to Catalyst-release" })).toBeInTheDocument()
-    expect(screen.queryByText(/△E‡/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/△G‡/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/ΔE‡/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/ΔG‡/)).not.toBeInTheDocument()
     expect(screen.getAllByText("0.00 kcal/mol").length).toBeGreaterThan(0)
     expect(screen.getByText("18.83 kcal/mol")).toBeInTheDocument()
     expect(screen.getByText("50.20 kcal/mol")).toBeInTheDocument()
@@ -519,9 +519,9 @@ describe("GraphCanvas graph edges", () => {
     })
 
     const nodeB = graphNodeCardById(document.body, "node-b")
-    expect(within(nodeB).getByText("△G")).toBeInTheDocument()
+    expect(within(nodeB).getByText("ΔG")).toBeInTheDocument()
     expect(within(nodeB).getByText("missing")).toBeInTheDocument()
-    expect(within(nodeB).queryByText("△E")).not.toBeInTheDocument()
+    expect(within(nodeB).queryByText("ΔE")).not.toBeInTheDocument()
   })
 
   it("does not use single-object solvation corrections as solution free energy", () => {
@@ -542,7 +542,7 @@ describe("GraphCanvas graph edges", () => {
     })
 
     const nodeB = graphNodeCardById(document.body, "node-b")
-    expect(within(nodeB).getByText("△Gsol")).toBeInTheDocument()
+    expect(within(nodeB).getByText("ΔGsol")).toBeInTheDocument()
     expect(within(nodeB).getByText("missing")).toBeInTheDocument()
     expect(screen.queryByText("6.28 kcal/mol")).not.toBeInTheDocument()
   })
@@ -570,7 +570,7 @@ describe("GraphCanvas graph edges", () => {
     })
 
     const nodeB = graphNodeCardById(document.body, "node-b")
-    expect(within(nodeB).getByText("△Gsol")).toBeInTheDocument()
+    expect(within(nodeB).getByText("ΔGsol")).toBeInTheDocument()
     expect(within(nodeB).getByText("missing")).toBeInTheDocument()
     expect(screen.queryByText("6.28 kcal/mol")).not.toBeInTheDocument()
   })
@@ -672,6 +672,64 @@ describe("GraphCanvas drag previews", () => {
 
     expect(onSetViewport).toHaveBeenCalledTimes(1)
     expect(view.container.querySelector(".graph-minimap-window--draft")).not.toBeInTheDocument()
+  })
+
+  it("previews wheel panning locally and commits the viewport after wheel idle", () => {
+    vi.useFakeTimers()
+    try {
+      const onSetViewport = vi.fn()
+      const view = renderGraphCanvas(vi.fn(), {
+        state: graphCanvasTwoNodeState(),
+        onSetViewport,
+      })
+      const surface = screen.getByLabelText("Graph canvas surface")
+      mockSurfaceRect(surface, 600, 360)
+      const layer = view.container.querySelector(".graph-viewport-layer") as HTMLElement
+
+      expect(layer).toHaveStyle({
+        transform: "translate(0%, 0%) scale(1)",
+      })
+
+      act(() => {
+        surface.dispatchEvent(new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 300,
+          clientY: 180,
+          deltaX: 12,
+          deltaY: 60,
+        }))
+        surface.dispatchEvent(new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 300,
+          clientY: 180,
+          deltaX: 8,
+          deltaY: 40,
+        }))
+        vi.advanceTimersByTime(16)
+      })
+
+      expect(onSetViewport).not.toHaveBeenCalled()
+      expect(layer.style.transform).not.toBe("translate(0%, 0%) scale(1)")
+
+      act(() => {
+        vi.advanceTimersByTime(103)
+      })
+      expect(onSetViewport).not.toHaveBeenCalled()
+
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(onSetViewport).toHaveBeenCalledTimes(1)
+      expect(onSetViewport.mock.calls[0][0]).toMatchObject({
+        x: expect.any(Number),
+        y: expect.any(Number),
+        zoom: 1,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

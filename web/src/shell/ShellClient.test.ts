@@ -374,6 +374,169 @@ describe("ShellClient", () => {
     })
   })
 
+  it("pairs inline Gaussian solution logs into gas objects for solvation energy", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const gasLog = [
+      " Charge = 0 Multiplicity = 1",
+      " SCF Done:  E(RB3LYP) =  -100.000000     A.U. after   10 cycles",
+      " Sum of electronic and thermal Free Energies=        -99.990000",
+      " Standard orientation:",
+      " ---------------------------------------------------------------------",
+      " Center     Atomic      Atomic             Coordinates (Angstroms)",
+      " Number     Number       Type             X           Y           Z",
+      " ---------------------------------------------------------------------",
+      "      1          6           0        0.000000    0.000000    0.000000",
+      "      2          1           0        0.000000    0.000000    1.089000",
+      " ---------------------------------------------------------------------",
+    ].join("\n")
+    const solutionLog = [
+      " Charge = 0 Multiplicity = 1",
+      " SCF Done:  E(RB3LYP) =  -100.020000     A.U. after   10 cycles",
+      " Standard orientation:",
+      " ---------------------------------------------------------------------",
+      " Center     Atomic      Atomic             Coordinates (Angstroms)",
+      " Number     Number       Type             X           Y           Z",
+      " ---------------------------------------------------------------------",
+      "      1          6           0        0.000000    0.000000    0.000000",
+      "      2          1           0        0.000000    0.000000    1.089000",
+      " ---------------------------------------------------------------------",
+    ].join("\n")
+
+    const preview = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        sources: [
+          {
+            kind: "inline_bytes",
+            filename: "Pair-ts.log",
+            bytes_base64: btoa(gasLog),
+            mime_type: "text/plain",
+          },
+          {
+            kind: "inline_bytes",
+            filename: "Pair-ts-sol.log",
+            bytes_base64: btoa(solutionLog),
+            mime_type: "text/plain",
+          },
+        ],
+      },
+    })
+
+    expect(preview.ok).toBe(true)
+    expect(preview.data?.batch.items).toHaveLength(2)
+    expect(preview.data?.batch.items.map((item) => item.preview?.candidates?.[0].label)).toEqual([
+      "Pair-ts.log",
+      "Pair-ts-sol.log",
+    ])
+
+    const registered = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        batch_id: preview.data?.batch.id ?? "",
+      },
+    })
+
+    expect(registered.ok).toBe(true)
+    expect(registered.data?.registered_object_ids).toEqual([
+      "object-imported-pair-ts",
+      "object-imported-pair-ts-sol",
+    ])
+    const gasObject = registered.data?.objects.find((object) => object.id === "object-imported-pair-ts")
+    const solutionObject = registered.data?.objects.find((object) => object.id === "object-imported-pair-ts-sol")
+    expect(solutionObject).toBeUndefined()
+    expect(gasObject).toMatchObject({
+      label: "Pair-ts",
+      energy_keys: expect.arrayContaining(["egas", "esol"]),
+      thermochemistry_keys: expect.arrayContaining(["ggas", "ggas_1m", "gsol"]),
+    })
+    expect(gasObject?.thermochemistry).toMatchObject({
+      gsol: {
+        unit: "kcal_mol",
+      },
+    })
+    expect(Number((gasObject?.thermochemistry as { gsol?: { value?: number } } | undefined)?.gsol?.value)).toBeCloseTo(-62755.32805, 5)
+  })
+
+  it("parses real Ir Gaussian logs and folds paired solution logs into the gas object", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const fixtureResponse = await shellClient.run<FixtureRunData>({
+      command: "fixture.run",
+      args: {},
+    })
+    const gasLog = await readRepoFixtureAsBase64("Ir/i1N2fix14-ts.log")
+    const solutionLog = await readRepoFixtureAsBase64("Ir/i1N2fix14-ts-sol.log")
+
+    const preview = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        sources: [
+          {
+            kind: "inline_bytes",
+            filename: "i1N2fix14-ts.log",
+            bytes_base64: gasLog,
+            mime_type: "text/plain",
+          },
+          {
+            kind: "inline_bytes",
+            filename: "i1N2fix14-ts-sol.log",
+            bytes_base64: solutionLog,
+            mime_type: "text/plain",
+          },
+        ],
+      },
+    })
+
+    expect(preview.ok).toBe(true)
+    expect(preview.data?.batch.items).toHaveLength(2)
+    expect(preview.data?.batch.items[0].preview?.candidates?.[0]).toMatchObject({
+      label: "i1N2fix14-ts.log",
+      charge: 1,
+      spin_multiplicity: 1,
+      display_energy: {
+        value: -6774.81726642,
+        unit: "hartree",
+      },
+      coordinate_preview: {
+        has3d: true,
+      },
+    })
+
+    const registered = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: fixtureResponse.data?.session_id ?? "",
+        batch_id: preview.data?.batch.id ?? "",
+      },
+    })
+
+    expect(registered.ok).toBe(true)
+    const gasObject = registered.data?.objects.find((object) => object.id === "object-imported-i1n2fix14-ts")
+    const solutionObject = registered.data?.objects.find((object) => object.id === "object-imported-i1n2fix14-ts-sol")
+    expect(solutionObject).toBeUndefined()
+    expect(gasObject?.geometry?.some((atom) => atom.element === "Ir")).toBe(true)
+    expect(gasObject).toMatchObject({
+      label: "i1N2fix14-ts",
+      energy_keys: expect.arrayContaining(["egas", "esol"]),
+      thermochemistry_keys: expect.arrayContaining(["ggas", "ggas_1m", "gsol"]),
+    })
+    expect(gasObject?.thermochemistry).toMatchObject({
+      ggas: {
+        value: -6773.227467,
+        unit: "hartree",
+      },
+      gsol: {
+        unit: "kcal_mol",
+      },
+    })
+  })
+
   it("registers the fixture import batch idempotently", async () => {
     const shellClient = new ShellClient(fixtureTransport)
     const fixtureResponse = await shellClient.run<FixtureRunData>({
@@ -773,6 +936,124 @@ describe("ShellClient", () => {
       to_node: "node-web-3-2",
     })
     expect(opened.data?.workspace.graph.paths[0].node_ids).toEqual(["node-web-3", "node-web-3-2"])
+  })
+
+  it("ignores persisted demo fixture graphs when opening browser projects", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const opened = await shellClient.run({
+      command: "project.open",
+      args: {
+        content_files: [
+          projectContentFile(".rxnflow/state/reaction-graphs.json", {
+            graphs: [{
+              id: "graph-a-b",
+              project_id: "project-fixture-minimal-reaction",
+              nodes: [
+                { id: "node-a", kind: "species", label: "Object A", chemical_object_ids: ["object-a"], position: [120, 160] },
+                { id: "node-b", kind: "species", label: "Object B", chemical_object_ids: ["object-b"], position: [360, 160] },
+              ],
+              edges: [{ id: "edge-a-b", from_node: "node-a", to_node: "node-b" }],
+              paths: [{ id: "path-a-b", label: "Fixture path", node_ids: ["node-a", "node-b"] }],
+            }],
+          }),
+          projectContentFile(".rxnflow/state/workspaces.json", {
+            workspaces: [{
+              workspace_id: "workspace-fixture",
+              project_id: "project-fixture-minimal-reaction",
+              active_path_id: "path-a-b",
+              selection: { node_ids: [], edge_ids: [], path_ids: [] },
+              viewport: { x: 0, y: 0, zoom: 1 },
+            }],
+          }),
+          projectContentFile(".rxnflow/state/chemical-objects.json", {
+            objects: [
+              { id: "object-a", label: "Object A" },
+              { id: "object-b", label: "Object B" },
+            ],
+          }),
+        ],
+      },
+    })
+
+    expect(opened.ok).toBe(true)
+    const snapshot = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: { session_id: "session-fixture-web" },
+    })
+
+    expect(snapshot.ok).toBe(true)
+    expect(snapshot.data?.workspace?.graph.nodes).toEqual([])
+    expect(snapshot.data?.objects).toEqual([])
+  })
+
+  it("keeps imported graph nodes that reuse old fixture workspace ids", async () => {
+    const shellClient = new ShellClient(fixtureTransport)
+    const opened = await shellClient.run({
+      command: "project.open",
+      args: {
+        content_files: [
+          projectContentFile(".rxnflow/state/reaction-graphs.json", {
+            graphs: [{
+              id: "graph-a-b",
+              project_id: "project-ir",
+              nodes: [
+                {
+                  id: "node-web-3",
+                  kind: "species",
+                  label: "i1N2fix14-ts",
+                  chemical_object_ids: ["object-imported-ir"],
+                  position: [240, 180],
+                },
+              ],
+              edges: [],
+              paths: [],
+            }],
+          }),
+          projectContentFile(".rxnflow/state/workspaces.json", {
+            workspaces: [{
+              workspace_id: "workspace-fixture",
+              project_id: "project-ir",
+              graph_id: "graph-a-b",
+              active_path_id: null,
+              selection: { node_ids: [], edge_ids: [], path_ids: [] },
+              viewport: { x: 0, y: 0, zoom: 1 },
+            }],
+          }),
+          projectContentFile(".rxnflow/state/chemical-objects.json", {
+            objects: [
+              {
+                id: "object-imported-ir",
+                label: "i1N2fix14-ts",
+                formula: "C123H83Cl3IrN6O3",
+                charge: 1,
+                spin_multiplicity: 1,
+                energies: {
+                  electronic: { value: -6774.81726642, unit: "hartree", reference: "Gaussian SCF Done" },
+                },
+                thermochemistry: {
+                  ggas: { value: -6773.227467, unit: "hartree", reference: "Gaussian free energy" },
+                },
+              },
+            ],
+          }),
+        ],
+      },
+    })
+
+    expect(opened.ok).toBe(true)
+    const snapshot = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: { session_id: "session-fixture-web" },
+    })
+
+    expect(snapshot.ok).toBe(true)
+    expect(snapshot.data?.workspace?.graph.nodes).toHaveLength(1)
+    expect(snapshot.data?.workspace?.graph.nodes[0]).toMatchObject({
+      id: "node-web-3",
+      label: "i1N2fix14-ts",
+      chemical_object_ids: ["object-imported-ir"],
+    })
+    expect(snapshot.data?.objects.map((object) => object.id)).toContain("object-imported-ir")
   })
 
   it("returns structured errors for invalid fixture workspace selections", async () => {
@@ -1347,6 +1628,17 @@ describe("ShellClient", () => {
     expect(response.error?.target).toBe("formats")
   })
 })
+
+async function readRepoFixtureAsBase64(pathFromRepoRoot: string): Promise<string> {
+  // Vitest runs this regression in Node; the app tsconfig intentionally omits Node globals.
+  // @ts-expect-error node:fs is test-only and unavailable to the browser build types.
+  const { readFileSync } = await import("node:fs") as {
+    readFileSync: (path: string) => { toString: (encoding: "base64") => string }
+  }
+  const testPath = decodeURIComponent(import.meta.url.replace(/^file:\/\//, ""))
+  const repoRoot = testPath.replace(/\/web\/src\/shell\/ShellClient\.test\.ts$/, "")
+  return readFileSync(`${repoRoot}/${pathFromRepoRoot}`).toString("base64")
+}
 
 function projectContentFile(path: string, value: unknown) {
   return {

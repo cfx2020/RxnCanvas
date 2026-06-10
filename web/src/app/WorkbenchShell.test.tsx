@@ -472,9 +472,9 @@ describe("WorkbenchShell", () => {
     expect(await findGraphNodeButtonById(graphCanvas, "node-web-4")).toBeInTheDocument()
     expect(within(graphCanvas).getAllByText("Frame 1").length).toBeGreaterThan(0)
     expect(within(graphCanvas).getAllByText("Frame 2").length).toBeGreaterThan(0)
-    expect(within(graphCanvas).queryByText("-62907.82 kcal/mol")).not.toBeInTheDocument()
+    expect(within(graphCanvas).queryByText("-62907.83 kcal/mol")).not.toBeInTheDocument()
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "More actions for Frame 1" }))
-    expect(within(graphCanvas).getAllByText("-62907.82 kcal/mol").length).toBeGreaterThan(0)
+    expect(within(graphCanvas).getAllByText("-62907.83 kcal/mol").length).toBeGreaterThan(0)
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "More actions for Frame 1" }))
     fireEvent.click(within(graphCanvas).getByRole("button", { name: "More actions for Frame 2" }))
     expect(within(graphCanvas).getAllByText("-62813.70 kcal/mol").length).toBeGreaterThan(0)
@@ -580,15 +580,9 @@ describe("WorkbenchShell", () => {
 
     fireEvent.click(rawFileRow)
 
-    await waitFor(() => {
-      expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(3)
-    })
+    expect(rawFileRow).toHaveClass("project-file-card--selected")
+    expect(transport.payloads.filter((payload) => payload.command === "workspace.add_node")).toHaveLength(2)
     await expect(repository.listObjects(project.projectRef, "inputs/raw")).resolves.toHaveLength(1)
-    expect(lastPayload(transport, "workspace.add_node")?.args).toMatchObject({
-      chemical_object_ids: ["object-imported-water"],
-      position: [900, 160],
-    })
-    expectRawReuseNodeShowsRelativeEnergy(await findGraphNodeButtonById(graphCanvas, "node-web-5"))
   })
 
   it("stops raw file drops when project raw persistence fails", async () => {
@@ -733,6 +727,7 @@ describe("WorkbenchShell", () => {
 
     const viewportCommandCountBeforePan = transport.payloads.filter((payload) => payload.command === "workspace.set_viewport").length
     dispatchWheel(surface, { deltaY: -100, clientX: 300, clientY: 180 })
+    await waitForWheelViewportCommit()
 
     await waitFor(() => {
       expect(transport.payloads.filter((payload) => payload.command === "workspace.set_viewport").length).toBeGreaterThan(viewportCommandCountBeforePan)
@@ -756,6 +751,7 @@ describe("WorkbenchShell", () => {
     dispatchWheel(surface, { deltaY: -100, clientX: 300, clientY: 180, ctrlKey: true })
 
     await within(graphCanvas).findByLabelText("120%")
+    await waitForWheelViewportCommit()
     expect(lastPayload(transport, "workspace.set_viewport")?.args).toMatchObject({
       viewport: {
         x: expect.closeTo(-10, 6),
@@ -766,6 +762,7 @@ describe("WorkbenchShell", () => {
 
     const viewportCommandCount = transport.payloads.filter((payload) => payload.command === "workspace.set_viewport").length
     dispatchWheel(graphCanvas, { deltaY: -100, clientX: 300, clientY: 180 })
+    await waitForWheelViewportCommit()
     expect(transport.payloads.filter((payload) => payload.command === "workspace.set_viewport")).toHaveLength(viewportCommandCount)
   })
 
@@ -2172,11 +2169,11 @@ describe("WorkbenchShell", () => {
     const energySelect = within(graphCanvas).getByLabelText("Energy")
     fireEvent.change(energySelect, { target: { value: "free" } })
     await waitFor(() => expect(lastPayload(transport, "energy.compute")?.args).toMatchObject({
-      energy_key: "ggas",
+      energy_key: "ggas_1m",
       energy_source: "thermochemistry",
       correction_policy: { mode: "none" },
     }))
-    await waitFor(() => expect(within(graphCanvas).getByText("△G")).toBeInTheDocument())
+    await waitFor(() => expect(within(graphCanvas).getByText("ΔG")).toBeInTheDocument())
     expect(within(graphCanvas).getByText("0.00 kcal/mol")).toBeInTheDocument()
     expect(within(graphCanvas).queryByText("missing")).not.toBeInTheDocument()
 
@@ -2186,7 +2183,7 @@ describe("WorkbenchShell", () => {
       energy_source: "thermochemistry",
       correction_policy: { mode: "none" },
     }))
-    await waitFor(() => expect(within(graphCanvas).getByText("△Gsol")).toBeInTheDocument())
+    await waitFor(() => expect(within(graphCanvas).getByText("ΔGsol")).toBeInTheDocument())
     expect(within(graphCanvas).getByText("missing")).toBeInTheDocument()
   })
 
@@ -2210,6 +2207,26 @@ describe("WorkbenchShell", () => {
     })
     const indexObject = await repository.readObject(project.projectRef, projectContentIndexPath)
     expect(indexObject.metadata).toEqual({ kind: "project_content_index" })
+  })
+
+  it("prunes unconnected duplicate graph nodes while restoring a project", async () => {
+    const repository = new MemoryBrowserProjectRepository()
+    const transport = new RecordingProjectBridgeTransport()
+    await writeDuplicateGraphProject(repository, await createProjectWithContent(repository, "Duplicate Graph"))
+    renderWorkbench(repository, "en-US", undefined, new ShellClient(transport))
+
+    fireEvent.click(await screen.findByRole("button", { name: /duplicate graph/i }))
+
+    await waitFor(() => expect(lastPayload(transport, "workspace.remove")?.args).toMatchObject({
+      node_ids: ["node-dup-2", "node-dup-3"],
+      edge_ids: [],
+      path_ids: [],
+    }))
+    const graphCanvas = await screen.findByRole("region", { name: "Graph Canvas" })
+    await waitFor(() => {
+      expect(graphCanvas.querySelectorAll(".graph-node-card")).toHaveLength(1)
+    })
+    expect(within(graphCanvas).getByText("Duplicate TS")).toBeInTheDocument()
   })
 
   it.skip("saves and restores graph workspace layout, viewport, selection, and active path through project content", async () => {
@@ -2475,6 +2492,12 @@ function dispatchWheel(
   })
 }
 
+async function waitForWheelViewportCommit() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 130))
+  })
+}
+
 function mockElementsFromPoint(elements: Element[]) {
   const originalElementsFromPoint = document.elementsFromPoint
   document.elementsFromPoint = vi.fn(() => elements)
@@ -2524,7 +2547,7 @@ function queryGraphNodeButtonById(container: HTMLElement, nodeId: string): HTMLE
 
 function expectRawReuseNodeShowsRelativeEnergy(node: HTMLElement): void {
   expect(node).toBeInTheDocument()
-  expect(within(node).getByText("△E")).toBeInTheDocument()
+  expect(within(node).getByText("ΔE")).toBeInTheDocument()
   expect(within(node).getByText("-125.50 kcal/mol")).toBeInTheDocument()
   expect(within(node).queryByText("-753.01 kcal/mol")).not.toBeInTheDocument()
 }
@@ -2922,6 +2945,116 @@ async function writeLegacyGaussianLogProject(
       mime_type: "text/plain",
     },
   })
+}
+
+async function writeDuplicateGraphProject(
+  repository: MemoryBrowserProjectRepository,
+  project: BrowserProjectRef,
+) {
+  const projectId = projectIdFromBrowserProject(project)
+  const objectId = "object-duplicate-ts"
+  const chemicalObjects = jsonText({
+    schema_version: "chemical-objects-v1",
+    project_id: projectId,
+    objects: [{
+      id: objectId,
+      label: "Duplicate TS",
+      formula: "IrC2H2",
+      charge: 1,
+      spin_multiplicity: 1,
+      method: "B3LYP",
+      geometry: [],
+      energies: { egas: -1 },
+      thermochemistry: {},
+      source_file_id: "Duplicate TS.log",
+      corrections: [],
+      provenance: null,
+      registry_fingerprint: "duplicate-ts",
+    }],
+  })
+  const duplicateNodes = [1, 2, 3].map((index) => ({
+    id: `node-dup-${index}`,
+    kind: "species",
+    label: "Duplicate TS",
+    chemical_object_ids: [objectId],
+    composition: [{ object_id: objectId, coefficient: 1 }],
+    position: [index * 100, 160],
+    metadata: {},
+  }))
+  const reactionGraphs = jsonText({
+    schema_version: "reaction-graphs-v1",
+    project_id: projectId,
+    graphs: [{
+      id: "graph-duplicates",
+      project_id: projectId,
+      nodes: duplicateNodes,
+      edges: [],
+      paths: [],
+    }],
+  })
+  const workspaces = jsonText({
+    schema_version: "workspaces-v1",
+    project_id: projectId,
+    workspaces: [{
+      workspace_id: "workspace-duplicates",
+      project_id: projectId,
+      graph_id: "graph-duplicates",
+      selection: { node_ids: [], edge_ids: [], path_ids: [] },
+      viewport: { x: 0, y: 0, zoom: 1 },
+      active_path_id: null,
+      updated_at: "2026-06-10T00:00:00Z",
+    }],
+  })
+  const sectionTexts = {
+    [chemicalObjectsPath]: chemicalObjects,
+    [reactionGraphsPath]: reactionGraphs,
+    [workspacesPath]: workspaces,
+    ".rxnflow/state/energy-profiles.json": jsonText({
+      schema_version: "energy-profiles-v1",
+      project_id: projectId,
+      profiles: [],
+    }),
+    ".rxnflow/state/import-ledger.json": jsonText({
+      schema_version: "import-ledger-v1",
+      project_id: projectId,
+      batches: [],
+    }),
+    [exportArtifactsPath]: jsonText({
+      schema_version: "export-artifacts-v1",
+      project_id: projectId,
+      artifacts: [],
+    }),
+  }
+  const contentFiles = await Promise.all(Object.entries(sectionTexts).map(async ([path, text]) => ({
+    kind: sectionKindForPath(path),
+    path,
+    checksum: await checksumBrowserStorageBytes(new TextEncoder().encode(text) as Uint8Array<ArrayBuffer>),
+    text,
+  })))
+  const indexText = jsonText({
+    schema_version: "project-content-v1",
+    project_id: projectId,
+    updated_at: "2026-06-10T00:00:00Z",
+    files: contentFiles.map(({ kind, path, checksum }) => ({
+      kind,
+      path,
+      checksum,
+      updated_at: "2026-06-10T00:00:00Z",
+    })),
+  })
+  const manifestText = jsonText({
+    id: projectId,
+    name: project.name,
+    created_at: project.createdAt,
+    updated_at: "2026-06-10T00:00:00Z",
+    schema_version: "project-v1",
+    resources: [],
+  })
+  await writeText(repository, project.projectRef, ".rxnflow/manifest.json", manifestText, { kind: "project_manifest" })
+  await writeText(repository, project.projectRef, ".rxnflow/state/project-content.json", indexText, { kind: "project_content_index" })
+  for (const file of contentFiles) {
+    await writeText(repository, project.projectRef, file.path, file.text, { kind: file.kind })
+  }
 }
 
 async function writeText(

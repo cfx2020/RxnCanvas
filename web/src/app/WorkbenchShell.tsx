@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 import { ChevronDown, Download, Languages, Moon, PanelLeft, Sun } from "lucide-react"
 import {
   BrowserProjectRepositoryError,
@@ -32,6 +32,18 @@ import {
   persistExportArtifacts,
   type ExportArtifactPersistenceResult,
 } from "./exportArtifactPersistence"
+import {
+  basisFunctionCountFromObject,
+  convertEnergyValue,
+  energyModeRelativeLabel,
+  energyUnitLabel,
+  energyValueFromObjectRecord,
+  formatEnergyValue,
+  resolveGasFreeEnergy1M,
+  resolveObjectEnergyValue,
+  resolveSolutionFreeEnergy,
+  type ResolvedObjectEnergyValue,
+} from "./energyValues"
 import { reportExportFormats } from "./exportFormatCapabilities"
 import {
   completeGraphEditorConnection,
@@ -88,7 +100,7 @@ import {
   type GraphPathOrderDraft,
   type GraphPathOrderMoveDirection,
 } from "./graphPathOrderDraft"
-import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type CanvasEnergyDisplayOptions, type CanvasEnergyMode, type CanvasEnergyUnit, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NudgeGraphNodesRequest, type ParseCandidateChooserState, type PathAuthoringStatus, type RemoveGraphItemsRequest, type UpdateGraphNodeLabelRequest } from "./GraphCanvas"
+import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, type CanvasEnergyDisplayOptions, type CanvasEnergyMode, type CanvasEnergyUnit, type GraphAutoLayoutStatus, type MoveGraphNodeRequest, type NodeSolutionLogPairCandidate, type NudgeGraphNodesRequest, type ParseCandidateChooserState, type PathAuthoringStatus, type RemoveGraphItemsRequest, type UpdateGraphNodeLabelRequest } from "./GraphCanvas"
 import {
   importPreviewArgsFromFiles,
   filesToWebImportFiles,
@@ -102,10 +114,14 @@ import { persistImportFilesAsRawInputs, persistRawInputFile, type BrowserRawReso
 import { createProject, deleteProject, openProject, refreshProjects, saveProjectContent } from "./projectSidebarActions"
 import { listProjectFileEntries, projectFileEntriesWithWorkbenchProjection, type ProjectFileEntry } from "./projectFiles"
 import {
+  chemicalObjectsPath,
   contentFilesToShellPayload,
+  projectContentIndexPath,
   projectManifestPath,
+  reactionGraphsPath,
   readProjectContentFiles,
   shellPayloadToContentFiles,
+  workspacesPath,
   type BrowserProjectContentFile,
   type ProjectSaveContentData,
 } from "./projectContentBridge"
@@ -144,6 +160,20 @@ type WorkspaceFlowShellState = {
   inspectorOpen: boolean
 }
 
+type WorkbenchViewMode = "canvas" | "table"
+
+type PendingProjectImport =
+  | { kind: "project"; projectRef: string }
+  | { kind: "folder" }
+
+type SingleRawFileNodeSource =
+  | { kind: "external-file"; file: File }
+  | { kind: "project-file"; projectFileId: string; path: string }
+
+type SingleAddRawFileNodeRequest = Omit<AddRawFileNodeRequest, "source"> & {
+  source: SingleRawFileNodeSource
+}
+
 const defaultRuntimeInfo: ShellRuntimeInfo = {
   mode: "fixture",
   transportKind: "in-process-test",
@@ -156,6 +186,7 @@ const defaultWorkspaceFlowShellState: WorkspaceFlowShellState = {
 }
 
 const narrowWorkbenchMediaQuery = "(max-width: 700px)"
+const activeProjectPreferenceKey = "rxnflow.activeProjectRef.v1"
 
 export function WorkbenchShell({
   shellClient,
@@ -172,6 +203,7 @@ export function WorkbenchShell({
   const [workspaceFlowShellState, setWorkspaceFlowShellState] = useState<WorkspaceFlowShellState>(
     defaultWorkspaceFlowShellState,
   )
+  const [viewMode, setViewMode] = useState<WorkbenchViewMode>("canvas")
   const [theme, setTheme] = useState<"light" | "dark">("light")
   const [transientImportState, setTransientImportState] = useState<TransientImportState>(
     initialTransientImportState,
@@ -230,9 +262,11 @@ export function WorkbenchShell({
   const shellElementRef = useRef<HTMLDivElement | null>(null)
   const topbarElementRef = useRef<HTMLElement | null>(null)
   const projectImportInputRef = useRef<HTMLInputElement | null>(null)
-  const pendingProjectImportRef = useRef<string | null>(null)
+  const projectFolderInputRef = useRef<HTMLInputElement | null>(null)
+  const pendingProjectImportRef = useRef<PendingProjectImport | null>(null)
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoSaveSignatureRef = useRef("")
+  const startupProjectRestoreAttemptedRef = useRef(false)
   const nodeDragFrameRef = useRef<number | null>(null)
   const nodeDragPointRef = useRef<CanvasPoint | null>(null)
   const canvasDragFrameRef = useRef<number | null>(null)
@@ -343,6 +377,21 @@ export function WorkbenchShell({
     updateGraphEditorHistory((current) => pushGraphEditorHistoryEntry(current, entry))
   }, [updateGraphEditorHistory])
 
+  const pushGraphSnapshotHistory = useCallback((
+    label: string,
+    before: GraphEditorGraphSnapshot,
+    afterWorkspace: WorkspaceSummary,
+  ) => {
+    pushGraphEditorHistory({
+      id: nextGraphEditorHistoryEntryId("graph"),
+      kind: "graph",
+      label,
+      before,
+      after: snapshotGraphEditorGraph(afterWorkspace),
+      createdAt: new Date().toISOString(),
+    })
+  }, [nextGraphEditorHistoryEntryId, pushGraphEditorHistory])
+
   useEffect(() => {
     graphEditorHistoryRef.current = graphEditorHistory
   }, [graphEditorHistory])
@@ -367,8 +416,10 @@ export function WorkbenchShell({
   ])
 
   const refreshProjectSidebar = useCallback(async () => {
+    const storedActiveProjectRef = readStoredActiveProjectRef()
     const loadingState: ProjectSidebarState = {
       ...projectSidebarStateRef.current,
+      activeProjectRef: projectSidebarStateRef.current.activeProjectRef ?? storedActiveProjectRef ?? undefined,
       status: "loading",
       error: undefined,
     }
@@ -613,15 +664,38 @@ export function WorkbenchShell({
     return projectWorkbenchSnapshot(snapshot)
   }, [shellClient])
 
+  const removeRestoredDuplicateGraphNodes = useCallback(async (
+    restoredState: WorkbenchDomainState,
+    sessionId: string,
+  ): Promise<WorkbenchDomainState> => {
+    const duplicateNodeIds = unconnectedDuplicateGraphNodeIds(restoredState.workspace)
+    if (duplicateNodeIds.length === 0) return restoredState
+    const removeResponse = await shellClient.run<WorkspaceCommandData>({
+      command: "workspace.remove",
+      args: {
+        session_id: sessionId,
+        node_ids: duplicateNodeIds,
+        edge_ids: [],
+        path_ids: [],
+      },
+    })
+    if (!removeResponse.ok || !removeResponse.data) return restoredState
+    const snapshot = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: { session_id: sessionId },
+    })
+    return projectWorkbenchSnapshot(snapshot)
+  }, [shellClient])
+
   const restoreSidebarProjectSession = useCallback(async (
     baseState: ProjectSidebarState,
-  ) => {
+  ): Promise<WorkbenchDomainState | null> => {
     const restoreVersion = shellSessionVersionRef.current + 1
     shellSessionVersionRef.current = restoreVersion
     const activeProject = baseState.activeProject
     if (!activeProject) {
       replaceProjectSidebarState(baseState)
-      return
+      return null
     }
     const loadingState: ProjectSidebarState = {
       ...baseState,
@@ -651,7 +725,7 @@ export function WorkbenchShell({
         },
         error: error.toJSON(),
       })
-      return
+      return null
     }
     const response = await shellClient.run({
       command: "project.open",
@@ -686,14 +760,14 @@ export function WorkbenchShell({
         warnings: response.warnings,
         error: response.error ?? shellError("invalid_input", "Project bridge open failed.", "project.open"),
       }))
-      return
+      return null
     }
     const snapshot = await shellClient.run<WorkbenchSnapshotData>({
       command: "workbench.snapshot",
       args: { session_id: response.data.session_id },
     })
     if (shellSessionVersionRef.current !== restoreVersion) {
-      return
+      return null
     }
     let restoredState = projectWorkbenchSnapshot(snapshot)
     restoredState = await hydrateRestoredProjectGeometry(
@@ -702,10 +776,12 @@ export function WorkbenchShell({
       baseState.projectFiles,
     )
     restoredState = await ensureRestoredProjectActivePath(restoredState, String(response.data.session_id))
+    restoredState = await removeRestoredDuplicateGraphNodes(restoredState, String(response.data.session_id))
     if (shellSessionVersionRef.current !== restoreVersion) {
-      return
+      return null
     }
     resetGraphEditorHistory()
+    workbenchStateRef.current = restoredState
     setWorkbenchState(restoredState)
     const sessionId = String(response.data.session_id)
     const nextState: ProjectSidebarState = {
@@ -719,7 +795,8 @@ export function WorkbenchShell({
       error: undefined,
     }
     replaceProjectSidebarState(nextState)
-  }, [ensureRestoredProjectActivePath, hydrateRestoredProjectGeometry, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient])
+    return restoredState
+  }, [ensureRestoredProjectActivePath, hydrateRestoredProjectGeometry, projectRepository, removeRestoredDuplicateGraphNodes, replaceProjectSidebarState, resetGraphEditorHistory, shellClient])
 
   const createSidebarProject = useCallback(
     async (name: string) => {
@@ -737,6 +814,7 @@ export function WorkbenchShell({
         && nextState.validation.state === "valid"
         && shellSessionVersionRef.current === requestVersion
       ) {
+        writeStoredActiveProjectRef(nextState.activeProject.projectRef)
         await restoreSidebarProjectSession(nextState)
         return nextState
       }
@@ -770,6 +848,7 @@ export function WorkbenchShell({
         && nextState.validation.state === "valid"
         && shellSessionVersionRef.current === requestVersion
       ) {
+        writeStoredActiveProjectRef(nextState.activeProject.projectRef)
         await restoreSidebarProjectSession(nextState)
         return
       }
@@ -777,6 +856,18 @@ export function WorkbenchShell({
     },
     [projectRepository, replaceProjectSidebarState, restoreSidebarProjectSession],
   )
+
+  useEffect(() => {
+    if (import.meta.env.MODE === "test") return
+    if (startupProjectRestoreAttemptedRef.current) return
+    if (projectSidebarState.status !== "ready") return
+    if (!projectSidebarState.activeProject) return
+    if (projectSidebarState.bridge.state !== "idle") return
+    if (projectSidebarState.validation.state === "error") return
+    startupProjectRestoreAttemptedRef.current = true
+    writeStoredActiveProjectRef(projectSidebarState.activeProject.projectRef)
+    void restoreSidebarProjectSession(projectSidebarState)
+  }, [projectSidebarState, restoreSidebarProjectSession])
 
   const deleteSidebarProject = useCallback(
     async (projectRef: string) => {
@@ -792,6 +883,7 @@ export function WorkbenchShell({
       if (!deletingActiveProject || nextState.status !== "ready") {
         return
       }
+      clearStoredActiveProjectRef()
       shellSessionVersionRef.current += 1
       autoSaveSignatureRef.current = ""
       resetGraphEditorHistory()
@@ -830,9 +922,9 @@ export function WorkbenchShell({
     [projectRepository, replaceProjectSidebarState],
   )
 
-  const saveSidebarBridgeSession = useCallback(async (): Promise<boolean> => {
+  const saveSidebarBridgeSession = useCallback(async (stateSnapshot = workbenchStateRef.current): Promise<boolean> => {
     const activeProject = projectSidebarStateRef.current.activeProject
-    const sessionId = workbenchStateRef.current.sessionId
+    const sessionId = stateSnapshot.sessionId
     if (!activeProject || !sessionId) return false
     const loadingState: ProjectSidebarState = {
       ...projectSidebarStateRef.current,
@@ -871,10 +963,14 @@ export function WorkbenchShell({
       }))
       return false
     }
+    const contentFiles = await overlayWorkbenchProjectContentFiles(
+      shellPayloadToContentFiles(response.data.content_files) as BrowserProjectContentFile[],
+      stateSnapshot,
+    )
     const files = await preserveBrowserProjectManifest(
       projectRepository,
       activeProject.projectRef,
-      shellPayloadToContentFiles(response.data.content_files) as BrowserProjectContentFile[],
+      contentFiles,
     )
     const savedState = await saveProjectContent(projectRepository, loadingState, files)
     if (savedState.status !== "ready" || savedState.persistence !== "persisted") {
@@ -898,14 +994,14 @@ export function WorkbenchShell({
     return true
   }, [projectRepository, replaceProjectSidebarState, shellClient])
 
-  const saveSidebarProject = useCallback(async () => {
+  const saveSidebarProject = useCallback(async (stateSnapshot = workbenchStateRef.current) => {
     const autoSaveSignature = projectAutoSaveSignature(
-      workbenchStateRef.current,
+      stateSnapshot,
       projectSidebarStateRef.current,
     )
     let persisted = false
-    if (workbenchStateRef.current.sessionId) {
-      persisted = await saveSidebarBridgeSession()
+    if (stateSnapshot.sessionId) {
+      persisted = await saveSidebarBridgeSession(stateSnapshot)
     } else {
       const loadingState: ProjectSidebarState = {
         ...projectSidebarStateRef.current,
@@ -1040,7 +1136,7 @@ export function WorkbenchShell({
   }, [runFixture, runInvalidCommand])
 
   const persistFilesIntoProject = useCallback(async (projectRef: string, files: File[]) => {
-    const selectedFiles = filesToWebImportFiles(files)
+    const selectedFiles = filesToWebImportFiles(supportedRawImportFiles(files))
     if (selectedFiles.length === 0) return
 
     setTransientImportState((current) => ({
@@ -1122,19 +1218,45 @@ export function WorkbenchShell({
     if (projectSidebarStateRef.current.activeProjectRef !== projectRef) {
       await openSidebarProject(projectRef)
     }
-    pendingProjectImportRef.current = projectRef
+    pendingProjectImportRef.current = { kind: "project", projectRef }
     projectImportInputRef.current?.click()
   }, [openSidebarProject, persistFilesIntoProject])
 
+  const openExistingFolderImport = useCallback(async () => {
+    pendingProjectImportRef.current = { kind: "folder" }
+    projectFolderInputRef.current?.click()
+  }, [])
+
   const handleProjectImportInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const projectRef = pendingProjectImportRef.current ?? projectSidebarStateRef.current.activeProjectRef
+    const pending = pendingProjectImportRef.current
+    pendingProjectImportRef.current = null
+    const projectRef = pending?.kind === "project" ? pending.projectRef : projectSidebarStateRef.current.activeProjectRef
     const files = Array.from(event.currentTarget.files ?? [])
     event.currentTarget.value = ""
     if (!projectRef || files.length === 0) return
     void persistFilesIntoProject(projectRef, files)
   }, [persistFilesIntoProject])
 
-  const applyWorkspaceResponse = useCallback((response: Awaited<ReturnType<ShellClient["run"]>>) => {
+  const handleProjectFolderInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const pending = pendingProjectImportRef.current
+    pendingProjectImportRef.current = null
+    const files = Array.from(event.currentTarget.files ?? [])
+    event.currentTarget.value = ""
+    if (files.length === 0) return
+    const activeProjectRef = projectSidebarStateRef.current.activeProjectRef
+    if (pending?.kind === "project" || activeProjectRef) {
+      const projectRef = pending?.kind === "project" ? pending.projectRef : activeProjectRef
+      if (projectRef) void persistFilesIntoProject(projectRef, files)
+      return
+    }
+    const folderName = rootFolderNameFromFiles(files) ?? "Imported folder"
+    void createSidebarProject(folderName).then((createdState) => {
+      const projectRef = createdState?.activeProjectRef ?? projectSidebarStateRef.current.activeProjectRef
+      if (projectRef) void persistFilesIntoProject(projectRef, files)
+    })
+  }, [createSidebarProject, persistFilesIntoProject])
+
+  const applyWorkspaceResponse = useCallback((response: Awaited<ReturnType<ShellClient["run"]>>): WorkbenchDomainState | null => {
     if (!response.ok || !response.data) {
       setWorkbenchState((current) => ({
         ...current,
@@ -1142,28 +1264,32 @@ export function WorkbenchShell({
         warnings: response.warnings,
         error: response.error ?? shellError("invalid_input", "Workspace command did not return data.", "workspace"),
       }))
-      return
+      return null
     }
 
     const data = response.data as WorkspaceCommandData
     setEnergyPanelOptions((current) => energyOptionsForWorkspace(current, data.workspace))
-    setWorkbenchState((current) => ({
-      ...current,
+    const baseState = workbenchStateRef.current
+    const nextState: WorkbenchDomainState = {
+      ...baseState,
       status: "success",
       active: {
-        ...current.active,
+        ...baseState.active,
         workspaceId: data.workspace.workspace_id,
         graphId: data.workspace.graph.id,
       },
       counts: {
-        ...current.counts,
+        ...baseState.counts,
         graphs: 1,
         workspaces: 1,
       },
       workspace: data.workspace,
       warnings: response.warnings,
       error: undefined,
-    }))
+    }
+    workbenchStateRef.current = nextState
+    setWorkbenchState(nextState)
+    return nextState
   }, [])
 
   const openWorkspace = useCallback(async () => {
@@ -1199,6 +1325,7 @@ export function WorkbenchShell({
     if (!sessionId || !activeObject) return
     const nodeCount = workbenchState.workspace?.graph.nodes.length ?? 0
     if (!(await ensureWorkspaceReady(sessionId))) return
+    const before = snapshotGraphEditorGraph(workbenchStateRef.current.workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.add_node",
@@ -1212,9 +1339,9 @@ export function WorkbenchShell({
     })
     applyWorkspaceResponse(response)
     if (response.ok && response.data) {
-      resetGraphEditorHistory()
+      pushGraphSnapshotHistory(t("graphCanvas.history.addNode"), before, response.data.workspace)
     }
-  }, [activeObjectId, applyWorkspaceResponse, ensureWorkspaceReady, resetGraphEditorHistory, shellClient, workbenchState.objects, workbenchState.sessionId, workbenchState.workspace])
+  }, [activeObjectId, applyWorkspaceResponse, ensureWorkspaceReady, pushGraphSnapshotHistory, shellClient, t, workbenchState.objects, workbenchState.sessionId, workbenchState.workspace])
 
   const applyDropImportError = useCallback((
     error: ShellError,
@@ -1276,6 +1403,7 @@ export function WorkbenchShell({
     const sessionId = workbenchStateRef.current.sessionId
     if (!sessionId || !primaryObject) return false
     if (!(await ensureWorkspaceReady(sessionId))) return true
+    const before = snapshotGraphEditorGraph(workbenchStateRef.current.workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.add_node",
@@ -1287,7 +1415,7 @@ export function WorkbenchShell({
         position,
       },
     })
-    applyWorkspaceResponse(addNodeResponse)
+    const latestWorkbenchState = applyWorkspaceResponse(addNodeResponse)
     if (!addNodeResponse.ok || !addNodeResponse.data) {
       updateProjectFileEntry(file.path, {
         status: "error",
@@ -1305,20 +1433,25 @@ export function WorkbenchShell({
       graphNodeIds: reusableObjectIds.flatMap((objectId) => graphNodeIdsForObject(latestWorkspace, objectId)),
       warnings: [],
     })
-    resetGraphEditorHistory()
+    pushGraphSnapshotHistory(t("graphCanvas.history.addNode"), before, latestWorkspace)
+    await saveSidebarProject(latestWorkbenchState ?? workbenchStateRef.current)
     return true
-  }, [applyWorkspaceResponse, ensureWorkspaceReady, resetGraphEditorHistory, shellClient, updateProjectFileEntry])
+  }, [applyWorkspaceResponse, ensureWorkspaceReady, pushGraphSnapshotHistory, saveSidebarProject, shellClient, t, updateProjectFileEntry])
 
-  const addRawFileNode = useCallback(async (request: AddRawFileNodeRequest) => {
-    const sessionId = workbenchState.sessionId
+  const addSingleRawFileNode = useCallback(async (request: SingleAddRawFileNodeRequest) => {
     const activeProject = projectSidebarStateRef.current.activeProject
     setParseCandidateChooser(null)
-    if (!sessionId) {
-      applyDropImportError(shellError("invalid_input", "Shell session is required before dropping raw files.", "session_id"))
-      return
-    }
     if (!activeProject) {
       applyDropImportError(shellError("active_project_required", "Active browser project is required before dropping raw files.", "active_project"))
+      return
+    }
+    let sessionId = workbenchStateRef.current.sessionId
+    if (!sessionId) {
+      const restoredState = await restoreSidebarProjectSession(projectSidebarStateRef.current)
+      sessionId = restoredState?.sessionId
+    }
+    if (!sessionId) {
+      applyDropImportError(shellError("invalid_input", "Shell session is required before dropping raw files.", "session_id"))
       return
     }
     if (request.source.kind === "project-file") {
@@ -1326,7 +1459,12 @@ export function WorkbenchShell({
       const projectFile = projectSidebarStateRef.current.projectFiles.find((file) => (
         file.id === source.projectFileId || file.path === source.path
       ))
-      if (projectFile && await addReusableProjectFileObjectNode(projectFile, request.position)) return
+      if (
+        projectFile
+        && request.addNode !== false
+        && !projectFileLooksLikeSolutionLog(projectFile)
+        && await addReusableProjectFileObjectNode(projectFile, request.position)
+      ) return
     }
 
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
@@ -1342,6 +1480,7 @@ export function WorkbenchShell({
       return
     }
     const rawFilePath = importFileResult.file.storagePath ?? importFileResult.file.name
+    const shouldAddNode = request.addNode ?? !webImportFileLooksLikeSolutionLog(importFileResult.file)
 
     const previewState: TransientImportState = {
       ...initialTransientImportState,
@@ -1467,10 +1606,11 @@ export function WorkbenchShell({
     }
 
     const registerData = registerResponse.data
-    const registeredObjectId = registerData.registered_object_ids[0]
-    const registeredObject = registerData.objects.find((object) => object.id === registeredObjectId)
-    if (!registeredObjectId || !registeredObject) {
-      const error = shellError("invalid_input", "Import register did not return a single registered object.", "import.register_all")
+    const registeredObjectIds = registerData.registered_object_ids
+    const registeredObject = primaryObjectForRegisteredImport(importFileResult.file, registerData.objects, registeredObjectIds)
+    const projectFileObjectIds = projectFileObjectIdsForImport(importFileResult.file, registeredObject, registeredObjectIds)
+    if (shouldAddNode && !registeredObject) {
+      const error = shellError("invalid_input", "Import register did not return a graph-ready object.", "import.register_all")
       updateProjectFileEntry(rawFilePath, {
         status: "error",
         warnings: projectFileWarningMessagesFromError(error),
@@ -1484,10 +1624,10 @@ export function WorkbenchShell({
       return
     }
 
-    setActiveObjectId(registeredObjectId)
+    setActiveObjectId(registeredObject?.id ?? registeredObjectIds[0])
     updateProjectFileEntry(rawFilePath, {
       status: "registered",
-      registeredObjectIds: [registeredObjectId],
+      registeredObjectIds: projectFileObjectIds,
       warnings: projectFileWarningMessagesFromWarnings(registerResponse.warnings),
     })
     setTransientImportState((current) => ({
@@ -1498,25 +1638,32 @@ export function WorkbenchShell({
       warnings: registerResponse.warnings,
       error: undefined,
     }))
-    setWorkbenchState((current) => {
-      const imports = upsertImportBatch(current.imports, registerData.batch)
-      const mergedObjects = mergeRegisteredObjects(current.objects, registerData.objects)
-      return {
-        ...current,
-        status: "success",
-        imports,
-        objects: mergedObjects,
-        counts: {
-          ...current.counts,
-          imports: imports.length,
-          objects: mergedObjects.length,
-        },
-        warnings: registerResponse.warnings,
-        error: undefined,
-      }
-    })
+    const baseState = workbenchStateRef.current
+    const imports = upsertImportBatch(baseState.imports, registerData.batch)
+    const registeredObjects = mergeRegisteredObjects(baseState.objects, registerData.objects)
+    const registeredWorkbenchState: WorkbenchDomainState = {
+      ...baseState,
+      status: "success",
+      imports,
+      objects: registeredObjects,
+      counts: {
+        ...baseState.counts,
+        imports: imports.length,
+        objects: registeredObjects.length,
+      },
+      warnings: registerResponse.warnings,
+      error: undefined,
+    }
+    workbenchStateRef.current = registeredWorkbenchState
+    setWorkbenchState(registeredWorkbenchState)
+
+    if (!shouldAddNode || !registeredObject) {
+      await saveSidebarProject(registeredWorkbenchState)
+      return
+    }
 
     if (!(await ensureWorkspaceReady(sessionId))) return
+    const before = snapshotGraphEditorGraph(workbenchStateRef.current.workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.add_node",
@@ -1528,11 +1675,11 @@ export function WorkbenchShell({
         position: request.position,
       },
     })
-    applyWorkspaceResponse(addNodeResponse)
+    const latestWorkbenchState = applyWorkspaceResponse(addNodeResponse)
     if (!addNodeResponse.ok || !addNodeResponse.data) {
       updateProjectFileEntry(rawFilePath, {
         status: "error",
-        registeredObjectIds: [registeredObjectId],
+        registeredObjectIds: [registeredObject.id],
         warnings: projectFileWarningMessagesFromError(
           addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node"),
         ),
@@ -1541,24 +1688,43 @@ export function WorkbenchShell({
     }
     updateProjectFileEntry(rawFilePath, {
       status: "used-in-graph",
-      registeredObjectIds: [registeredObjectId],
-      graphNodeIds: graphNodeIdsForObject(addNodeResponse.data.workspace, registeredObjectId),
+      registeredObjectIds: [registeredObject.id],
+      graphNodeIds: graphNodeIdsForObject(addNodeResponse.data.workspace, registeredObject.id),
     })
-    resetGraphEditorHistory()
-  }, [addReusableProjectFileObjectNode, applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, transientImportState.expectedFormat, transientImportState.strict, projectRepository, replaceProjectSidebarState, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
+    pushGraphSnapshotHistory(t("graphCanvas.history.addNode"), before, addNodeResponse.data.workspace)
+    await saveSidebarProject(latestWorkbenchState ?? workbenchStateRef.current)
+  }, [addReusableProjectFileObjectNode, applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, projectRepository, pushGraphSnapshotHistory, replaceProjectSidebarState, restoreSidebarProjectSession, saveSidebarProject, shellClient, t, updateProjectFileEntry])
 
-  const addProjectFileToCanvas = useCallback(async (file: ProjectFileEntry) => {
-    const baseNodeCount = workbenchStateRef.current.workspace?.graph.nodes.length ?? 0
-    if (await addReusableProjectFileObjectNode(file, registeredImportNodePosition(baseNodeCount, 0))) return
-    await addRawFileNode({
-      source: {
-        kind: "project-file",
-        projectFileId: file.id,
-        path: file.path,
-      },
-      position: registeredImportNodePosition(baseNodeCount, 0),
+  const addRawFileNode = useCallback(async (request: AddRawFileNodeRequest) => {
+    if (request.source.kind === "project-files") {
+      const files = uniqueProjectFileDropItems(request.source.files)
+      for (const [index, file] of files.entries()) {
+        await addSingleRawFileNode({
+          source: {
+            kind: "project-file",
+            projectFileId: file.projectFileId,
+            path: file.path,
+          },
+          position: stackedCandidateNodePosition(request.position, index),
+          addNode: request.addNode,
+        })
+      }
+      return
+    }
+    if (request.source.kind === "external-file") {
+      await addSingleRawFileNode({
+        source: request.source,
+        position: request.position,
+        addNode: request.addNode,
+      })
+      return
+    }
+    await addSingleRawFileNode({
+      source: request.source,
+      position: request.position,
+      addNode: request.addNode,
     })
-  }, [addRawFileNode, addReusableProjectFileObjectNode])
+  }, [addSingleRawFileNode])
 
   const cancelParseCandidateChooser = useCallback(() => {
     setParseCandidateChooser(null)
@@ -1677,28 +1843,31 @@ export function WorkbenchShell({
       warnings: registerResponse.warnings,
       error: undefined,
     }))
-    setWorkbenchState((current) => {
-      const imports = upsertImportBatch(current.imports, registerData.batch)
-      const mergedObjects = mergeRegisteredObjects(current.objects, registerData.objects)
-      return {
-        ...current,
-        status: "success",
-        imports,
-        objects: mergedObjects,
-        counts: {
-          ...current.counts,
-          imports: imports.length,
-          objects: mergedObjects.length,
-        },
-        warnings: registerResponse.warnings,
-        error: undefined,
-      }
-    })
+    const baseState = workbenchStateRef.current
+    const imports = upsertImportBatch(baseState.imports, registerData.batch)
+    const mergedObjects = mergeRegisteredObjects(baseState.objects, registerData.objects)
+    const registeredWorkbenchState: WorkbenchDomainState = {
+      ...baseState,
+      status: "success",
+      imports,
+      objects: mergedObjects,
+      counts: {
+        ...baseState.counts,
+        imports: imports.length,
+        objects: mergedObjects.length,
+      },
+      warnings: registerResponse.warnings,
+      error: undefined,
+    }
+    workbenchStateRef.current = registeredWorkbenchState
+    setWorkbenchState(registeredWorkbenchState)
 
     setParseCandidateChooser((current) => current ? { ...current, status: "adding-nodes", error: null } : current)
     if (!(await ensureWorkspaceReady(sessionId))) return
+    const before = snapshotGraphEditorGraph(workbenchStateRef.current.workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     let latestWorkspace: WorkspaceSummary | null = null
+    let latestWorkbenchState: WorkbenchDomainState = registeredWorkbenchState
     for (const [index, object] of registeredObjects.entries()) {
       const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
         command: "workspace.add_node",
@@ -1710,7 +1879,7 @@ export function WorkbenchShell({
           position: stackedCandidateNodePosition(chooser.position, index),
         },
       })
-      applyWorkspaceResponse(addNodeResponse)
+      latestWorkbenchState = applyWorkspaceResponse(addNodeResponse) ?? latestWorkbenchState
       if (!addNodeResponse.ok || !addNodeResponse.data) {
         const error = addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node")
         updateProjectFileEntry(chooser.rawFilePath, {
@@ -1733,8 +1902,11 @@ export function WorkbenchShell({
       })
     }
     setParseCandidateChooser(null)
-    resetGraphEditorHistory()
-  }, [applyWorkspaceResponse, ensureWorkspaceReady, parseCandidateChooser, resetGraphEditorHistory, shellClient, updateProjectFileEntry, workbenchState.sessionId])
+    if (latestWorkspace) {
+      pushGraphSnapshotHistory(t("graphCanvas.history.addNode"), before, latestWorkspace)
+    }
+    await saveSidebarProject(latestWorkbenchState)
+  }, [applyWorkspaceResponse, ensureWorkspaceReady, parseCandidateChooser, pushGraphSnapshotHistory, saveSidebarProject, shellClient, t, updateProjectFileEntry, workbenchState.sessionId])
 
   const applyCorrection = useCallback(async (request: ApplyCorrectionRequest) => {
     const sessionId = workbenchState.sessionId
@@ -1847,7 +2019,9 @@ export function WorkbenchShell({
 
   const moveGraphNode = useCallback(async (request: MoveGraphNodeRequest) => {
     const sessionId = workbenchState.sessionId
+    const workspace = workbenchState.workspace
     if (!sessionId) return
+    const before = snapshotGraphEditorNodePositions(workspace?.graph.nodes ?? [], [request.nodeId])
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.move_node",
@@ -1859,13 +2033,22 @@ export function WorkbenchShell({
     })
     applyWorkspaceResponse(response)
     if (response.ok && response.data) {
-      resetGraphEditorHistory()
+      const after = snapshotGraphEditorNodePositions(response.data.workspace.graph.nodes, [request.nodeId])
+      pushGraphEditorHistory({
+        id: nextGraphEditorHistoryEntryId("move"),
+        kind: "nudge",
+        label: t("graphCanvas.history.move"),
+        before,
+        after,
+        createdAt: new Date().toISOString(),
+      })
     }
-  }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
+  }, [applyWorkspaceResponse, nextGraphEditorHistoryEntryId, pushGraphEditorHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const updateGraphNodeLabel = useCallback(async (request: UpdateGraphNodeLabelRequest) => {
     const sessionId = workbenchState.sessionId
     if (!sessionId || !request.nodeId || !request.label.trim()) return
+    const before = snapshotGraphEditorGraph(workbenchState.workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.update_node",
@@ -1877,9 +2060,9 @@ export function WorkbenchShell({
     })
     applyWorkspaceResponse(response)
     if (response.ok && response.data) {
-      resetGraphEditorHistory()
+      pushGraphSnapshotHistory(t("graphCanvas.history.label"), before, response.data.workspace)
     }
-  }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
+  }, [applyWorkspaceResponse, pushGraphSnapshotHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const nudgeGraphNodes = useCallback(async (request: NudgeGraphNodesRequest) => {
     const sessionId = workbenchState.sessionId
@@ -2072,6 +2255,7 @@ export function WorkbenchShell({
 
     setCompositionPending(true)
     setCompositionError(null)
+    const before = snapshotGraphEditorGraph(workbenchState.workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.set_node_composition",
@@ -2095,8 +2279,8 @@ export function WorkbenchShell({
     }
     setCompositionDraft(compositionDraftFromSelectedNode(response.data.workspace))
     applyWorkspaceResponse(response)
-    resetGraphEditorHistory()
-  }, [applyWorkspaceResponse, compositionDraft, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
+    pushGraphSnapshotHistory(t("graphCanvas.history.composition"), before, response.data.workspace)
+  }, [applyWorkspaceResponse, compositionDraft, pushGraphSnapshotHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const updateGraphEdgeLabelDraft = useCallback((label: string) => {
     setEdgeLabelError(null)
@@ -2117,6 +2301,7 @@ export function WorkbenchShell({
     const sessionId = workbenchState.sessionId
     const edgeId = edgeLabelDraft.edgeId
     if (!sessionId || !edgeId) return
+    const before = snapshotGraphEditorGraph(workbenchState.workspace)
     setEdgeLabelPending(true)
     setEdgeLabelError(null)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
@@ -2143,8 +2328,8 @@ export function WorkbenchShell({
     }
     setEdgeLabelDraft(edgeLabelDraftFromSelectedEdge(response.data.workspace))
     applyWorkspaceResponse(response)
-    resetGraphEditorHistory()
-  }, [applyWorkspaceResponse, edgeLabelDraft, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
+    pushGraphSnapshotHistory(t("graphCanvas.history.edgeLabel"), before, response.data.workspace)
+  }, [applyWorkspaceResponse, edgeLabelDraft, pushGraphSnapshotHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const removeGraphItems = useCallback(async (request: RemoveGraphItemsRequest) => {
     const sessionId = workbenchState.sessionId
@@ -2381,6 +2566,7 @@ export function WorkbenchShell({
   const applyPathOrderDraft = useCallback(async () => {
     const sessionId = workbenchState.sessionId
     if (!sessionId || !pathOrderDraft) return
+    const before = snapshotGraphEditorGraph(workbenchState.workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.set_path",
@@ -2393,13 +2579,14 @@ export function WorkbenchShell({
     })
     applyWorkspaceResponse(response)
     if (response.ok && response.data) {
-      resetGraphEditorHistory()
+      pushGraphSnapshotHistory(t("graphCanvas.history.path"), before, response.data.workspace)
     }
-  }, [applyWorkspaceResponse, pathOrderDraft, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
+  }, [applyWorkspaceResponse, pathOrderDraft, pushGraphSnapshotHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const connectGraphNodes = useCallback(async (fromNodeId: string, toNodeId: string) => {
     const sessionId = workbenchState.sessionId
     if (!sessionId || fromNodeId === toNodeId) return
+    const before = snapshotGraphEditorGraph(workbenchState.workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     setPathAuthoringStatus({ state: "idle" })
     const response = await shellClient.run<WorkspaceCommandData>({
@@ -2412,6 +2599,7 @@ export function WorkbenchShell({
     })
     applyWorkspaceResponse(response)
     if (response.ok && response.data) {
+      let latestWorkspace = response.data.workspace
       const autoExtend = resolvePathAutoExtendIntent(response.data.workspace, fromNodeId, toNodeId)
       if (autoExtend.kind === "set-path") {
         setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
@@ -2426,6 +2614,7 @@ export function WorkbenchShell({
         })
         applyWorkspaceResponse(pathResponse)
         if (pathResponse.ok && pathResponse.data) {
+          latestWorkspace = pathResponse.data.workspace
           setPathAuthoringStatus({
             state: "auto",
             pathId: autoExtend.pathId,
@@ -2440,9 +2629,9 @@ export function WorkbenchShell({
       } else {
         setPathAuthoringStatus({ state: "manual", reason: autoExtend.reason })
       }
-      resetGraphEditorHistory()
+      pushGraphSnapshotHistory(t("graphCanvas.history.connect"), before, latestWorkspace)
     }
-  }, [applyWorkspaceResponse, resetGraphEditorHistory, shellClient, workbenchState.sessionId])
+  }, [applyWorkspaceResponse, pushGraphSnapshotHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const selectGraphNode = useCallback(
     async (nodeId: string, mode: GraphEditorSelectionMode = "replace") => {
@@ -2646,6 +2835,25 @@ export function WorkbenchShell({
     }))
   }, [])
 
+  const solutionLogPairCandidates = useMemo(
+    () => solutionLogPairCandidatesForWorkbench(workbenchState, projectSidebarState.projectFiles),
+    [projectSidebarState.projectFiles, workbenchState],
+  )
+
+  const pairSolutionLog = useCallback(async (candidate: NodeSolutionLogPairCandidate) => {
+    const node = workbenchStateRef.current.workspace?.graph.nodes.find((item) => item.id === candidate.nodeId)
+    const position = node ? graphNodePosition(node) : { x: 0, y: 0 }
+    await addRawFileNode({
+      source: {
+        kind: "project-file",
+        projectFileId: candidate.projectFileId,
+        path: candidate.path,
+      },
+      position: [position.x, position.y],
+      addNode: false,
+    })
+  }, [addRawFileNode])
+
   return (
     <div className="workbench-shell" ref={shellElementRef} data-theme={theme}>
       <header className="workbench-topbar" ref={topbarElementRef}>
@@ -2699,6 +2907,15 @@ export function WorkbenchShell({
         onChange={handleProjectImportInputChange}
         aria-label={t("projectSidebar.projectFiles.import")}
       />
+      <input
+        ref={projectFolderInputRef}
+        className="project-import-file-input"
+        type="file"
+        multiple
+        {...{ webkitdirectory: "", directory: "" }}
+        onChange={handleProjectFolderInputChange}
+        aria-label={t("projectSidebar.openExistingFolder")}
+      />
       {workbenchState.error ? <WorkbenchErrorAlert error={workbenchState.error} /> : null}
 
       <main
@@ -2716,84 +2933,95 @@ export function WorkbenchShell({
             onCreateProject={async (name) => {
               await createSidebarProject(name)
             }}
+            onOpenExistingFolder={openExistingFolderImport}
             onOpenProject={openSidebarProject}
             onDeleteProject={deleteSidebarProject}
             onImportProjectFiles={openProjectImport}
-            onAddProjectFileToCanvas={addProjectFileToCanvas}
             onDeleteProjectFile={deleteSidebarProjectFile}
           />
         </section>
         <section className="canvas-stage" aria-label={t("workbench.flow.canvasStage")}>
           <div className="workspace-column canvas-stage-stack">
-            <GraphCanvas
-              state={workbenchState}
-              activeObjectId={activeObjectId}
-              interactionState={graphEditorInteraction}
-              autoLayoutStatus={autoLayoutStatus}
-              pathAuthoringStatus={pathAuthoringStatus}
-              historyControls={{
-                canUndo: graphEditorHistory.undo.length > 0,
-                canRedo: graphEditorHistory.redo.length > 0,
-                undoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "undo"),
-                redoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "redo"),
-                running: graphEditorHistory.running,
-                error: graphEditorHistory.error,
-              }}
-              pathOrderDraft={pathOrderDraft}
-              edgeLabelDraft={edgeLabelDraft}
-              edgeLabelPending={edgeLabelPending}
-              edgeLabelError={edgeLabelError}
-              compositionDraft={compositionDraft}
-              compositionPending={compositionPending}
-              compositionError={compositionError}
-              energyDisplayOptions={canvasEnergyDisplayOptions}
-              candidateChooser={parseCandidateChooser}
-              onEnergyDisplayOptionsChange={updateCanvasEnergyDisplayOptions}
-              onSelectNode={selectGraphNode}
-              onSelectEdge={selectGraphEdge}
-              onSelectPath={selectGraphPath}
-              onMovePathDraftNode={movePathDraftNode}
-              onApplyPathOrderDraft={applyPathOrderDraft}
-              onEdgeLabelDraftChange={updateGraphEdgeLabelDraft}
-              onResetEdgeLabelDraft={resetGraphEdgeLabelDraft}
-              onClearEdgeLabelDraft={clearGraphEdgeLabelDraft}
-              onApplyEdgeLabelDraft={applyGraphEdgeLabelDraft}
-              onStartNodeDrag={startNodeDrag}
-              onUpdateNodeDrag={updateNodeDrag}
-              onEndNodeDrag={endNodeDrag}
-              onStartCanvasDrag={startCanvasDrag}
-              onUpdateCanvasDrag={updateCanvasDrag}
-              onEndCanvasDrag={endCanvasDrag}
-              onStartRubberBand={startRubberBand}
-              onUpdateRubberBand={updateRubberBand}
-              onEndRubberBand={endRubberBand}
-              onCancelRubberBand={cancelRubberBand}
-              onStartPointerEdge={startPointerEdge}
-              onUpdatePointerEdge={updatePointerEdge}
-              onEndPointerEdge={endPointerEdge}
-              onCancelPointerEdge={cancelPointerEdge}
-              onAddObjectNode={addObjectNode}
-              onAddRawFileNode={addRawFileNode}
-              onToggleCandidateSelection={toggleParseCandidateSelection}
-              onConfirmCandidateChooser={confirmParseCandidateChooser}
-              onCancelCandidateChooser={cancelParseCandidateChooser}
-              onMoveNode={moveGraphNode}
-              onUpdateNodeLabel={updateGraphNodeLabel}
-              onNudgeNodes={nudgeGraphNodes}
-              onUndoHistory={() => void replayGraphEditorHistory("undo")}
-              onRedoHistory={() => void replayGraphEditorHistory("redo")}
-              onApplyAutoLayout={applyGraphAutoLayout}
-              onRemoveGraphItems={removeGraphItems}
-              onClearSelection={clearGraphSelection}
-              onSetViewport={setGraphViewport}
-              onAutoFitViewport={autoFitGraphViewport}
-              onTogglePanMode={togglePanMode}
-              onCompositionDraftRowChange={updateNodeCompositionDraft}
-              onAddCompositionDraftRow={addNodeCompositionDraftRow}
-              onRemoveCompositionDraftRow={removeNodeCompositionDraftRow}
-              onResetCompositionDraft={resetNodeCompositionDraft}
-              onApplyCompositionDraft={applyNodeCompositionDraft}
-            />
+            <WorkbenchViewSwitcher viewMode={viewMode} onViewModeChange={setViewMode} />
+            {viewMode === "canvas" ? (
+              <GraphCanvas
+                state={workbenchState}
+                activeObjectId={activeObjectId}
+                interactionState={graphEditorInteraction}
+                autoLayoutStatus={autoLayoutStatus}
+                pathAuthoringStatus={pathAuthoringStatus}
+                historyControls={{
+                  canUndo: graphEditorHistory.undo.length > 0,
+                  canRedo: graphEditorHistory.redo.length > 0,
+                  undoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "undo"),
+                  redoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "redo"),
+                  running: graphEditorHistory.running,
+                  error: graphEditorHistory.error,
+                }}
+                pathOrderDraft={pathOrderDraft}
+                edgeLabelDraft={edgeLabelDraft}
+                edgeLabelPending={edgeLabelPending}
+                edgeLabelError={edgeLabelError}
+                compositionDraft={compositionDraft}
+                compositionPending={compositionPending}
+                compositionError={compositionError}
+                energyDisplayOptions={canvasEnergyDisplayOptions}
+                candidateChooser={parseCandidateChooser}
+                onEnergyDisplayOptionsChange={updateCanvasEnergyDisplayOptions}
+                onSelectNode={selectGraphNode}
+                onSelectEdge={selectGraphEdge}
+                onSelectPath={selectGraphPath}
+                onMovePathDraftNode={movePathDraftNode}
+                onApplyPathOrderDraft={applyPathOrderDraft}
+                onEdgeLabelDraftChange={updateGraphEdgeLabelDraft}
+                onResetEdgeLabelDraft={resetGraphEdgeLabelDraft}
+                onClearEdgeLabelDraft={clearGraphEdgeLabelDraft}
+                onApplyEdgeLabelDraft={applyGraphEdgeLabelDraft}
+                onStartNodeDrag={startNodeDrag}
+                onUpdateNodeDrag={updateNodeDrag}
+                onEndNodeDrag={endNodeDrag}
+                onStartCanvasDrag={startCanvasDrag}
+                onUpdateCanvasDrag={updateCanvasDrag}
+                onEndCanvasDrag={endCanvasDrag}
+                onStartRubberBand={startRubberBand}
+                onUpdateRubberBand={updateRubberBand}
+                onEndRubberBand={endRubberBand}
+                onCancelRubberBand={cancelRubberBand}
+                onStartPointerEdge={startPointerEdge}
+                onUpdatePointerEdge={updatePointerEdge}
+                onEndPointerEdge={endPointerEdge}
+                onCancelPointerEdge={cancelPointerEdge}
+                onAddObjectNode={addObjectNode}
+                onAddRawFileNode={addRawFileNode}
+                onToggleCandidateSelection={toggleParseCandidateSelection}
+                onConfirmCandidateChooser={confirmParseCandidateChooser}
+                onCancelCandidateChooser={cancelParseCandidateChooser}
+                onMoveNode={moveGraphNode}
+                onUpdateNodeLabel={updateGraphNodeLabel}
+                onNudgeNodes={nudgeGraphNodes}
+                onUndoHistory={() => void replayGraphEditorHistory("undo")}
+                onRedoHistory={() => void replayGraphEditorHistory("redo")}
+                onApplyAutoLayout={applyGraphAutoLayout}
+                onRemoveGraphItems={removeGraphItems}
+                onClearSelection={clearGraphSelection}
+                onSetViewport={setGraphViewport}
+                onAutoFitViewport={autoFitGraphViewport}
+                onTogglePanMode={togglePanMode}
+                onCompositionDraftRowChange={updateNodeCompositionDraft}
+                onAddCompositionDraftRow={addNodeCompositionDraftRow}
+                onRemoveCompositionDraftRow={removeNodeCompositionDraftRow}
+                onResetCompositionDraft={resetNodeCompositionDraft}
+                onApplyCompositionDraft={applyNodeCompositionDraft}
+                solutionLogPairCandidates={solutionLogPairCandidates}
+                onPairSolutionLog={pairSolutionLog}
+              />
+            ) : (
+              <WorkbenchEnergyTable
+                state={workbenchState}
+                options={canvasEnergyDisplayOptions}
+                activeObjectId={activeObjectId}
+              />
+            )}
           </div>
         </section>
         <InspectorPanel
@@ -2819,6 +3047,150 @@ function WorkbenchErrorAlert({ error }: { error: ShellError }) {
   )
 }
 
+function WorkbenchViewSwitcher({
+  viewMode,
+  onViewModeChange,
+}: {
+  viewMode: WorkbenchViewMode
+  onViewModeChange: (mode: WorkbenchViewMode) => void
+}) {
+  const { t } = useI18n()
+  return (
+    <div className="workbench-view-switcher" role="group" aria-label={t("workbench.viewSwitcher")}>
+      <button
+        type="button"
+        className={viewMode === "canvas" ? "workbench-view-switcher-button--active" : ""}
+        onClick={() => onViewModeChange("canvas")}
+        aria-pressed={viewMode === "canvas"}
+      >
+        {t("workbench.view.canvas")}
+      </button>
+      <button
+        type="button"
+        className={viewMode === "table" ? "workbench-view-switcher-button--active" : ""}
+        onClick={() => onViewModeChange("table")}
+        aria-pressed={viewMode === "table"}
+      >
+        {t("workbench.view.table")}
+      </button>
+    </div>
+  )
+}
+
+function WorkbenchEnergyTable({
+  state,
+  options,
+  activeObjectId,
+}: {
+  state: WorkbenchDomainState
+  options: CanvasEnergyDisplayOptions
+  activeObjectId?: string
+}) {
+  const { t } = useI18n()
+  const rows = workbenchEnergyTableRows(state, options)
+  const pathRows = workbenchEnergyPathRows(state, options)
+  return (
+    <section className="workbench-energy-table-panel" aria-label={t("workbench.energyTable.aria")}>
+      <header className="workbench-energy-table-header">
+        <div>
+          <p className="section-kicker">{t("workbench.view.table")}</p>
+          <h2>{t("workbench.energyTable.title")}</h2>
+        </div>
+        <span>{t("workbench.energyTable.rowCount", { count: rows.length })}</span>
+      </header>
+      {rows.length === 0 ? (
+        <div className="workbench-energy-table-empty">
+          <strong>{t("workbench.energyTable.empty")}</strong>
+          <span>{t("workbench.energyTable.emptyDetail")}</span>
+        </div>
+      ) : (
+        <>
+          <div className="workbench-energy-table-wrap">
+            <table className="workbench-energy-table">
+              <thead>
+                <tr>
+                  <th>{t("workbench.energyTable.structure")}</th>
+                  <th>{t("workbench.energyTable.chargeSpin")}</th>
+                  <th>{t("workbench.energyTable.formula")}</th>
+                  <th>{t("workbench.energyTable.basis")}</th>
+                  <th>Egas</th>
+                  <th>Egas kcal/mol</th>
+                  <th>Ggas</th>
+                  <th>Ggas kcal/mol</th>
+                  <th>Ggas+1M</th>
+                  <th>Ggas+1M kcal/mol</th>
+                  <th>Esol</th>
+                  <th>Esol kcal/mol</th>
+                  <th>Gsol</th>
+                  <th>Gsol kcal/mol</th>
+                  <th>{energyTableRelativeColumnLabel(options.mode, options.unit)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.nodeId} className={row.objectId === activeObjectId ? "workbench-energy-table-row--active" : ""}>
+                    <th scope="row">{row.structure}</th>
+                    <td>{row.chargeSpin}</td>
+                    <td>{row.formula}</td>
+                    <td>{row.basis}</td>
+                    <td>{row.egasHartree}</td>
+                    <td>{row.egasKcal}</td>
+                    <td>{row.ggasHartree}</td>
+                    <td>{row.ggasKcal}</td>
+                    <td>{row.ggas1mHartree}</td>
+                    <td>{row.ggas1mKcal}</td>
+                    <td>{row.esolHartree}</td>
+                    <td>{row.esolKcal}</td>
+                    <td>{row.gsolHartree}</td>
+                    <td>{row.gsolKcal}</td>
+                    <td>{row.relative}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {pathRows.length > 0 ? (
+            <div className="workbench-energy-table-section">
+              <header>
+                <h3>{t("workbench.energyTable.pathSection")}</h3>
+                <span>{t("workbench.energyTable.pathBaseline", { structure: pathRows[0]?.structure ?? "-" })}</span>
+              </header>
+              <div className="workbench-energy-table-wrap">
+                <table className="workbench-energy-table workbench-energy-table--path">
+                  <thead>
+                    <tr>
+                      <th>{t("workbench.energyTable.structure")}</th>
+                      <th>{energyModeRelativeLabel("electronic")}</th>
+                      <th>ΔGgas</th>
+                      <th>ΔGgas+1M</th>
+                      <th>ΔEsol</th>
+                      <th>ΔGsol</th>
+                      <th>{t("workbench.energyTable.stepDelta")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pathRows.map((row) => (
+                      <tr key={row.nodeId} className={row.objectId === activeObjectId ? "workbench-energy-table-row--active" : ""}>
+                        <th scope="row">{row.structure}</th>
+                        <td>{row.deltaEgas}</td>
+                        <td>{row.deltaGgas}</td>
+                        <td>{row.deltaGgas1m}</td>
+                        <td>{row.deltaEsol}</td>
+                        <td>{row.deltaGsol}</td>
+                        <td>{row.stepDelta}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
+  )
+}
+
 function upsertImportBatch(
   batches: ImportBatchSummary[],
   batch: ImportBatchSummary,
@@ -2837,7 +3209,7 @@ type RawDropImportFileResult =
 async function rawDropImportFile(
   repository: BrowserProjectRepository,
   projectRef: string,
-  source: AddRawFileNodeRequest["source"],
+  source: SingleRawFileNodeSource,
 ): Promise<RawDropImportFileResult> {
   if (source.kind === "external-file") {
     const result = await persistRawInputFile(repository, projectRef, source.file)
@@ -2968,6 +3340,160 @@ async function preserveBrowserProjectManifest(
   }
 }
 
+async function overlayWorkbenchProjectContentFiles(
+  files: BrowserProjectContentFile[],
+  state: WorkbenchDomainState,
+): Promise<BrowserProjectContentFile[]> {
+  if (!state.workspace) return files
+  const projectId = state.project?.id ?? state.workspace.project_id
+  const overlayFiles = await Promise.all([
+    browserProjectContentJsonFile(chemicalObjectsPath, "chemical_objects", {
+      schema_version: "chemical-objects-v1",
+      project_id: projectId,
+      objects: state.objects.map((object) => ({
+        ...object,
+        id: object.id,
+        label: object.label ?? object.id,
+        formula: object.formula ?? null,
+        charge: object.charge ?? null,
+        spin_multiplicity: object.spin_multiplicity ?? null,
+        method: object.method ?? null,
+        geometry: Array.isArray(object.geometry) ? object.geometry : [],
+        energies: isJsonObject(object.energies) ? object.energies : {},
+        thermochemistry: isJsonObject(object.thermochemistry) ? object.thermochemistry : {},
+        source_file_id: object.source_file_id ?? null,
+        corrections: Array.isArray(object.corrections) ? object.corrections : [],
+        provenance: isJsonObject(object.provenance) ? object.provenance : null,
+        registry_fingerprint: object.registry_fingerprint ?? null,
+      })),
+    }),
+    browserProjectContentJsonFile(reactionGraphsPath, "reaction_graphs", {
+      schema_version: "reaction-graphs-v1",
+      project_id: projectId,
+      graphs: [reactionGraphProjectContentFromWorkspace(state.workspace)],
+    }),
+    browserProjectContentJsonFile(workspacesPath, "workspaces", {
+      schema_version: "workspaces-v1",
+      project_id: projectId,
+      workspaces: [workspaceProjectContentFromWorkspace(state.workspace)],
+    }),
+  ])
+  const byPath = new Map(files.map((file) => [file.path, file]))
+  for (const file of overlayFiles) {
+    byPath.set(file.path, file)
+  }
+  const merged = files.map((file) => byPath.get(file.path) ?? file)
+  for (const file of overlayFiles) {
+    if (!files.some((existing) => existing.path === file.path)) {
+      merged.push(file)
+    }
+  }
+  return updateProjectContentIndexFile(merged)
+}
+
+function reactionGraphProjectContentFromWorkspace(workspace: WorkspaceSummary): JsonObject {
+  return {
+    id: workspace.graph.id,
+    project_id: workspace.graph.project_id,
+    nodes: workspace.graph.nodes.map((node) => ({
+      id: node.id,
+      kind: node.kind,
+      label: node.label,
+      chemical_object_ids: node.chemical_object_ids ?? [],
+      composition: node.composition ?? [],
+      position: node.position ?? null,
+      metadata: node.metadata ?? {},
+    })),
+    edges: workspace.graph.edges.map((edge) => ({
+      id: edge.id,
+      from_node: edge.from_node ?? edge.source ?? "",
+      to_node: edge.to_node ?? edge.target ?? "",
+      label: edge.label ?? null,
+      metadata: edge.metadata ?? {},
+    })),
+    paths: workspace.graph.paths.map((path) => ({
+      id: path.id,
+      label: path.label ?? path.id,
+      node_ids: path.node_ids,
+    })),
+  }
+}
+
+function workspaceProjectContentFromWorkspace(workspace: WorkspaceSummary): JsonObject {
+  const selection = workspace.selection ?? { node_ids: [], edge_ids: [], path_ids: [] }
+  return {
+    workspace_id: workspace.workspace_id,
+    project_id: workspace.project_id,
+    graph_id: workspace.graph.id,
+    selection: {
+      node_ids: selection.node_ids ?? [],
+      edge_ids: selection.edge_ids ?? [],
+      path_ids: selection.path_ids ?? [],
+    },
+    viewport: workspace.viewport ?? { x: 0, y: 0, zoom: 1 },
+    active_path_id: workspace.active_path_id ?? null,
+    updated_at: new Date().toISOString(),
+  }
+}
+
+async function updateProjectContentIndexFile(
+  files: BrowserProjectContentFile[],
+): Promise<BrowserProjectContentFile[]> {
+  const sectionFiles = files.filter((file) => (
+    file.path !== projectManifestPath
+    && file.path !== projectContentIndexPath
+    && file.path.startsWith(".rxnflow/state/")
+  ))
+  const indexFile = await browserProjectContentJsonFile(projectContentIndexPath, "project_content_index", {
+    schema_version: "project-content-v1",
+    project_id: projectIdFromContentFiles(files),
+    updated_at: new Date().toISOString(),
+    files: sectionFiles.map((file) => ({
+      kind: typeof file.metadata.kind === "string" ? file.metadata.kind : "project_section",
+      path: file.path,
+      checksum: file.checksum ?? "",
+      updated_at: new Date().toISOString(),
+    })),
+  })
+  if (files.some((file) => file.path === projectContentIndexPath)) {
+    return files.map((file) => file.path === projectContentIndexPath ? indexFile : file)
+  }
+  return [indexFile, ...files]
+}
+
+function projectIdFromContentFiles(files: BrowserProjectContentFile[]): string {
+  const manifest = files.find((file) => file.path === projectManifestPath)
+  if (manifest) {
+    const data = parseJsonObjectBytes(manifest.bytes)
+    if (typeof data.id === "string" && data.id) return data.id
+  }
+  const workspaceFile = files.find((file) => file.path === workspacesPath)
+  if (workspaceFile) {
+    const data = parseJsonObjectBytes(workspaceFile.bytes)
+    const workspaces = data.workspaces
+    const first = Array.isArray(workspaces) ? workspaces[0] : null
+    if (first && typeof first === "object" && !Array.isArray(first)) {
+      const projectId = (first as JsonObject).project_id
+      if (typeof projectId === "string" && projectId) return projectId
+    }
+  }
+  return "project-web"
+}
+
+async function browserProjectContentJsonFile(
+  path: string,
+  kind: string,
+  data: JsonObject,
+): Promise<BrowserProjectContentFile> {
+  const bytes = jsonObjectBytes(data)
+  return {
+    path,
+    bytes,
+    checksum: await checksumBrowserStorageBytes(bytes),
+    metadata: { kind },
+  }
+}
+
 function parseJsonObjectBytes(bytes: Uint8Array<ArrayBuffer>): JsonObject {
   const value = JSON.parse(new TextDecoder().decode(bytes))
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {}
@@ -2975,6 +3501,10 @@ function parseJsonObjectBytes(bytes: Uint8Array<ArrayBuffer>): JsonObject {
 
 function jsonObjectBytes(value: JsonObject): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`) as Uint8Array<ArrayBuffer>
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value))
 }
 
 function importPreviewObjectCount(batch: ImportBatchSummary): number {
@@ -2997,6 +3527,164 @@ function graphNodeIdsForObject(workspace: WorkspaceSummary, objectId: string): s
   return workspace.graph.nodes
     .filter((node) => graphNodeObjectIds(node).includes(objectId))
     .map((node) => node.id)
+}
+
+function primaryObjectForRegisteredImport(
+  file: WebImportFile,
+  objects: WorkbenchDomainState["objects"],
+  registeredObjectIds: string[],
+): WorkbenchDomainState["objects"][number] | null {
+  const objectById = new Map(objects.map((object) => [object.id, object]))
+  const directObjects = registeredObjectIds
+    .map((objectId) => objectById.get(objectId))
+    .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object))
+  const key = solutionPairKeyForName(file.name)
+    ?? solutionPairKeyForName(file.storagePath)
+  const keyMatches = key
+    ? objects.filter((object) => objectMatchesSolutionPairKey(object, key))
+    : []
+  const candidates = uniqueWorkbenchObjects([...directObjects, ...keyMatches])
+    .filter((object) => !objectLooksLikeSolutionLog(object))
+    .sort((left, right) => projectFileReusableObjectScore(right) - projectFileReusableObjectScore(left))
+  return candidates[0] ?? null
+}
+
+function projectFileObjectIdsForImport(
+  file: WebImportFile,
+  primaryObject: WorkbenchDomainState["objects"][number] | null,
+  registeredObjectIds: string[],
+): string[] {
+  if (webImportFileLooksLikeSolutionLog(file) && primaryObject) {
+    return [primaryObject.id]
+  }
+  return registeredObjectIds.length > 0
+    ? registeredObjectIds
+    : primaryObject ? [primaryObject.id] : []
+}
+
+function uniqueWorkbenchObjects(
+  objects: WorkbenchDomainState["objects"],
+): WorkbenchDomainState["objects"] {
+  const seen = new Set<string>()
+  return objects.filter((object) => {
+    if (seen.has(object.id)) return false
+    seen.add(object.id)
+    return true
+  })
+}
+
+function projectFileLooksLikeSolutionLog(file: ProjectFileEntry): boolean {
+  return Boolean(solutionPairKeyForName(file.name) && solutionLogSuffixForName(file.name))
+    || Boolean(solutionPairKeyForName(file.sourceName) && solutionLogSuffixForName(file.sourceName))
+    || Boolean(solutionPairKeyForName(file.path) && solutionLogSuffixForName(file.path))
+}
+
+function webImportFileLooksLikeSolutionLog(file: WebImportFile): boolean {
+  return Boolean(solutionPairKeyForName(file.name) && solutionLogSuffixForName(file.name))
+    || Boolean(solutionPairKeyForName(file.storagePath) && solutionLogSuffixForName(file.storagePath))
+}
+
+function objectLooksLikeSolutionLog(object: WorkbenchDomainState["objects"][number]): boolean {
+  return Boolean(solutionLogSuffixForName(object.label))
+    || Boolean(solutionLogSuffixForName(object.source_file_id))
+    || Boolean(solutionLogSuffixForName(object.provenance?.source_file_id))
+}
+
+function objectMatchesSolutionPairKey(
+  object: WorkbenchDomainState["objects"][number],
+  key: string,
+): boolean {
+  return [
+    object.label,
+    object.source_file_id,
+    object.provenance?.source_file_id,
+    object.id,
+  ].some((value) => solutionPairKeyForName(value) === key)
+}
+
+function solutionLogPairCandidatesForWorkbench(
+  state: WorkbenchDomainState,
+  projectFiles: ProjectFileEntry[],
+): NodeSolutionLogPairCandidate[] {
+  const workspace = state.workspace
+  if (!workspace) return []
+  const objectsById = new Map(state.objects.map((object) => [object.id, object]))
+  const solutionFiles = projectFiles.filter((file) => isRawHydrationFile(file) && projectFileLooksLikeSolutionLog(file))
+  const candidates: NodeSolutionLogPairCandidate[] = []
+  const seen = new Set<string>()
+  for (const node of workspace.graph.nodes) {
+    const nodeObjects = graphNodeObjectIds(node)
+      .map((objectId) => objectsById.get(objectId))
+      .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object))
+    const nodeKeys = new Set<string>()
+    for (const object of nodeObjects) {
+      addSolutionPairKey(nodeKeys, object.label)
+      addSolutionPairKey(nodeKeys, object.source_file_id)
+      addSolutionPairKey(nodeKeys, object.provenance?.source_file_id)
+    }
+    addSolutionPairKey(nodeKeys, node.label)
+    if (nodeKeys.size === 0) continue
+    const paired = nodeObjects.some((object) => Boolean(resolveSolutionFreeEnergy(object)))
+    for (const file of solutionFiles) {
+      const fileKey = solutionPairKeyForProjectFile(file)
+      if (!fileKey || !nodeKeys.has(fileKey)) continue
+      const candidateKey = `${node.id}:${file.path}`
+      if (seen.has(candidateKey)) continue
+      seen.add(candidateKey)
+      candidates.push({
+        nodeId: node.id,
+        projectFileId: file.id,
+        path: file.path,
+        name: file.name,
+        paired,
+      })
+    }
+  }
+  return candidates
+}
+
+function addSolutionPairKey(target: Set<string>, value: string | null | undefined): void {
+  const key = solutionPairKeyForName(value)
+  if (key) target.add(key)
+}
+
+function solutionPairKeyForProjectFile(file: ProjectFileEntry): string | null {
+  return solutionPairKeyForName(file.name)
+    ?? solutionPairKeyForName(file.sourceName)
+    ?? solutionPairKeyForName(file.path)
+}
+
+function solutionPairKeyForName(value: string | null | undefined): string | null {
+  const stem = sourceStemForPairing(value)
+  if (!stem) return null
+  const suffix = solutionLogSuffixForStem(stem)
+  const keyStem = suffix ? stem.slice(0, -suffix.length) : stem
+  const key = normalizeSolutionPairName(keyStem)
+  return key || null
+}
+
+function solutionLogSuffixForName(value: string | null | undefined): string | null {
+  return solutionLogSuffixForStem(sourceStemForPairing(value))
+}
+
+function sourceStemForPairing(value: string | null | undefined): string {
+  if (!value) return ""
+  const base = value.split(/[\\/]/).filter(Boolean).at(-1) ?? value
+  return stripRawHydrationExtension(stripRawHydrationPrefix(base.trim()))
+}
+
+function solutionLogSuffixForStem(stem: string): string | null {
+  const lowered = stem.toLowerCase()
+  for (const suffix of ["-sol", "_sol", ".sol", " sol"]) {
+    if (lowered.endsWith(suffix)) return suffix
+  }
+  return null
+}
+
+function normalizeSolutionPairName(value: string): string {
+  return stripRawHydrationExtension(stripRawHydrationPrefix(value))
+    .trim()
+    .toLowerCase()
 }
 
 function reusableProjectFileObjects(
@@ -3039,6 +3727,215 @@ function projectFileWarningMessagesFromError(error: ShellError): string[] {
 
 function projectFileWarningMessagesFromWarnings(warnings: WorkbenchDomainState["warnings"]): string[] {
   return Array.from(new Set(warnings.map((warning) => formatProjectFileWarningMessage(warning.code, warning.target))))
+}
+
+type WorkbenchEnergyTableRow = {
+  nodeId: string
+  objectId: string | null
+  structure: string
+  chargeSpin: string
+  formula: string
+  basis: string
+  egasHartree: string
+  egasKcal: string
+  ggasHartree: string
+  ggasKcal: string
+  ggas1mHartree: string
+  ggas1mKcal: string
+  esolHartree: string
+  esolKcal: string
+  gsolHartree: string
+  gsolKcal: string
+  relative: string
+}
+
+type WorkbenchEnergyPathRow = {
+  nodeId: string
+  objectId: string | null
+  structure: string
+  deltaEgas: string
+  deltaGgas: string
+  deltaGgas1m: string
+  deltaEsol: string
+  deltaGsol: string
+  stepDelta: string
+}
+
+type WorkbenchEnergyNodeEntry = {
+  node: WorkspaceSummary["graph"]["nodes"][number]
+  object: WorkbenchDomainState["objects"][number] | null
+}
+
+function workbenchEnergyTableRows(
+  state: WorkbenchDomainState,
+  options: CanvasEnergyDisplayOptions,
+): WorkbenchEnergyTableRow[] {
+  const rows = workbenchEnergyNodeEntries(state)
+  const baseline = rows
+    .map((row) => resolveObjectEnergyValue(row.object, options.mode))
+    .find((value): value is ResolvedObjectEnergyValue => Boolean(value))
+
+  return rows.map(({ node, object }) => {
+    const energy = resolveObjectEnergyValue(object, options.mode)
+    const relative = energy && baseline
+      ? formatTableEnergyWithUnit(energyDeltaInUnit(energy, baseline, options.unit), options.unit)
+      : "-"
+    const egas = energyValueFromObjectRecord(object, "energies", ["egas", "electronic", "scf"])
+    const ggas = energyValueFromObjectRecord(object, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy"])
+    const ggas1m = resolveGasFreeEnergy1M(object)
+    const esol = energyValueFromObjectRecord(object, "energies", ["esol", "solution_electronic_energy"])
+    const gsol = resolveSolutionFreeEnergy(object)
+    return {
+      nodeId: node.id,
+      objectId: object?.id ?? null,
+      structure: structureDisplayName(node.label ?? object?.label ?? node.id),
+      chargeSpin: object ? `${object.charge ?? "-"},${object.spin_multiplicity ?? "-"}` : "-",
+      formula: object?.formula ?? "-",
+      basis: formatOptionalInteger(basisFunctionCountFromObject(object)),
+      egasHartree: formatOptionalTableEnergy(egas, "hartree"),
+      egasKcal: formatOptionalTableEnergy(egas, "kcal_mol"),
+      ggasHartree: formatOptionalTableEnergy(ggas, "hartree"),
+      ggasKcal: formatOptionalTableEnergy(ggas, "kcal_mol"),
+      ggas1mHartree: formatOptionalTableEnergy(ggas1m, "hartree"),
+      ggas1mKcal: formatOptionalTableEnergy(ggas1m, "kcal_mol"),
+      esolHartree: formatOptionalTableEnergy(esol, "hartree"),
+      esolKcal: formatOptionalTableEnergy(esol, "kcal_mol"),
+      gsolHartree: formatOptionalTableEnergy(gsol, "hartree"),
+      gsolKcal: formatOptionalTableEnergy(gsol, "kcal_mol"),
+      relative,
+    }
+  })
+}
+
+function workbenchEnergyPathRows(
+  state: WorkbenchDomainState,
+  options: CanvasEnergyDisplayOptions,
+): WorkbenchEnergyPathRow[] {
+  const workspace = state.workspace
+  if (!workspace) return []
+  const pathNodeIds = activeEnergyPathNodeIds(workspace)
+  if (pathNodeIds.length === 0) return []
+  const entryByNodeId = new Map(workbenchEnergyNodeEntries(state).map((entry) => [entry.node.id, entry]))
+  const rows = pathNodeIds
+    .map((nodeId) => entryByNodeId.get(nodeId))
+    .filter((entry): entry is WorkbenchEnergyNodeEntry => Boolean(entry))
+  const baseline = rows[0]?.object ?? null
+  if (!baseline) return []
+  let previousModeEnergy: ResolvedObjectEnergyValue | null = null
+  return rows.map(({ node, object }) => {
+    const modeEnergy = resolveObjectEnergyValue(object, options.mode)
+    const stepDelta = modeEnergy && previousModeEnergy
+      ? formatTableEnergyWithUnit(energyDeltaInUnit(modeEnergy, previousModeEnergy, options.unit), options.unit)
+      : "-"
+    if (modeEnergy) previousModeEnergy = modeEnergy
+    return {
+      nodeId: node.id,
+      objectId: object?.id ?? null,
+      structure: structureDisplayName(node.label ?? object?.label ?? node.id),
+      deltaEgas: formatEnergyDeltaFromObjects(
+        energyValueFromObjectRecord(object, "energies", ["egas", "electronic", "scf"]),
+        energyValueFromObjectRecord(baseline, "energies", ["egas", "electronic", "scf"]),
+        options.unit,
+      ),
+      deltaGgas: formatEnergyDeltaFromObjects(
+        energyValueFromObjectRecord(object, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy"]),
+        energyValueFromObjectRecord(baseline, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy"]),
+        options.unit,
+      ),
+      deltaGgas1m: formatEnergyDeltaFromObjects(resolveGasFreeEnergy1M(object), resolveGasFreeEnergy1M(baseline), options.unit),
+      deltaEsol: formatEnergyDeltaFromObjects(
+        energyValueFromObjectRecord(object, "energies", ["esol", "solution_electronic_energy"]),
+        energyValueFromObjectRecord(baseline, "energies", ["esol", "solution_electronic_energy"]),
+        options.unit,
+      ),
+      deltaGsol: formatEnergyDeltaFromObjects(resolveSolutionFreeEnergy(object), resolveSolutionFreeEnergy(baseline), options.unit),
+      stepDelta,
+    }
+  })
+}
+
+function workbenchEnergyNodeEntries(state: WorkbenchDomainState): WorkbenchEnergyNodeEntry[] {
+  const workspace = state.workspace
+  if (!workspace) return []
+  const objectById = new Map(state.objects.map((object) => [object.id, object]))
+  const orderedNodeIds = orderedEnergyTableNodeIds(workspace)
+  const nodesById = new Map(workspace.graph.nodes.map((node) => [node.id, node]))
+  return orderedNodeIds
+    .map((nodeId) => nodesById.get(nodeId))
+    .filter((node): node is WorkspaceSummary["graph"]["nodes"][number] => Boolean(node))
+    .map((node) => {
+      const object = graphNodeObjectIds(node)
+        .map((objectId) => objectById.get(objectId))
+        .filter((item): item is WorkbenchDomainState["objects"][number] => Boolean(item))
+        .sort((left, right) => projectFileReusableObjectScore(right) - projectFileReusableObjectScore(left))[0] ?? null
+      return { node, object }
+    })
+}
+
+function orderedEnergyTableNodeIds(workspace: WorkspaceSummary): string[] {
+  const activePath = workspace.graph.paths.find((path) => path.id === workspace.active_path_id)
+    ?? workspace.graph.paths[0]
+  const pathNodeIds = activePath?.node_ids ?? inferLinearPathNodeIds({ ...workspace, active_path_id: null, graph: { ...workspace.graph, paths: [] } }) ?? []
+  const seen = new Set(pathNodeIds)
+  return [
+    ...pathNodeIds,
+    ...workspace.graph.nodes.map((node) => node.id).filter((nodeId) => !seen.has(nodeId)),
+  ]
+}
+
+function activeEnergyPathNodeIds(workspace: WorkspaceSummary): string[] {
+  return (
+    workspace.graph.paths.find((path) => path.id === workspace.active_path_id)
+    ?? workspace.graph.paths[0]
+  )?.node_ids ?? []
+}
+
+function formatOptionalTableEnergy(value: ResolvedObjectEnergyValue | null, unit: CanvasEnergyUnit): string {
+  if (!value) return "-"
+  const converted = convertEnergyValue(value.value, value.unit, unit)
+  return converted === null ? "-" : formatTableEnergyNumber(converted, unit)
+}
+
+function formatEnergyDeltaFromObjects(
+  value: ResolvedObjectEnergyValue | null,
+  baseline: ResolvedObjectEnergyValue | null,
+  unit: CanvasEnergyUnit,
+): string {
+  if (!value || !baseline) return "-"
+  return formatTableEnergyWithUnit(energyDeltaInUnit(value, baseline, unit), unit)
+}
+
+function energyDeltaInUnit(
+  value: ResolvedObjectEnergyValue,
+  baseline: ResolvedObjectEnergyValue,
+  unit: CanvasEnergyUnit,
+): number {
+  const convertedValue = convertEnergyValue(value.value, value.unit, unit)
+  const convertedBaseline = convertEnergyValue(baseline.value, baseline.unit, unit)
+  if (convertedValue === null || convertedBaseline === null) return Number.NaN
+  return convertedValue - convertedBaseline
+}
+
+function formatTableEnergyNumber(value: number, unit: CanvasEnergyUnit): string {
+  if (!Number.isFinite(value)) return "-"
+  return value.toFixed(unit === "hartree" ? 6 : 2)
+}
+
+function formatTableEnergyWithUnit(value: number, unit: CanvasEnergyUnit): string {
+  if (!Number.isFinite(value)) return "-"
+  return formatEnergyValue(value, unit)
+}
+
+function formatOptionalInteger(value: number | null): string {
+  return typeof value === "number" ? String(value) : "-"
+}
+
+function energyTableRelativeColumnLabel(mode: CanvasEnergyMode, unit: CanvasEnergyUnit): string {
+  return `${energyModeRelativeLabel(mode)} (${energyUnitLabel(unit)})`
+}
+
+function structureDisplayName(value: string): string {
+  return stripRawHydrationExtension(stripRawHydrationPrefix(value)).trim() || value
 }
 
 function formatProjectFileWarningMessage(code: string, target?: string | null): string {
@@ -3179,6 +4076,30 @@ async function replayGraphEditorHistoryEntry({
     })
   }
 
+  if (entry.kind === "graph") {
+    const targetSnapshot = direction === "undo" ? entry.before : entry.after
+    const sourceSnapshot = direction === "undo" ? entry.after : entry.before
+    const restoreResult = await restoreGraphSnapshot({
+      snapshot: targetSnapshot,
+      sessionId,
+      shellClient,
+      workspace,
+      applyWorkspaceResponse,
+    })
+    if (!restoreResult.ok) return restoreResult
+    if (direction === "undo") {
+      return removeGraphSnapshotDelta({
+        before: sourceSnapshot,
+        after: targetSnapshot,
+        sessionId,
+        shellClient,
+        workspace,
+        applyWorkspaceResponse,
+      })
+    }
+    return restoreResult
+  }
+
   const target = (direction === "undo" ? entry.before : entry.after) as GraphEditorHistoryNodeEntry["before"]
   for (const snapshot of target) {
     const response = await shellClient.run<WorkspaceCommandData>({
@@ -3270,6 +4191,35 @@ async function restoreGraphSnapshot({
     if (currentNode) {
       nodeIdMap.set(targetNode.id, currentNode.id)
       usedCurrentNodeIds.add(currentNode.id)
+      if ((currentNode.label ?? "") !== (targetNode.label ?? "")) {
+        const response = await shellClient.run<WorkspaceCommandData>({
+          command: "workspace.update_node",
+          args: {
+            session_id: sessionId,
+            node_id: currentNode.id,
+            label: targetNode.label ?? targetNode.id,
+          },
+        })
+        applyWorkspaceResponse(response)
+        if (!response.ok || !response.data) return { ok: false, error: response.error }
+        currentWorkspace = response.data.workspace
+      }
+      if (
+        (targetNode.composition ?? []).length > 0
+        && stableJson(currentNode.composition ?? []) !== stableJson(targetNode.composition ?? [])
+      ) {
+        const response = await shellClient.run<WorkspaceCommandData>({
+          command: "workspace.set_node_composition",
+          args: {
+            session_id: sessionId,
+            node_id: currentNode.id,
+            composition: targetNode.composition ?? [],
+          },
+        })
+        applyWorkspaceResponse(response)
+        if (!response.ok || !response.data) return { ok: false, error: response.error }
+        currentWorkspace = response.data.workspace
+      }
       continue
     }
 
@@ -3695,7 +4645,7 @@ function energyChannelForCanvasEnergyMode(
 ): Pick<EnergyPanelOptions, "energyKey" | "energySource" | "correctionPolicyMode"> {
   if (mode === "free") {
     return {
-      energyKey: "ggas",
+      energyKey: "ggas_1m",
       energySource: "thermochemistry",
       correctionPolicyMode: "none",
     }
@@ -3968,6 +4918,51 @@ function workbenchEdgeTarget(edge: WorkspaceSummary["graph"]["edges"][number]): 
   return edge.to_node ?? edge.target ?? ""
 }
 
+function unconnectedDuplicateGraphNodeIds(workspace: WorkbenchDomainState["workspace"]): string[] {
+  if (!workspace) return []
+  const connectedNodeIds = new Set<string>()
+  for (const edge of workspace.graph.edges) {
+    const source = workbenchEdgeSource(edge)
+    const target = workbenchEdgeTarget(edge)
+    if (source) connectedNodeIds.add(source)
+    if (target) connectedNodeIds.add(target)
+  }
+  for (const path of workspace.graph.paths) {
+    for (const nodeId of path.node_ids) {
+      connectedNodeIds.add(nodeId)
+    }
+  }
+
+  const seen = new Set<string>()
+  const duplicateNodeIds: string[] = []
+  for (const node of workspace.graph.nodes) {
+    const key = graphNodeDuplicateKey(node)
+    if (!key) continue
+    if (!seen.has(key)) {
+      seen.add(key)
+      continue
+    }
+    if (!connectedNodeIds.has(node.id)) {
+      duplicateNodeIds.push(node.id)
+    }
+  }
+  return duplicateNodeIds
+}
+
+function graphNodeDuplicateKey(node: GraphNodeSummary): string | null {
+  const objectTerms = [
+    ...(node.chemical_object_ids ?? []).map((objectId) => `id:${objectId}`),
+    ...(node.composition ?? []).map((term) => `cmp:${term.object_id}:${term.coefficient}`),
+  ].sort()
+  const label = node.label?.trim().toLowerCase() ?? ""
+  if (objectTerms.length === 0 && !label) return null
+  return JSON.stringify({
+    kind: node.kind,
+    label,
+    objects: objectTerms,
+  })
+}
+
 function restoredProjectNeedsGeometryHydration(state: WorkbenchDomainState): boolean {
   if (!state.workspace) return false
   const objectById = new Map(state.objects.map((object) => [object.id, object]))
@@ -4165,6 +5160,65 @@ function stripRawHydrationPrefix(value: string): string {
 
 function stripRawHydrationExtension(value: string): string {
   return value.replace(/\.(log|out|xyz|extxyz)$/i, "")
+}
+
+function supportedRawImportFiles(files: File[]): File[] {
+  return files.filter((file) => supportedRawImportFileName(file.name))
+}
+
+function supportedRawImportFileName(name: string): boolean {
+  return /\.(log|out|xyz|extxyz)$/i.test(name)
+}
+
+function rootFolderNameFromFiles(files: File[]): string | null {
+  for (const file of files) {
+    const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath
+    const folderName = relativePath?.split("/").find((segment) => segment.trim().length > 0)
+    if (folderName) return folderName
+  }
+  return null
+}
+
+function readStoredActiveProjectRef(): string | null {
+  if (import.meta.env.MODE === "test") return null
+  try {
+    const value = globalThis.localStorage?.getItem(activeProjectPreferenceKey) ?? null
+    return value && value.trim().length > 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredActiveProjectRef(projectRef: string): void {
+  if (import.meta.env.MODE === "test") return
+  try {
+    globalThis.localStorage?.setItem(activeProjectPreferenceKey, projectRef)
+  } catch {
+    // Active-project restore is a convenience; the project data itself remains in the repository.
+  }
+}
+
+function clearStoredActiveProjectRef(): void {
+  if (import.meta.env.MODE === "test") return
+  try {
+    globalThis.localStorage?.removeItem(activeProjectPreferenceKey)
+  } catch {
+    // Best-effort cleanup only.
+  }
+}
+
+function uniqueProjectFileDropItems(
+  files: Array<{ projectFileId: string; path: string }>,
+): Array<{ projectFileId: string; path: string }> {
+  const seen = new Set<string>()
+  const unique: Array<{ projectFileId: string; path: string }> = []
+  for (const file of files) {
+    const key = `${file.projectFileId}\u001f${file.path}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    unique.push(file)
+  }
+  return unique
 }
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {

@@ -7,7 +7,7 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type RefObject } from "react"
+import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import type { BrowserProjectRef } from "../repository"
 import type { ProjectSidebarState } from "./projectSidebarState"
@@ -15,14 +15,16 @@ import type { ProjectFileEntry, ProjectFileKind, ProjectFileStatus } from "./pro
 import { graphRawFileDropMimeType, serializeGraphRawFileDropPayload } from "./graphRawFileDropPayload"
 import { useI18n, type MessageKey } from "./i18n"
 
+type ProjectFileSelectionMode = "replace" | "toggle" | "range"
+
 type ProjectSidebarProps = {
   state: ProjectSidebarState
   collapsed: boolean
   onCreateProject: (name: string) => void | Promise<void>
+  onOpenExistingFolder: () => void | Promise<void>
   onOpenProject: (projectRef: string) => Promise<void>
   onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
-  onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
   onDeleteProjectFile: (file: ProjectFileEntry) => void | Promise<void>
 }
 
@@ -30,10 +32,10 @@ export function ProjectSidebar({
   state,
   collapsed,
   onCreateProject,
+  onOpenExistingFolder,
   onOpenProject,
   onDeleteProject,
   onImportProjectFiles,
-  onAddProjectFileToCanvas,
   onDeleteProjectFile,
 }: ProjectSidebarProps) {
   const { t } = useI18n()
@@ -41,6 +43,8 @@ export function ProjectSidebar({
   const [createOpen, setCreateOpen] = useState(false)
   const [projectName, setProjectName] = useState("")
   const [expandedProjectRefs, setExpandedProjectRefs] = useState<Set<string>>(() => new Set())
+  const [selectedProjectFileIds, setSelectedProjectFileIds] = useState<Set<string>>(() => new Set())
+  const [lastSelectedProjectFileId, setLastSelectedProjectFileId] = useState<string | null>(null)
   const createInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -52,6 +56,17 @@ export function ProjectSidebar({
   useEffect(() => {
     if (createOpen) createInputRef.current?.focus()
   }, [createOpen])
+
+  useEffect(() => {
+    setSelectedProjectFileIds((current) => {
+      const validIds = new Set(state.projectFiles.map((file) => file.id))
+      const next = new Set(Array.from(current).filter((id) => validIds.has(id)))
+      return next.size === current.size ? current : next
+    })
+    setLastSelectedProjectFileId((current) => (
+      current && state.projectFiles.some((file) => file.id === current) ? current : null
+    ))
+  }, [state.projectFiles])
 
   const submitCreateProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -71,6 +86,39 @@ export function ProjectSidebar({
     })
   }
 
+  const selectProjectFile = (
+    fileId: string,
+    mode: ProjectFileSelectionMode,
+    orderedFileIds: string[],
+  ) => {
+    setSelectedProjectFileIds((current) => {
+      if (mode === "range") {
+        const anchor = lastSelectedProjectFileId && orderedFileIds.includes(lastSelectedProjectFileId)
+          ? lastSelectedProjectFileId
+          : fileId
+        const start = orderedFileIds.indexOf(anchor)
+        const end = orderedFileIds.indexOf(fileId)
+        if (start === -1 || end === -1) return new Set([fileId])
+        return new Set(orderedFileIds.slice(Math.min(start, end), Math.max(start, end) + 1))
+      }
+      const next = new Set(current)
+      if (mode === "toggle") {
+        if (next.has(fileId)) next.delete(fileId)
+        else next.add(fileId)
+        return next
+      }
+      next.clear()
+      next.add(fileId)
+      return next
+    })
+    setLastSelectedProjectFileId(fileId)
+  }
+
+  const clearProjectFileSelection = () => {
+    setSelectedProjectFileIds(new Set())
+    setLastSelectedProjectFileId(null)
+  }
+
   return (
     <aside
       className={`project-sidebar ${collapsed ? "project-sidebar--collapsed" : ""}`}
@@ -84,6 +132,7 @@ export function ProjectSidebar({
         createInputRef={createInputRef}
         expandedProjectRefs={expandedProjectRefs}
         onToggleCreateOpen={() => setCreateOpen((current) => !current)}
+        onOpenExistingFolder={onOpenExistingFolder}
         onProjectNameChange={setProjectName}
         onSubmitCreateProject={submitCreateProject}
         onCancelCreateProject={() => {
@@ -94,8 +143,10 @@ export function ProjectSidebar({
         onOpenProject={onOpenProject}
         onDeleteProject={onDeleteProject}
         onImportProjectFiles={onImportProjectFiles}
-        onAddProjectFileToCanvas={onAddProjectFileToCanvas}
         onDeleteProjectFile={onDeleteProjectFile}
+        selectedProjectFileIds={selectedProjectFileIds}
+        onSelectProjectFile={selectProjectFile}
+        onClearProjectFileSelection={clearProjectFileSelection}
       />
     </aside>
   )
@@ -108,6 +159,7 @@ type ProjectFoldersPanelProps = {
   createInputRef: RefObject<HTMLInputElement | null>
   expandedProjectRefs: Set<string>
   onToggleCreateOpen: () => void
+  onOpenExistingFolder: () => void | Promise<void>
   onProjectNameChange: (name: string) => void
   onSubmitCreateProject: (event: FormEvent<HTMLFormElement>) => void | Promise<void>
   onCancelCreateProject: () => void
@@ -115,8 +167,10 @@ type ProjectFoldersPanelProps = {
   onOpenProject: (projectRef: string) => Promise<void>
   onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
-  onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
   onDeleteProjectFile: (file: ProjectFileEntry) => void | Promise<void>
+  selectedProjectFileIds: Set<string>
+  onSelectProjectFile: (fileId: string, mode: ProjectFileSelectionMode, orderedFileIds: string[]) => void
+  onClearProjectFileSelection: () => void
 }
 
 function ProjectFoldersPanel({
@@ -126,6 +180,7 @@ function ProjectFoldersPanel({
   createInputRef,
   expandedProjectRefs,
   onToggleCreateOpen,
+  onOpenExistingFolder,
   onProjectNameChange,
   onSubmitCreateProject,
   onCancelCreateProject,
@@ -133,8 +188,10 @@ function ProjectFoldersPanel({
   onOpenProject,
   onDeleteProject,
   onImportProjectFiles,
-  onAddProjectFileToCanvas,
   onDeleteProjectFile,
+  selectedProjectFileIds,
+  onSelectProjectFile,
+  onClearProjectFileSelection,
 }: ProjectFoldersPanelProps) {
   const { t } = useI18n()
   const isBusy = state.status === "loading"
@@ -152,6 +209,16 @@ function ProjectFoldersPanel({
           disabled={isBusy}
         >
           <FolderPlus size={15} />
+        </button>
+        <button
+          type="button"
+          className="project-section-folder-button"
+          onClick={() => void onOpenExistingFolder()}
+          aria-label={t("projectSidebar.openExistingFolder")}
+          title={t("projectSidebar.openExistingFolder")}
+          disabled={isBusy}
+        >
+          <FolderOpen size={15} />
         </button>
       </div>
       {createOpen ? (
@@ -198,8 +265,10 @@ function ProjectFoldersPanel({
               onOpenProject={onOpenProject}
               onDeleteProject={onDeleteProject}
               onImportProjectFiles={onImportProjectFiles}
-              onAddProjectFileToCanvas={onAddProjectFileToCanvas}
               onDeleteProjectFile={onDeleteProjectFile}
+              selectedProjectFileIds={selectedProjectFileIds}
+              onSelectProjectFile={onSelectProjectFile}
+              onClearProjectFileSelection={onClearProjectFileSelection}
             />
           ))}
         </ul>
@@ -218,8 +287,10 @@ type ProjectFolderProps = {
   onOpenProject: (projectRef: string) => Promise<void>
   onDeleteProject: (projectRef: string) => Promise<void>
   onImportProjectFiles: (projectRef: string, files?: File[]) => void | Promise<void>
-  onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
   onDeleteProjectFile: (file: ProjectFileEntry) => void | Promise<void>
+  selectedProjectFileIds: Set<string>
+  onSelectProjectFile: (fileId: string, mode: ProjectFileSelectionMode, orderedFileIds: string[]) => void
+  onClearProjectFileSelection: () => void
 }
 
 function ProjectFolder({
@@ -232,8 +303,10 @@ function ProjectFolder({
   onOpenProject,
   onDeleteProject,
   onImportProjectFiles,
-  onAddProjectFileToCanvas,
   onDeleteProjectFile,
+  selectedProjectFileIds,
+  onSelectProjectFile,
+  onClearProjectFileSelection,
 }: ProjectFolderProps) {
   const { t } = useI18n()
   const fileCount = projectFiles.length
@@ -409,8 +482,12 @@ function ProjectFolder({
             <ProjectFileRow
               key={file.id}
               file={file}
-              onAddProjectFileToCanvas={onAddProjectFileToCanvas}
+              selected={selectedProjectFileIds.has(file.id)}
+              projectFileIds={projectFiles.map((candidate) => candidate.id)}
+              selectedProjectFiles={projectFiles.filter((candidate) => selectedProjectFileIds.has(candidate.id))}
               onDeleteProjectFile={onDeleteProjectFile}
+              onSelectProjectFile={onSelectProjectFile}
+              onClearProjectFileSelection={onClearProjectFileSelection}
             />
           ))}
         </ul>
@@ -421,41 +498,74 @@ function ProjectFolder({
 
 type ProjectFileRowProps = {
   file: ProjectFileEntry
-  onAddProjectFileToCanvas: (file: ProjectFileEntry) => void | Promise<void>
+  selected: boolean
+  projectFileIds: string[]
+  selectedProjectFiles: ProjectFileEntry[]
   onDeleteProjectFile: (file: ProjectFileEntry) => void | Promise<void>
+  onSelectProjectFile: (fileId: string, mode: ProjectFileSelectionMode, orderedFileIds: string[]) => void
+  onClearProjectFileSelection: () => void
 }
 
-function ProjectFileRow({ file, onAddProjectFileToCanvas, onDeleteProjectFile }: ProjectFileRowProps) {
+function ProjectFileRow({
+  file,
+  selected,
+  projectFileIds,
+  selectedProjectFiles,
+  onDeleteProjectFile,
+  onSelectProjectFile,
+  onClearProjectFileSelection,
+}: ProjectFileRowProps) {
   const { t } = useI18n()
   const draggable = isDraggableRawProjectFile(file)
   const kindBadge = projectFileKindBadge(file.kind)
   const kindLabel = t(projectFileKindLabelKey(file.kind))
-  const handleActivateFile = () => {
+  const selectedDraggableFiles = selectedProjectFiles.filter(isDraggableRawProjectFile)
+  const dragFiles = selected && selectedDraggableFiles.length > 1 ? selectedDraggableFiles : [file]
+  const handleActivateFile = (event?: MouseEvent<HTMLLIElement>) => {
     if (!draggable) return
-    void onAddProjectFileToCanvas(file)
+    if (event?.shiftKey) {
+      onSelectProjectFile(file.id, "range", projectFileIds)
+      return
+    }
+    if (event?.metaKey || event?.ctrlKey) {
+      onSelectProjectFile(file.id, "toggle", projectFileIds)
+      return
+    }
+    onSelectProjectFile(file.id, "replace", projectFileIds)
   }
   const handleKeyDown = (event: KeyboardEvent<HTMLLIElement>) => {
     if (!draggable || (event.key !== "Enter" && event.key !== " ")) return
     event.preventDefault()
-    handleActivateFile()
+    onSelectProjectFile(file.id, event.shiftKey ? "range" : event.metaKey || event.ctrlKey ? "toggle" : "replace", projectFileIds)
   }
 
   return (
     <li
-      className={`project-file-card project-file-card--${file.status} ${draggable ? "project-file-card--interactive" : ""}`}
+      className={`project-file-card project-file-card--${file.status} ${draggable ? "project-file-card--interactive" : ""} ${selected ? "project-file-card--selected" : ""}`}
       role="treeitem"
       draggable={draggable}
       tabIndex={draggable ? 0 : undefined}
+      aria-selected={selected || undefined}
       aria-label={projectFileAriaLabel(file, kindLabel, t)}
       onClick={handleActivateFile}
       onKeyDown={handleKeyDown}
       onDragStart={draggable ? (event) => {
         event.dataTransfer.effectAllowed = "copy"
-        event.dataTransfer.setData(graphRawFileDropMimeType, serializeGraphRawFileDropPayload({
-          kind: "project-file",
-          projectFileId: file.id,
-          path: file.path,
-        }))
+        if (dragFiles.length > 1) {
+          event.dataTransfer.setData(graphRawFileDropMimeType, serializeGraphRawFileDropPayload({
+            kind: "project-files",
+            files: dragFiles.map((item) => ({
+              projectFileId: item.id,
+              path: item.path,
+            })),
+          }))
+        } else {
+          event.dataTransfer.setData(graphRawFileDropMimeType, serializeGraphRawFileDropPayload({
+            kind: "project-file",
+            projectFileId: file.id,
+            path: file.path,
+          }))
+        }
       } : undefined}
     >
       <span
@@ -483,6 +593,7 @@ function ProjectFileRow({ file, onAddProjectFileToCanvas, onDeleteProjectFile }:
         onClick={(event) => {
           event.preventDefault()
           event.stopPropagation()
+          onClearProjectFileSelection()
           void onDeleteProjectFile(file)
         }}
         onPointerDown={(event) => event.stopPropagation()}

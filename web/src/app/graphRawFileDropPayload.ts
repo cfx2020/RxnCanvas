@@ -12,6 +12,13 @@ export type GraphRawFileDropPayload =
       projectFileId: string
       path: string
     }
+  | {
+      kind: "project-files"
+      files: Array<{
+        projectFileId: string
+        path: string
+      }>
+    }
 
 export function serializeGraphRawFileDropPayload(payload: GraphRawFileDropPayload): string {
   return JSON.stringify(payload)
@@ -29,6 +36,20 @@ export function parseGraphRawFileDropPayload(value: string): GraphRawFileDropPay
         projectFileId: parsed.projectFileId,
         path: parsed.path,
       }
+    }
+    if (parsed.kind === "project-files") {
+      if (!Array.isArray(parsed.files) || parsed.files.length === 0) return null
+      const files = parsed.files.flatMap((file) => {
+        if (!isObject(file)) return []
+        if (typeof file.projectFileId !== "string" || file.projectFileId.trim().length === 0) return []
+        if (typeof file.path !== "string" || file.path.trim().length === 0) return []
+        return [{
+          projectFileId: file.projectFileId,
+          path: file.path,
+        }]
+      })
+      if (files.length !== parsed.files.length) return null
+      return { kind: "project-files", files }
     }
     if (parsed.kind === "external-file") {
       if (typeof parsed.sourceId !== "string" || parsed.sourceId.trim().length === 0) return null

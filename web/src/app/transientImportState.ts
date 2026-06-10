@@ -1,7 +1,7 @@
 import type { ImportBatchSummary, ImportRegisterAllData, JsonObject, ShellError, ShellWarning } from "../shell"
 import type { RawPersistenceState } from "./rawInputPersistence"
 
-export const defaultInlineImportByteLimit = 12 * 1024 * 1024
+export const defaultInlineImportByteLimit = 80 * 1024 * 1024
 
 export type ImportPreviewSourceKind = "path" | "inline_bytes"
 

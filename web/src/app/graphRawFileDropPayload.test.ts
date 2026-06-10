@@ -15,6 +15,18 @@ describe("graph raw file drop payload", () => {
     expect(parseGraphRawFileDropPayload(serializeGraphRawFileDropPayload(payload))).toEqual(payload)
   })
 
+  it("roundtrips selected project raw file batch payloads", () => {
+    const payload = {
+      kind: "project-files" as const,
+      files: [
+        { projectFileId: "raw-a", path: "inputs/raw/a.log" },
+        { projectFileId: "raw-b", path: "inputs/raw/b.log" },
+      ],
+    }
+
+    expect(parseGraphRawFileDropPayload(serializeGraphRawFileDropPayload(payload))).toEqual(payload)
+  })
+
   it("roundtrips external file descriptors", () => {
     const payload = {
       kind: "external-file" as const,
@@ -38,6 +50,14 @@ describe("graph raw file drop payload", () => {
       sourceId: "source",
       name: "water.xyz",
       size: -1,
+    }))).toBeNull()
+    expect(parseGraphRawFileDropPayload(JSON.stringify({
+      kind: "project-files",
+      files: [],
+    }))).toBeNull()
+    expect(parseGraphRawFileDropPayload(JSON.stringify({
+      kind: "project-files",
+      files: [{ projectFileId: "raw-a", path: "" }],
     }))).toBeNull()
   })
 })
