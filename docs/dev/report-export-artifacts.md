@@ -246,5 +246,5 @@ cd web && npm run build
 - `docs/user/report-export-artifacts.md`
 - `docs/dev/web-runtime-boundary.md`
 - `docs/dev/platform-project-open-save.md`
-- `codestable/architecture/core-platform.md`
-- `codestable/architecture/web-workbench.md`
+- `.codestable/architecture/core-platform.md`
+- `.codestable/architecture/web-workbench.md`

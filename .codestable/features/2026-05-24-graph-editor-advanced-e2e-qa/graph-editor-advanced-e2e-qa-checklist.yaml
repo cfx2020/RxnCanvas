@@ -1,0 +1,100 @@
+feature: 2026-05-24-graph-editor-advanced-e2e-qa
+source: .codestable/features/2026-05-24-graph-editor-advanced-e2e-qa/graph-editor-advanced-e2e-qa-design.md
+
+steps:
+  - action: "Design / Checklist Setup：从 roadmap item 创建 approved design 和 checklist，回写 item 为 in-progress"
+    status: done
+    exit_signal: "YAML 校验通过，roadmap item 指向 feature 目录"
+
+  - action: "Fixture E2E Helper Matrix：扩展 workbench-helpers.ts 的高级 graph editor helpers，优先复用可访问 UI"
+    status: done
+    exit_signal: "helpers 能独立驱动 layout、path delete、edge label、free edge、multi-select/nudge/history/restore"
+
+  - action: "Desktop / Narrow Spec Coverage：扩展 fixture Playwright spec，补 desktop matrix 与 narrow graph controls matrix"
+    status: done
+    exit_signal: "默认 fixture E2E 覆盖 roadmap 4.8 所列 desktop/narrow 场景"
+
+  - action: "Developer QA Guide：补开发者说明，明确 fixture/local-http 命令、覆盖边界和输出目录"
+    status: done
+    exit_signal: "指南能让后续开发者知道改图谱编辑后该跑什么"
+
+  - action: "Verification / Acceptance：运行单测、构建、E2E、必要浏览器验证，并回写 CodeStable acceptance"
+    status: done
+    exit_signal: "测试通过，architecture/requirement/roadmap/acceptance 与现状一致"
+
+checks:
+  - item: "1280x720 fixture E2E 触发 Apply Layout 后，可见节点位置 / viewport projection 发生预期变化，且没有 console issue"
+    source: 验收场景
+    status: passed
+
+  - item: "1280x720 fixture E2E 可选中并删除 path，删除后 path list / active path / network preview 跟随 workspace projection"
+    source: 验收场景
+    status: passed
+
+  - item: "1280x720 fixture E2E 可选中 edge、编辑 label、应用后 SVG/edge hitbox/selected detail 显示新 label"
+    source: 验收场景
+    status: passed
+
+  - item: "1280x720 fixture E2E 可从节点 Edge Connect Handle 拖到另一个节点创建 edge，且 disconnected diagnostics 更新"
+    source: 验收场景
+    status: passed
+
+  - item: "1280x720 fixture E2E 可通过 Shift-click 或 rubber-band 形成多选，并用 Delete 删除当前选择"
+    source: 验收场景
+    status: passed
+
+  - item: "1280x720 fixture E2E 可用方向键 nudge selected nodes，并可 Undo / Redo 恢复移动"
+    source: 验收场景
+    status: passed
+
+  - item: "1280x720 fixture E2E 覆盖 wheel zoom、minimap click/drag、Undo/Redo controls，验证 viewport projection 变化"
+    source: 验收场景
+    status: passed
+
+  - item: "Save Bridge Session 后 reload + Open Bridge 可恢复 node position、edge label、viewport、selected node/edge/path 或 active path；Graph Editor History 不要求恢复"
+    source: 验收场景
+    status: passed
+
+  - item: "390x840 fixture E2E 可看到并操作 graph advanced controls，Network Preview、Path list、Edge Label Editor、Minimap 和 Undo/Redo controls 不重叠、不造成水平溢出"
+    source: 验收场景
+    status: passed
+
+  - item: "默认 fixture E2E 检查 framework overlay absent、console clean、no horizontal overflow"
+    source: 验收场景
+    status: passed
+
+  - item: "local-http E2E 仍只覆盖 Python bridge 主链路，不加入复杂 graph gesture matrix"
+    source: 范围守护
+    status: passed
+
+  - item: "Playwright output 只写入 gitignored web/test-results*/ / web/playwright-report*/"
+    source: 范围守护
+    status: passed
+
+  - item: "QA helper 不直接 mutate React state、Browser Project Repository bytes、Project Content files 或 ShellResponse"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增生产 dependency、shell command、Project Content schema、Browser Project Repository API 或 localStorage graph persistence"
+    source: 范围守护
+    status: passed
+
+  - item: "不因为 E2E 需要而给 UI 加测试专用生产按钮"
+    source: 反向核对
+    status: passed
+
+  - item: "不把 local-http smoke 变成又慢又脆的完整交互套件"
+    source: 反向核对
+    status: passed
+
+  - item: "不提交 Playwright 产物"
+    source: 反向核对
+    status: passed
+
+  - item: "不把 graph history、hover、pending edge、rubber-band draft、minimap draft 写入持久化"
+    source: 反向核对
+    status: passed
+
+  - item: "不把 CDXML / ChemDraw 导出能力混进本 QA feature"
+    source: 反向核对
+    status: passed

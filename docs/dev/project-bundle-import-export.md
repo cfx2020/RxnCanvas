@@ -145,8 +145,8 @@ cd web && npm run test:e2e:local-http
 
 ## 相关文档
 
-- `codestable/architecture/core-platform.md`
-- `codestable/architecture/web-workbench.md`
-- `codestable/requirements/project-content-persistence.md`
-- `codestable/features/2026-05-14-project-bundle-import-export/project-bundle-import-export-design.md`
-- `codestable/roadmap/rxnflow-web-project-portability/rxnflow-web-project-portability-roadmap.md`
+- `.codestable/architecture/core-platform.md`
+- `.codestable/architecture/web-workbench.md`
+- `.codestable/requirements/project-content-persistence.md`
+- `.codestable/features/2026-05-14-project-bundle-import-export/project-bundle-import-export-design.md`
+- `.codestable/roadmap/rxnflow-web-project-portability/rxnflow-web-project-portability-roadmap.md`

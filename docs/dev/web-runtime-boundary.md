@@ -173,8 +173,8 @@ Report Export Panel 不再提供 Preview mode 或 readiness dashboard。当前�
 ## 相关文档
 
 - `AGENTS.md`
-- `codestable/roadmap/rxnflow-web-workbench-mvp/rxnflow-web-workbench-mvp-roadmap.md`
-- `codestable/features/2026-05-16-web-runtime-boundary-decision/web-runtime-boundary-decision-design.md`
+- `.codestable/roadmap/rxnflow-web-workbench-mvp/rxnflow-web-workbench-mvp-roadmap.md`
+- `.codestable/features/2026-05-16-web-runtime-boundary-decision/web-runtime-boundary-decision-design.md`
 - `docs/dev/platform-project-open-save.md`
 - `docs/dev/browser-local-storage-backend.md`
 - `docs/dev/project-bundle-import-export.md`

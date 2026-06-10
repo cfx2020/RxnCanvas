@@ -489,25 +489,25 @@ ASE extxyz 项目内 fixture 维护规则：
 校验 fixture manifest：
 
 ```bash
-python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/manifest.yaml --yaml-only
+python3 .codestable/tools/validate-yaml.py --file tests/fixtures/parsers/manifest.yaml --yaml-only
 ```
 
 校验 support matrix：
 
 ```bash
-python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/support-matrix.yaml --yaml-only
+python3 .codestable/tools/validate-yaml.py --file tests/fixtures/parsers/support-matrix.yaml --yaml-only
 ```
 
 校验 source inventory：
 
 ```bash
-python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/sources.yaml --yaml-only
+python3 .codestable/tools/validate-yaml.py --file tests/fixtures/parsers/sources.yaml --yaml-only
 ```
 
 校验 public fixture decision ledger：
 
 ```bash
-python3 codestable/tools/validate-yaml.py --file tests/fixtures/parsers/public-fixture-decisions.yaml --yaml-only
+python3 .codestable/tools/validate-yaml.py --file tests/fixtures/parsers/public-fixture-decisions.yaml --yaml-only
 ```
 
 运行 parser fixture harness：
@@ -531,7 +531,7 @@ python3 -m unittest discover
 校验本 feature checklist：
 
 ```bash
-python3 codestable/tools/validate-yaml.py --file codestable/features/2026-05-16-parser-corpus-docs/parser-corpus-docs-checklist.yaml --yaml-only
+python3 .codestable/tools/validate-yaml.py --file .codestable/features/2026-05-16-parser-corpus-docs/parser-corpus-docs-checklist.yaml --yaml-only
 ```
 
 ## 禁止事项
@@ -548,11 +548,11 @@ python3 codestable/tools/validate-yaml.py --file codestable/features/2026-05-16-
 ## 相关文档
 
 - `docs/user/parser-output-support.md`
-- `codestable/architecture/core-platform.md`
-- `codestable/roadmap/rxnflow-parser-real-output-compatibility/rxnflow-parser-real-output-compatibility-roadmap.md`
-- `codestable/roadmap/rxnflow-parser-fixture-corpus/rxnflow-parser-fixture-corpus-roadmap.md`
-- `codestable/features/2026-05-15-parser-fixture-harness/parser-fixture-harness-design.md`
-- `codestable/features/2026-05-16-parser-support-matrix-diagnostics/parser-support-matrix-diagnostics-acceptance.md`
-- `codestable/features/2026-05-16-import-preview-parser-regression/import-preview-parser-regression-acceptance.md`
-- `codestable/features/2026-06-03-public-fixture-import-preview-regression/public-fixture-import-preview-regression-acceptance.md`
-- `codestable/features/2026-06-03-parser-public-fixture-guides/parser-public-fixture-guides-design.md`
+- `.codestable/architecture/core-platform.md`
+- `.codestable/roadmap/rxnflow-parser-real-output-compatibility/rxnflow-parser-real-output-compatibility-roadmap.md`
+- `.codestable/roadmap/rxnflow-parser-fixture-corpus/rxnflow-parser-fixture-corpus-roadmap.md`
+- `.codestable/features/2026-05-15-parser-fixture-harness/parser-fixture-harness-design.md`
+- `.codestable/features/2026-05-16-parser-support-matrix-diagnostics/parser-support-matrix-diagnostics-acceptance.md`
+- `.codestable/features/2026-05-16-import-preview-parser-regression/import-preview-parser-regression-acceptance.md`
+- `.codestable/features/2026-06-03-public-fixture-import-preview-regression/public-fixture-import-preview-regression-acceptance.md`
+- `.codestable/features/2026-06-03-parser-public-fixture-guides/parser-public-fixture-guides-design.md`

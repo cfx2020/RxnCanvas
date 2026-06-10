@@ -28,10 +28,10 @@
 
 ## CodeStable 使用规则
 
-- 新功能、大需求拆解、bug 修复、重构和知识沉淀优先走 `codestable/` 下对应流程。
-- `codestable/architecture/` 只记录已落地现状；未落地的方案规划放在 `codestable/roadmap/`。
+- 新功能、大需求拆解、bug 修复、重构和知识沉淀优先走 `.codestable/` 下对应流程。
+- `.codestable/architecture/` 只记录已落地现状；未落地的方案规划放在 `.codestable/roadmap/`。
 - roadmap 的接口契约是后续 feature design 的硬约束，feature 中不得绕开或私自改写。
-- 发现值得长期保留的选型、踩坑、模式或调研结论时，提示用户是否沉淀到 `codestable/compound/`。
+- 发现值得长期保留的选型、踩坑、模式或调研结论时，提示用户是否沉淀到 `.codestable/compound/`。
 
 ## 禁止事项
 
@@ -54,7 +54,7 @@
 - 运行 Web 工作台开发服务：`cd web && npm run dev`
 - 运行 Web 前端测试：`cd web && npm run test`
 - 运行 Web 前端构建：`cd web && npm run build`
-- 校验 CodeStable YAML：`python3 codestable/tools/validate-yaml.py --file <path> --yaml-only`
+- 校验 CodeStable YAML：`python3 .codestable/tools/validate-yaml.py --file <path> --yaml-only`
 
 ## 已知待决策
 

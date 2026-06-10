@@ -182,8 +182,8 @@ python3 -m rxnflow.cli project open --json --project-path /path/to/project --man
 
 ## 相关文档
 
-- `codestable/architecture/core-platform.md`
-- `codestable/requirements/project-content-persistence.md`
-- `codestable/features/2026-05-14-platform-shell-state-restore/platform-shell-state-restore-design.md`
-- `codestable/features/2026-05-14-platform-shell-state-restore/platform-shell-state-restore-acceptance.md`
+- `.codestable/architecture/core-platform.md`
+- `.codestable/requirements/project-content-persistence.md`
+- `.codestable/features/2026-05-14-platform-shell-state-restore/platform-shell-state-restore-design.md`
+- `.codestable/features/2026-05-14-platform-shell-state-restore/platform-shell-state-restore-acceptance.md`
 - `docs/dev/browser-local-storage-backend.md`
