@@ -19,8 +19,8 @@ describe("graphNodeLayout", () => {
 
   it("falls back to a stable position when a node has no position", () => {
     expect(graphNodePosition(node({ id: "node-web-3" }))).toEqual({
-      x: 420,
-      y: 180,
+      x: 780,
+      y: 500,
     })
   })
 
@@ -41,8 +41,8 @@ describe("graphNodeLayout", () => {
 
   it("maps workspace positions to CSS percentages", () => {
     expect(graphNodeCssPosition({ x: 300, y: 180 })).toEqual({
-      left: "50%",
-      top: "50%",
+      left: "18.75%",
+      top: "18%",
     })
   })
 })

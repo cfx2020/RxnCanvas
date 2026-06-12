@@ -18,7 +18,7 @@ describe("graphAutoLayout", () => {
   it("places a single node at a finite snapped position", () => {
     const plan = createGraphLayoutPlan({ graph: graph({ nodes: [node("node-a")] }) })
 
-    expect(plan.nodePositions["node-a"]).toEqual([300, 180])
+    expect(plan.nodePositions["node-a"]).toEqual([800, 500])
     expect(plan.changedNodeIds).toEqual(["node-a"])
   })
 

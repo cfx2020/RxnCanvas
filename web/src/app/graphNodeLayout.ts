@@ -12,8 +12,8 @@ export type GraphNodeLayoutBounds = {
 }
 
 export const graphNodeLayoutBounds: GraphNodeLayoutBounds = {
-  width: 600,
-  height: 360,
+  width: 1600,
+  height: 1000,
   grid: 20,
 }
 
@@ -26,8 +26,8 @@ export function graphNodePosition(node: GraphNodeSummary): GraphNodeLayoutPositi
   const match = node.id.match(/(\d+)$/)
   const index = match ? Number(match[1]) : 1
   return clampGraphNodeLayoutPosition({
-    x: 120 + index * 100,
-    y: 180,
+    x: 240 + index * 180,
+    y: 500,
   })
 }
 

@@ -43,7 +43,7 @@ describe("graphViewport", () => {
     const surfaceSize = { width: 1200, height: 720 }
     const graphPoint = screenPointToGraphPoint({ x: 600, y: 360 }, surfaceSize, viewport)
 
-    expect(graphPoint).toEqual({ x: 210, y: 120 })
+    expect(graphPoint).toEqual({ x: 460, y: 280 })
     expect(graphPointToScreenPoint(graphPoint, surfaceSize, viewport)).toEqual({ x: 600, y: 360 })
   })
 
@@ -53,8 +53,8 @@ describe("graphViewport", () => {
 
     const centered = zoomGraphViewport({ x: 0, y: 0, zoom: 1 }, "in")
     expect(centered.zoom).toBeCloseTo(1.2)
-    expect(centered.x).toBeCloseTo(50)
-    expect(centered.y).toBeCloseTo(30)
+    expect(centered.x).toBeCloseTo(133.333)
+    expect(centered.y).toBeCloseTo(83.333)
   })
 
   it("zooms wheel input around a screen anchor while preserving the graph point", () => {
@@ -187,13 +187,13 @@ describe("graphViewport", () => {
     expect(mappedGraphPoint.x).toBeCloseTo(graphPoint.x)
     expect(mappedGraphPoint.y).toBeCloseTo(graphPoint.y)
     expect(graphViewportFromMinimapCenter({ x: 0, y: 0, zoom: 2 }, graphPoint)).toEqual({
-      x: 150,
-      y: 110,
+      x: -100,
+      y: -50,
       zoom: 2,
     })
     const viewportFromPoint = graphViewportFromMinimapPoint({ x: 0, y: 0, zoom: 2 }, minimapPoint, geometry!)
-    expect(viewportFromPoint.x).toBeCloseTo(150)
-    expect(viewportFromPoint.y).toBeCloseTo(110)
+    expect(viewportFromPoint.x).toBeCloseTo(-100)
+    expect(viewportFromPoint.y).toBeCloseTo(-50)
     expect(viewportFromPoint.zoom).toBe(2)
   })
 
@@ -203,7 +203,7 @@ describe("graphViewport", () => {
 
   it("resets and serializes a CSS transform for the normalized viewport", () => {
     expect(resetGraphViewport()).toEqual(defaultGraphViewport)
-    expect(graphViewportCssTransform({ x: 120, y: 36, zoom: 2 })).toBe("translate(-40%, -20%) scale(2)")
+    expect(graphViewportCssTransform({ x: 120, y: 36, zoom: 2 })).toBe("translate(-15%, -7.2%) scale(2)")
   })
 })
 

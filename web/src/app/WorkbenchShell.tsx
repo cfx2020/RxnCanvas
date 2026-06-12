@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
-import { ChevronDown, Download, Languages, Moon, PanelLeft, Sun } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type ReactNode } from "react"
+import { ChevronDown, Download, Languages, Moon, PanelLeft, Sun, X } from "lucide-react"
 import {
   BrowserProjectRepositoryError,
   checksumBrowserStorageBytes,
@@ -9,15 +9,6 @@ import {
   type BrowserStorageObject,
 } from "../repository"
 import type { EnergyComputeData, ExportProfileData, FixtureRunData, GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ImportBatchSummary, ImportPreviewData, ImportRegisterAllData, ImportRegisterSelectionData, JsonObject, ParseCandidateSummary, RegistryApplyCorrectionData, ShellArtifact, ShellClient, ShellError, ShellRuntimeInfo, WorkbenchArtifactSummary, WorkspaceCommandData, WorkspaceSelectionSummary, WorkspaceSummary } from "../shell"
-import {
-  addCompositionDraftRow,
-  compositionDraftFromSelectedNode,
-  initialCompositionDraftState,
-  reconcileCompositionDraft,
-  removeCompositionDraftRow,
-  updateCompositionDraftRow,
-  type CompositionDraftState,
-} from "./compositionDraftState"
 import type { EnergyPanelOptions } from "./EnergyProfilePanel"
 import {
   clearEdgeLabelDraft,
@@ -35,13 +26,15 @@ import {
 import {
   basisFunctionCountFromObject,
   convertEnergyValue,
-  energyModeRelativeLabel,
-  energyUnitLabel,
+  electronicEnergyKeys,
   energyValueFromObjectRecord,
-  formatEnergyValue,
+  freeGasEnergyKeys,
+  freeGasUncorrectedEnergyKeys,
   resolveGasFreeEnergy1M,
-  resolveObjectEnergyValue,
   resolveSolutionFreeEnergy,
+  solutionBasisFunctionCountFromObject,
+  solutionElectronicEnergyKeys,
+  solutionFreeEnergyKeys,
   type ResolvedObjectEnergyValue,
 } from "./energyValues"
 import { reportExportFormats } from "./exportFormatCapabilities"
@@ -93,6 +86,13 @@ import {
 import type { GraphLayoutPlan } from "./graphAutoLayout"
 import { canvasPointToGraphNodePosition, graphNodePosition, moveGraphNodePosition } from "./graphNodeLayout"
 import { normalizeGraphViewport, type GraphViewport } from "./graphViewport"
+import {
+  graphNodeEnergyCompositionTerms,
+  graphNodeUsesManualCompositionExpression,
+  relativeEnergyExpressionTermsByNodeId,
+  relativeMainPathNodeIds,
+  type GraphRelativeEnergyTerm,
+} from "./graphRelativeEnergy"
 import { resolvePathAutoExtendIntent } from "./graphPathAutoExtend"
 import {
   createGraphPathOrderDraft,
@@ -104,6 +104,7 @@ import { GraphCanvas, type AddObjectNodeRequest, type AddRawFileNodeRequest, typ
 import {
   importPreviewArgsFromFiles,
   filesToWebImportFiles,
+  formatFileSize,
   initialTransientImportState,
   mergeRegisteredObjects,
   type TransientImportState,
@@ -128,7 +129,7 @@ import {
 import { initialProjectSidebarState, type ProjectSidebarState } from "./projectSidebarState"
 import { ProjectSidebar } from "./ProjectSidebar"
 import { ReportExportPanel, type ReportExportOptions } from "./ReportExportPanel"
-import { warningTargetDisplay } from "./displayNames"
+import { objectDisplayName, userFacingText, warningTargetDisplay } from "./displayNames"
 import {
   initialWorkbenchDomainState,
   projectWorkbenchSnapshot,
@@ -158,6 +159,7 @@ type WorkspaceFlowShellState = {
   projectRailDensity: "normal" | "compact"
   projectRailOpen: boolean
   inspectorOpen: boolean
+  inspectorMode: "source" | "export"
 }
 
 type WorkbenchViewMode = "canvas" | "table"
@@ -174,6 +176,8 @@ type SingleAddRawFileNodeRequest = Omit<AddRawFileNodeRequest, "source"> & {
   source: SingleRawFileNodeSource
 }
 
+type ProjectRawFileDropItem = { projectFileId: string; path: string }
+
 const defaultRuntimeInfo: ShellRuntimeInfo = {
   mode: "fixture",
   transportKind: "in-process-test",
@@ -183,10 +187,12 @@ const defaultWorkspaceFlowShellState: WorkspaceFlowShellState = {
   projectRailDensity: "normal",
   projectRailOpen: true,
   inspectorOpen: false,
+  inspectorMode: "export",
 }
 
 const narrowWorkbenchMediaQuery = "(max-width: 700px)"
 const activeProjectPreferenceKey = "rxnflow.activeProjectRef.v1"
+const workspaceEnergyReferenceNodeIdKey = "energy_reference_node_id"
 
 export function WorkbenchShell({
   shellClient,
@@ -225,16 +231,13 @@ export function WorkbenchShell({
   )
   const [edgeLabelPending, setEdgeLabelPending] = useState(false)
   const [edgeLabelError, setEdgeLabelError] = useState<ShellError | null>(null)
-  const [compositionDraft, setCompositionDraft] = useState<CompositionDraftState>(
-    initialCompositionDraftState,
-  )
-  const [compositionPending, setCompositionPending] = useState(false)
-  const [compositionError, setCompositionError] = useState<ShellError | null>(null)
+  const [sourceInspectorNodeId, setSourceInspectorNodeId] = useState<string | null>(null)
   const [parseCandidateChooser, setParseCandidateChooser] = useState<ParseCandidateChooserState | null>(null)
   const [canvasEnergyDisplayOptions, setCanvasEnergyDisplayOptions] = useState<CanvasEnergyDisplayOptions>({
     mode: "electronic",
     unit: "kcal_mol",
   })
+  const [energyReferenceNodeId, setEnergyReferenceNodeId] = useState<string | null>(null)
   const [energyPanelOptions, setEnergyPanelOptions] = useState<EnergyPanelOptions>({
     pathId: "",
     outputUnit: "kcal_mol",
@@ -338,6 +341,15 @@ export function WorkbenchShell({
     workbenchStateRef.current = workbenchState
   }, [workbenchState])
 
+  const projectFileProjectionInput = useMemo(
+    () => projectFileProjectionInputSignature(workbenchState),
+    [workbenchState.imports, workbenchState.objects, workbenchState.workspace],
+  )
+  const projectFileProjectionSource = useMemo(
+    () => projectFileProjectionSourceSignature(projectSidebarState.projectFiles),
+    [projectSidebarState.projectFiles],
+  )
+
   const replaceProjectSidebarState = useCallback((nextState: ProjectSidebarState) => {
     projectSidebarStateRef.current = nextState
     setProjectSidebarState(nextState)
@@ -345,7 +357,7 @@ export function WorkbenchShell({
 
   useEffect(() => {
     const current = projectSidebarStateRef.current
-    const projectedFiles = projectFileEntriesWithWorkbenchProjection(current.projectFiles, workbenchState)
+    const projectedFiles = projectFileEntriesWithWorkbenchProjection(current.projectFiles, workbenchStateRef.current)
     if (projectFileProjectionSignature(projectedFiles) === projectFileProjectionSignature(current.projectFiles)) {
       return
     }
@@ -353,7 +365,16 @@ export function WorkbenchShell({
       ...current,
       projectFiles: projectedFiles,
     })
-  }, [replaceProjectSidebarState, workbenchState])
+  }, [projectFileProjectionInput, projectFileProjectionSource, replaceProjectSidebarState])
+
+  const updateEnergyReferenceNodeId = useCallback((nodeId: string | null) => {
+    setEnergyReferenceNodeId(nodeId)
+    setWorkbenchState((current) => {
+      const nextState = workbenchStateWithEnergyReferenceNodeId(current, nodeId)
+      workbenchStateRef.current = nextState
+      return nextState
+    })
+  }, [])
 
   const replaceGraphEditorHistory = useCallback((nextState: GraphEditorHistoryState) => {
     graphEditorHistoryRef.current = nextState
@@ -476,10 +497,9 @@ export function WorkbenchShell({
       if (!current) return current
       return isSingleEdgeSelection(workbenchState.workspace?.selection) ? current : null
     })
-    setCompositionDraft((current) => reconcileCompositionDraft(current, workbenchState.workspace))
-    setCompositionError((current) => {
+    setSourceInspectorNodeId((current) => {
       if (!current) return current
-      return isSingleNodeSelection(workbenchState.workspace?.selection) ? current : null
+      return workbenchState.workspace?.graph.nodes.some((node) => node.id === current) ? current : null
     })
   }, [workbenchState.workspace])
 
@@ -506,6 +526,25 @@ export function WorkbenchShell({
       setPathOrderDraft(null)
     }
   }, [workbenchState.workspace])
+
+  useEffect(() => {
+    const workspace = workbenchState.workspace
+    if (!workspace) {
+      if (energyReferenceNodeId) setEnergyReferenceNodeId(null)
+      return
+    }
+    const nodeIds = new Set(workspace.graph.nodes.map((node) => node.id))
+    const persistedReferenceNodeId = workspaceEnergyReferenceNodeId(workspace)
+    if (persistedReferenceNodeId && nodeIds.has(persistedReferenceNodeId)) {
+      if (persistedReferenceNodeId !== energyReferenceNodeId) {
+        setEnergyReferenceNodeId(persistedReferenceNodeId)
+      }
+      return
+    }
+    if (persistedReferenceNodeId || (energyReferenceNodeId && !nodeIds.has(energyReferenceNodeId))) {
+      updateEnergyReferenceNodeId(null)
+    }
+  }, [energyReferenceNodeId, updateEnergyReferenceNodeId, workbenchState.workspace])
 
   useEffect(() => {
     setEnergyPanelOptions((current) => {
@@ -629,6 +668,96 @@ export function WorkbenchShell({
     if (!hydrated) {
       return restoredState
     }
+
+    const snapshot = await shellClient.run<WorkbenchSnapshotData>({
+      command: "workbench.snapshot",
+      args: { session_id: sessionId },
+    })
+    return projectWorkbenchSnapshot(snapshot)
+  }, [projectRepository, shellClient])
+
+  const pairRestoredProjectSolutionLogs = useCallback(async (
+    restoredState: WorkbenchDomainState,
+    activeProject: BrowserProjectRef,
+    projectFiles: ProjectFileEntry[],
+  ): Promise<WorkbenchDomainState> => {
+    const sessionId = restoredState.sessionId
+    if (!sessionId || !restoredState.workspace) return restoredState
+
+    let pairingProjectFiles = projectFiles
+    if (pairingProjectFiles.length === 0) {
+      try {
+        pairingProjectFiles = await listProjectFileEntries(projectRepository, activeProject)
+      } catch {
+        pairingProjectFiles = projectFiles
+      }
+    }
+
+    const candidates = restoredSolutionPairRepairCandidates(restoredState, pairingProjectFiles)
+    if (candidates.length === 0) return restoredState
+
+    let repaired = false
+    for (const candidate of candidates) {
+      let gasFile: BrowserStorageObject
+      let solutionFile: BrowserStorageObject
+      try {
+        gasFile = await projectRepository.readObject(activeProject.projectRef, candidate.gasFile.path)
+        solutionFile = await projectRepository.readObject(activeProject.projectRef, candidate.solutionFile.path)
+      } catch {
+        continue
+      }
+
+      const previewResponse = await shellClient.run<ImportPreviewData>({
+        command: "import.preview",
+        args: {
+          session_id: sessionId,
+          sources: [
+            {
+              kind: "inline_bytes",
+              filename: candidate.gasFile.name,
+              bytes_base64: bytesToBase64(gasFile.bytes),
+              mime_type: typeof gasFile.metadata?.mime_type === "string" ? gasFile.metadata.mime_type : "text/plain",
+            },
+            {
+              kind: "inline_bytes",
+              filename: candidate.solutionFile.name,
+              bytes_base64: bytesToBase64(solutionFile.bytes),
+              mime_type: typeof solutionFile.metadata?.mime_type === "string" ? solutionFile.metadata.mime_type : "text/plain",
+            },
+          ],
+        },
+      })
+      if (!previewResponse.ok || !previewResponse.data) continue
+
+      const registerResponse = await shellClient.run<ImportRegisterAllData>({
+        command: "import.register_all",
+        args: {
+          session_id: sessionId,
+          batch_id: previewResponse.data.batch.id,
+        },
+      })
+      if (!registerResponse.ok || !registerResponse.data) continue
+
+      const pairedObject = restoredPairedSolutionObjectForKey(candidate.key, registerResponse.data.objects)
+      if (!pairedObject) continue
+
+      for (const nodeId of candidate.nodeIds) {
+        const compositionResponse = await shellClient.run<WorkspaceCommandData>({
+          command: "workspace.set_node_composition",
+          args: {
+            session_id: sessionId,
+            node_id: nodeId,
+            composition: [{
+              object_id: pairedObject.id,
+              coefficient: 1,
+            }],
+          },
+        })
+        repaired = repaired || Boolean(compositionResponse.ok)
+      }
+    }
+
+    if (!repaired) return restoredState
 
     const snapshot = await shellClient.run<WorkbenchSnapshotData>({
       command: "workbench.snapshot",
@@ -775,6 +904,11 @@ export function WorkbenchShell({
       activeProject,
       baseState.projectFiles,
     )
+    restoredState = await pairRestoredProjectSolutionLogs(
+      restoredState,
+      activeProject,
+      baseState.projectFiles,
+    )
     restoredState = await ensureRestoredProjectActivePath(restoredState, String(response.data.session_id))
     restoredState = await removeRestoredDuplicateGraphNodes(restoredState, String(response.data.session_id))
     if (shellSessionVersionRef.current !== restoreVersion) {
@@ -796,7 +930,7 @@ export function WorkbenchShell({
     }
     replaceProjectSidebarState(nextState)
     return restoredState
-  }, [ensureRestoredProjectActivePath, hydrateRestoredProjectGeometry, projectRepository, removeRestoredDuplicateGraphNodes, replaceProjectSidebarState, resetGraphEditorHistory, shellClient])
+  }, [ensureRestoredProjectActivePath, hydrateRestoredProjectGeometry, pairRestoredProjectSolutionLogs, projectRepository, removeRestoredDuplicateGraphNodes, replaceProjectSidebarState, resetGraphEditorHistory, shellClient])
 
   const createSidebarProject = useCallback(
     async (name: string) => {
@@ -1268,22 +1402,23 @@ export function WorkbenchShell({
     }
 
     const data = response.data as WorkspaceCommandData
-    setEnergyPanelOptions((current) => energyOptionsForWorkspace(current, data.workspace))
     const baseState = workbenchStateRef.current
+    const workspace = preserveWorkspaceMetadata(baseState.workspace, data.workspace)
+    setEnergyPanelOptions((current) => energyOptionsForWorkspace(current, workspace))
     const nextState: WorkbenchDomainState = {
       ...baseState,
       status: "success",
       active: {
         ...baseState.active,
-        workspaceId: data.workspace.workspace_id,
-        graphId: data.workspace.graph.id,
+        workspaceId: workspace.workspace_id,
+        graphId: workspace.graph.id,
       },
       counts: {
         ...baseState.counts,
         graphs: 1,
         workspaces: 1,
       },
-      workspace: data.workspace,
+      workspace,
       warnings: response.warnings,
       error: undefined,
     }
@@ -1695,9 +1830,426 @@ export function WorkbenchShell({
     await saveSidebarProject(latestWorkbenchState ?? workbenchStateRef.current)
   }, [addReusableProjectFileObjectNode, applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, projectRepository, pushGraphSnapshotHistory, replaceProjectSidebarState, restoreSidebarProjectSession, saveSidebarProject, shellClient, t, updateProjectFileEntry])
 
+  const addProjectRawFilesNode = useCallback(async (request: {
+    files: ProjectRawFileDropItem[]
+    position: [number, number]
+    addNode?: boolean
+  }) => {
+    const activeProject = projectSidebarStateRef.current.activeProject
+    const files = uniqueProjectFileDropItems(request.files)
+    setParseCandidateChooser(null)
+    if (files.length === 0) return
+    if (!activeProject) {
+      applyDropImportError(shellError("active_project_required", "Active browser project is required before dropping raw files.", "active_project"))
+      return
+    }
+    let sessionId = workbenchStateRef.current.sessionId
+    if (!sessionId) {
+      const restoredState = await restoreSidebarProjectSession(projectSidebarStateRef.current)
+      sessionId = restoredState?.sessionId
+    }
+    if (!sessionId) {
+      applyDropImportError(shellError("invalid_input", "Shell session is required before dropping raw files.", "session_id"))
+      return
+    }
+
+    const projectFiles = files
+      .map((source) => projectSidebarStateRef.current.projectFiles.find((file) => (
+        file.id === source.projectFileId || file.path === source.path
+      )))
+      .filter((file): file is ProjectFileEntry => Boolean(file))
+    const reusablePrimaryObjects = projectFiles
+      .filter((file) => !projectFileLooksLikeSolutionLog(file))
+      .map((file) => reusableProjectFileObjects(file, workbenchStateRef.current)[0])
+      .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object))
+    const batchIncludesSolutionLog = projectFiles.some((file) => projectFileLooksLikeSolutionLog(file))
+    const locallyPairedObjects = locallyPairReusableSolutionObjects(projectFiles, workbenchStateRef.current)
+    const reusableObjectsAlreadyPaired = !batchIncludesSolutionLog
+      || reusablePrimaryObjects.every((object) => Boolean(resolveSolutionFreeEnergy(object)))
+    if (
+      request.addNode !== false
+      && locallyPairedObjects.length > 0
+      && locallyPairedObjects.length === new Set(locallyPairedObjects.map((object) => object.id)).size
+      && locallyPairedObjects.length === projectFiles.filter((file) => !projectFileLooksLikeSolutionLog(file)).length
+    ) {
+      if (!(await ensureWorkspaceReady(sessionId))) return
+      const objectIds = locallyPairedObjects.map((object) => object.id)
+      const before = snapshotGraphEditorGraph(workbenchStateRef.current.workspace)
+      const pairedObjects = mergeRegisteredObjects(workbenchStateRef.current.objects, locallyPairedObjects)
+      const pairedWorkbenchState: WorkbenchDomainState = {
+        ...workbenchStateRef.current,
+        status: "success",
+        objects: pairedObjects,
+        counts: {
+          ...workbenchStateRef.current.counts,
+          objects: pairedObjects.length,
+        },
+        warnings: [],
+        error: undefined,
+      }
+      workbenchStateRef.current = pairedWorkbenchState
+      setWorkbenchState(pairedWorkbenchState)
+      setActiveObjectId(objectIds[0])
+      let latestWorkbenchState: WorkbenchDomainState = pairedWorkbenchState
+      let latestWorkspace: WorkspaceSummary | null = null
+      setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+      for (const [index, object] of locallyPairedObjects.entries()) {
+        const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
+          command: "workspace.add_node",
+          args: {
+            session_id: sessionId,
+            kind: "species",
+            label: object.label ?? object.id,
+            chemical_object_ids: [object.id],
+            position: stackedCandidateNodePosition(request.position, index),
+          },
+        })
+        latestWorkbenchState = applyWorkspaceResponse(addNodeResponse) ?? latestWorkbenchState
+        if (!addNodeResponse.ok || !addNodeResponse.data) {
+          const error = addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node")
+          for (const file of projectFiles) {
+            updateProjectFileEntry(file.path, {
+              status: "error",
+              registeredObjectIds: objectIds,
+              warnings: projectFileWarningMessagesFromError(error),
+            })
+          }
+          return
+        }
+        latestWorkspace = addNodeResponse.data.workspace
+      }
+      if (latestWorkspace) {
+        for (const file of projectFiles) {
+          updateProjectFileEntry(file.path, {
+            status: "used-in-graph",
+            registeredObjectIds: objectIds,
+            graphNodeIds: objectIds.flatMap((objectId) => graphNodeIdsForObject(latestWorkspace, objectId)),
+            warnings: [],
+          })
+        }
+        pushGraphSnapshotHistory(t("graphCanvas.history.addNode"), before, latestWorkspace)
+      }
+      await saveSidebarProject(latestWorkbenchState)
+      return
+    }
+    if (
+      request.addNode !== false
+      && reusablePrimaryObjects.length > 0
+      && reusablePrimaryObjects.length === new Set(reusablePrimaryObjects.map((object) => object.id)).size
+      && reusablePrimaryObjects.length === projectFiles.filter((file) => !projectFileLooksLikeSolutionLog(file)).length
+      && reusableObjectsAlreadyPaired
+    ) {
+      if (!(await ensureWorkspaceReady(sessionId))) return
+      const before = snapshotGraphEditorGraph(workbenchStateRef.current.workspace)
+      setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+      let latestWorkbenchState: WorkbenchDomainState | null = null
+      let latestWorkspace: WorkspaceSummary | null = null
+      for (const [index, object] of reusablePrimaryObjects.entries()) {
+        const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
+          command: "workspace.add_node",
+          args: {
+            session_id: sessionId,
+            kind: "species",
+            label: object.label ?? object.id,
+            chemical_object_ids: [object.id],
+            position: stackedCandidateNodePosition(request.position, index),
+          },
+        })
+        latestWorkbenchState = applyWorkspaceResponse(addNodeResponse)
+        if (!addNodeResponse.ok || !addNodeResponse.data) {
+          const error = addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node")
+          for (const file of projectFiles) {
+            updateProjectFileEntry(file.path, {
+              status: "error",
+              registeredObjectIds: reusablePrimaryObjects.map((item) => item.id),
+              warnings: projectFileWarningMessagesFromError(error),
+            })
+          }
+          return
+        }
+        latestWorkspace = addNodeResponse.data.workspace
+      }
+      if (latestWorkspace) {
+        const objectIds = reusablePrimaryObjects.map((object) => object.id)
+        for (const file of projectFiles) {
+          updateProjectFileEntry(file.path, {
+            status: "used-in-graph",
+            registeredObjectIds: objectIds,
+            graphNodeIds: objectIds.flatMap((objectId) => graphNodeIdsForObject(latestWorkspace, objectId)),
+            warnings: [],
+          })
+        }
+        pushGraphSnapshotHistory(t("graphCanvas.history.addNode"), before, latestWorkspace)
+      }
+      await saveSidebarProject(latestWorkbenchState ?? workbenchStateRef.current)
+      return
+    }
+
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const importFileResults = await Promise.all(files.map((file) => rawDropImportFile(
+      projectRepository,
+      activeProject.projectRef,
+      {
+        kind: "project-file",
+        projectFileId: file.projectFileId,
+        path: file.path,
+      },
+    )))
+    const failedResult = importFileResults.find((result) => !result.ok)
+    if (failedResult && !failedResult.ok) {
+      updateProjectFileEntry(failedResult.file.storagePath ?? failedResult.file.name, {
+        status: "error",
+        warnings: projectFileWarningMessagesFromError(failedResult.error),
+      })
+      applyDropImportError(failedResult.error, importFileResults.map((result) => result.file))
+      return
+    }
+
+    const importedFiles = importFileResults
+      .filter((result): result is Extract<RawDropImportFileResult, { ok: true }> => result.ok)
+      .map((result) => result.file)
+    const previewState: TransientImportState = {
+      ...initialTransientImportState,
+      status: "previewing",
+      selectedFiles: importedFiles,
+      expectedFormat: "auto",
+      strict: false,
+    }
+    setTransientImportState(previewState)
+    replaceProjectSidebarState(await refreshProjects(projectRepository, projectSidebarStateRef.current))
+
+    const payload = await importPreviewArgsFromFiles(previewState, sessionId, { preferInlineBytes: true })
+    if (!payload.ok) {
+      for (const file of payload.files) {
+        updateProjectFileEntry(file.storagePath ?? file.name, {
+          status: "error",
+          warnings: projectFileWarningMessagesFromError(payload.error),
+        })
+      }
+      applyDropImportError(payload.error, payload.files)
+      return
+    }
+
+    const previewResponse = await shellClient.run<ImportPreviewData>({
+      command: "import.preview",
+      args: payload.args,
+    })
+    if (!previewResponse.ok || !previewResponse.data) {
+      const error = previewResponse.error ?? shellError("invalid_input", "Import preview did not return a batch.", "import.preview")
+      for (const file of payload.files) {
+        updateProjectFileEntry(file.storagePath ?? file.name, {
+          status: "error",
+          warnings: projectFileWarningMessagesFromError(error),
+        })
+      }
+      applyDropImportError(error, payload.files, previewResponse.warnings)
+      return
+    }
+
+    const previewBatch = previewResponse.data.batch
+    const previewWarnings = projectFileWarningMessagesFromWarnings(previewResponse.warnings)
+    for (const file of payload.files) {
+      updateProjectFileEntry(file.storagePath ?? file.name, {
+        status: "previewed",
+        warnings: previewWarnings,
+      })
+    }
+    setTransientImportState((current) => ({
+      ...current,
+      status: "ready",
+      selectedFiles: payload.files,
+      activeBatch: previewBatch,
+      registeredObjectIds: [],
+      warnings: previewResponse.warnings,
+      error: undefined,
+    }))
+    setWorkbenchState((current) => {
+      const imports = upsertImportBatch(current.imports, previewBatch)
+      return {
+        ...current,
+        status: "success",
+        imports,
+        counts: { ...current.counts, imports: imports.length },
+        warnings: previewResponse.warnings,
+        error: undefined,
+      }
+    })
+
+    const objectCount = importPreviewObjectCount(previewBatch)
+    const chooserItem = importPreviewCandidateChooserItem(previewBatch)
+    if (objectCount > 1 && chooserItem) {
+      const chooserFile = payload.files.find((file) => file.id === chooserItem.itemId) ?? payload.files[0]
+      setParseCandidateChooser({
+        projectFileId: chooserFile?.id ?? "",
+        rawFilePath: chooserFile?.storagePath ?? chooserFile?.name ?? "",
+        batchId: previewBatch.id,
+        itemId: chooserItem.itemId,
+        candidates: chooserItem.candidates,
+        selectedCandidateIds: [chooserItem.candidates[0]?.candidate_id].filter((value): value is string => Boolean(value)),
+        position: request.position,
+        status: "choosing",
+        error: null,
+      })
+      return
+    }
+    if (objectCount === 0) {
+      const error = shellError("invalid_input", "Raw file preview produced no graph-ready objects.", "import.preview")
+      for (const file of payload.files) {
+        updateProjectFileEntry(file.storagePath ?? file.name, {
+          status: "error",
+          warnings: projectFileWarningMessagesFromError(error),
+        })
+      }
+      applyDropImportError(error, payload.files, previewResponse.warnings, previewBatch)
+      return
+    }
+
+    setTransientImportState((current) => ({
+      ...current,
+      status: "registering",
+      warnings: [],
+      error: undefined,
+    }))
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    const registerResponse = await shellClient.run<ImportRegisterAllData>({
+      command: "import.register_all",
+      args: {
+        session_id: sessionId,
+        batch_id: previewBatch.id,
+      },
+    })
+    if (!registerResponse.ok || !registerResponse.data) {
+      const error = registerResponse.error ?? shellError("invalid_input", "Import register did not return object ids.", "import.register_all")
+      for (const file of payload.files) {
+        updateProjectFileEntry(file.storagePath ?? file.name, {
+          status: "error",
+          warnings: projectFileWarningMessagesFromError(error),
+        })
+      }
+      applyDropImportError(error, payload.files, registerResponse.warnings, previewBatch)
+      return
+    }
+
+    const registerData = registerResponse.data
+    const primaryObjects = uniqueWorkbenchObjects(payload.files
+      .filter((file) => !webImportFileLooksLikeSolutionLog(file))
+      .map((file) => primaryObjectForRegisteredImport(file, registerData.objects, registerData.registered_object_ids))
+      .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object)))
+    const primaryObjectIds = primaryObjects.map((object) => object.id)
+    if (request.addNode !== false && primaryObjects.length === 0) {
+      const error = shellError("invalid_input", "Import register did not return a graph-ready object.", "import.register_all")
+      for (const file of payload.files) {
+        updateProjectFileEntry(file.storagePath ?? file.name, {
+          status: "error",
+          warnings: projectFileWarningMessagesFromError(error),
+        })
+      }
+      applyDropImportError(error, payload.files, registerResponse.warnings, registerData.batch)
+      return
+    }
+
+    setActiveObjectId(primaryObjectIds[0] ?? registerData.registered_object_ids[0])
+    const registerWarnings = projectFileWarningMessagesFromWarnings(registerResponse.warnings)
+    for (const file of payload.files) {
+      const primaryObject = primaryObjectForRegisteredImport(file, registerData.objects, registerData.registered_object_ids)
+      updateProjectFileEntry(file.storagePath ?? file.name, {
+        status: "registered",
+        registeredObjectIds: projectFileObjectIdsForImport(file, primaryObject, primaryObjectIds.length > 0 ? primaryObjectIds : registerData.registered_object_ids),
+        warnings: registerWarnings,
+      })
+    }
+    setTransientImportState((current) => ({
+      ...current,
+      status: "registered",
+      activeBatch: registerData.batch,
+      registeredObjectIds: registerData.registered_object_ids,
+      warnings: registerResponse.warnings,
+      error: undefined,
+    }))
+    const baseState = workbenchStateRef.current
+    const imports = upsertImportBatch(baseState.imports, registerData.batch)
+    const mergedObjects = mergeRegisteredObjects(baseState.objects, registerData.objects)
+    const registeredWorkbenchState: WorkbenchDomainState = {
+      ...baseState,
+      status: "success",
+      imports,
+      objects: mergedObjects,
+      counts: {
+        ...baseState.counts,
+        imports: imports.length,
+        objects: mergedObjects.length,
+      },
+      warnings: registerResponse.warnings,
+      error: undefined,
+    }
+    workbenchStateRef.current = registeredWorkbenchState
+    setWorkbenchState(registeredWorkbenchState)
+
+    if (request.addNode === false || primaryObjects.length === 0) {
+      await saveSidebarProject(registeredWorkbenchState)
+      return
+    }
+
+    if (!(await ensureWorkspaceReady(sessionId))) return
+    const before = snapshotGraphEditorGraph(workbenchStateRef.current.workspace)
+    setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
+    let latestWorkbenchState: WorkbenchDomainState = registeredWorkbenchState
+    let latestWorkspace: WorkspaceSummary | null = null
+    for (const [index, object] of primaryObjects.entries()) {
+      const addNodeResponse = await shellClient.run<WorkspaceCommandData>({
+        command: "workspace.add_node",
+        args: {
+          session_id: sessionId,
+          kind: "species",
+          label: object.label ?? object.id,
+          chemical_object_ids: [object.id],
+          position: stackedCandidateNodePosition(request.position, index),
+        },
+      })
+      latestWorkbenchState = applyWorkspaceResponse(addNodeResponse) ?? latestWorkbenchState
+      if (!addNodeResponse.ok || !addNodeResponse.data) {
+        const error = addNodeResponse.error ?? shellError("invalid_input", "Workspace add node did not return workspace data.", "workspace.add_node")
+        for (const file of payload.files) {
+          updateProjectFileEntry(file.storagePath ?? file.name, {
+            status: "error",
+            registeredObjectIds: primaryObjectIds,
+            warnings: projectFileWarningMessagesFromError(error),
+          })
+        }
+        return
+      }
+      latestWorkspace = addNodeResponse.data.workspace
+    }
+    if (latestWorkspace) {
+      for (const file of payload.files) {
+        updateProjectFileEntry(file.storagePath ?? file.name, {
+          status: "used-in-graph",
+          registeredObjectIds: primaryObjectIds,
+          graphNodeIds: primaryObjectIds.flatMap((objectId) => graphNodeIdsForObject(latestWorkspace, objectId)),
+          warnings: [],
+        })
+      }
+      pushGraphSnapshotHistory(t("graphCanvas.history.addNode"), before, latestWorkspace)
+    }
+    await saveSidebarProject(latestWorkbenchState)
+  }, [applyDropImportError, applyWorkspaceResponse, ensureWorkspaceReady, projectRepository, pushGraphSnapshotHistory, replaceProjectSidebarState, restoreSidebarProjectSession, saveSidebarProject, shellClient, t, updateProjectFileEntry])
+
   const addRawFileNode = useCallback(async (request: AddRawFileNodeRequest) => {
     if (request.source.kind === "project-files") {
       const files = uniqueProjectFileDropItems(request.source.files)
+      const shouldBatchImport = files.length > 1
+        || files.some((file) => projectSidebarStateRef.current.projectFiles.some((projectFile) => (
+          (projectFile.id === file.projectFileId || projectFile.path === file.path)
+          && projectFileLooksLikeSolutionLog(projectFile)
+        )))
+      if (shouldBatchImport) {
+        await addProjectRawFilesNode({
+          files,
+          position: request.position,
+          addNode: request.addNode,
+        })
+        return
+      }
       for (const [index, file] of files.entries()) {
         await addSingleRawFileNode({
           source: {
@@ -1724,7 +2276,7 @@ export function WorkbenchShell({
       position: request.position,
       addNode: request.addNode,
     })
-  }, [addSingleRawFileNode])
+  }, [addProjectRawFilesNode, addSingleRawFileNode])
 
   const cancelParseCandidateChooser = useCallback(() => {
     setParseCandidateChooser(null)
@@ -1799,7 +2351,14 @@ export function WorkbenchShell({
       return
     }
 
-    const registerData = registerResponse.data
+    const registerData = {
+      ...registerResponse.data,
+      batch: importBatchWithRegisteredObjectIds(
+        registerResponse.data.batch,
+        chooser.itemId,
+        registerResponse.data.registered_object_ids,
+      ),
+    }
     const registeredObjectIds = registerData.registered_object_ids
     const objectById = new Map(registerData.objects.map((object) => [object.id, object]))
     const registeredObjects = registeredObjectIds
@@ -2192,70 +2751,42 @@ export function WorkbenchShell({
     })
   }, [applyWorkspaceResponse, nextGraphEditorHistoryEntryId, pushGraphEditorHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
-  const updateNodeCompositionDraft = useCallback((
-    index: number,
-    field: keyof CompositionDraftState["rows"][number],
-    value: string,
-  ) => {
-    setCompositionError(null)
-    setCompositionDraft((current) => updateCompositionDraftRow(current, index, field, value))
-  }, [])
-
-  const addNodeCompositionDraftRow = useCallback(() => {
-    const fallbackObjectId = activeObjectId ?? workbenchState.objects[0]?.id ?? ""
-    setCompositionError(null)
-    setCompositionDraft((current) => addCompositionDraftRow(current, fallbackObjectId))
-  }, [activeObjectId, workbenchState.objects])
-
-  const removeNodeCompositionDraftRow = useCallback((index: number) => {
-    setCompositionError(null)
-    setCompositionDraft((current) => removeCompositionDraftRow(current, index))
-  }, [])
-
-  const resetNodeCompositionDraft = useCallback(() => {
-    setCompositionError(null)
-    setCompositionDraft(compositionDraftFromSelectedNode(workbenchState.workspace))
-  }, [workbenchState.workspace])
-
-  const applyNodeCompositionDraft = useCallback(async () => {
+  const setGraphNodeCoefficient = useCallback(async (nodeId: string, coefficient: number) => {
     const sessionId = workbenchState.sessionId
-    const nodeId = compositionDraft.nodeId
-    if (!sessionId || !nodeId) return
-    const compositionTerms = []
-    let validationError: ShellError | null = null
-    for (const [index, row] of compositionDraft.rows.entries()) {
-      const coefficient = Number(row.coefficient)
-      if (!row.objectId || !Number.isFinite(coefficient) || coefficient === 0) {
-        validationError = shellError("invalid_input", "Composition coefficient must be a non-zero finite number.", `composition.${index}.coefficient`)
-        break
-      }
-      compositionTerms.push({
-        object_id: row.objectId,
-        coefficient,
-        role: row.role.trim() || null,
-        label: row.label.trim() || null,
-        metadata: {},
-      })
-    }
-    if (validationError) {
-      setCompositionError(validationError)
-      setWorkbenchState((current) => ({
-        ...current,
-        status: "error",
-        error: validationError,
-      }))
+    const workspace = workbenchState.workspace
+    const node = workspace?.graph.nodes.find((item) => item.id === nodeId)
+    if (!sessionId || !workspace || !node) return
+    if (!Number.isFinite(coefficient) || coefficient === 0) {
+      const error = shellError("invalid_input", "Composition coefficient must be a non-zero finite number.", `node.${nodeId}.coefficient`)
+      setWorkbenchState((current) => ({ ...current, status: "error", error }))
       return
     }
-    if (compositionTerms.length === 0) {
-      const error = shellError("invalid_input", "Node composition must include at least one term.", "composition")
-      setCompositionError(error)
+    const existingTerms = node.composition?.length
+      ? node.composition
+      : (node.chemical_object_ids ?? []).map((objectId) => ({
+          object_id: objectId,
+          coefficient: 1,
+          role: null,
+          label: null,
+          metadata: {},
+        }))
+    if (existingTerms.length === 0) {
+      const error = shellError("invalid_input", "Node composition must include at least one term.", `node.${nodeId}.composition`)
       setWorkbenchState((current) => ({ ...current, status: "error", error }))
       return
     }
 
-    setCompositionPending(true)
-    setCompositionError(null)
-    const before = snapshotGraphEditorGraph(workbenchState.workspace)
+    const compositionTerms = existingTerms.map((term, index) => ({
+      object_id: term.object_id,
+      coefficient: index === 0
+        ? coefficient
+        : (typeof term.coefficient === "number" && Number.isFinite(term.coefficient) ? term.coefficient : 1),
+      role: term.role ?? null,
+      label: term.label ?? null,
+      metadata: term.metadata ?? {},
+    }))
+
+    const before = snapshotGraphEditorGraph(workspace)
     setWorkbenchState((current) => ({ ...current, status: "running", error: undefined }))
     const response = await shellClient.run<WorkspaceCommandData>({
       command: "workspace.set_node_composition",
@@ -2265,10 +2796,8 @@ export function WorkbenchShell({
         composition: compositionTerms,
       },
     })
-    setCompositionPending(false)
     if (!response.ok || !response.data) {
       const error = response.error ?? shellError("invalid_input", "Workspace command did not return data.", "workspace.set_node_composition")
-      setCompositionError(error)
       setWorkbenchState((current) => ({
         ...current,
         status: "error",
@@ -2277,10 +2806,9 @@ export function WorkbenchShell({
       }))
       return
     }
-    setCompositionDraft(compositionDraftFromSelectedNode(response.data.workspace))
     applyWorkspaceResponse(response)
     pushGraphSnapshotHistory(t("graphCanvas.history.composition"), before, response.data.workspace)
-  }, [applyWorkspaceResponse, compositionDraft, pushGraphSnapshotHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
+  }, [applyWorkspaceResponse, pushGraphSnapshotHistory, shellClient, t, workbenchState.sessionId, workbenchState.workspace])
 
   const updateGraphEdgeLabelDraft = useCallback((label: string) => {
     setEdgeLabelError(null)
@@ -2467,12 +2995,27 @@ export function WorkbenchShell({
     updateGraphEditorHistory((current) => completeGraphEditorHistoryReplay(current, direction))
   }, [applyWorkspaceResponse, shellClient, updateGraphEditorHistory])
 
+  const graphHistoryControls = useMemo(() => ({
+    canUndo: graphEditorHistory.undo.length > 0,
+    canRedo: graphEditorHistory.redo.length > 0,
+    undoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "undo"),
+    redoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "redo"),
+    running: graphEditorHistory.running,
+    error: graphEditorHistory.error,
+  }), [graphEditorHistory])
+
+  const undoGraphHistory = useCallback(() => {
+    void replayGraphEditorHistory("undo")
+  }, [replayGraphEditorHistory])
+
+  const redoGraphHistory = useCallback(() => {
+    void replayGraphEditorHistory("redo")
+  }, [replayGraphEditorHistory])
+
   const clearGraphSelection = useCallback(() => {
     setGraphEditorInteraction(clearGraphEditorSelection)
     setEdgeLabelError(null)
     setEdgeLabelDraft(initialEdgeLabelDraftState)
-    setCompositionError(null)
-    setCompositionDraft(initialCompositionDraftState)
     setPathOrderDraft(null)
     void selectGraphItems({ node_ids: [], edge_ids: [], path_ids: [] }, { recordHistory: true })
   }, [selectGraphItems])
@@ -2487,8 +3030,6 @@ export function WorkbenchShell({
       : undefined
     setEdgeLabelError(null)
     setEdgeLabelDraft(edgeLabelDraftFromSelectedEdge(nextWorkspace))
-    setCompositionError(null)
-    setCompositionDraft(compositionDraftFromSelectedNode(nextWorkspace))
     if (isSingleGraphEditorPathSelection(selection) && workspace) {
       const path = workspace.graph.paths.find((item) => item.id === selection.pathIds[0])
       setPathOrderDraft(path ? createGraphPathOrderDraft(path.id, path.node_ids) : null)
@@ -2648,6 +3189,9 @@ export function WorkbenchShell({
       const selectableBase = mode === "replace" ? base : clearGraphEditorPendingEdge(base)
       const nextInteraction = selectGraphEditorNode(selectableBase, nodeId, mode)
       setGraphEditorInteraction(nextInteraction)
+      if (mode === "replace") {
+        setSourceInspectorNodeId(nodeId)
+      }
       syncDraftsForGraphSelection(nextInteraction.selection)
       void selectGraphItems(workspaceSelectionFromGraphEditorSelection(nextInteraction.selection), { recordHistory: true })
     },
@@ -2831,13 +3375,29 @@ export function WorkbenchShell({
   const toggleExportDock = useCallback(() => {
     setWorkspaceFlowShellState((current) => ({
       ...current,
-      inspectorOpen: !current.inspectorOpen,
+      inspectorOpen: current.inspectorMode === "export" ? !current.inspectorOpen : true,
+      inspectorMode: "export",
     }))
+  }, [])
+
+  const closeInspector = useCallback(() => {
+    setWorkspaceFlowShellState((current) => ({
+      ...current,
+      inspectorOpen: false,
+    }))
+  }, [])
+
+  const dismissCanvasTransientPanels = useCallback(() => {
+    setWorkspaceFlowShellState((current) => (
+      current.inspectorOpen && current.inspectorMode === "source"
+        ? { ...current, inspectorOpen: false }
+        : current
+    ))
   }, [])
 
   const solutionLogPairCandidates = useMemo(
     () => solutionLogPairCandidatesForWorkbench(workbenchState, projectSidebarState.projectFiles),
-    [projectSidebarState.projectFiles, workbenchState],
+    [projectSidebarState.projectFiles, workbenchState.objects, workbenchState.workspace],
   )
 
   const pairSolutionLog = useCallback(async (candidate: NodeSolutionLogPairCandidate) => {
@@ -2853,6 +3413,15 @@ export function WorkbenchShell({
       addNode: false,
     })
   }, [addRawFileNode])
+
+  const openSourceInspectorForNode = useCallback((nodeId: string) => {
+    setSourceInspectorNodeId(nodeId)
+    setWorkspaceFlowShellState((current) => ({
+      ...current,
+      inspectorOpen: true,
+      inspectorMode: "source",
+    }))
+  }, [])
 
   return (
     <div className="workbench-shell" ref={shellElementRef} data-theme={theme}>
@@ -2943,31 +3512,24 @@ export function WorkbenchShell({
         <section className="canvas-stage" aria-label={t("workbench.flow.canvasStage")}>
           <div className="workspace-column canvas-stage-stack">
             <WorkbenchViewSwitcher viewMode={viewMode} onViewModeChange={setViewMode} />
-            {viewMode === "canvas" ? (
+            <div className="workbench-view-pane" data-view="canvas" hidden={viewMode !== "canvas"}>
               <GraphCanvas
+                active={viewMode === "canvas"}
                 state={workbenchState}
                 activeObjectId={activeObjectId}
                 interactionState={graphEditorInteraction}
                 autoLayoutStatus={autoLayoutStatus}
                 pathAuthoringStatus={pathAuthoringStatus}
-                historyControls={{
-                  canUndo: graphEditorHistory.undo.length > 0,
-                  canRedo: graphEditorHistory.redo.length > 0,
-                  undoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "undo"),
-                  redoLabel: graphEditorHistoryReplayLabel(graphEditorHistory, "redo"),
-                  running: graphEditorHistory.running,
-                  error: graphEditorHistory.error,
-                }}
+                historyControls={graphHistoryControls}
                 pathOrderDraft={pathOrderDraft}
                 edgeLabelDraft={edgeLabelDraft}
                 edgeLabelPending={edgeLabelPending}
                 edgeLabelError={edgeLabelError}
-                compositionDraft={compositionDraft}
-                compositionPending={compositionPending}
-                compositionError={compositionError}
                 energyDisplayOptions={canvasEnergyDisplayOptions}
+                energyReferenceNodeId={energyReferenceNodeId}
                 candidateChooser={parseCandidateChooser}
                 onEnergyDisplayOptionsChange={updateCanvasEnergyDisplayOptions}
+                onEnergyReferenceNodeIdChange={updateEnergyReferenceNodeId}
                 onSelectNode={selectGraphNode}
                 onSelectEdge={selectGraphEdge}
                 onSelectPath={selectGraphPath}
@@ -2999,37 +3561,43 @@ export function WorkbenchShell({
                 onMoveNode={moveGraphNode}
                 onUpdateNodeLabel={updateGraphNodeLabel}
                 onNudgeNodes={nudgeGraphNodes}
-                onUndoHistory={() => void replayGraphEditorHistory("undo")}
-                onRedoHistory={() => void replayGraphEditorHistory("redo")}
+                onUndoHistory={undoGraphHistory}
+                onRedoHistory={redoGraphHistory}
                 onApplyAutoLayout={applyGraphAutoLayout}
                 onRemoveGraphItems={removeGraphItems}
                 onClearSelection={clearGraphSelection}
+                onDismissFloatingPanels={dismissCanvasTransientPanels}
                 onSetViewport={setGraphViewport}
                 onAutoFitViewport={autoFitGraphViewport}
                 onTogglePanMode={togglePanMode}
-                onCompositionDraftRowChange={updateNodeCompositionDraft}
-                onAddCompositionDraftRow={addNodeCompositionDraftRow}
-                onRemoveCompositionDraftRow={removeNodeCompositionDraftRow}
-                onResetCompositionDraft={resetNodeCompositionDraft}
-                onApplyCompositionDraft={applyNodeCompositionDraft}
+                onSetNodeCoefficient={setGraphNodeCoefficient}
+                onShowNodeSource={openSourceInspectorForNode}
                 solutionLogPairCandidates={solutionLogPairCandidates}
                 onPairSolutionLog={pairSolutionLog}
               />
-            ) : (
+            </div>
+            <div className="workbench-view-pane" data-view="table" hidden={viewMode !== "table"}>
               <WorkbenchEnergyTable
                 state={workbenchState}
                 options={canvasEnergyDisplayOptions}
+                energyReferenceNodeId={energyReferenceNodeId}
                 activeObjectId={activeObjectId}
               />
-            )}
+            </div>
           </div>
         </section>
         <InspectorPanel
           state={workbenchState}
+          open={workspaceFlowShellState.inspectorOpen}
+          mode={workspaceFlowShellState.inspectorMode}
+          sourceNodeId={sourceInspectorNodeId}
+          projectFiles={projectSidebarState.projectFiles}
+          projectRepository={projectRepository}
           hasActiveBrowserProject={Boolean(projectSidebarState.activeProject)}
           reportExportOptions={reportExportOptions}
           onReportExportOptionsChange={setReportExportOptions}
           onRunReportExport={runReportExport}
+          onClose={closeInspector}
         />
       </main>
     </div>
@@ -3079,16 +3647,20 @@ function WorkbenchViewSwitcher({
 
 function WorkbenchEnergyTable({
   state,
-  options,
+  energyReferenceNodeId,
   activeObjectId,
 }: {
   state: WorkbenchDomainState
   options: CanvasEnergyDisplayOptions
+  energyReferenceNodeId?: string | null
   activeObjectId?: string
 }) {
   const { t } = useI18n()
-  const rows = workbenchEnergyTableRows(state, options)
-  const pathRows = workbenchEnergyPathRows(state, options)
+  const [tableMode, setTableMode] = useState<"absolute" | "relative">("absolute")
+  const rows = useMemo(
+    () => tableMode === "absolute" ? workbenchEnergyTableRows(state) : workbenchRelativeEnergyTableRows(state, energyReferenceNodeId),
+    [energyReferenceNodeId, state, tableMode],
+  )
   return (
     <section className="workbench-energy-table-panel" aria-label={t("workbench.energyTable.aria")}>
       <header className="workbench-energy-table-header">
@@ -3096,7 +3668,27 @@ function WorkbenchEnergyTable({
           <p className="section-kicker">{t("workbench.view.table")}</p>
           <h2>{t("workbench.energyTable.title")}</h2>
         </div>
-        <span>{t("workbench.energyTable.rowCount", { count: rows.length })}</span>
+        <div className="workbench-energy-table-header-actions">
+          <div className="workbench-energy-table-mode" role="group" aria-label="Energy table mode">
+            <button
+              type="button"
+              className={tableMode === "absolute" ? "workbench-energy-table-mode-button--active" : ""}
+              aria-pressed={tableMode === "absolute"}
+              onClick={() => setTableMode("absolute")}
+            >
+              Absolute
+            </button>
+            <button
+              type="button"
+              className={tableMode === "relative" ? "workbench-energy-table-mode-button--active" : ""}
+              aria-pressed={tableMode === "relative"}
+              onClick={() => setTableMode("relative")}
+            >
+              Relative
+            </button>
+          </div>
+          <span>{t("workbench.energyTable.rowCount", { count: rows.length })}</span>
+        </div>
       </header>
       {rows.length === 0 ? (
         <div className="workbench-energy-table-empty">
@@ -3109,82 +3701,42 @@ function WorkbenchEnergyTable({
             <table className="workbench-energy-table">
               <thead>
                 <tr>
-                  <th>{t("workbench.energyTable.structure")}</th>
-                  <th>{t("workbench.energyTable.chargeSpin")}</th>
-                  <th>{t("workbench.energyTable.formula")}</th>
-                  <th>{t("workbench.energyTable.basis")}</th>
-                  <th>Egas</th>
-                  <th>Egas kcal/mol</th>
-                  <th>Ggas</th>
-                  <th>Ggas kcal/mol</th>
-                  <th>Ggas+1M</th>
-                  <th>Ggas+1M kcal/mol</th>
-                  <th>Esol</th>
-                  <th>Esol kcal/mol</th>
-                  <th>Gsol</th>
-                  <th>Gsol kcal/mol</th>
-                  <th>{energyTableRelativeColumnLabel(options.mode, options.unit)}</th>
+                  {workbenchEnergyTableHeaders(tableMode === "relative").map((header, index) => (
+                    <th key={index}>{header}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.nodeId} className={row.objectId === activeObjectId ? "workbench-energy-table-row--active" : ""}>
                     <th scope="row">{row.structure}</th>
-                    <td>{row.chargeSpin}</td>
+                    <td>{row.chargeMultiplicity}</td>
                     <td>{row.formula}</td>
-                    <td>{row.basis}</td>
                     <td>{row.egasHartree}</td>
+                    <td>{row.gasBasis}</td>
                     <td>{row.egasKcal}</td>
                     <td>{row.ggasHartree}</td>
                     <td>{row.ggasKcal}</td>
                     <td>{row.ggas1mHartree}</td>
                     <td>{row.ggas1mKcal}</td>
+                    <td>{row.ggasShermoHartree}</td>
+                    <td>{row.ggasShermoKcal}</td>
+                    <td>{row.ggasShermo1mHartree}</td>
+                    <td>{row.ggasShermo1mKcal}</td>
                     <td>{row.esolHartree}</td>
+                    <td>{row.solutionBasis}</td>
                     <td>{row.esolKcal}</td>
-                    <td>{row.gsolHartree}</td>
+                    <td>{row.sgauTran}</td>
+                    <td>{row.swhitTran}</td>
+                    <td>{row.entropyDelta}</td>
+                    <td>{row.entropyCorrection}</td>
+                    <td>{row.standardStateCorrection}</td>
                     <td>{row.gsolKcal}</td>
-                    <td>{row.relative}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {pathRows.length > 0 ? (
-            <div className="workbench-energy-table-section">
-              <header>
-                <h3>{t("workbench.energyTable.pathSection")}</h3>
-                <span>{t("workbench.energyTable.pathBaseline", { structure: pathRows[0]?.structure ?? "-" })}</span>
-              </header>
-              <div className="workbench-energy-table-wrap">
-                <table className="workbench-energy-table workbench-energy-table--path">
-                  <thead>
-                    <tr>
-                      <th>{t("workbench.energyTable.structure")}</th>
-                      <th>{energyModeRelativeLabel("electronic")}</th>
-                      <th>ΔGgas</th>
-                      <th>ΔGgas+1M</th>
-                      <th>ΔEsol</th>
-                      <th>ΔGsol</th>
-                      <th>{t("workbench.energyTable.stepDelta")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pathRows.map((row) => (
-                      <tr key={row.nodeId} className={row.objectId === activeObjectId ? "workbench-energy-table-row--active" : ""}>
-                        <th scope="row">{row.structure}</th>
-                        <td>{row.deltaEgas}</td>
-                        <td>{row.deltaGgas}</td>
-                        <td>{row.deltaGgas1m}</td>
-                        <td>{row.deltaEsol}</td>
-                        <td>{row.deltaGsol}</td>
-                        <td>{row.stepDelta}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
         </>
       )}
     </section>
@@ -3200,6 +3752,21 @@ function upsertImportBatch(
     return [...batches, batch]
   }
   return batches.map((existing, currentIndex) => (currentIndex === index ? batch : existing))
+}
+
+function importBatchWithRegisteredObjectIds(
+  batch: ImportBatchSummary,
+  itemId: string,
+  registeredObjectIds: string[],
+): ImportBatchSummary {
+  return {
+    ...batch,
+    items: batch.items.map((item) => (
+      item.id === itemId
+        ? { ...item, status: "registered", registered_object_ids: registeredObjectIds }
+        : item
+    )),
+  }
 }
 
 type RawDropImportFileResult =
@@ -3425,6 +3992,7 @@ function workspaceProjectContentFromWorkspace(workspace: WorkspaceSummary): Json
     workspace_id: workspace.workspace_id,
     project_id: workspace.project_id,
     graph_id: workspace.graph.id,
+    metadata: workspace.metadata ?? {},
     selection: {
       node_ids: selection.node_ids ?? [],
       edge_ids: selection.edge_ids ?? [],
@@ -3529,6 +4097,53 @@ function graphNodeIdsForObject(workspace: WorkspaceSummary, objectId: string): s
     .map((node) => node.id)
 }
 
+function workspaceEnergyReferenceNodeId(workspace: WorkspaceSummary | null | undefined): string | null {
+  const value = workspace?.metadata?.[workspaceEnergyReferenceNodeIdKey]
+  return typeof value === "string" && value ? value : null
+}
+
+function workbenchStateWithEnergyReferenceNodeId(
+  state: WorkbenchDomainState,
+  nodeId: string | null,
+): WorkbenchDomainState {
+  if (!state.workspace) return state
+  return {
+    ...state,
+    workspace: workspaceWithEnergyReferenceNodeId(state.workspace, nodeId),
+  }
+}
+
+function workspaceWithEnergyReferenceNodeId(
+  workspace: WorkspaceSummary,
+  nodeId: string | null,
+): WorkspaceSummary {
+  const metadata = { ...(isJsonObject(workspace.metadata) ? workspace.metadata : {}) }
+  if (nodeId) {
+    metadata[workspaceEnergyReferenceNodeIdKey] = nodeId
+  } else {
+    delete metadata[workspaceEnergyReferenceNodeIdKey]
+  }
+  return { ...workspace, metadata }
+}
+
+function preserveWorkspaceMetadata(
+  currentWorkspace: WorkspaceSummary | null | undefined,
+  nextWorkspace: WorkspaceSummary,
+): WorkspaceSummary {
+  if (!currentWorkspace || currentWorkspace.workspace_id !== nextWorkspace.workspace_id) {
+    return nextWorkspace
+  }
+  const currentMetadata = isJsonObject(currentWorkspace.metadata) ? currentWorkspace.metadata : {}
+  const nextMetadata = isJsonObject(nextWorkspace.metadata) ? nextWorkspace.metadata : {}
+  return {
+    ...nextWorkspace,
+    metadata: {
+      ...nextMetadata,
+      ...currentMetadata,
+    },
+  }
+}
+
 function primaryObjectForRegisteredImport(
   file: WebImportFile,
   objects: WorkbenchDomainState["objects"],
@@ -3571,6 +4186,218 @@ function uniqueWorkbenchObjects(
     seen.add(object.id)
     return true
   })
+}
+
+type RestoredSolutionPairRepairCandidate = {
+  key: string
+  gasFile: ProjectFileEntry
+  solutionFile: ProjectFileEntry
+  nodeIds: string[]
+}
+
+function restoredSolutionPairRepairCandidates(
+  state: WorkbenchDomainState,
+  projectFiles: ProjectFileEntry[],
+): RestoredSolutionPairRepairCandidate[] {
+  const workspace = state.workspace
+  if (!workspace || projectFiles.length === 0) return []
+
+  const filePairs = restoredSolutionFilePairsByKey(projectFiles)
+  if (filePairs.size === 0) return []
+
+  const objectById = new Map(state.objects.map((object) => [object.id, object]))
+  const nodeIdsByKey = new Map<string, Set<string>>()
+  for (const node of workspace.graph.nodes) {
+    const nodeObjects = graphNodeObjectIds(node)
+      .map((objectId) => objectById.get(objectId))
+      .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object))
+    if (nodeObjects.some((object) => Boolean(resolveSolutionFreeEnergy(object)))) continue
+
+    const key = restoredSolutionPairKeyForNode(node, nodeObjects)
+    if (!key || !filePairs.has(key)) continue
+    const nodeIds = nodeIdsByKey.get(key) ?? new Set<string>()
+    nodeIds.add(node.id)
+    nodeIdsByKey.set(key, nodeIds)
+  }
+
+  const candidates: RestoredSolutionPairRepairCandidate[] = []
+  for (const [key, nodeIds] of nodeIdsByKey.entries()) {
+    const pair = filePairs.get(key)
+    if (!pair?.gasFile || !pair.solutionFile) continue
+    candidates.push({
+      key,
+      gasFile: pair.gasFile,
+      solutionFile: pair.solutionFile,
+      nodeIds: Array.from(nodeIds),
+    })
+  }
+  return candidates
+}
+
+function restoredSolutionFilePairsByKey(
+  projectFiles: ProjectFileEntry[],
+): Map<string, { gasFile?: ProjectFileEntry; solutionFile?: ProjectFileEntry }> {
+  const pairs = new Map<string, { gasFile?: ProjectFileEntry; solutionFile?: ProjectFileEntry }>()
+  for (const file of projectFiles) {
+    if (!isRawHydrationFile(file)) continue
+    const key = solutionPairKeyForProjectFile(file)
+    if (!key) continue
+    const current = pairs.get(key) ?? {}
+    if (projectFileLooksLikeSolutionLog(file)) {
+      current.solutionFile = file
+    } else {
+      current.gasFile = file
+    }
+    pairs.set(key, current)
+  }
+  return pairs
+}
+
+function restoredSolutionPairKeyForNode(
+  node: WorkspaceSummary["graph"]["nodes"][number],
+  objects: WorkbenchDomainState["objects"],
+): string | null {
+  const keys = new Set<string>()
+  addSolutionPairKey(keys, node.label)
+  for (const object of objects) {
+    addSolutionPairKey(keys, object.label)
+    addSolutionPairKey(keys, object.source_file_id)
+    addSolutionPairKey(keys, object.provenance?.source_file_id)
+  }
+  return keys.values().next().value ?? null
+}
+
+function restoredPairedSolutionObjectForKey(
+  key: string,
+  objects: WorkbenchDomainState["objects"],
+): WorkbenchDomainState["objects"][number] | null {
+  return objects.find((object) => (
+    !objectLooksLikeSolutionLog(object)
+    && objectMatchesSolutionPairKey(object, key)
+    && Boolean(resolveSolutionFreeEnergy(object))
+  )) ?? null
+}
+
+function locallyPairReusableSolutionObjects(
+  files: ProjectFileEntry[],
+  workbench: WorkbenchDomainState,
+): WorkbenchDomainState["objects"] {
+  if (files.length === 0 || workbench.objects.length === 0) return []
+  const solutionObjectsByKey = new Map<string, WorkbenchDomainState["objects"][number][]>()
+  for (const file of files.filter(projectFileLooksLikeSolutionLog)) {
+    const key = solutionPairKeyForProjectFile(file)
+    if (!key) continue
+    const objects = reusableProjectFileObjects(file, workbench)
+      .filter(objectLooksLikeSolutionLog)
+    if (objects.length > 0) solutionObjectsByKey.set(key, objects)
+  }
+  if (solutionObjectsByKey.size === 0) return []
+
+  const pairedObjects: WorkbenchDomainState["objects"] = []
+  for (const file of files.filter((item) => !projectFileLooksLikeSolutionLog(item))) {
+    const key = solutionPairKeyForProjectFile(file)
+    if (!key) continue
+    const gasObject = reusableProjectFileObjects(file, workbench)
+      .filter((object) => !objectLooksLikeSolutionLog(object))[0]
+    const solutionObject = solutionObjectsByKey.get(key)?.[0]
+    if (!gasObject || !solutionObject) continue
+    const pairedObject = workbenchObjectWithLocalSolutionPair(gasObject, solutionObject)
+    if (!pairedObject || !resolveSolutionFreeEnergy(pairedObject)) continue
+    pairedObjects.push(pairedObject)
+  }
+  return uniqueWorkbenchObjects(pairedObjects)
+}
+
+function workbenchObjectWithLocalSolutionPair(
+  gas: WorkbenchDomainState["objects"][number],
+  solution: WorkbenchDomainState["objects"][number],
+): WorkbenchDomainState["objects"][number] | null {
+  const energies = { ...jsonObjectValue(gas.energies) }
+  const thermochemistry = { ...jsonObjectValue(gas.thermochemistry) }
+  const metadata = { ...jsonObjectValue(gas.metadata) }
+  const egas = energyValueFromObjectRecord(gas, "energies", electronicEnergyKeys)
+  const esol = energyValueFromObjectRecord(solution, "energies", solutionElectronicEnergyKeys)
+    ?? energyValueFromObjectRecord(solution, "energies", electronicEnergyKeys)
+  const ggas1m = resolveGasFreeEnergy1M(gas)
+  if (!egas || !esol) return null
+
+  energies.egas = {
+    value: egas.value,
+    unit: egas.unit,
+    reference: egas.reference ?? "gas electronic energy",
+  }
+  energies.esol = {
+    value: esol.value,
+    unit: esol.unit,
+    reference: esol.reference ?? `solution electronic energy from ${solution.label ?? solution.id}`,
+  }
+
+  if (ggas1m) {
+    thermochemistry.ggas_1m = {
+      value: ggas1m.value,
+      unit: ggas1m.unit,
+      reference: ggas1m.reference ?? "gas free energy plus 1M standard-state correction",
+    }
+    const ggasKcal = convertEnergyValue(ggas1m.value, ggas1m.unit, "kcal_mol")
+    const egasKcal = convertEnergyValue(egas.value, egas.unit, "kcal_mol")
+    const esolKcal = convertEnergyValue(esol.value, esol.unit, "kcal_mol")
+    if (ggasKcal !== null && egasKcal !== null && esolKcal !== null) {
+      thermochemistry.gsol = {
+        value: ggasKcal - egasKcal + esolKcal,
+        unit: "kcal_mol",
+        reference: `Gsol = Ggas(1M) - Egas + Esol from paired solution log ${solution.label ?? solution.id}`,
+      }
+    }
+  }
+
+  const solutionBasis = solutionBasisFunctionCountFromObject(solution)
+    ?? basisFunctionCountFromObject(solution)
+  if (solutionBasis !== null) metadata.solution_basis_function_count = solutionBasis
+
+  return {
+    ...gas,
+    label: structureDisplayName(gas.label ?? gas.id),
+    energies,
+    thermochemistry,
+    energy_keys: uniqueStrings([
+      ...jsonStringValues(gas.energy_keys),
+      ...Object.keys(energies),
+    ]),
+    thermochemistry_keys: uniqueStrings([
+      ...jsonStringValues(gas.thermochemistry_keys),
+      ...Object.keys(thermochemistry),
+    ]),
+    metadata,
+    solution_basis_function_count: solutionBasis ?? gas.solution_basis_function_count,
+    solution_source_file_id: solution.source_file_id ?? solution.provenance?.source_file_id ?? solution.id,
+    solution_label: solution.label ?? solution.id,
+    warnings: uniqueWarnings([
+      ...(gas.warnings ?? []),
+      {
+        code: "solution_log_paired",
+        message: `Paired solution log ${solution.label ?? solution.id}.`,
+        target: solution.source_file_id ?? solution.provenance?.source_file_id ?? solution.id,
+      },
+    ]),
+  }
+}
+
+function jsonObjectValue(value: unknown): JsonObject {
+  return isJsonObject(value) ? value : {}
+}
+
+function uniqueWarnings(
+  warnings: NonNullable<WorkbenchDomainState["objects"][number]["warnings"]>,
+): NonNullable<WorkbenchDomainState["objects"][number]["warnings"]> {
+  const seen = new Set<string>()
+  const unique: NonNullable<WorkbenchDomainState["objects"][number]["warnings"]> = []
+  for (const warning of warnings) {
+    const key = `${warning.code}\u001f${warning.message}\u001f${warning.target ?? ""}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    unique.push(warning)
+  }
+  return unique
 }
 
 function projectFileLooksLikeSolutionLog(file: ProjectFileEntry): boolean {
@@ -3675,7 +4502,24 @@ function sourceStemForPairing(value: string | null | undefined): string {
 
 function solutionLogSuffixForStem(stem: string): string | null {
   const lowered = stem.toLowerCase()
-  for (const suffix of ["-sol", "_sol", ".sol", " sol"]) {
+  for (const suffix of [
+    "-sol",
+    "_sol",
+    ".sol",
+    " sol",
+    "-solution",
+    "_solution",
+    ".solution",
+    " solution",
+    "-solv",
+    "_solv",
+    ".solv",
+    " solv",
+    "-smd",
+    "_smd",
+    ".smd",
+    " smd",
+  ]) {
     if (lowered.endsWith(suffix)) return suffix
   }
   return null
@@ -3691,13 +4535,35 @@ function reusableProjectFileObjects(
   file: ProjectFileEntry,
   workbench: WorkbenchDomainState,
 ): WorkbenchDomainState["objects"] {
-  if (file.registeredObjectIds.length === 0 || workbench.objects.length === 0) return []
+  if (workbench.objects.length === 0) return []
   const objectById = new Map(workbench.objects.map((object) => [object.id, object]))
-  return file.registeredObjectIds
+  const directObjects = file.registeredObjectIds
     .map((objectId) => objectById.get(objectId))
     .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object))
-    .filter((object) => !objectNeedsRawHydration(object))
+  const nameMatchedObjects = workbench.objects.filter((object) => projectFileMatchesReusableObject(file, object))
+  return uniqueWorkbenchObjects([...directObjects, ...nameMatchedObjects])
+    .filter((object) => hasRenderableGeometry(object.geometry))
     .sort((left, right) => projectFileReusableObjectScore(right) - projectFileReusableObjectScore(left))
+}
+
+function projectFileMatchesReusableObject(
+  file: ProjectFileEntry,
+  object: WorkbenchDomainState["objects"][number],
+): boolean {
+  const fileNames = uniqueStrings([
+    file.name,
+    file.sourceName,
+    file.rawResourceId,
+    file.path,
+    baseName(file.path),
+  ])
+  const objectNames = uniqueStrings([
+    object.label,
+    object.source_file_id,
+    object.provenance?.source_file_id,
+    object.id,
+  ])
+  return fileNames.some((fileName) => objectNames.some((objectName) => hydrationNamesMatch(fileName, objectName)))
 }
 
 function projectFileReusableObjectScore(object: WorkbenchDomainState["objects"][number]): number {
@@ -3733,32 +4599,28 @@ type WorkbenchEnergyTableRow = {
   nodeId: string
   objectId: string | null
   structure: string
-  chargeSpin: string
+  chargeMultiplicity: string
   formula: string
-  basis: string
+  gasBasis: string
+  solutionBasis: string
   egasHartree: string
   egasKcal: string
   ggasHartree: string
   ggasKcal: string
   ggas1mHartree: string
   ggas1mKcal: string
+  ggasShermoHartree: string
+  ggasShermoKcal: string
+  ggasShermo1mHartree: string
+  ggasShermo1mKcal: string
   esolHartree: string
   esolKcal: string
-  gsolHartree: string
+  sgauTran: string
+  swhitTran: string
+  entropyDelta: string
+  entropyCorrection: string
+  standardStateCorrection: string
   gsolKcal: string
-  relative: string
-}
-
-type WorkbenchEnergyPathRow = {
-  nodeId: string
-  objectId: string | null
-  structure: string
-  deltaEgas: string
-  deltaGgas: string
-  deltaGgas1m: string
-  deltaEsol: string
-  deltaGsol: string
-  stepDelta: string
 }
 
 type WorkbenchEnergyNodeEntry = {
@@ -3768,90 +4630,186 @@ type WorkbenchEnergyNodeEntry = {
 
 function workbenchEnergyTableRows(
   state: WorkbenchDomainState,
-  options: CanvasEnergyDisplayOptions,
 ): WorkbenchEnergyTableRow[] {
   const rows = workbenchEnergyNodeEntries(state)
-  const baseline = rows
-    .map((row) => resolveObjectEnergyValue(row.object, options.mode))
-    .find((value): value is ResolvedObjectEnergyValue => Boolean(value))
-
   return rows.map(({ node, object }) => {
-    const energy = resolveObjectEnergyValue(object, options.mode)
-    const relative = energy && baseline
-      ? formatTableEnergyWithUnit(energyDeltaInUnit(energy, baseline, options.unit), options.unit)
-      : "-"
-    const egas = energyValueFromObjectRecord(object, "energies", ["egas", "electronic", "scf"])
-    const ggas = energyValueFromObjectRecord(object, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy"])
+    const egas = energyValueFromObjectRecord(object, "energies", electronicEnergyKeys)
+    const ggas = energyValueFromObjectRecord(object, "thermochemistry", freeGasUncorrectedEnergyKeys)
     const ggas1m = resolveGasFreeEnergy1M(object)
-    const esol = energyValueFromObjectRecord(object, "energies", ["esol", "solution_electronic_energy"])
+    const esol = energyValueFromObjectRecord(object, "energies", solutionElectronicEnergyKeys)
     const gsol = resolveSolutionFreeEnergy(object)
     return {
       nodeId: node.id,
       objectId: object?.id ?? null,
       structure: structureDisplayName(node.label ?? object?.label ?? node.id),
-      chargeSpin: object ? `${object.charge ?? "-"},${object.spin_multiplicity ?? "-"}` : "-",
+      chargeMultiplicity: object ? `${object.charge ?? "-"},${object.spin_multiplicity ?? "-"}` : "-",
       formula: object?.formula ?? "-",
-      basis: formatOptionalInteger(basisFunctionCountFromObject(object)),
+      gasBasis: formatOptionalInteger(basisFunctionCountFromObject(object)),
+      solutionBasis: formatOptionalInteger(solutionBasisFunctionCountFromObject(object)),
       egasHartree: formatOptionalTableEnergy(egas, "hartree"),
       egasKcal: formatOptionalTableEnergy(egas, "kcal_mol"),
       ggasHartree: formatOptionalTableEnergy(ggas, "hartree"),
       ggasKcal: formatOptionalTableEnergy(ggas, "kcal_mol"),
       ggas1mHartree: formatOptionalTableEnergy(ggas1m, "hartree"),
       ggas1mKcal: formatOptionalTableEnergy(ggas1m, "kcal_mol"),
+      ggasShermoHartree: "-",
+      ggasShermoKcal: "-",
+      ggasShermo1mHartree: "-",
+      ggasShermo1mKcal: "-",
       esolHartree: formatOptionalTableEnergy(esol, "hartree"),
       esolKcal: formatOptionalTableEnergy(esol, "kcal_mol"),
-      gsolHartree: formatOptionalTableEnergy(gsol, "hartree"),
+      sgauTran: "-",
+      swhitTran: "-",
+      entropyDelta: "-",
+      entropyCorrection: "-",
+      standardStateCorrection: "-",
       gsolKcal: formatOptionalTableEnergy(gsol, "kcal_mol"),
-      relative,
     }
   })
 }
 
-function workbenchEnergyPathRows(
+function workbenchRelativeEnergyTableRows(
   state: WorkbenchDomainState,
-  options: CanvasEnergyDisplayOptions,
-): WorkbenchEnergyPathRow[] {
-  const workspace = state.workspace
-  if (!workspace) return []
-  const pathNodeIds = activeEnergyPathNodeIds(workspace)
-  if (pathNodeIds.length === 0) return []
-  const entryByNodeId = new Map(workbenchEnergyNodeEntries(state).map((entry) => [entry.node.id, entry]))
-  const rows = pathNodeIds
-    .map((nodeId) => entryByNodeId.get(nodeId))
-    .filter((entry): entry is WorkbenchEnergyNodeEntry => Boolean(entry))
-  const baseline = rows[0]?.object ?? null
-  if (!baseline) return []
-  let previousModeEnergy: ResolvedObjectEnergyValue | null = null
-  return rows.map(({ node, object }) => {
-    const modeEnergy = resolveObjectEnergyValue(object, options.mode)
-    const stepDelta = modeEnergy && previousModeEnergy
-      ? formatTableEnergyWithUnit(energyDeltaInUnit(modeEnergy, previousModeEnergy, options.unit), options.unit)
-      : "-"
-    if (modeEnergy) previousModeEnergy = modeEnergy
+  energyReferenceNodeId?: string | null,
+): WorkbenchEnergyTableRow[] {
+  const rows = workbenchRelativeEnergyNodeEntries(state, energyReferenceNodeId)
+  const baseline = rows.find((row) => row.node.id === row.referenceNodeId)?.object
+    ?? rows.find((row) => row.object)?.object
+    ?? null
+  const objectById = new Map(state.objects.map((object) => [object.id, object]))
+  return rows.map(({ node, object, referenceNodeId, expressionTerms }) => {
+    const compositionExpression = Boolean(expressionTerms?.length)
+    const egas = expressionTerms
+      ? compositionEnergyValueFromTerms(expressionTerms, objectById, (item) => energyValueFromObjectRecord(item, "energies", electronicEnergyKeys), "egas")
+      : energyValueFromObjectRecord(object, "energies", electronicEnergyKeys)
+    const baselineEgas = energyValueFromObjectRecord(baseline, "energies", electronicEnergyKeys)
+    const ggas = expressionTerms
+      ? compositionEnergyValueFromTerms(expressionTerms, objectById, (item) => energyValueFromObjectRecord(item, "thermochemistry", freeGasUncorrectedEnergyKeys), "ggas")
+      : energyValueFromObjectRecord(object, "thermochemistry", freeGasUncorrectedEnergyKeys)
+    const baselineGgas = energyValueFromObjectRecord(baseline, "thermochemistry", freeGasUncorrectedEnergyKeys)
+    const ggas1m = expressionTerms
+      ? compositionEnergyValueFromTerms(expressionTerms, objectById, resolveGasFreeEnergy1M, "ggas_1m")
+      : resolveGasFreeEnergy1M(object)
+    const baselineGgas1m = resolveGasFreeEnergy1M(baseline)
+    const esol = expressionTerms
+      ? compositionEnergyValueFromTerms(expressionTerms, objectById, (item) => energyValueFromObjectRecord(item, "energies", solutionElectronicEnergyKeys), "esol")
+      : energyValueFromObjectRecord(object, "energies", solutionElectronicEnergyKeys)
+    const baselineEsol = energyValueFromObjectRecord(baseline, "energies", solutionElectronicEnergyKeys)
+    const gsol = expressionTerms
+      ? compositionEnergyValueFromTerms(expressionTerms, objectById, resolveSolutionFreeEnergy, "gsol")
+      : resolveSolutionFreeEnergy(object)
+    const baselineGsol = resolveSolutionFreeEnergy(baseline)
+    const isReferenceRow = node.id === referenceNodeId
     return {
       nodeId: node.id,
       objectId: object?.id ?? null,
       structure: structureDisplayName(node.label ?? object?.label ?? node.id),
-      deltaEgas: formatEnergyDeltaFromObjects(
-        energyValueFromObjectRecord(object, "energies", ["egas", "electronic", "scf"]),
-        energyValueFromObjectRecord(baseline, "energies", ["egas", "electronic", "scf"]),
-        options.unit,
-      ),
-      deltaGgas: formatEnergyDeltaFromObjects(
-        energyValueFromObjectRecord(object, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy"]),
-        energyValueFromObjectRecord(baseline, "thermochemistry", ["ggas", "gibbs", "free_energy", "gibbs_free_energy"]),
-        options.unit,
-      ),
-      deltaGgas1m: formatEnergyDeltaFromObjects(resolveGasFreeEnergy1M(object), resolveGasFreeEnergy1M(baseline), options.unit),
-      deltaEsol: formatEnergyDeltaFromObjects(
-        energyValueFromObjectRecord(object, "energies", ["esol", "solution_electronic_energy"]),
-        energyValueFromObjectRecord(baseline, "energies", ["esol", "solution_electronic_energy"]),
-        options.unit,
-      ),
-      deltaGsol: formatEnergyDeltaFromObjects(resolveSolutionFreeEnergy(object), resolveSolutionFreeEnergy(baseline), options.unit),
-      stepDelta,
+      chargeMultiplicity: object ? `${object.charge ?? "-"},${object.spin_multiplicity ?? "-"}` : "-",
+      formula: object?.formula ?? "-",
+      gasBasis: formatOptionalInteger(basisFunctionCountFromObject(object)),
+      solutionBasis: formatOptionalInteger(solutionBasisFunctionCountFromObject(object)),
+      egasHartree: formatRelativeTableEnergy(egas, baselineEgas, "hartree", compositionExpression, isReferenceRow),
+      egasKcal: formatRelativeTableEnergy(egas, baselineEgas, "kcal_mol", compositionExpression, isReferenceRow),
+      ggasHartree: formatRelativeTableEnergy(ggas, baselineGgas, "hartree", compositionExpression, isReferenceRow),
+      ggasKcal: formatRelativeTableEnergy(ggas, baselineGgas, "kcal_mol", compositionExpression, isReferenceRow),
+      ggas1mHartree: formatRelativeTableEnergy(ggas1m, baselineGgas1m, "hartree", compositionExpression, isReferenceRow),
+      ggas1mKcal: formatRelativeTableEnergy(ggas1m, baselineGgas1m, "kcal_mol", compositionExpression, isReferenceRow),
+      ggasShermoHartree: "-",
+      ggasShermoKcal: "-",
+      ggasShermo1mHartree: "-",
+      ggasShermo1mKcal: "-",
+      esolHartree: formatRelativeTableEnergy(esol, baselineEsol, "hartree", compositionExpression, isReferenceRow),
+      esolKcal: formatRelativeTableEnergy(esol, baselineEsol, "kcal_mol", compositionExpression, isReferenceRow),
+      sgauTran: "-",
+      swhitTran: "-",
+      entropyDelta: "-",
+      entropyCorrection: "-",
+      standardStateCorrection: "-",
+      gsolKcal: formatRelativeTableEnergy(gsol, baselineGsol, "kcal_mol", compositionExpression, isReferenceRow),
     }
   })
+}
+
+type WorkbenchRelativeEnergyNodeEntry = WorkbenchEnergyNodeEntry & {
+  referenceNodeId: string | null
+  expressionTerms: GraphRelativeEnergyTerm[] | null
+}
+
+function workbenchRelativeEnergyNodeEntries(
+  state: WorkbenchDomainState,
+  energyReferenceNodeId?: string | null,
+): WorkbenchRelativeEnergyNodeEntry[] {
+  const workspace = state.workspace
+  const entries = workbenchEnergyNodeEntries(state)
+  if (!workspace) {
+    return entries.map((entry) => ({ ...entry, referenceNodeId: null, expressionTerms: null }))
+  }
+  const entryByNodeId = new Map(entries.map((entry) => [entry.node.id, entry]))
+  const referenceNodeId = relativeEnergyReferenceNodeId(workspace, entryByNodeId, energyReferenceNodeId)
+  const mainPathNodeIds = relativeMainPathNodeIds(workspace, referenceNodeId)
+    .filter((nodeId) => entryByNodeId.has(nodeId))
+  const orderedNodeIds = mainPathNodeIds.length > 0
+    ? mainPathNodeIds
+    : entries.map((entry) => entry.node.id)
+  const expressionTermsByNodeId = relativeEnergyExpressionTermsByNodeId(workspace, referenceNodeId)
+  return orderedNodeIds
+    .map((nodeId) => entryByNodeId.get(nodeId))
+    .filter((entry): entry is WorkbenchEnergyNodeEntry => Boolean(entry))
+    .map((entry) => ({
+      ...entry,
+      referenceNodeId,
+      expressionTerms: entry.node.id === referenceNodeId
+        ? null
+        : expressionTermsByNodeId.get(entry.node.id) ?? (
+            graphNodeUsesManualCompositionExpression(entry.node) ? graphNodeEnergyCompositionTerms(entry.node) : null
+          ),
+    }))
+}
+
+function relativeEnergyReferenceNodeId(
+  workspace: WorkspaceSummary,
+  entryByNodeId: Map<string, WorkbenchEnergyNodeEntry>,
+  energyReferenceNodeId?: string | null,
+): string | null {
+  if (energyReferenceNodeId && entryByNodeId.has(energyReferenceNodeId)) return energyReferenceNodeId
+  const activePath = workspace.active_path_id
+    ? workspace.graph.paths.find((path) => path.id === workspace.active_path_id)
+    : undefined
+  const path = activePath ?? workspace.graph.paths[0]
+  return path?.node_ids.find((nodeId) => entryByNodeId.get(nodeId)?.object)
+    ?? Array.from(entryByNodeId.values()).find((entry) => entry.object)?.node.id
+    ?? path?.node_ids.find((nodeId) => entryByNodeId.has(nodeId))
+    ?? Array.from(entryByNodeId.keys())[0]
+    ?? null
+}
+
+function compositionEnergyValueFromTerms(
+  terms: GraphRelativeEnergyTerm[],
+  objectById: Map<string, WorkbenchDomainState["objects"][number]>,
+  resolver: (object: WorkbenchDomainState["objects"][number]) => ResolvedObjectEnergyValue | null,
+  key: string,
+): ResolvedObjectEnergyValue | null {
+  if (terms.length === 0) return null
+  let totalHartree = 0
+  for (const term of terms) {
+    const coefficient = Number(term.coefficient)
+    if (!Number.isFinite(coefficient) || coefficient === 0) return null
+    const object = objectById.get(term.object_id)
+    if (!object) return null
+    const energy = resolver(object)
+    if (!energy) return null
+    const hartree = convertEnergyValue(energy.value, energy.unit, "hartree")
+    if (hartree === null) return null
+    totalHartree += coefficient * hartree
+  }
+  return {
+    key,
+    source: "derived",
+    value: totalHartree,
+    unit: "hartree",
+    reference: "node relative energy expression",
+    derived: true,
+  }
 }
 
 function workbenchEnergyNodeEntries(state: WorkbenchDomainState): WorkbenchEnergyNodeEntry[] {
@@ -3883,26 +4841,32 @@ function orderedEnergyTableNodeIds(workspace: WorkspaceSummary): string[] {
   ]
 }
 
-function activeEnergyPathNodeIds(workspace: WorkspaceSummary): string[] {
-  return (
-    workspace.graph.paths.find((path) => path.id === workspace.active_path_id)
-    ?? workspace.graph.paths[0]
-  )?.node_ids ?? []
-}
-
 function formatOptionalTableEnergy(value: ResolvedObjectEnergyValue | null, unit: CanvasEnergyUnit): string {
   if (!value) return "-"
   const converted = convertEnergyValue(value.value, value.unit, unit)
   return converted === null ? "-" : formatTableEnergyNumber(converted, unit)
 }
 
-function formatEnergyDeltaFromObjects(
+function formatOptionalTableEnergyDelta(
   value: ResolvedObjectEnergyValue | null,
   baseline: ResolvedObjectEnergyValue | null,
   unit: CanvasEnergyUnit,
 ): string {
   if (!value || !baseline) return "-"
-  return formatTableEnergyWithUnit(energyDeltaInUnit(value, baseline, unit), unit)
+  return formatTableEnergyNumber(energyDeltaInUnit(value, baseline, unit), unit)
+}
+
+function formatRelativeTableEnergy(
+  value: ResolvedObjectEnergyValue | null,
+  baseline: ResolvedObjectEnergyValue | null,
+  unit: CanvasEnergyUnit,
+  compositionExpression: boolean,
+  referenceRow = false,
+): string {
+  if (referenceRow && value) return formatTableEnergyNumber(0, unit)
+  return compositionExpression
+    ? formatOptionalTableEnergy(value, unit)
+    : formatOptionalTableEnergyDelta(value, baseline, unit)
 }
 
 function energyDeltaInUnit(
@@ -3921,17 +4885,37 @@ function formatTableEnergyNumber(value: number, unit: CanvasEnergyUnit): string 
   return value.toFixed(unit === "hartree" ? 6 : 2)
 }
 
-function formatTableEnergyWithUnit(value: number, unit: CanvasEnergyUnit): string {
-  if (!Number.isFinite(value)) return "-"
-  return formatEnergyValue(value, unit)
-}
-
 function formatOptionalInteger(value: number | null): string {
   return typeof value === "number" ? String(value) : "-"
 }
 
-function energyTableRelativeColumnLabel(mode: CanvasEnergyMode, unit: CanvasEnergyUnit): string {
-  return `${energyModeRelativeLabel(mode)} (${energyUnitLabel(unit)})`
+function workbenchEnergyTableHeaders(relative: boolean): ReactNode[] {
+  const prefix = relative ? "Δ" : ""
+  return [
+    "Structure",
+    "Charge / Multiplicity",
+    "Formula",
+    <span>{prefix}E<sub>gas</sub></span>,
+    <span>Basis functions <sub>gas</sub></span>,
+    <span>{prefix}E<sub>gas</sub> × 627.5095</span>,
+    <span>{prefix}G<sub>gas</sub></span>,
+    <span>{prefix}G<sub>gas</sub> × 627.5095</span>,
+    <span>{prefix}G<sub>gas</sub>+1M</span>,
+    <span>{prefix}G<sub>gas</sub>+1M × 627.5095</span>,
+    <span>{prefix}G<sub>gas</sub>(shermo)</span>,
+    <span>{prefix}G<sub>gas</sub>(shermo) × 627.5095</span>,
+    <span>{prefix}G<sub>gas</sub>(shermo+1M)</span>,
+    <span>{prefix}G<sub>gas</sub>(shermo+1M) × 627.5095</span>,
+    <span>{prefix}E<sub>sol</sub></span>,
+    <span>Basis functions <sub>sol</sub></span>,
+    <span>{prefix}E<sub>sol</sub> × 627.5095</span>,
+    <span>{prefix}S<sub>gau,tran</sub></span>,
+    <span>{prefix}S<sub>whit,tran</sub></span>,
+    <span>{prefix}S<sub>gau,tran</sub> - {prefix}S<sub>whit,tran</sub></span>,
+    <span>T*({prefix}S<sub>gau,tran</sub> - {prefix}S<sub>whit,tran</sub>)/1000</span>,
+    "RT*0.239006/1000",
+    <span>{prefix}G<sub>sol</sub></span>,
+  ]
 }
 
 function structureDisplayName(value: string): string {
@@ -3949,6 +4933,41 @@ function projectFileProjectionSignature(files: ProjectFileEntry[]): string {
     registeredObjectIds: file.registeredObjectIds,
     graphNodeIds: file.graphNodeIds,
     warnings: file.warnings,
+  })))
+}
+
+function projectFileProjectionInputSignature(state: WorkbenchDomainState): string {
+  return JSON.stringify({
+    imports: state.imports.map((batch) => ({
+      id: batch.id,
+      items: batch.items.map((item) => ({
+        id: item.id,
+        source_path: item.source_path,
+        raw_resource_id: item.raw_resource?.id ?? item.preview?.raw_resource_id ?? null,
+        registered_object_ids: item.registered_object_ids,
+      })),
+    })),
+    objects: state.objects.map((object) => ({
+      id: object.id,
+      label: object.label,
+      source_file_id: object.source_file_id ?? null,
+      provenance_source_file_id: object.provenance?.source_file_id ?? null,
+    })),
+    graphNodes: state.workspace?.graph.nodes.map((node) => ({
+      id: node.id,
+      objectIds: graphNodeObjectIds(node),
+    })) ?? [],
+  })
+}
+
+function projectFileProjectionSourceSignature(files: ProjectFileEntry[]): string {
+  return JSON.stringify(files.map((file) => ({
+    id: file.id,
+    path: file.path,
+    rawResourceId: file.rawResourceId,
+    status: file.status,
+    registeredObjectIds: file.registeredObjectIds,
+    graphNodeIds: file.graphNodeIds,
   })))
 }
 
@@ -4841,38 +5860,414 @@ function browserPersistenceWarning(error: unknown) {
 
 type InspectorPanelProps = {
   state: WorkbenchDomainState
+  open: boolean
+  mode: WorkspaceFlowShellState["inspectorMode"]
+  sourceNodeId: string | null
+  projectFiles: ProjectFileEntry[]
+  projectRepository: BrowserProjectRepository
   hasActiveBrowserProject: boolean
   reportExportOptions: ReportExportOptions
   onReportExportOptionsChange: (options: ReportExportOptions) => void
   onRunReportExport: () => void
+  onClose: () => void
 }
 
 function InspectorPanel({
   state,
+  open,
+  mode,
+  sourceNodeId,
+  projectFiles,
+  projectRepository,
   hasActiveBrowserProject,
   reportExportOptions,
   onReportExportOptionsChange,
   onRunReportExport,
+  onClose,
 }: InspectorPanelProps) {
   const { t } = useI18n()
+  const panelClass = mode === "export" ? "export-dock" : "analysis-dock"
+  const panelLabel = mode === "export" ? t("reportExport.aria") : t("sourceInspector.aria")
+  const panelStyle: CSSProperties = open
+    ? {
+        opacity: 1,
+        pointerEvents: "auto",
+        transform: "translateX(0)",
+        visibility: "visible",
+      }
+    : {
+        opacity: 0,
+        pointerEvents: "none",
+        transform: "translateX(calc(100% + 28px))",
+        visibility: "hidden",
+      }
 
   return (
     <aside
-      className="inspector-panel export-dock"
-      aria-label={t("reportExport.aria")}
-      data-active-dock="export"
+      className={`inspector-panel ${panelClass}`}
+      aria-label={panelLabel}
+      data-active-dock={mode}
+      style={panelStyle}
     >
-      <div className="export-dock-panel">
-        <ReportExportPanel
-          artifacts={state.artifacts}
-          options={reportExportOptions}
-          disabled={!state.sessionId || !state.profile}
-          onOptionsChange={onReportExportOptionsChange}
-          onExport={onRunReportExport}
-        />
+      <div className={mode === "export" ? "export-dock-panel" : "analysis-dock-panel"}>
+        {mode === "export" ? (
+          <ReportExportPanel
+            artifacts={state.artifacts}
+            options={reportExportOptions}
+            disabled={!state.sessionId || !state.profile}
+            onOptionsChange={onReportExportOptionsChange}
+            onExport={onRunReportExport}
+          />
+        ) : (
+          <SourceInspectorPanel
+            state={state}
+            sourceNodeId={sourceNodeId}
+            projectFiles={projectFiles}
+            projectRepository={projectRepository}
+            hasActiveBrowserProject={hasActiveBrowserProject}
+            onClose={onClose}
+          />
+        )}
       </div>
     </aside>
   )
+}
+
+function SourceInspectorPanel({
+  state,
+  sourceNodeId,
+  projectFiles,
+  projectRepository,
+  hasActiveBrowserProject,
+  onClose,
+}: {
+  state: WorkbenchDomainState
+  sourceNodeId: string | null
+  projectFiles: ProjectFileEntry[]
+  projectRepository: BrowserProjectRepository
+  hasActiveBrowserProject: boolean
+  onClose: () => void
+}) {
+  const { locale, t } = useI18n()
+  const node = sourceInspectorNode(state.workspace, sourceNodeId)
+  const objectById = new Map(state.objects.map((object) => [object.id, object]))
+  const objects = node
+    ? graphNodeObjectIds(node)
+      .map((objectId) => objectById.get(objectId))
+      .filter((object): object is WorkbenchDomainState["objects"][number] => Boolean(object))
+    : []
+  const primaryObject = objects[0] ?? null
+  const sourceFiles = sourceFilesForInspectorNode(node, objects, projectFiles)
+  const primaryFile = sourceFiles[0] ?? null
+  const provenance = primaryObject?.provenance ?? null
+  const warnings = uniqueSourceInspectorWarnings(objects, sourceFiles)
+  const [rawPreview, setRawPreview] = useState<SourceRawPreviewState>(initialSourceRawPreviewState)
+  const [rawExpanded, setRawExpanded] = useState(false)
+  const rawStatusText = sourceInspectorRawStatusText(rawPreview, primaryFile, hasActiveBrowserProject, t)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!primaryFile) {
+      setRawPreview(initialSourceRawPreviewState)
+      return () => {
+        cancelled = true
+      }
+    }
+    setRawPreview({ status: "loading", text: "", truncated: false, byteSize: primaryFile.byteSize })
+    projectRepository.readObject(primaryFile.projectRef, primaryFile.path)
+      .then((object) => {
+        if (cancelled) return
+        const preview = sourceRawPreviewFromBytes(object.bytes, rawExpanded)
+        setRawPreview({
+          status: "ready",
+          text: preview.text,
+          truncated: preview.truncated,
+          byteSize: object.bytes.byteLength,
+        })
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setRawPreview({
+          status: "error",
+          text: "",
+          truncated: false,
+          byteSize: primaryFile.byteSize,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [primaryFile?.path, primaryFile?.projectRef, primaryFile?.byteSize, projectRepository, rawExpanded])
+
+  useEffect(() => {
+    setRawExpanded(false)
+  }, [primaryFile?.path, primaryFile?.projectRef])
+
+  return (
+    <section className="source-inspector-panel" aria-label={t("sourceInspector.aria")}>
+      <div className="source-inspector-header">
+        <div className="source-inspector-title-row">
+          <div>
+            <p className="section-kicker">{t("sourceInspector.section")}</p>
+            <h2>{node ? sourceInspectorNodeLabel(node, primaryObject) : t("sourceInspector.emptyTitle")}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label={t("sourceInspector.close")}>
+            <X size={15} aria-hidden="true" />
+          </button>
+        </div>
+        <p>{node ? t("sourceInspector.summary") : t("sourceInspector.emptyBody")}</p>
+      </div>
+
+      {node ? (
+        <>
+          <dl className="source-inspector-compact-grid">
+            <SourceInspectorField label={t("sourceInspector.sourceFile")} value={sourceInspectorFileName(primaryFile, primaryObject)} />
+            <SourceInspectorField label={t("sourceInspector.method")} value={primaryObject?.method ?? null} />
+            <SourceInspectorField label={t("sourceInspector.chargeMultiplicity")} value={sourceInspectorChargeMultiplicity(primaryObject)} />
+            <SourceInspectorField label={t("sourceInspector.fileSize")} value={typeof primaryFile?.byteSize === "number" ? formatFileSize(primaryFile.byteSize) : null} />
+          </dl>
+
+          <section className="source-inspector-raw-block">
+            <div className="source-inspector-raw-header">
+              <h3>{t("sourceInspector.rawLog")}</h3>
+              {rawPreview.status === "ready" && typeof rawPreview.byteSize === "number" ? (
+                <span>{formatFileSize(rawPreview.byteSize)}</span>
+              ) : null}
+            </div>
+            {rawStatusText ? (
+              <p className="source-inspector-raw-note">
+                {rawStatusText}
+                {rawPreview.status === "ready" && rawPreview.truncated ? (
+                  <>
+                    {" "}
+                    <button type="button" onClick={() => setRawExpanded(true)}>
+                      {t("sourceInspector.showFullLog")}
+                    </button>
+                  </>
+                ) : null}
+                {rawPreview.status === "ready" && rawExpanded && typeof rawPreview.byteSize === "number" && rawPreview.byteSize > sourceRawPreviewByteLimit ? (
+                  <>
+                    {" "}
+                    <button type="button" onClick={() => setRawExpanded(false)}>
+                      {t("sourceInspector.showPreviewLog")}
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+            {rawPreview.status === "ready" ? (
+              <pre className={`source-inspector-raw-viewer ${rawExpanded ? "source-inspector-raw-viewer--full" : ""}`} tabIndex={0}>
+                {rawPreview.text || t("sourceInspector.rawLogEmpty")}
+              </pre>
+            ) : null}
+          </section>
+
+          <section className="source-inspector-block">
+            <h3>{t("sourceInspector.parsedSummary")}</h3>
+            {objects.length > 0 ? (
+              <ul className="source-inspector-object-list">
+                {objects.map((object) => (
+                  <li key={object.id}>
+                    <strong>{objectDisplayName(object)}</strong>
+                    <span>{[
+                      object.formula,
+                      sourceInspectorDisplayEnergy(object),
+                      sourceInspectorParserLabel(object.provenance),
+                      sourceInspectorParsedAt(object.provenance?.parsed_at, locale),
+                    ].filter(Boolean).join(" · ")}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>{t("sourceInspector.noObjects")}</p>
+            )}
+          </section>
+
+          {warnings.length > 0 ? (
+            <section className="source-inspector-block source-inspector-block--warning">
+              <h3>{t("sourceInspector.warnings")}</h3>
+              <ul>
+                {warnings.map((warning) => <li key={warning}>{warning}</li>)}
+              </ul>
+            </section>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  )
+}
+
+type SourceRawPreviewState = {
+  status: "idle" | "loading" | "ready" | "error"
+  text: string
+  truncated: boolean
+  byteSize?: number
+  error?: string
+}
+
+const sourceRawPreviewByteLimit = 220_000
+
+const initialSourceRawPreviewState: SourceRawPreviewState = {
+  status: "idle",
+  text: "",
+  truncated: false,
+}
+
+function sourceRawPreviewFromBytes(bytes: Uint8Array<ArrayBuffer>, expanded = false): Pick<SourceRawPreviewState, "text" | "truncated"> {
+  const truncated = !expanded && bytes.byteLength > sourceRawPreviewByteLimit
+  const previewBytes = truncated ? bytes.subarray(0, sourceRawPreviewByteLimit) : bytes
+  return {
+    text: new TextDecoder("utf-8", { fatal: false }).decode(previewBytes),
+    truncated,
+  }
+}
+
+function sourceInspectorRawStatusText(
+  preview: SourceRawPreviewState,
+  file: ProjectFileEntry | null,
+  hasActiveBrowserProject: boolean,
+  t: ReturnType<typeof useI18n>["t"],
+): string | null {
+  if (!file) {
+    return hasActiveBrowserProject ? t("sourceInspector.rawNotMatched") : t("sourceInspector.noProject")
+  }
+  if (preview.status === "loading") return t("sourceInspector.rawLogLoading")
+  if (preview.status === "error") return t("sourceInspector.rawLogError", { message: preview.error ?? "" })
+  if (preview.status === "ready" && preview.truncated) {
+    return t("sourceInspector.rawLogTruncated", { size: formatFileSize(sourceRawPreviewByteLimit) })
+  }
+  if (preview.status === "ready" && typeof preview.byteSize === "number" && preview.byteSize > sourceRawPreviewByteLimit) {
+    return t("sourceInspector.rawLogFullShown")
+  }
+  return t("sourceInspector.rawStored", { file: file.name })
+}
+
+function SourceInspectorField({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value && value.trim() ? value : "-"}</dd>
+    </div>
+  )
+}
+
+function sourceInspectorNode(
+  workspace: WorkbenchDomainState["workspace"],
+  sourceNodeId: string | null,
+): WorkspaceSummary["graph"]["nodes"][number] | null {
+  if (!workspace) return null
+  const selectedNodeId = isSingleNodeSelection(workspace.selection) ? workspace.selection?.node_ids[0] ?? null : null
+  const targetNodeId = sourceNodeId ?? selectedNodeId
+  if (!targetNodeId) return null
+  return workspace.graph.nodes.find((node) => node.id === targetNodeId)
+    ?? (selectedNodeId ? workspace.graph.nodes.find((node) => node.id === selectedNodeId) : null)
+    ?? null
+}
+
+function sourceInspectorNodeLabel(
+  node: WorkspaceSummary["graph"]["nodes"][number],
+  object: WorkbenchDomainState["objects"][number] | null,
+): string {
+  return userFacingText(node.label) ?? objectDisplayName(object) ?? "Structure"
+}
+
+function sourceFilesForInspectorNode(
+  node: WorkspaceSummary["graph"]["nodes"][number] | null,
+  objects: WorkbenchDomainState["objects"],
+  projectFiles: ProjectFileEntry[],
+): ProjectFileEntry[] {
+  if (!node) return []
+  const objectIds = new Set(objects.map((object) => object.id))
+  const matches = projectFiles.filter((file) => {
+    if (file.graphNodeIds.includes(node.id)) return true
+    if (file.registeredObjectIds.some((objectId) => objectIds.has(objectId))) return true
+    return objects.some((object) => sourceInspectorObjectMatchesFile(object, file))
+  })
+  return Array.from(new Map(matches.map((file) => [file.id, file])).values())
+}
+
+function sourceInspectorObjectMatchesFile(
+  object: WorkbenchDomainState["objects"][number],
+  file: ProjectFileEntry,
+): boolean {
+  const objectKeys = sourceInspectorSourceKeys([
+    object.source_file_id,
+    object.provenance?.source_file_id,
+    object.label,
+  ])
+  const fileKeys = sourceInspectorSourceKeys([
+    file.rawResourceId,
+    file.sourceName,
+    file.name,
+    file.path,
+  ])
+  return objectKeys.some((key) => fileKeys.includes(key))
+}
+
+function sourceInspectorSourceKeys(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.flatMap((value) => {
+    if (!value) return []
+    const base = value.split(/[\\/]+/).filter(Boolean).at(-1) ?? value
+    const readable = userFacingText(base) ?? base.replace(/^raw[-:]/i, "")
+    const withoutExtension = readable.replace(/\.(log|out|xyz|extxyz)$/i, "")
+    return [readable, withoutExtension]
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+  })))
+}
+
+function sourceInspectorFileName(
+  file: ProjectFileEntry | null,
+  object: WorkbenchDomainState["objects"][number] | null,
+): string | null {
+  return file?.name
+    ?? userFacingText(object?.source_file_id)
+    ?? userFacingText(object?.provenance?.source_file_id)
+}
+
+function sourceInspectorParserLabel(
+  provenance: WorkbenchDomainState["objects"][number]["provenance"] | null,
+): string | null {
+  if (!provenance?.parser_id) return null
+  return provenance.parser_version
+    ? `${provenance.parser_id} ${provenance.parser_version}`
+    : provenance.parser_id
+}
+
+function sourceInspectorParsedAt(value: string | null | undefined, locale: string): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date)
+}
+
+function sourceInspectorChargeMultiplicity(object: WorkbenchDomainState["objects"][number] | null): string | null {
+  if (!object) return null
+  const charge = typeof object.charge === "number" ? String(object.charge) : "-"
+  const multiplicity = typeof object.spin_multiplicity === "number" ? String(object.spin_multiplicity) : "-"
+  return `${charge}, ${multiplicity}`
+}
+
+function sourceInspectorDisplayEnergy(object: WorkbenchDomainState["objects"][number] | null): string | null {
+  const energy = object?.display_energy
+  if (!energy || typeof energy.value !== "number") return null
+  const formattedValue = Number.isFinite(energy.value) ? energy.value.toFixed(6) : String(energy.value)
+  return `${energy.key}: ${formattedValue} ${energy.unit}`
+}
+
+function uniqueSourceInspectorWarnings(
+  objects: WorkbenchDomainState["objects"],
+  files: ProjectFileEntry[],
+): string[] {
+  const objectWarnings = objects.flatMap((object) => (object.warnings ?? []).map((warning) => (
+    warning.message || warning.code
+  )))
+  const fileWarnings = files.flatMap((file) => file.warnings)
+  return Array.from(new Set([...objectWarnings, ...fileWarnings].filter(Boolean)))
 }
 
 function inferLinearPathNodeIds(workspace: WorkbenchDomainState["workspace"]): string[] | null {
@@ -5059,7 +6454,7 @@ function graphNodeNeedsGeometryHydration(
 function objectNeedsRawHydration(object: WorkbenchDomainState["objects"][number]): boolean {
   if (!hasRenderableGeometry(object.geometry)) return true
   if (!isLogLikeComputationalObject(object)) return false
-  return !objectHasElectronicEnergyChannel(object) || !objectHasGasFreeEnergyChannel(object)
+  return !objectHasReusableEnergyChannel(object)
 }
 
 function isLogLikeComputationalObject(object: WorkbenchDomainState["objects"][number]): boolean {
@@ -5076,19 +6471,24 @@ function isLogLikeComputationalObject(object: WorkbenchDomainState["objects"][nu
   ))
 }
 
-function objectHasElectronicEnergyChannel(object: WorkbenchDomainState["objects"][number]): boolean {
-  return objectEnergyKeys(object).some((key) => ["egas", "electronic", "scf"].includes(key))
-}
-
-function objectHasGasFreeEnergyChannel(object: WorkbenchDomainState["objects"][number]): boolean {
-  return objectThermochemistryKeys(object).some((key) => (
-    ["ggas", "ggas_1m", "gibbs", "free_energy", "gibbs_free_energy"].includes(key)
-  ))
+function objectHasReusableEnergyChannel(object: WorkbenchDomainState["objects"][number]): boolean {
+  if (object.display_energy && Number.isFinite(object.display_energy.value)) return true
+  const availableKeys = new Set([
+    ...objectEnergyKeys(object),
+    ...objectThermochemistryKeys(object),
+  ])
+  return [
+    ...electronicEnergyKeys,
+    ...freeGasEnergyKeys,
+    ...solutionElectronicEnergyKeys,
+    ...solutionFreeEnergyKeys,
+  ].some((key) => availableKeys.has(normalizeHydrationEnergyKey(key)))
 }
 
 function objectEnergyKeys(object: WorkbenchDomainState["objects"][number]): string[] {
   return uniqueStrings([
     ...jsonStringValues(object.energy_keys),
+    ...jsonObjectKeys(object.energies),
     ...energyChannelKeys(object, "energies"),
     object.display_energy?.source === "energies" ? object.display_energy.key : null,
   ]).map(normalizeHydrationEnergyKey)
@@ -5097,6 +6497,7 @@ function objectEnergyKeys(object: WorkbenchDomainState["objects"][number]): stri
 function objectThermochemistryKeys(object: WorkbenchDomainState["objects"][number]): string[] {
   return uniqueStrings([
     ...jsonStringValues(object.thermochemistry_keys),
+    ...jsonObjectKeys(object.thermochemistry),
     ...energyChannelKeys(object, "thermochemistry"),
     object.display_energy?.source === "thermochemistry" ? object.display_energy.key : null,
   ]).map(normalizeHydrationEnergyKey)
@@ -5117,8 +6518,12 @@ function jsonStringValues(values: unknown): string[] {
     : []
 }
 
+function jsonObjectKeys(value: unknown): string[] {
+  return isJsonObject(value) ? Object.keys(value) : []
+}
+
 function normalizeHydrationEnergyKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[/-]/g, "_")
+  return value.trim().toLowerCase().replace(/[\s/-]+/g, "_")
 }
 
 function isRawHydrationFile(file: ProjectFileEntry): boolean {

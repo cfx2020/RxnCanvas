@@ -16,11 +16,11 @@ export const hartreeToKcalMol = 627.5095
 export const hartreeToKjMol = hartreeToKcalMol * 4.184
 export const oneMStandardStateCorrectionHartree = 0.003019
 
-const electronicKeys = ["egas", "electronic", "scf"]
-const freeGasKeys = ["ggas_1m", "ggas", "gibbs", "free_energy", "gibbs_free_energy"]
-const freeGasUncorrectedKeys = ["ggas", "gibbs", "free_energy", "gibbs_free_energy"]
-const solutionElectronicKeys = ["esol", "solution_electronic_energy"]
-const solutionFreeKeys = ["gsol", "solution_free_energy", "solvation_free_energy"]
+export const electronicEnergyKeys = ["egas", "electronic", "scf", "scf_energy", "electronic_energy"] as const
+export const freeGasEnergyKeys = ["ggas_1m", "ggas", "gibbs", "free_energy", "gibbs_free_energy"] as const
+export const freeGasUncorrectedEnergyKeys = ["ggas", "gibbs", "free_energy", "gibbs_free_energy"] as const
+export const solutionElectronicEnergyKeys = ["esol", "solution_electronic_energy", "solution_electronic"] as const
+export const solutionFreeEnergyKeys = ["gsol", "solution_free_energy", "solvation_free_energy"] as const
 
 export function resolveObjectEnergyValue(
   object: ObjectSummary | null | undefined,
@@ -28,7 +28,7 @@ export function resolveObjectEnergyValue(
 ): ResolvedObjectEnergyValue | null {
   if (!object) return null
   if (mode === "electronic") {
-    return energyValueFromObjectRecord(object, "energies", electronicKeys)
+    return energyValueFromObjectRecord(object, "energies", electronicEnergyKeys)
   }
   if (mode === "free") {
     return resolveGasFreeEnergy1M(object)
@@ -36,7 +36,7 @@ export function resolveObjectEnergyValue(
   if (mode === "solvation") {
     return resolveSolutionFreeEnergy(object)
   }
-  const base = energyValueFromObjectRecord(object, "energies", electronicKeys)
+  const base = energyValueFromObjectRecord(object, "energies", electronicEnergyKeys)
   if (!base) return null
   const corrections = correctionEnergySum(object)
   if (!corrections) return base
@@ -59,8 +59,8 @@ export function resolveGasFreeEnergy1M(
   const explicit = energyValueFromObjectRecord(object, "thermochemistry", ["ggas_1m"])
     ?? energyValueFromObjectRecord(object, "energies", ["ggas_1m"])
   if (explicit) return explicit
-  const ggas = energyValueFromObjectRecord(object, "thermochemistry", freeGasUncorrectedKeys)
-    ?? energyValueFromObjectRecord(object, "energies", freeGasUncorrectedKeys)
+  const ggas = energyValueFromObjectRecord(object, "thermochemistry", freeGasUncorrectedEnergyKeys)
+    ?? energyValueFromObjectRecord(object, "energies", freeGasUncorrectedEnergyKeys)
   if (!ggas) return null
   const correction = convertEnergyValue(oneMStandardStateCorrectionHartree, "hartree", normalizeEnergyUnit(ggas.unit) ?? "hartree")
   if (correction === null) return ggas
@@ -78,11 +78,11 @@ export function resolveSolutionFreeEnergy(
   object: ObjectSummary | null | undefined,
 ): ResolvedObjectEnergyValue | null {
   if (!object) return null
-  const explicit = energyValueFromObjectRecord(object, "thermochemistry", solutionFreeKeys)
+  const explicit = energyValueFromObjectRecord(object, "thermochemistry", solutionFreeEnergyKeys)
   if (explicit) return explicit
   const ggas1m = resolveGasFreeEnergy1M(object)
-  const egas = energyValueFromObjectRecord(object, "energies", electronicKeys)
-  const esol = energyValueFromObjectRecord(object, "energies", solutionElectronicKeys)
+  const egas = energyValueFromObjectRecord(object, "energies", electronicEnergyKeys)
+  const esol = energyValueFromObjectRecord(object, "energies", solutionElectronicEnergyKeys)
   if (!ggas1m || !egas || !esol) return null
   const ggasKcal = convertEnergyValue(ggas1m.value, ggas1m.unit, "kcal_mol")
   const egasKcal = convertEnergyValue(egas.value, egas.unit, "kcal_mol")
@@ -180,6 +180,25 @@ export function basisFunctionCountFromObject(object: ObjectSummary | null | unde
     jsonObjectRecord(object.metadata).basis_function_count,
     jsonObjectRecord(object.metadata).basis_functions,
     jsonObjectRecord(object.metadata).basis_function,
+  ]
+  for (const candidate of candidates) {
+    const value = Number(candidate)
+    if (Number.isInteger(value) && value > 0) return value
+  }
+  return null
+}
+
+export function solutionBasisFunctionCountFromObject(object: ObjectSummary | null | undefined): number | null {
+  if (!object) return null
+  const metadata = jsonObjectRecord(object.metadata)
+  const provenance = jsonObjectRecord(object.provenance)
+  const candidates = [
+    object.solution_basis_function_count,
+    object.solution_basis_functions,
+    metadata.solution_basis_function_count,
+    metadata.solution_basis_functions,
+    provenance.solution_basis_function_count,
+    provenance.solution_basis_functions,
   ]
   for (const candidate of candidates) {
     const value = Number(candidate)

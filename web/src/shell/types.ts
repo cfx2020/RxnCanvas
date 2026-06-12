@@ -300,6 +300,7 @@ export type WorkspaceSummary = JsonObject & {
   workspace_id: string
   project_id: string
   active_path_id?: string | null
+  metadata?: JsonObject
   selection?: WorkspaceSelectionSummary | null
   viewport?: CanvasViewportSummary | null
   palette: JsonValue[]

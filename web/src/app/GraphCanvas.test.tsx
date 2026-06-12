@@ -1,7 +1,6 @@
 import { act, createEvent, fireEvent, render, screen, within } from "@testing-library/react"
 import { useState } from "react"
 import { describe, expect, it, vi } from "vitest"
-import { initialCompositionDraftState } from "./compositionDraftState"
 import { edgeLabelDraftFromEdge, initialEdgeLabelDraftState } from "./edgeLabelDraftState"
 import { initialGraphEditorInteractionState, type GraphEditorInteractionState } from "./graphEditorInteractionState"
 import {
@@ -41,7 +40,7 @@ describe("GraphCanvas raw file drops", () => {
         projectFileId: "raw-abc123def456",
         path: "inputs/raw/abc123def456-water.extxyz",
       },
-      position: [240, 180],
+      position: [640, 500],
     })
   })
 
@@ -59,7 +58,7 @@ describe("GraphCanvas raw file drops", () => {
     expect(dataTransfer.dropEffect).toBe("copy")
     expect(onAddRawFileNode).toHaveBeenCalledWith({
       source: { kind: "external-file", file },
-      position: [280, 120],
+      position: [740, 340],
     })
   })
 })
@@ -215,6 +214,43 @@ describe("GraphCanvas molecule previews", () => {
     expect(screen.getByText("-12.55 (0,1)")).toBeInTheDocument()
   })
 
+  it("only offers table-backed energy modes in the canvas dropdown", () => {
+    renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+    })
+
+    expect(within(screen.getByLabelText("Energy")).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Egas",
+      "Ggas",
+      "Gsol",
+    ])
+  })
+
+  it("edits the node stoichiometric coefficient inline and keeps source actions in the node menu", () => {
+    const onSetNodeCoefficient = vi.fn()
+    const onShowNodeSource = vi.fn()
+    renderGraphCanvas(vi.fn(), {
+      state: graphCanvasTwoNodeState(),
+      onSetNodeCoefficient,
+      onShowNodeSource,
+    })
+
+    const coefficientButton = screen.getByRole("button", { name: "Stoichiometric coefficient for A" })
+    expect(coefficientButton).toHaveTextContent("×1")
+    fireEvent.click(coefficientButton)
+    const coefficientInput = screen.getByLabelText("Stoichiometric coefficient for A")
+    fireEvent.change(coefficientInput, { target: { value: "2" } })
+    fireEvent.keyDown(coefficientInput, { key: "Enter" })
+    expect(onSetNodeCoefficient).toHaveBeenCalledWith("node-a", 2)
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for A" }))
+    expect(screen.queryByRole("menuitem", { name: "Set stoichiometric coefficients" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Source details" }))
+
+    expect(onShowNodeSource).toHaveBeenCalledWith("node-a")
+  })
+
   it("marks explicit barrier annotations between two nodes", () => {
     const view = renderGraphCanvas(vi.fn(), {
       state: graphCanvasTwoNodeState(),
@@ -351,8 +387,8 @@ describe("GraphCanvas graph edges", () => {
     const edgePath = view.container.querySelector(".graph-edge-line")
     const hitbox = screen.getByRole("button", { name: "Edge B to A: TS" })
 
-    expect(edgePath).toHaveAttribute("d", expect.stringMatching(/^M 57\d 180 C /))
-    expect(edgePath).toHaveAttribute("d", expect.stringMatching(/2\d 180$/))
+    expect(edgePath).toHaveAttribute("d", expect.stringMatching(/^M 58\d 180 C /))
+    expect(edgePath).toHaveAttribute("d", expect.stringMatching(/1\d 180$/))
     expect(view.container.querySelector(".graph-edge-label")).toHaveTextContent("TS")
     expect(screen.getByRole("button", { name: "Edit edge label from B to A" })).toBeInTheDocument()
     expect(hitbox).toHaveStyle({
@@ -524,6 +560,112 @@ describe("GraphCanvas graph edges", () => {
     expect(within(nodeB).queryByText("ΔE")).not.toBeInTheDocument()
   })
 
+  it("uses object energies when a stale profile has missing node energy", () => {
+    const state = graphCanvasTwoNodeState()
+    state.profile = {
+      id: "profile-electronic-stale-missing",
+      graph_id: "graph-1",
+      path_id: "path-a-b",
+      point_count: 2,
+      energy_key: "electronic",
+      energy_source: "energies",
+      correction_policy: { mode: "none" },
+      output_unit: "kcal_mol",
+      baseline_node_id: "node-a",
+      points: [
+        {
+          node_id: "node-a",
+          label: "A",
+          relative_energy: { value: 0, unit: "kcal_mol" },
+          expression: {
+            node_id: "node-a",
+            terms: [],
+            corrections: [],
+            total: { value: -100, unit: "hartree" },
+            missing: [],
+          },
+        },
+        {
+          node_id: "node-b",
+          label: "B",
+          relative_energy: null,
+          missing_reason: "missing_energy",
+          expression: {
+            node_id: "node-b",
+            terms: [],
+            corrections: [],
+            missing: [{ code: "missing_energy", message: "Stale profile missing node energy." }],
+          },
+        },
+      ],
+    }
+
+    renderGraphCanvas(vi.fn(), {
+      state,
+      energyDisplayOptions: { mode: "electronic", unit: "kcal_mol" },
+    })
+
+    const nodeB = graphNodeCardById(document.body, "node-b")
+    expect(within(nodeB).getByText("ΔE")).toBeInTheDocument()
+    expect(within(nodeB).getByText("12.55 kcal/mol")).toBeInTheDocument()
+    expect(within(nodeB).queryByText("missing")).not.toBeInTheDocument()
+  })
+
+  it("falls back to absolute node energy when relative energy is not comparable", () => {
+    const state = graphCanvasTwoNodeState()
+    state.objects = state.objects.map((object) => (
+      object.id === "object-b"
+        ? {
+            ...object,
+            energies: {
+              electronic: {
+                value: -80,
+                unit: "hartree",
+              },
+            },
+          }
+        : object
+    ))
+
+    renderGraphCanvas(vi.fn(), {
+      state,
+      energyDisplayOptions: { mode: "electronic", unit: "kcal_mol" },
+    })
+
+    const nodeB = graphNodeCardById(document.body, "node-b")
+    expect(within(nodeB).getByText("E")).toBeInTheDocument()
+    expect(within(nodeB).getByText("-50200.76 kcal/mol")).toBeInTheDocument()
+    expect(within(nodeB).queryByText("missing")).not.toBeInTheDocument()
+  })
+
+  it("uses the first path node with the selected energy mode as the default zero point", () => {
+    const state = graphCanvasTwoNodeState()
+    state.objects = state.objects.map((object) => (
+      object.id === "object-b"
+        ? {
+            ...object,
+            thermochemistry_keys: ["ggas"],
+            thermochemistry: {
+              ggas: {
+                value: -99.95,
+                unit: "hartree",
+              },
+            },
+          }
+        : object
+    ))
+
+    renderGraphCanvas(vi.fn(), {
+      state,
+      energyDisplayOptions: { mode: "free", unit: "kcal_mol" },
+    })
+
+    const nodeB = graphNodeCardById(document.body, "node-b")
+    expect(within(nodeB).getByText("ΔG")).toBeInTheDocument()
+    expect(within(nodeB).getByText("0.00 kcal/mol")).toBeInTheDocument()
+    expect(within(nodeB).queryByText("missing")).not.toBeInTheDocument()
+  })
+
   it("does not use single-object solvation corrections as solution free energy", () => {
     const state = graphCanvasTwoNodeState()
     state.objects = state.objects.map((object, index) => ({
@@ -587,7 +729,7 @@ describe("GraphCanvas graph edges", () => {
     expect(onApplyAutoLayout).toHaveBeenCalledTimes(1)
     const plan = onApplyAutoLayout.mock.calls[0][0] as GraphLayoutPlan
     expect(plan.strategy).toBe("energy-ranked")
-    expect(plan.nodePositions["node-substrate"][0]).toBe(110)
+    expect(plan.nodePositions["node-substrate"][0]).toBe(160)
     expect(plan.nodePositions["node-pre"][0]).toBeGreaterThan(plan.nodePositions["node-substrate"][0])
     expect(plan.nodePositions["node-ts"][0]).toBeGreaterThan(plan.nodePositions["node-pre"][0])
     expect(plan.nodePositions["node-post"][0]).toBeGreaterThan(plan.nodePositions["node-ts"][0])
@@ -614,7 +756,7 @@ describe("GraphCanvas drag previews", () => {
 
     const layer = view.container.querySelector(".graph-viewport-layer")
     expect(layer).toHaveStyle({
-      transform: "translate(6.667%, 5.556%) scale(1)",
+      transform: "translate(2.5%, 2%) scale(1)",
     })
   })
 
@@ -634,8 +776,8 @@ describe("GraphCanvas drag previews", () => {
 
     const shell = view.container.querySelector('.graph-node-card-shell[data-graph-node-id="node-a"]')
     expect(shell).toHaveStyle({
-      left: "22.166666666666668%",
-      top: "51.94444444444445%",
+      left: "8.3125%",
+      top: "18.7%",
     })
   })
 
@@ -739,7 +881,9 @@ function renderGraphCanvas(
     state?: WorkbenchDomainState
     interactionState?: GraphEditorInteractionState
     energyDisplayOptions?: CanvasEnergyDisplayOptions
+    energyReferenceNodeId?: string | null
     onEnergyDisplayOptionsChange?: (options: CanvasEnergyDisplayOptions) => void
+    onEnergyReferenceNodeIdChange?: (nodeId: string | null) => void
     candidateChooser?: ParseCandidateChooserState | null
     onToggleCandidateSelection?: (candidateId: string, selected: boolean) => void
     onConfirmCandidateChooser?: () => void
@@ -753,15 +897,25 @@ function renderGraphCanvas(
     onEndPointerEdge?: (targetNodeId: string | null) => void
     onSetViewport?: (viewport: { x: number; y: number; zoom: number }) => void
     onApplyAutoLayout?: (plan: GraphLayoutPlan) => void
+    onSetNodeCoefficient?: (nodeId: string, coefficient: number) => void
+    onShowNodeSource?: (nodeId: string) => void
+    onDismissFloatingPanels?: () => void
   } = {},
 ) {
   function GraphCanvasHarness() {
     const [energyDisplayOptions, setEnergyDisplayOptions] = useState<CanvasEnergyDisplayOptions>(
       options.energyDisplayOptions ?? { mode: "electronic", unit: "kcal_mol" },
     )
+    const [energyReferenceNodeId, setEnergyReferenceNodeId] = useState<string | null>(
+      options.energyReferenceNodeId ?? null,
+    )
     const handleEnergyDisplayOptionsChange = (nextOptions: CanvasEnergyDisplayOptions) => {
       setEnergyDisplayOptions(nextOptions)
       options.onEnergyDisplayOptionsChange?.(nextOptions)
+    }
+    const handleEnergyReferenceNodeIdChange = (nodeId: string | null) => {
+      setEnergyReferenceNodeId(nodeId)
+      options.onEnergyReferenceNodeIdChange?.(nodeId)
     }
     return (
       <GraphCanvas
@@ -775,12 +929,11 @@ function renderGraphCanvas(
         edgeLabelDraft={options.edgeLabelDraft ?? initialEdgeLabelDraftState}
         edgeLabelPending={false}
         edgeLabelError={null}
-        compositionDraft={initialCompositionDraftState}
-        compositionPending={false}
-        compositionError={null}
         energyDisplayOptions={energyDisplayOptions}
+        energyReferenceNodeId={energyReferenceNodeId}
         candidateChooser={options.candidateChooser ?? null}
         onEnergyDisplayOptionsChange={handleEnergyDisplayOptionsChange}
+        onEnergyReferenceNodeIdChange={handleEnergyReferenceNodeIdChange}
         onSelectNode={options.onSelectNode ?? (() => undefined)}
         onSelectEdge={options.onSelectEdge ?? (() => undefined)}
         onSelectPath={() => undefined}
@@ -817,14 +970,12 @@ function renderGraphCanvas(
         onApplyAutoLayout={options.onApplyAutoLayout ?? (() => undefined)}
         onRemoveGraphItems={options.onRemoveGraphItems ?? (() => undefined)}
         onClearSelection={() => undefined}
+        onDismissFloatingPanels={options.onDismissFloatingPanels}
         onSetViewport={options.onSetViewport ?? (() => undefined)}
         onAutoFitViewport={() => undefined}
         onTogglePanMode={() => undefined}
-        onCompositionDraftRowChange={() => undefined}
-        onAddCompositionDraftRow={() => undefined}
-        onRemoveCompositionDraftRow={() => undefined}
-        onResetCompositionDraft={() => undefined}
-        onApplyCompositionDraft={() => undefined}
+        onSetNodeCoefficient={options.onSetNodeCoefficient ?? (() => undefined)}
+        onShowNodeSource={options.onShowNodeSource ?? (() => undefined)}
       />
     )
   }

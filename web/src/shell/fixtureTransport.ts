@@ -204,6 +204,8 @@ const initialFixtureObjects: ObjectSummary[] = [
     method: "B3LYP/def2-SVP",
     parser_id: "fixture-parser",
     source_file_id: "fixture-source",
+    basis_function_count: 24,
+    solution_basis_function_count: 30,
     warnings: [
       {
         code: "unit_assumed",
@@ -1459,6 +1461,7 @@ function workspaceSectionFromWorkspace(workspace: WorkspaceSummary): JsonObject 
     workspace_id: workspace.workspace_id,
     project_id: workspace.project_id,
     graph_id: workspace.graph.id,
+    metadata: workspace.metadata ?? {},
     selection: {
       node_ids: selection.node_ids,
       edge_ids: selection.edge_ids,
@@ -1489,6 +1492,7 @@ function workspaceFromProjectContentFiles(files: JsonValue[]): WorkspaceSummary 
     workspace_id: typeof workspaceObject.workspace_id === "string" ? workspaceObject.workspace_id : fixtureWorkspaceId,
     project_id: typeof workspaceObject.project_id === "string" ? workspaceObject.project_id : fixtureProject.id,
     active_path_id: typeof workspaceObject.active_path_id === "string" ? workspaceObject.active_path_id : null,
+    metadata: jsonRecord(workspaceObject.metadata),
     selection: "selection" in selectionResult ? selectionResult.selection : { node_ids: [], edge_ids: [], path_ids: [] },
     viewport: "viewport" in viewportResult ? viewportResult.viewport : { x: 0, y: 0, zoom: 1 },
     palette: [],
@@ -2235,7 +2239,7 @@ function fixtureImportRegisterAllResponse(args: JsonObject): ShellResponse<Impor
     .filter((source) => !fixtureImportSourceHasParseError(source))
     .map(fixtureSingleImportObjectForSource)
   fixtureObjects = withFixturePairedSolutionFreeEnergies(upsertFixtureObjects(fixtureObjects, importedObjects))
-  const registeredObjectIds = importedObjects.map((object) => object.id)
+  const registeredObjectIds = fixtureRegisteredObjectIdsForImports(importedObjects, fixtureObjects)
   return {
     ok: true,
     data: {
@@ -2249,6 +2253,30 @@ function fixtureImportRegisterAllResponse(args: JsonObject): ShellResponse<Impor
     warnings: [],
     artifacts: [],
   }
+}
+
+function fixtureRegisteredObjectIdsForImports(
+  importedObjects: ObjectSummary[],
+  finalObjects: ObjectSummary[],
+): string[] {
+  const finalObjectIds = new Set(finalObjects.map((object) => object.id))
+  const gasObjectByPairKey = new Map<string, ObjectSummary>()
+  for (const object of finalObjects) {
+    if (fixtureObjectLooksLikeSolutionFile(object)) continue
+    const key = fixtureSolutionPairKey(object)
+    if (key) gasObjectByPairKey.set(key, object)
+  }
+  const ids: string[] = []
+  for (const object of importedObjects) {
+    const key = fixtureSolutionPairKey(object)
+    const pairedGasObject = key && fixtureObjectLooksLikeSolutionFile(object)
+      ? gasObjectByPairKey.get(key)
+      : null
+    const id = pairedGasObject?.id ?? object.id
+    if (!finalObjectIds.has(id) || ids.includes(id)) continue
+    ids.push(id)
+  }
+  return ids
 }
 
 function fixtureImportRegisterSelectionResponse(args: JsonObject): ShellResponse<ImportRegisterSelectionData> {
@@ -2617,7 +2645,9 @@ function withFixturePairedSolutionFreeEnergies(objects: ObjectSummary[]): Object
 function fixtureObjectWithSolutionFreeEnergy(gas: ObjectSummary, solution: ObjectSummary): ObjectSummary {
   const energies = { ...jsonRecord(gas.energies as JsonValue | undefined) }
   const thermochemistry = { ...jsonRecord(gas.thermochemistry as JsonValue | undefined) }
+  const metadata = { ...jsonRecord(gas.metadata as JsonValue | undefined) }
   const solutionEnergies = jsonRecord(solution.energies as JsonValue | undefined)
+  const solutionBasisFunctionCount = Number(solution.basis_function_count)
   const egas = energyValueFromAnyRecord(energies, ["egas", "electronic"])
   const esol = energyValueFromAnyRecord(solutionEnergies, ["esol", "electronic"])
   let ggas = energyValueFromAnyRecord(thermochemistry, ["ggas_1m", "ggas"])
@@ -2659,10 +2689,19 @@ function fixtureObjectWithSolutionFreeEnergy(gas: ObjectSummary, solution: Objec
       reference: `Gsol = Ggas(1M) - Egas + Esol from paired solution log ${solution.id}`,
     }
   }
+  if (Number.isInteger(solutionBasisFunctionCount) && solutionBasisFunctionCount > 0) {
+    metadata.solution_basis_function_count = solutionBasisFunctionCount
+  }
 
   return finalizeFixtureObjectEnergyFields({
     ...gas,
     label: fixtureStructureDisplayName(gas),
+    metadata,
+    solution_basis_function_count: Number.isInteger(solutionBasisFunctionCount) && solutionBasisFunctionCount > 0
+      ? solutionBasisFunctionCount
+      : gas.solution_basis_function_count,
+    solution_source_file_id: solution.source_file_id ?? solution.id,
+    solution_label: solution.label ?? solution.id,
     energies,
     thermochemistry,
     warnings: uniqueWarnings([
@@ -2754,7 +2793,24 @@ function fixtureSourceStem(value: string | null | undefined): string {
 
 function fixtureSolutionSuffix(stem: string): string | null {
   const lower = stem.toLowerCase()
-  for (const suffix of ["-sol", "_sol", ".sol", " sol"]) {
+  for (const suffix of [
+    "-sol",
+    "_sol",
+    ".sol",
+    " sol",
+    "-solution",
+    "_solution",
+    ".solution",
+    " solution",
+    "-solv",
+    "_solv",
+    ".solv",
+    " solv",
+    "-smd",
+    "_smd",
+    ".smd",
+    " smd",
+  ]) {
     if (lower.endsWith(suffix)) return suffix
   }
   return null
@@ -2958,6 +3014,8 @@ function objectSummary(
     method?: string | null
     source_file_id?: string
     parser_id?: string
+    basis_function_count?: number | null
+    solution_basis_function_count?: number | null
     warnings?: ObjectSummary["warnings"]
   } = {},
 ): JsonObject {
@@ -2974,6 +3032,8 @@ function objectSummary(
     spin_multiplicity: options.spin_multiplicity ?? null,
     method: options.method ?? null,
     source_file_id: sourceFileId,
+    basis_function_count: options.basis_function_count ?? null,
+    solution_basis_function_count: options.solution_basis_function_count ?? null,
     energies: {
       electronic: {
         value: electronicValue,
@@ -3100,6 +3160,7 @@ function emptyWorkspaceSummary(projectId: string): WorkspaceSummary {
     workspace_id: "workspace-project-main",
     project_id: projectId,
     active_path_id: null,
+    metadata: {},
     selection: {
       node_ids: [],
       edge_ids: [],
@@ -3157,6 +3218,7 @@ function normalizeWorkspace(workspace: WorkspaceSummary): WorkspaceSummary {
   return {
     ...repairedWorkspace,
     selection,
+    metadata: repairedWorkspace.metadata ?? {},
     viewport: repairedWorkspace.viewport ?? { x: 0, y: 0, zoom: 1 },
     graph: {
       ...repairedWorkspace.graph,

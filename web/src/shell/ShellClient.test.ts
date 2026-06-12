@@ -384,6 +384,7 @@ describe("ShellClient", () => {
       " Charge = 0 Multiplicity = 1",
       " SCF Done:  E(RB3LYP) =  -100.000000     A.U. after   10 cycles",
       " Sum of electronic and thermal Free Energies=        -99.990000",
+      "  12 basis functions",
       " Standard orientation:",
       " ---------------------------------------------------------------------",
       " Center     Atomic      Atomic             Coordinates (Angstroms)",
@@ -396,6 +397,7 @@ describe("ShellClient", () => {
     const solutionLog = [
       " Charge = 0 Multiplicity = 1",
       " SCF Done:  E(RB3LYP) =  -100.020000     A.U. after   10 cycles",
+      "  18 basis functions",
       " Standard orientation:",
       " ---------------------------------------------------------------------",
       " Center     Atomic      Atomic             Coordinates (Angstroms)",
@@ -445,13 +447,14 @@ describe("ShellClient", () => {
     expect(registered.ok).toBe(true)
     expect(registered.data?.registered_object_ids).toEqual([
       "object-imported-pair-ts",
-      "object-imported-pair-ts-sol",
     ])
     const gasObject = registered.data?.objects.find((object) => object.id === "object-imported-pair-ts")
     const solutionObject = registered.data?.objects.find((object) => object.id === "object-imported-pair-ts-sol")
     expect(solutionObject).toBeUndefined()
     expect(gasObject).toMatchObject({
       label: "Pair-ts",
+      basis_function_count: 12,
+      solution_basis_function_count: 18,
       energy_keys: expect.arrayContaining(["egas", "esol"]),
       thermochemistry_keys: expect.arrayContaining(["ggas", "ggas_1m", "gsol"]),
     })
@@ -517,6 +520,7 @@ describe("ShellClient", () => {
     })
 
     expect(registered.ok).toBe(true)
+    expect(registered.data?.registered_object_ids).toEqual(["object-imported-i1n2fix14-ts"])
     const gasObject = registered.data?.objects.find((object) => object.id === "object-imported-i1n2fix14-ts")
     const solutionObject = registered.data?.objects.find((object) => object.id === "object-imported-i1n2fix14-ts-sol")
     expect(solutionObject).toBeUndefined()

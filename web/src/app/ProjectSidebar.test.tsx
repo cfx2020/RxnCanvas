@@ -83,7 +83,7 @@ describe("ProjectSidebar", () => {
     })
 
     const panel = screen.getByRole("region", { name: "Projects" })
-    expect(within(panel).getByText("1 file")).toBeInTheDocument()
+    expect(within(panel).getByText("1 structure")).toBeInTheDocument()
     expect(within(panel).getByText("Pd Ni")).toBeInTheDocument()
     expect(within(panel).getByText("water.extxyz")).toBeInTheDocument()
     expect(within(panel).queryByText("inputs/raw/abc123def456-water.extxyz")).not.toBeInTheDocument()
@@ -347,6 +347,85 @@ describe("ProjectSidebar", () => {
     )
   })
 
+  it("groups gas and solution logs into one structure row", () => {
+    const activeProject = browserProject("browser-project:project-1", "Pd Ni")
+    renderSidebar({
+      ...initialProjectSidebarState,
+      status: "ready",
+      projects: [activeProject],
+      activeProjectRef: activeProject.projectRef,
+      activeProject,
+      projectFiles: [
+        projectFile(activeProject.projectRef, "raw-gas", "inputs/raw/aaaa-Bfix6-ts.log", "Bfix6-ts.log"),
+        projectFile(activeProject.projectRef, "raw-sol", "inputs/raw/bbbb-Bfix6-ts-sol.log", "Bfix6-ts-sol.log"),
+      ],
+    })
+
+    const panel = screen.getByRole("region", { name: "Projects" })
+    expect(within(panel).getByText("1 structure")).toBeInTheDocument()
+    expect(within(panel).getByText("Bfix6-ts")).toBeInTheDocument()
+    expect(within(panel).queryByText("Bfix6-ts.log")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("Bfix6-ts-sol.log")).not.toBeInTheDocument()
+    expect(within(panel).getByText("gas")).toBeInTheDocument()
+    expect(within(panel).getByText("sol")).toBeInTheDocument()
+
+    const row = within(panel).getByText("Bfix6-ts").closest(".project-file-card")
+    if (!(row instanceof HTMLElement)) {
+      throw new Error("Grouped project file row was not rendered.")
+    }
+    const dataTransfer = new TestDataTransfer()
+    fireEvent.dragStart(row, { dataTransfer })
+
+    expect(parseGraphRawFileDropPayload(dataTransfer.getData(graphRawFileDropMimeType))).toEqual({
+      kind: "project-files",
+      files: [
+        { projectFileId: "raw-gas", path: "inputs/raw/aaaa-Bfix6-ts.log" },
+        { projectFileId: "raw-sol", path: "inputs/raw/bbbb-Bfix6-ts-sol.log" },
+      ],
+    })
+  })
+
+  it("groups common solution log suffix variants as structure rows", () => {
+    const activeProject = browserProject("browser-project:project-1", "Ir")
+    renderSidebar({
+      ...initialProjectSidebarState,
+      status: "ready",
+      projects: [activeProject],
+      activeProjectRef: activeProject.projectRef,
+      activeProject,
+      projectFiles: [
+        projectFile(activeProject.projectRef, "raw-a-gas", "inputs/raw/aaaa-4b+.log", "4b+.log"),
+        projectFile(activeProject.projectRef, "raw-a-sol", "inputs/raw/bbbb-4b+_sol.log", "4b+_sol.log"),
+        projectFile(activeProject.projectRef, "raw-b-gas", "inputs/raw/cccc-i1.log", "i1.log"),
+        projectFile(activeProject.projectRef, "raw-b-sol", "inputs/raw/dddd-i1.sol.log", "i1.sol.log"),
+        projectFile(activeProject.projectRef, "raw-c-gas", "inputs/raw/eeee-cat.log", "cat.log"),
+        projectFile(activeProject.projectRef, "raw-c-sol", "inputs/raw/ffff-cat sol.log", "cat sol.log"),
+        projectFile(activeProject.projectRef, "raw-d-gas", "inputs/raw/gggg-ligand.log", "ligand.log"),
+        projectFile(activeProject.projectRef, "raw-d-sol", "inputs/raw/hhhh-ligand-solution.log", "ligand-solution.log"),
+        projectFile(activeProject.projectRef, "raw-e-gas", "inputs/raw/iiii-ts.log", "ts.log"),
+        projectFile(activeProject.projectRef, "raw-e-sol", "inputs/raw/jjjj-ts.smd.log", "ts.smd.log"),
+        projectFile(activeProject.projectRef, "raw-f-gas", "inputs/raw/kkkk-product.log", "product.log"),
+        projectFile(activeProject.projectRef, "raw-f-sol", "inputs/raw/llll-product_solv.log", "product_solv.log"),
+      ],
+    })
+
+    const panel = screen.getByRole("region", { name: "Projects" })
+    expect(within(panel).getByText("6 structures")).toBeInTheDocument()
+    expect(within(panel).getByText("4b+")).toBeInTheDocument()
+    expect(within(panel).getByText("i1")).toBeInTheDocument()
+    expect(within(panel).getByText("cat")).toBeInTheDocument()
+    expect(within(panel).getByText("ligand")).toBeInTheDocument()
+    expect(within(panel).getByText("ts")).toBeInTheDocument()
+    expect(within(panel).getByText("product")).toBeInTheDocument()
+    expect(within(panel).queryByText("4b+_sol.log")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("i1.sol.log")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("cat sol.log")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("ligand-solution.log")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("ts.smd.log")).not.toBeInTheDocument()
+    expect(within(panel).queryByText("product_solv.log")).not.toBeInTheDocument()
+    expect(within(panel).getAllByText("sol")).toHaveLength(6)
+  })
+
   it("serializes selected project raw files as a batch drag payload", () => {
     const activeProject = browserProject("browser-project:project-1", "Pd Ni")
     renderSidebar({
@@ -361,8 +440,8 @@ describe("ProjectSidebar", () => {
       ],
     })
 
-    const waterRow = screen.getByText("water.log").closest(".project-file-card")
-    const methaneRow = screen.getByText("methane.log").closest(".project-file-card")
+    const waterRow = screen.getByText("water").closest(".project-file-card")
+    const methaneRow = screen.getByText("methane").closest(".project-file-card")
     if (!(waterRow instanceof HTMLElement) || !(methaneRow instanceof HTMLElement)) {
       throw new Error("Project file rows were not rendered.")
     }
@@ -437,9 +516,9 @@ describe("ProjectSidebar", () => {
       ],
     })
 
-    const aRow = screen.getByText("a.log").closest(".project-file-card")
-    const bRow = screen.getByText("b.log").closest(".project-file-card")
-    const cRow = screen.getByText("c.log").closest(".project-file-card")
+    const aRow = screen.getByText("a").closest(".project-file-card")
+    const bRow = screen.getByText("b").closest(".project-file-card")
+    const cRow = screen.getByText("c").closest(".project-file-card")
     if (!(aRow instanceof HTMLElement) || !(bRow instanceof HTMLElement) || !(cRow instanceof HTMLElement)) {
       throw new Error("Project file rows were not rendered.")
     }

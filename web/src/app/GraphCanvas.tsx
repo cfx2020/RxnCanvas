@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { CSSProperties, DragEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactElement } from "react"
-import { Check, Hand, Maximize2, Minus, MoreHorizontal, MousePointer2, Plus, Redo2, RotateCcw, Trash2, Undo2, X, XCircle, ZoomIn, ZoomOut } from "lucide-react"
+import { Check, Hand, Maximize2, Minus, MoreHorizontal, MousePointer2, Redo2, RotateCcw, Trash2, Undo2, X, XCircle, ZoomIn, ZoomOut } from "lucide-react"
 import type { Atom3DSummary, EnergyProfilePointSummary, EnergyProfileSummary, ParseCandidateSummary, ShellError, ShellWarning } from "../shell"
 import type { GraphEdgeSummary, GraphNodeSummary, GraphPathSummary, ObjectSummary, WorkbenchDomainState } from "./workbenchState"
 import type { CanvasPoint, GraphEditorInteractionState, GraphEditorSelectionMode, PendingEdgeDraft } from "./graphEditorInteractionState"
@@ -16,11 +16,11 @@ import { graphRawFileDropMimeType, parseGraphRawFileDropPayload } from "./graphR
 import { firstUserFacingName, graphNodeDisplayName, graphPathDisplayName, objectDisplayName, userFacingText, warningTargetDisplay } from "./displayNames"
 import {
   canvasPointToGraphNodePosition,
-  clampGraphNodeLayoutPosition,
   graphNodeCssPosition,
   graphNodeLayoutBounds,
   graphNodePosition,
   moveGraphNodePosition,
+  snapGraphNodeLayoutPosition,
   type GraphNodeLayoutPosition,
 } from "./graphNodeLayout"
 import {
@@ -40,9 +40,9 @@ import {
 } from "./graphViewport"
 import type { PathAutoExtendResult } from "./graphPathAutoExtend"
 import type { GraphPathOrderDraft } from "./graphPathOrderDraft"
-import type { CompositionDraftRow, CompositionDraftState } from "./compositionDraftState"
 import type { EdgeLabelDraftState } from "./edgeLabelDraftState"
 import { convertEnergyValue, energyValueFromUnknown, normalizeEnergyUnit, resolveObjectEnergyValue } from "./energyValues"
+import { relativeEnergyExpressionTermsByNodeId, relativeMainPathNodeIds, type GraphRelativeEnergyTerm } from "./graphRelativeEnergy"
 import { useI18n } from "./i18n"
 import { Molecule3DViewer } from "./Molecule3DViewer"
 
@@ -151,6 +151,19 @@ type ResolvedCanvasEnergy = {
   mode: CanvasEnergyMode
 }
 
+type NodeDisplayEnergy = {
+  energy: ResolvedCanvasEnergy | null
+  label: string
+  relative: boolean
+}
+
+const emptySolutionLogPairCandidates: NodeSolutionLogPairCandidate[] = []
+
+type StableGraphNodePositionEntry = {
+  key: string
+  position: GraphNodeLayoutPosition
+}
+
 type GraphEdgeSegment = {
   id: string
   sourceId: string
@@ -221,6 +234,7 @@ type PendingBarrierDraft = {
 }
 
 type GraphCanvasProps = {
+  active?: boolean
   state: WorkbenchDomainState
   activeObjectId?: string
   interactionState: GraphEditorInteractionState
@@ -231,12 +245,11 @@ type GraphCanvasProps = {
   edgeLabelDraft: EdgeLabelDraftState
   edgeLabelPending: boolean
   edgeLabelError: ShellError | null
-  compositionDraft: CompositionDraftState
-  compositionPending: boolean
-  compositionError: ShellError | null
   energyDisplayOptions: CanvasEnergyDisplayOptions
+  energyReferenceNodeId?: string | null
   candidateChooser: ParseCandidateChooserState | null
   onEnergyDisplayOptionsChange: (options: CanvasEnergyDisplayOptions) => void
+  onEnergyReferenceNodeIdChange?: (nodeId: string | null) => void
   onSelectNode: (nodeId: string, mode?: GraphEditorSelectionMode) => void
   onSelectEdge: (edgeId: string, mode?: GraphEditorSelectionMode) => void
   onSelectPath: (pathId: string, nodeIds: string[], mode?: GraphEditorSelectionMode) => void
@@ -273,19 +286,18 @@ type GraphCanvasProps = {
   onApplyAutoLayout: (plan: GraphLayoutPlan) => void
   onRemoveGraphItems: (request: RemoveGraphItemsRequest) => void
   onClearSelection: () => void
+  onDismissFloatingPanels?: () => void
   onSetViewport: (viewport: GraphViewport) => void
   onAutoFitViewport: (viewport: GraphViewport) => void
   onTogglePanMode: () => void
-  onCompositionDraftRowChange: (index: number, field: keyof CompositionDraftRow, value: string) => void
-  onAddCompositionDraftRow: () => void
-  onRemoveCompositionDraftRow: (index: number) => void
-  onResetCompositionDraft: () => void
-  onApplyCompositionDraft: () => void
+  onSetNodeCoefficient: (nodeId: string, coefficient: number) => void | Promise<void>
+  onShowNodeSource: (nodeId: string) => void
   solutionLogPairCandidates?: NodeSolutionLogPairCandidate[]
   onPairSolutionLog?: (candidate: NodeSolutionLogPairCandidate) => void | Promise<void>
 }
 
-export function GraphCanvas({
+export const GraphCanvas = memo(function GraphCanvas({
+  active = true,
   state,
   activeObjectId,
   interactionState,
@@ -296,12 +308,11 @@ export function GraphCanvas({
   edgeLabelDraft,
   edgeLabelPending,
   edgeLabelError,
-  compositionDraft,
-  compositionPending,
-  compositionError,
   energyDisplayOptions,
+  energyReferenceNodeId = null,
   candidateChooser,
   onEnergyDisplayOptionsChange,
+  onEnergyReferenceNodeIdChange,
   onSelectNode,
   onSelectEdge,
   onSelectPath,
@@ -338,14 +349,12 @@ export function GraphCanvas({
   onApplyAutoLayout,
   onRemoveGraphItems,
   onClearSelection,
+  onDismissFloatingPanels,
   onSetViewport,
   onAutoFitViewport,
   onTogglePanMode,
-  onCompositionDraftRowChange,
-  onAddCompositionDraftRow,
-  onRemoveCompositionDraftRow,
-  onResetCompositionDraft,
-  onApplyCompositionDraft,
+  onSetNodeCoefficient,
+  onShowNodeSource,
   solutionLogPairCandidates = [],
   onPairSolutionLog,
 }: GraphCanvasProps) {
@@ -363,6 +372,7 @@ export function GraphCanvas({
   const wheelCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const ignoreNextNodeClickRef = useRef<string | null>(null)
   const autoFitGraphKeyRef = useRef<string | null>(null)
+  const displayPositionCacheRef = useRef<Map<string, StableGraphNodePositionEntry>>(new Map())
   const workspace = state.workspace
   const graph = workspace?.graph
   const nodes = graph?.nodes ?? []
@@ -398,7 +408,6 @@ export function GraphCanvas({
   const viewport = normalizeGraphViewport(workspace?.viewport)
   const panActive = interactionState.mode === "pan"
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(() => new Set())
-  const [energyReferenceNodeId, setEnergyReferenceNodeId] = useState<string | null>(null)
   const [pendingBarrierDraft, setPendingBarrierDraft] = useState<PendingBarrierDraft | null>(null)
   const [barrierAnnotations, setBarrierAnnotations] = useState<CanvasBarrierAnnotation[]>([])
   const [selectedBarrierAnnotationId, setSelectedBarrierAnnotationId] = useState<string | null>(null)
@@ -416,27 +425,55 @@ export function GraphCanvas({
     [nodeSizeById],
   )
   const canUseWorkspace = Boolean(state.sessionId)
+  const renderGraphContent = active
   const canRemoveSelection = selectionSize > 0 || Boolean(selectedBarrierAnnotationId)
   const objectDropEnabled = canUseWorkspace && state.objects.length > 0
   const rubberBandRectangle = rubberBandRectangleFromInteractionState(interactionState)
   const nodeSummaryById = useMemo(
-    () => new Map(nodes.map((node) => [node.id, canvasChemicalNodeSummary(node, state.objects, energyDisplayOptions)])),
-    [energyDisplayOptions, nodes, state.objects],
+    () => renderGraphContent
+      ? new Map(nodes.map((node) => [node.id, canvasChemicalNodeSummary(node, state.objects, energyDisplayOptions)]))
+      : new Map<string, CanvasChemicalNodeSummary>(),
+    [energyDisplayOptions, nodes, renderGraphContent, state.objects],
   )
   const defaultEnergyReferenceNodeId = useMemo(
-    () => defaultEnergyReferenceNodeIdForGraph(nodes, paths, workspace?.active_path_id),
-    [nodes, paths, workspace?.active_path_id],
+    () => defaultEnergyReferenceNodeIdForGraph(nodes, paths, workspace?.active_path_id, nodeSummaryById),
+    [nodeSummaryById, nodes, paths, workspace?.active_path_id],
   )
-  const effectiveEnergyReferenceNodeId = energyReferenceNodeId && nodes.some((node) => node.id === energyReferenceNodeId)
+  const manualEnergyReferenceHasEnergy = Boolean(
+    energyReferenceNodeId
+    && nodes.some((node) => node.id === energyReferenceNodeId)
+    && nodeSummaryById.get(energyReferenceNodeId)?.displayEnergy,
+  )
+  const effectiveEnergyReferenceNodeId = manualEnergyReferenceHasEnergy
     ? energyReferenceNodeId
     : defaultEnergyReferenceNodeId
+  const relativeExpressionTermsByNodeId = useMemo(
+    () => workspace ? relativeEnergyExpressionTermsByNodeId(workspace, effectiveEnergyReferenceNodeId) : new Map(),
+    [effectiveEnergyReferenceNodeId, workspace],
+  )
   const relativeEnergyByNodeId = useMemo(
-    () => relativeEnergyValuesByNodeId(nodes, nodeSummaryById, effectiveEnergyReferenceNodeId, state.profile, energyDisplayOptions),
-    [effectiveEnergyReferenceNodeId, energyDisplayOptions, nodeSummaryById, nodes, state.profile],
+    () => relativeEnergyValuesByNodeId(
+      nodes,
+      nodeSummaryById,
+      effectiveEnergyReferenceNodeId,
+      state.profile,
+      energyDisplayOptions,
+      objectById,
+      relativeExpressionTermsByNodeId,
+    ),
+    [effectiveEnergyReferenceNodeId, energyDisplayOptions, nodeSummaryById, nodes, objectById, relativeExpressionTermsByNodeId, state.profile],
+  )
+  const energyLayoutRankedNodeIds = useMemo(
+    () => new Set(workspace ? relativeMainPathNodeIds(workspace, effectiveEnergyReferenceNodeId) : nodes.map((node) => node.id)),
+    [effectiveEnergyReferenceNodeId, nodes, workspace],
   )
   const displayNodes = useMemo(
-    () => graphNodesWithDragPreview(nodes, interactionState),
-    [interactionState, nodes],
+    () => renderGraphContent ? graphNodesWithDragPreview(nodes, interactionState) : [],
+    [interactionState, nodes, renderGraphContent],
+  )
+  const displayPositionByNodeId = useMemo(
+    () => stableGraphNodePositionMap(displayNodes, displayPositionCacheRef),
+    [displayNodes],
   )
   const displayViewport = minimapPreviewViewport ?? wheelPreviewViewport ?? canvasDragPreviewViewport(interactionState, viewport)
   const zoomPercent = Math.round(displayViewport.zoom * 100)
@@ -465,6 +502,8 @@ export function GraphCanvas({
       paths,
       referenceNodeId: effectiveEnergyReferenceNodeId,
       relativeEnergyByNodeId,
+      rankedNodeIds: energyLayoutRankedNodeIds,
+      edgeMetrics,
       surfaceSize: edgeMetrics.surfaceSize,
       fitAfterLayout: true,
     }))
@@ -662,9 +701,9 @@ export function GraphCanvas({
   useEffect(() => {
     if (!energyReferenceNodeId) return
     if (!nodes.some((node) => node.id === energyReferenceNodeId)) {
-      setEnergyReferenceNodeId(null)
+      onEnergyReferenceNodeIdChange?.(null)
     }
-  }, [energyReferenceNodeId, nodes])
+  }, [energyReferenceNodeId, nodes, onEnergyReferenceNodeIdChange])
 
   useEffect(() => {
     if (!pendingBarrierDraft) return
@@ -752,6 +791,7 @@ export function GraphCanvas({
 
   const handleCanvasPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (!canUseWorkspace || event.button !== 0 || !isCanvasPanStartTarget(event.target)) return
+    onDismissFloatingPanels?.()
     if (selectionSize > 0 || selectedBarrierAnnotationId) clearCanvasSelection()
     const origin = graphPointFromClientPoint(event.currentTarget, event.clientX, event.clientY, viewport)
     if (panActive) {
@@ -1126,7 +1166,6 @@ export function GraphCanvas({
               <option value="electronic">{t("graphCanvas.energyMode.electronic")}</option>
               <option value="free">{t("graphCanvas.energyMode.free")}</option>
               <option value="solvation">{t("graphCanvas.energyMode.solvation")}</option>
-              <option value="corrected">{t("graphCanvas.energyMode.corrected")}</option>
             </select>
           </label>
           <label>
@@ -1250,7 +1289,7 @@ export function GraphCanvas({
           onPointerUp={handleCanvasPointerUp}
           onPointerCancel={handleCanvasPointerCancel}
         >
-          {nodes.length === 0 ? (
+          {!renderGraphContent ? null : nodes.length === 0 ? (
             <div className="graph-empty-state">
               <MousePointer2 size={22} />
               <strong>{t("graphCanvas.empty")}</strong>
@@ -1321,7 +1360,7 @@ export function GraphCanvas({
                       collapsed={collapsedNodeIds.has(node.id)}
                       activePath={isNodeInActivePath(node.id, workspace?.active_path_id, paths)}
                       dragging={isDraggingNode(interactionState, node.id)}
-                      displayPosition={graphNodePosition(displayNodes.find((displayNode) => displayNode.id === node.id) ?? node)}
+                      displayPosition={displayPositionByNodeId.get(node.id) ?? graphNodePosition(node)}
                       relativeEnergy={relativeEnergyByNodeId.get(node.id) ?? null}
                       energyDisplayMode={energyDisplayOptions.mode}
                       energyReference={node.id === effectiveEnergyReferenceNodeId}
@@ -1334,8 +1373,11 @@ export function GraphCanvas({
                       onUpdateLabel={onUpdateNodeLabel}
                       onRemoveNode={removeNodeFromCanvas}
                       onToggleCollapsed={toggleNodeCollapsed}
-                      onSetEnergyReference={setEnergyReferenceNodeId}
-                      solutionLogPairCandidates={solutionLogPairCandidatesByNodeId.get(node.id) ?? []}
+                      onSetEnergyReference={(nodeId) => onEnergyReferenceNodeIdChange?.(nodeId)}
+                      onSetCoefficient={onSetNodeCoefficient}
+                      onShowSource={onShowNodeSource}
+                      renderStructurePreview={active}
+                      solutionLogPairCandidates={solutionLogPairCandidatesByNodeId.get(node.id) ?? emptySolutionLogPairCandidates}
                       onPairSolutionLog={onPairSolutionLog}
                       onOpenStructure={setExpandedMolecule}
                       onEdgeHandlePointerDown={handleEdgeHandlePointerDown}
@@ -1364,7 +1406,7 @@ export function GraphCanvas({
               />
             </>
           )}
-          {candidateChooser ? (
+          {renderGraphContent && candidateChooser ? (
             <ParseCandidateChooser
               state={candidateChooser}
               onToggleSelection={onToggleCandidateSelection}
@@ -1376,7 +1418,7 @@ export function GraphCanvas({
 
         <PathAuthoringStatusNotice status={pathAuthoringStatus} />
       </div>
-      {expandedMolecule ? (
+      {renderGraphContent && expandedMolecule ? (
         <Molecule3DDialog
           summary={expandedMolecule}
           onClose={() => setExpandedMolecule(null)}
@@ -1384,7 +1426,7 @@ export function GraphCanvas({
       ) : null}
     </section>
   )
-}
+})
 
 function ParseCandidateChooser({
   state,
@@ -2000,12 +2042,21 @@ function defaultEnergyReferenceNodeIdForGraph(
   nodes: GraphNodeSummary[],
   paths: GraphPathSummary[],
   activePathId?: string | null,
+  nodeSummaryById?: Map<string, CanvasChemicalNodeSummary>,
 ): string | null {
   if (nodes.length === 0) return null
   const activePath = activePathId ? paths.find((path) => path.id === activePathId) : undefined
   const path = activePath ?? paths[0]
-  const pathNodeId = path?.node_ids.find((nodeId) => nodes.some((node) => node.id === nodeId))
-  return pathNodeId ?? nodes[0]?.id ?? null
+  const nodeIds = new Set(nodes.map((node) => node.id))
+  const pathNodeWithEnergy = path?.node_ids.find((nodeId) => nodeIds.has(nodeId) && Boolean(nodeSummaryById?.get(nodeId)?.displayEnergy))
+  const anyNodeWithEnergy = nodes.find((node) => Boolean(nodeSummaryById?.get(node.id)?.displayEnergy))?.id
+  const pathNodeId = path?.node_ids.find((nodeId) => nodeIds.has(nodeId))
+  return pathNodeWithEnergy
+    ?? anyNodeWithEnergy
+    ?? nodes.find((node) => Boolean(nodeSummaryById?.get(node.id)?.displayEnergy))?.id
+    ?? pathNodeId
+    ?? nodes[0]?.id
+    ?? null
 }
 
 function relativeEnergyValuesByNodeId(
@@ -2014,13 +2065,33 @@ function relativeEnergyValuesByNodeId(
   referenceNodeId: string | null,
   profile: EnergyProfileSummary | undefined,
   options: CanvasEnergyDisplayOptions,
+  objectById: Map<string, ObjectSummary>,
+  expressionTermsByNodeId: Map<string, GraphRelativeEnergyTerm[]>,
 ): Map<string, ResolvedCanvasEnergy> {
   const profileValues = relativeEnergyValuesFromProfile(nodes, referenceNodeId, profile, options)
+  const expressionValues = relativeEnergyValuesFromExpressionTerms(expressionTermsByNodeId, objectById, options)
   const fallbackValues = relativeEnergyValuesFromNodeSummaries(nodes, nodeSummaryById, referenceNodeId)
-  if (!profileValues) return fallbackValues
-  const values = new Map(profileValues)
-  for (const [nodeId, value] of fallbackValues) {
+  if (!profileValues && expressionValues.size === 0) return fallbackValues
+  const values = new Map(fallbackValues)
+  for (const [nodeId, value] of profileValues ?? []) {
     if (!values.has(nodeId)) values.set(nodeId, value)
+  }
+  for (const [nodeId, value] of expressionValues) {
+    values.set(nodeId, value)
+  }
+  return values
+}
+
+function relativeEnergyValuesFromExpressionTerms(
+  expressionTermsByNodeId: Map<string, GraphRelativeEnergyTerm[]>,
+  objectById: Map<string, ObjectSummary>,
+  options: CanvasEnergyDisplayOptions,
+): Map<string, ResolvedCanvasEnergy> {
+  const values = new Map<string, ResolvedCanvasEnergy>()
+  for (const [nodeId, terms] of expressionTermsByNodeId) {
+    const energy = resolveCanvasNodeEnergy(terms, objectById, options)
+    if (!energy || !isPlausibleRelativeEnergyValue(energy.value, energy.unit)) continue
+    values.set(nodeId, energy)
   }
   return values
 }
@@ -2168,6 +2239,9 @@ const GraphNodeButton = memo(function GraphNodeButton({
   onRemoveNode,
   onToggleCollapsed,
   onSetEnergyReference,
+  onSetCoefficient,
+  onShowSource,
+  renderStructurePreview,
   solutionLogPairCandidates,
   onPairSolutionLog,
   onOpenStructure,
@@ -2207,6 +2281,9 @@ const GraphNodeButton = memo(function GraphNodeButton({
   onRemoveNode: (nodeId: string) => void
   onToggleCollapsed: (nodeId: string) => void
   onSetEnergyReference: (nodeId: string) => void
+  onSetCoefficient: (nodeId: string, coefficient: number) => void | Promise<void>
+  onShowSource: (nodeId: string) => void
+  renderStructurePreview: boolean
   solutionLogPairCandidates: NodeSolutionLogPairCandidate[]
   onPairSolutionLog?: (candidate: NodeSolutionLogPairCandidate) => void | Promise<void>
   onOpenStructure: (summary: CanvasChemicalNodeSummary) => void
@@ -2225,12 +2302,24 @@ const GraphNodeButton = memo(function GraphNodeButton({
   const { t } = useI18n()
   const [draftLabel, setDraftLabel] = useState(summary.structureName)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [coefficientEditing, setCoefficientEditing] = useState(false)
+  const coefficientValue = nodePrimaryCoefficient(node)
+  const [coefficientDraft, setCoefficientDraft] = useState(formatCoefficientValue(coefficientValue))
+  const coefficientInputRef = useRef<HTMLInputElement | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
   const resizeDragRef = useRef<NodeResizeSession | null>(null)
   const resizeCleanupRef = useRef<(() => void) | null>(null)
   useEffect(() => {
     if (!selected) setDraftLabel(summary.structureName)
   }, [selected, summary.structureName])
+  useEffect(() => {
+    if (!coefficientEditing) setCoefficientDraft(formatCoefficientValue(coefficientValue))
+  }, [coefficientEditing, coefficientValue])
+  useEffect(() => {
+    if (!coefficientEditing) return
+    coefficientInputRef.current?.focus()
+    coefficientInputRef.current?.select()
+  }, [coefficientEditing])
   useEffect(() => {
     if (!menuOpen) return undefined
     const handleDocumentPointerDown = (event: globalThis.PointerEvent) => {
@@ -2316,12 +2405,27 @@ const GraphNodeButton = memo(function GraphNodeButton({
     }
     setDraftLabel(label)
   }
+  const cancelCoefficientEdit = () => {
+    setCoefficientDraft(formatCoefficientValue(coefficientValue))
+    setCoefficientEditing(false)
+  }
+  const applyCoefficient = () => {
+    const coefficient = Number(coefficientDraft)
+    if (!Number.isFinite(coefficient) || coefficient === 0) {
+      cancelCoefficientEdit()
+      return
+    }
+    const normalized = Number(coefficient.toFixed(6))
+    setCoefficientDraft(formatCoefficientValue(normalized))
+    setCoefficientEditing(false)
+    if (normalized !== coefficientValue) {
+      void onSetCoefficient(node.id, normalized)
+    }
+  }
   const collapseLabel = collapsed
     ? t("graphCanvas.node.expandStructure", { node: summary.structureName })
     : t("graphCanvas.node.collapseStructure", { node: summary.structureName })
-  const compactSummary = `${formatCompactRelativeNodeEnergyValue(relativeEnergy, t)} (${formatNullableNumber(summary.charge, t)},${formatNullableNumber(summary.spinMultiplicity, t)})`
   const chargeSpinOverlay = formatCompactChargeSpin(summary, t)
-  const relativeEnergyLabel = relativeEnergySymbol(energyDisplayMode)
   const unpairedSolutionCandidate = energyDisplayMode === "solvation"
     ? solutionLogPairCandidates.find((candidate) => !candidate.paired)
     : undefined
@@ -2329,6 +2433,8 @@ const GraphNodeButton = memo(function GraphNodeButton({
   const warningDotLabel = unpairedSolutionCandidate
     ? t("graphCanvas.node.pairSolutionLog", { file: unpairedSolutionCandidate.name })
     : t("graphCanvas.node.warningCount", { count: summary.warnings.length })
+  const nodeDisplayEnergy = nodeDisplayEnergyForSummary(summary, relativeEnergy, energyDisplayMode)
+  const compactSummary = `${formatCompactNodeDisplayEnergyValue(nodeDisplayEnergy, t)} (${formatNullableNumber(summary.charge, t)},${formatNullableNumber(summary.spinMultiplicity, t)})`
   return (
     <div
       className={`graph-node-card-shell ${dragging ? "graph-node-card-shell--dragging" : ""}`}
@@ -2456,6 +2562,16 @@ const GraphNodeButton = memo(function GraphNodeButton({
                   ? t("graphCanvas.node.referencePoint", { node: summary.structureName })
                   : t("graphCanvas.node.setReferencePoint", { node: summary.structureName })}</span>
               </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onShowSource(node.id)
+                  setMenuOpen(false)
+                }}
+              >
+                <span>{t("graphCanvas.node.sourceDetails")}</span>
+              </button>
               {solutionLogPairCandidates.length > 0 ? (
                 <div className="graph-node-action-menu-section" role="group" aria-label={t("graphCanvas.node.solutionLogs")}>
                   <span className="graph-node-action-menu-section-title">{t("graphCanvas.node.solutionLogs")}</span>
@@ -2484,10 +2600,12 @@ const GraphNodeButton = memo(function GraphNodeButton({
         {!collapsed ? (
           <>
             <span className="graph-node-structure-frame">
-              {summary.geometry.length > 0 ? (
+              {summary.geometry.length > 0 && renderStructurePreview ? (
                 <Molecule3DViewer atoms={summary.geometry} label={summary.structureName} />
               ) : (
-                <span className="graph-node-structure-empty">{t("graphCanvas.node.noStructure")}</span>
+                <span className="graph-node-structure-empty">
+                  {summary.geometry.length > 0 ? summary.formula ?? summary.structureName : t("graphCanvas.node.noStructure")}
+                </span>
               )}
               <span className="graph-node-charge-spin-overlay">{chargeSpinOverlay}</span>
               {summary.geometry.length > 0 ? (
@@ -2508,7 +2626,11 @@ const GraphNodeButton = memo(function GraphNodeButton({
               ) : null}
             </span>
             <span className="graph-node-expanded-summary">
-              <GraphNodeDetail label={relativeEnergyLabel} value={formatRelativeNodeEnergyValue(relativeEnergy, t)} emphasized />
+              <GraphNodeDetail
+                label={nodeDisplayEnergy.label}
+                value={formatNodeDisplayEnergyValue(nodeDisplayEnergy, t)}
+                emphasized
+              />
             </span>
           </>
         ) : (
@@ -2524,6 +2646,43 @@ const GraphNodeButton = memo(function GraphNodeButton({
             {renderFormula(summary.formula)}
           </span>
         ) : null}
+        <span
+          className="graph-node-coefficient-control"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {coefficientEditing ? (
+            <input
+              ref={coefficientInputRef}
+              aria-label={t("graphCanvas.node.coefficient", { node: summary.structureName })}
+              value={coefficientDraft}
+              inputMode="decimal"
+              onChange={(event) => setCoefficientDraft(event.currentTarget.value)}
+              onBlur={applyCoefficient}
+              onKeyDown={(event) => {
+                event.stopPropagation()
+                if (event.key === "Enter") {
+                  event.preventDefault()
+                  applyCoefficient()
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault()
+                  cancelCoefficientEdit()
+                }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              aria-label={t("graphCanvas.node.coefficient", { node: summary.structureName })}
+              title={t("graphCanvas.node.coefficient", { node: summary.structureName })}
+              onClick={() => setCoefficientEditing(true)}
+            >
+              <span aria-hidden="true">×</span>
+              {formatCoefficientValue(coefficientValue)}
+            </button>
+          )}
+        </span>
       </div>
       <button
         type="button"
@@ -2677,6 +2836,16 @@ function nodeCompositionTerms(node: GraphNodeSummary): Array<{ object_id: string
     : (node.chemical_object_ids ?? []).map((objectId) => ({ object_id: objectId, coefficient: 1 }))
 }
 
+function nodePrimaryCoefficient(node: GraphNodeSummary): number {
+  const coefficient = nodeCompositionTerms(node)[0]?.coefficient
+  return typeof coefficient === "number" && Number.isFinite(coefficient) ? coefficient : 1
+}
+
+function formatCoefficientValue(value: number): string {
+  if (!Number.isFinite(value)) return "1"
+  return Number.isInteger(value) ? String(value) : Number(value.toFixed(6)).toString()
+}
+
 function summarizeNodeFormula(objects: ObjectSummary[]): string | null {
   const formulas = uniqueStrings(objects.map((object) => object.formula).filter((value): value is string => Boolean(value)))
   if (formulas.length === 0) return null
@@ -2805,20 +2974,48 @@ function formatNodeEnergyValue(
   return formatCanvasEnergyUnit(energy.unit)
 }
 
-function formatRelativeNodeEnergyValue(
-  energy: ResolvedCanvasEnergy | null,
-  t: ReturnType<typeof useI18n>["t"],
-): string {
-  if (!energy) return t("graphCanvas.node.energyMissing")
-  return formatSignedCanvasEnergyValue(energy.value, energy.unit)
+function nodeDisplayEnergyForSummary(
+  summary: CanvasChemicalNodeSummary,
+  relativeEnergy: ResolvedCanvasEnergy | null,
+  mode: CanvasEnergyMode,
+): NodeDisplayEnergy {
+  if (relativeEnergy) {
+    return {
+      energy: relativeEnergy,
+      label: relativeEnergySymbol(mode),
+      relative: true,
+    }
+  }
+  if (!summary.displayEnergy) {
+    return {
+      energy: null,
+      label: relativeEnergySymbol(mode),
+      relative: true,
+    }
+  }
+  return {
+    energy: summary.displayEnergy,
+    label: absoluteEnergySymbol(mode),
+    relative: false,
+  }
 }
 
-function formatCompactRelativeNodeEnergyValue(
-  energy: ResolvedCanvasEnergy | null,
+function formatNodeDisplayEnergyValue(
+  display: NodeDisplayEnergy,
   t: ReturnType<typeof useI18n>["t"],
 ): string {
-  if (!energy) return t("graphCanvas.node.energyMissing")
-  return formatCanvasEnergyValue(energy.value, energy.unit)
+  if (!display.energy) return t("graphCanvas.node.energyMissing")
+  return display.relative
+    ? formatSignedCanvasEnergyValue(display.energy.value, display.energy.unit)
+    : `${formatCanvasEnergyValue(display.energy.value, display.energy.unit)} ${formatCanvasEnergyUnit(display.energy.unit)}`
+}
+
+function formatCompactNodeDisplayEnergyValue(
+  display: NodeDisplayEnergy,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  if (!display.energy) return t("graphCanvas.node.energyMissing")
+  return formatCanvasEnergyValue(display.energy.value, display.energy.unit)
 }
 
 function formatCanvasEnergyValue(value: number, unit: CanvasEnergyUnit): string {
@@ -2856,6 +3053,13 @@ function relativeEnergySymbol(mode: CanvasEnergyMode): string {
   if (mode === "solvation") return "ΔGsol"
   if (mode === "corrected") return "ΔEcorr"
   return "ΔE"
+}
+
+function absoluteEnergySymbol(mode: CanvasEnergyMode): string {
+  if (mode === "free") return "G"
+  if (mode === "solvation") return "Gsol"
+  if (mode === "corrected") return "Ecorr"
+  return "E"
 }
 
 function barrierEnergySymbol(mode: CanvasEnergyMode): string {
@@ -2909,11 +3113,34 @@ function graphNodesWithDragPreview(
   })
 }
 
+function stableGraphNodePositionMap(
+  nodes: GraphNodeSummary[],
+  cacheRef: { current: Map<string, StableGraphNodePositionEntry> },
+): Map<string, GraphNodeLayoutPosition> {
+  const previous = cacheRef.current
+  const next = new Map<string, StableGraphNodePositionEntry>()
+  const positions = new Map<string, GraphNodeLayoutPosition>()
+  for (const node of nodes) {
+    const position = graphNodePosition(node)
+    const key = `${position.x}:${position.y}`
+    const existing = previous.get(node.id)
+    const entry = existing?.key === key
+      ? existing
+      : { key, position }
+    next.set(node.id, entry)
+    positions.set(node.id, entry.position)
+  }
+  cacheRef.current = next
+  return positions
+}
+
 function createEnergyRankedLayoutPlan({
   graph,
   paths,
   referenceNodeId,
   relativeEnergyByNodeId,
+  rankedNodeIds,
+  edgeMetrics,
   surfaceSize,
   fitAfterLayout,
 }: {
@@ -2921,6 +3148,8 @@ function createEnergyRankedLayoutPlan({
   paths: GraphPathSummary[]
   referenceNodeId: string | null
   relativeEnergyByNodeId: Map<string, ResolvedCanvasEnergy>
+  rankedNodeIds?: Set<string>
+  edgeMetrics: GraphEdgeMetrics
   surfaceSize: GraphSurfaceSize
   fitAfterLayout: boolean
 }): GraphLayoutPlan {
@@ -2933,33 +3162,49 @@ function createEnergyRankedLayoutPlan({
   const minEnergy = energies.length > 0 ? Math.min(...energies) : 0
   const maxEnergy = energies.length > 0 ? Math.max(...energies) : 0
   const span = maxEnergy - minEnergy
-  const xPadding = nodes.length <= 2 ? 150 : 110
-  const yTop = 72
-  const yBottom = graphNodeLayoutBounds.height - 72
+  const xPadding = Math.max(160, graphNodeLayoutBounds.width * 0.1)
+  const yTop = Math.max(110, graphNodeLayoutBounds.height * 0.12)
+  const yBottom = graphNodeLayoutBounds.height - yTop
+  const minLayerNodeGap = Math.max(220, edgeMetrics.nodeHalfHeight * 2 + 72)
+  const minSlotGap = Math.max(360, edgeMetrics.nodeHalfWidth * 2 + 110)
   const nodePositions: Record<string, [number, number]> = {}
   const warnings: GraphLayoutWarning[] = []
+  const slotByNodeId = energyLayoutNodeSlots(order, nodeLayers)
+  const layerCandidates = new Map<number, Array<{ nodeId: string; index: number; baseY: number }>>()
 
   order.forEach((nodeId, index) => {
     const node = nodes.find((item) => item.id === nodeId)
     if (!node) return
     const energy = relativeEnergyByNodeId.get(nodeId)?.value
     const layer = nodeLayers.get(nodeId) ?? index
-    const maxLayer = Math.max(...Array.from(nodeLayers.values()), order.length - 1, 0)
-    const x = order.length === 1 || maxLayer === 0
+    const slot = slotByNodeId.get(nodeId) ?? index
+    const x = order.length === 1
       ? xPadding
-      : xPadding + (layer / maxLayer) * (graphNodeLayoutBounds.width - xPadding * 2)
-    const y = typeof energy === "number" && Number.isFinite(energy) && span > 0
+      : xPadding + slot * minSlotGap
+    const baseY = typeof energy === "number" && Number.isFinite(energy) && span > 0
       ? yBottom - ((energy - minEnergy) / span) * (yBottom - yTop)
       : graphNodeLayoutBounds.height / 2
-    if (typeof energy !== "number" || !Number.isFinite(energy)) {
+    if ((rankedNodeIds?.has(nodeId) ?? true) && (typeof energy !== "number" || !Number.isFinite(energy))) {
       warnings.push({
         code: "layout_missing_energy",
         message: "Node has no usable energy for vertical ranking; it was kept on the center line.",
         target: nodeId,
       })
     }
-    nodePositions[nodeId] = tuplePosition(clampGraphNodeLayoutPosition({ x, y }))
+    const candidates = layerCandidates.get(layer) ?? []
+    candidates.push({ nodeId, index, baseY })
+    layerCandidates.set(layer, candidates)
+    nodePositions[nodeId] = tuplePosition(snapGraphNodeLayoutPosition({ x, y: baseY }))
   })
+
+  for (const candidates of layerCandidates.values()) {
+    const yByNodeId = distributeEnergyLayerY(candidates, yTop, yBottom, minLayerNodeGap)
+    for (const [nodeId, y] of yByNodeId.entries()) {
+      const current = nodePositions[nodeId]
+      if (!current) continue
+      nodePositions[nodeId] = tuplePosition(snapGraphNodeLayoutPosition({ x: current[0], y }))
+    }
+  }
 
   if (energies.length > 0 && span === 0) {
     warnings.push({
@@ -2995,6 +3240,79 @@ function createEnergyRankedLayoutPlan({
     viewportIntent: fitAfterLayout ? fitGraphViewportToNodes(plannedNodes, surfaceSize) : null,
     warnings,
   }
+}
+
+function distributeEnergyLayerY(
+  candidates: Array<{ nodeId: string; index: number; baseY: number }>,
+  yTop: number,
+  yBottom: number,
+  minGap: number,
+): Map<string, number> {
+  const result = new Map<string, number>()
+  if (candidates.length === 0) return result
+  if (candidates.length === 1) {
+    result.set(candidates[0].nodeId, candidates[0].baseY)
+    return result
+  }
+  const available = yBottom - yTop
+  if (available <= minGap * (candidates.length - 1)) {
+    const sortedByOrder = [...candidates].sort((left, right) => left.index - right.index)
+    sortedByOrder.forEach((candidate, index) => {
+      const y = yTop + (index / Math.max(1, sortedByOrder.length - 1)) * available
+      result.set(candidate.nodeId, y)
+    })
+    return result
+  }
+
+  const sorted = [...candidates].sort((left, right) => left.baseY - right.baseY || left.index - right.index)
+  const placed = sorted.map((candidate, index) => ({
+    ...candidate,
+    y: index === 0 ? Math.max(yTop, candidate.baseY) : Math.max(candidate.baseY, 0),
+  }))
+  for (let index = 1; index < placed.length; index += 1) {
+    placed[index].y = Math.max(placed[index].y, placed[index - 1].y + minGap)
+  }
+  const overflow = placed[placed.length - 1].y - yBottom
+  if (overflow > 0) {
+    for (const item of placed) item.y -= overflow
+  }
+  if (placed[0].y < yTop) {
+    placed[0].y = yTop
+    for (let index = 1; index < placed.length; index += 1) {
+      placed[index].y = Math.max(placed[index].y, placed[index - 1].y + minGap)
+    }
+  }
+  for (const item of placed) {
+    result.set(item.nodeId, Math.min(yBottom, Math.max(yTop, item.y)))
+  }
+  return result
+}
+
+function energyLayoutNodeSlots(
+  order: string[],
+  nodeLayers: Map<string, number>,
+): Map<string, number> {
+  const orderIndexByNodeId = new Map(order.map((nodeId, index) => [nodeId, index]))
+  const groups = new Map<number, string[]>()
+  for (const nodeId of order) {
+    const layer = nodeLayers.get(nodeId) ?? orderIndexByNodeId.get(nodeId) ?? 0
+    const group = groups.get(layer) ?? []
+    group.push(nodeId)
+    groups.set(layer, group)
+  }
+
+  const slots = new Map<string, number>()
+  let nextSlot = 0
+  for (const layer of [...groups.keys()].sort((left, right) => left - right)) {
+    const group = [...(groups.get(layer) ?? [])].sort((left, right) => (
+      (orderIndexByNodeId.get(left) ?? 0) - (orderIndexByNodeId.get(right) ?? 0)
+    ))
+    for (const nodeId of group) {
+      slots.set(nodeId, nextSlot)
+      nextSlot += 1
+    }
+  }
+  return slots
 }
 
 function energyLayoutNodeOrder(
@@ -4059,172 +4377,6 @@ function PreviewWarnings({
       {disconnectedNodeIds.map((nodeId) => (
         <code key={nodeId}>{graphNodeDisplayName(nodeById.get(nodeId), objectById)}</code>
       ))}
-    </div>
-  )
-}
-
-function NodeCompositionEditor({
-  draft,
-  objects,
-  pending,
-  error,
-  onRowChange,
-  onAddRow,
-  onRemoveRow,
-  onReset,
-  onApply,
-}: {
-  draft: CompositionDraftState
-  objects: ObjectSummary[]
-  pending: boolean
-  error: ShellError | null
-  onRowChange: (index: number, field: keyof CompositionDraftRow, value: string) => void
-  onAddRow: () => void
-  onRemoveRow: (index: number) => void
-  onReset: () => void
-  onApply: () => void
-}) {
-  const { t } = useI18n()
-  const disabled = !draft.nodeId || pending
-  return (
-    <form
-      className="composition-editor"
-      aria-label={t("compositionEditor.aria")}
-      onSubmit={(event) => {
-        event.preventDefault()
-        onApply()
-      }}
-    >
-      <div className="composition-editor-header">
-        <div>
-          <span>{t("compositionEditor.title")}</span>
-          <code>{draft.nodeId ? t("compositionEditor.title") : t("graphCanvas.none")}</code>
-        </div>
-        <small>{draft.dirty ? t("compositionEditor.dirty") : t("compositionEditor.clean")}</small>
-      </div>
-
-      {draft.rows.length > 0 ? (
-        <div className="composition-row-list">
-          {draft.rows.map((row, index) => (
-            <CompositionDraftRowEditor
-              key={`${draft.nodeId ?? "none"}-${index}`}
-              row={row}
-              index={index}
-              objects={objects}
-              disabled={disabled}
-              canRemove={draft.rows.length > 1}
-              onRowChange={onRowChange}
-              onRemoveRow={onRemoveRow}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="muted">{t("compositionEditor.empty")}</p>
-      )}
-
-      {error ? (
-        <p className="composition-error">
-          <code>{error.code}</code>
-          <span>{error.message}</span>
-          {warningTargetDisplay(error) ? <small>{warningTargetDisplay(error)}</small> : null}
-        </p>
-      ) : null}
-
-      <div className="composition-command-row">
-        <button type="button" onClick={onAddRow} disabled={disabled || objects.length === 0}>
-          <Plus size={15} />
-          <span>{t("compositionEditor.addTerm")}</span>
-        </button>
-        <button type="button" onClick={onReset} disabled={disabled || !draft.dirty}>
-          <RotateCcw size={15} />
-          <span>{t("compositionEditor.reset")}</span>
-        </button>
-        <button type="submit" disabled={disabled || !draft.dirty || draft.rows.length === 0}>
-          <Check size={15} />
-          <span>{pending ? t("compositionEditor.applying") : t("compositionEditor.apply")}</span>
-        </button>
-      </div>
-    </form>
-  )
-}
-
-function CompositionDraftRowEditor({
-  row,
-  index,
-  objects,
-  disabled,
-  canRemove,
-  onRowChange,
-  onRemoveRow,
-}: {
-  row: CompositionDraftRow
-  index: number
-  objects: ObjectSummary[]
-  disabled: boolean
-  canRemove: boolean
-  onRowChange: (index: number, field: keyof CompositionDraftRow, value: string) => void
-  onRemoveRow: (index: number) => void
-}) {
-  const { t } = useI18n()
-  return (
-    <div className="composition-row">
-      <label>
-        <span>{t("compositionEditor.object")}</span>
-        <select
-          value={row.objectId}
-          onChange={(event) => onRowChange(index, "objectId", event.currentTarget.value)}
-          disabled={disabled || objects.length === 0}
-        >
-          {objects.map((object) => (
-            <option key={object.id} value={object.id}>
-              {objectDisplayName(object)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        <span>{t("compositionEditor.coefficient")}</span>
-        <input
-          type="number"
-          step="any"
-          value={row.coefficient}
-          onChange={(event) => onRowChange(index, "coefficient", event.currentTarget.value)}
-          disabled={disabled}
-        />
-      </label>
-      <label>
-        <span>{t("compositionEditor.role")}</span>
-        <select
-          value={row.role}
-          onChange={(event) => onRowChange(index, "role", event.currentTarget.value)}
-          disabled={disabled}
-        >
-          <option value="">{t("compositionEditor.role.none")}</option>
-          <option value="reactant">{t("compositionEditor.role.reactant")}</option>
-          <option value="reagent">{t("compositionEditor.role.reagent")}</option>
-          <option value="catalyst">{t("compositionEditor.role.catalyst")}</option>
-          <option value="product">{t("compositionEditor.role.product")}</option>
-        </select>
-      </label>
-      <label>
-        <span>{t("compositionEditor.label")}</span>
-        <input
-          type="text"
-          value={row.label}
-          onChange={(event) => onRowChange(index, "label", event.currentTarget.value)}
-          disabled={disabled}
-          placeholder={t("compositionEditor.labelPlaceholder")}
-        />
-      </label>
-      <button
-        type="button"
-        title={t("compositionEditor.removeTerm")}
-        aria-label={t("compositionEditor.removeTerm")}
-        onClick={() => onRemoveRow(index)}
-        disabled={disabled || !canRemove}
-      >
-        <Trash2 size={15} />
-      </button>
     </div>
   )
 }

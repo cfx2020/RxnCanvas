@@ -7,7 +7,7 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type RefObject } from "react"
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import type { BrowserProjectRef } from "../repository"
 import type { ProjectSidebarState } from "./projectSidebarState"
@@ -16,6 +16,15 @@ import { graphRawFileDropMimeType, serializeGraphRawFileDropPayload } from "./gr
 import { useI18n, type MessageKey } from "./i18n"
 
 type ProjectFileSelectionMode = "replace" | "toggle" | "range"
+
+type ProjectFileGroup = {
+  id: string
+  files: ProjectFileEntry[]
+  primaryFile: ProjectFileEntry
+  displayFile: ProjectFileEntry
+  hasGasLog: boolean
+  hasSolutionLog: boolean
+}
 
 type ProjectSidebarProps = {
   state: ProjectSidebarState
@@ -309,7 +318,8 @@ function ProjectFolder({
   onClearProjectFileSelection,
 }: ProjectFolderProps) {
   const { t } = useI18n()
-  const fileCount = projectFiles.length
+  const projectFileGroups = useMemo(() => projectFileGroupsForDisplay(projectFiles), [projectFiles])
+  const structureCount = projectFileGroups.length
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
   const folderRef = useRef<HTMLLIElement | null>(null)
@@ -410,7 +420,7 @@ function ProjectFolder({
             <strong>{project.name}</strong>
             <small>
               {active
-                ? t(fileCount === 1 ? "projectSidebar.projectFiles.countOne" : "projectSidebar.projectFiles.count", { count: fileCount })
+                ? t(structureCount === 1 ? "projectSidebar.projectFiles.countOne" : "projectSidebar.projectFiles.count", { count: structureCount })
                 : t("projectSidebar.projectUpdated", { date: formatProjectUpdatedAt(project.updatedAt) })}
             </small>
           </span>
@@ -472,19 +482,21 @@ function ProjectFolder({
         </div>,
         document.body,
       ) : null}
-      {active && fileCount > 0 ? (
+      {active && structureCount > 0 ? (
         <ul
           className={`project-folder-contents ${expanded ? "project-folder-contents--expanded" : "project-folder-contents--collapsed"}`}
           role="group"
           aria-hidden={expanded ? "false" : "true"}
         >
-          {projectFiles.map((file) => (
+          {projectFileGroups.map((group) => (
             <ProjectFileRow
-              key={file.id}
-              file={file}
-              selected={selectedProjectFileIds.has(file.id)}
-              projectFileIds={projectFiles.map((candidate) => candidate.id)}
-              selectedProjectFiles={projectFiles.filter((candidate) => selectedProjectFileIds.has(candidate.id))}
+              key={group.id}
+              group={group}
+              selected={selectedProjectFileIds.has(group.id)}
+              projectFileIds={projectFileGroups.map((candidate) => candidate.id)}
+              selectedProjectFiles={projectFileGroups
+                .filter((candidate) => selectedProjectFileIds.has(candidate.id))
+                .flatMap((candidate) => candidate.files)}
               onDeleteProjectFile={onDeleteProjectFile}
               onSelectProjectFile={onSelectProjectFile}
               onClearProjectFileSelection={onClearProjectFileSelection}
@@ -497,7 +509,7 @@ function ProjectFolder({
 }
 
 type ProjectFileRowProps = {
-  file: ProjectFileEntry
+  group: ProjectFileGroup
   selected: boolean
   projectFileIds: string[]
   selectedProjectFiles: ProjectFileEntry[]
@@ -507,7 +519,7 @@ type ProjectFileRowProps = {
 }
 
 function ProjectFileRow({
-  file,
+  group,
   selected,
   projectFileIds,
   selectedProjectFiles,
@@ -516,27 +528,32 @@ function ProjectFileRow({
   onClearProjectFileSelection,
 }: ProjectFileRowProps) {
   const { t } = useI18n()
+  const file = group.displayFile
+  const primaryFile = group.primaryFile
   const draggable = isDraggableRawProjectFile(file)
   const kindBadge = projectFileKindBadge(file.kind)
   const kindLabel = t(projectFileKindLabelKey(file.kind))
   const selectedDraggableFiles = selectedProjectFiles.filter(isDraggableRawProjectFile)
-  const dragFiles = selected && selectedDraggableFiles.length > 1 ? selectedDraggableFiles : [file]
+  const groupDraggableFiles = group.files.filter(isDraggableRawProjectFile)
+  const dragFiles = selected && selectedDraggableFiles.length > 1
+    ? selectedDraggableFiles
+    : groupDraggableFiles.length > 1 ? groupDraggableFiles : [primaryFile]
   const handleActivateFile = (event?: MouseEvent<HTMLLIElement>) => {
     if (!draggable) return
     if (event?.shiftKey) {
-      onSelectProjectFile(file.id, "range", projectFileIds)
+      onSelectProjectFile(group.id, "range", projectFileIds)
       return
     }
     if (event?.metaKey || event?.ctrlKey) {
-      onSelectProjectFile(file.id, "toggle", projectFileIds)
+      onSelectProjectFile(group.id, "toggle", projectFileIds)
       return
     }
-    onSelectProjectFile(file.id, "replace", projectFileIds)
+    onSelectProjectFile(group.id, "replace", projectFileIds)
   }
   const handleKeyDown = (event: KeyboardEvent<HTMLLIElement>) => {
     if (!draggable || (event.key !== "Enter" && event.key !== " ")) return
     event.preventDefault()
-    onSelectProjectFile(file.id, event.shiftKey ? "range" : event.metaKey || event.ctrlKey ? "toggle" : "replace", projectFileIds)
+    onSelectProjectFile(group.id, event.shiftKey ? "range" : event.metaKey || event.ctrlKey ? "toggle" : "replace", projectFileIds)
   }
 
   return (
@@ -560,10 +577,11 @@ function ProjectFileRow({
             })),
           }))
         } else {
+          const singleFile = dragFiles[0] ?? primaryFile
           event.dataTransfer.setData(graphRawFileDropMimeType, serializeGraphRawFileDropPayload({
             kind: "project-file",
-            projectFileId: file.id,
-            path: file.path,
+            projectFileId: singleFile.id,
+            path: singleFile.path,
           }))
         }
       } : undefined}
@@ -578,6 +596,12 @@ function ProjectFileRow({
       <span className="project-file-title">
         <strong title={file.name}>{file.name}</strong>
       </span>
+      {group.hasSolutionLog ? (
+        <span className="project-file-phase-badges" aria-hidden="true">
+          {group.hasGasLog ? <span>gas</span> : null}
+          <span>sol</span>
+        </span>
+      ) : null}
       {file.warnings.length > 0 ? (
         <span
           className="project-file-warning-dot"
@@ -594,7 +618,7 @@ function ProjectFileRow({
           event.preventDefault()
           event.stopPropagation()
           onClearProjectFileSelection()
-          void onDeleteProjectFile(file)
+          void Promise.all(group.files.map((item) => onDeleteProjectFile(item)))
         }}
         onPointerDown={(event) => event.stopPropagation()}
       >
@@ -602,6 +626,141 @@ function ProjectFileRow({
       </button>
     </li>
   )
+}
+
+function projectFileGroupsForDisplay(files: ProjectFileEntry[]): ProjectFileGroup[] {
+  const groupsByKey = new Map<string, ProjectFileEntry[]>()
+  const orderedKeys: string[] = []
+  for (const file of files) {
+    const key = projectFileDisplayGroupKey(file)
+    if (!groupsByKey.has(key)) {
+      groupsByKey.set(key, [])
+      orderedKeys.push(key)
+    }
+    groupsByKey.get(key)?.push(file)
+  }
+  return orderedKeys
+    .map((key) => projectFileGroupFromFiles(key, groupsByKey.get(key) ?? []))
+    .filter((group): group is ProjectFileGroup => Boolean(group))
+}
+
+function projectFileGroupFromFiles(key: string, files: ProjectFileEntry[]): ProjectFileGroup | null {
+  if (files.length === 0) return null
+  const sortedFiles = [...files].sort(projectFileGroupSort)
+  const primaryFile = sortedFiles.find((file) => !projectFileLooksLikeSolutionLog(file)) ?? sortedFiles[0]
+  const hasSolutionLog = sortedFiles.some(projectFileLooksLikeSolutionLog)
+  const hasGasLog = sortedFiles.some((file) => isRawLogProjectFile(file) && !projectFileLooksLikeSolutionLog(file))
+  const displayName = projectFileDisplayName(primaryFile, key)
+  return {
+    id: primaryFile.id,
+    files: sortedFiles,
+    primaryFile,
+    displayFile: {
+      ...primaryFile,
+      name: displayName,
+      status: projectFileGroupStatus(sortedFiles),
+      warnings: uniqueProjectFileWarnings(sortedFiles),
+      registeredObjectIds: uniqueProjectFileIds(sortedFiles.flatMap((file) => file.registeredObjectIds)),
+      graphNodeIds: uniqueProjectFileIds(sortedFiles.flatMap((file) => file.graphNodeIds)),
+      artifactIds: uniqueProjectFileIds(sortedFiles.flatMap((file) => file.artifactIds)),
+    },
+    hasGasLog,
+    hasSolutionLog,
+  }
+}
+
+function projectFileGroupSort(left: ProjectFileEntry, right: ProjectFileEntry): number {
+  const leftSolution = projectFileLooksLikeSolutionLog(left)
+  const rightSolution = projectFileLooksLikeSolutionLog(right)
+  if (leftSolution !== rightSolution) return leftSolution ? 1 : -1
+  return left.name.localeCompare(right.name) || left.path.localeCompare(right.path)
+}
+
+function projectFileDisplayGroupKey(file: ProjectFileEntry): string {
+  const source = file.sourceName || file.name || file.path
+  const base = baseName(source)
+  const withoutChecksum = stripChecksumPrefix(base)
+  const withoutExtension = isRawLogProjectFile(file)
+    ? stripKnownRawExtension(withoutChecksum)
+    : withoutChecksum
+  const withoutSolutionSuffix = stripSolutionSuffix(withoutExtension)
+  return withoutSolutionSuffix.trim().toLowerCase() || file.id
+}
+
+function projectFileDisplayName(file: ProjectFileEntry, key: string): string {
+  if (!isRawLogProjectFile(file)) return file.name
+  const source = file.sourceName || file.name || file.path
+  const displayName = stripSolutionSuffix(stripKnownRawExtension(stripChecksumPrefix(baseName(source)))).trim()
+  return displayName || key || file.name
+}
+
+function projectFileGroupStatus(files: ProjectFileEntry[]): ProjectFileStatus {
+  if (files.some((file) => file.status === "error")) return "error"
+  if (files.some((file) => file.status === "used-in-graph")) return "used-in-graph"
+  if (files.some((file) => file.status === "registered")) return "registered"
+  if (files.some((file) => file.status === "previewed")) return "previewed"
+  if (files.some((file) => file.status === "exported")) return "exported"
+  return "stored"
+}
+
+function uniqueProjectFileWarnings(files: ProjectFileEntry[]): string[] {
+  return Array.from(new Set(files.flatMap((file) => file.warnings)))
+}
+
+function uniqueProjectFileIds(ids: string[]): string[] {
+  return Array.from(new Set(ids)).sort((left, right) => left.localeCompare(right))
+}
+
+function isRawLogProjectFile(file: ProjectFileEntry): boolean {
+  return file.kind === "gaussian-log" || file.kind === "orca-output" || file.kind === "maple-output"
+}
+
+function projectFileLooksLikeSolutionLog(file: ProjectFileEntry): boolean {
+  return [file.name, file.sourceName, file.path]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => Boolean(solutionLogSuffixForStem(stripKnownRawExtension(stripChecksumPrefix(baseName(value))))))
+}
+
+function solutionLogSuffixForStem(stem: string): string | null {
+  const lowered = stem.toLowerCase()
+  for (const suffix of [
+    "-sol",
+    "_sol",
+    ".sol",
+    " sol",
+    "-solution",
+    "_solution",
+    ".solution",
+    " solution",
+    "-solv",
+    "_solv",
+    ".solv",
+    " solv",
+    "-smd",
+    "_smd",
+    ".smd",
+    " smd",
+  ]) {
+    if (lowered.endsWith(suffix)) return suffix
+  }
+  return null
+}
+
+function stripSolutionSuffix(value: string): string {
+  const suffix = solutionLogSuffixForStem(value)
+  return suffix ? value.slice(0, -suffix.length) : value
+}
+
+function stripKnownRawExtension(value: string): string {
+  return value.replace(/\.(log|out|xyz|extxyz)$/i, "")
+}
+
+function stripChecksumPrefix(value: string): string {
+  return value.replace(/^[a-f0-9]{12}-/i, "")
+}
+
+function baseName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 }
 
 function isDraggableRawProjectFile(file: ProjectFileEntry): boolean {

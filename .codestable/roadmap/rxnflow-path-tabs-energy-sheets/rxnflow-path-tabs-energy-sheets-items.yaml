@@ -1,0 +1,51 @@
+roadmap: rxnflow-path-tabs-energy-sheets
+created: 2026-06-11
+
+items:
+  - slug: path-tabs-model
+    description: 在 Graph Canvas 增加 path tabs，并把 active path 选择收束到标签页
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: true
+    notes: 做完后用户可以在同一项目里通过标签页切换现有 paths；不先改能量公式
+
+  - slug: path-zero-reference
+    description: 每条 path 支持独立 zero point，切换 path 后节点相对能量和能量布局跟随该 zero point
+    depends_on: [path-tabs-model]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 没有显式 zero point 时默认 path 第一个可用主路径节点
+
+  - slug: path-stoichiometry-terms
+    description: 把设置化学计量数扩展为 path-aware side species 结构，替代手动能量表达式 UI
+    depends_on: [path-zero-reference]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: side-input 和 side-output 参与相对能量计算，但默认不作为中间主路径行展示
+
+  - slug: path-scoped-canvas
+    description: 切换 path tab 时按当前 path 突出和布局主路径节点，减少多路径互相干扰
+    depends_on: [path-tabs-model, path-zero-reference]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 其它路径节点可淡化、隐藏或作为 side species 显示；具体显示策略在 feature design 中收敛
+
+  - slug: energy-table-path-sheets
+    description: 表格视图新增 Absolute sheet 和每条 path Relative sheet，Relative sheet 按 path 主路径计算
+    depends_on: [path-stoichiometry-terms]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: Relative sheet 必须把 zero point 放在第一位，并只列主路径节点
+
+  - slug: path-tabs-persistence
+    description: 保存恢复 path tabs、path zero points、sheet selection 和 path-scoped stoichiometry
+    depends_on: [path-zero-reference, energy-table-path-sheets]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 恢复后画布 active path、表格 active sheet 和每条 path zero point 必须一致

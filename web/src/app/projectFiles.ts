@@ -166,11 +166,19 @@ function entryForObjectSource(
 }
 
 function projectFileSourceNameCandidates(entry: ProjectFileEntry): string[] {
-  return Array.from(new Set([
+  const names = [
     entry.sourceName,
     entry.name,
+    entry.path,
+    baseName(entry.path),
     stripChecksumPrefix(entry.name),
-  ].filter((value): value is string => Boolean(value))))
+  ].filter((value): value is string => Boolean(value))
+  return Array.from(new Set(names.flatMap((name) => [
+    name,
+    baseName(name),
+    stripChecksumPrefix(baseName(name)),
+    stripKnownRawExtension(stripChecksumPrefix(baseName(name))),
+  ]).filter(Boolean)))
 }
 
 function rawSourceIdNameCandidates(sourceId: string): string[] {
@@ -181,6 +189,10 @@ function rawSourceIdNameCandidates(sourceId: string): string[] {
     values.push(`${extensionMatch[1]}.${extensionMatch[2]}`)
   }
   return Array.from(new Set(values))
+}
+
+function stripKnownRawExtension(value: string): string {
+  return value.replace(/\.(log|out|xyz|extxyz)$/i, "")
 }
 
 function stripChecksumPrefix(name: string): string {
