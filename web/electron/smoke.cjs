@@ -298,10 +298,41 @@ async function verifyEmbeddedEngineFallback() {
     || orcaParse?.formula !== "H2O"
     || Math.abs((orcaParse?.energyGas ?? 0) - -76.34567890) > 1e-12
     || orcaParse?.coordinatePreview?.atomCount !== 3
+    || orcaParse?.coordinatePreview?.atoms?.[0]?.element !== "O"
+    || Math.abs((orcaParse?.coordinatePreview?.atoms?.[1]?.z ?? 0) - 0.96) > 1e-12
     || orcaParse?.candidates?.[0]?.charge !== 0
     || orcaParse?.candidates?.[0]?.spinMultiplicity !== 1
   ) {
     throw new Error(`RxnFlow embedded ORCA geometry smoke failed: ${JSON.stringify(orcaPreview)}`)
+  }
+
+  const irPreview = await runEngineRequest({
+    command: "import.preview",
+    files: [{
+      id: "embedded-ir",
+      name: "ir-complex.log",
+      preview: [
+        "Stoichiometry C2H6IrN",
+        "Input orientation:",
+        "---------------------------------------------------------------------",
+        "Center     Atomic      Atomic             Coordinates (Angstroms)",
+        "Number     Number       Type             X           Y           Z",
+        "---------------------------------------------------------------------",
+        "     1         77           0        0.000000    0.000000    0.000000",
+        "     2          6           0        1.900000    0.000000    0.000000",
+        "     3          7           0       -1.800000    0.000000    0.000000",
+        "---------------------------------------------------------------------",
+        "SCF Done: E(RwB97XD) = -4749.26415609 A.U.",
+      ].join("\n"),
+    }],
+  }, { preferEmbedded: true })
+  const irParse = irPreview.data?.files?.[0]?.parse
+  if (
+    !irPreview.ok
+    || irParse?.coordinatePreview?.elements?.join("|") !== "C|Ir|N"
+    || irParse?.coordinatePreview?.atoms?.[0]?.element !== "Ir"
+  ) {
+    throw new Error(`RxnFlow embedded Gaussian Ir coordinate smoke failed: ${JSON.stringify(irPreview)}`)
   }
 
   const registered = await runEngineRequest({

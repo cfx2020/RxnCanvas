@@ -738,14 +738,83 @@ ipcMain.handle("rxnflow:autosave-project-package", async (_event, payload) => {
 ipcMain.handle("rxnflow:engine-status", async () => getEngineStatus())
 
 async function readProjectPackageWithValidation(filePath) {
-  const content = await readProjectContent(filePath)
+  const rawContent = await readProjectContent(filePath)
   const projectDirectory = await projectDirectoryForOpenedPath(filePath)
+  const content = await enrichProjectContentWithStoredSourceCoordinates(rawContent, projectDirectory)
   const validation = await validateProjectPackageContent(content, projectDirectory)
   return {
     content,
     projectDirectory,
     validation,
   }
+}
+
+async function enrichProjectContentWithStoredSourceCoordinates(content, projectDirectory) {
+  if (!projectDirectory) return content
+  let projectPackage
+  try {
+    projectPackage = JSON.parse(content)
+  } catch {
+    return content
+  }
+  const files = Array.isArray(projectPackage?.files) ? projectPackage.files : []
+  const targets = files.flatMap((file, index) => {
+    if (!shouldHydrateStoredSourceFile(file)) return []
+    const sourcePath = path.join(projectDirectory, file.storedPath)
+    return [{
+      index,
+      file,
+      sourcePath,
+    }]
+  })
+  if (targets.length === 0) return content
+
+  const preview = await runEngineRequest({
+    command: "import.preview",
+    files: targets.map((target) => ({
+      name: typeof target.file.name === "string" && target.file.name ? target.file.name : path.basename(target.sourcePath),
+      size: Number.isFinite(target.file.size) ? target.file.size : 0,
+      preview: typeof target.file.preview === "string" ? target.file.preview : "",
+      sourcePath: target.sourcePath,
+    })),
+  }, { timeoutMs: 20000, preferEmbedded: true })
+  if (!preview.ok || !Array.isArray(preview.data?.files)) return content
+
+  let changed = false
+  const nextFiles = [...files]
+  targets.forEach((target, resultIndex) => {
+    const parse = preview.data.files[resultIndex]?.parse
+    if (!parse || (!parseHasCoordinateAtoms(parse) && target.file.parse)) return
+    nextFiles[target.index] = {
+      ...target.file,
+      kind: typeof parse.sourceKind === "string" && parse.sourceKind ? parse.sourceKind : target.file.kind,
+      status: target.file.status === "ready" ? "parsed" : target.file.status,
+      parse,
+    }
+    changed = true
+  })
+
+  if (!changed) return content
+  return `${JSON.stringify({ ...projectPackage, files: nextFiles }, null, 2)}\n`
+}
+
+function shouldHydrateStoredSourceFile(file) {
+  if (!file || typeof file !== "object") return false
+  if (typeof file.storedPath !== "string" || !isSafeProjectRelativePath(file.storedPath)) return false
+  const sourceKind = String(file.parse?.sourceKind || file.kind || "").toLowerCase()
+  const likelyCoordinateSource = ["gaussian", "orca", "xyz", "extxyz", "maple"].some((kind) => sourceKind.includes(kind))
+  if (!likelyCoordinateSource && file.parse) return false
+  return !parseHasCoordinateAtoms(file.parse)
+}
+
+function parseHasCoordinateAtoms(parse) {
+  if (!parse || typeof parse !== "object") return false
+  if (coordinatePreviewHasAtoms(parse.coordinatePreview)) return true
+  return Array.isArray(parse.candidates) && parse.candidates.some((candidate) => coordinatePreviewHasAtoms(candidate?.coordinatePreview))
+}
+
+function coordinatePreviewHasAtoms(coordinatePreview) {
+  return Array.isArray(coordinatePreview?.atoms) && coordinatePreview.atoms.length > 0
 }
 
 async function validateProjectPackageContent(content, projectDirectory) {
@@ -827,6 +896,12 @@ async function projectDirectoryForOpenedPath(openedPath) {
     return path.dirname(path.dirname(openedPath))
   }
   return null
+}
+
+function isSafeProjectRelativePath(projectPath) {
+  if (typeof projectPath !== "string" || !projectPath) return false
+  if (path.isAbsolute(projectPath)) return false
+  return !projectPath.split(/[\\/]+/).includes("..")
 }
 
 function projectFolderRequiredValidation(message) {

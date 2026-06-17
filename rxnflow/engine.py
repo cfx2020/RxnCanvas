@@ -166,10 +166,19 @@ class ParseWarning:
 
 
 @dataclass(frozen=True)
+class CoordinateAtom:
+    element: str
+    x: float
+    y: float
+    z: float
+
+
+@dataclass(frozen=True)
 class CoordinatePreview:
     atomCount: int
     has3d: bool
     elements: tuple[str, ...]
+    atoms: tuple[CoordinateAtom, ...] = ()
     previewKind: str = "text"
 
 
@@ -505,13 +514,33 @@ def coordinate_preview_from_payload(payload: Any) -> CoordinatePreview | None:
     atom_count = optional_int(payload.get("atomCount"))
     if atom_count is None:
         return None
+    atoms = tuple(
+        atom
+        for atom in (coordinate_atom_from_payload(item) for item in list_or_empty(payload.get("atoms")))
+        if atom is not None
+    )
     elements = tuple(str(element) for element in list_or_empty(payload.get("elements")) if isinstance(element, str))
+    if not elements and atoms:
+        elements = tuple(sorted({atom.element for atom in atoms}))
     return CoordinatePreview(
         atomCount=atom_count,
-        has3d=bool(payload.get("has3d")),
+        has3d=bool(payload.get("has3d")) or bool(atoms),
         elements=elements,
+        atoms=atoms,
         previewKind=string_or_default(payload.get("previewKind"), "text"),
     )
+
+
+def coordinate_atom_from_payload(payload: Any) -> CoordinateAtom | None:
+    if not isinstance(payload, dict):
+        return None
+    element = payload.get("element")
+    x = optional_float(payload.get("x"))
+    y = optional_float(payload.get("y"))
+    z = optional_float(payload.get("z"))
+    if not isinstance(element, str) or not element or x is None or y is None or z is None:
+        return None
+    return CoordinateAtom(element=element, x=x, y=y, z=z)
 
 
 def energy_table_from_payload(payload: Any) -> ParsedEnergyTableData | None:
@@ -1690,9 +1719,9 @@ def orca_energy_table(preview: str) -> ParsedEnergyTableData | None:
     return table if energy_table_has_value(table) else None
 
 
-def orca_atoms_from_text(preview: str) -> list[str]:
+def orca_atoms_from_text(preview: str) -> list[CoordinateAtom]:
     lines = preview.splitlines()
-    best_atoms: list[str] = []
+    best_atoms: list[CoordinateAtom] = []
     for index, line in enumerate(lines):
         if "CARTESIAN COORDINATES" not in line.upper():
             continue
@@ -1702,8 +1731,8 @@ def orca_atoms_from_text(preview: str) -> list[str]:
     return best_atoms
 
 
-def orca_coordinate_block(lines: list[str], start: int) -> list[str]:
-    atoms: list[str] = []
+def orca_coordinate_block(lines: list[str], start: int) -> list[CoordinateAtom]:
+    atoms: list[CoordinateAtom] = []
     for line in lines[start:]:
         trimmed = line.strip()
         if not trimmed:
@@ -1726,14 +1755,14 @@ def orca_coordinate_block(lines: list[str], start: int) -> list[str]:
         try:
             if len(coordinates) < 3:
                 raise ValueError
-            float(coordinates[0].replace("D", "E").replace("d", "E"))
-            float(coordinates[1].replace("D", "E").replace("d", "E"))
-            float(coordinates[2].replace("D", "E").replace("d", "E"))
+            x = float(coordinates[0].replace("D", "E").replace("d", "E"))
+            y = float(coordinates[1].replace("D", "E").replace("d", "E"))
+            z = float(coordinates[2].replace("D", "E").replace("d", "E"))
         except ValueError:
             if atoms:
                 break
             continue
-        atoms.append(symbol)
+        atoms.append(CoordinateAtom(symbol, x, y, z))
     return atoms
 
 
@@ -1783,9 +1812,9 @@ def parse_xyz_frames(
     preview: str,
     target: str = "XYZ frame",
     default_energy_unit: str | None = None,
-) -> list[tuple[list[str], str, float | None, tuple[ParseWarning, ...]]]:
+) -> list[tuple[list[CoordinateAtom], str, float | None, tuple[ParseWarning, ...]]]:
     lines = [line.rstrip() for line in preview.splitlines()]
-    frames: list[tuple[list[str], str, float | None, tuple[ParseWarning, ...]]] = []
+    frames: list[tuple[list[CoordinateAtom], str, float | None, tuple[ParseWarning, ...]]] = []
     index = 0
     while index < len(lines):
         if not lines[index].strip():
@@ -1801,18 +1830,18 @@ def parse_xyz_frames(
         atom_lines = lines[comment_index + 1:comment_index + 1 + atom_count]
         if len(atom_lines) != atom_count:
             return []
-        atoms: list[str] = []
+        atoms: list[CoordinateAtom] = []
         for line in atom_lines:
             parts = line.split()
             if len(parts) < 4 or not re.fullmatch(r"[A-Z][a-z]?", parts[0]):
                 return []
             try:
-                float(parts[1])
-                float(parts[2])
-                float(parts[3])
+                x = float(parts[1])
+                y = float(parts[2])
+                z = float(parts[3])
             except ValueError:
                 return []
-            atoms.append(parts[0])
+            atoms.append(CoordinateAtom(parts[0], x, y, z))
         comment = lines[comment_index].strip()
         energy_gas, energy_warnings = xyz_energy_from_comment(comment, target, default_energy_unit=default_energy_unit)
         frames.append((atoms, comment, energy_gas, energy_warnings))
@@ -1870,9 +1899,9 @@ def looks_like_maple_xyz(preview: str) -> bool:
     return len(lines) >= 2 and lines[0].isdigit() and MAPLE_XYZ_COMMENT_PATTERN.search(lines[1]) is not None
 
 
-def last_maple_coordinate_block(preview: str) -> list[str]:
-    blocks: list[list[str]] = []
-    current: list[str] = []
+def last_maple_coordinate_block(preview: str) -> list[CoordinateAtom]:
+    blocks: list[list[CoordinateAtom]] = []
+    current: list[CoordinateAtom] = []
     for line in preview.splitlines():
         match = MAPLE_COORDINATE_PATTERN.match(line)
         if match is None:
@@ -1880,7 +1909,7 @@ def last_maple_coordinate_block(preview: str) -> list[str]:
                 blocks.append(current)
                 current = []
             continue
-        current.append(match.group(1))
+        current.append(CoordinateAtom(match.group(1), float(match.group(2)), float(match.group(3)), float(match.group(4))))
     if current:
         blocks.append(current)
     return blocks[-1] if blocks else []
@@ -1893,9 +1922,9 @@ def last_maple_output_energy(preview: str) -> float | None:
     return float(matches[-1].group(1))
 
 
-def gaussian_atoms_from_text(preview: str) -> list[str]:
+def gaussian_atoms_from_text(preview: str) -> list[CoordinateAtom]:
     lines = preview.splitlines()
-    best_atoms: list[str] = []
+    best_atoms: list[CoordinateAtom] = []
     for index, line in enumerate(lines):
         if "Standard orientation:" not in line and "Input orientation:" not in line:
             continue
@@ -1905,9 +1934,9 @@ def gaussian_atoms_from_text(preview: str) -> list[str]:
     return best_atoms
 
 
-def gaussian_orientation_block(lines: list[str], start: int) -> list[str]:
+def gaussian_orientation_block(lines: list[str], start: int) -> list[CoordinateAtom]:
     dash_count = 0
-    atoms: list[str] = []
+    atoms: list[CoordinateAtom] = []
     for line in lines[start:]:
         if set(line.strip()) == {"-"}:
             dash_count += 1
@@ -1921,12 +1950,12 @@ def gaussian_orientation_block(lines: list[str], start: int) -> list[str]:
             continue
         try:
             atomic_number = int(parts[1])
-            float(parts[3])
-            float(parts[4])
-            float(parts[5])
+            x = float(parts[3])
+            y = float(parts[4])
+            z = float(parts[5])
         except ValueError:
             continue
-        atoms.append(symbol_from_atomic_number(atomic_number))
+        atoms.append(CoordinateAtom(symbol_from_atomic_number(atomic_number), x, y, z))
     return atoms
 
 
@@ -1949,13 +1978,15 @@ def gaussian_method_from_text(preview: str) -> str | None:
     return None
 
 
-def coordinate_preview_from_atoms(atoms: list[str]) -> CoordinatePreview | None:
+def coordinate_preview_from_atoms(atoms: list[str | CoordinateAtom]) -> CoordinatePreview | None:
     if not atoms:
         return None
+    coordinate_atoms: tuple[CoordinateAtom, ...] = tuple(atoms) if all(isinstance(atom, CoordinateAtom) for atom in atoms) else ()
     return CoordinatePreview(
         atomCount=len(atoms),
-        has3d=True,
-        elements=tuple(sorted(set(atoms))),
+        has3d=bool(coordinate_atoms),
+        elements=tuple(sorted({atom_element(atom) for atom in atoms})),
+        atoms=coordinate_atoms,
         previewKind="text",
     )
 
@@ -2011,8 +2042,12 @@ def infer_formula_from_text(preview: str) -> str | None:
     return match.group(1) if match else None
 
 
-def formula_from_atoms(atoms: list[str]) -> str:
-    counts = Counter(atoms)
+def atom_element(atom: str | CoordinateAtom) -> str:
+    return atom if isinstance(atom, str) else atom.element
+
+
+def formula_from_atoms(atoms: list[str | CoordinateAtom]) -> str:
+    counts = Counter(atom_element(atom) for atom in atoms)
     ordered = [atom for atom in ("C", "H") if atom in counts]
     ordered.extend(sorted(atom for atom in counts if atom not in {"C", "H"}))
     return "".join(f"{atom}{'' if counts[atom] == 1 else counts[atom]}" for atom in ordered)
@@ -2104,4 +2139,36 @@ ELEMENTS = (
     "Te",
     "I",
     "Xe",
+    "Cs",
+    "Ba",
+    "La",
+    "Ce",
+    "Pr",
+    "Nd",
+    "Pm",
+    "Sm",
+    "Eu",
+    "Gd",
+    "Tb",
+    "Dy",
+    "Ho",
+    "Er",
+    "Tm",
+    "Yb",
+    "Lu",
+    "Hf",
+    "Ta",
+    "W",
+    "Re",
+    "Os",
+    "Ir",
+    "Pt",
+    "Au",
+    "Hg",
+    "Tl",
+    "Pb",
+    "Bi",
+    "Po",
+    "At",
+    "Rn",
 )

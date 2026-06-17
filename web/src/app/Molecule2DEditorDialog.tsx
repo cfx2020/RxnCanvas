@@ -1,4 +1,5 @@
-import { lazy, Suspense, useMemo, useRef, useState } from "react"
+import { Component, lazy, Suspense, useMemo, useRef, useState } from "react"
+import type { ErrorInfo, ReactNode } from "react"
 import type { Ketcher } from "ketcher-core"
 import type { FlowNode, ManualStructurePayload } from "../domain/projectPackages"
 import type { CoordinateAtom } from "../domain/sourceParsers"
@@ -57,20 +58,28 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
         </header>
         <div className="molecule-editor-shell">
           <div className="molecule-editor-host molecule-editor-host-ketcher" aria-label="Ketcher 2D structure editor">
-            <Suspense fallback={<div className="molecule-editor-status">Loading Ketcher editor…</div>}>
-              <KetcherEditorHost
-                initialStructure={initialStructure}
-                onReady={(ketcher) => {
-                  ketcherRef.current = ketcher
-                  setStatus("ready")
-                  setMessage("Ketcher ready. Paste from ChemDraw or draw a 2D structure.")
-                }}
-                onError={(nextMessage) => {
-                  setStatus("error")
-                  setMessage(nextMessage)
-                }}
-              />
-            </Suspense>
+            <MoleculeEditorErrorBoundary
+              key={node.id}
+              onError={(nextMessage) => {
+                setStatus("error")
+                setMessage(nextMessage)
+              }}
+            >
+              <Suspense fallback={<div className="molecule-editor-status">Loading Ketcher editor…</div>}>
+                <KetcherEditorHost
+                  initialStructure={initialStructure}
+                  onReady={(ketcher) => {
+                    ketcherRef.current = ketcher
+                    setStatus("ready")
+                    setMessage("Ketcher ready. Paste from ChemDraw or draw a 2D structure.")
+                  }}
+                  onError={(nextMessage) => {
+                    setStatus("error")
+                    setMessage(nextMessage)
+                  }}
+                />
+              </Suspense>
+            </MoleculeEditorErrorBoundary>
           </div>
           {status !== "ready" ? <div className={`molecule-editor-status${status === "error" ? " is-error" : ""}`}>{message}</div> : null}
         </div>
@@ -84,4 +93,43 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
       </section>
     </div>
   )
+}
+
+class MoleculeEditorErrorBoundary extends Component<{
+  children: ReactNode
+  onError: (message: string) => void
+}, { hasError: boolean; message: string }> {
+  state = {
+    hasError: false,
+    message: "",
+  }
+
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      hasError: true,
+      message: editorErrorMessage(error),
+    }
+  }
+
+  componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
+    const message = editorErrorMessage(error)
+    console.error("RxnFlow Ketcher editor crashed", error, errorInfo)
+    this.props.onError(message)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="molecule-editor-status is-error" role="alert">
+          {this.state.message}
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+function editorErrorMessage(error: unknown): string {
+  const detail = error instanceof Error && error.message ? ` (${error.message})` : ""
+  return `Ketcher editor could not load. The rest of RxnFlow is still available.${detail}`
 }

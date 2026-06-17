@@ -698,7 +698,7 @@ function orcaCoordinateBlock(lines, start) {
       if (atoms.length > 0) break
       continue
     }
-    atoms.push(symbol)
+    atoms.push({ element: symbol, x: parseNumber(coordinates[0]), y: parseNumber(coordinates[1]), z: parseNumber(coordinates[2]) })
   }
   return atoms
 }
@@ -881,7 +881,12 @@ function parseXyzFrames(preview, target = "XYZ frame", defaultEnergyUnit = null)
       const parts = line.trim().split(/\s+/)
       if (parts.length < 4 || !/^[A-Z][a-z]?$/.test(parts[0])) return []
       if ([parts[1], parts[2], parts[3]].some((value) => parseNumber(value) === null)) return []
-      atoms.push(parts[0])
+      atoms.push({
+        element: parts[0],
+        x: parseNumber(parts[1]),
+        y: parseNumber(parts[2]),
+        z: parseNumber(parts[3]),
+      })
     }
     const comment = lines[commentIndex]?.trim() ?? ""
     const energy = xyzEnergyFromComment(comment, target, defaultEnergyUnit)
@@ -945,7 +950,12 @@ function lastMapleCoordinateBlock(preview) {
       }
       continue
     }
-    current.push(match[1])
+    current.push({
+      element: match[1],
+      x: parseNumber(match[2]),
+      y: parseNumber(match[3]),
+      z: parseNumber(match[4]),
+    })
   }
   if (current.length > 0) blocks.push(current)
   return blocks.at(-1) ?? []
@@ -982,7 +992,12 @@ function gaussianOrientationBlock(lines, start) {
     const atomicNumber = Number.parseInt(parts[1], 10)
     if (!Number.isInteger(atomicNumber)) continue
     if ([parts[3], parts[4], parts[5]].some((value) => parseNumber(value) === null)) continue
-    atoms.push(symbolFromAtomicNumber(atomicNumber))
+    atoms.push({
+      element: symbolFromAtomicNumber(atomicNumber),
+      x: parseNumber(parts[3]),
+      y: parseNumber(parts[4]),
+      z: parseNumber(parts[5]),
+    })
   }
   return atoms
 }
@@ -1400,10 +1415,12 @@ function sourceFileId(file) {
 
 function coordinatePreviewFromAtoms(atoms) {
   if (atoms.length === 0) return null
+  const coordinateAtoms = atoms.every(isCoordinateAtom) ? atoms.map((atom) => ({ ...atom })) : undefined
   return {
     atomCount: atoms.length,
-    has3d: true,
-    elements: Array.from(new Set(atoms)).sort(),
+    has3d: Boolean(coordinateAtoms?.length),
+    elements: Array.from(new Set(atoms.map(atomElement))).sort(),
+    ...(coordinateAtoms ? { atoms: coordinateAtoms } : {}),
     previewKind: "text",
   }
 }
@@ -1412,12 +1429,22 @@ function coordinatePreviewFromPayload(payload) {
   if (!payload || typeof payload !== "object") return null
   const atomCount = optionalInteger(payload.atomCount)
   if (atomCount === null) return null
+  const atoms = arrayOrEmpty(payload.atoms).map(coordinateAtomFromPayload).filter(Boolean)
+  const elements = arrayOrEmpty(payload.elements).filter((value) => typeof value === "string")
   return {
     atomCount,
-    has3d: Boolean(payload.has3d),
-    elements: arrayOrEmpty(payload.elements).filter((value) => typeof value === "string"),
+    has3d: Boolean(payload.has3d) || atoms.length > 0,
+    elements: elements.length > 0 ? elements : Array.from(new Set(atoms.map((atom) => atom.element))).sort(),
+    ...(atoms.length > 0 ? { atoms } : {}),
     previewKind: stringOrDefault(payload.previewKind, "text"),
   }
+}
+
+function coordinateAtomFromPayload(payload) {
+  if (!payload || typeof payload !== "object") return null
+  if (typeof payload.element !== "string" || !payload.element) return null
+  if (!isNumber(payload.x) || !isNumber(payload.y) || !isNumber(payload.z)) return null
+  return { element: payload.element, x: payload.x, y: payload.y, z: payload.z }
 }
 
 function energyTableFromPayload(payload) {
@@ -1471,12 +1498,28 @@ function inferFormulaFromText(preview) {
 
 function formulaFromAtoms(atoms) {
   const counts = new Map()
-  atoms.forEach((atom) => counts.set(atom, (counts.get(atom) ?? 0) + 1))
+  atoms.forEach((atom) => {
+    const element = atomElement(atom)
+    counts.set(element, (counts.get(element) ?? 0) + 1)
+  })
   const ordered = [
     ...["C", "H"].filter((atom) => counts.has(atom)),
     ...Array.from(counts.keys()).filter((atom) => atom !== "C" && atom !== "H").sort(),
   ]
   return ordered.map((atom) => `${atom}${counts.get(atom) === 1 ? "" : counts.get(atom)}`).join("")
+}
+
+function atomElement(atom) {
+  return typeof atom === "string" ? atom : atom.element
+}
+
+function isCoordinateAtom(atom) {
+  return Boolean(atom)
+    && typeof atom === "object"
+    && typeof atom.element === "string"
+    && isNumber(atom.x)
+    && isNumber(atom.y)
+    && isNumber(atom.z)
 }
 
 function roleHintFromName(name) {
@@ -1647,6 +1690,38 @@ const elements = [
   "Te",
   "I",
   "Xe",
+  "Cs",
+  "Ba",
+  "La",
+  "Ce",
+  "Pr",
+  "Nd",
+  "Pm",
+  "Sm",
+  "Eu",
+  "Gd",
+  "Tb",
+  "Dy",
+  "Ho",
+  "Er",
+  "Tm",
+  "Yb",
+  "Lu",
+  "Hf",
+  "Ta",
+  "W",
+  "Re",
+  "Os",
+  "Ir",
+  "Pt",
+  "Au",
+  "Hg",
+  "Tl",
+  "Pb",
+  "Bi",
+  "Po",
+  "At",
+  "Rn",
 ]
 
 module.exports = {

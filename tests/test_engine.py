@@ -237,6 +237,30 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(orca.candidates[0].charge, 0)
         self.assertEqual(orca.candidates[0].spinMultiplicity, 1)
 
+    def test_engine_import_preview_preserves_coordinate_atoms_for_2d_depiction(self) -> None:
+        gaussian = parse_source_preview(
+            "ir-complex.log",
+            "\n".join([
+                " Charge =  1 Multiplicity = 1",
+                " Stoichiometry    C2H6IrN(1+)",
+                "                          Input orientation:",
+                " ---------------------------------------------------------------------",
+                " Center     Atomic      Atomic             Coordinates (Angstroms)",
+                " Number     Number       Type             X           Y           Z",
+                " ---------------------------------------------------------------------",
+                "      1         77           0        0.000000    0.000000    0.000000",
+                "      2          6           0        1.900000    0.000000    0.000000",
+                "      3          7           0       -1.800000    0.000000    0.000000",
+                " ---------------------------------------------------------------------",
+                " SCF Done:  E(RwB97XD) =  -4749.26415609     A.U. after   20 cycles",
+            ]),
+        )
+
+        self.assertEqual(gaussian.coordinatePreview.atomCount if gaussian.coordinatePreview else 0, 3)
+        self.assertEqual(gaussian.coordinatePreview.elements if gaussian.coordinatePreview else (), ("C", "Ir", "N"))
+        self.assertEqual(gaussian.coordinatePreview.atoms[0].element if gaussian.coordinatePreview else "", "Ir")
+        self.assertAlmostEqual(gaussian.coordinatePreview.atoms[1].x if gaussian.coordinatePreview else 0, 1.9)
+
     def test_engine_import_preview_parses_extxyz_metadata(self) -> None:
         extxyz = parse_source_preview(
             "h2.xyz",

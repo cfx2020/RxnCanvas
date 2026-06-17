@@ -12,10 +12,11 @@ type KetcherEditorHostProps = {
 
 export function KetcherEditorHost({ initialStructure, onReady, onError }: KetcherEditorHostProps) {
   const structServiceProvider = useMemo(() => new StandaloneStructServiceProvider(), [])
+  const staticResourcesUrl = import.meta.env.BASE_URL || "/"
 
   return (
     <Editor
-      staticResourcesUrl="/"
+      staticResourcesUrl={staticResourcesUrl}
       structServiceProvider={structServiceProvider}
       disableMacromoleculesEditor={true}
       errorHandler={onError}
