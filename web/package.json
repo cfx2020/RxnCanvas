@@ -2,20 +2,34 @@
   "name": "rxnflow-web",
   "private": true,
   "version": "0.0.0",
+  "description": "Local-first reaction canvas workbench for RxnFlow.",
+  "author": "RxnFlow",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
-    "test": "vitest run",
-    "test:e2e": "playwright test",
-    "test:e2e:local-http": "playwright test --config=playwright.local-http.config.ts"
+    "desktop": "npm run desktop:icons && npm run build && electron electron/main.cjs",
+    "desktop:icons": "node scripts/generate-icons.cjs",
+    "desktop:smoke": "node electron/smoke.cjs",
+    "desktop:release:smoke": "npm run desktop:icons && node electron/release-smoke.cjs",
+    "desktop:runtime:smoke": "node electron/runtime-smoke.cjs",
+    "desktop:installer:smoke:win": "node electron/windows-installer-smoke.cjs",
+    "desktop:pack": "npm run desktop:icons && npm run build && electron-builder --mac dir --publish never --config.mac.identity=null",
+    "desktop:pack:win": "npm run desktop:icons && npm run build && electron-builder --win --x64 --dir --publish never",
+    "desktop:dist:mac": "npm run desktop:icons && npm run build && electron-builder --mac --publish never",
+    "desktop:notarize:mac": "node scripts/notarize-mac.cjs",
+    "desktop:dist:win": "npm run desktop:icons && npm run build && electron-builder --win --x64 --publish never",
+    "test": "vitest run"
   },
   "dependencies": {
-    "fflate": "^0.8.3",
+    "3dmol": "^2.5.5",
+    "ketcher-core": "^3.15.0",
+    "ketcher-react": "^3.15.0",
+    "ketcher-standalone": "^3.15.0",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "three": "^0.184.0"
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -23,12 +37,47 @@
     "@types/node": "^25.8.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.184.1",
     "@vitejs/plugin-react": "^6.0.2",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
     "playwright": "^1.60.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.13",
     "vitest": "^4.1.6"
+  },
+  "build": {
+    "appId": "com.rxnflow.app",
+    "productName": "RxnFlow",
+    "asar": true,
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "icon": "build/icon.png",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
   }
 }

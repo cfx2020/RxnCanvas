@@ -3,371 +3,193 @@ doc_type: architecture
 slug: web-workbench
 status: current
 created: 2026-05-16
-last_reviewed: 2026-06-12
-implements: [web-workbench-shell, project-content-persistence]
-tags: [web, workbench, workspace-first-flow-shell, project-rail, project-tree-import, canvas-stage, analysis-dock, shell-client, react, vite, local-first, indexeddb, browser-storage, project-files, raw-file-drop, transient-import, parse-candidate-chooser, canvas-chemical-node, molecule-3d-viewer, display-name-filter, project-bundle, zip, portability-qa, workspace-first-qa-guides, workspace-first-qa-matrix, workspace-first-user-guide, i18n, raw-inputs, object-registry, graph-canvas, graph-editor-interaction-state, graph-object-drop, graph-node-layout, graph-layout-helper, graph-edge-path-editing, graph-path-delete, graph-edge-label-editing, graph-editor-free-edge-drawing, graph-path-authoring, graph-editor-multiselect-keyboard, graph-viewport-controls, graph-editor-wheel-navigation, graph-minimap, graph-editor-lightweight-history, graph-editor-workspace-persistence, node-composition, energy-semantics, energy-profile, energy-curve-interaction, pes-preview, energy-step-delta, report-export, export-artifact-persistence, local-http-shell-bridge, http-api-transport, e2e, bridge-qa]
+last_reviewed: 2026-06-17
+implements: [desktop-canvas-rebuild]
+tags: [web, react, vite, local-first, canvas, table-view, source-preview, report-export, desktop-renderer]
 ---
 
 # Web Workbench
 
 ## 1. 当前能力
 
-RxnFlow 当前已有独立 `web/` 前端工程，用于承载 Web Workbench MVP 的第一屏 app shell。该工程使用 React + TypeScript + Vite + npm，提供 `dev`、`build`、`test`、`test:e2e` 和 `test:e2e:local-http` scripts。
+`web/` 当前是 RxnFlow 桌面客户端的 renderer 原型，而不是云 Web 或完整旧 Web Workbench。技术栈：
 
-当前 Web Workbench 已落地浏览器端壳层、Workspace-First Flow Shell、只读工作台状态投影、真实浏览器本地项目仓储、Project Rail / Project Files Panel、项目树导入入口、浮动 Report Export dock、浮动 Source Inspector、Web i18n 基础、Browser Raw Input Store、Raw File Drop to Canvas、Transient Import Payload helper、Parse Candidate Chooser、Canvas Chemical Node、Molecule 3D Viewer、用户可见名称过滤、Browser Bundle Archive Adapter、内部 Browser Bundle helpers、Web Project Restore QA、Web Project Portability QA & Guides、Graph Canvas MVP、Graph Editor Interaction State、Graph Object Drop、Graph Node Layout、Graph Edge/Path Editing、Graph Edge Label Editing、Workspace-First Path Authoring、Graph Editor Multi-select / Keyboard、Graph Canvas Viewport Controls、Graph Editor Wheel Navigation、Graph Minimap、Graph Editor Lightweight History、Graph Editor Workspace Persistence、Inline Stoichiometric Coefficient Control、Energy Semantics Controls、内部 Energy Profile projection、Interactive Energy Curve projection、Report Export Panel 和 Workspace-First Flow QA & Guides：
+- React
+- TypeScript
+- Vite
+- npm
+- lucide-react icons
+- Vitest + Testing Library
+- Electron local engine lightweight source parser via `import.preview`
+- Electron preload/main register IPC via `window.rxnflowDesktop.registerImportCandidates`, backed by lightweight stateless `import.register_selection` / `import.register_all`
+- renderer-side lightweight source parser fallback in `web/src/domain/sourceParsers.ts`; it mirrors the engine preview contract with candidates, warnings, objectCount, parser provenance, coordinate summary fields and parsed coordinate atoms for viewer use.
+- renderer-side candidate review flow is planned by `web/src/app/importRegistration.ts`, coordinated by `web/src/app/App.tsx`, and rendered by `web/src/app/InspectorPanels.tsx`; multi-candidate imports open a soft-glass dialog, Electron mode prefers local engine register, and browser/engine failure paths fall back to renderer-side node creation with parser/candidate provenance.
+- renderer-side lightweight report export in `web/src/domain/reportExports.ts`, with save/status orchestration in `web/src/app/reportExportWorkflow.ts` and browser download primitives in `web/src/app/browserDownloads.ts`.
+- renderer-side lightweight relative energy derivation in `web/src/app/energyDisplay.ts`; current active UI does not expose Object Registry or correction editing.
+- renderer-side project state schema in `web/src/domain/projectPackages.ts`; it derives lightweight `importLedger` entries from files/nodes, preserves legacy node `corrections` fields when present, persists canvas `barriers`, Electron persists it into real workspace folders (`.rxnflow/project.json` metadata + root `sources/` / `exports/`), and legacy `.rxnflow.json` packages without `importLedger` or `barriers` are normalized on open.
+- renderer-side project package open/save helper 和 browser/Electron runtime transition in `web/src/app/projectPackageWorkflow.ts`; it builds runtime-specific default filenames, serializes active project state, maps parsed package content into project/workspace snapshots plus validation payloads, and prepares restore transitions that replace duplicate project summaries while saving the current active workspace.
 
-1. 浏览器入口 `web/index.html` 挂载 React app。
-2. `App` 通过 `createConfiguredShellRuntime(import.meta.env)` 创建前端 `ShellClient`，默认接入 `in-process-test` fixture transport；当 `VITE_RXNFLOW_SHELL_TRANSPORT=local-http` 时接入 `http-api` transport，并调用 `VITE_RXNFLOW_SHELL_ENDPOINT` 指向的本地 HTTP shell bridge。
-3. `WorkbenchShell` 渲染 Canvas-First / Workspace-First Flow Shell：顶部菜单承载 Projects 和 Export；左侧 Project Rail 承载 project list、active project、项目文件树、hover/focus 后显示的项目更多操作和项目内文件导入入口；中间 Canvas Stage 以 Graph Canvas 为主体并接收 external File / project file drop；右侧 inspector 是覆盖在画布上的浮动抽屉，不再占用画布右侧空白列，默认由 Export 打开 `ReportExportPanel`，也可由节点菜单按需打开 Source Inspector；Source Inspector 默认只渲染 raw log 预览，用户显式点击后才展示完整 raw log，且预览/全文都在浮动栏内部滚动。
-4. fixture transport 仍作为开发/测试 transport 存在；测试入口通过 dev/test-only `window.__rxnflowWorkbenchTest` API 暴露，不渲染按钮或可访问文本。正常主界面不把 fixture session、runtime mode、transport 或 endpoint 当成用户需要理解的信息展示。fixture transport 返回的 `workbench.snapshot` 仍由 projector 投影为 `WorkbenchDomainState` 并更新 project/session/graph/profile/object/artifact summary。
-5. 未知 command 返回 `invalid_input`，UI 显示 error code 和 message。
-6. 主界面不显示 backend id、browser project ref、`Local-only` badge、runtime badge、run-state badge、graph/session id 或 fixture 实现名；当前不承诺云同步。runtime / endpoint / transport 等实现信息只作为 ShellClient 内部配置和错误上下文保留，常规 UI 只在 transport failure 时用 `WorkbenchErrorAlert` 显示可读错误。
-7. `WorkbenchUiState` 与 `WorkbenchDomainState` 分离，panel、pending command、active object、hover、dragging、pending edge、rubber-band draft、path draft、keyboard focus intent、toolbar state 和 Graph Editor History stack 等 UI-only 状态不进入 ShellResponse；Graph Canvas 的 node/edge/path selection 已通过 Workspace Selection 投影进入 `WorkbenchDomainState.workspace.selection`。
-8. `web/src/repository/` 提供 Browser Project Repository 契约、IndexedDB-first implementation、内存测试替身、path/checksum helpers 和结构化错误。
-9. `createBrowserProjectRepository()` 在真实浏览器 IndexedDB 可用时返回 `IndexedDbBrowserProjectRepository`；IndexedDB 不可用时抛出 `storage_unavailable`，不静默退化成内存持久化。
-10. Project Sidebar 从 Browser Project Repository 派生 UI state，可列出 projects，打开/删除已有 project，展示 active project 和 raw-only Project Files；persistence、validation、checksum 和 repository error 保留在 state / alert 条件中，正常 saved / valid 不常驻显示，只有保存失败、项目内容缺失或浅校验错误时显示 Project notices；新建 project 在左侧抽屉，项目行 hover/focus 后显示三点更多菜单和 `+` 导入入口，删除项目在项目行三点更多菜单。它不向主流程暴露 backend id、browser project ref、bridge state 或 runtime mode。
-11. Project Sidebar 不再把 Project Bundle 当成用户主入口；`.rxnflow.zip` 读写 helper 仍保留在代码中作为内部迁移和测试能力，但不在侧栏暴露 Import/Export Bundle 动作。
-12. 打开 browser project 会自动把可用的 Project Content files 恢复到 shell session，再把 snapshot 投影为 WorkbenchDomainState；active project + session 的工作台变更会防抖自动调用 `project.save_content(include_content_files=true)` 写回 Browser Project Repository。这里不再要求用户显式点击 Open Bridge / Save Bridge Session，也不再提供顶部 `Save Project` 按钮。
-13. `web/src/app/i18n/` 提供轻量 Web i18n runtime，当前支持 `zh-CN` 和 `en-US` message catalogs、typed message keys、`I18nProvider` / `useI18n`、本地浏览器 locale preference 和顶栏 locale switcher。
-14. `ImportInbox.tsx` / Source Tray UI 已删除。用户可见导入入口收束到左侧项目树项目行 hover/focus 后出现的 `+`、项目树 drop 和中间 Graph Canvas 的 drop surface；项目树导入只把外部计算输出写入 active browser project 的 `inputs/raw/...` 并刷新 Project Files，画布 drop 才触发 preview/register/add-node 编排。
-15. 当前画布 drop 调用 `importPreviewArgsFromFiles(..., { preferInlineBytes: true })`，native browser `File` 优先生成 `sources[].kind="inline_bytes"`；Project Files Panel 复用已有 repository bytes 或 project-relative logical path。local-http runtime 会通过本地 bridge 调用真实 Python `import.preview`，fixture transport 也接受 inline/path 两类 JSON-safe source projection。session 没有 core `project_path` 时，Platform Shell 使用 Temporary Preview Project；它不把 browser-local project ref 当成 core project path。
-16. 项目树导入和画布 drop 仍沿用 Browser Raw Input Store：active browser project 存在时把 browser `File` 写入 Browser Project Repository 的 `inputs/raw/{sha12}-{safeName}`，并把对应 `raw_file` resource merge 进 `.rxnflow/manifest.json`。当前这是 workspace-first Web 过渡实现；长期会迁移到 canonical import data，不保留 raw bytes 作为项目长期 authority。
-17. 当前 Browser Raw Input Store 使用 SHA-256 生成 `raw-{sha12}` id 和 `inputs/raw/{sha12}-{safeName}` path，metadata 记录 source name、byte size、mime type 和 last modified；同 checksum manifest resource 不重复追加，raw object 可覆盖同 path bytes。
-18. Project Sidebar 当前新增 Project Files Panel：它从 Browser Project Repository 的 `inputs/raw/` prefix 派生 `ProjectFileEntry`，内部保留 projectRef、path、sourceName、checksum、rawResourceId、registeredObjectIds、graphNodeIds 和 warnings 等字段；用户可见行是紧凑文件树条目，只显示格式字标（Gaussian/ORCA/MAPLE/XYZ 等）、文件名和必要警告点，不显示 path/checksum/ref/byteSize、graph node count、object id 或 visible status badge 这类调试或低频元数据；状态通过 `aria-label` 和 `project-file-card--*` class 保留给可访问性与测试。该面板展示的是 active project 已拥有的 raw files，不展示还未写入项目的外部 loose file，也不展示 report export 产物。当前不提供单 raw file 删除入口；删除项目文件需要先定义 raw file、registered objects、graph nodes、自动保存和 project restore 之间的级联/保留语义。
-19. Project Files Panel 中的 raw file row 可产生独立的 `application/x-rxnflow-raw-file` payload，也可通过点击文件行复用已有 raw bytes 进入 Raw File Drop pipeline；不再渲染占据卡片空间的独立 `Add to canvas` 按钮、格式长文案或动作提示文案；export artifact 只留在 Report Export Panel 和下载记录里，不作为项目文件列表项。
-20. Graph Canvas 当前支持 Raw File Drop to Canvas：外部浏览器 `File` drop 时，WorkbenchShell 先调用 `persistRawInputFile()` 写入 `inputs/raw/{sha12}-{safeName}` 并 merge manifest resource，再调用 `import.preview`；Project Files Panel 中已有 raw file drop 时复用 repository bytes，不重复写 raw object。`object_count === 1` 时继续 `import.register_all` 和 `workspace.add_node(position)`；`object_count > 1` 且 preview 提供 `candidates[]` 时打开落点附近的 Parse Candidate Chooser，用户确认后调用 `import.register_selection(batch_id, item_id, object_indices)` 并按选择顺序创建 stack graph nodes；没有 candidate list 时仍显示 structured error，不自动批量建节点。
-21. Graph Canvas 当前用 Canvas Chemical Node 展示节点摘要：标题优先结构名，节点卡显示 3D 结构预览、`△E`/`△G` 相对能量、formula、charge/multiplicity 和 method；formula 数字用 `<sub>` 下标渲染，节点角标用 `0,1` 这类紧凑 charge/multiplicity。`displayNames.ts` 过滤 node/object/raw/source/graph/session/artifact/profile/path/edge/corr、sha/hash 前缀和 fixture-like 字符串，避免把内部 id 当成用户标签展示。当 `ObjectSummary.geometry` 存在时，节点卡通过 `Molecule3DViewer.tsx` 用 Three.js 渲染可拖拽旋转的 ball-and-stick 3D viewer；WebGL 不可用时回落为紧凑 `3D` fallback。节点结构区域可打开大 3D 视图，大视图左下角显示 `Charge / Multiplicity`、原子数、估算电子数，以及点选 2/3/4 个原子后的 `B/A/D = ... (C1 Ni2 ...)` 测量文本。组合节点从 `GraphNodeSummary.composition` 与 `ObjectSummary[]` 派生多个 object labels，不只读第一个 object；节点右下角直接提供紧凑 `×1` coefficient chip，用户只改 coefficient，不再暴露手动表达式大面板或独立化学计量数面板。
-22. Raw File Drop pipeline 的可见 graph node 只来自 ShellResponse workspace projection。raw persistence、preview、register selection/register all 或 add-node 任一步失败都停止后续步骤，Project Files Panel / Graph Canvas 显示 structured error code/target，不伪造半成品 node；register selection 成功但 add-node 失败时，已登记 objects 保留在 domain state，未成功 node 不本地伪造。
-23. 当前 transient import pipeline 不实现大文件 chunking、OPFS payload store、Worker pool、browser_storage adapter、云上传或前端化学解析；local-http inline preview 上限为 12MiB/文件，local bridge request body 默认 64MiB；超出 inline limit 的文件在前端显示 `payload_too_large`，不读取 bytes、不写 `inputs/raw/...`、不发 shell command。
-19. 当前 Web 已新增 Browser Bundle Archive Adapter，使用 `fflate` 作为隔离的 zip dependency boundary。helper 能从 project-relative entries 生成 `.rxnflow.zip` bytes，或读取 zip bytes 并返回 safe project-relative entries 与 shallow summary；它复刻核心 Project Bundle 的 single-root、manifest required、allowed roots、`inputs/raw`、duplicate、`__MACOSX` 和 symlink safety 语义。
-20. Browser Bundle Archive Adapter 当前被内部 roundtrip helper 和测试消费；adapter 本身仍不读写 Browser Project Repository、不调用 ShellClient / local-http bridge / Python `ProjectBundleService`，也不执行 Project Content deep validation。
-21. Browser Bundle Export/Import helper 当前位于 `web/src/app/projectBundleExport.ts` / `web/src/app/projectBundleImport.ts`，按固定 prefix 收集 active project bytes、调用 archive adapter、并返回 helper roundtrip summary 或 structured error；它不挂到 Project Sidebar 主流程，也不自动保存或恢复 shell session。
-22. Project Sidebar 的 bundle section 不再是用户主入口；当前 UI 只展示项目列表、active project、Project notices 和 Project Files，Project notices 只覆盖保存失败、项目内容缺失或浅校验错误；项目删除位于项目行三点更多菜单；`.rxnflow.zip` 读写 helper 仍存在于代码中，但不在侧栏暴露 Import/Export Bundle 动作。
-23. Web Project Portability Roundtrip 当前通过 component test 和 local-http Playwright smoke 验证 helper roundtrip 能力：项目打开会恢复导入后的 content_files，自动保存会覆盖 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json`，`inputs/raw/...` 与 `exports/...` repository objects 在保存后保留。
-24. Web Project Portability QA & Guides 当前通过默认 fixture Playwright 覆盖 desktop project restore / helper backup、通过 local-http Playwright 覆盖真实 Python bridge roundtrip，并通过用户/开发者指南说明项目打开、自动保存、错误 code 和非云同步边界。
-16. 当前主 UI 不渲染 Analysis Dock / Object tab；`ObjectRegistryPanel` 仍作为内部组件和后续对象详情入口候选保留，但不再参与 workspace-first 主流程。
-17. `WorkbenchShell` 维护 `activeObjectId` UI-only state；objects 更新后保留仍存在的 active object，否则自动选择第一个对象，selection 不进入 ShellResponse、Project Content 或 core workspace。
-18. Correction Entry Form 对 active object 提交 `registry.apply_correction`，支持 manual/solvation/resonance、value/unit/reference/id/note 输入；成功后 `WorkbenchShell` 只用 ShellResponse object summary 替换 `WorkbenchDomainState.objects` 中的对象，失败时显示 ShellError code/message/target，不本地 append correction。
-19. 中间工作区新增 `GraphCanvas`，从 `WorkbenchDomainState.workspace.graph` 渲染节点、边、路径和 active path，并在需要时显示路径 authoring 错误或断开节点诊断；常规主界面不渲染独立 Network Preview 面板。
-20. Graph Canvas 通过 `ShellClient` 调用 fixture `workspace.open`、`workspace.add_node`、`workspace.set_node_composition`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.update_edge`、`workspace.set_path`；成功后只使用 ShellResponse 返回的 workspace projection 更新 `WorkbenchDomainState`。
-20. Graph Canvas 支持项目文件/外部文件 drop 创建节点、点击或拖动左侧项目文件行进入画布、拖动已有 graph node 重新布局、从节点 Edge Connect Handle 直接拖线到另一个节点创建 edge、选择 edge/node/path 后删除；主界面不再提供 `Open Workspace`、独立 `Connect`、独立 `Set Path`、常驻 `Add Active Object` 或常驻 `Apply Layout` 按钮，拖线连成 edge 后由 Path Authoring 自动创建、延长或在分叉时创建 branch path。node/edge/path selection 会提交 `workspace.select` 并从 `WorkspaceSummary.selection` 恢复，支持普通点击替换、Shift-click add/toggle mixed selection、select mode 空白画布 rubber-band 框选 nodes、Delete/Backspace 删除当前 selection、Escape 清空 selection、方向键按 `20` grid step 微调 selected nodes；Undo/Redo buttons 与 graph focus scope 内 `Ctrl/Cmd+Z`、`Ctrl/Cmd+Shift+Z`、`Ctrl+Y` 可重放 viewport、selection 和 selected node nudge；pending edge、rubber-band draft、transient node dragging、transient edge drawing、transient canvas dragging、keyboard focus intent 和 history running/error status 仍由 UI-only state 承载。
-21. Graph Object Drop 使用 `application/x-rxnflow-graph-object` payload，只接受 `kind=registered-object` 且 object id 存在于 `WorkbenchDomainState.objects` 的拖拽；drop 位置映射为 `workspace.add_node(position)`，可见节点仍来自 ShellResponse workspace projection。
-22. Graph Node Layout 使用固定虚拟画布 `1600 x 1000` 和 `20` grid；已有节点 pointer drag 中使用连续坐标做 transient preview，release 后才吸附到布局网格并发送 fixture/local-http `workspace.move_node(node_id, position)`，成功后只用 ShellResponse workspace projection 更新可见 node position。当前常规主界面不渲染泛用 Apply Layout 按钮；Graph Canvas toolbar 的 `能量布局` 是 PES 专用整理入口：它把当前 `△E 0.00` 参考节点放在最左层，按 graph edge/path 连通关系向右分层，再用 layer slot 拉开同层或近能量节点的横向位置，纵向按当前相对能量值排序并按节点尺寸估算最小间距，避免多结构时堆叠。
-23. Graph Edge/Path Editing 第一版使用真实 HTML edge hitbox 作为可访问/可测点击目标，SVG Bezier path 负责视觉线条；节点左右 edge 端口和底部能垒端口当前统一为实际 `10px x 10px` 的小圆点。Delete Selected button 只在 selection 非空时出现在 floating toolbar，Delete/Backspace 快捷键也只对 node/edge/path selection 生效，发送 `workspace.remove(node_ids?/edge_ids?/path_ids?)` 后以 ShellResponse cascade/projection 更新画布。删除 path 只移除 ReactionPath，不删除 nodes 或 edges；empty selection 下 Delete/Backspace 是 UI no-op，不发送 shell command。
-24. Graph Edge Label Editing helper 和 Path Order Draft state 仍保留在代码边界中，供后续右侧详情或浮动编辑入口复用；当前常规主界面不把 Network Preview、Path list 或 Edge Label Editor 作为常驻面板渲染。选中 edge 后在 edge 中点渲染紧凑 inline input，可直接输入/清空/提交 label，不再显示旧的大号 edge label floating card。
-25. Workspace-First Path Authoring 在 `workspace.connect` 成功后读取 ShellResponse 的 workspace projection，并用 Web UI-only `graphPathAutoExtend` helper 判断是否能创建、延长或切换 active path。无 active path 时创建 `path-web-main=[from,to]`；active path tail/head 可无歧义延长时分别 append/prepend；分叉连接会创建并选中一条两节点 branch path；内部边、重复节点或 no-op 只保留 edge。auto/manual/error status 属于 Graph Canvas UI-only 状态，普通 auto/manual 成功不在主界面常驻显示，不写 Project Content、Browser Project Repository、localStorage 或 ShellResponse。
-26. Graph Canvas Viewport Controls 提供 Select/Pan、Zoom In、Zoom Out、Fit、Reset、双指/普通 wheel 平移、ctrl/meta wheel pinch-like zoom 和右下角 Graph Minimap；`workspace.viewport` 由 ShellResponse projection 提供，Web 只生成 viewport intent 并发送 `workspace.set_viewport`。`graphViewport.ts` 统一处理 `1600 x 1000` 虚拟画布下的 viewport fallback、`0.35..2.5` zoom clamp、screen/graph 坐标换算、CSS transform、zoom、pan、fit、reset、anchor-preserving wheel zoom、minimap geometry 和 minimap point-to-viewport mapping。object drop、node drag、pan drag、wheel input 和 minimap navigation 共用同一组 screen/graph 换算。
-27. Graph Editor Lightweight History 是 Web-only runtime stack，保存在 `WorkbenchShell` UI state/ref 中，undo stack 上限为 20 条。它只记录成功完成的 layout、viewport、selection 和 selected node nudge，并在 replay 时复用既有 `workspace.move_node`、`workspace.set_viewport` 和 `workspace.select`；replay 成功后才移动 entry 到 opposite stack，失败或 stale reference 会显示 ShellError 并保持 entry 在原 stack。add node、connect、delete node/edge/path、path order、edge label、node composition、Energy Profile point selection、dev/test fixture API、project open 或 workspace/session 切换会清空 history，不为 destructive edit 编造 inverse command.
-28. Graph Editor Workspace Persistence 复用现有 Project Content `reaction-graphs-v1` 和 `workspaces-v1`：node positions 和 edge label 保存在 `ReactionGraph`，viewport、selection、active path 和画布相对能量 0 点保存在 `WorkspaceSnapshot`。选择 node/edge/path 后 Web 发送 `workspace.select`；用户从节点菜单设置相对能量 0 点时，Web 把 node id 写入 `workspace.metadata.energy_reference_node_id` 并随自动保存写回 `.rxnflow/state/workspaces.json`，项目打开后恢复到同一 0 点。自动保存返回的 content files 会包含当前 graph/workspace 状态，项目打开后恢复 snapshot，GraphCanvas 恢复 node position、edge label、viewport、selected node/edge/path、active path 和 energy reference node。Graph Editor History stack 不写入 Project Content，恢复 session 后从空 history 开始.
-28. 化学计量数不再通过节点菜单或独立面板编辑；每个节点卡右下角直接显示内联 `×1` coefficient chip，用户点击数字后原地输入，回车或失焦后调用 `workspace.set_node_composition`，并只用返回的 workspace projection 更新节点。当前 inline 控件只编辑目标 node composition 的第一项 coefficient，保留其它 composition term 的 object/role/label/metadata，不再暴露完整手动表达式编辑器。
-29. Source Inspector 是右侧 inspector 的按需浮动模式，由节点三点菜单“Source details / 查看来源信息”打开。它从 selected/target node、Project Files projection 和 `ObjectSummary.provenance` 派生用户可读的来源文件、方法、电荷/多重度、文件大小和解析摘要；若 active browser project 中存在匹配 raw file，则从 Browser Project Repository 读取原始 bytes，默认显示有限 raw log 文本预览，并提供按需“显示全文 / 收起预览”切换。默认不把大 log 全量渲染进 DOM；用户显式展开全文时才承担 Web 文本视口滚动成本。Source Inspector 可由关闭按钮或点击空白画布关闭。普通 UI 不把 checksum、raw id、object id 或 graph id 作为主内容展示。
-29. Graph Canvas 当前不实现碰撞避让、edge rerouting、label collision avoidance、缩放/平移独立 localStorage 持久化、拖动实时逐帧写盘、destructive delete undo、persistent history、cross reload undo、edge/path nudge、edge/path rubber-band hit testing、edge endpoint 重连、惯性滚动、多指 PointerEvent 手势识别或小地图节点选择；项目自动保存由 WorkbenchShell 对 active project + session 状态统一防抖处理。
-29. 当前主 UI 不渲染 PES tab；`WorkbenchShell` 仍基于 workspace active path 和 energy options 自动调用 fixture/local-http `energy.compute`，把 profile projection 交给 Graph Canvas/Report Export 使用。
-30. `EnergyProfilePanel` 支持 `output_unit`、`energy_key`、`energy_source`、`baseline_node_id` 和 correction policy UI options；Energy Channel Selector 从 `objects[].energy_channels` 汇总 key/source/unit 候选，同时保留自定义 key fallback。Correction Policy Controls 把 none/all/kinds/ids 映射为 `include_corrections` 和 `correction_policy` shell args。这些 options 在自动 compute intent 或手动 Compute 时映射为 Shell command args，不写入 Project Content 或 Browser Project Repository。
-29. `energy.compute` 成功后 `WorkbenchShell` 只更新 `WorkbenchDomainState.profile`、`active.profileId` 和 `counts.profiles`；失败时显示 ShellError code/message/target，不直接 mutate graph/object/import state。active path projection 或 energy options 变化时，`WorkbenchShell` 生成包含 session、path、node ids、unit、energy key/source、baseline 和 correction policy 的 compute signature；签名不变不重复自动触发，手动 Compute 仍可强制重算。
-30. Energy curve preview 从 `EnergyProfile.points[]` 派生 Web UI-only `EnergyCurvePointState` / point status，显示有效、missing、correction 和 selected marker；hover/focus/click 会更新 Curve Point Detail，展示 label、node id、relative energy 或 missing reason、expression total、composition term count、correction count 和 missing code。
-31. Energy curve point 和 energy table row 都可键盘 focus/click；点击 point 时 `WorkbenchShell` 复用 `workspace.select(node_ids=[nodeId])`，成功后 Graph Canvas selected node 和 Node Composition Editor 从 ShellResponse selection 自然联动。
-32. Energy curve preview 跳过缺失 relative energy 的 point，不把 missing point 补成 0，也不把 missing point 连进有效 polyline；missing point 只在基线附近显示 marker/label，并在表格和 detail 中显示 `missing_reason`。PES Preview 的 step delta 只从相邻两个有效 relative energy 值派生，当前点或前一点 missing 时保持空值，不显示 0；correction count 只读取 `point.expression.corrections.length`。
-33. 右侧按需 Export dock 承载 `ReportExportPanel`，基于当前 `WorkbenchDomainState.profile` 调用 fixture/local-http `export.profile`，普通 UI 只提供 PNG/CDXML/XLSX format selection、basename/title、Export button、导出文件名和 download link。CSV/SVG 仍是 core supported formats，但不在 Web 普通导出面板显示。
-34. `export.profile` 成功后 `WorkbenchShell` 把 `ShellResponse.artifacts` 转为 `WorkbenchArtifactSummary` 并按 artifact id merge 到 `WorkbenchDomainState.artifacts`，同步 `counts.artifacts` 和 warnings。若存在 active browser project，`WorkbenchShell` 还会把带 inline bytes 的 artifacts 写入 Browser Project Repository 的 `exports/{basename}.{format}`。
-35. Report Export artifact list 展示 format、可读文件名/path basename 和 inline download；`bytes_base64` 存在时提供 data URL download link，缺失时只显示不可下载状态。artifact id、checksum、writer metadata、warnings 和 persistence state 仍保留在内部 projection / persistence helper / tests 中，不在普通 UI 常驻展示。
-36. CDXML artifact bytes 来自 core `rxnflow-cdxml-energy-v1` writer；当前 CDXML 能量图包含结构名称、相对能量、相邻 `dE`、missing reason 和 `corr xN` marker。Web 不解析或生成 CDXML，只展示可下载文件。
-37. Web Export Artifact Persistence 会同步 `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中 export artifact section 的 checksum，让 Project Sidebar shallow validation 在内部继续 valid；正常 valid 结果不在侧栏常驻显示。
-38. Report Export Panel 当前不直接调用 `project.save_content` 或项目自动保存，不在前端生成 PNG/CDXML/XLSX/CSV/SVG bytes，不实现 file picker、OPFS、JSZip、云存储、账号系统、独立报告 writer、CDX、PDF 或 PPTX。
-39. Report Export Panel 不提供 Preview mode、readiness dashboard、metadata dashboard、checksum 展示、writer id 展示或手动 include bytes 开关；这些信息只作为内部 artifact projection / persistence / QA 证据存在。
-40. Workspace-First Flow QA & Guides 当前已收口：`docs/user/workspace-first-workbench.md` 从 Web 工作台第一屏说明 Project Sidebar、Graph Canvas 和 Report Export Panel 的 create/import/node/path/export/auto-save/restore 主流程；`docs/dev/workspace-first-flow-qa.md` 把 fixture desktop/narrow、local-http bridge、manual user journey、Web unit/build、Python unittest、YAML 和 diff check 映射到各自证明边界。
-36. `web/playwright.config.ts`、`web/playwright.local-http.config.ts` 和 `web/e2e/` 提供 Web Workbench E2E QA Harness；`npm run test:e2e` 会启动或复用 `http://127.0.0.1:5173/`，运行 Chromium 桌面和窄屏 fixture workbench journey，检查 console、页面身份、framework overlay、水平溢出、关键区域可见性并保存 Playwright screenshot/trace/report。默认 fixture E2E 当前包含 desktop graph editor matrix，覆盖 registered object drag/drop、node drag、path delete、direct edge drawing、rubber-band multi-select delete、keyboard nudge + undo/redo、viewport controls、wheel pan / ctrl-meta zoom 和 project restore；另有 narrow graph controls matrix，验证 floating toolbar、project rail、export dock 和 graph canvas 在 `390x840` 下可达且无水平溢出。
-37. `npm run test:e2e:local-http` 会启动或复用本地 bridge `127.0.0.1:8766` 与 `http://127.0.0.1:5176/` local-http Vite server，只运行 local-http bridge smoke；bridge Python 解释器优先使用 `RXNFLOW_E2E_PYTHON`，其次使用 `CONDA_PREFIX/bin/python3`，最后回退到 `python3`，避免 Playwright shell path 与当前依赖环境不一致。该 smoke 覆盖 local-http transport、dev/test fixture API -> `workbench.snapshot`、inline `water.xyz` preview、Project Content open/save bridge、energy compute、export artifact persistence、console clean 和无 runtime/diagnostics chrome 外露。
-38. Runtime / endpoint / transport 信息不作为顶栏、项目栏或右侧 dock badge 出现在主工作流中；默认 fixture runtime 和 local-http runtime 的差异只通过 ShellClient 配置、测试环境和 transport failure alert 体现，避免用户看到实现名。
+当前 UI 主链路：
 
-`web/index.html` 是 Vite app 入口，不能直接用 `file://.../web/index.html` 预览。开发期查看页面需要运行：
+1. App 首屏直接进入工作台，不做 landing page。
+2. 左侧 Project Rail 展示本地项目/工作区、桌面端 `New Project Folder` 创建真实用户可见工作区文件夹、`Open Folder` 打开已有工作区文件夹、切换项目、通过 `Project actions` / `Import files into project` 或项目行 drop 把外部文件导入目标项目、通过 `Project actions` / `Delete project` 从 renderer 本地项目列表删除项目，以及本地文件列表；App 层用 renderer 内存快照隔离每个本地项目的 files、nodes、edges、barriers、viewport、selection 和 lightweight energy display options，避免只切换标题而复用上一项目画布。当前删除项目只移除 renderer 内存中的本地项目记录，不删除磁盘 project directory 或 source 文件。
+3. 用户可选择本地文件；Electron 模式只把 64KB preview sample 放进 renderer/source panel，同时把 `sourcePath` 传给 local engine `import.preview`，由 Python engine 读取完整 log/out 解析；文件进入桌面工作区后通过 desktop autosave 复制到当前工作区根目录 `sources/`，项目状态更新为 project-relative `storedPath` + size/sha256，Source 面板显示当前 source 是项目副本、等待 autosave 复制还是浏览器 preview。浏览器模式使用 renderer fallback parser 和 preview sample，不能写入项目文件夹。当前 active parser 识别 Gaussian / ORCA（含常见 Cartesian coordinate、charge/spin 摘要）/ MAPLE / 普通 XYZ comment energy / ASE extxyz metadata（label、charge/spin、eV energy 转 Hartree）的摘要、formula、部分坐标摘要和多帧候选，返回 `parseScope` / `confidence` / warnings/provenance；Gaussian/ORCA 返回能量表字段（Egas、basis、Ggas、Ggas+1M，pairing 后补 Esol/Gsol），并把文件作为 parsed/staged source 放进目标工作台。单候选 source 自动生成一个节点；多候选 source 打开候选选择面板，支持登记选中候选或全部候选为节点。Project Rail 文件行支持单选、Meta/Ctrl 多选、Shift 范围选择、`application/x-rxnflow-raw-file` drag payload 和行内 remove；匹配的 gas/solution log 会合并为一个结构行并以成组 source payload 拖拽，未成对单文件保留原始文件名；这些文件行操作只作用于 source 列表，不隐式新增画布节点。Project Rail 文件行或外部 source 文件 drop 到 Canvas Stage 时，会把 drop client point 转成 graph-space 坐标，并在该位置创建 source node 或候选登记面板。外部 source 文件 drop 到项目行，或通过项目行 action 导入到非当前项目时，会先更新目标项目 snapshot 再切换到该项目显示导入结果。Electron 模式优先通过 preload 调用 local engine register commands，浏览器模式或 engine 失败时使用 renderer fallback；保存项目时会把当前 files/nodes 的 candidate/parser provenance 派生为 lightweight `importLedger`。
+4. 中间 Canvas Stage 支持节点卡、节点结构预览折叠/展开、节点 More actions 菜单打开对应 Source details、节点 stoichiometric coefficient inline 编辑、节点卡相对能量显示和 zero point 选择、连线、节点手柄拖拽创建 edge、键盘激活节点手柄再用目标节点 Enter/Space 创建 edge、edge 选择检查、Inspector edge label 编辑、节点底部 barrier 手柄拖拽创建显式能垒标注、barrier inline label 编辑/选择/删除、节点拖拽、Select tool 空白画布框选、Pan tool 空白画布拖拽平移、普通 wheel 平移、pinch-style 或 Ctrl/Meta+wheel 缩放、可拖拽导航的 minimap 和 zoom controls；minimap 在拖动期间只显示 draft viewport window，pointer release 后提交主画布 viewport。节点/edge/barrier 支持 Shift 多选/反选，画布聚焦后支持 Delete/Backspace 删除当前选择、Escape 清空选择、方向键 20px 微调已选节点、Cmd/Ctrl+Z 和 Cmd+Shift+Z/Ctrl+Y 撤销/重做，输入框内不会触发图谱快捷键；悬浮工具条提供 Energy/Unit、Undo、Redo、Delete selection、Auto layout 和 Fit view。当前 lightweight 表格真实承载的 canvas energy modes 是 `Egas`/`Gsol`，Unit 支持 hartree/kcal/mol/kJ/mol，并直接驱动节点卡、barrier 默认标签、Auto layout 和 Table view 的相对能量显示。Auto layout 是 renderer-side lightweight 能量排序布局，不恢复旧 ShellClient `energy.compute` 后端命令。Fit view 会按当前节点 bounds 自适应，桌面优先完整展示图谱，窄屏优先让当前主画布内容进入视野。
+5. 中间 Table View 展示当前节点的结构、类型、formula、gas/solution energy 和相对值。
+6. 右侧 Inspector 支持 Node、Source 和 Export。Object Registry / Objects tab / correction 表单不属于当前 active UI；节点卡和 Node 详情提供 lightweight `Structure Preview` 2D skeletal depiction，Node 详情可用 Ketcher + Indigo WASM `Edit 2D` 手动画板保存/重置单节点 KET/Molfile/CDXML/SVG，并另提供 3Dmol.js `3D Structure` 真实坐标查看器。
+7. Export dock 当前只显示原 UI 默认报告格式 PNG/CDXML/XLSX；renderer 生成 PNG 报表图、CDXML 节点/边/能量元数据、XLSX 能量表/文件表/元数据。
+8. 顶部 window bar 显示 runtime 状态：浏览器预览为 `Browser preview`，Electron 模式通过 preload 调用 local engine status。
+9. Electron 模式下，File 菜单可打开本地工作区文件夹，并可把当前工作区导出为 `.rxnflow.zip` 压缩包；旧 `.rxnflow.json` project package 仍可通过兼容路径读取但不是主入口。桌面 renderer 对 active project 做 debounce autosave：只有已有打开/创建的工作区文件夹时才写回该文件夹；没有工作区文件夹时返回 `project_folder_required` warning，不再静默写到 Electron `userData/projects/` 托管目录。工作区目录会保存隐藏 `.rxnflow/project.json`、`.rxnflow/manifest.json`、轻量 `importLedger`、根目录 `sources/` 下带 size/sha256 的 source 副本，以及根目录 `exports/manifest.json` 下带 artifact size/sha256 的 export artifact manifest。
+
+## 2. 当前刻意不做
+
+以下旧 Web 能力不在 active UI/code 中：
+
+- ShellClient、fixture transport、HTTP transport、local-http bridge。
+- IndexedDB Browser Project Repository、Project Content 自动保存/恢复、`.rxnflow.zip` 导入 helper；当前只保留工作区 zip 导出。
+- 完整持久化 Import registry / full parser pipeline；轻量 Import preview 已提供 candidates/provenance/warnings，local engine 已有 stateless register commands，Electron renderer 已通过 preload 接入这些命令，renderer 仍保留浏览器/failure fallback，并已保存当前 UI 可表达的 lightweight `importLedger`。
+- 旧 `energy.compute` Shell command、EnergyProfilePanel、完整 EnergyProfilePanel correction policy、Object Registry / Objects tab / correction 表单，以及完整 ObjectRegistryPanel service 绑定；当前 active UI 只保留 renderer-side 相对能量显示。
+- Three.js 自研 Molecule3DViewer、atom measurement 和 2D/3D 原子联动；当前 active UI 使用 lightweight 2D `Structure Preview` / Ketcher + Indigo WASM `Edit 2D` 与 3Dmol.js `3D Structure` 坐标查看器。
+- i18n runtime、dev/test fixture API、Playwright E2E harness。
+- 旧 Python ReportExportService、report manifest、artifact index、CSV/SVG/PDF/PPTX/CDX 格式入口。
+- 云端账号、同步、对象存储或 Vercel function command executor。
+
+这些能力如果重新出现，必须先在 roadmap/feature design 中说明 UI 承载方式和桌面端边界。
+
+## 3. 当前组件边界
+
+当前主要实现集中在：
+
+- `web/src/app/App.tsx`
+- `web/src/app/CanvasWorkspace.tsx`
+- `web/src/app/Molecule2DDepiction.tsx`
+- `web/src/app/Molecule2DEditorDialog.tsx`
+- `web/src/app/ProjectRail.tsx`
+- `web/src/app/WorkbenchToolbar.tsx`
+- `web/src/app/ReportPanels.tsx`
+- `web/src/app/InspectorPanels.tsx`
+- `web/src/app/Molecule3DmolViewer.tsx`
+- `web/src/app/importRegistration.ts`
+- `web/src/app/importRegistrationTypes.ts`
+- `web/src/app/importSources.ts`
+- `web/src/app/importLayout.ts`
+- `web/src/app/importNodes.ts`
+- `web/src/app/candidateReview.ts`
+- `web/src/app/desktopImportRegistration.ts`
+- `web/src/app/importWorkspace.ts`
+- `web/src/app/projectWorkspace.ts`
+- `web/src/app/appStateAppliers.ts`
+- `web/src/app/appRuntimeEffects.ts`
+- `web/src/app/appSelectionAppliers.ts`
+- `web/src/app/appCanvasEffects.ts`
+- `web/src/app/appReportExport.ts`
+- `web/src/app/appProjectActions.ts`
+- `web/src/app/appImportActions.ts`
+- `web/src/app/appCanvasKeyboardActions.ts`
+- `web/src/app/projectPackageWorkflow.ts`
+- `web/src/app/desktopRuntime.ts`
+- `web/src/app/reportExportWorkflow.ts`
+- `web/src/app/browserDownloads.ts`
+- `web/src/app/canvasEditState.ts`
+- `web/src/app/canvasSelectionState.ts`
+- `web/src/app/canvasMutationState.ts`
+- `web/src/app/canvasKeyboardState.ts`
+- `web/src/app/canvasDragState.ts`
+- `web/src/app/canvasLinkState.ts`
+- `web/src/app/canvasEditHistory.ts`
+- `web/src/app/canvasGeometry.ts`
+- `web/src/app/canvasDrawing.ts`
+- `web/src/app/canvasHitTesting.ts`
+- `web/src/app/energyDisplay.ts`
+- `web/src/app/fileDisplay.ts`
+- `web/src/app/workbench.css`
+- `web/src/app/App.test.tsx`
+- `web/src/app/CanvasWorkspace.test.tsx`
+- `web/src/app/InspectorPanels.test.tsx`
+- `web/src/app/Molecule2DDepiction.test.tsx`
+- `web/src/app/importRegistration.test.ts`
+- `web/src/app/projectWorkspace.test.ts`
+- `web/src/app/projectPackageWorkflow.test.ts`
+- `web/src/app/reportExportWorkflow.test.ts`
+- `web/src/app/browserDownloads.test.ts`
+- `web/src/app/canvasEditState.test.ts`
+- `web/src/app/canvasEditHistory.test.ts`
+- `web/src/app/canvasGeometry.test.ts`
+- `web/src/app/canvasDrawing.test.ts`
+- `web/src/app/canvasHitTesting.test.ts`
+- `web/src/app/energyDisplay.test.ts`
+- `web/src/app/fileDisplay.test.ts`
+- `web/src/domain/sourceParsers.ts`
+- `web/src/domain/sourceParsers.test.ts`
+- `web/src/domain/reportExports.ts`
+- `web/src/domain/reportExports.test.ts`
+- `web/src/domain/projectPackages.ts`
+- `web/src/domain/projectPackages.test.ts`
+
+当前组件边界：
+
+- `App.tsx`
+  - 持有当前 renderer workspace state 和组件装配入口。App 通过 props 编排画布、Project Rail、Toolbar、Report panel 和 Inspector panel，不再直接承载这些区域的主要 JSX，也不再直接承载 workspace seed/deep-clone/restore snapshot、report artifact save/status、浏览器 download 纯逻辑、大段 transition-to-React-setter 赋值、source/canvas selection setter 编排、canvas DOM listener lifecycle、project create/switch/delete 计算、import/candidate review 编排、canvas keyboard shortcut 分发或 Electron/browser runtime effect 细节。
+- `CanvasWorkspace.tsx` / `Molecule2DDepiction.tsx` / `appCanvasEffects.ts`
+  - 中央画布渲染层；承载 `CanvasSurface`、`ReactionNodeCard`、节点卡 lightweight 2D skeletal structure preview（自动推断或单节点 manual KET/Molfile/CDXML/SVG）、edge/connection/barrier SVG、barrier inline label editor、`MiniMap`、`ZoomControls`、rubber-band/drop helper 和 App 仍需使用的画布 selection/size 类型 helper。画布状态机仍由 App 持有，CanvasWorkspace 只负责渲染和局部控件状态；`appCanvasEffects.ts` 承载 canvas wheel listener 和 connection draft window pointer listener 生命周期，避免 App 直接内联 DOM listener 细节。
+- `ProjectRail.tsx`
+  - 左侧本地项目/source file 列表；内部持有 `New Project Folder` 表单 UI 状态，`Open Folder` 调用 App 层 project package open，项目行 actions/drop 和 source 文件行选择/拖拽/remove 通过 props 回到 App。
+- `WorkbenchToolbar.tsx`
+  - 顶部悬浮画布命令条；负责 Import/Save、Energy/Unit、view/tool、Undo/Redo/Delete/Auto layout/Fit view/Export 控件。`workbench.css` 在窄屏下让工具条换行并隐藏分隔线，避免 Unit select 或命令按钮被裁切。
+- `ReportPanels.tsx`
+  - Export dock 和 Energy table view；Export 只暴露 PNG/CDXML/XLSX。
+- `reportExportWorkflow.ts` / `browserDownloads.ts` / `appReportExport.ts`
+  - Report export app workflow helper；负责把 active export options + project context 转为 PNG/CDXML/XLSX artifacts、串行保存、过滤取消项、生成用户可见导出状态，并隔离 Electron `saveReportArtifact` payload 编码与浏览器 download 细节。`appReportExport.ts` 承载 export busy/status/artifacts 的高层 runtime 编排；ReportPanels 只渲染 export UI，App 只把当前 state 传入 helper。
+- `InspectorPanels.tsx` / `Molecule2DEditorDialog.tsx` / `Molecule3DmolViewer.tsx`
+  - 右侧 Inspector 的 Node/Source/Export tab、SourceInspector、edge/barrier inspector、候选登记 sheet、lightweight 2D `Structure Preview`、Ketcher + Indigo WASM 2D editor dialog、3Dmol.js `3D Structure` 弹窗，以及 source display helpers。App 只导入 `sourceFileForNode` / `sourceCoordinatePreview` 参与弹窗编排。
+- `importRegistration.ts` / `importRegistrationTypes.ts`
+  - import/register 模块 barrel 与共享类型入口；App 和测试仍从 `importRegistration.ts` 取稳定公开表面，具体实现按职责拆到下列小模块。
+- `importSources.ts` / `importLayout.ts` / `importNodes.ts`
+  - source file 转换与 source id 查找、导入落点/节点 id/节点坐标计算、renderer fallback/desktop registered object 到 graph node 的映射。
+- `candidateReview.ts` / `desktopImportRegistration.ts` / `importWorkspace.ts` / `appImportActions.ts`
+  - multi-candidate review entry/default selection/review state/selection toggle、source candidate review selection transition、可注入 desktop `registerImportCandidates` bridge payload、selected/all/auto register fallback、当前项目 import apply transition、pending import project transition、import picker runtime transition、raw file drop import transition、desktop file dialog result transition、候选登记 apply transition、非当前项目 import plan 到 workspace snapshot 的合成、候选登记节点追加后的 workspace snapshot 合成。`appImportActions.ts` 承载 App-level 当前项目/跨项目 source staging、candidate review 打开/选择/登记、browser file import、desktop file import、raw file drop 和 import picker 分发；App 只负责传入 refs、当前 snapshot 和 state appliers。
+- `projectWorkspace.ts` / `appStateAppliers.ts` / `appSelectionAppliers.ts` / `appProjectActions.ts`
+  - Project/workspace 纯 state helper；负责 demo seed、empty workspace、initial workspace map、canvas edit snapshot/restore、project workspace snapshot/restore/apply transition、本地项目 summary/fallback 生成、创建/切换/保存当前并激活目标/删除项目 workspace transition、workspace deep clone 和 project package restore snapshot。`appStateAppliers.ts` 承载 App 层 transition/snapshot 到 React setters 的机械赋值，包括 canvas selection、project workspace restore、project transition apply、imported workspace snapshot apply 和 canvas edit snapshot restore；`appSelectionAppliers.ts` 承载 source file selection/delete、node source details、node/edge/barrier selection transition 和 canvas collection mutation transition 到 React setters 的机械赋值；`appProjectActions.ts` 承载 create/switch/delete project 的 App-level action 合成，统一返回可应用 transition 或 inactive delete action。
+- `projectPackageWorkflow.ts` / `desktopRuntime.ts` / `appRuntimeEffects.ts`
+  - Project package app workflow helper；负责 `.rxnflow` / `.rxnflow.json` 默认文件名、当前项目包序列化、打开内容解析、invalid package validation payload、package-to-workspace snapshot 映射、browser/Electron runtime transition，以及打开项目时的 restore transition 合成（保存当前 workspace、替换重复项目摘要、激活恢复项目）。`desktopRuntime.ts` 负责 renderer 可见 engine status 类型和 browser preview / engine failure status payload。`appRuntimeEffects.ts` 承载 renderer 对 `window.rxnflowDesktop` 的 typed API surface、project open/save browser/Electron runtime effect、native menu subscription 和 engine status probe；App 只负责把 React ref/state/context 传入这些 effect helper。
+- `canvasEditState.ts` / `canvasEditHistory.ts` / `appCanvasKeyboardActions.ts`
+  - Canvas edit 纯状态 helper 与兼容导出口；当前直接负责清空/恢复 canvas interaction transition、删除 selection 并清空交互 transition、删除节点时级联移除相关 edge/barrier，以及 bounded undo/redo history 栈转移。`canvasSelectionState.ts` 拆出 selection id toggle/replace、node/edge/barrier exclusive selection 构造、node/edge/barrier 选择 transition 和 selection 查询 helper；`canvasMutationState.ts` 从大状态机中拆出 edge/barrier label 和 node coefficient 更新 transition，并把 inspector apply 字段一并返回；`canvasKeyboardState.ts` 拆出 keyboard shortcut action / preventDefault transition 和 editable target 判定；`appCanvasKeyboardActions.ts` 承载 React keyboard event 到 undo/redo/delete/clear/nudge handlers 的分发；`canvasDragState.ts` 拆出 canvas/node pointer-down 起始 drag state 与 selection 派生 transition、pointer move / draft move 动作分类 transition、node drag / rubber-band / pan pointer-end 收尾 transition、已选节点 nudge transition、node drag 位置落点/是否移动判断、rubber-band 选区节点集合和 pointer draft current 更新；`canvasLinkState.ts` 拆出 connection/barrier draft 起始和完成 transition、键盘连线 source/edge transition、connection/barrier draft target 归一化、追加 edge/barrier 记录和 edge/barrier 创建 transition。App 仍持有 React state 和 pointer event 生命周期，但不再把这些选择集合/history 栈变换散落在 JSX 容器里。
+- `canvasGeometry.ts` / `canvasDrawing.ts` / `canvasHitTesting.ts`
+  - 画布几何、client/world 坐标换算、wheel/pan viewport 更新、selection、minimap、edge/barrier path 和 DOM hit-testing 等计算/适配；CanvasWorkspace/App 复用这些 helper，测试锁定坐标、viewport 手势、SVG path 和节点命中行为。
+- `energyDisplay.ts` / `fileDisplay.ts`
+  - 能量显示/relative table/table-node selection/coefficient/zero-point selection transition helper 与 source file 分组、文件选择/selection/delete transition（含 source inspector/keyboard edge cleanup apply 字段）、节点 source details selection（含 source inspector/keyboard edge cleanup apply 字段）、drag payload、路径/格式显示 helper；UI 组件通过这些模块拿稳定显示契约，避免把领域显示逻辑写进 JSX。
+
+当前 renderer 已把报告格式细节拆到 `reportExports.ts`，导出保存/status 编排拆到 `reportExportWorkflow.ts`，项目包 envelope / normalize 逻辑拆到 `projectPackages.ts`，renderer open/save 纯编排拆到 `projectPackageWorkflow.ts`。当前约束是不要把这些职责重新塞回单个大容器组件。
+
+## 4. 桌面端考虑
+
+当前 Web renderer 避免依赖浏览器专属长期存储或云后端；当前桌面端共享约束如下：
+
+- `web/electron/main.cjs` 已提供最小 Electron BrowserWindow、macOS/Windows 菜单和文件选择 IPC。
+- `web/electron/preload.cjs` 暴露受限 `window.rxnflowDesktop` API；renderer 不启用 Node integration。
+- `web/electron/engine-bridge.cjs` 已提供 local engine bridge：开发态优先 spawn `python3 -m rxnflow.engine_ipc`，执行 `engine.status` / `import.preview` / `import.register_selection` / `import.register_all` / 轻量 `project.validate/open/save` 并返回结构化结果；如果 Python engine unavailable / timeout / bad response，会降级到 packaged `web/electron/embedded-engine.cjs`，继续提供同一组当前 UI 承载的轻量命令；`preload.cjs` 暴露 `registerImportCandidates` 给 renderer 的 candidate review flow。
+- 浏览器模式继续使用 file input 和 renderer fallback parser；Electron 模式使用原生 open dialog 读取 source preview sample 和 `sourcePath`，并优先使用 local engine `import.preview` 的 full-file 解析结果。
+- 轻量 source parser 当前同时存在于 local engine、embedded engine 和 renderer fallback 中；Electron/Python 路径使用 full-file parse，浏览器 fallback 仍是 preview/sample parse。它已经返回 `parserId`、`parserVersion`、`parseScope`、`confidence`、`objectCount`、`warnings`、`candidates`、`coordinatePreview` 和 `energyTable`。local engine 已提供 lightweight stateless register commands；Electron renderer 优先使用这些命令完成 selected/all register，浏览器和 engine failure path 使用 renderer fallback。`projectPackages.ts` 保存时从 files/nodes 派生 lightweight `importLedger`，打开旧轻量 package 时会回填 ledger。完整 cclib/ASE parser、虚拟滚动完整 log viewer 和旧持久化 registry workflow不属于当前 renderer contract。
+- 浏览器模式继续使用 download；Electron 模式使用原生 save dialog 保存 PNG/CDXML/XLSX report artifact。
+- Electron 模式提供 `createProjectFolder` / `openProjectPackage` / `saveProjectPackage` / `autosaveProjectPackage` IPC。Project Rail 的 `New Project Folder` 会让用户选择父目录并创建真实工作区文件夹，`Open Folder` 和 native menu 都调用同一个 open path；浏览器开发预览下该按钮仍通过 hidden file input 读取 `.rxnflow.json` package 做 UI 验证。desktop autosave 不弹保存对话框，会按 active project id 写入已打开/创建的工作区文件夹；如果没有工作区文件夹则返回 `project_folder_required` warning，不再写 Electron `userData/projects/` 托管主项目。导入 source 后，autosave 会把 `sourcePath` 指向的原始文件复制到工作区根目录 `sources/` 并返回去掉 session-only `sourcePath` 的 saved content，renderer 用返回内容刷新 `storedPath` / checksum。顶部 toolbar 的 `Export project` 和 File 菜单的 `Export RxnFlow Project Zip` 用 `saveProjectPackage` 把整个工作区导出为 `.rxnflow.zip` 压缩包。工作区写入带 lightweight `importLedger` 和 canvas `barriers` 的 `.rxnflow/project.json`、`.rxnflow/manifest.json`、`sources/` source 副本和 `exports/manifest.json`；打开时读取工作区文件夹，也兼容旧 `.rxnflow.json` package。打开/创建/自动保存成功的工作区路径会记录到 `File > Open Recent`，recent store 位于 Electron `userData` 下的 JSON 文件。Python engine 和 embedded fallback 都能校验/读写同一个 lightweight `rxnflow-project` envelope，并在打开工作区时检查 file/node/edge/barrier/importLedger 基础引用、node 能量单位/数值/position/coefficient 形状，以及 source/export 文件缺失、size 不一致和 sha256 不一致。renderer 会把返回的 validation issues 显示为 canvas 内 `Project warnings` / `Project needs repair` 软玻璃悬浮提示。当前目录格式仍是轻量 project store，不包含旧 ProjectContent 深校验、migration、content index 或完整 artifact cleanup/repair 语义。
+- `electron-builder` 已配置 macOS `dmg/zip` 与 Windows x64 `nsis/portable` target；`desktop:icons` 会从 `web/build/icon.svg` 生成 PNG/ICNS/ICO 资产，builder 已接入 mac/win icon 配置；macOS builder 已启用 hardened runtime，并使用 `web/build/entitlements.mac.plist`。`desktop:release:smoke` 会验证 builder 配置、图标资产、embedded engine fallback、Windows installer smoke wiring、runtime smoke wiring、发布 CI workflow、当前平台 unpacked app 结构，以及存在时的 Windows artifacts。`desktop:runtime:smoke` 会启动当前平台 packaged unpacked app，等待 renderer 工作台渲染，并通过 preload 验证 engine status 与 candidate registration 后退出。当前 macOS/arm64 环境已通过 unsigned local `desktop:pack` 刷新带 `icon.icns` 的 mac-arm64 unpacked app，并已通过 `desktop:pack:win` 刷新 Windows x64 `win-unpacked/RxnFlow.exe`；仓库中仍保留此前 `desktop:dist:win` 生成并通过结构验证的 NSIS setup 和 portable artifacts，但“最新 renderer 对应的 Windows installer/portable 已运行验证”目前只以 Windows CI 或 Windows 机器重产证据为准。
+- `.github/workflows/desktop-release.yml` 是当前发布验证入口：PR/push 跑 core/web/Electron smoke、macOS packaged runtime smoke 和 Windows packaged runtime smoke；手动勾选 `notarize_macos` 且配置 Apple Developer ID secrets 后，才执行签名 macOS artifacts、`desktop:notarize:mac`、staple 和 `spctl`。
+- 当前 packaged runtime smoke 证明 Electron process、renderer workbench、lightweight importLedger persistence 和 embedded lightweight desktop engine commands 可用。它不证明完整 cclib/ASE parser、旧持久化 registry 或旧 ProjectContent engine 已恢复。
+- 当前不要求用户手动启动 Python、本地 bridge 或命令行服务；Electron smoke 会自动探测 local engine。
+- macOS/Windows 差异应放在 Electron shell 和 packaging 层，renderer 保持平台无关。
+
+## 5. QA
+
+当前验证命令：
 
 ```bash
-cd web
-npm run dev
+cd web && npm run test
+cd web && npm run build
+cd web && npm run desktop:smoke
 ```
 
-然后打开 `http://127.0.0.1:5173/`。
+UI 改动还需要真实浏览器验证桌面与窄屏：
 
-## 2. 模块与职责
-
-```
-web/
-├── index.html
-├── package.json
-├── playwright.local-http.config.ts
-├── playwright.config.ts
-├── vite.config.ts
-├── e2e/
-│   ├── workbench-helpers.ts
-│   ├── local-http-bridge.spec.ts
-│   ├── workbench-helpers.ts
-│   └── workbench-journey.spec.ts
-└── src/
-    ├── main.tsx
-    ├── shell/
-    │   ├── types.ts
-    │   ├── ShellClient.ts
-    │   ├── httpTransport.ts
-    │   ├── runtime.ts
-    │   └── fixtureTransport.ts
-    ├── repository/
-    │   ├── types.ts
-    │   ├── indexedDbRepository.ts
-    │   └── memoryRepository.ts
-    └── app/
-        ├── App.tsx
-        ├── ProjectSidebar.tsx
-        ├── WorkbenchShell.tsx
-        ├── GraphCanvas.tsx
-        ├── Molecule3DViewer.tsx
-        ├── displayNames.ts
-        ├── graphEditorInteractionState.ts
-        ├── graphNodeLayout.ts
-        ├── graphViewport.ts
-        ├── graphObjectDragPayload.ts
-        ├── graphPathOrderDraft.ts
-        ├── EnergyProfilePanel.tsx
-        ├── ReportExportPanel.tsx
-        ├── ObjectRegistryPanel.tsx
-        ├── i18n/
-        ├── exportFormatCapabilities.ts
-        ├── transientImportState.ts
-        ├── rawInputPersistence.ts
-        ├── projectBundleArchive.ts
-        ├── projectBundleExport.ts
-        ├── projectBundleImport.ts
-        ├── exportArtifactPersistence.ts
-        ├── projectSidebarActions.ts
-        ├── projectSidebarState.ts
-        ├── workbenchState.ts
-        └── workbench.css
-```
-
-- `web/src/shell/types.ts`：定义前端 JSON-safe Shell DTO，包括 `JsonValue`、`ShellCommandPayload`、`ShellError`、`ShellWarning`、`ShellArtifact`、`ShellResponse`、`ShellTransport`，以及 Workbench Snapshot、Object Summary Projection、Coordinate Preview Summary、Parse Candidate Summary、Import Preview/Register summary DTO、`import.register_selection` response DTO、Graph Summary Projection、`WorkspaceSelectionSummary`、`CanvasViewportSummary`、`WorkspaceCommandData`、`workspace.move_node` / `workspace.remove` / `workspace.select` / `workspace.set_viewport` command projection、typed Energy Profile Projection、Energy Expression summary types、`EnergyComputeData`、`ExportFormat` 和 `ExportProfileData`。
-- `web/src/shell/ShellClient.ts`：负责 request id 填充、transport 调用和 response normalization。
-- `web/src/shell/httpTransport.ts`：实现 `http-api` ShellTransport，通过 `fetch` POST JSON-safe Shell payload 到 local bridge endpoint；fetch/network/invalid JSON/malformed response 失败时返回 `transport_unavailable` ShellResponse。
-- `web/src/shell/runtime.ts`：读取 Vite env 并创建 configured runtime；默认 `fixture`，`VITE_RXNFLOW_SHELL_TRANSPORT=local-http` 时使用 `createHttpShellTransport`，endpoint 默认 `http://127.0.0.1:8765/api/shell`。
-- `web/src/shell/fixtureTransport.ts`：默认 fixture runtime transport，支持 `fixture.run`、`workbench.snapshot`、fixture `import.preview` candidate projection、fixture `import.register_all`、fixture `import.register_selection`、fixture `workspace.open/add_node/set_node_composition/move_node/remove/select/set_viewport/connect/set_path` command projection、fixture `energy.compute`、fixture `export.profile` 和 unknown command 错误路径；fixture Project Content open/save 会序列化并恢复当前 `chemical-objects-v1`、`reaction-graphs-v1` 和 `workspaces-v1` 状态，workspace/energy/export command state 只服务 Web UI 编排测试。
-- `web/src/app/workbenchState.ts`：定义 `WorkbenchDomainState`、`WorkbenchUiState` 和 `projectWorkbenchSnapshot`，把 `workbench.snapshot` 的 `ShellResponse` 投影为 UI 可读 domain state，保存 command status、session/project/active ids、objects/imports/workspace/profile/artifact summaries、counts、warnings 和 error。
-- `web/src/app/App.tsx`：装配 configured `ShellClient`、RuntimeInfo 和 `BrowserProjectRepository`，把它们传入 Workbench shell。
-- `web/src/app/WorkbenchShell.tsx`：渲染 Web app shell 第一屏，包括顶部工作台命令、locale switcher、Project Rail、Project Files Panel、Canvas Stage、Graph Canvas、浮动 Report Export Panel、浮动 Source Inspector 和 transport error alert；顶部不再显示工作台标题、手动 Refresh、常驻 run-state 徽章、runtime badge、Analysis 或 Diagnostics tab；同时维护 Project Sidebar state、Project File runtime status overlay、自动保存状态、transient import payload state、Project Rail / inspector open/mode state、Parse Candidate Chooser state、active object UI state、Graph Editor Interaction State、Graph Editor History state/ref、内部 layout status、Path Authoring Status、Edge Label Draft、PES compute signature、energy panel options 和 report export options，并把 create/open/delete/refresh、自动保存、项目树导入、raw file drop persist/preview/register/add-node、multi-candidate `import.register_selection` + stack add-node、workspace open/add/set_node_composition/move/remove/select/set_viewport/connect/update_edge/path commands、selected node nudge sequential move orchestration、connect -> optional `workspace.set_path` path authoring orchestration、Graph Editor History recording/replay、auto `energy.compute`、`export.profile`、browser-local raw input persistence、raw log preview 读取和 browser-local artifact persistence 编排到 ShellClient / Browser Project Repository。dev/test 环境下额外注册 `window.__rxnflowWorkbenchTest` 供 component / Playwright 测试触发 fixture 和 invalid command，不渲染隐藏按钮。Report export 默认 formats 从 `reportExportFormats()` 派生。Export dock / Source Inspector / Project Rail open state 是 Web UI-only，不写 ShellResponse、Project Content、Browser Project Repository 或 localStorage。Graph Editor Interaction State 的 selection 会跟随 `WorkspaceSummary.selection` 恢复，旧 workspace projection 缺失 selection 时只做本地 prune，不主动补选第一个 node.
-- `web/src/app/GraphCanvas.tsx`：图谱画布 MVP UI，展示 workspace graph nodes/edges/paths、active path、preview counts、disconnected diagnostics、Parse Candidate Chooser、Canvas Chemical Node、icon-only floating toolbar、raw file drop target、direct edge handle、path authoring error status、multi-target selection summary、rubber-band overlay、scoped keyboard shortcuts、已有 node pointer drag move producer、edge selection/delete、Select/Pan/Zoom/Fit/Reset viewport toolbar、wheel pan / ctrl-meta zoom、右下角 minimap，以及 viewport-transformed content layer。节点卡通过用户可见名称过滤和 Molecule 3D Viewer 展示结构优先摘要，不在普通 UI 中暴露 node/object/session/hash 这类内部实现名；节点右下角提供内联 coefficient chip，节点三点菜单提供设为零点、查看来源信息和溶液相 log 配对入口；画布能量模式下拉只暴露表格视图同名的 `Egas`、`Ggas`、`Gsol`。当前常规主界面不渲染独立 Apply Layout、Network Preview、Path List 或 Edge Label Editor 面板。Raw file drop 会把 native `File` 或 Project Files Panel payload 转成 `AddRawFileNodeRequest`，GraphCanvas 自身不解析文件、不登记对象、不 patch graph/path/profile；候选选择、节点卡和 path authoring status 都只消费 Shell projection / Web UI-only state。
-- `web/src/app/Molecule3DViewer.tsx`：Canvas Chemical Node 的 Three.js 结构预览组件，从 `ObjectSummary.geometry` 读取原子坐标，自动居中/缩放、推断轻量 bond、支持 pointer drag 旋转，并只在 resize 或交互时重绘，避免画布拖动时被连续动画拖慢；WebGL 初始化失败时只显示紧凑 fallback，不伪造结构。
-- `web/src/app/displayNames.ts`：用户可见名称过滤 helper，从 object label、source file name、graph node label 和 artifact path 中选择可读名称，并过滤 node/object/raw/source/graph/session/artifact/profile/path/edge/corr、`sha256:`、hash 前缀和 fixture-like 字符串；内部 id 仍可留在 DTO、data-testid 和测试断言中。
-- `web/src/app/graphEditorInteractionState.ts`：定义 Web Graph Canvas 的交互状态，包含 mode、selection、hover、dragging 和 pending edge，并提供 replace/add/toggle node/edge/path selection、rubber-band draft、keyboard intent、node/canvas dragging、start/complete/clear/prune 纯函数；其中 selection 可由 `WorkspaceSummary.selection` 恢复，其余 hover、dragging、rubber-band draft、pending edge 和 toolbar/pan 中间态不进入 ShellResponse、Project Content、Browser Project Repository 或 core workspace。
-- `web/src/app/graphEditorHistory.ts`：定义 Web-only Graph Editor History entry/state 纯函数，覆盖 bounded push、redo clear、undo/redo transfer、no-op equality、selection/node position snapshot、viewport replay target 和 stale reference preflight；它不依赖 core、repository 或 browser storage。
-- `web/src/app/graphNodeLayout.ts`：定义 Graph Node Layout 固定虚拟坐标、fallback node position、CSS percent 映射、snap、clamp 和 pointer delta move helper；它只服务 Web canvas layout，不是 viewport/persistence schema。
-- `web/src/app/exportFormatCapabilities.ts`：Web 侧只读导出格式能力表，镜像 core Export Format Capability 的当前口径，提供 supported/report default formats、MIME、extension、writer id 和 browser persistence guard；ReportExportPanel、fixture transport 和 export artifact persistence 复用它，避免在组件里散落格式白名单。
-- `web/src/app/graphAutoLayout.ts`：定义 Graph Auto Layout Web helper，从当前 `GraphSummary` 生成 JSON-safe `GraphLayoutPlan`、`nodePositions`、`changedNodeIds`、可选 `viewportIntent` 和 warnings；它只读取 graph summary，不读 DOM、ChemicalObject geometry、EnergyProfile 或 Project Content。
-- `web/src/app/graphViewport.ts`：定义 Graph Canvas Viewport helper，提供 `CanvasViewportSummary` fallback、`0.35..2.5` zoom clamp、screen/graph 坐标换算、CSS transform、zoom、pan、fit、reset、anchor-preserving wheel zoom、minimap geometry 和 minimap point-to-viewport mapping。它只生成 viewport intent，不保存 Project Content。
-- `web/src/app/graphObjectDragPayload.ts`：定义 Graph Object Drop 的 `application/x-rxnflow-graph-object` MIME type、`GraphObjectDragPayload`、serialize/parse helpers；payload 只承载 `kind`、`objectId`、`label`。
-- `web/src/app/graphRawFileDropPayload.ts`：定义 Raw File Drop 的 `application/x-rxnflow-raw-file` MIME type、`GraphRawFileDropPayload`、serialize/parse helpers；payload 区分 `external-file` descriptor 和 `project-file` entry，但真正的 external `File` bytes 只来自浏览器 native drop。
-- `web/src/app/projectFiles.ts`：从 Browser Project Repository 派生 raw-only `ProjectFileEntry[]`，只按 `inputs/raw/` prefix 汇总项目文件，推断 file kind、rawResourceId/sourceName、checksum 和 warning/error 投影，并把 Workbench imports/objects/workspace 反投影为 registered / used-in-graph 状态。
-- `web/src/app/graphPathAutoExtend.ts`：定义 Web UI-only Path Auto-Extend helper，从 ShellResponse workspace projection、当前 active path 和新 edge 端点派生 `set-path` 或 `manual` intent；它不调用 ShellClient、不访问 core、repository 或持久化层。
-- `web/src/app/graphPathOrderDraft.ts`：定义 Path Order Draft helper，用于从 existing path 初始化 ordered node ids、上移/下移节点和判断 draft 是否变化；draft 只服务 Web UI，不进入 Shell DTO 或 Project Content。
-- `web/src/app/edgeLabelDraftState.ts`：定义 Edge Label Draft UI-only state helper，只在纯单个 selected graph edge 且没有 selected node/path 时，从 selected graph edge 的 label 初始化，提供 reconcile、dirty 判定和 selected edge 删除/切换后的 stale draft 清理；它不保存 Project Content，也不直接调用 Shell。
-- `web/src/app/EnergyProfilePanel.tsx`：能量面板 UI，展示 command options、Energy Channel Selector、Correction Policy Controls、profile summary、relative energy table、step delta、missing reason、warnings、Energy Expression Details、交互式 SVG curve、Curve Point Detail 和 point/table selection；只消费 ShellResponse profile projection，step delta 只从相邻有效 relative energy 派生。
-- `web/src/app/ReportExportPanel.tsx`：报告导出面板 UI，只展示 Web-visible PNG/CDXML/XLSX format selection、basename/title、Export button、artifact list 和 inline download link；不渲染 Preview/Export segmented control、readiness 摘要、warnings dashboard、metadata、checksum、writer id、persisted 状态或 include bytes 开关。低层 artifact projection 仍保留给 persistence helper 与测试。
-- `web/src/app/exportArtifactPersistence.ts`：Web Export Artifact Persistence helper，负责把 `ShellArtifact.bytes_base64` 解码写入 Browser Project Repository `exports/...`，upsert `export-artifacts-v1` records，并更新 Project Content index 中 export artifact section checksum。
-- `web/src/app/ProjectSidebar.tsx`：左侧项目入口 UI，展示 project list、active project、Project notices、项目行三点更多菜单和 raw-only Project Files Panel；Project notices 只在保存失败、项目内容缺失或浅校验错误时出现，不常驻显示 saved / valid / checksum。Project Sidebar 不展示 local-only/backend/runtime badges、browser project ref、bridge state 或 `Save Project` 按钮；项目行三点更多菜单提供红色删除项目动作。Project Files Panel 的 raw file row 可拖入 Graph Canvas，export artifact row 只留在 Report Export Panel。
-- `web/src/app/ObjectRegistryPanel.tsx`：对象登记面板 UI，展示 object summary list、active object detail、source/provenance、energy/thermochemistry keys、warnings、correction count/list 和 Correction Entry Form；表单只产出 `ApplyCorrectionRequest`，已登记对象按钮同时是 Graph Object Drop drag source。
-- `web/src/app/i18n/`：定义 `SupportedLocale`、`MessageKey`、`MessageCatalog`、`I18nProvider`、`useI18n`、locale detection / localStorage preference helpers，以及 `zh-CN` / `en-US` catalogs。
-- `web/src/app/transientImportState.ts`：定义画布 transient import payload state、file metadata projection、raw persistence UI projection、preview args helper、register eligibility、registered object summary upsert merge 和 file size formatting；同 id 重新解析会用新 object summary 覆盖旧 summary，避免 stale geometry/energy 投影继续占用 Graph Canvas 节点。它不对应用户可见面板。
-- `web/src/app/rawInputPersistence.ts`：定义 Browser Raw Resource / Raw Persistence helper，负责 active browser project 下 selected File 的 SHA-256 checksum、safe basename、`inputs/raw/{sha12}-{safeName}` object 写入、`.rxnflow/manifest.json` raw resource merge 和 repository error payload 映射。
-- `web/src/app/projectBundleArchive.ts`：定义 Browser Bundle Archive Adapter，负责 `.rxnflow.zip` writer/reader、Bundle Root 校验、zip central directory inspection、allowed roots / `inputs/raw` / duplicate / symlink / `__MACOSX` safety、fixed mtime stable output、entry checksum 和 shallow manifest summary。它是 Web 侧唯一直接 import `fflate` 的业务模块，不接 UI、repository writer 或 ShellClient。
-- `web/src/app/projectBundleExport.ts`：定义 Browser Bundle Export Action，负责 active project guard、repository prefix collection、storage object 到 bundle entry 的 checksum mapping、safe root/fileName 生成、archive adapter 调用、Blob wrapping 和 export structured error mapping。
-- `web/src/app/projectBundleImport.ts`：定义 Browser Bundle Import Action，负责 File bytes 读取、archive adapter error mapping、new browser-local project name fallback、storage object metadata mapping、repository create/write、write receipts 和 partial import risk structured error。
-- `web/src/app/projectContentBridge.ts`：定义 Browser Project Content Files helpers，生成空 `project-v1` manifest 与 `project-content-v1` sections，读写 Browser Project Repository，执行 shallow checksum validation，并在 Web bytes 与 shell `content_files` base64 payload 之间转换。
-- `web/src/app/projectSidebarActions.ts`：封装 repository-backed sidebar actions：`refreshProjects`、`createProject`、`openProject`、`deleteProject` 和 `saveProjectContent`。
-- `web/src/app/projectSidebarState.ts`：定义 `ProjectSidebarState`、`ProjectPersistenceState`、`ProjectBridgeState` 和 `SidebarValidationStatus`。
-- `web/src/app/workbench.css`：当前 MVP 的响应式工作台样式；视觉风格不冻结，后续可替换组件库、配色、密度和面板细节。
-- `web/src/repository/types.ts`：定义 Browser Project Repository 的 DTO、interface、`browserProjectBackendId`、path/project_ref validation、Web Crypto sha256 checksum helper 和 `BrowserProjectRepositoryError`。
-- `web/src/repository/indexedDbRepository.ts`：真实浏览器 repository implementation，使用 IndexedDB database `rxnflow-browser-projects` 保存 `projects` 和 `objects` object stores；object key 为内部 `projectRef + path` 组合，公开边界只暴露 `projectRef` 和 project-relative path。
-- `web/src/repository/memoryRepository.ts`：Vitest 用内存 test double，语义对齐 IndexedDB implementation，并支持 `quotaBytes` 模拟 `storage_quota_exceeded`。
-- `web/playwright.config.ts`：默认 fixture Playwright E2E 配置，固定 `baseURL=http://127.0.0.1:5173`、Chromium project、fixture webServer 和 output/report 位置；通过 `testIgnore` 排除 local-http bridge spec。
-- `web/playwright.local-http.config.ts`：local-http Playwright E2E 配置，按端口探测启动本地 bridge `127.0.0.1:8766` 与 Vite `127.0.0.1:5176`；bridge 命令显式设置 `PYTHONPATH` 指向仓库根后调用 `rxnflow.local_bridge.serve_local_bridge`，并按 `RXNFLOW_E2E_PYTHON` → `CONDA_PREFIX/bin/python3` → `python3` 顺序选择解释器，避免 Playwright shell 的 Python path / dependency 差异，Vite 设置 `VITE_RXNFLOW_SHELL_TRANSPORT=local-http` 和 endpoint，只匹配 `local-http-bridge.spec.ts`。
-- `web/e2e/workbench-helpers.ts`：真实浏览器 QA helper，负责 storage reset、console issue collection、page identity、framework overlay 检查、horizontal overflow、region visibility、screenshot attachment、常用 workbench flow action、Graph Editor drag/drop、node drag、path delete、direct edge drawing、rubber-band multi-select delete、keyboard nudge/history、viewport controls、wheel pan / ctrl-meta zoom、project restore 和动态 invalid bundle samples。
-- `web/e2e/workbench-journey.spec.ts`：桌面和窄屏 Workbench Journey E2E，覆盖项目、fixture、导入、对象、图谱、能量和报告导出主链路；其中 desktop graph editor matrix 专门覆盖 object drag/drop、node drag、path delete、direct edge drawing、rubber-band multi-select delete、keyboard nudge、viewport controls、wheel pan / ctrl-meta zoom 和 project restore；narrow graph editor matrix 验证 floating toolbar、Project Rail、Export dock、Graph Canvas 和 no horizontal overflow。
-- `web/e2e/local-http-bridge.spec.ts`：local-http bridge smoke，覆盖本地 HTTP endpoint、真实 bridge fixture snapshot、本地 inline parser preview、project open/auto-save、energy compute、export persistence、console clean、无水平溢出和普通 UI 不外露 runtime chrome。
-
-## 3. 稳定边界
-
-- Web UI 不直接 import Python core，也不复制 parser、registry、reaction graph、energy 或 export 领域算法。
-- 前端 Shell DTO 必须保持 JSON-safe；`File`、`Blob`、`ArrayBuffer`、Path 和 class instance 不直接穿过 Shell Client。
-- 当前前端代码支持 `in-process-test` fixture transport 和 `http-api` local bridge transport；默认仍为 fixture，只有设置 `VITE_RXNFLOW_SHELL_TRANSPORT=local-http` 时才调用本地 HTTP shell bridge。
-- `http-api` transport 只转发 Shell payload 并规范化 ShellResponse，不解释 ChemicalObject、ReactionGraph、EnergyProfile 或 ExportArtifact 领域 payload。
-- `transport_unavailable` 表示 fetch/network/invalid JSON/malformed response 层失败，和 Platform Shell 返回的 `invalid_input`、`graph_invalid` 等领域错误分离。
-- Fixture Transport 只证明前端能按 `ShellResponse` 消费数据；它不代表真实 Gaussian、ORCA、MAPLE、XYZ/extxyz 导入能力。
-- Workbench Snapshot 是只读状态投影，不是保存命令；保存仍由 `project.save_content` 承担。
-- WorkbenchDomainState 是 shell response projection，不是 ChemicalObject / ReactionGraph / EnergyProfile 的前端复制品。
-- WorkbenchUiState 只承载 UI-only 状态；当前不写回 core，也不替代 WorkspaceSnapshot。
-- ProjectSidebarState 来自 Browser Project Repository，不替代 WorkbenchDomainState，也不伪造 shell session 或 PlatformSession。
-- Project Files Panel 是 Browser Project Repository 的 raw input 文件投影，不是外部本地文件夹 browser handle，也不替代 Project Content schema。外部 file/folder picker 只是快速入口；只有写入 `inputs/raw/...` 的计算输出文件才进入左侧 Project Files。空项目不再渲染“打开后显示文件 / 拖到这里导入”的说明文案；`exports/...` 报告 artifacts 由 Report Export Panel 管理。
-- 项目文件导入入口属于 Project Rail / Project Files Panel：用户 hover/focus 项目行后点击项目旁的 `+` 或把外部文件拖入项目树后，文件进入 active project；把项目文件拖入 Graph Canvas 或点击项目文件行后才触发 parser preview/register/add-node。报告 artifacts 仍由 Report Export Panel 管理。
-- Workspace-First Flow Shell 是后续项目、导入、对象详情、图谱、能量和导出能力的承载骨架。顶部菜单承载 Projects / Export 全局动作；Project Rail 表达项目权威、项目内文件和项目更多操作；Canvas Stage 是 graph/raw drop 主工作区；Export dock 只决定 Report Export Panel 是否可见，不改变 `energy.compute`、`export.profile` 或 workspace command args。窄屏首屏默认关闭 Project Rail，主界面不显示 backend id、browser project ref、runtime badge、Analysis、Diagnostics tab 或 run-state badge。当前 Graph Canvas 支持项目文件/外部文件创建节点、已有节点拖动布局、edge/path 删除、Direct Edge Gesture、多选/框选、键盘删除/清空/节点微调、viewport controls、wheel pan / ctrl-meta zoom、小地图和 runtime-only undo/redo，但不是完整拖拽图谱编辑器。
-- Graph Canvas 只读取 `WorkbenchDomainState.workspace.graph`、`workspace.preview`、`workspace.viewport`、`workspace.selection` 和 `objects`；不从 DOM、transient import pending/failed item 或 Project Sidebar state 反推图谱状态。
-- Graph Canvas graph 结构变化只来自 `ShellClient` response；`WorkbenchShell` 不直接 patch `workspace.graph.nodes` / `edges` / `paths`。
-- Raw File Drop 与 Graph Object Drop 使用不同 MIME type。Graph Object Drop 只表达已登记对象拖拽；Raw File Drop 表达外部 `File` 或 project raw file intent，并由 WorkbenchShell 串联 raw persistence、`import.preview`、单对象 `import.register_all` 或多候选 `import.register_selection`、以及 `workspace.add_node`。
-- Raw File Drop 的 single-object auto path 是当前 workspace-first 最小闭环的稳定约束：`object_count === 1` 才自动登记并创建一个 graph node；多对象 / 多帧 preview 必须进入 Parse Candidate Chooser，只有用户确认后才登记选择对象并在落点附近 stack 创建一个或多个 graph nodes。
-- Parse Candidate Chooser 是 Web UI-only state：它展示 Shell preview `candidates[]` 的 label、object index、formula、charge/spin、method、display energy、coordinate preview 和 warning code；取消不会登记或建节点，确认才调用 `import.register_selection`。Web 不凭文件名或 candidate 顺序判定 TS/final，`role_hint` 无 core/parser 明确信号时保持 `unknown`。
-- Canvas Chemical Node 是展示投影：`GraphCanvas` 从 `GraphNodeSummary` 与 `ObjectSummary[]` 派生结构名、formula、charge/spin、method、display energy、geometry 和 warnings；它通过 `displayNames.ts` 隐藏内部 id/hash/fixture-like 标签，通过 `Molecule3DViewer.tsx` 在有 `ObjectSummary.geometry` 时渲染 Three.js ball-and-stick 3D 预览。它不新增 core graph schema、不写 Project Content，也不在前端重算 energy 或生成持久化分子图。
-- Raw File Drop pipeline 中 raw persistence、preview、register selection/register all 和 add-node 任一步失败都停止后续步骤。可见 node 必须来自 ShellResponse workspace projection；Web 不从 raw file、preview item、registered object id 或 DOM 状态伪造 graph node。
-- Graph Canvas 的 node/edge/path selection 通过 `workspace.select` 进入 core / fixture workspace state，并以 ShellResponse `WorkspaceSummary.selection` 为权威投影；普通点击替换 selection，Shift-click 对 node/edge/path 执行 add/toggle，rubber-band release 会提交中心点落在矩形内的 node ids；workspace projection 更新后会清理失效的 node/edge/path 引用。
-- Graph Canvas 的 keyboard shortcuts 只在 graph surface / graph item 焦点范围内生效；Delete/Backspace 调用 `workspace.remove`，Escape 调用空 `workspace.select` 并清理 pending edge / rubber-band draft，Arrow keys 只按 `20` grid step 对 selected node ids 顺序调用既有 `workspace.move_node`，`Ctrl/Cmd+Z`、`Ctrl/Cmd+Shift+Z` 和 `Ctrl+Y` 触发 Graph Editor History replay。输入框、textarea、select 和 contenteditable 内的按键不触发 graph keyboard intent。
-- Graph Canvas 的 mode、hover、dragging、rubber-band draft、pending edge、Path Order Draft、layout plan、layout warnings、layout applying/no-op status、viewport intent、transient pan drag、keyboard focus intent、toolbar state 和 Graph Editor History stack 仍是 UI-only state，不写入 Project Content、Browser Project Repository、localStorage 或 ShellResponse。
-- Edge Label Draft 是 Web UI-only state：选中 edge 后从 ShellResponse `GraphEdgeSummary.label` 初始化，编辑期间不修改 `WorkbenchDomainState.workspace.graph.edges`，Apply 成功后才通过 `workspace.update_edge` 返回的 workspace projection 刷新 edge label；Clear 提交 `label=null`，Reset 只还原 draft。切换 selected edge、workspace projection 更新或 edge 被删除时会 prune/reconcile stale draft。
-- Edge label 更新只改已有 edge 的 label/metadata；Web 不发送 from_node/to_node，不做 endpoint reconnect、direction flip 或结构化 reaction condition 表单。
-- Inline Stoichiometric Coefficient Control 是节点卡片右下角的本地交互：默认从 ShellResponse `GraphNodeSummary.composition[0].coefficient` 或 legacy `chemical_object_ids` 推导显示 `×1`，点击后原地输入；提交期间不直接修改 `WorkbenchDomainState.workspace.graph`，成功后才通过 `workspace.set_node_composition` 返回的 workspace projection 刷新 node composition 和兼容 `chemical_object_ids`。基础 coefficient guard 只阻止 0、NaN、Infinity 等明显非法输入，shell error 仍以 code/message/target 显示。Web 不从分子式配平、不做电荷/元素守恒校验，也不把 missing/invalid composition 自动修复成默认值。这个入口是面向用户的化学计量数设置，不再把完整“能量表达式”概念暴露到节点菜单。
-- Source Inspector 是 Web UI-only projection；它从已有 node/object/project file/provenance summary 派生展示信息，并可按需读取 Browser Project Repository 中匹配 raw file 的前段文本预览。raw log preview 不触发重新解析，不把 raw bytes 变成 graph authority，也不改变 project persistence。
-- Graph Canvas 删除 node/edge/path 只通过 `workspace.remove`；node 删除后的 edge/path cascade 必须来自 ShellResponse workspace projection，path 删除后的 active path / selection 修剪也必须来自 workspace projection，前端不自行推断。
-- Workspace selection restore/save 只通过项目打开和自动保存闭环发生；Web 不引入 browser-local graph layout schema，也不使用 localStorage 保存图谱布局或选择。
-- Canvas relative energy reference node 是 workspace 级显示偏好：Web 只把当前 0 点 node id 写入 `WorkspaceSummary.metadata.energy_reference_node_id`，并在自动保存时随 `workspaces-v1` 写回项目内容；它不写 localStorage、不修改 `ReactionGraph` 节点/边/路径，也不改变化学对象能量值。
-- Path Order Draft 是 UI-only state；调整期间不修改 `WorkbenchDomainState.workspace.graph.paths`，只有 Apply 成功后的 ShellResponse 才更新 path order 和 active path projection。
-- Path Order Draft 只在 selection 中恰好一个 path 且没有 selected node/edge 时初始化；mixed/multi selection 下不初始化可编辑 draft。
-- Existing Node Drag 只在 release 后发送 `workspace.move_node`；dragging / hover / pointer position 是 transient UI state，不写 Browser Project Repository、Project Content、localStorage 或 ShellResponse。
-- Direct Edge Gesture 只从节点的 Edge Connect Handle 发起，不从 node body 发起；pointer down 创建 `source="pointer"` 的 Pending Edge Draft，pointer move 更新 pointer graph position 和可选 target node，GraphEdgeLayer 渲染 transient pending preview line。pointer release 到合法且不同的 target node 时，WorkbenchShell 复用共享 `connectGraphNodes` 发送既有 `workspace.connect(from_node_id, to_node_id)`；release 到空白区域、同一 source node、缺失或 stale source 时只清理 pending draft，不发送 shell command。创建 edge 不带 label prompt，后续仍通过 Edge Label Draft 标注。
-- Graph Auto Layout helper 只保留为内部 layout plan 能力；当前主界面不提供独立 Apply Layout 按钮。若后续重新提供整理节点入口，仍必须按稳定 node id 顺序发送 `workspace.move_node`，任一 move 失败就停止后续 moves 并显示 ShellError，不回滚已成功 projection、不本地伪造成功，也不改变 node composition、edge/path 数据、active path、selection、energy profile 或 report export。
-- Graph Canvas Viewport Controls 只生成 viewport intent；Zoom、Fit、Reset、pan release 和有效 graph surface wheel input 都通过 `workspace.set_viewport` 提交，成功后只用 ShellResponse `workspace.viewport` 更新可见 viewport。Web 不直接 patch `WorkbenchDomainState.workspace.viewport`。
-- Graph Editor History 只保存当前 Web runtime 中最近 20 条可逆 history entry：layout/nudge 记录 stable node id position snapshots，viewport 记录 before/after viewport，selection 记录 node/edge/path id arrays。Undo/Redo replay 前会用当前 workspace refs 做 stale preflight；通过后仍按既有 shell command 顺序重放，并只接受 ShellResponse projection 作为可见结果。Replay 失败不移动 entry，stale/failed error 显示在 Graph Canvas history status 中。
-- Destructive 或语义复杂 graph edits 不进 Graph Editor History：add node、connect edge、delete node/edge/path、path order apply、edge label apply、node composition apply、Energy Profile point selection、dev/test fixture API、project open 和 workspace/session 切换都会清空 history，避免给用户暴露不完整 inverse。
-- Viewport Transform 只作用于 GraphCanvas content layer 和 screen/graph 坐标换算；object drop、node drag 和 pan drag 共用 `graphViewport.ts` helper，提交给 Shell 的 position 仍是 `1600 x 1000` workspace 虚拟坐标。
-- Wheel navigation 使用 non-passive graph surface listener，只在 graph surface 范围内处理；普通 wheel / 双指滚动平移画布，ctrl/meta wheel 走 pinch-like zoom factor。graph surface 外 wheel 不发送 shell command，也不阻止页面滚动；当前不实现底层多指 PointerEvent 识别。
-- Graph Minimap 在画布右下角渲染 graph bounds、node dots、active viewport window 和 zoom percent；click / drag minimap 只生成 viewport intent 并通过 `workspace.set_viewport` 生效，不新增 workspace schema。
-- Viewport intent、transient canvas dragging、surface DOM size、fit 中间值、wheel delta、minimap geometry、minimap drag draft、history entry stack 和 toolbar pressed state 都是 UI-only；它们不写 Project Content、Browser Project Repository、localStorage 或 ShellResponse。当前不实现 viewport auto persistence、persistent undo/redo/history、inertial scroll、persistent minimap preferences 或 multi-touch PointerEvent pinch。
-- Node Layout position 属于 workspace graph 的 `ReactionNode.position` 投影，不写 ChemicalObject、Object Registry、Transient Import State、Energy Profile 或 Report Export；Web helper 只做 `1600 x 1000` / `20` grid 的显示和输入换算。
-- Node Nudge 复用同一个 `20` grid step 和 `workspace.move_node` command；它只读取 current selection 中的 node ids，任一 move 失败后停止后续 moves 并显示既有 ShellError，不回滚已成功 projection，也不移动 edge/path。
-- Graph Object Drop 只接受已登记对象产生的 `registered-object` payload；malformed payload、wrong kind、unknown object id、transient import pending/failed item、raw resource 和 parser preview item 都不能直接创建 graph node。当前主 UI 优先使用浏览器文件与 Project Files Panel raw row 的 Raw File Drop pipeline。
-- Fixture `workspace.connect` 对同一 node pair 幂等；缺失 node 返回 `graph_invalid` / `target=node_id`。
-- Path Auto-Extend 只在 `workspace.connect` 成功后尝试 create/append-tail/prepend-head/branch/stale-path fallback；cycle、internal-edge 和 no-change 不发送 `workspace.set_path`。connect 成功但 set_path 失败时，edge 保留，UI 显示 path authoring error，不在前端回滚或伪造 path/profile 成功。
-- Energy Profile Panel 只通过 `energy.compute` 获取 profile projection，不从 graph/object energy keys 在前端重算相对能量、校正项、expression 或单位换算。
-- Energy Panel options 是 UI-only state；`path_id` 默认跟随 `workspace.active_path_id`，`baseline_node_id` 只能来自当前 path node ids 或留空，`energy_source` 支持 `auto` / `energies` / `thermochemistry`，correction policy 支持 `none` / `all` / `kinds` / `ids`。
-- PES compute intent 是 Web UI-only 编排：active path projection 或 Energy Panel options 改变后按 signature 自动触发一次 `energy.compute`，签名不变不重复自动触发；手动 Compute 仍按当前 options 强制调用。
-- Energy Channel Selector 候选来自当前 `WorkbenchDomainState.objects[].energy_channels` 的汇总 projection，显示 key/source/unit/object count；用户仍可输入自定义 energy key。候选缺失或 path-level partial/missing channel 不在前端修复，由 shell/core 返回 missing/invalid/ambiguous diagnostics。
-- Correction Policy Controls 直接映射 shell args：`none` 发送 `include_corrections=false` 与 `{mode:"none"}`；`all/kinds/ids` 发送 `include_corrections=true` 与对应 `correction_policy`。ids 输入第一版按逗号/空白切分，不检查每个 id 是否存在于 path node。
-- Energy compute 成功只替换 `WorkbenchDomainState.profile` 并更新 `active.profileId` / `counts.profiles`；EnergyProfilePanel 不直接调用 `project.save_content` 或写 Browser Project Repository，active project + session 下的 profile 状态由 WorkbenchShell 自动保存闭环处理。
-- Energy Expression Details 逐点展示 Shell DTO 中的 terms、corrections、total 和 missing diagnostics；旧 profile 没有 expression 时该区域自然为空，不从 graph/object state 推断。
-- Energy curve point state 是 Web component UI-only state：active/pinned point 只服务 hover/focus/click/detail，不写 Project Content、Browser Project Repository、localStorage 或 ShellResponse。
-- Energy curve point status 只从现有 profile point 的 relative value、`missing_reason`、`expression.missing` 和 `expression.corrections.length` 派生；correction marker/count 不在前端重新求和 correction contribution。
-- Step delta 是 EnergyProfilePanel 的展示派生：第一点为空；相邻两个点都有 relative energy 时显示当前点相对前一点的差值；当前点或前一点 missing 时为空，不把缺失差值写成 0。
-- Energy point 缺失时必须显示 `missing_reason` 和 warning；如 Shell DTO 带 missing expression details，则 details 区展示缺失 code/object/key/source/message；SVG curve 只连接有 relative energy 的点，不把 missing point 当作 0。
-- Energy curve point 和 table row 的 graph linkage 只通过 `workspace.select` 完成，Web 不直接 mutate `WorkbenchDomainState.workspace.selection`、graph/path/profile 或 node composition。
-- Fixture `energy.compute` 支持 `kcal_mol` / `kj_mol`、`include_corrections` warning、missing path `graph_invalid` 和 imported object `missing_energy` 测试路径；它不代表真实 Energy Engine 算法运行在浏览器中。
-- Report Export Panel 只通过 `export.profile` 获取 runtime `ShellArtifact` projection；前端不调用 core `ReportExportService` writer，不在浏览器生成 PNG/CDXML/XLSX/CSV/SVG bytes。
-- CDXML download link 使用 ShellArtifact inline bytes；Web 不拼 CDXML XML，不从 EnergyProfile 重新派生 `dE` 或 correction marker。
-- Report Export options 是 UI-only state；`formats`、`include_bytes`、`basename` 和 `title` 只在点击 Export 时映射为 Shell command args，不写 core Project Content session。普通 UI 不显示 include bytes 开关，默认始终请求 inline bytes。默认 `formats` 来自 Web Export Format Capability helper 的 Web default 集合，当前为 `png/cdxml/xlsx`。
-- Report Export 成功先 merge `ShellResponse.artifacts` 到 `WorkbenchDomainState.artifacts` 并更新 `counts.artifacts`；存在 active browser project 且 artifact 带 inline bytes 时，Web 再写 Browser Project Repository 的 `exports/...` object，并把 persisted path/checksum merge 回 artifact summary。
-- Web Export Artifact Persistence 的 allowlist、extension 和 path suffix 从 Web Export Format Capability helper 派生；当前只支持 browser persistence 为 true 的 `png`、`cdxml`、`xlsx`、`csv` 和 `svg`，path 由 `exports/{safeBasename}.{extension}` 生成；不接受 ShellArtifact 的绝对 path 或项目外 path。重复导出按 artifact id/path upsert，不创建重复 index record。
-- Web Export Artifact Persistence 会更新 `.rxnflow/state/export-artifacts.json` 和 `.rxnflow/state/project-content.json` 的对应 checksum；它不调用 `project.save_content`、不自动创建 browser project、不自动打开 bridge session、不把 Browser Project Ref 当作 Python filesystem path。
-- Inline Artifact Download 只在 `bytes_base64` 存在时使用 data URL；`bytes_base64` 缺失时显示不可下载状态，且不会写 `exports/...` 或 export-artifacts record。普通 UI 展示 format、可读文件名/path basename、download/persisted 状态和经过 `displayNames.ts` 处理的 warning/error target；artifact id、checksum 和 metadata key/value 作为 ShellArtifact / persistence 内部投影保留，不在普通 artifact list 常驻显示。
-- Fixture `export.profile` 支持 PNG/CDXML/XLSX/CSV/SVG、多格式、include bytes、missing profile、missing formats 和 CDXML-only warning 测试路径；fixture export format parsing、writer id、MIME、extension 和 status metadata 也复用 Web Export Format Capability helper。Web 普通导出面板只请求 PNG/CDXML/XLSX。fixture 不代表真实 Report Export Service 在浏览器中运行，也不代表 Web 在本地生成 SVG bytes。
-- PDF/PPTX/CDX 当前不会出现在 Report Export Panel checkbox 中，也不会被 Web persistence 写入 `exports/...` 或 `export-artifacts-v1`；这些格式只在能力表中作为 unsupported 后续入口。
-- Web E2E QA Harness 分为默认 fixture mode 和 local-http mode。fixture mode 通过真实浏览器页面交互覆盖已落地 fixture flow，fixture seed 由 dev/test-only `window.__rxnflowWorkbenchTest` 触发且不渲染按钮；local-http mode 通过浏览器页面交互和同一 dev/test API 调用本地 Python bridge smoke。两者都不在前端 import Python core、不新增 shell command、不改变 React app runtime。
-- `npm run test:e2e` 与 `npm run test:e2e:local-http` 的 baseURL、server env、测试文件、outputDir 和 HTML report 目录互相隔离；local-http spec 不进入默认 fixture E2E。
-- local-http E2E 使用固定开发端口 `8766`（bridge）和 `5176`（Vite）；端口冲突视为本地 QA 启动失败，不在 Web app 内做自动端口发现、后台 daemon、自动重连或 bridge GUI 控制。
-- local-http E2E 需要使用安装了 Python 导出依赖的解释器；可用 `RXNFLOW_E2E_PYTHON=/path/to/python3 npm run test:e2e:local-http` 显式指定，未指定时优先跟随 `CONDA_PREFIX/bin/python3`。
-- E2E tests 会清理测试上下文中的 `rxnflow-browser-projects` IndexedDB 和 localStorage，避免测试之间互相污染；这只是测试隔离，不是用户数据迁移或清理功能。
-- Playwright screenshot、trace 和 HTML report 只写入 `web/test-results*/` / `web/playwright-report*/`，这些目录被 `.gitignore` 忽略，不进入 Project Content 或 Browser Project Repository。
-- Default fixture E2E 的复杂 graph editor 手势矩阵不复制到 local-http E2E；local-http smoke 只验证真实 Python bridge 主链路，避免把 browser gesture flakiness 和 bridge dependency 绑定在同一测试。
-- Browser Project Repository 是 Web 前端服务，不是 ShellTransport；它保存 bytes，不解析 ChemicalObject、ReactionGraph、EnergyProfile 或 ExportArtifact 语义。
-- Browser Project Repository 当前是 IndexedDB-first：project refs、metadata 和 bytes 都写入 IndexedDB；OPFS payload store、Web Worker、Service Worker、StorageManager.persist 权限 UI 和大文件 chunking 尚未实现。
-- Browser Project Repository 使用项目相对 POSIX path，禁止空路径、绝对路径、反斜杠、`.` 和 `..`；`writeObject` 覆盖同一 `projectRef/path`，`deleteObject` 对缺失对象幂等成功，`listObjects` 支持 exact file 和 prefix subtree。
-- Browser Project Repository 明确 local-only；浏览器清数据、profile 损坏或 origin 变化可能删除项目内容。早期跨设备迁移仍依赖 `.rxnflow.zip` 手动备份路径。
-- Browser Bundle Archive Adapter 是 helper-only archive boundary：`fflate` 只允许在 `projectBundleArchive.ts` 和对应测试中直接 import；Project Sidebar、WorkbenchShell、repository writer 和 Shell transport 不直接调用 zip library。adapter reader 不返回部分安全 entries；任一非法 zip entry 使整个 read 返回 structured `invalid_bundle` / `zip_failed`。
-- Browser Bundle Export/Import helper 只服务内部 roundtrip 和测试，不挂到 Project Sidebar 主流程，也不自动保存或恢复 shell session。helper 仍是 read-only / new-project writer 风格，现有 repository API 无跨 object transaction；writeObject 中途失败时 UI 显示 partialProjectRef/writtenCount 的 Partial Import Risk。
-- Web Project Portability Roundtrip 不新增生产 API；它用 tests 固定同步纪律：repository → core 只通过项目打开，core → repository 通过 WorkbenchShell 自动保存，bundle helper 只读取 repository 当前 bytes，Import/Export helper 都不调用 Python bundle service。
-- Web Project Portability QA & Guides 不新增生产 API；动态 invalid bundle samples 和 bundle download readback 只存在于 Playwright helper，用户/开发者指南只描述当前已实现行为和验证命令。
-- Browser Project Content Files 使用现有 `.rxnflow/manifest.json`、`.rxnflow/state/project-content.json` 和 6 个 section files schema；Web 创建空 sections 或写回 shell 返回 bytes，但不解析 ChemicalObject、ReactionGraph、WorkspaceSnapshot、EnergyProfile 或 ExportArtifact 领域内容。
-- Project Sidebar 的 validation 是 shallow repository validation：读取 index 与 section files，检查缺失和 checksum mismatch；它不调用 Python `ProjectContentValidator`，不做跨 section 引用深校验或 migration。正常 valid 结果只保留为内部状态，不在侧栏常驻显示；缺失或错误时进入 Project notices。
-- Web I18n Runtime 是前端 UI runtime，不进入 ShellResponse，不写 Project Content，也不改变 Browser Project Repository 或 Python core contract。
-- Locale preference 只保存在浏览器 localStorage，localStorage 不可用时 UI 仍可运行但不保证持久；默认按 browser language 选择，`zh*` 走 `zh-CN`，其他走 `en-US`。
-- Message catalogs 当前只覆盖 Web Workbench / Project Sidebar 主 UI 文案；project name、文件名、error code 和底层 error message 等动态数据原样显示。checksum、fixture ids、raw/source/graph/session/artifact/profile/path/edge id、projectRef、backend id 和 runtime mode 等实现信息不进入主界面文案；确需显示 warning/error target 时先经过 `displayNames.ts` 过滤。
-- Object Registry Panel 只读取 `WorkbenchDomainState.objects`；不从 transient import pending/failed item、graph placeholder 或 Project Sidebar state 反推对象卡片。
-- Object Summary Projection 是 UI summary，不是完整 ChemicalObject codec；当前可包含 formula、charge、spin_multiplicity、method、source_file_id、energy_keys、thermochemistry_keys、energy_channels、display_energy、coordinate_preview、geometry、provenance、correction_count、corrections 明细和 warnings。`display_energy` 只是首个可展示能量通道的数值摘要，不替代 Energy Engine；`coordinate_preview` 只表达 atom count、元素预览和 3D 可用性；`geometry` 只为前端 3D preview 提供原子坐标投影，不替代 core ChemicalObject。
-- Object Registry active object selection 是 `WorkbenchShell` 前端 UI-only state，不写入 Project Content，不替代 Workspace Selection 或 Graph Canvas selection；Graph Canvas click-driven 添加节点时把 active object id 作为 `workspace.add_node` 的 command args 传给 ShellClient，drag/drop 添加节点时把 payload object id 和 drop position 映射为同一 command。
-- Correction Entry Form 只通过 `ShellClient` 调用 `registry.apply_correction`，不直接 import Python codec、不在前端重算校正项、不本地伪造 Object Summary；成功/失败状态均以 ShellResponse 为准。表单不实现 correction 编辑、删除、排序、批量导入或 undo/redo，也不直接调用 `project.save_content`；active project + session 下的对象状态由 WorkbenchShell 自动保存闭环处理。
-- Transient import payload helper 会把 selected browser `File` 转成 metadata / logical `transient/<name>` path 供 fixture transport 验证；local-http preview 可把文件 bytes 编成 inline payload 发给 ShellClient，当前上限为 12MiB/文件，local bridge request body 默认 64MiB。真实 File bytes 不作为 Python 可读 source path，也不让 local-http bridge 读取 Browser Project Repository / IndexedDB。
-- Active browser project 存在时，项目树导入或画布 drop 会把 selected `File` 作为 Browser Raw Input Object 写入 `inputs/raw/{sha12}-{safeName}`，并把 Browser Raw Resource merge 进 `.rxnflow/manifest.json`。该 raw resource 是当前 Web 过渡期 project file anchor，不等同于 import confirmation，也不会自动登记 ChemicalObject；长期 canonical import data 迁移后它不再作为项目 authority。
-- Project Files Panel 的 runtime status overlay 只从 repository projection、ShellResponse imports/objects/workspace/artifacts 和 WorkbenchShell raw-drop pipeline 结果派生；status 不作为长期 Project Content authority。
-- Raw Persistence Summary 是 selected file list 的 UI-only projection；长期状态只在 Browser Project Repository object 和 manifest resource 中，不写 localStorage、Project Content index 或 ShellResponse。
-- Raw persistence failure 与 parser preview error 分开展示；repository write/manifest error 显示在 selected file list，preview 仍可继续使用原有 path/inline payload。超过 inline 上限的文件在 payload 阶段直接 `payload_too_large`，不会读取 bytes 或写 raw object。
-- Transient import fixture preview 不代表真实 Gaussian、ORCA、MAPLE、XYZ/extxyz 完整支持；parser_id、warning/error code 和 raw resource path/checksum 保留在 ShellResponse、ProjectFileEntry 或测试投影中，但普通 UI 不把 parser/runtime/hash/path 作为主要可见信息。
-- 当前已实现项目打开自动恢复、项目自动保存写回、Web Export Artifact Persistence、Browser Bundle Archive Adapter、内部 bundle roundtrip helper、已登记对象/项目文件进入画布创建节点、已有 graph node 基础拖动布局、edge 删除、path 删除、selected edge label draft 和 Direct Edge Gesture；仍不实现缩放/平移持久化、edge endpoint 重连、高级 energy curve 编辑、Report Preview 面板或组合报告 composer。
-- 当前 Web 前端不实现 HTTP route、Vercel route、FastAPI、Flask、Django、Express server、云存储、账号、权限或同步；`http-api` transport 只调用外部已启动的本地 HTTP shell bridge。
-
-## 4. QA 与验证
-
-当前 Web Workbench 使用 Vitest + Testing Library 覆盖 ShellClient 和 WorkbenchShell：
-
-- `fixture.run` 返回 `ok=true` 的 JSON-safe response。
-- `workbench.snapshot` fixture response 返回 JSON-safe project/object/workspace/profile summary。
-- missing fixture snapshot session 返回 `invalid_input` 和 `target=session_id`。
-- unknown command 返回 `ok=false` 和 `invalid_input`。
-- App 首屏是 workbench，不是 landing page。
-- dev/test fixture API 触发后，UI 通过 snapshot projector 展示项目、对象、图谱、profile/counts 等用户可读状态；主界面不常驻显示 `Ready` run-state badge 或 fixture runtime 名称，也不渲染 fixture 触发按钮。
-- invalid command error code 可见。
-- Browser Project Repository contract helpers 覆盖 project ref / storage object / write receipt JSON-safe shape、path safety 和 sha256 checksum。
-- MemoryBrowserProjectRepository 覆盖 create/list/write/read/exists/list/delete、project isolation、overwrite、missing object、delete idempotency、quota failure 和 IndexedDB error mapping。
-- Project Sidebar / WorkbenchShell component tests 覆盖首屏项目列表、主界面不暴露 local-only/backend/runtime badge、顶部面板互斥、create project + persisted validation、missing content 自动修复、repository error 展示、不暴露 bundle 主按钮、项目三点菜单删除，以及 project open → workspace/report change → auto-save → re-open 的 roundtrip。
-- Project Files / Raw File Drop tests 覆盖 `ProjectFileEntry` 只从 `inputs/raw/` repository objects 派生、raw kind/status/checksum/warnings/sourceName 投影、Workbench imports/objects/workspace 反投影 registered / used-in-graph、Project Files Panel 空态与 project file row drag payload/row click、`application/x-rxnflow-raw-file` serialize/parse、GraphCanvas native `File` / project file drop position、WorkbenchShell external file persist -> preview -> register -> add-node 成功路径、project raw file 复用路径、多候选 preview 打开 Parse Candidate Chooser 且取消不登记/不建节点、`import.register_selection` 后按选择创建 stack nodes、preview/register/add-node error stop 语义，以及保存/重开后 Project Files Panel 继续显示 `Used in graph`。
-- I18n runtime tests 覆盖 catalog key completeness、browser locale detection、stored locale preference、storage failure fallback 和 `{param}` interpolation。
-- WorkbenchShell component tests 覆盖英文默认文案、中文切换、英文切回，以及 Project Sidebar validation message 随 locale 渲染。
-- ShellClient tests 覆盖 fixture `import.preview` JSON-safe response、success/failed item、warning code、missing source path error 和 repeated `import.register_all` idempotent registered ids。
-- ShellClient tests 覆盖 fixture `workspace.open`、`workspace.add_node`、`workspace.connect`、`workspace.set_path` 的 JSON-safe graph projection、connect 幂等和 missing node `graph_invalid` error。
-- ShellClient tests 覆盖 fixture `workspace.move_node` 的 JSON-safe command projection、node position 更新、missing node `graph_invalid` 和 invalid position `invalid_input`。
-- ShellClient tests 覆盖 fixture `workspace.remove` 的 JSON-safe command projection、edge 删除、node 删除 cascade、path 删除、空 selection 和未知 id error。
-- ShellClient tests 覆盖 fixture `workspace.set_viewport` 的 JSON-safe command projection、viewport 更新、missing session、invalid viewport target 和 invalid `viewport.zoom` error。
-- ShellClient tests 覆盖 fixture `registry.apply_correction` 的 JSON-safe object projection、自动 correction id、重复同 payload 幂等、snapshot 同步、invalid kind/unit/missing object 错误路径，以及 fixture `energy.compute` 的 JSON-safe profile projection、`kj_mol` output unit、`corrections_empty` warning 和 missing path `graph_invalid` error。
-- WorkbenchShell component tests 覆盖旧 Source Tray / Import Inbox chrome 不再渲染、项目树导入、画布 raw file drop、preview/register/add-node、parser metadata、raw resource、warnings/errors、registered object ids、imports/objects count 更新、内部 id 不作为普通 UI 标签展示和中文文案。
-- WorkbenchShell / raw input persistence tests 覆盖 active browser project 下 `water.xyz` 写入 `inputs/raw/{sha12}-water.xyz`、manifest `raw_file` resource merge、同 checksum 重复 preview 不重复 resource、无 active project skipped、repository write failure 独立显示 raw persistence error、oversized inline file 不读写 raw object、坏 manifest structured error，以及 raw id/path/checksum 保留在内部投影但不在 Project Files 主行展示。
-- Project Bundle Archive Adapter tests 覆盖 `.rxnflow.zip` writer/reader roundtrip、summary project id/name、entry checksum、稳定输出、`.DS_Store` / `__MACOSX` export skip、unsafe writer root/path rejection、unsafe reader multi-root/missing manifest/absolute/backslash/dotdot/dot/root file/outside roots/`inputs` 非 raw rejection、显式 safe directory entries、duplicate central directory entry、symlink external attributes 和 malformed manifest warning summary。
-- Project Bundle Export Action tests 覆盖 current repository bytes 导出为 Blob、active project guard、缺 manifest `project_content_missing`、prefix collection 只包含 `.rxnflow` / `inputs/raw` / `exports`、checksum fallback、repository error `storage_failed`、archive error mapping 和 root/fileName sanitization。
-- Project Bundle Import Action tests 覆盖 safe bundle 导入为新 browser-local project、manifest/root/file name fallback、storage metadata mapping、unsupported conflictPolicy、invalid bundle 不创建 project、createProject storage failure 和 writeObject partial import risk。
-- Web Project Portability Roundtrip component test 覆盖 helper roundtrip 后 WorkbenchDomainState 不自动替换、项目打开恢复 project content_files、export 不直接触发 project content 保存、auto-save 后 workspace viewport 写回 repository、`inputs/raw/demo.xyz` 和 `exports/profile.png`/`exports/rxnflow-profile.png` 保留、helper zip 读回包含更新 state/raw/export entries、重新打开后恢复 `120%` viewport。
-- WorkbenchShell component tests 覆盖 Object Registry Panel 空态、Fixture object 列表/详情、active object selection、Correction Entry Form 成功提交、失败错误展示且不本地追加 correction、import register 后 imported object 可选、warning 原样显示和中文静态文案。
-- WorkbenchShell component tests 覆盖 Graph Canvas 首屏空态、workspace commands disabled、Fixture graph nodes/paths/preview、Add Node、direct edge handle、重复连线幂等、连线后自动 path authoring、restore-time linear path repair、workspace error 可见和中文静态文案。
-- Graph Editor Interaction State helper tests 覆盖 node selection 数组协议、pending edge start/complete/clear、stale selection/hover/dragging prune、非 connect mode 保留，以及 graph scope 内 undo/redo shortcuts 与输入框内不触发 graph history。
-- Graph Editor History helper tests 覆盖 bounded push、redo clear、no-op viewport/selection/node positions、undo/redo transfer、failed replay entry retention、stale reference preflight、selection/node position snapshots、replay label 和 runtime state clear。
-- Graph Object Drag Payload helper tests 覆盖 valid payload、malformed JSON、wrong kind、empty object id 和 empty label。
-- WorkbenchShell component tests 覆盖 Object Registry dragstart 写入 `application/x-rxnflow-graph-object`、drop Object B 到 Graph Canvas 后调用 `workspace.add_node(position)`，并断言画布节点显示用户可读结构信息而不是 `node-web-*` / `object-*` 内部 id；unknown object id drop 不发 shell command。
-- Graph Node Layout helper tests 覆盖 existing position、fallback position、CSS percent 映射、snap、clamp 和 invalid finite fallback。
-- Graph Auto Layout helper tests 覆盖 empty/single graph、directed layered layout、cycle grid fallback warning、snap/clamp 和 changed node no-op 判定。
-- Graph Viewport helper tests 覆盖 fallback viewport、zoom clamp、screen/graph 坐标换算、CSS transform、zoom、pan、fit、reset、anchor-preserving wheel zoom、ctrl/meta pinch-like factor、minimap geometry 和 minimap point-to-viewport mapping。
-- WorkbenchShell component tests 覆盖 click node 仍选择且不发 move command、drag `node-b` 后发送 `workspace.move_node(node-b, [420, 220])` 并按 ShellResponse 新 position 更新样式。
-- WorkbenchShell component tests 保留内部 layout helper 的回归边界；当前主界面断言不渲染独立 Apply Layout 按钮。
-- WorkbenchShell component tests 覆盖 edge selection/delete 发送 `workspace.remove(edge_ids=[edge-a-b])`、node selection/delete 发送 `workspace.remove(node_ids=[node-a])` 并使用 ShellResponse cascade、selected path delete 发送 `workspace.remove(path_ids=[path-a-b])` 且保留 nodes/edge、Path Order Draft Apply 前不发 `workspace.set_path`、Apply 后发送 `workspace.set_path(path-a-b, [node-b, node-a])`。
-- WorkbenchShell / graphPathAutoExtend tests 覆盖 workspace-first path authoring：无 active path 时拖线创建 `path-web-main=[from,to]`，active path tail/head 无歧义时 append/prepend，分叉、内部边、重复节点和 stale path 不发送 `workspace.set_path` 并显示 manual path status；path 变化会触发一次自动 `energy.compute`。
-- ShellClient tests 覆盖 fixture `workspace.update_edge` set / clear edge label、missing edge `graph_invalid target=edge_id`、missing edge id `invalid_input target=edge_id` 和非法 label `invalid_input target=edge_label`。
-- WorkbenchShell component tests 覆盖 Edge Label Draft：选中 edge 后从 projection 初始化，编辑 draft 前不更新可见 graph label，Apply 后发送 `workspace.update_edge` 并显示新 label，Clear 后清空 label，切换或删除 edge 后清理 stale draft。
-- WorkbenchShell component tests 覆盖 GraphCanvas Zoom In/Out、Fit、Reset、Pan mode empty-surface drag、graph surface wheel pan / ctrl-meta zoom 和 minimap viewport navigation 发送 `workspace.set_viewport`；node drag 不触发 pan viewport command，zoom 后 object drop / node drag release 仍提交 graph coordinates，graph surface 外 / no workspace wheel 不发送 command。
-- WorkbenchShell component tests 覆盖 Graph Editor History：Zoom In 产生 viewport entry，Undo/Redo 通过 `workspace.set_viewport` 回放；node/edge/path selection 产生 selection entry 并通过 `workspace.select` 回放；selected node nudge 产生 node position entry 并通过稳定 node id 顺序 `workspace.move_node` 回放；stale reference 不发送 shell command；Replay running 时按钮 disabled；add/connect/delete/path order/edge label/node composition/Energy Profile point selection/dev/test fixture API/project open 清空或不记录 history。
-- Composition Draft helper tests 覆盖从 selected node composition 初始化、旧 `chemical_object_ids` fallback、workspace 切换/删除后 prune stale draft，以及 row update/add/remove dirty state。
-- WorkbenchShell component tests 覆盖 Node Composition Editor：选中 graph node 后从 ShellResponse composition 显示 rows，编辑 `object-a + 2*object-b` 后提交 `workspace.set_node_composition` payload，非法 coefficient 本地显示 `invalid_input` 且不发送 shell command。
-- WorkbenchShell component tests 覆盖 Energy Profile Panel 首屏空态、Compute disabled、Fixture profile table/curve、`kj_mol` compute、Energy Channel Selector 选择 `thermochemistry:gibbs` 后发送 `energy_source=thermochemistry`、Correction Policy Controls 的 none/all/kinds/ids 映射、`corrections_empty` warning、中文静态文案，以及 imported object missing energy 不补 0。
-- EnergyProfilePanel tests 覆盖 PES Preview step delta：相邻两个有效 relative energy 显示差值，第一点和 missing 相邻点保持空值，correction count 来自 expression projection。
-- WorkbenchShell component tests 覆盖化学计量数 edits 后 Energy Expression Details 显示 coefficient 和 energy source，并由 fixture expression projection 反映 selected node composition。
-- ShellClient tests 覆盖 fixture `export.profile` JSON-safe artifact projection、PNG/CDXML/XLSX/CSV/SVG 多格式、inline bytes、include bytes disabled 和 missing formats `invalid_input` error。
-- Export Format Capability helper tests 覆盖 `png/cdxml/xlsx/csv/svg/pdf/pptx/cdx` 能力表、supported/report default formats、MIME、extension、writer id 和 browser persistence guard。
-- ShellClient tests 覆盖 `http-api` transport 的 endpoint missing、fetch failure、malformed response、HTTP non-ok shell error 穿透和 HTTP non-ok ok-response normalization。
-- WorkbenchShell component tests 覆盖 Report Export Panel 首屏空态、Export disabled、默认 PNG/CDXML/XLSX、CSV/SVG 不在普通 UI、成功导出 3 个 Web-visible artifacts、writer metadata 和 checksum 保留在 artifact projection、普通 artifact list 不显示 artifact id/checksum/metadata key/value、PNG/CDXML/XLSX download MIME、active browser project 下写入 `exports/...` 与 `export-artifacts-v1`、repository 写失败时 runtime artifact 保留和中文静态文案。用户操作指南见 `docs/user/report-export-artifacts.md`。
-- WorkbenchShell component tests 覆盖 local-http runtime 不可达时 `transport_unavailable` / `http-api` 可见。
-- Export Artifact Persistence helper tests 覆盖 PNG/CDXML/XLSX/CSV/SVG bytes object 写入、record upsert、Project Content index checksum 更新、重复导出不重复记录、缺 inline bytes skip、unsupported format skip、坏 base64 error 和 summary merge。
-- Playwright E2E tests 覆盖真实浏览器 desktop/narrow fixture Workbench Journey、page identity、console clean、no horizontal overflow、project create/auto-save、fixture/import/graph/energy/report export 主链路和 screenshots；fixture report export E2E 固定 PNG/CDXML/XLSX download MIME，且断言 CSV/SVG 不在 Web 普通 UI；default fixture E2E 还覆盖 desktop auto-save restore、Project Files raw-only、desktop advanced graph editor matrix（path delete、direct edge、rubber-band multi-select、keyboard nudge、wheel pan / ctrl-meta zoom、project restore）和 narrow graph controls；local-http Playwright smoke 覆盖本地 Python bridge 模式隔离、真实 bridge 主链路、真实 writer ids、download MIME，以及 browser project restore roundtrip。
-- Playwright Chromium raw input browser QA 覆盖 `http://127.0.0.1:5173/` 下 desktop `1280x900` 与 narrow `390x900`：创建 active browser project、通过 dev/test fixture API 建立 session、向项目树或 Graph Canvas drop `water.xyz` 后 Project Files 只展示文件名、格式字标和必要状态，不显示 raw path/checksum；两种 viewport 均无水平溢出，console error 为空。
-- Playwright Chromium workspace-first raw file drop QA 覆盖 `http://127.0.0.1:5173/` 下 desktop 与 `390px` narrow viewport：创建 active browser project、通过 dev/test fixture API 建立 session、向 Graph Canvas drop 一个长文件名 `.extxyz` native `File`，确认文件写入 repository 内部 `inputs/raw/{sha12}-{safeName}`，Project Files Panel 不展示 raw path/checksum，单对象 pipeline 创建 graph node 并显示结构摘要；两种 viewport 均无水平溢出。
-- Playwright Chromium helper browser QA 覆盖 desktop `1280x900` 与 narrow `390x900`：内部 `.rxnflow.zip` helper roundtrip 仍校验 fileName、entry count、rootName 和 sha256 summary；该 helper 不挂到 Project Sidebar 主流程，普通 UI 不展示 bundle checksum。
-- Workspace-first QA matrix 当前固定两类自动化证据：默认 fixture `workbench-journey.spec.ts` 覆盖桌面/窄屏顶部菜单、Project Sidebar 展开/收起、Project Files import、Graph Canvas、graph/PES/export、browser-local persistence、auto-save restore、Project Files raw-only 和复杂 graph gestures；local-http `local-http-bridge.spec.ts` 覆盖真实 Python bridge、本地 inline parser preview、project open/auto-save、energy compute、Web-visible PNG/CDXML/XLSX export projection、download MIME、project restore 和 raw file retention。
-- E2E helper `openWorkbench()` 现在显式断言 Graph Canvas、顶部 Workbench commands 和默认 closed Analysis 可见；需要项目栏的流程显式调用 `openProjectRail()`，project restore 在重新打开后断言 `inputs/raw/{sha12}-water.xyz` 仍在 Project Sidebar。
-- QA evidence boundary 保持不变：Playwright screenshot、trace 和 HTML report 只写入 gitignored output，不进入 Project Content、Browser Project Repository 或 report export artifacts；fixture 证明 Web UI 编排，local-http 证明真实 bridge 主链路，两者都不声明完整 Gaussian/ORCA/MAPLE/XYZ/extxyz 兼容认证。
-- Playwright default fixture project restore QA 覆盖 desktop `1280x720`：创建 browser project、导入 raw 文件、等待自动保存，reload 后重新打开并恢复 Project Files、graph/workspace 和 viewport；console clean，无水平溢出。
-- Playwright default fixture narrow QA 覆盖 `390x840`：首屏项目栏默认收起，展开后不暴露 Project Bundle 导入/导出主按钮；console clean，无水平溢出。
-
-当前验收矩阵：
-
-- Web unit/component：`ShellClient.test.ts`、`ProjectSidebar.test.tsx`、`GraphCanvas.test.tsx`、`WorkbenchShell.test.tsx` 覆盖 shell response projection、项目树、raw file drop、3D chemical node、用户可见名称过滤、节点菜单来源/化学计量数入口、Source Inspector、PES / Export、自动保存和普通 UI 不外露 runtime/backend/hash/internal ids。
-- Web build：`npm run build -- --mode test` 用于确认 Vite/TypeScript bundle 可构建；Three.js 目前进入主 bundle，Vite 可能提示 large chunk warning，但不影响当前功能正确性。
-- Browser QA：从 `web/` 启动 Vite dev server 后打开 `http://127.0.0.1:5173/`，检查页面非空白、无 framework overlay、console warning/error 无相关应用错误，右侧只按需出现浮动 Report Export Panel 或浮动 Source Inspector，主界面不出现 `Analysis`、`PES`、`Object Registry`、`Diagnostics`、`Runtime Fixture`、`browser-local-indexeddb-opfs-v1`、`sha256`、`node-web`、`object-imported`、`graph-*`、`session-*` 或 `fixture-parser` 等实现字符串；Source Inspector 仅在用户主动查看来源时显示 raw log 预览和解析摘要。
-- Graph node visual QA：用 fixture/test session 或真实 parser preview 创建节点后，节点卡应显示 3D viewer、结构名、energy、charge、spin、formula/method 等扫描信息；内部 id 只允许存在于 DTO、data-testid、测试 helper 和 persistence 投影中。
-- Responsive QA：桌面和窄屏都要检查 Project Rail、Graph Canvas、Report Export controls 和 3D viewer 无文字/控件重叠、无整体水平溢出。
-
-QA evidence boundary 保持不变：Playwright screenshot、trace 和 HTML report 只写入 gitignored output，不进入 Project Content、Browser Project Repository 或 report export artifacts；fixture 证明 Web UI 编排，local-http 证明真实 bridge 主链路，两者都不声明完整 Gaussian/ORCA/MAPLE/XYZ/extxyz 兼容认证。
+- 桌面：canvas/table/source/export 均可打开；Project Rail 的 `New Project Folder` / `Open Folder` 可见，浏览器预览能恢复 `.rxnflow.json` package；Project Rail 项目行的 `Project actions` 可打开 `Import files into project` 和 `Delete project`，项目行可接收外部 source 文件 drop 到该项目，删除需经确认后才移除当前 renderer 本地项目列表项；Project Rail source 文件行可单选、多选、范围选择、拖拽 raw-file payload、成对 gas/solution log 结构行拖拽成组 payload、drop 到画布指定位置创建 source node 或候选登记面板，并可从列表移除；外部 source 文件也可 drop 到画布指定位置导入；Select tool 可框选节点且不移动 viewport，Pan tool 可空白拖拽平移画布；节点/edge/barrier 选择后 Delete selection 或 Delete/Backspace 可移除当前选择，Shift 可多选/反选，Escape 可清空选择，方向键可微调已选节点，节点 coefficient、节点相对能量 zero point、Inspector edge label 和 barrier inline label 可编辑，Undo/Redo 可恢复画布编辑；Energy/Unit 会直接更新节点卡和 Table view，相对能量 zero point 可从节点卡设置；Auto layout 会重排节点，Fit view 会把当前节点 bounds 放入视图；节点卡和 Inspector `Structure Preview` 对有坐标 source 显示 2D skeletal SVG、无自动补出的隐式氢文本，Node Inspector `Edit 2D` 可打开 Ketcher editor 并保存/重置 manual KET/Molfile/CDXML/SVG，`3D Structure` 弹窗可打开；Export 只显示 PNG/CDXML/XLSX；runtime status 可见；无 local-http / Python bridge / ShellClient / cloud / sync / Search flows / Settings / Preferences / More canvas actions / Add Node / Compute / Profile / Objects / Object Registry / Apply correction 文案，无横向溢出，默认视图不让节点被 inspector 遮挡。
+- 窄屏：toolbar 可见且可换行，Energy/Unit select 不被裁切，无横向溢出，默认视图让当前主节点进入 canvas 可见区域。
+- 可访问性：工具条、minimap、zoom controls、画布、节点、节点 coefficient 控件、节点连接手柄、节点 barrier 手柄和 barrier label 控件有可访问名称；画布可聚焦并支持原 UI 图谱快捷键，节点连接手柄支持键盘创建 edge；CSS 保持 `letter-spacing: 0` 并提供 `prefers-reduced-motion` 降级。

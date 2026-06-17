@@ -1,0 +1,42 @@
+items:
+  - slug: canvas-workbench-rebuild
+    description: 重建 React/Vite 工作台主界面，落地项目 rail、命名创建本地项目、Project Rail 打开现有 .rxnflow / .rxnflow.json 项目、Project actions / Import files into project 导入到目标项目、项目行外部文件 drop 导入到目标项目、Project actions / Delete project 删除 renderer 本地项目列表项、按项目隔离 renderer 工作区快照、文件导入、source preview、成对 gas/solution log 结构行与成组 source 拖拽、raw-file drop 到画布指定位置创建 source node 或候选登记面板、无限画布、节点拖拽连续预览与 release 后 8px 网格吸附、Select tool 空白画布框选、Pan tool 空白画布拖拽平移、节点结构预览折叠/展开、画布级 Energy/Unit 切换当前表格承载的 Egas/Gsol 与 hartree/kcal/mol/kJ/mol、节点 coefficient 编辑、节点相对能量 zero point、节点手柄创建 edge 与 window release 收口、edge label 编辑、显式 barrier annotation 创建/label 编辑、画布 Shift 多选、Delete/Backspace/Escape/Arrow/Cmd-Ctrl undo-redo 快捷键、普通 wheel 平移、pinch-style 或 Ctrl/Meta+wheel 缩放、可拖拽导航 minimap、Undo/Redo、Delete selection、Auto layout、Fit view、能量表、inspector、轻量 3D structure 预览和 PNG/CDXML/XLSX 报告导出，不恢复 Search flows / 项目或 source 过滤、通用 Settings/Preferences、More canvas actions overflow、旧 ShellClient energy.compute 后端命令面板、EnergyProfilePanel、Object Registry / Objects tab 或 correction 表单
+    depends_on: []
+    status: completed
+    feature: null
+    notes: 本轮直接执行，历史代码已备份；空白 Add Node 演示入口、未由原 UI 承载的 Search flows 装饰入口、通用 settings 图标和无实现的 More canvas actions overflow 已删除，节点创建继续由导入/项目文件驱动；Project Rail 已恢复命名创建本地项目、New Project Folder 创建真实工作区文件夹、Open Folder 打开现有工作区文件夹、Project actions / Import files into project 导入到目标项目、项目行外部文件 drop 导入到目标项目、Project actions / Delete project 删除 renderer 本地项目列表项，并用 renderer workspace snapshot 隔离每个本地项目的 files、nodes、edges、barriers、viewport、selection 和 lightweight energy display options；多候选 source 通过候选选择面板登记选中/全部候选为节点；Project Rail 文件行已恢复旧 UI 承载的单选、Meta/Ctrl 多选、Shift 范围选择、raw-file drag payload、成对 gas/solution log 结构行与成组 source 拖拽、drop 到画布 graph-space 位置创建 source node 或候选登记面板，以及行内移除；外部 source 文件也可 drop 到画布指定位置导入；已恢复旧 UI 承载的 3D Structure 坐标摘要入口，以及 Undo/Redo、Delete selection、Auto layout、Fit view、节点拖拽连续预览与 release 后 8px 网格吸附、节点结构预览折叠/展开、Select tool 空白画布框选、Pan tool 空白画布拖拽平移、画布级 Energy/Unit 切换、画布 Shift 多选/反选、Delete/Backspace 删除选择、Escape 清空选择、Arrow 20px 微调已选节点、Cmd/Ctrl+Z 与 Cmd+Shift+Z/Ctrl+Y 撤销/重做、node coefficient 编辑、节点相对能量 zero point、节点手柄拖拽创建 edge（含 window release 命中完成/空白清理）、edge label 编辑、显式 barrier annotation 创建/内联 label 编辑/删除、minimap draft preview + release commit 导航等画布编辑命令；项目/source 搜索过滤、通用 Settings/Preferences、More canvas actions overflow、旧 energy.compute / EnergyProfilePanel / Object Registry / Objects tab / correction 表单已回到 roadmap-only
+  - slug: desktop-shell-electron
+    description: 新增 Electron 桌面壳，复用 Web renderer，提供 macOS/Windows 窗口、菜单、文件选择、项目 package 打开/保存和打包脚本
+    depends_on: [canvas-workbench-rebuild]
+    status: in-progress
+    feature: null
+    notes: 已新增 Electron main/preload/smoke、release-smoke、runtime-smoke、windows-installer-smoke、embedded-engine fallback、原生文件导入 IPC、PNG/CDXML/XLSX artifact 保存 IPC、.rxnflow 项目目录打开/保存 IPC、legacy .rxnflow.json 打开兼容、desktop 启动脚本、可复现 desktop:icons、PNG/ICNS/ICO 图标资产、electron-builder mac/win icon 配置、macOS hardened runtime entitlements、macOS notarization 辅助脚本和 desktop-release GitHub Actions workflow；desktop:pack 已改用明确的 electron-builder --mac dir target，2026-06-15 本机重跑可完成 Vite build、刷新 mac-arm64 unpacked app 并正常退出；desktop:runtime:smoke 可启动当前平台 packaged unpacked app，并验证 renderer 工作台渲染、Inspector 只暴露 Node / Source / Export、Export 面板只暴露 PNG/CDXML/XLSX、inactive UI 文案缺席、preload engine status 和 candidate registration；2026-06-15 本机重跑 desktop:pack:win 已刷新 Windows x64 win-unpacked 并通过 release 结构 smoke，仓库中保留此前 desktop:dist:win 生成并通过结构验证的 NSIS setup 和 portable artifacts，最新 installer/portable 和 Windows .exe runtime 需 Windows CI 或 Windows 机器重新产出/运行验证；desktop:installer:smoke:win 已接入 Windows CI，对 NSIS 安装器执行安装、启动、卸载 smoke；真实 Apple Developer ID 签名/公证成功证据、auto-update 和 Windows 安装器真实用户机器/发布渠道验证仍待 release 流程
+  - slug: local-engine-ipc
+    description: 设计桌面壳与本地 engine 的 IPC，替代用户手动启动 local bridge 的产品形态
+    depends_on: [desktop-shell-electron]
+    status: in-progress
+    feature: null
+    notes: 已落地 stdin/stdout Python engine IPC、Electron engine-bridge、packaged embedded Node engine fallback、preload registerImportCandidates、renderer runtime status、lightweight import.preview candidates/provenance/warnings、lightweight stateless import.register_selection/import.register_all、renderer-derived lightweight importLedger、轻量 project.validate/open/save，以及 .rxnflow file/node/edge/barrier/importLedger 基础引用、node 能量/position/可选 coefficient 形状、source/export 文件存在性和 sha256 校验 warning；完整 cclib/ASE parser、旧持久化 registry workflow 和 ProjectContent command contract 尚未完成
+  - slug: desktop-project-store
+    description: 重新设计桌面项目保存、打开、recent projects、raw files、exports 和项目目录
+    depends_on: [desktop-shell-electron]
+    status: in-progress
+    feature: null
+    notes: 已落地真实工作区文件夹、.rxnflow/project.json、.rxnflow/manifest.json、renderer-derived lightweight importLedger、sources/ source/raw 副本、source size/sha256 元数据、exports/manifest.json、当前项目下 artifact 写入、export artifact size/sha256 元数据、file/node/edge/barrier/importLedger 基础引用校验、node 能量/position/可选 coefficient 形状校验、renderer validation issue 悬浮提示、legacy .rxnflow.json 打开兼容和基础 recent projects 菜单持久化；Project Content 深校验、migration、content index 和 artifact cleanup/repair 未完成
+  - slug: parser-engine-reintroduction
+    description: 从历史备份中按 UI 需求重新引入完整 Gaussian/ORCA/MAPLE/XYZ parser engine，优先覆盖真实用户导入路径；当前已先落地 local-engine / renderer fallback lightweight parser
+    depends_on: [local-engine-ipc, desktop-project-store]
+    status: in-progress
+    feature: null
+    notes: Python local-engine、Electron embedded-engine 与 renderer fallback lightweight parser 覆盖 Gaussian SCF/Gibbs/free-energy fallback、Gaussian orientation/charge/multiplicity summary、ORCA final energy/Total SCF Energy fallback、ORCA implicit solvation/Cartesian coordinate/charge/multiplicity summary、MAPLE IRC/MAPLE banner output/MAPLE XYZ trajectory（无单位 Energy comment 按 Hartree）、普通 XYZ formula/comment energy（无单位按 Hartree、显式 Hartree/Ha 保留、eV 转 Hartree）和坏 XYZ parse_failed 投影、ASE extxyz metadata label/charge/spin/eV energy 转 Hartree，并返回 candidates/objectCount/warnings/provenance；parser warning codes 已按原 fixture snapshot 口径稳定排序，当前 UI 的多候选提示追加在 parser warning 之后；local-engine 已支持 lightweight stateless import.register_selection/import.register_all；Electron renderer 已通过 preload registerImportCandidates 接入 selected/all register，浏览器与 engine failure path 保留 renderer fallback；当前 UI 承载的 lightweight importLedger 已保存/校验；完整 cclib/ASE parser engine 与旧持久化 import registry workflow 尚未完成
+  - slug: report-export-reintroduction
+    description: 按 Export UI 重新引入原报告导出的 PNG/CDXML/XLSX；CSV/SVG/JSON 需重新确认后再评估，PDF/PPTX/CDX 继续保持后续规划
+    depends_on: [canvas-workbench-rebuild, desktop-shell-electron]
+    status: in-progress
+    feature: null
+    notes: 已落地 renderer-side lightweight PNG/CDXML/XLSX writer；Electron 可在当前工作区文件夹下写入 artifact bytes、更新 exports/manifest.json，并在 Export summary 中回显保存位置；旧 Python ReportExportService、完整 artifact index、CSV/SVG 高级导出、PDF/PPTX/CDX 仍未恢复
+  - slug: advanced-persistence-backlog
+    description: 重新评估 project bundle、content validation、migration、artifact index 是否需要恢复
+    depends_on: [desktop-project-store]
+    status: planned
+    feature: null

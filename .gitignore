@@ -3,11 +3,15 @@ __pycache__/
 *.pyc
 node_modules/
 web/dist/
+web/release/
 web/.vite/
 web/playwright-report/
 web/test-results/
 web/playwright-report-local-http/
 web/test-results-local-http/
+output/
+.playwright-cli/
+.codestable/history/
 *.tsbuildinfo
 *.rxnflow.zip
 /Ni-fxc/

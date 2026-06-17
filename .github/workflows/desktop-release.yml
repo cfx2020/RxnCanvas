@@ -1,0 +1,171 @@
+name: Desktop release verification
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-release.yml"
+      - "rxnflow/**"
+      - "tests/**"
+      - "web/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/desktop-release.yml"
+      - "rxnflow/**"
+      - "tests/**"
+      - "web/**"
+  workflow_dispatch:
+    inputs:
+      notarize_macos:
+        description: "Build a signed macOS artifact and submit it to Apple notarization."
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  core-and-renderer:
+    name: Core and renderer smoke
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install renderer dependencies
+        working-directory: web
+        run: npm ci
+      - name: Run Python core tests
+        run: python3 -m unittest discover
+      - name: Run renderer tests
+        working-directory: web
+        run: npm run test
+      - name: Build renderer
+        working-directory: web
+        run: npm run build
+      - name: Run Electron shell smoke
+        working-directory: web
+        run: npm run desktop:smoke
+      - name: Run release configuration smoke
+        working-directory: web
+        run: npm run desktop:release:smoke
+
+  macos-unpacked-runtime:
+    name: macOS unpacked runtime
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install renderer dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build unsigned local macOS app
+        working-directory: web
+        run: npm run desktop:pack
+      - name: Launch packaged macOS app
+        working-directory: web
+        run: npm run desktop:runtime:smoke
+      - name: Recheck release configuration and artifact shape
+        working-directory: web
+        run: npm run desktop:release:smoke
+
+  windows-runtime-and-installer:
+    name: Windows runtime and installer smoke
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install renderer dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build Windows unpacked app
+        working-directory: web
+        run: npm run desktop:pack:win
+      - name: Launch packaged Windows app
+        working-directory: web
+        run: npm run desktop:runtime:smoke
+      - name: Build Windows installer and portable artifacts
+        working-directory: web
+        run: npm run desktop:dist:win
+      - name: Install, launch, and uninstall Windows app
+        working-directory: web
+        run: npm run desktop:installer:smoke:win
+      - name: Recheck release configuration and artifact shape
+        working-directory: web
+        run: npm run desktop:release:smoke
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rxnflow-windows-artifacts
+          path: |
+            web/release/*.exe
+            web/release/*.blockmap
+          if-no-files-found: error
+
+  macos-signed-notarized:
+    name: macOS signed notarized artifact
+    runs-on: macos-14
+    if: github.event_name == 'workflow_dispatch' && inputs.notarize_macos
+    env:
+      CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Require signing and notarization secrets
+        run: |
+          test -n "$CSC_LINK"
+          test -n "$CSC_KEY_PASSWORD"
+          test -n "$APPLE_ID"
+          test -n "$APPLE_TEAM_ID"
+          test -n "$APPLE_APP_SPECIFIC_PASSWORD"
+      - name: Install renderer dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build signed macOS distribution artifacts
+        working-directory: web
+        run: npm run desktop:dist:mac
+      - name: Launch packaged macOS app
+        working-directory: web
+        run: npm run desktop:runtime:smoke
+      - name: Notarize and staple macOS artifacts
+        working-directory: web
+        run: npm run desktop:notarize:mac
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rxnflow-macos-artifacts
+          path: |
+            web/release/*.dmg
+            web/release/*.zip
+          if-no-files-found: error

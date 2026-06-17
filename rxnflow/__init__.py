@@ -1,5 +1,5 @@
-"""RxnFlow core package."""
+"""RxnFlow desktop-canvas rebuild smoke core."""
 
-from .fixture import run_core_fixture_vertical_slice
+from .engine import demo_flow, export_flow_json
 
-__all__ = ["run_core_fixture_vertical_slice"]
+__all__ = ["demo_flow", "export_flow_json"]

@@ -1,0 +1,277 @@
+import type {
+  CanvasViewport,
+  FlowBarrier,
+  FlowEdge,
+  FlowNode,
+  ProjectSummary,
+  SourceFile,
+} from "../domain/projectPackages"
+import { downloadText } from "./browserDownloads"
+import {
+  browserPreviewEngineStatus,
+  engineStatusFailure,
+  type DesktopEngineStatus,
+} from "./desktopRuntime"
+import type {
+  DesktopImportRegistrationPayload,
+  DesktopImportRegistrationResponse,
+  DesktopSourceFile,
+} from "./importRegistration"
+import {
+  projectPackageOpenRuntimeTransition,
+  projectPackageArchiveDefaultName,
+  projectPackageSaveRuntimeTransition,
+  serializeProjectPackage,
+  type ProjectValidationPayload,
+} from "./projectPackageWorkflow"
+
+export type RxnflowDesktopApi = {
+  platform: string
+  chooseFiles: () => Promise<{ canceled: boolean; files: DesktopSourceFile[] }>
+  getEngineStatus: () => Promise<DesktopEngineStatus>
+  registerImportCandidates?: (payload: DesktopImportRegistrationPayload) => Promise<DesktopImportRegistrationResponse>
+  saveJsonSnapshot: (payload: { defaultName: string; content: string }) => Promise<{ canceled: boolean; filePath?: string }>
+  saveReportArtifact: (payload: {
+    defaultName: string
+    mimeType: string
+    encoding: "utf8" | "base64"
+    content: string
+  }) => Promise<{ canceled: boolean; filePath?: string; projectArtifactPath?: string }>
+  createProjectFolder?: (payload: {
+    projectLabel: string
+    defaultName: string
+    content: string
+  }) => Promise<ProjectPackageSaveResult>
+  openProjectPackage: () => Promise<ProjectPackageOpenResult>
+  getStartupProjectContent?: () => Promise<ProjectPackageOpenResult>
+  saveProjectPackage: (payload: { defaultName: string; content: string }) => Promise<ProjectPackageSaveResult>
+  autosaveProjectPackage?: (payload: { defaultName: string; content: string }) => Promise<ProjectPackageSaveResult>
+  onMenuImportFiles: (callback: () => void) => () => void
+  onMenuOpenProject: (callback: () => void) => () => void
+  onMenuSaveProject: (callback: () => void) => () => void
+  onOpenProjectContent: (callback: (payload: ProjectPackageOpenPayload) => void) => () => void
+}
+
+declare global {
+  interface Window {
+    rxnflowDesktop?: RxnflowDesktopApi
+  }
+}
+
+export type ProjectPackageSaveResult = {
+  canceled: boolean
+  filePath?: string
+  projectDirectory?: string | null
+  content?: string
+  validation?: ProjectValidationPayload | null
+}
+
+export type ProjectPackageOpenPayload = {
+  content: string
+  filePath?: string
+  projectDirectory?: string | null
+  validation?: ProjectValidationPayload | null
+  replaceProjects?: boolean
+  source?: string
+}
+
+export type ProjectPackageOpenResult = {
+  canceled: boolean
+  content?: string
+  projectContents?: ProjectPackageOpenPayload[]
+  filePath?: string
+  projectDirectory?: string | null
+  validation?: ProjectValidationPayload | null
+  replaceProjects?: boolean
+  source?: string
+}
+
+export type RestoreProjectPackageOptions = {
+  replaceProjects?: boolean
+}
+
+export type RestoreProjectPackageHandler = (
+  content: string,
+  validation?: ProjectValidationPayload | null,
+  options?: RestoreProjectPackageOptions,
+) => void
+
+export async function openProjectPackageFromRuntime({
+  desktopApi,
+  projectInput,
+  restoreProjectPackage,
+}: {
+  desktopApi: RxnflowDesktopApi | undefined
+  projectInput: HTMLInputElement | null
+  restoreProjectPackage: RestoreProjectPackageHandler
+}): Promise<void> {
+  const transition = projectPackageOpenRuntimeTransition(Boolean(desktopApi?.openProjectPackage))
+  if (transition.shouldOpenBrowserPicker) {
+    projectInput?.click()
+    return
+  }
+  const result = await desktopApi?.openProjectPackage()
+  if (!result || result.canceled || !result.content) return
+  restoreProjectPackage(result.content, result.validation, {
+    replaceProjects: result.replaceProjects ?? Boolean(result.projectDirectory),
+  })
+}
+
+export async function saveProjectPackageToRuntime({
+  desktopApi,
+  project,
+  files,
+  nodes,
+  edges,
+  barriers,
+  viewport,
+  setProjectValidation,
+}: {
+  desktopApi: RxnflowDesktopApi | undefined
+  project: ProjectSummary
+  files: SourceFile[]
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  barriers: FlowBarrier[]
+  viewport: CanvasViewport
+  setProjectValidation: (validation: ProjectValidationPayload | null) => void
+}): Promise<void> {
+  const transition = projectPackageSaveRuntimeTransition(Boolean(desktopApi))
+  const { content, defaultName } = serializeProjectPackage({
+    project,
+    files,
+    nodes,
+    edges,
+    barriers,
+    viewport,
+  }, transition.runtime)
+  if (transition.shouldSaveDesktop) {
+    const result = await desktopApi?.saveProjectPackage({
+      defaultName: projectPackageArchiveDefaultName(project.label),
+      content,
+    })
+    if (result && !result.canceled) setProjectValidation(result.validation ?? null)
+    return
+  }
+  if (transition.shouldDownloadBrowser) downloadText(defaultName, content, "application/json")
+  setProjectValidation(null)
+}
+
+export async function autosaveProjectPackageToRuntime({
+  desktopApi,
+  project,
+  files,
+  nodes,
+  edges,
+  barriers,
+  viewport,
+  setProjectValidation,
+}: {
+  desktopApi: RxnflowDesktopApi | undefined
+  project: ProjectSummary
+  files: SourceFile[]
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  barriers: FlowBarrier[]
+  viewport: CanvasViewport
+  setProjectValidation: (validation: ProjectValidationPayload | null) => void
+}): Promise<ProjectPackageSaveResult | null> {
+  if (!desktopApi?.autosaveProjectPackage) return null
+  const { content, defaultName } = serializeProjectPackage({
+    project,
+    files,
+    nodes,
+    edges,
+    barriers,
+    viewport,
+  }, "desktop")
+  const result = await desktopApi.autosaveProjectPackage({ defaultName, content })
+  if (!result.canceled) setProjectValidation(result.validation ?? null)
+  return result
+}
+
+export function subscribeProjectPackageRuntimeMenus({
+  desktopApi,
+  openProjectPackage,
+  saveProjectPackage,
+  restoreProjectPackage,
+}: {
+  desktopApi: RxnflowDesktopApi | undefined
+  openProjectPackage: () => void
+  saveProjectPackage: () => void
+  restoreProjectPackage: RestoreProjectPackageHandler
+}): () => void {
+  const disposers = [
+    desktopApi?.onMenuOpenProject?.(openProjectPackage),
+    desktopApi?.onMenuSaveProject?.(saveProjectPackage),
+    desktopApi?.onOpenProjectContent?.((payload) => {
+      restoreProjectPackage(payload.content, payload.validation, {
+        replaceProjects: payload.replaceProjects,
+      })
+    }),
+  ].filter((dispose): dispose is () => void => typeof dispose === "function")
+  return () => {
+    disposers.forEach((dispose) => dispose())
+  }
+}
+
+export function restoreStartupProjectFromRuntime({
+  desktopApi,
+  restoreProjectPackage,
+}: {
+  desktopApi: RxnflowDesktopApi | undefined
+  restoreProjectPackage: RestoreProjectPackageHandler
+}): () => void {
+  let canceled = false
+  if (!desktopApi?.getStartupProjectContent) return () => {
+    canceled = true
+  }
+
+  void desktopApi.getStartupProjectContent().then((result) => {
+    if (canceled || !result || result.canceled) return
+    const payloads = Array.isArray(result.projectContents) && result.projectContents.length > 0
+      ? result.projectContents
+      : result.content
+        ? [result as ProjectPackageOpenPayload]
+        : []
+    payloads.forEach((payload) => {
+      restoreProjectPackage(payload.content, payload.validation, {
+        replaceProjects: payload.replaceProjects ?? true,
+      })
+    })
+  }).catch(() => {
+    // Startup restore is best-effort. Invalid recent workspaces are pruned by the main process.
+  })
+
+  return () => {
+    canceled = true
+  }
+}
+
+export function watchDesktopEngineStatus({
+  desktopApi,
+  setEngineStatus,
+}: {
+  desktopApi: RxnflowDesktopApi | undefined
+  setEngineStatus: (status: DesktopEngineStatus | null) => void
+}): () => void {
+  let canceled = false
+  if (!desktopApi?.getEngineStatus) {
+    setEngineStatus(browserPreviewEngineStatus())
+    return () => {
+      canceled = true
+    }
+  }
+
+  setEngineStatus(null)
+  void desktopApi.getEngineStatus().then((status) => {
+    if (!canceled) setEngineStatus(status)
+  }).catch((error: unknown) => {
+    if (canceled) return
+    setEngineStatus(engineStatusFailure(error))
+  })
+
+  return () => {
+    canceled = true
+  }
+}

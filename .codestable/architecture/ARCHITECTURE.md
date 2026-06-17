@@ -2,322 +2,78 @@
 
 > 状态：当前
 > 创建日期：2026-05-01
-> 最近更新：2026-06-07
+> 最近更新：2026-06-17
 
-## 1. 项目简介
+## 1. 当前产品边界
 
-RxnFlow 是一款面向计算化学结果的反应路径登记、图谱组装与可视化报告生成应用。项目依托外部生成的 Gaussian 日志、ORCA 输出、MAPLE/ASE XYZ 等原始计算输出文件，解析分子结构、能量、热化学参数与计算条件，将其登记为可复用化学对象，并支持用户通过节点图谱编辑反应路径、预览反应网络、生成能量曲线与标准化报告。
+RxnFlow 现在处于桌面画布重构期，旧代码已备份到 `.codestable/history/2026-06-12-pre-desktop-canvas-rebuild/rxnflow-pre-desktop-canvas-rebuild.tar.gz`。当前架构以用户最新规则为准：
 
-产品定位是专注计算化学领域的图谱编辑器。架构设计需要优先考虑 agent 友好操作、模块化解耦，以及 Web、macOS app、Windows exe、Linux CLI 等多端适配。
+- 原 UI 已承载的用户可见功能应在当前桌面工作台保留轻量可用入口；原 UI 没承载或用户未认可的功能，不出现在当前主界面。
+- 已有底层但当前 UI 不承载的能力先移入 roadmap/backlog，不作为 active code 继续维护。
+- 当前 Web 只做本地优先桌面 renderer / demo，不做账号、云同步、Vercel 云解析或用户手动 Python bridge。
+- 目标客户端是 macOS 和 Windows 桌面端；当前 active 组合是 Electron + React/Vite renderer + 本地 lightweight engine。
 
-## 2. 核心概念 / 术语表
+## 2. 当前 active 形态
 
-- Project：用户创建的工作空间，用于组织导入文件、化学对象、反应图谱与导出报告。
-- Project Directory：一个可落盘 RxnFlow 项目的根目录，当前固定包含 `.rxnflow/manifest.json` 和 `inputs/raw/`。
-- Project Manifest：项目级结构化元数据，当前 schema version 为 `project-v1`，记录 project id/name/schemaVersion/resources。
-- Project Content：`.rxnflow/state/` 下保存的项目领域内容，当前覆盖真实 ChemicalObject、ReactionGraph、WorkspaceSnapshot、ImportBatch/ParsePreview、EnergyProfile snapshot 和 ExportArtifact index。
-- Project Content Index：`.rxnflow/state/project-content.json`，记录 state section 文件 kind、path、checksum 和 updated_at。
-- Project Content Snapshot：一次保存/加载的项目内容快照，当前用于把对象、导入 ledger、图谱、workspace、energy profile 和 export artifact index 跨进程恢复为核心 dataclass。
-- Project Content Validation：对 Project Content index、section files、schema、checksum、安全 path、跨 section 引用、`reaction-graphs-v1` composition 语义、`energy-profiles-v1` expression 语义和 `exports/...` artifact checksum 做只读校验。
-- Validation Report：Project Content Validation 的结构化结果，包含 project id、schema version、ok、issues、checked_at 和 summary；warning 不阻止加载，error 使 report.ok 为 false。
-- Validation Issue：单条 validation warning/error，包含 severity、code、message、target 和 JSON-safe details。
-- Migration Plan：Project Content schema migration 的显式计划结果；当前只支持 `project-content-v1 -> project-content-v1` no-op，legacy/new energy semantics optional fields 都不需要迁移，未知 source/target 返回 unsupported issue，不做 silent migration。
-- Project Storage Backend：按项目相对 POSIX path 读写 bytes 的存储后端协议，当前落地本地文件系统 backend 和浏览器本地测试替身。
-- Browser Local Storage Backend：面向 IndexedDB / OPFS 方向的 `ProjectStorageBackend` 核心协议测试替身，使用 opaque origin-local project key 隔离项目，不提供云同步。
-- Browser Project Repository：Web 端真实浏览器本地项目仓储，当前通过 `web/src/repository` 提供 IndexedDB-first adapter，保存 origin-local project refs 和项目相对 POSIX path 下的 bytes objects；它不等同于 Python `BrowserLocalProjectStorageBackend` 测试替身，也不提供云同步。
-- Browser Project Ref：浏览器 origin-local 的项目引用，包含 id、name、backendId、projectRef、createdAt、updatedAt 和 localOnly，用于 Project Sidebar 的项目列表、保存和打开项目流程。
-- Browser Storage Object：Browser Project Repository 中的项目对象，包含 project-relative POSIX path、bytes、checksum 和 JSON-safe metadata。
-- Project Sidebar：Web Workbench 左侧项目入口，当前列出 browser-local projects，支持新建、打开、保存真实 Project Content files，并提供项目树导入与 raw-only Project Files。主界面不显示 local-only/backend/runtime 实现名，也不常驻显示 saved / valid / checksum；只有未保存、保存失败、项目内容缺失或浅校验错误时显示 Project notices。当前不再暴露手动 Open Bridge / Save Bridge Session 或 Import Bundle / Export Bundle 主入口。
-- ProjectSidebarState：Web 前端从 Browser Project Repository 派生的 UI state，包含 projects、activeProjectRef、activeProject、persistence、validation、bridge、lastWrite 和 repository error；它不进入 ShellResponse，也不替代 WorkbenchDomainState。
-- Browser Project Content Files：Browser Project Repository 中的 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` bytes objects，使用现有 `project-v1` / `project-content-v1` / section schema；Web 只生成空 sections 或搬运 shell 返回 bytes，不解释领域模型。
-- Sidebar Validation Status：Project Sidebar 对 Browser Project Content Files 是否可读、section 是否缺失、checksum 是否匹配和 repository error 的浅状态投影；它不等同于 Python ProjectContentValidator 深校验报告。正常 valid 结果只作为内部状态保留，不在侧栏常驻显示。
-- Web I18n Runtime：Web app 内的轻量国际化运行时，当前提供 `I18nProvider`、`useI18n`、`t(key, params)`、`zh-CN` / `en-US` catalogs、browser language detection 和 localStorage locale preference；它不进入 ShellResponse 或 Project Content。
-- Message Catalog：Web UI 主文案 key/value 表，当前 `zh-CN` 和 `en-US` 的 key 必须完全一致；动态项目数据、错误 code/target、checksum 和文件名不进入 catalog。
-- Locale Preference：用户在 Web 顶栏选择的语言偏好，只保存在浏览器 localStorage；不依赖账号、云同步或项目文件。
-- Transient Import Payload Helper：Web 工作台中把浏览器 `File` 或项目文件条目转换为 JSON-safe `import.preview` payload 的内部 helper；旧 Import Inbox / Source Tray UI 已删除，用户可见入口收束到项目树导入与 Graph Canvas drop。
-- Web Import File：浏览器选择文件的前端 metadata 投影，当前包含 name/size/mime/lastModified/logical storagePath、可选 File 引用、preview source kind 和 Raw Persistence Summary；不把 `File`、`Blob`、`ArrayBuffer` 或 bytes 直接传入 ShellClient。
-- Browser Raw Input Object：Browser Project Repository 中 `inputs/raw/{sha12}-{safeName}` 路径下的 raw output bytes object，metadata 标记 `kind=raw_file`、source name、byte size、mime type 和 last modified；用于 active browser project 的后续 bundle anchor，不是 Python parser 的读取入口。
-- Browser Raw Resource：`.rxnflow/manifest.json` 中与 Browser Raw Input Object 对应的 `raw_file` ProjectResource JSON 投影，id 为 `raw-{sha12}`，path/checksum/metadata 与 raw object 对齐；同 checksum merge 幂等，不重复追加 manifest resource。
-- Raw Persistence Summary：项目树导入或画布 drop 过程中的 UI-only 状态，内部保留 persisted/skipped/error、raw resource id/path/checksum 或 repository error code/target；普通 UI 只显示必要导入状态，不把 raw id/path/checksum 当成主要信息展示。长期状态只在 Browser Project Repository object 与 manifest resource 中。
-- Inline Preview Payload：local-http 模式下发送给 `import.preview` 的 `sources[].kind="inline_bytes"` JSON-safe payload；它用于 parser preview，不等同于 Browser Raw Input Object，也不会让 Python bridge 读取 IndexedDB。
-- Browser Bundle Archive Adapter：Web 侧纯 TypeScript `.rxnflow.zip` helper，当前位于 `web/src/app/projectBundleArchive.ts`，只负责 zip bytes read/write、Bundle Root / allowed roots / entry safety / shallow manifest summary；它不依赖 React UI、ShellClient、Browser Project Repository 或 Python ProjectBundleService。
-- Browser Project Bundle Entry：Web archive helper 暴露的 project-relative bundle file entry，包含 `name`、`projectRelativePath`、`bytes`、`byteSize` 和 `sha256` checksum；entry 不带 zip root 前缀，内部 helper 需要通过 adapter 包装或读取 Bundle Root。
-- Browser Project Bundle Summary：Web archive helper 生成的 bundle 摘要，包含 bundleName、rootName、projectId/projectName、fileCount、byteSize、bundle checksum 和 shallow validation state；它不是 Python ProjectContentValidator 深校验报告。
-- Browser Bundle Export Action：Web 侧内部导出 helper，当前位于 `web/src/app/projectBundleExport.ts`；它只从 active Browser Project Repository 读取 `.rxnflow/`、`inputs/raw/` 和 `exports/` 当前 bytes，调用 Browser Bundle Archive Adapter 生成 `.rxnflow.zip` Blob 和 summary。它不挂到 Project Sidebar 主流程。
-- Browser Bundle Import Action：Web 侧内部导入 helper，当前位于 `web/src/app/projectBundleImport.ts`；它读取 `.rxnflow.zip` File，经 Browser Bundle Archive Adapter 校验后创建新的 browser-local project，并把 safe project-relative entries 写入 Browser Project Repository。它不挂到 Project Sidebar 主流程。
-- Partial Import Risk：Web repository 当前没有跨 object transaction API；内部 Bundle Import 在完整 archive 校验后才创建 project，但 createProject 成功后若 writeObject 中途失败，会返回 partialProjectRef 和 writtenCount，不自动删除已写 objects。
-- Web Project Restore Roundtrip：Web 侧已用 component tests 与 Playwright smoke 验证的保存/恢复闭环：用户打开 browser-local project 后自动恢复 core session，active project + session 的工作台变更会自动写回 `.rxnflow/state/*.json`，刷新或重新打开项目后恢复 raw files、graph/workspace、viewport、selection、active path 和 profile。
-- Web Project Portability QA & Guides：Web 项目保存/恢复的收口验证与指南集合，当前通过默认 fixture Playwright 覆盖 desktop auto-save restore、Project Files raw-only 和复杂 graph gestures，通过 local-http Playwright 覆盖真实 Python bridge project restore，并通过 `docs/user/workspace-first-workbench.md` / `docs/dev/workspace-first-flow-qa.md` 说明主流程。`.rxnflow.zip` 文档只保留内部/CLI边界。
-- Zip Dependency Boundary：Web 当前采用 `fflate` 作为 zip 依赖，依赖只允许由 Browser Bundle Archive Adapter 及其测试直接 import；UI、repository writer 和 Shell bridge 不直接散落调用 zip 库。
-- Web Object Registry Panel：Web 工作台右侧 inspector 中展示已登记对象 summary 的只读面板；当前只读取 `WorkbenchDomainState.objects`，不等同于核心层 `ChemicalRegistry` 服务。
-- Object Summary Projection：ShellResponse / WorkbenchDomainState 中面向 Web UI 扫描的对象摘要，可包含 formula、charge/spin、method、source、energy/thermochemistry keys、energy_channels、display_energy、coordinate_preview、geometry、provenance、correction_count、corrections 明细和 warnings；它不复制完整 ChemicalObject dataclass，`display_energy` 只是扫描用数值摘要，`coordinate_preview` 只表达 atom count/元素/3D 可用性，`geometry` 只为 Web 3D preview 提供原子坐标投影。
-- Parse Candidate Summary：`import.preview` 中每个 `ChemicalObjectDraft` 的 JSON-safe UI 摘要，包含 object index、label、基础化学字段、display energy、coordinate preview、role hint 和 warnings；它不是已登记对象，也不写 Project Content。
-- Parse Candidate Chooser：Web Graph Canvas 上 raw file drop 多对象 / 多帧 preview 的 UI-only 选择器；取消不登记也不建节点，确认后才调用 `import.register_selection` 并在落点附近创建选择对象对应的 graph nodes。
-- Active Web Object：Web Object Registry Panel 当前选中的 object id，属于前端 UI-only state，不写入 Project Content，不替代 Workspace Selection。
-- Correction Entry Form：Object Registry Panel 中面向 active object 的校正项输入表单；只提交 `registry.apply_correction` Shell command，成功后以 ShellResponse 返回的 object summary 刷新对象状态，不在前端本地伪造 correction。
-- Web Graph Canvas：Web 工作台中间区域的图谱编辑画布，当前从 `WorkbenchDomainState.workspace.graph`、`workspace.viewport`、`workspace.selection` 渲染节点、边、路径、active path、Workspace Selection、Network Preview、Parse Candidate Chooser 和 Canvas Chemical Node，并承载对象拖入、raw file drop、节点布局、edge/path 编辑、视口控制、minimap 和轻量 history 等交互；普通节点卡通过用户可见名称过滤隐藏内部 id/hash，并在存在 geometry 时显示 Three.js 3D 结构预览。
-- Web Molecule 3D Viewer：Web Graph Canvas 节点卡内的 Three.js ball-and-stick 结构预览组件，从 `ObjectSummary.geometry` 读取原子坐标，支持自适应缩放、轻量 bond 推断和 pointer drag 旋转；它不写 Project Content，也不替代 core ChemicalObject geometry。
-- Web Display Name Filter：Web 普通 UI 的用户可见名称过滤 helper，优先使用结构 label、source file name、graph node label 或 artifact basename，并过滤 node/object/raw/source/graph/session/artifact/profile/path/edge/corr、`sha256:`、hash 前缀和 fixture-like 字符串；内部 id 仍可留在 DTO、测试和 persistence 投影中。
-- Workspace Selection Projection：Web Graph Canvas 当前选中的 node/edge/path id 集合，来自 ShellResponse `WorkspaceSummary.selection`，通过 `workspace.select` 更新，并可随显式 Project Content open/save bridge 保存/恢复。
-- Pending Web Connection / Pending Edge Draft：Web Graph Canvas 中连接起点、pointer draft 和候选目标 node 的 UI-only 状态；click-driven fallback 或 Direct Edge Gesture release 到合法目标后提交 `workspace.connect`，draft 本身不写入 ReactionGraph。
-- Web Network Preview Panel：Web Graph Canvas 旁的结构摘要面板，显示 node/edge/path count、active path 和 disconnected diagnostics，不是能量曲线或报告预览。
-- Web Node Composition Editor：Web Graph Canvas 选中节点后的组成编辑器，可编辑 composition rows 的 object、coefficient、role 和 label；编辑期使用 Composition Draft，只有 Apply 时才通过 `workspace.set_node_composition` 提交。
-- Composition Draft：Web UI-only 的节点组成草稿状态，从 ShellResponse graph node composition 初始化，切换/删除节点后 prune，不写 Project Content、Browser Project Repository 或 localStorage。
-- Web Energy Profile Panel：Web 工作台右侧 inspector 中命令驱动的能量面板，当前基于 active path 调用 `energy.compute`，展示 profile summary、relative energy table、missing reason、warnings、Energy Expression Details 和交互式 SVG curve。
-- Web Energy Panel Options：Energy Profile Panel 的 UI-only command options，包括 path、output unit、energy key/source、baseline node 和 correction policy；只在点击 Compute 时映射为 Shell command args，不写 Project Content。
-- Web Energy Channel Selector：Energy Profile Panel 中从 Object Summary `energy_channels` 汇总出的 key/source/unit 候选控件，同时保留自定义 key fallback；缺失/歧义仍由 shell/core 判定。
-- Web Correction Policy Controls：Energy Profile Panel 中把 none/all/kinds/ids 校正策略映射为 `include_corrections` 和 `correction_policy` shell args 的控件，不在前端计算 correction contribution。
-- Web Energy Curve Point：Energy Profile Panel 中从 `EnergyProfile.points[]` 投影出的 UI point，可显示有效、missing、correction 和 selected 状态；它不等同于核心层 `EnergyPoint`。
-- Web Curve Point Detail：Energy Profile Panel 内当前 hover/focus/selected point 的详情区，显示结构 label、relative energy 或 missing reason、expression total、composition term count、correction count 和 missing code；node id 只作为 `workspace.select` linkage target 保留在 DTO/测试中，不作为普通详情主标签。
-- Web Profile Node Linkage：Energy Profile Panel 选中 curve/table point 后通过 `workspace.select(node_ids=[nodeId])` 让 Graph Canvas 选中同一节点；它只联动 selection，不改 graph/path/profile。
-- Web Report Export Panel：Web 工作台右侧 inspector 中命令驱动的报告导出面板，当前基于 active profile 调用 `export.profile`，普通 UI 只显示 PNG/CDXML/XLSX format、basename/title、Export button、可读文件名和 inline download link；CSV/SVG 仍是 core supported writers，但不在 Web 普通导出面板显示。artifact id、checksum、writer metadata、warnings 和 persistence state 留在内部 projection / persistence / tests 中。
-- Web Report Export Options：Report Export Panel 的 UI-only command options，包括 formats、include bytes、basename 和 title；普通 UI 不暴露 include bytes 开关，默认始终请求 inline bytes。options 只在点击 Export 时映射为 Shell command args，不写 core Project Content session。
-- Inline Artifact Download：Web 端基于 `ShellArtifact.bytes_base64` 创建的 data URL 下载入口；它不等同于 browser-local persisted object，也不等同于长期 core `ExportArtifactRecord`。
-- Browser Export Object：Browser Project Repository 中 `exports/...` 下的导出 artifact bytes object，来源必须是 `ShellArtifact.bytes_base64`，metadata 标记 `kind=export_artifact`、artifact id 和 format。
-- Browser Export Artifact Record：Browser Project Repository 中 `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` record，记录 browser-local export object 的 id、format、path、checksum、created_at 和 metadata。
-- Web E2E QA Harness：`web/` 内基于 Playwright 的真实浏览器回归入口，当前通过 `npm run test:e2e` 覆盖默认 fixture 桌面/窄屏 Workbench Journey、desktop advanced Graph Editor Matrix、窄屏 advanced graph controls、auto-save restore、Project Files raw-only 和 Web-visible PNG/CDXML/XLSX 导出链路，并通过 `npm run test:e2e:local-http` 独立启动本地 Python bridge 与 local-http Vite server 做真实 bridge smoke；两种模式的 baseURL、server env、测试文件和输出目录互相隔离。local-http E2E 的 bridge Python 解释器按 `RXNFLOW_E2E_PYTHON`、`CONDA_PREFIX/bin/python3`、`python3` 顺序选择。
-- Project Bundle：`.rxnflow.zip` 项目包，内部只有一个 Bundle Root；当前作为 core/CLI/内部 helper 的备份或后备迁移能力保留，不是 Web Project Sidebar 主流程。
-- Bundle Export：把本地 Project Directory 的 `.rxnflow/`、`inputs/raw/` 和 `exports/` 复制进 Project Bundle，不保存当前进程内 session。
-- Bundle Import：从 Project Bundle 安全解包成新的 Project Directory；第一版只支持 `fail_if_exists`，不覆盖、不合并、不自动改名。
-- Bundle Summary：bundle shell / CLI 返回的 JSON-safe 摘要，包含 bundle path、project path、project id、root name、file count、byte size、checksum 和 validation summary。
-- Graph / Workspace Section Codec：`reaction-graphs-v1` 和 `workspaces-v1` 的序列化、反序列化和引用校验边界。
-- Raw Output：外部计算程序产生的原始输出文件，例如 Gaussian log、ORCA output、MAPLE/ASE XYZ。
-- Raw File Resource：显式 `retain_raw=true` 时复制进 Project Directory 的原始输入文件索引项，manifest 只记录项目相对 path、sha256 checksum 和 metadata；默认导入路径不再创建该 resource。
-- Parser Plugin：核心层格式解析插件，声明 can_parse 能力并把单个 Raw File 解析为 ChemicalObjectDraft。
-- Parse Result：单次解析产物，包含 ChemicalObjectDraft 列表、provenance 和 warnings。
-- Parser Fixture Corpus：`tests/fixtures/parsers/` 下的解析器回归样例集合，当前包含 source inventory、public fixture decision ledger、manifest、support matrix、synthetic MAPLE sp/opt `.out`、MAPLE public-shape synthetic-derived `.out` / final `.xyz`、MAPLE path/path-family synthetic-derived `.xyz` partial、synthetic 和 public-shape synthetic-derived Gaussian/ORCA cclib fixtures、standard XYZ、ASE extxyz 单帧/多帧 project-authored variants、bad XYZ expected-error 样例和 golden snapshots，用于验证 ParserRegistry 语义稳定性和 import preview 保真。
-- Parser Source Inventory：parser fixture corpus 的 `parser-source-inventory-v1` YAML 来源清单，当前记录 MAPLE、cclib-data Gaussian/ORCA 和 ASE extxyz 的 URL、commit/version、license、默认再分发状态、代表文件 path、size、sha256、fixture policy 和 parser intent；它不 vendor 第三方文件，也不声明 runtime parser 支持。
-- Public Fixture Decision Ledger：parser fixture corpus 的 `parser-public-fixture-decisions-v1` YAML 决策清单，逐个 `source_id + file_id` 记录 evidence、decision、promotion、reason、fallback fixture、reference file 和 reviewer；它是测试侧 promotion gate，不 vendor 文件，不声明 runtime parser 支持。
-- Fixture Promotion Adapter：测试侧 public fixture promotion 收口 helper，从 source inventory、decision ledger、manifest、golden snapshot 和 support matrix 派生 promotion summary，校验 promoted decisions 的 executable coverage，以及 `vendored-third-party` / `user-redacted` source-gated fixture 的 `decision_id` 与 source metadata 关系。
-- Candidate Fetch Verify：测试侧/dev-only 的 source inventory 复核 helper，按 `source_id + file_id` 构造 fetch request，并对调用方提供的 bytes 做 sha256/size 校验；它不访问网络、不写文件、不自动 vendor，也不绕过 public fixture decision ledger。
-- Fixture Manifest：parser fixture corpus 的 `parser-fixtures-v1` YAML 清单，记录 fixture id、program、format、task、parser_id、source policy、parse options、expected snapshot 和浮点容差；`vendored-third-party` source 必须记录 upstream `source_path`、`source_sha256`、`source_size_bytes` 和 `decision_id`，`user-redacted` source 也必须记录 `decision_id` 与 redaction 边界。
-- Golden Snapshot：parser fixture 的 `parser-golden-v1` JSON 期望，记录 ParseResult 的稳定投影，包括 object_count、provenance.parser_id、对象摘要、energy keys、energy units/value 和 warning codes。
-- Parser Support Matrix：parser fixture corpus 的 `parser-support-matrix-v1` YAML 支持矩阵，按 program、format、task、field status、source ids、candidate file ids、fixture ids、reference file ids、known limits 和 observed diagnostics 记录当前 fixture-backed 支持边界；`candidate` entry 只表示 source-backed 候选，不表示已 vendor 或 parser 已支持。
-- Parser Diagnostic Catalog：support matrix 内的 warning/error code 目录，当前定义 `partial_parse`、`missing_section`、`ambiguous_value`、`unit_assumed`、`unsupported_task`、`unsupported_field`、`source_license_notice`、`invalid_input`、`unsupported_format` 和 `parse_failed` 的测试侧语义。
-- Parser Corpus Developer Guide：`docs/dev/parser-fixture-corpus.md` 下的开发者和 agent 任务指南，说明新增 fixture、source policy、脱敏、snapshot 更新、support matrix、diagnostic codes、import preview regression 和 parser gap triage。
-- Parser Output Support Guide：`docs/user/parser-output-support.md` 下的用户向支持边界说明，解释 supported/partial/candidate/reference-only/unsupported 状态、当前 Gaussian/ORCA/MAPLE/XYZ/extxyz fixture-backed 字段、warning/error 含义和真实样例贡献 checklist；它不是 runtime API 或真实软件版本认证。
-- Import Registry Workflow：核心层导入编排服务，串联 Project Store、Parser Registry 和 Chemical Registry，把 source file 作为 transient parser input，或在显式 `retain_raw=true` 时保留 raw resource，并变成等待确认或已登记的结构化导入状态。
-- Import Batch / Import Item：单文件或批量导入的内存状态快照，逐项记录 source_path、可选 raw resource、source name/checksum/byte size、parse preview、warnings、error 和 registered object ids。
-- Parse Preview：等待用户或 agent 确认的解析预览，记录 parser provenance、object_count、warnings 和原始 ParseResult；确认前不登记 ChemicalObject。
-- Import Ledger：Project Content 中的 `import-ledger-v1` section，保存 ImportBatch、ImportItem、ParsePreview、registered ids、warnings 和 errors。
-- Chemical Object：从原始输出解析并登记的可复用对象，包含结构、电荷自旋、方法、能量、热化学参数、来源、registry fingerprint 与校正项等信息。
-- Chemical Registry：核心层对象登记服务，负责把 Parse Result 固化为项目内 Chemical Object，并维护来源追踪、基础去重、校正项追加和已持久化对象恢复。
-- Correction：用户为化学对象补充的 append-only 能量校正项，例如谐振校正、溶剂化校正或手动校正。
-- Reaction Graph：用户在画布上搭建的节点图谱，用于表达底物、催化剂、过渡态、中间体、产物及分叉反应路径。
-- GraphPatch：UI 和 agent 共用的结构化图谱修改协议，当前支持添加/更新/删除节点与边，以及设置反应路径。
-- Graph Editor Workspace：围绕一个 ReactionGraph 的 headless 编辑会话层，负责对象面板、selection、viewport、active path 和 preview，不替代 ReactionGraphService。
-- Workspace Snapshot：平台壳层和 agent 可读取的 workspace 快照，包含 graph、Object Palette、Workspace Selection、Canvas Viewport、active path、Network Preview 和可选 updated_at。
-- Object Palette：可拖入或放入 graph 的已登记 ChemicalObject 引用列表，当前来自调用方传入对象或 confirmed import items。
-- Canvas Viewport：画布平移和缩放状态；属于 workspace-only state，不写入 GraphPatch。
-- Workspace Selection：当前选中的 node、edge、path id 集合；属于 workspace-only state，不写入 ReactionGraph。
-- Network Preview：从 ReactionGraph 派生的结构化预览数据，包含 nodes、edges、paths、active path 和 disconnected node diagnostics，不是渲染图或能量曲线。
-- Active Path：当前 workspace 选中的 ReactionPath；path 数据仍由 ReactionGraph.paths 承载。
-- Energy Engine：核心层能量 profile 计算服务，根据选定 ReactionPath 和 ChemicalObject 计算曲线可用的 EnergyProfile。
-- Energy Channel：ChemicalObject 中 `energies` 与 `thermochemistry` 的统一可选通道投影，包含 key、source、label、unit、reference 和 object_ids；source 取值为 `energies` 或 `thermochemistry`。
-- Energy Source Selection：EnergyOptions 中的 `energy_source` 选择，取值为 `energies`、`thermochemistry` 或 `auto`；缺失时等价于 `auto`，auto 先查 `energies` 再查 `thermochemistry`，同名冲突返回 `ambiguous_energy_channel`。
-- CorrectionPolicy：EnergyOptions 中的结构化校正项选择策略，支持 `none`、`all`、`kinds` 和 `ids`；它与 `include_corrections` 兼容，`include_corrections=false` 等价不计 corrections。
-- Energy Profile：从选定反应路径计算得到的相对能量数据表与交互式能量曲线数据。
-- EnergyExpression：EnergyPoint 上的结构化能量来源明细，包含节点 composition terms、correction terms、total 和 missing diagnostics。
-- EnergyComponent：EnergyExpression 中来自 ChemicalObject selected energy channel 的贡献项，记录 object、coefficient、energy key/source、raw energy、converted energy 和 contribution。
-- CorrectionComponent：EnergyExpression 中来自 ChemicalObject correction 的贡献项，记录 object、correction id、kind、coefficient、raw energy、converted energy 和 contribution。
-- Energy Expression Details：Web Energy Profile Panel 中逐点显示 EnergyExpression 的只读明细区；它只展示 ShellResponse profile projection，不在前端重算能量。
-- Energy Profile Persistence：Project Content 中的 `energy-profiles-v1` section，保存已计算 EnergyProfile、EnergyOptions、EnergyPoint、可选 EnergyExpression、missing reason 和 warnings；EnergyOptions 持久化 `energy_source`，旧 profile 缺失该字段时按 `auto` 读取，旧 point 缺失 `expression` 时按 null 读取；加载时校验 graph/path/node 顺序和 expression node/source/kind/unit/coefficient/missing 语义，但不重新计算。
-- Report Export：面向发布或复用的标准化导出结果，初期目标包括 PNG、ChemDraw/CDXML 与 Excel 能量表格。
-- Export Format Capability：核心层导出格式能力记录，描述 format、extension、MIME、writer、artifact kind、inline/browser persistence/Web 默认状态、supported/experimental/unsupported 状态和 unsupported reason；当前 supported set 为 `png`、`cdxml`、`xlsx`、`csv`、`svg`，`pdf`、`pptx`、`cdx` 只作为 unsupported capability 记录。
-- Report Export Service：核心层报告导出编排服务，消费已加载 graph/profile/object/table_rows，返回 ExportArtifact bytes 或写入指定目录。
-- Export Artifact：`ReportExportService` 的运行时导出结果，可包含 bytes 或当前进程输出路径，不作为长期项目内容直接保存。
-- Export Artifact Record：Project Content 中的长期导出索引记录，保存 id、format、`exports/...` 项目相对 path、sha256 checksum、metadata 和 created_at，不保存 bytes。
-- Export Artifact Index：Project Content 中的 `export-artifacts-v1` section，保存 ExportArtifactRecord 列表；它不是 Project Manifest resource 列表。
-- Report Composer Manifest：core 侧组合报告中间层，由已有 EnergyProfile、EnergyTableRow、ExportArtifact 和 ExportArtifactRecord 生成 JSON-safe ReportDocument；它不是 PDF/PPTX/HTML writer，也不生成导出 bytes。
-- ReportDocument：组合报告 manifest，包含 project/title、固定 section 顺序、ReportAsset references、metadata 和 warnings，供后续 delivery writer 共用。
-- ReportSection：ReportDocument 内的章节描述，当前固定为 summary、graph、energy_profile、energy_table、artifacts、warnings 六类。
-- ReportAsset：ReportDocument 内的 JSON-safe artifact 引用，只保存 source artifact id、format、kind、path/checksum/metadata，不保存 bytes；runtime bytes 仍属于 ExportArtifact 或 `exports/...` 文件。
-- Delivery Format Boundary：`ReportDocument` / `ReportAsset` 进入 PDF、PPTX、CDX 等交付格式前的依赖、运行位置、错误语义和 QA 准入边界；当前只记录边界，不开放这些 writer。
-- Delivery Writer：未来从 `ReportDocument` 生成完整报告文件的 writer；当前没有 PDF/PPTX/CDX delivery writer，后续 writer 不得直接读取 Web state 或截图。
-- Energy Table：以结构名称为第一列的结构能量表，当前契约版本为 `energy-table-v1`，供 XLSX workbook 和 CSV artifact 复用。
-- Workbook Header Mapping：报告导出层对用户样表常见表头的归一化 helper，例如 `Egas`、`basis function`、`Ggas+1M`、`Ggas(shermo+1M)`、`Esol`、`Gsol`；entropy 原始列当前不自动映射。
-- Energy Diagram Route：从 EnergyProfile 派生的导出中间结构，供 PNG energy plot 和 CDXML energy diagram 共用。
-- Platform Shell：端侧薄适配层，面向 CLI、Web adapter、桌面 bridge 或 agent，把输入参数转成核心服务调用并返回 JSON-safe 结果。
-- Local HTTP Shell Bridge：`rxnflow.local_bridge` 提供的本机开发 HTTP bridge，`GET /health` 返回 health，`POST /api/shell` 接收 Shell payload 并复用同一个 PlatformShellService 保留跨请求 session；默认监听 `127.0.0.1:8765`，不作为生产公网服务或云存储方案。
-- App Kernel：进程内服务装配层，集中创建 ProjectStore、ProjectContentStore、ProjectBundleService、ParserRegistry、ChemicalRegistry、ImportRegistryWorkflow、ReactionGraphService、GraphEditorWorkspaceService、EnergyProfileEngine 和 ReportExportService。
-- Project Open：Platform Shell 命令 `project.open`；默认先校验 Project Content，再恢复 registry、import batches、reaction graphs、workspaces、energy profiles 和 export artifact records。`load_content=false` / CLI `--manifest-only` 只打开 manifest。
-- Save Content：Platform Shell 命令 `project.save_content`；把当前进程内 Platform Session 的 content collections 写回 ProjectContentStore，要求有效 `session_id` 和 session.project_path。
-- Restored Session Summary：`project.open` / `project.save_content` 返回给端侧的 JSON-safe 摘要，包含 object_count、graph_count、workspace_count、profile_count、artifact_count 和 active ids。
-- Platform Session：Platform Shell 的进程内运行态，记录当前 active project/workspace/graph/profile，以及可保存的 objects、import batches、reaction graphs、workspaces、energy profiles、export artifact records 和运行时 artifacts；它自身不跨进程持久化。
-- Shell Command：Platform Shell 接收的结构化命令，包含 command name 和 JSON-safe args。
-- Shell Response：Platform Shell 返回的统一 DTO，包含 ok、data、error、warnings 和 artifacts，必须可 JSON 序列化。
-- Shell Artifact：面向端侧的导出 artifact 投影，默认只包含 format、path 和 metadata；显式 include bytes 时使用 base64。
-- CLI Entry：当前标准库入口为 `python3 -m rxnflow.cli`，用于运行 fixture、project create/load/open、project export-bundle/import-bundle 和 import preview 等最小命令。
-- Web Payload Adapter：当前为纯 Python dict adapter，把未来 Web/desktop bridge payload 转成 Shell Command，不创建真实 Web route。
-- Web Runtime Boundary：已确认的 Web MVP 运行时分工，要求浏览器 UI 只经 Shell Client / Shell Payload 调用 Python core，当前 Web 主流程的项目内容 authority 由 Browser Project Repository 承担；`.rxnflow.zip` 仅保留为内部/CLI/后备迁移能力。
-- Workbench Snapshot：Platform Shell 命令 `workbench.snapshot` 返回的只读工作台状态投影，汇总当前 session 的 project、active ids、counts、objects、imports、workspace、profile、artifacts 和 warnings；它不保存 Project Content，也不重新执行 parse/import/energy/export。
-- Web Workbench App Shell：当前位于 `web/` 的 React + TypeScript + Vite 浏览器工作台壳层，提供三栏工作台第一屏、Project Rail / Graph Canvas / Analysis Dock 和基础状态投影；主界面不常驻显示 local-only、runtime mode 或 run-state badge。
-- Frontend ShellClient：Web 前端统一命令客户端，接收 JSON-safe `ShellCommandPayload`，调用 `ShellTransport`，返回规范化 `ShellResponse`；当前接入 `in-process-test` fixture transport，并可通过 Vite env 切换到 `http-api` local bridge transport。
-- Shell Transport：Web Shell Client 到 core runtime 的可替换通道，当前前端已落地 `in-process-test` fixture transport 和 `http-api` local bridge transport；`http-api` 默认不启用，需通过 Vite env 切到 `local-http` runtime mode。
-- Web Transport Error Alert：Web 主界面不提供 Diagnostics tab，也不常驻显示 runtime mode、transport、endpoint 或 run-state badge；local-http/fixture 的差异只存在于 ShellClient 配置和测试环境中。transport failure 时，`WorkbenchErrorAlert` 显示 ShellError code/message，并用用户可见名称过滤 target。
-- WorkbenchDomainState：Web app shell 从 Workbench Snapshot 派生的 UI 可读业务状态，当前保存 command status、session/project/active ids、objects/imports/workspace/profile/artifact summaries、counts、warnings 和 error，不复制核心领域模型。
-- WorkbenchUiState：Web app shell 的 UI-only 状态，例如 active panel、active object、composition/path/edge label draft、hover、dragging、pending edge、rubber-band draft、keyboard focus intent、toolbar state、Graph Editor History stack 和 pending command ids；它不进入 ShellResponse，也不替代 WorkspaceSnapshot。Graph Canvas 的 node/edge/path selection 和 viewport 已由 WorkspaceSnapshot projection 承载。
-- Stateless Python API：Vercel/http-api 方向的候选执行层，只能作为无状态 command executor，不作为长期项目存储、跨请求 session authority 或持久 filesystem。
+### Web Renderer
 
-## 3. 子系统 / 模块索引
+`web/` 是当前唯一 active UI 工程，技术栈为 React + TypeScript + Vite + npm。它现在提供一个本地优先画布工作台：
 
-- Project 管理：项目创建、侧边栏组织、项目级状态与资源索引。
-- Import / Parser：批量导入原始计算输出，生成解析预览，并在确认后登记可复用化学对象。
-- Chemical Registry：登记、去重、版本化和复用化学对象及校正项。
-- Graph Editor：节点画布、连线、分叉路径、反应网络编辑与实时预览。
-- Energy Engine：路径选择、相对能量计算、数据表生成与曲线绘图。
-- Export / Report：PNG、CDXML、Excel 等报告与数据导出。
-- Platform Shells：Web、macOS、Windows、Linux CLI 等端侧包装与分发层。
+- 左侧 project rail：本地项目/工作区列表、桌面端 `New Project Folder` 创建真实用户可见工作区文件夹、`Open Folder` 打开已有工作区文件夹、按项目隔离/恢复 renderer 工作区快照、通过 `Project actions` / `Import files into project` 把本地文件导入目标项目、通过项目行 drop 把外部文件导入目标项目、通过 `Project actions` / `Delete project` 从 renderer 本地项目列表删除项目、文件列表、导入本地文件入口，以及成对 gas/solution log 的结构行分组和成组 source 拖拽。浏览器预览仍只能通过 hidden file input 打开 JSON 项目包做 UI 验证，不能真正打开本地文件夹。
+- 中间 canvas/table：反应节点画布、节点拖拽、Select tool 空白画布框选、Pan tool 空白画布拖拽平移、节点手柄拖拽或键盘激活后创建 edge、edge 选择检查、画布平移/缩放、可拖拽导航 minimap、能量表视图。
+- 右侧 inspector：节点详情、source preview 和 export dock；节点详情里有 lightweight `Structure Preview` 2D 骨架图、Ketcher + Indigo WASM `Edit 2D` 手动画板（保存为单节点 manual KET/Molfile/CDXML/SVG，可 reset 回自动推断）和 3Dmol.js `3D Structure` 真实坐标查看器。Object Registry / Objects tab / correction 表单不属于当前 active UI。
+- 导入路径：Electron 模式会把本地 `sourcePath` 交给 local engine `import.preview`，由 Python engine 读取完整文件解析，renderer 只保留 64KB source preview sample；导入进入桌面工作区后由自动保存把原始 log/out/xyz 复制到工作区根目录的 `sources/`，项目元数据写入工作区内隐藏 `.rxnflow/` 目录，后续持久化使用 project-relative `storedPath`，`sourcePath` 只作为本次导入解析和复制的临时来源。浏览器开发预览继续使用 renderer-side lightweight parser fallback，不能访问本地绝对路径或写入项目文件夹。当前 active parser 识别 Gaussian / ORCA（含常见 Cartesian coordinate、charge/spin 摘要）/ MAPLE / 普通 XYZ comment energy / ASE extxyz metadata（label、charge/spin、eV energy 转 Hartree）的摘要、formula、部分坐标摘要、warnings、parser provenance、`parseScope` / `confidence` 和多帧 candidates；Gaussian/ORCA 还返回当前能量表可用的 `energyTable` 字段（Egas、Ggas、Ggas+1M、basis、Esol/Gsol pairing 输入）。单候选 source 自动生成 parsed source node；多候选 source 进入候选选择面板，支持登记选中候选或全部候选为节点，并把 candidate/parser provenance 持久化到项目节点和轻量 `importLedger`。
+- 相对能量当前由 renderer 根据画布节点、baseline 和 gas/solution source 计算，并通过画布级 `Energy`/`Unit` 控件显示；它不恢复旧 UI `Compute`/PES 面板、旧 Python `energy.compute` command、Object Registry 或 correction policy engine。
+- Export 当前恢复原 UI 默认承载的 PNG/CDXML/XLSX 报告 artifact，由 renderer-side `web/src/domain/reportExports.ts` 生成；CSV/SVG/PDF/PPTX/CDX 和旧 Python ReportExportService 不在当前 active UI 中伪造。
+- Electron 模式右上角显示 local engine 状态；浏览器预览显示 `Browser preview`。
 
-当前已落地模块：
+当前 Web renderer 不依赖本地 HTTP bridge、IndexedDB project repository、ShellClient、Three.js 分子 viewer、i18n runtime 或 Playwright E2E harness。节点卡/Inspector `Structure Preview` 使用项目内轻量 SVG 从导入坐标生成 2D skeletal depiction，并可由用户在 Node Inspector 手动保存/重置单节点 KET/Molfile/CDXML/SVG；`3D Structure` 使用 3Dmol.js 做真实坐标 ball-stick 预览，但不是 Three.js 自研测量工具，也不做 2D/3D 原子联动或 atom-map 工作流。这些旧能力如需恢复，必须按 roadmap 逐项重新设计。
 
-- [Core Platform](core-platform.md)：内置 fixture 的最小核心链路、可落盘的 Project Store 项目目录协议、Project Content Store 内容持久化与验证/migration plan、Project Bundle 导入/导出、Browser Local Storage Backend 核心协议测试替身、首批 Parser Plugins、parser fixture harness、parser support matrix diagnostics、parser corpus developer guide、parser output support user guide、import preview parser regression、MAPLE、Gaussian/ORCA cclib 与 XYZ/extxyz synthetic fixture coverage、Chemical Registry 登记与校正项服务、Import Registry Workflow 与 import ledger restore 协议、Shell candidate projection / `import.register_selection`、Reaction Graph patch 与 restore 协议、Graph Editor Workspace headless 编辑会话与 restore 协议、Energy Engine 相对能量 profile 计算、Energy Profile Persistence、Export Artifact Index、Report Export PNG/CDXML/XLSX/CSV 与 SVG graph snapshot 基线导出、Report Composer Manifest、Platform Shell/App Kernel/CLI/payload adapter 基线、本地 HTTP shell bridge，以及 Web runtime boundary developer guide / payload POC。
-- [Web Workbench](web-workbench.md)：`web/` React + TypeScript + Vite app shell、Frontend ShellClient、FixtureTransport、http-api local bridge transport、Workbench Snapshot DTO、Import Preview/Register DTO、Parse Candidate Chooser、Canvas Chemical Node、Molecule 3D Viewer、用户可见名称过滤、Object Summary Projection、Graph Summary Projection、typed Energy Profile Projection、Report Export Projection、WorkbenchDomainState、WorkbenchUiState、Browser Project Repository IndexedDB-first adapter、Project Sidebar、Web I18n Runtime、Transient Import Payload helper、Browser Raw Input Store、Browser Bundle Archive Adapter、Object Registry Panel、Graph Canvas advanced editor interactions、Energy Profile Panel、Report Export Panel、Web Export Artifact Persistence、fixture/local-http Playwright E2E QA Harness、三栏工作台布局和浏览器验证边界。
+### Local Engine
 
-## 4. 关键架构决定
+`rxnflow/engine.py` 只保留一个极小 local engine：
 
-- 核心领域模型先以 UI/平台无关的 Python dataclass 落地；后续端侧壳层不得复制核心业务逻辑。
-- Web MVP 当前采用 local-first browser workbench 边界：浏览器本地项目仓储是当前 Web 主流程的项目内容 authority，`.rxnflow.zip` 只作为内部/CLI/后备迁移能力保留，Python core 只通过 Shell Command / Shell Response 边界暴露能力。
-- Vercel/http-api 只能作为无状态 command executor 候选；serverless filesystem、跨请求 session 或 HTTP API 不得被当成长期项目存储。
-- Web app shell 当前采用 client-heavy React + TypeScript + Vite + npm；若后续改用 Next.js 或其他框架，也不得让 App Router / Server Components 成为领域状态 authority。
-- 最小核心链路采用 `Result<T>` 风格返回成功/错误，跨模块错误不得静默吞掉。
-- Project Store 当前使用 `.rxnflow/manifest.json` 保存 `project-v1` manifest，raw file 副本放在 `inputs/raw/`。
-- Project Manifest 中的 resource path 必须是项目相对 POSIX 路径，不保存用户源文件绝对路径。
-- raw file resource 以 sha256 checksum 去重；重复添加同一内容应返回已有 resource。
-- `project-v1` 之外的 manifest schema 不做 silent migration，当前返回 `invalid_input`。
-- Parser Plugins 当前输出 ChemicalObjectDraft + provenance + warnings，不写 Project Store，不登记 ChemicalObject，不生成 ReactionGraph/EnergyProfile。
-- Parser Fixture Harness 当前只存在于测试边界，通过 `tests/fixtures/parsers/sources.yaml`、`public-fixture-decisions.yaml`、`manifest.yaml`、`support-matrix.yaml` 和 golden snapshot 验证 ParserRegistry 输出、fixture-backed 支持边界和 public fixture promotion gate；它校验 vendored-third-party source 的 upstream path/hash/size/decision_id 必填字段、user-redacted decision_id/redaction 边界，并在传入 source inventory / manifest 时校验 support matrix source/candidate/reference links 以及 public fixture decision 的 source/file 归属、decision/promotion 状态、fallback fixture 和 reference-only anchor；它还提供 Candidate Fetch Verify request/result helper，用 source inventory 生成 upstream URL/path/hash/size 复核请求，并对调用方提供的 bytes 返回 structured sha256/size verification result；它提供 MAPLE public candidate resolution summary helper，从 source inventory、decision ledger 和 support matrix 派生 MAPLE candidates、reference-only anchors、promoted files、blocked candidates、fallback fixtures 和 unresolved files，用 focused guards 防止 MAPLE public originals 被误 vendor 或误标 supported；它也提供 cclib-data public candidate resolution summary helper，分别派生 Gaussian candidates、ORCA candidates、reference-only files、promoted files、blocked candidates、fallback fixtures 和 unresolved files，用 focused guards 防止 cclib-data public originals 被误 vendor 或误标 supported；它还提供 extxyz variant intake summary helper，从 source inventory、decision ledger、manifest 和 support matrix 派生 vendored/promoted/executable fixture、advanced known-limit fields 和 unresolved files，用 focused guards 防止 authorized extxyz variants 与 support matrix 脱节；它还提供 Fixture Promotion Adapter summary helper，从 source inventory、decision ledger、manifest、snapshot 和 support matrix 派生 promoted decisions、source-gated fixtures、covered fixtures 和 unresolved ids，用 focused guards 防止 source-gated fixture 绕过 allowed/promoted decision。helper 本身不访问网络、不写文件、不写 fixture corpus。Parser Fixture Harness 不属于 `rxnflow.parsers` runtime API，不调用 Project Store、Import Workflow、Chemical Registry、Reaction Graph、Energy Engine 或 Report Export。
-- Parser Fixture Corpus 当前覆盖 synthetic MAPLE sp/opt `.out`、MAPLE public-shape synthetic-derived `.out` / final `.xyz`、MAPLE path/path-family synthetic-derived `.xyz` partial、synthetic 与 public-shape synthetic-derived Gaussian/ORCA cclib fixtures、standard XYZ geometry-only、ASE extxyz energy/charge/spin、ASE extxyz missing energy、ASE extxyz multi-frame metadata/calculator-energy fallback、ASE extxyz lattice/PBC/forces/stress/magmoms advanced-field variant 和 bad XYZ count expected-error 样例；`sources.yaml` 记录 MAPLE/cclib-data/ASE extxyz 的真实/公开来源候选和 review-required policy，但不复制 MAPLE/cclib-data 文件；`public-fixture-decisions.yaml` 覆盖当前全部 source file ids，当前把 MAPLE/cclib-data candidate 文件记录为 `needs-permission/blocked` 并指向 synthetic fallback，把 reference-only 文件保持 `reference-only/not-applicable`，把 ASE extxyz project-authored vendored 文件记录为 `allowed/promoted`；MAPLE resolution 当前派生结论是 `maple-dev-example` 3 个 candidate 全 blocked、14 个 reference-only anchors 全覆盖、promoted originals 为空且 unresolved 为空；cclib-data resolution 当前派生结论是 `cclib-data-gaussian-orca` 2 个 Gaussian candidate 与 2 个 ORCA candidate 全 blocked、2 个 reference-only anchors 全覆盖、promoted originals 为空且 unresolved 为空；extxyz variant intake 当前派生结论是 `ase-extxyz-project-authored` 4 个 vendored file 全 allowed/promoted、4 个 executable fixture ids 全覆盖、advanced fields 固定为 known-limits 且 unresolved 为空；Fixture Promotion Adapter 当前派生结论是 4 个 extxyz promoted decisions 全有 manifest/snapshot/support matrix coverage、source-gated fixture ids 为空、unresolved decision/fixture ids 为空；`support-matrix.yaml` 覆盖当前 16 个 manifest fixture ids，并用 `candidate_file_ids` 记录 MAPLE sp/opt public candidate 和 cclib-data Gaussian/ORCA candidates，用 `fixture_ids` 记录项目内 MAPLE public-shape/path-family、Gaussian/ORCA public-shape synthetic-derived 和 ASE extxyz project-authored variant 回归，用 `reference_file_ids` 链接 MAPLE scan/path/MD/frequency reference-only 文件和 cclib-data NBO/large optimization reference-only 文件；MAPLE path fixtures 只证明 frame-level `ChemicalObjectDraft` 输出，ASE multi-frame extxyz fixture 只证明逐帧 `ChemicalObjectDraft` 输出，ASE extxyz advanced-field fixture 只证明 lattice/PBC/forces/stress/magmoms 输入形状存在且当前不映射，二者都不声明 `ReactionPath`、direction/topology、TS candidate 或 energy profile 支持。
-- Parser Corpus Developer Guide 当前只记录开发者和 agent 维护流程，不新增 runtime API、fixture、diagnostic code、UI、CLI command 或 Web route；它把 source inventory、可选 Candidate Fetch Verify、public fixture decision ledger、manifest/snapshot/support matrix、Fixture Promotion Adapter、import preview regression 和 guide sync 串成 public fixture intake gate，说明 fetch verify 只校验已提供 bytes 是否匹配 source inventory，普通 unit tests 不访问网络，输出只能写临时目录或显式 artifact，不能自动 vendor 或 promotion。真实第三方输出进入 corpus 前必须按该指南确认 source policy、redistributable、license、redaction 和 public fixture decision；`allowed/promoted` 后仍必须有 executable fixture、snapshot、support matrix 和 import preview regression coverage。Parser Output Support Guide 当前只面向用户说明 fixture-backed 支持边界、candidate/reference-only/blocked 不代表 supported import preview、warning/error 含义和真实样例贡献 checklist；它不声明真实软件版本完整认证，也不把 extxyz project-authored promoted fixtures 描述成第三方版本认证。
-- Import Preview Parser Regression 当前只存在于测试边界，用 parser fixture corpus 驱动全量 executable fixture preview regression，并用 Fixture Promotion Adapter summary 派生 promoted public/user-redacted fixture set 进行 focused Workflow/Shell preview regression；它显式 `retain_raw=true` 验证 supported/partial fixture 与 promoted preview fixture 进入 `ImportRegistryWorkflow.import_files` 和 `PlatformShellService(import.preview)` 后保留 parser_id、parser_version、object_count、warning codes、raw_resource id/path/checksum/provenance linkage，验证 expected parser failure 保留 raw resource 和 error code，并用 guard 证明 MAPLE/cclib-data blocked candidate 与 reference-only file ids 不进入 promoted preview fixture ids；它不确认导入、不登记 ChemicalObject、不调用 graph/energy/export/bundle 服务、不新增 runtime API。
-- Chemical Registry 当前接收 ParseResult 并登记 ChemicalObject；它不解析文件、不写 Project Store、不生成 ReactionGraph/EnergyProfile。
-- ChemicalObject 当前携带 `registry_fingerprint`，用于持久化后恢复 ChemicalRegistry 的同来源同 draft 内容幂等索引；它不是化学相似度指纹，不用于自动合并。
-- ChemicalRegistry 当前提供 `list_objects` 和 `restore_objects`，用于把已持久化 ChemicalObject 恢复为 project-scoped registry state；restore 不重新 parse raw file，也不调用 `register` 重新计算 fingerprint。
-- Import Registry Workflow 当前是 ProjectStore、ParserRegistry 和 ChemicalRegistry 之间的核心编排层；它负责 transient RawFile adapter、可选 raw file resource 登记、parse preview、用户/agent 确认和 batch/item 状态读取。
-- Import Registry Workflow 的导入分两阶段：`import_files` 默认只生成 transient source id 和 ParsePreview；显式 `retain_raw=true` 时才复制 raw file；`confirm_import` 才把选中的 ParseResult objects 登记进 ChemicalRegistry。
-- 批量导入允许单文件失败；parse/add/register 错误记录在 ImportItem，project-level 错误才使整个 workflow 返回 Result error。
-- 默认 transient 解析失败或格式不支持时不创建 raw file resource；显式 `retain_raw=true` 时已复制的 raw file resource 仍保留在 Project Directory 中。ImportBatch 和 ParsePreview 可通过 `import-ledger-v1` 保存到 Project Content。
-- Import Registry Workflow 当前提供 `restore_batches`，用于把已持久化 ImportBatch 恢复为 project-scoped batch state；restore 不调用 `import_files`、ParserRegistry 或 ChemicalRegistry.register。
-- ChemicalObject 校正项是 append-only 的 Correction 记录，不改写 parser 原始 energy channel；是否计入能量由后续 Energy Engine 显式控制。
-- 基础对象去重当前只保证同项目内同来源、同 draft fingerprint 的重复登记幂等，不基于分子式、标签、能量接近或几何相似度自动合并。
-- Reaction Graph 当前通过 GraphPatch 修改；GraphPatch 是核心领域协议，不包含 selection、hover、viewport 等 UI 状态。
-- Reaction Graph 只引用 ChemicalObject id，不复制 ChemicalObject、能量或 correction；ReactionNode 的 `composition` 是权威组成字段，每个 term 带 object id 和 coefficient，`chemical_object_ids` 只是兼容投影；object id 有效性由调用方提供集合进行校验。
-- 分叉反应路径当前用多条 ReactionPath 表达，不新增 branch node 或 branch edge 类型。
-- Graph Editor Workspace 是 GraphPatch 的 headless 壳层；所有 graph 结构变化最终经由 ReactionGraphService.apply_patch。
-- Graph Editor Workspace 可通过 `workspace.set_node_composition` 替换已有节点的 composition；该命令失败时不写回 graph state。
-- Graph Editor Workspace 中 selection、viewport 和 active_path_id 属于 workspace-only state，不写入 ReactionGraph 或 Project Manifest。
-- Object Palette 当前只暴露已登记 ChemicalObject 引用；pending/failed import items 不可直接创建 graph node。
-- Network Preview 当前只表达结构预览和 disconnected node diagnostics，不包含真实 canvas 渲染、自动布局或能量曲线。
-- Graph Editor Workspace 不调用 EnergyProfileEngine；能量曲线和 path-energy 联动留给后续 feature。
-- ReactionGraphService 当前提供 `list_graphs` 和 `restore_graphs`，用于把已持久化 ReactionGraph 恢复为可继续 patch 的 project-scoped graph state；restore 不回放 GraphPatch。
-- GraphEditorWorkspaceService 当前提供 `list_workspaces` 和 `restore_workspaces`，用于把已持久化 workspace-only 状态恢复为可继续编辑的 headless workspace；恢复时 palette 和 preview 仍由 ChemicalObject / ReactionGraph 派生。
-- Gaussian/ORCA 解析通过 cclib adapter 隔离；Gaussian DFT method 优先使用 cclib `metadata.functional`，ORCA DFT method 可从已知 `metadata.keywords` functional token 恢复，避免把具体泛函退化为泛称 `DFT`；XYZ/extxyz 解析通过标准 XYZ 解析器和 ASE extxyz adapter；MAPLE parser 只读已有 `.out` / `.xyz` 输出文件。
-- cclib/ASE 提供的 eV energy 必须转换为 hartree 后进入 `EnergyValue`；MAPLE 明确标注 Hartree 的 energy 直接进入 hartree。
-- 内置 fixture 只表达核心数据流，不代表真实化学体系；parser fixture corpus 当前仍是 synthetic / file-level 回归样例，`parser-support-matrix-v1` 只声明这些 fixture 和 reference-only artifacts 的字段边界，不替代 Gaussian/ORCA/MAPLE 真实版本支持矩阵。
-- 相对能量计算必须记录基线和单位；缺失能量不得默认为 0。
-- Energy Engine 当前只读取传入的 ReactionGraph 和 ChemicalObject 集合，不解析、不登记、不持久化、不导出，也不修改 graph/object 状态。
-- Energy Engine 的多对象节点能量当前按 ReactionNode.composition terms 计算：每个 term 先按指定 energy key/source 取对象能量并转换到 output unit，再乘 term coefficient 后求和；旧 `chemical_object_ids` 节点通过 composition coefficient 1 保持兼容。
-- Energy Engine 的 correction inclusion 支持 `CorrectionPolicy`：`include_corrections=true` 且无 policy 时计入所有 corrections；`mode=none` 不计入；`mode=kinds` / `ids` 只计入匹配 kind/id 的 corrections，correction energy 同样先转换再乘 term coefficient。
-- Energy Engine 当前通过 energy channel resolver 选择对象能量：`energy_source=energies` 只查 `ChemicalObject.energies`，`thermochemistry` 只查 `ChemicalObject.thermochemistry`，`auto` 先查 energies 再查 thermochemistry；同一对象两个 section 同名且 source 为 auto 时返回 `ambiguous_energy_channel target=energy_options.energy_key`。
-- Energy Engine 的校正项计入由 `EnergyOptions.include_corrections` 与可选 `correction_policy` 显式控制；Correction.energy 正负号由 correction value 表达。
-- Energy Engine 输出单位当前支持 `kcal_mol` 和 `kj_mol`；参与相减前必须统一转换到输出单位。
-- Energy Engine 在计算节点 total 时同步物化 `EnergyExpression`；新计算 profile 的 baseline point 和普通 point 都带 expression，relative energy 仍由 expression total 与 baseline total 相减得到。
-- Energy Engine 的 baseline 节点缺失能量时返回 `missing_energy`；非 baseline 点缺失能量时可返回带 `missingReason` 的 EnergyPoint、`total=null` 的 expression 和 warning。
-- Energy Profile Persistence 当前保存物化后的 EnergyProfile snapshot，而不是计算 recipe；load/save 不调用 EnergyProfileEngine，不比较当前 ChemicalObject energy/corrections 是否已变化。
-- `energy-profiles-v1` 中的 options 保存 `output_unit`、`include_corrections`、`energy_key`、`energy_source`、可选 `correction_policy` 和可空 baseline；旧 JSON 缺 `energy_source` 时加载为 `auto`，缺 `correction_policy` 时加载为 null。point energy 必须是 `{value, unit, reference}` 对象，unit 必须匹配 EnergyOptions.output_unit；missing point 必须只有 missing_reason，不允许混入 absolute/relative energy。point.expression 是同一 v1 schema 下的可选字段，不升级 schema version；旧 profile 没有 expression 合法，新计算 profile 包含 expression。
-- `energy-profiles-v1` 加载时基于已加载 ReactionGraph 校验 graph_id、path_id、points[].node_id 顺序和 baseline_node_id；引用缺失或顺序错位返回结构化错误。存在 expression 时还会校验 expression.node_id 与 point.node_id 对齐、component source/kind 合法、coefficient 非零有限、converted/contribution/total unit 匹配 output unit，以及 missing/total 与 point missing_reason 不矛盾。
-- Report Export Service 当前只消费调用方传入的已加载对象，不从 Project Store 读取 graph/profile，也不写 manifest 或登记 ProjectResource。
-- Report Export Service 当前通过 Export Format Capability 维护导出格式状态、MIME、extension、writer id、artifact kind、inline/browser persistence 和 Web default 口径；`ALLOWED_EXPORT_FORMATS` 从 capability 中的 supported set 派生。
-- Report Export Service 当前支持 `png`、`cdxml`、`xlsx`、`csv` 和 `svg` 五种 ExportFormat；`svg` 是 workspace/graph projection 生成的 graph snapshot，`pdf`、`pptx`、`cdx` 已有 capability 记录但不进入 supported set，请求时仍返回 `invalid_input target=formats`，details.supported 只列当前可执行格式。
-- Report Composer Manifest 当前由 `rxnflow.report_manifest` 提供，生成 JSON-safe `ReportDocument`，section 顺序为 summary、graph、energy_profile、energy_table、artifacts、warnings；缺少 graph snapshot 或 energy table 时保留 unavailable section 和 warning，不伪造 asset。
-- Report Composer Manifest 只引用已有 artifact，不保存 bytes、不写 Project Content、不暴露 Shell command；后续 HTML/PDF/PPTX writer 必须先消费 ReportDocument，不直接读取 Web state。PDF/PPTX/CDX 当前仍是 delivery format boundary，未开放格式请求为 `invalid_input target=formats`；已开放 writer 的运行时依赖缺失才使用 `export_failed target=dependency`。
-- XLSX/CSV 导出当前生成 structure-first 的 `Energy Table`；XLSX 可附加 `Energy Profile` 和 `Warnings` sheet。Energy Table Contract 当前带 `energy-table-v1` schema metadata、稳定列 key 查询和样表 header mapping；XLSX workbook 使用 title、group header row、column label row、autofilter、freeze pane、按列类型设置的列宽，并始终写 `Export Metadata` sheet；CSV 使用同一列顺序和 labels 输出 UTF-8 单表。模型中没有的 basis function、Shermo/Whitesides 校正、entropy 原始列等字段留空或由调用方 table_rows 提供，不补 0。
-- PNG 和 CDXML 导出共用 Energy Diagram Route 的 padded energy bounds 和 state anchors；route 从相邻有效 `EnergyProfile.points` 派生 step delta，并统计 correction/missing marker；missing point 保留断点和 warning，不编造相对能量，也不生成假 state line 或跨 missing delta。
-- CDXML 当前只生成可编辑能量图对象，包括带 document/page/group 属性的 CDXML root、state line、connector、label、relative value + unit、step delta、missing reason、correction marker、axis、fonttable 和 colortable；generated object id 单文档唯一，group/graphic/arrow/text 均带 `Z`，graphic/arrow/text 带稳定 BoundingBox / LineWidth / justification 属性；不生成分子结构级 CDXML、generic reaction scheme 或 CDX，`cdx` 请求仍返回 `invalid_input target=formats`。
-- SVG graph snapshot 由 Report Export Service 从 `ReactionGraph` / 可选 `WorkspaceSnapshot` 稳定投影生成，保留 node position、edge label、active path、selection 和 viewport metadata；它不读取 Web DOM、GraphCanvas transient state、hover、pending edge、rubber-band、minimap draft 或 history stack，也不嵌入 script、foreignObject 或远程资源。
-- Report Export 运行时 artifact metadata 当前包含 `extension`、`mime_type`、`artifact_kind` 和 `format_status`，XLSX/CSV 额外包含 `energy_table_schema_version`、`energy_table_column_count` 和 `energy_table_row_count`，SVG 额外包含 graph/workspace/counts/viewport/selection/svg dimensions；Web download MIME、fixture writer metadata 和 browser persistence guard 使用同一格式能力口径。
-- Report Export 当前有开发者指南 `docs/dev/report-export-artifacts.md` 和用户指南 `docs/user/report-export-artifacts.md`，分别说明 core/Shell/Web artifact contract、Export Format Capability、Energy Table 字段口径、Web 导出操作、Report Preview Delivery QA Matrix、CDXML/CDX 边界、`exports/...` 保存路径和 `.rxnflow.zip` 手动备份/迁移边界。
-- Project Bundle 当前有用户指南 `docs/user/project-bundle-backup.md` 和开发者指南 `docs/dev/project-bundle-import-export.md`，覆盖 core/CLI/内部 helper 的备份包边界、Web archive adapter 边界、错误 bundle 样例和 QA 命令；它不再描述 Web Project Sidebar 主入口。
-- PNG/XLSX writer 依赖 Pillow / XlsxWriter，CSV writer 使用 Python 标准库；外部依赖在 adapter 内延迟 import，缺失时返回 `export_failed`。
-- ExportArtifactRecord 与运行时 ExportArtifact 分离；长期索引只保存项目相对 path、format、checksum、metadata 和 created_at，不保存 ExportArtifact.bytes 或运行时绝对 path。
-- `export-artifacts-v1` 的 record.path 第一版必须位于 `exports/` 下；checksum 必须是 `sha256:<64 hex>`。section codec 只做 shape 校验；Project Content Validation 会读取 artifact file bytes 复算 checksum。
-- Project Bundle 当前通过 `rxnflow.project_bundle` 提供 ProjectBundleService 和 ProjectBundleSummary；它只复制项目文件，不解析 raw files、不恢复 session、不重新计算或导出报告。
-- Bundle export 只打包 `.rxnflow/`、`inputs/raw/` 和 `exports/`，跳过 `.DS_Store` 等系统元数据；如果 `.rxnflow/state/project-content.json` 存在，导出前必须通过 Project Content Validation。
-- Bundle import 先校验 zip entry 安全性和唯一 Bundle Root，再临时解包、加载 manifest、按需 validation，最后在目标目录中无覆盖落地。
-- Platform Shell 当前通过 `rxnflow.platform` 提供 ShellCommand、ShellResponse、ShellArtifact、PlatformSession、AppKernel、PlatformShellService 和 handle_platform_payload。
-- Local HTTP Shell Bridge 当前通过 `rxnflow.local_bridge` 提供标准库本机 HTTP server，支持 `python3 -m rxnflow.local_bridge --host 127.0.0.1 --port 8765`、`GET /health` 和 `POST /api/shell`；同一 server 进程保留 PlatformSession，bridge 错误统一返回 JSON ShellResponse shape。
-- AppKernel 只做核心服务装配，不复制 parser、registry、graph、energy、export 或 bundle 复制逻辑。
-- PlatformShellService 当前支持 `fixture.run`、`project.create`、`project.load`、`project.open`、`project.save_content`、`project.export_bundle`、`project.import_bundle`、`import.preview`、`import.register_all`、`import.register_selection`、`registry.apply_correction`、`workspace.open`、`workspace.add_node`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.set_path`、`energy.compute` 和 `export.profile` 命令。
-- PlatformShellService 当前支持 `workspace.set_node_composition`，Shell/Web graph projection 会同时返回 `composition` 和兼容 `chemical_object_ids`。
-- `import.preview` 当前兼容旧 `source_path/source_paths/source_files`，并支持 JSON-safe `source` / `sources`。`source.kind=path` 复用本地路径；`source.kind=inline_bytes` 接收本地开发 base64 payload，Platform Shell 单文件上限为 12MiB，写入临时文件后复用 ImportRegistryWorkflow，返回前清理临时文件；默认 `retain_raw=false`，shell projection 返回 `raw_resource=null`、source summary 和 `source-<sha12>` preview id；显式 `retain_raw=true` 时才返回 manifest raw resource。preview projection 包含 `candidates[]` 供 Web 多对象 / 多帧选择；session 没有 core `project_path` 时会创建进程内 Temporary Preview Project；`source.kind=browser_storage` 在 Python bridge 中返回 `storage_object_missing target=storage_path`。
-- ShellResponse 是端侧 JSON 投影边界；dataclass、Path、tuple 和 bytes 不直接穿过该边界。
-- ShellArtifact 默认不内联二进制；显式 `include_bytes=True` 时使用 base64 并在 metadata 中记录 encoding。
-- `project.open(load_content=True)` 先调用 ProjectContentStore.validate_project；validation error 返回 `project_content_invalid`，不做部分恢复；validation 通过后再 load_snapshot 并依次恢复 objects、import batches、reaction graphs 和 workspaces，energy profiles/export artifact records 存入 session。
-- `project.open(load_content=False)` 和 `project.load` 都保持 manifest-only session，不读取 Project Content。
-- `project.open` 还支持 `content_files` JSON-safe payload：Web 可把 Browser Project Repository 里的 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` bytes 作为 base64 文件列表传入，Platform Shell 会 materialize 到进程内临时项目目录后复用 ProjectStore / ProjectContentStore 打开；该路径不把 Browser Project Ref 当作 Python filesystem path。
-- `project.save_content` 基于当前进程内 session 构造 ProjectContentSnapshot 并写回 ProjectContentStore；`include_content_files=true` 时还会返回 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` 的 base64 bytes/metadata 供 Web 写回 Browser Project Repository。CLI 当前不暴露 save-content，因为 CLI 是一次性进程，没有跨命令 session。
-- Platform Shell restore/save 不重新 parse raw files、不确认 import、不重新计算 energy profile、不重新导出 report；runtime ShellArtifact 只有路径位于当前项目 `exports/` 下时才转换为长期 ExportArtifactRecord，其余情况作为 warning 保留。
-- `project.export_bundle` / `project.import_bundle` 是项目包传输入口，不创建或复用 PlatformSession；import 成功后调用方需要显式 `project.open` 才能恢复运行态内容。
-- Platform Session 只在进程内有效；跨进程内容恢复依赖 ProjectContentStore 和各核心服务 restore API，不由 PlatformSession 自身持久化。
-- CLI 当前通过 `python3 -m rxnflow.cli` 暴露标准库 argparse 入口，错误命令返回非 0 exit code；CLI project open 支持默认恢复内容和 `--manifest-only`，CLI project export-bundle/import-bundle 支持 JSON 摘要。
-- Web Payload Adapter 当前只接收/返回 dict，不引入 Web framework、route、server、worker、桌面窗口或打包入口。
-- Web Runtime Boundary 当前通过 `docs/dev/web-runtime-boundary.md`、`tests/test_web_runtime_boundary.py`、`rxnflow.local_bridge`、Web `http-api` transport、Project Content Bridge 和 Web Export Artifact Persistence 落地；它确认 Shell Payload POC 可 JSON 序列化，并记录 local-first、browser project repository、local HTTP bridge、stateless http-api 和 transport 边界。Web 前端可通过 `VITE_RXNFLOW_SHELL_TRANSPORT=local-http` 调用本地 bridge，可把浏览器文件作为 inline bytes 送入 `import.preview`，当前上限为 12MiB/文件且 bridge body 默认 64MiB，可显式用 Project Content files 打开/保存 bridge session，也可把 `export.profile` inline artifacts 写入 browser-local `exports/...` 并同步 `export-artifacts-v1`；browser_storage import adapter 仍未实现。
-- Project Content Store 当前通过 `rxnflow.content_store` 提供 ProjectContentIndex、ProjectContentFile、ProjectContentSnapshot、ProjectContentValidationIssue、ProjectContentValidationReport、ProjectContentMigrationPlan、ProjectStorageBackend、LocalProjectStorageBackend、ProjectContentValidator 和 ProjectContentStore。
-- Project Content Store 当前写入 `.rxnflow/state/project-content.json`、`chemical-objects.json`、`reaction-graphs.json`、`workspaces.json`、`energy-profiles.json`、`import-ledger.json` 和 `export-artifacts.json`；其中 `chemical-objects.json` 使用 `chemical-objects-v1` 长期 codec 保存真实 ChemicalObject、provenance、registry fingerprint 和 append-only corrections，`reaction-graphs.json` 使用 `reaction-graphs-v1` 长期 codec 保存真实 ReactionGraph/ReactionPath，`workspaces.json` 使用 `workspaces-v1` 长期 codec 保存 workspace-only 状态，`import-ledger.json` 使用 `import-ledger-v1` 保存 ImportBatch/ImportItem/ParsePreview 状态，`energy-profiles.json` 使用 `energy-profiles-v1` 保存已计算 EnergyProfile、EnergyOptions、EnergyPoint 和 warnings，`export-artifacts.json` 使用 `export-artifacts-v1` 保存 ExportArtifactRecord 索引。
-- Project Content Store 的 `reaction-graphs-v1` section 当前保存 ReactionGraph/ReactionPath、composition 和兼容 `chemical_object_ids` 投影；`energy-profiles-v1` section 当前保存 EnergyProfile、EnergyOptions、EnergyPoint、可选 EnergyExpression 和 warnings。
-- Project Content Store 不修改 `.rxnflow/manifest.json` schema，不登记 ProjectResource，不读取或解析 `inputs/raw/`。
-- LocalProjectStorageBackend 只处理项目相对 POSIX path 和 bytes；不理解 ChemicalObject、ReactionGraph、WorkspaceSnapshot 或 EnergyProfile 领域语义。
-- BrowserLocalProjectStorageBackend 当前通过 `rxnflow.browser_storage` 提供浏览器本地存储协议测试替身；它实现 read/write/exists/list/delete、project_ref 隔离、checksum、metadata 和 quota 错误语义，但不是真实 JS IndexedDB / OPFS adapter。
-- Browser Project Repository 当前通过 `web/src/repository` 提供真实 JS IndexedDB-first adapter；它实现 listProjects/createProject/deleteProject/readObject/writeObject/exists/listObjects/deleteObject、projectRef 隔离、path safety、sha256 checksum、metadata、overwrite、delete 幂等、missing object、storage_unavailable 和 storage_quota_exceeded 错误映射。当前 implementation 不使用 OPFS、Worker、Service Worker、StorageManager.persist、HTTP API、云存储 SDK 或 Python bridge。
-- Project Sidebar 当前通过 `web/src/app/ProjectSidebar.tsx`、`projectSidebarState.ts`、`projectSidebarActions.ts` 和 `projectContentBridge.ts` 接入 Browser Project Repository。它能 list/create/open/delete browser-local project，并保存 / 覆盖 `.rxnflow/manifest.json` 与 `.rxnflow/state/*.json` 真实 Project Content files；重复保存覆盖同一路径，不创建重复 object。当前 validation 是 repository 浅校验，不调用 Python ProjectContentValidator；打开 browser project 会自动调用 `project.open(content_files)` 恢复 session，active project + session 的工作台变更会防抖调用 `project.save_content(include_content_files=true)` 写回 Browser Project Repository；项目行 hover/focus 后显示三点更多菜单和 `+` 导入入口，三点菜单提供删除项目入口；空项目不渲染“打开后显示文件 / 拖到这里导入”的说明文案。
-- Web Project Sidebar 不再暴露 Import Bundle / Export Bundle；Browser Bundle archive/export/import helper 仍保留在代码中，作为内部测试和后备迁移工具，不调用 Python `project.import_bundle` / `project.export_bundle`，也不自动保存或恢复 shell session。
-- Web Project Restore Roundtrip 当前已通过 `web/src/app/WorkbenchShell.test.tsx`、`web/e2e/workbench-journey.spec.ts` 和 `web/e2e/local-http-bridge.spec.ts` 固定：打开 project 恢复 content files，自动保存写回当前 graph/workspace/profile，刷新或重新打开后 Project Files、nodes、edges、paths、viewport、selection 和 active path 可恢复。
-- Web Browser Bundle Archive Adapter 当前通过 `web/src/app/projectBundleArchive.ts` 提供 helper-only `.rxnflow.zip` read/write。writer 接收调用方提供的 safe project-relative entries，按 path 排序，跳过 `.DS_Store` / `__MACOSX`，用固定 mtime 和 `fflate` 生成 zip bytes，并返回 shallow summary；reader 先扫描 zip central directory，拒绝 multi-root、missing manifest、duplicate entry、absolute path、backslash、`.`、`..`、root file、`__MACOSX`、allowed roots 外 entry、`inputs/` 非 raw entry 和 symlink external attributes，再返回 file entries 与 summary。该 helper 不读写 Browser Project Repository，不调用 ShellClient，不做 Project Content deep validation。
-- Web I18n Runtime 当前通过 `web/src/app/i18n` 提供。默认 locale 按浏览器语言选择，`zh*` 使用 `zh-CN`，其他使用 `en-US`；合法 stored locale 优先；localStorage 不可用时降级为非持久运行。WorkbenchShell 和 ProjectSidebar 通过 `useI18n` 渲染主 UI 文案，顶栏提供 locale switcher。
-- Web i18n 不翻译 ShellResponse / repository error code 和底层 error message，不翻译 project name、文件名或命令名；projectRef、checksum、fixture object/profile ids 等实现信息不进入普通主界面。确需展示 warning/error target 时，先通过用户可见名称过滤，后续如需翻译 error message 必须另起 error mapping feature。
-- Web transient import payload helper 当前通过 `web/src/app/transientImportState.ts` 和 `rawInputPersistence.ts` 提供。它维护 selected file metadata、可选 `File` 引用、source kind、expected format、strict、raw persistence summary、active batch、registered ids、warnings 和 error UI state；画布 drop 通过 `importPreviewArgsFromFiles(..., { preferInlineBytes: true })` 优先把小浏览器文件编码为 `sources[].kind="inline_bytes"` 后通过 ShellClient 调用 `import.preview`，fixture transport 和 local-http transport 都接收 JSON-safe source projection，结果回写 WorkbenchDomainState 的 imports、objects 和 counts。已登记 object summary 合并按 object id upsert，同 id 重新解析会用新 summary 覆盖旧 summary，以便刷新 geometry、energy、charge/spin 等可见投影。它不对应用户可见面板。
-- Active browser project 存在时，项目树导入或画布 drop 会把 selected `File` 写入 Browser Project Repository 的 `inputs/raw/{sha12}-{safeName}`，并把 `raw_file` resource merge 进 `.rxnflow/manifest.json`。同 checksum raw resource 幂等不重复追加；raw persistence error 不伪装成 parser warning，也不阻止 inline preview。当前 raw persistence 是 Web 过渡实现，长期 canonical import data 会删除 raw bytes authority。
-- Web transient import pipeline 不在前端解析 Gaussian/ORCA/MAPLE/XYZ/extxyz，不调用 `rxnflow.parsers`、cclib、ASE、MAPLE parser、OPFS、Web Worker 或云上传；inline bytes 只是本地开发 preview payload，不是 Python bridge 的 browser storage adapter，也不是生产级大文件协议。超出 inline limit 的文件在前端显示 `payload_too_large`，不读 bytes、不写 `inputs/raw/...`、不发 shell command。
-- Web Object Registry Panel 当前通过 `web/src/app/ObjectRegistryPanel.tsx` 提供。它展示 `WorkbenchDomainState.objects` 中的 Object Summary Projection，包含对象列表、active object detail、source/provenance、formula、charge/spin、method、energy keys、thermochemistry keys、energy channel projection、warnings、correction count/list 和 Correction Entry Form。
-- Web Object Registry Panel 的 active object selection 由 `WorkbenchShell` 维护为 UI-only state；objects 更新后保留有效 selection，否则自动选中第一个对象。该 selection 不进入 ShellResponse、Project Content、Workspace Snapshot 或 ReactionGraph。
-- Web Object Registry Panel 不从 pending/failed import items 生成对象，不编辑/删除/排序 correction，不直接调用 `ChemicalRegistry.apply_correction`，不新增 HTTP route、云存储 SDK 或账号系统。Correction Entry Form 只通过 ShellClient 调用 `registry.apply_correction`，成功后用 ShellResponse object summary 更新 `WorkbenchDomainState.objects`；长期保存仍依赖显式 Project Content save bridge。
-- Web Graph Canvas 当前通过 `web/src/app/GraphCanvas.tsx`、`Molecule3DViewer.tsx` 和 `displayNames.ts` 提供。它从 `WorkbenchDomainState.workspace.graph`、`workspace.viewport`、`workspace.selection` 和 `ObjectSummary.geometry` 渲染 Canvas Node、3D structure preview、edge、Graph Path、active path、Workspace Selection、Web Network Preview Panel、Web Node Composition Editor 和 viewport-transformed content layer，并展示 disconnected node diagnostics；主画布不显示内部 graph id、shell session id、node/object/raw/source id、hash 或 fixture-like 标签。
-- Web Graph Canvas 当前通过 ShellClient 调用 fixture/local-http `workspace.open`、`workspace.add_node`、`workspace.set_node_composition`、`workspace.move_node`、`workspace.remove`、`workspace.select`、`workspace.set_viewport`、`workspace.connect`、`workspace.update_edge` 和 `workspace.set_path`；`WorkbenchShell` 只用 ShellResponse 返回的 workspace projection 更新 domain state，不直接 patch `workspace.graph`、`workspace.viewport` 或 `workspace.selection`。
-- Web Graph Canvas 支持 click-driven fallback、Object Registry registered-object drag/drop 创建节点、已有节点 pointer drag 布局、Apply Layout 自动布局、edge/node/path selection delete、Path Order Draft、Edge Label Draft、Direct Edge Gesture、Shift-click mixed selection、rubber-band 多选、Delete/Backspace 删除 selection、Escape 清空 selection、方向键按 grid 微调 selected nodes、Pan/Zoom/Fit/Reset、wheel zoom、Graph Minimap navigation，以及 layout/viewport/selection/nudge 的 Web runtime-only undo/redo。node positions、edge labels、viewport、selection 和 active path 可通过项目自动保存和重新打开 project 使用现有 Project Content files 保存和恢复。
-- Web Graph Canvas 的 Workspace Selection 是 workspace-only projection；active object selection、pending connection / pending edge draft、Path Order Draft、Composition Draft、Edge Label Draft、hover、dragging、rubber-band draft、viewport intent、transient pan drag、minimap drag draft、toolbar state 和 Graph Editor History stack 都是 UI-only state，它们不进入 Project Content、Workspace Snapshot、ReactionGraph 或 localStorage。Node Composition Editor 只在 Apply 时提交 `workspace.set_node_composition`，Edge Label Draft 只在 Apply/Clear 时提交 `workspace.update_edge`，成功后均以 ShellResponse workspace projection 为准。
-- Web Graph Canvas 当前不直接调用 `energy.compute`、`export.profile` 或 `project.save_content`，不实现碰撞避让、edge rerouting、label collision avoidance、拖动实时逐帧写盘、缩放/平移独立 localStorage 持久化、persistent undo/redo、destructive delete undo、edge endpoint 重连、edge/path nudge、惯性滚动、多指 PointerEvent 手势识别、云同步或账号系统；路径能量计算由右侧 Web Energy Profile Panel 触发，active project + session 的图谱变更由 WorkbenchShell 防抖自动保存。
-- Web Energy Profile Panel 当前通过 `web/src/app/EnergyProfilePanel.tsx` 提供。它基于 `WorkbenchDomainState.workspace` 和 typed `EnergyProfileSummary` 展示 command options、profile summary、relative energy table、missing reason、warnings、Energy Expression Details、interactive SVG curve 和 Curve Point Detail。
-- Web Energy Profile Panel 只通过 ShellClient 调用 fixture `energy.compute`；`WorkbenchShell` 成功后只更新 `WorkbenchDomainState.profile`、`active.profileId` 和 `counts.profiles`，不直接 patch graph/object/import state，不调用 `project.save_content` 或 Browser Project Repository。
-- Web Energy Profile Panel 不在前端重算能量、校正项、expression 或单位换算；output unit、energy key/source、baseline node 和 correction policy 只作为 command args，显示值以 ShellResponse profile projection 为准。Energy Channel Selector 的候选来自 `objects[].energy_channels`，Correction Policy Controls 的 none/all/kinds/ids 直接映射 shell args。
-- Web Energy Profile Panel 对 missing relative energy 保留 `missing_reason` 和 warning；interactive SVG curve 只连接有 relative energy 的点，missing point 用独立 marker/label 表达，不补 0。correction marker/count 来自 `expression.corrections.length`，不在前端重新求和。当前不生成 PNG/CDXML/XLSX/CSV/SVG，也不登记 ExportArtifact。
-- Web Energy Profile Panel 的 active/pinned curve point state 是 UI-only state，不进入 ShellResponse、Project Content、Browser Project Repository 或 localStorage。point hover/focus/click 和 table row click 只更新 panel detail；需要联动图谱时，`WorkbenchShell` 只通过 `workspace.select` 提交 selection intent。
-- Web Report Export Panel 当前通过 `web/src/app/ReportExportPanel.tsx` 提供。它基于 `WorkbenchDomainState.profile` 展示 PNG/CDXML/XLSX format selection、basename/title、Export button、artifact file list 和 inline download link；CSV/SVG 不在 Web 普通导出面板显示，artifact id、metadata key/value、checksum、writer id 和 persistence state 不在普通 UI 常驻显示。
-- Web Report Export Panel 只通过 ShellClient 调用当前 runtime 的 `export.profile`；`WorkbenchShell` 成功后把 `ShellResponse.artifacts` 转成 `WorkbenchArtifactSummary` 并按 artifact id merge 到 `WorkbenchDomainState.artifacts`，同步 `counts.artifacts` 和 warnings。若存在 active browser project，`WorkbenchShell` 会把 inline bytes 写入 Browser Project Repository 的 `exports/{basename}.{format}`，并刷新 Project Sidebar shallow validation。
-- Web Export Artifact Persistence 当前通过 `web/src/app/exportArtifactPersistence.ts` 提供。它接受 core supported 且带 `bytes_base64` 的 PNG/CDXML/XLSX/CSV/SVG `ShellArtifact`，解码后写 Browser Project Repository object，upsert `.rxnflow/state/export-artifacts.json` 的 `export-artifacts-v1` records，并更新 `.rxnflow/state/project-content.json` 中 export artifacts section 的 checksum；重复导出同 artifact id 或 path 时覆盖，不创建重复 record；unsupported artifact format 不写 `exports/...` 或 export artifact record。
-- Web Report Export Panel 不在前端生成 PNG/CDXML/XLSX/CSV/SVG bytes，不直接调用 `project.save_content` 或项目自动保存，不创建 Python filesystem artifact，不实现 file picker、File System Access API、OPFS、JSZip、云存储、账号系统、独立报告 writer、ChemDraw 编辑器、CDX、PDF 或 PPTX。
-- Web Report Export Panel 的普通 UI 只显示 format、可读文件名/path basename 和 inline download；artifact id、checksum、metadata key/value、warning/error code、writer id 和 persisted state 仍保留在 ShellArtifact / WorkbenchArtifactSummary / ExportArtifactRecord 投影中，供 persistence helper、验证和内部恢复使用。静态 UI 文案进入 `zh-CN` / `en-US` catalog。
-- Web E2E QA Harness 当前通过 `web/playwright.config.ts`、`web/playwright.local-http.config.ts` 和 `web/e2e/` 提供。默认 fixture E2E 通过真实浏览器页面交互覆盖已落地 fixture flow，fixture seed 由 dev/test-only `window.__rxnflowWorkbenchTest` 触发且不渲染按钮；desktop advanced Graph Editor Matrix 覆盖 registered object drag/drop、node drag、Apply Layout/history、path delete、edge label、Direct Edge Gesture、rubber-band 多选、keyboard nudge/delete/escape、path reorder、viewport controls、wheel/minimap 和 auto-save restore；还覆盖 narrow advanced graph controls、Project Files raw-only、Report Export PNG/CDXML/XLSX download MIME 和 browser-local persistence；local-http E2E 通过浏览器页面交互和 dev/test fixture API 调用本地 Python bridge smoke，覆盖真实 writer ids、download MIME 和 browser project restore roundtrip，不复制完整 graph editor 手势矩阵，不 import Python core、不新增 shell command、不改变 app runtime。
-- `npm run test:e2e` 会启动或复用 `http://127.0.0.1:5173/`，运行 Chromium desktop/narrow Workbench Journey；`npm run test:e2e:local-http` 会启动或复用 `http://127.0.0.1:8766/health` 的 `rxnflow.local_bridge` 和 `http://127.0.0.1:5176/` 的 local-http Vite server，只运行 `local-http-bridge.spec.ts`。local-http bridge 命令显式设置 `PYTHONPATH` 指向仓库根，并按 `RXNFLOW_E2E_PYTHON` → `CONDA_PREFIX/bin/python3` → `python3` 顺序选择解释器，以保证 Pillow / XlsxWriter 等真实导出依赖可用。两者都会清理测试上下文中的 IndexedDB/localStorage，捕获 console warning/error，断言无水平溢出，并把 screenshot/trace/report 写入 git ignored 的 Playwright output。
-- ProjectContentValidator 只读 `.rxnflow/state/`、`.rxnflow/manifest.json` 和 `exports/...`，聚合 index/schema/path/checksum/codec/cross-ref/artifact issues，并通过 section codec 校验 reaction graph composition 投影/系数/对象引用和 energy profile expression node/source/kind/unit/coefficient/missing 语义；它不修复、不删除、不写回项目文件。
-- ProjectContentStore 当前暴露 `validate_project(project_ref)` 和 `migration_plan(project_ref, target_schema_version="project-content-v1")`；`load_snapshot` 不自动 migration。
-- `project-content-v1`、`chemical-objects-v1`、`reaction-graphs-v1`、`workspaces-v1`、`import-ledger-v1`、`energy-profiles-v1` 和 `export-artifacts-v1` 不做 silent fallback；index 缺失、schema 不兼容、坏 JSON、不安全 path、裸 energy、unsupported unit、重复 object/graph/workspace/profile/artifact/node/edge/path id、缺失 object/node/edge/path/workspace/profile 引用、composition 投影不一致、非法 composition coefficient、expression node/source/kind/unit/coefficient/missing/total 语义错误、非法 viewport、profile point energy/missing_reason 冲突、artifact path/checksum/metadata shape 错误和 warning shape 错误等返回结构化错误。旧 graph node 缺 composition 或旧 profile point 缺 expression 是合法 v1 兼容数据，不作为 validation warning/error。
-- 待补：真实 Gaussian/ORCA/MAPLE fixture coverage、Gaussian/ORCA/MAPLE/XYZ/extxyz 支持版本边界；当前 support matrix 覆盖 synthetic、MAPLE public-shape/path-family synthetic-derived、Gaussian/ORCA public-shape synthetic-derived、ASE extxyz project-authored variants 和 reference-only corpus，MAPLE/cclib-data public originals 尚未 vendor，外部 extxyz 数据集也未 vendor，MAPLE `.sum`、AutoNEB tree JSON、MD thermo、path direction/topology 和 TS candidate 语义仍未解析。
-- 待补：Graph Canvas 的 endpoint reconnect、edge rerouting、label collision avoidance、图谱画布截图/视觉基线、edge/path nudge、destructive delete undo 和 persistent history 边界。
-- 待补：组合报告、图谱画布截图视觉基线、CDX、PDF/PPTX 等导出能力边界；当前 Web 报告预览仍只是 UI-only readiness 投影，不是组合报告 composer。
+- `demo_flow()` 返回本地演示 ReactionFlow。
+- `export_flow_json()` 输出稳定 JSON。
+- `parse_source_preview()` 提供 lightweight text parser；`preview_sources()` 在有 `sourcePath` 时读取完整文件解析，并返回结构化结果而不是把完整 log 交给 renderer。
+- `rxnflow/engine_ipc.py` 提供 stdin/stdout JSON command boundary，当前支持 `engine.status`、`flow.demo`、`import.preview`、`import.register_selection`、`import.register_all` 和轻量 `project.validate/open/save`。
+- `import.preview` 返回兼容当前 UI 的扁平 parse 字段，同时附带 `parserId`、`parserVersion`、`parseScope`、`confidence`、`objectCount`、`warnings`、`candidates`、`coordinatePreview` 和当前表格使用的 `energyTable`。`import.register_selection` / `import.register_all` 提供轻量、无状态的候选登记对象摘要并保留 `energyTable`。Electron renderer 通过 preload 优先调用这些 register commands，再把对象摘要映射成画布节点；浏览器预览或 engine 失败时 fallback 到 renderer-side candidate register。
+- 工作区文件夹打开/保存路径会校验 `.rxnflow/project.json` project envelope、safe project-relative paths、file/node/edge 基础引用一致性、轻量 `importLedger` entry/file/node 引用、node 能量单位/数值/position 形状，以及工作区 `sources/` / `exports/` 文件存在性、size 和 sha256 checksum；缺失文件或不一致 checksum 是 warning，不安全路径和破坏项目结构的字段是 error。
 
-## 5. 已知约束 / 硬边界
+它不是旧 parser/registry/graph/energy/export/platform shell 的替代品，也不提供完整真实输出兼容矩阵或报告生成。
 
-- 原始计算输出由外部程序生成，RxnFlow 不负责计算任务调度本身。
-- 初始导出格式优先支持 PNG、ChemDraw/CDXML 与能量 Excel 表格。
-- 设计上需要避免单一前端或单一桌面端绑定，核心领域逻辑应尽量和平台壳层解耦。
-- Web 端不得直接复制 parser、registry、reaction graph、energy 或 export 领域逻辑；必须通过 Shell Client / Shell Response 投影调用核心能力。
-- Web Workbench 当前三栏工作台结构用于承载后续 panel，但视觉风格、组件库、配色和密度尚未冻结。
-- Web MVP 第一版不购买或绑定云存储；账号、跨设备同步、冲突合并和多人协作不属于当前 Web Workbench MVP 边界。
-- Web Browser Project Repository 是 local-only 项目仓储基础，不是云备份；浏览器清数据、profile 损坏或 origin 变化会使项目引用和 bytes 对象丢失。Web 当前不把 `.rxnflow.zip` Import/Export 作为侧栏主入口；跨设备/分享的正式项目文件语义仍待后续产品化。
-- Web Project Sidebar 当前保存真实 Project Content files，并通过打开 project / 自动保存与 Python PlatformSession 协作；Web Export Artifact Persistence 可更新 Browser Project Repository 中的 `exports/...` 与 export artifact index。Browser Bundle helper 只作为内部/CLI/后备能力保留，不是侧栏主流程。后续 parser raw storage 或自动保存类 feature 必须继续保持 ProjectSidebarState、WorkbenchDomainState、Browser Project Repository state 和核心领域状态边界分离。
-- Web UI 新增主文案应进入 `web/src/app/i18n/messages.ts`，保持 `zh-CN` / `en-US` catalog key 一致；动态数据和错误 code/target 保持原样显示。
-- Transient import pipeline 和 Graph Canvas 候选/错误反馈必须保留 parser_id、parser_version、warning/error code、target、source path、raw resource path/checksum 等内部投影供调试和测试追踪；普通 UI 只展示结构候选、能量、电荷、自旋、公式、格式字标和必要 warning/error，不把 fixture preview 描述成真实 Gaussian/ORCA/MAPLE/XYZ/extxyz 完整支持。
-- Object Registry Panel 必须展示 label/source file、formula、charge/spin、method、energy key、parser warning/error code 等用户可理解信息；object id、source_file_id、parser id/version 等内部来源字段保留在 DTO/测试/必要 provenance 中，不作为普通卡片主标签。静态 UI 文案进 i18n catalog，动态化学/来源数据不翻译。
-- Report Export Panel 必须展示 format、可读文件名/path basename、download/persisted 状态和 warning/error code；artifact id、checksum、metadata key/value 保留在 projection/persistence/test，不作为普通 artifact list 主信息。前端只处理 `ShellArtifact` projection，持久化时只把已有 inline bytes 写入 Browser Project Repository，不生成报告 bytes 或新增导出格式。
-- Web Energy Profile Panel 的 curve/detail 只能消费 ShellResponse profile projection：missing point 不补 0，correction count 不重算，graph linkage 必须通过 `workspace.select`。
-- 待补：支持的计算程序版本、解析容错策略、单位体系与能量基准约定。
+### Desktop Target
+
+桌面端已有最小 Electron 壳，位于 `web/electron/`，当前架构约束是：
+
+- Electron shell 负责 macOS/Windows 窗口、菜单、文件选择、打包和启动本地 engine。
+- Electron shell 已提供原生文件导入、真实工作区文件夹创建/打开、自动保存到当前工作区、`Export project` 导出 `.rxnflow.zip` 压缩包、轻量 `importLedger` 持久化、source size/sha256 元数据、旧 `.rxnflow.json` package 读取兼容、当前 project 下 PNG/CDXML/XLSX report artifact store、export artifact size/sha256 元数据、基础 recent projects 菜单持久化。常规项目不再托管到 Electron `userData/projects/`；没有创建或打开工作区文件夹时，桌面端 autosave 只返回 `project_folder_required` warning，不静默写隐藏主项目目录。
+- Electron shell 已提供 `web/electron/engine-bridge.cjs`，开发态优先 spawn `python3 -m rxnflow.engine_ipc` 执行 `engine.status`、full-file capable lightweight `import.preview`、lightweight stateless `import.register_selection` / `import.register_all`、轻量 `project.validate/open/save`、file/node/edge 引用校验和 source/export checksum warning 验证；当 Python engine 不可用、超时或返回不可读响应时，会降级到 packaged `web/electron/embedded-engine.cjs`，继续提供同一组当前 UI 承载的轻量命令。
+- Electron builder 已配置 macOS `dmg/zip` 和 Windows x64 `nsis/portable` target；`desktop:icons` 可从 `web/build/icon.svg` 生成 PNG/ICNS/ICO 资产，builder 已接入 mac/win icon 配置；macOS builder 已开启 hardened runtime 并接入 `web/build/entitlements.mac.plist`；`desktop:release:smoke` 验证打包元数据、target、图标资产、Windows installer smoke wiring、runtime smoke wiring、发布 CI workflow、当前平台 unpacked app 结构，以及存在时的 Windows unpacked/installer/portable artifact 结构。
+- `desktop:runtime:smoke` 会启动 packaged unpacked app，等待 React 工作台渲染，并通过 preload 调用 engine status 与 `registerImportCandidates` 后退出；`.github/workflows/desktop-release.yml` 会在 macOS runner 上验证 unsigned unpacked app runtime，在 Windows runner 上验证 `win-unpacked/RxnFlow.exe` runtime，再生成 Windows NSIS/portable artifacts，并运行 `desktop:installer:smoke:win` 对 NSIS 安装器执行安装、启动、卸载 smoke。手动 workflow 可在提供 Apple Developer ID secrets 时执行签名 macOS dist、notarytool 提交、staple 和 `spctl`。
+- React/Vite renderer 复用当前 Web Workbench UI。
+- 完整 parser engine、旧持久化 import registry workflow 和 ProjectContent engine IPC 不属于当前 active surface；当前只保留 UI 已承载的 lightweight `importLedger`，用户不需要手动启动 Python bridge。
+- 当前尚未取得真实 Apple Developer ID 签名/公证成功证据，也未完成自动更新或 Windows 安装器真实用户机器/发布渠道验证；当前 macOS/arm64 环境已通过 unsigned local `desktop:pack` 刷新 mac-arm64 unpacked app 与 `icon.icns`，也已通过 `desktop:pack:win` 刷新 Windows x64 unpacked app。仓库中保留此前 `desktop:dist:win` 生成并通过结构验证的 NSIS setup 和 portable artifacts，但最新 renderer 对应的 Windows installer/portable 需要 Windows CI 或 Windows 机器重新产出验证。Windows CI 已接入 NSIS 安装/启动/卸载 smoke。packaged app runtime smoke 证明桌面进程、renderer 工作台和 embedded lightweight engine commands 可启动；它不证明完整 parser/registry engine 已恢复。
+
+## 3. 当前不在 active code 的能力
+
+以下能力在旧代码、旧文档或历史 feature 中出现过，但本轮不作为当前实现承诺：
+
+- 旧 `energy.compute` Shell command、EnergyProfilePanel、完整 EnergyProfilePanel correction policy、Object Registry / Objects tab / correction 表单和完整 ObjectRegistryPanel service 绑定；当前 active UI 只有 renderer-side lightweight relative energy display。
+- Gaussian/ORCA/MAPLE/XYZ 完整 parser engine、cclib/ASE fixture corpus 和旧持久化 import registry workflow；当前 active code 有 Python local-engine / Electron embedded-engine / renderer fallback lightweight parser、preview candidates、Electron preload register IPC、lightweight stateless engine register commands、renderer-side fallback register 和 lightweight `importLedger`。
+- Project Content 深持久化、IndexedDB repository、`.rxnflow.zip` 导入、migration/content index；当前 active code 只有真实工作区文件夹、隐藏 `.rxnflow/project.json` / `.rxnflow/manifest.json` 轻量 state、基础 file/node/edge/importLedger 引用校验、带 checksum 的 `sources/` 副本、`exports/manifest.json` 和 `.rxnflow.zip` 导出。
+- Local HTTP shell bridge、Platform Shell、CLI command surface。
+- Three.js 自研 3D 分子 viewer、结构测量和 2D/3D 原子联动；当前 active UI 使用 lightweight 2D `Structure Preview` / Ketcher + Indigo WASM `Edit 2D` 与 3Dmol.js `3D Structure` 坐标查看器。
+- CSV/SVG/PDF/PPTX/CDX 导出、旧 Python ReportExportService、report manifest 深校验和完整 artifact index。
+- 云 Web、账号/Auth、跨设备同步、对象存储、serverless command executor。
+
+这些内容只允许出现在 `.codestable/roadmap/` 或历史备份中；如果重新进入 active code，必须先有新 feature design，并确认 UI 承载方式。
+
+## 4. 当前验证入口
+
+- Python smoke：`python3 -m unittest discover`
+- Web test：`cd web && npm run test`
+- Web build：`cd web && npm run build`
+- Web preview：`cd web && npm run dev`，打开 `http://127.0.0.1:5173/`；端口被占用时使用 Vite 输出的新端口。
+
+涉及 UI、画布、表格或导出的改动必须浏览器验证桌面和窄屏布局。

@@ -1,0 +1,279 @@
+import { describe, expect, it } from "vitest"
+import {
+  buildProjectPackage,
+  buildImportLedger,
+  parseProjectPackage,
+  safeProjectFileStem,
+  type CanvasViewport,
+  type FlowBarrier,
+  type FlowEdge,
+  type FlowNode,
+  type ProjectSummary,
+  type SourceFile,
+} from "./projectPackages"
+
+const project: ProjectSummary = {
+  id: "diels-alder",
+  label: "Diels-Alder Study",
+  meta: "open",
+}
+
+const files: SourceFile[] = [{
+  id: "gaussian-log",
+  name: "gaussian.log",
+  kind: "Gaussian",
+  size: 482000,
+  checksum: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  status: "parsed",
+  preview: "SCF Done: E(RwB97XD) = -232.487921 A.U.",
+  storedPath: "sources/gaussian.log",
+}]
+
+const nodes: FlowNode[] = [{
+  id: "ts-endo",
+  label: "TS1 (Endo)",
+  formula: "C10H12",
+  kind: "transition",
+  coefficient: 2,
+  method: "wB97X-D",
+  solvent: "Toluene",
+  energyGas: -232.487921,
+  energySolution: -232.278807,
+  energyUnit: "hartree",
+  sourceStatus: "parsed",
+  sourceFileId: "gaussian-log",
+  sourceCandidateId: "candidate-1-ts-endo",
+  sourceObjectIndex: 0,
+  parserId: "gaussian-log-text-preview",
+  parserVersion: "0.2.1",
+  corrections: [{
+    id: "correction-manual-1",
+    kind: "manual",
+    value: 1.5,
+    unit: "kcal/mol",
+    note: "manual test correction",
+  }],
+  manualStructureKet: "{\"root\":{\"nodes\":[]}}",
+  manualStructureMolfile: "manual molfile",
+  manualStructureCdxml: "<CDXML><page><fragment id=\"1\"/></page></CDXML>",
+  manualStructureSvg: "<svg><text>manual</text></svg>",
+  position: { x: 10, y: -140 },
+}]
+
+const edges: FlowEdge[] = [{
+  id: "edge-reactant-ts",
+  sourceId: "reactant",
+  targetId: "ts-endo",
+  label: "path",
+}]
+
+const barriers: FlowBarrier[] = [{
+  id: "barrier-reactant-ts",
+  sourceId: "reactant",
+  targetId: "ts-endo",
+  label: "OA barrier",
+}]
+
+const viewport: CanvasViewport = {
+  x: 575,
+  y: 300,
+  zoom: 0.82,
+}
+
+describe("project packages", () => {
+  it("builds the current RxnFlow project package envelope", () => {
+    const projectPackage = buildProjectPackage(project, files, nodes, edges, viewport, {
+      barriers,
+      savedAt: "2026-06-14T00:00:00.000Z",
+    })
+
+    expect(projectPackage).toMatchObject({
+      schemaVersion: 1,
+      packageKind: "rxnflow-project",
+      project,
+      files,
+      nodes,
+      edges,
+      barriers,
+      viewport,
+      importLedger: {
+        schemaVersion: 1,
+        entries: [{
+          id: "import-gaussian-log-candidate-1-ts-endo",
+          fileId: "gaussian-log",
+          sourceName: "gaussian.log",
+          sourceKind: "Gaussian",
+          status: "registered",
+          parserId: "gaussian-log-text-preview",
+          parserVersion: "0.2.1",
+          candidateId: "candidate-1-ts-endo",
+          objectIndex: 0,
+          registeredNodeIds: ["ts-endo"],
+          warningCodes: [],
+        }],
+      },
+      savedAt: "2026-06-14T00:00:00.000Z",
+    })
+  })
+
+  it("parses and normalizes valid package content", () => {
+    const content = JSON.stringify({
+      schemaVersion: 1,
+      packageKind: "rxnflow-project",
+      project,
+      files,
+      nodes: [{
+        id: "node-a",
+        label: "Imported node",
+        kind: "bad-kind",
+        coefficient: 0,
+        energyGas: Number.NaN,
+        energyUnit: "kcal/mol",
+        corrections: [{
+          value: 2.25,
+          kind: "bad-kind",
+          unit: "bad-unit",
+        }],
+        manualStructureKet: "  custom ket  ",
+        manualStructureMolfile: "  custom molfile  ",
+        manualStructureCdxml: "  custom cdxml  ",
+        manualStructureSvg: "  custom svg  ",
+        position: { x: 12, y: 24 },
+      }],
+      edges,
+      barriers: [{
+        id: "barrier-a",
+        sourceId: "node-a",
+        targetId: "ts-endo",
+        label: "  custom barrier  ",
+      }, {
+        sourceId: "node-a",
+        targetId: "",
+        label: "",
+      }],
+      viewport,
+      importLedger: {
+        schemaVersion: 1,
+        entries: [{
+          id: "custom-entry",
+          fileId: "gaussian-log",
+          sourceName: "gaussian.log",
+          sourceKind: "Gaussian",
+          status: "registered",
+          parserId: "gaussian-log-text-preview",
+          parserVersion: "0.2.1",
+          registeredNodeIds: ["node-a"],
+          warningCodes: ["candidate_selection_available"],
+        }],
+      },
+      savedAt: "2026-06-14T00:00:00.000Z",
+    })
+
+    const parsed = parseProjectPackage(content)
+
+    expect(parsed?.nodes[0]).toMatchObject({
+      id: "node-a",
+      formula: "pending",
+      kind: "intermediate",
+      coefficient: undefined,
+      method: "unassigned",
+      energyGas: null,
+      energyUnit: "kcal/mol",
+      corrections: [{
+        id: "correction-1",
+        kind: "manual",
+        value: 2.25,
+        unit: "kcal/mol",
+      }],
+      manualStructureKet: "  custom ket  ",
+      manualStructureMolfile: "  custom molfile  ",
+      manualStructureCdxml: "  custom cdxml  ",
+      manualStructureSvg: "  custom svg  ",
+      position: { x: 12, y: 24 },
+    })
+    expect(parsed?.files[0]).toMatchObject({
+      name: "gaussian.log",
+      storedPath: "sources/gaussian.log",
+      checksum: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    })
+    expect(parsed?.importLedger.entries[0]).toMatchObject({
+      id: "custom-entry",
+      fileId: "gaussian-log",
+      status: "registered",
+      registeredNodeIds: ["node-a"],
+      warningCodes: ["candidate_selection_available"],
+    })
+    expect(parsed?.barriers).toEqual([{
+      id: "barrier-a",
+      sourceId: "node-a",
+      targetId: "ts-endo",
+      label: "custom barrier",
+    }, {
+      id: "barrier-2",
+      sourceId: "node-a",
+      targetId: "",
+      label: undefined,
+    }])
+  })
+
+  it("derives a lightweight import ledger from files and nodes", () => {
+    const ledger = buildImportLedger(files, nodes)
+
+    expect(ledger).toEqual({
+      schemaVersion: 1,
+      entries: [{
+        id: "import-gaussian-log-candidate-1-ts-endo",
+        fileId: "gaussian-log",
+        sourceName: "gaussian.log",
+        sourceKind: "Gaussian",
+        status: "registered",
+        parserId: "gaussian-log-text-preview",
+        parserVersion: "0.2.1",
+        candidateId: "candidate-1-ts-endo",
+        objectIndex: 0,
+        registeredNodeIds: ["ts-endo"],
+        warningCodes: [],
+      }],
+    })
+  })
+
+  it("backfills import ledger entries for older lightweight packages", () => {
+    const parsed = parseProjectPackage(JSON.stringify({
+      schemaVersion: 1,
+      packageKind: "rxnflow-project",
+      project,
+      files,
+      nodes,
+      edges,
+      viewport,
+      savedAt: "2026-06-14T00:00:00.000Z",
+    }))
+
+    expect(parsed?.importLedger.entries[0]).toMatchObject({
+      id: "import-gaussian-log-candidate-1-ts-endo",
+      fileId: "gaussian-log",
+      status: "registered",
+      registeredNodeIds: ["ts-endo"],
+    })
+    expect(parsed?.barriers).toEqual([])
+  })
+
+  it("rejects legacy snapshots and invalid viewport packages", () => {
+    expect(parseProjectPackage(JSON.stringify({ schemaVersion: 1, project, files, nodes, edges, viewport }))).toBeNull()
+    expect(parseProjectPackage(JSON.stringify({
+      schemaVersion: 1,
+      packageKind: "rxnflow-project",
+      project,
+      files,
+      nodes,
+      edges,
+      viewport: { x: 0, y: 0, zoom: 0 },
+    }))).toBeNull()
+    expect(parseProjectPackage("{bad json")).toBeNull()
+  })
+
+  it("creates safe project file stems", () => {
+    expect(safeProjectFileStem("Diels-Alder Study")).toBe("diels-alder-study")
+    expect(safeProjectFileStem("   ")).toBe("rxnflow-project")
+  })
+})
