@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -9,7 +10,7 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react"
-import { Atom, Moon, Sun } from "lucide-react"
+import { Download, Moon, PanelLeft, PanelRight, Plus, Sun } from "lucide-react"
 import {
   defaultReportExportOptions,
   type ReportExportOptions,
@@ -83,7 +84,6 @@ import {
 import {
   CanvasSurface,
   MiniMap,
-  ZoomControls,
   canvasSizeFromElement,
   type BarrierDraft,
   type CanvasRawFileDrop,
@@ -107,7 +107,7 @@ import {
   type ProjectValidationPayload,
 } from "./projectPackageWorkflow"
 import { ProjectRail, type FileSelectionOptions } from "./ProjectRail"
-import { EnergyTableView, type ExportedReportArtifact } from "./ReportPanels"
+import { EnergyTableView, ExportDock, type ExportedReportArtifact } from "./ReportPanels"
 import { WorkbenchToolbar } from "./WorkbenchToolbar"
 import {
   applyCanvasSelectionState,
@@ -117,9 +117,11 @@ import {
 } from "./appStateAppliers"
 import {
   autosaveProjectPackageToRuntime,
+  forgetProjectInRuntime,
   openProjectPackageFromRuntime,
   restoreStartupProjectFromRuntime,
   saveProjectPackageToRuntime,
+  setActiveProjectInRuntime,
   subscribeProjectPackageRuntimeMenus,
   watchDesktopEngineStatus,
 } from "./appRuntimeEffects"
@@ -204,6 +206,22 @@ function initialAppTheme(): AppTheme {
   return window.localStorage.getItem("rxnflow-theme") === "dark" ? "dark" : "light"
 }
 
+export type CanvasTabSnapshot = {
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  barriers: FlowBarrier[]
+  viewport: CanvasViewport
+  selectedNodeIds: string[]
+  selectedEdgeIds: string[]
+  selectedBarrierIds: string[]
+}
+
+type CanvasTabState = {
+  id: string
+  label: string
+  snapshot: CanvasTabSnapshot | null
+}
+
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
@@ -235,6 +253,10 @@ export function App() {
   const [tool, setTool] = useState<"select" | "pan">("select")
   const [viewMode, setViewMode] = useState<WorkbenchViewMode>("canvas")
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>("inspector")
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+  const [canvasTabs, setCanvasTabs] = useState<CanvasTabState[]>([{ id: "canvas-1", label: "画布 1", snapshot: null }])
+  const [activeCanvasTabId, setActiveCanvasTabId] = useState("canvas-1")
   const [keyboardEdgeSourceId, setKeyboardEdgeSourceId] = useState<string | null>(null)
   const [exportOptions, setExportOptions] = useState<ReportExportOptions>({ ...defaultReportExportOptions })
   const [exportArtifacts, setExportArtifacts] = useState<ExportedReportArtifact[]>([])
@@ -277,6 +299,7 @@ export function App() {
     setCandidateReview,
     setCandidateRegisterBusy,
     setStructurePreviewNodeId,
+    setStructureEditorNodeId,
   }), [])
 
   const canvasEditHistorySetters = useMemo<CanvasEditHistorySetters>(() => ({
@@ -304,13 +327,25 @@ export function App() {
   }), [activeProject, barriers, edges, files, nodes, viewport])
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes])
-  const energyRows = useMemo(() => energyTableRows(nodes, energyDisplayOptions), [nodes, energyDisplayOptions])
-  const relativeZeroNodeId = useMemo(() => relativeEnergyZeroNode(nodes, energyDisplayOptions)?.id ?? null, [nodes, energyDisplayOptions])
+  const energyRowsSignature = useMemo(
+    () => buildEnergyRowsSignature(nodes, edges, energyDisplayOptions),
+    [edges, energyDisplayOptions, nodes],
+  )
+  const energyRows = useMemo(
+    () => energyTableRows(nodes, energyDisplayOptions, edges),
+    [energyRowsSignature],
+  )
+  const relativeZeroNodeId = useMemo(
+    () => relativeEnergyZeroNode(nodes, energyDisplayOptions, edges)?.id ?? null,
+    [edges, energyDisplayOptions, nodes],
+  )
   const hasCanvasSelection = selectionHasItems({
     nodeIds: selectedNodeIds,
     edgeIds: selectedEdgeIds,
     barrierIds: selectedBarrierIds,
   })
+  const pointerMoveFrameRef = useRef<number | null>(null)
+  const pendingPointerMoveRef = useRef<{ pointerId: number; clientX: number; clientY: number } | null>(null)
 
   const applyCanvasSelection = useCallback((selection: CanvasSelectionIds) => {
     applyCanvasSelectionState(appStateSetters, selection)
@@ -364,6 +399,59 @@ export function App() {
     viewport,
   ])
 
+  const currentCanvasTabSnapshot = useCallback((): CanvasTabSnapshot => ({
+    nodes,
+    edges,
+    barriers,
+    viewport,
+    selectedNodeIds,
+    selectedEdgeIds,
+    selectedBarrierIds,
+  }), [barriers, edges, nodes, selectedBarrierIds, selectedEdgeIds, selectedNodeIds, viewport])
+
+  const applyCanvasTabSnapshot = useCallback((snapshot: CanvasTabSnapshot) => {
+    setNodes(snapshot.nodes)
+    setEdges(snapshot.edges)
+    setBarriers(snapshot.barriers)
+    setViewport(snapshot.viewport)
+    setSelectedNodeIds(snapshot.selectedNodeIds)
+    setSelectedEdgeIds(snapshot.selectedEdgeIds)
+    setSelectedBarrierIds(snapshot.selectedBarrierIds)
+    clearEditHistory()
+  }, [clearEditHistory])
+
+  const switchCanvasTab = useCallback((tabId: string) => {
+    if (tabId === activeCanvasTabId) return
+    const currentSnapshot = currentCanvasTabSnapshot()
+    const nextTab = canvasTabs.find((tab) => tab.id === tabId)
+    if (!nextTab) return
+    setCanvasTabs((tabs) => tabs.map((tab) => tab.id === activeCanvasTabId ? { ...tab, snapshot: currentSnapshot } : tab))
+    setActiveCanvasTabId(tabId)
+    applyCanvasTabSnapshot(nextTab.snapshot ?? currentSnapshot)
+  }, [activeCanvasTabId, applyCanvasTabSnapshot, canvasTabs, currentCanvasTabSnapshot])
+
+  const createCanvasTab = useCallback(() => {
+    const currentSnapshot = currentCanvasTabSnapshot()
+    const tabIndex = canvasTabs.length + 1
+    const id = `canvas-${Date.now()}`
+    const blankSnapshot: CanvasTabSnapshot = {
+      nodes: [],
+      edges: [],
+      barriers: [],
+      viewport: defaultCanvasViewport(canvasRef.current),
+      selectedNodeIds: [],
+      selectedEdgeIds: [],
+      selectedBarrierIds: [],
+    }
+    setCanvasTabs((tabs) => [
+      ...tabs.map((tab) => tab.id === activeCanvasTabId ? { ...tab, snapshot: currentSnapshot } : tab),
+      { id, label: `画布 ${tabIndex}`, snapshot: blankSnapshot },
+    ])
+    setActiveCanvasTabId(id)
+    applyCanvasTabSnapshot(blankSnapshot)
+    setViewMode("canvas")
+  }, [activeCanvasTabId, applyCanvasTabSnapshot, canvasTabs.length, currentCanvasTabSnapshot])
+
   useEffect(() => {
     projectRestoreStateRef.current = {
       projects,
@@ -412,10 +500,10 @@ export function App() {
   const applyAutoLayout = useCallback(() => {
     if (nodes.length === 0) return
     pushEditHistory()
-    const nextNodes = autoLayoutFlowNodes(nodes, energyDisplayOptions)
+    const nextNodes = autoLayoutFlowNodes(nodes, energyDisplayOptions, edges)
     setNodes(nextNodes)
     setViewport(fitViewportToNodes(nextNodes, canvasRef.current))
-  }, [energyDisplayOptions, nodes, pushEditHistory])
+  }, [edges, energyDisplayOptions, nodes, pushEditHistory])
 
   useEffect(() => {
     resetCanvasViewport()
@@ -475,18 +563,49 @@ export function App() {
     [appStateSetters, barriers, edges, nodes, screenToWorld, selectedBarrierIds, selectedEdgeIds, selectedNodeIds],
   )
 
+  const applyPointerMovePayload = useCallback((payload: { pointerId: number; clientX: number; clientY: number }) => {
+    handlePointerMoveAction({
+      pointerId: payload.pointerId,
+      clientX: payload.clientX,
+      clientY: payload.clientY,
+      connectionDraft,
+      barrierDraft,
+      dragState,
+      screenToWorld,
+      appStateSetters,
+    })
+  }, [appStateSetters, barrierDraft, connectionDraft, dragState, screenToWorld])
+
+  const flushPointerMove = useCallback(() => {
+    pointerMoveFrameRef.current = null
+    const payload = pendingPointerMoveRef.current
+    if (!payload) return
+    pendingPointerMoveRef.current = null
+    applyPointerMovePayload(payload)
+  }, [applyPointerMovePayload])
+
+  const cancelScheduledPointerMove = useCallback(() => {
+    if (pointerMoveFrameRef.current !== null) window.cancelAnimationFrame(pointerMoveFrameRef.current)
+    pointerMoveFrameRef.current = null
+    pendingPointerMoveRef.current = null
+  }, [])
+
+  useEffect(() => cancelScheduledPointerMove, [cancelScheduledPointerMove])
+
   const handlePointerMove = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      handlePointerMoveAction({
-        event,
-        connectionDraft,
-        barrierDraft,
-        dragState,
-        screenToWorld,
-        appStateSetters,
-      })
+      const payload = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      }
+      pendingPointerMoveRef.current = payload
+      if (pointerMoveFrameRef.current !== null) return
+      pendingPointerMoveRef.current = null
+      applyPointerMovePayload(payload)
+      pointerMoveFrameRef.current = window.requestAnimationFrame(flushPointerMove)
     },
-    [appStateSetters, barrierDraft, connectionDraft, dragState, screenToWorld],
+    [applyPointerMovePayload, flushPointerMove],
   )
 
   const finishConnectionDraftAtClientPoint = useCallback((pointerId: number, clientX: number, clientY: number) => {
@@ -502,14 +621,8 @@ export function App() {
     })
   }, [appStateSetters, connectionDraft, edges, nodeIdSet, pushEditHistory])
 
-  useEffect(() => subscribeConnectionDraftPointer({
-    draft: connectionDraft,
-    screenToWorld,
-    setConnectionDraft,
-    finishConnectionDraftAtClientPoint,
-  }), [connectionDraft, finishConnectionDraftAtClientPoint, screenToWorld])
-
   const endDrag = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    cancelScheduledPointerMove()
     endCanvasPointerAction({
       event,
       dragState,
@@ -532,6 +645,7 @@ export function App() {
     appStateSetters,
     barrierDraft,
     barriers,
+    cancelScheduledPointerMove,
     connectionDraft,
     dragState,
     finishConnectionDraftAtClientPoint,
@@ -543,6 +657,18 @@ export function App() {
     selectedEdgeIds,
     selectedNodeIds,
   ])
+
+  useEffect(() => subscribeConnectionDraftPointer({
+    draft: connectionDraft,
+    screenToWorld,
+    setConnectionDraft,
+    finishConnectionDraftAtClientPoint,
+  }), [connectionDraft, finishConnectionDraftAtClientPoint, screenToWorld])
+
+  useLayoutEffect(() => {
+    if (typeof document === "undefined") return
+    document.documentElement.style.setProperty("color-scheme", theme)
+  }, [theme])
 
   const startConnection = useCallback((event: PointerEvent<HTMLElement>, sourceId: string) => {
     startConnectionAction({
@@ -662,10 +788,12 @@ export function App() {
       now: Date.now(),
     })
     if (action.kind === "activate") {
+      forgetProjectInRuntime({ desktopApi: window.rxnflowDesktop, projectId })
       applyProjectTransition(action.transition)
       return
     }
     if (action.kind === "delete-inactive") {
+      forgetProjectInRuntime({ desktopApi: window.rxnflowDesktop, projectId })
       setProjects(action.projects)
       setProjectWorkspaces(action.workspaces)
       setProjectValidation(null)
@@ -787,6 +915,10 @@ export function App() {
   useEffect(() => {
     return window.rxnflowDesktop?.onMenuImportFiles(openImportPicker)
   }, [openImportPicker])
+
+  useEffect(() => {
+    setActiveProjectInRuntime({ desktopApi: window.rxnflowDesktop, projectId: activeProjectId })
+  }, [activeProjectId])
 
   const restoreProjectPackage = useCallback((
     content: string,
@@ -1011,6 +1143,15 @@ export function App() {
     updateNodeCoefficientAction({ nodes, nodeId, coefficient, appStateSetters, pushEditHistory })
   }, [appStateSetters, nodes, pushEditHistory])
 
+  const renameNode = useCallback((nodeId: string, label: string) => {
+    const nextLabel = label.trim()
+    if (!nextLabel) return
+    const node = nodes.find((item) => item.id === nodeId)
+    if (!node || node.label === nextLabel) return
+    pushEditHistory()
+    setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, label: nextLabel } : item))
+  }, [nodes, pushEditHistory])
+
   const updateNodeManualStructure = useCallback((nodeId: string, structure: ManualStructurePayload | null) => {
     updateNodeManualStructureAction({ nodes, nodeId, structure, appStateSetters, pushEditHistory })
   }, [appStateSetters, nodes, pushEditHistory])
@@ -1038,6 +1179,28 @@ export function App() {
       setExportArtifacts,
     })
   }, [activeProject.label, edges, energyRows, exportOptions, files, nodes])
+
+  const openSourceFileInSystemApp = useCallback(async (fileId: string) => {
+    const file = files.find((item) => item.id === fileId)
+    if (!file) return
+    const result = await window.rxnflowDesktop?.openSourceFile?.({
+      projectId: activeProjectId,
+      storedPath: file.storedPath,
+      sourcePath: file.sourcePath,
+      name: file.name,
+    })
+    if (result && !result.ok) {
+      setProjectValidation({
+        valid: true,
+        summary: {},
+        issues: [{
+          severity: "warning",
+          code: "source_open_failed",
+          message: result.error || "Could not open the raw source file.",
+        }],
+      })
+    }
+  }, [activeProjectId, files])
 
   const setRelativeEnergyZeroFromNode = useCallback((nodeId: string) => {
     const transition = relativeEnergyZeroSelectionTransition(energyDisplayOptions, nodeId)
@@ -1082,32 +1245,6 @@ export function App() {
 
   return (
     <div className={`app-shell theme-${theme}`}>
-      <div className="window-bar" aria-label="Application window chrome">
-        <div className="traffic-lights" aria-hidden="true">
-          <span className="traffic traffic-red" />
-          <span className="traffic traffic-yellow" />
-          <span className="traffic traffic-green" />
-        </div>
-        <div className="window-title">
-          <Atom size={16} />
-          <span>RxnFlow</span>
-        </div>
-        <div className="window-actions">
-          <button
-            type="button"
-            className="theme-toggle-button"
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
-          >
-            {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-            <span>{theme === "dark" ? "Light" : "Dark"}</span>
-          </button>
-          <EngineStatusPill status={engineStatus} />
-          <span>{activeProject.label}</span>
-        </div>
-      </div>
-
       <input
         ref={importInputRef}
         className="visually-hidden"
@@ -1125,32 +1262,85 @@ export function App() {
         aria-label="Open project package"
       />
 
-      <main className="workspace">
-        <ProjectRail
-          projects={projects}
-          activeProjectId={activeProjectId}
-          files={files}
-          selectedFileId={selectedFileId}
-          selectedFileIds={selectedFileIds}
-          onCreateProject={createProject}
-          onOpenProject={openProject}
-          onDeleteProject={deleteProject}
-          onOpenProjectPackage={openProjectPackage}
-          onImportFiles={openImportPicker}
-          onDropProjectFiles={(projectId, droppedFiles) => void importFiles(droppedFiles, projectId)}
-          onSelectFile={selectFile}
-          onDeleteFile={deleteProjectFile}
-        />
+      <main className={`workspace${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}`}>
+        {leftSidebarOpen ? (
+          <ProjectRail
+            projects={projects}
+            activeProjectId={activeProjectId}
+            files={files}
+            selectedFileId={selectedFileId}
+            selectedFileIds={selectedFileIds}
+            onCreateProject={createProject}
+            onOpenProject={openProject}
+            onDeleteProject={deleteProject}
+            onOpenProjectPackage={openProjectPackage}
+            onImportFiles={openImportPicker}
+            onDropProjectFiles={(projectId, droppedFiles) => void importFiles(droppedFiles, projectId)}
+            onSelectFile={selectFile}
+            onDeleteFile={deleteProjectFile}
+          />
+        ) : null}
 
-        <section className="canvas-stage" aria-label="Reaction flow workspace">
+        <section className={`workbench-shell view-${viewMode}`} aria-label="Reaction flow workspace">
+          <div className="workspace-topbar">
+            <div className="workspace-topbar-left">
+              <button
+                type="button"
+                className="window-icon-button"
+                aria-label={leftSidebarOpen ? "Collapse project sidebar" : "Expand project sidebar"}
+                title={leftSidebarOpen ? "Collapse project sidebar" : "Expand project sidebar"}
+                aria-pressed={leftSidebarOpen}
+                onClick={() => setLeftSidebarOpen((current) => !current)}
+              >
+                <PanelLeft size={16} />
+              </button>
+              <CanvasTabBar
+                tabs={canvasTabs}
+                activeTabId={activeCanvasTabId}
+                onSelectTab={switchCanvasTab}
+                onCreateTab={createCanvasTab}
+              />
+            </div>
+            <div className="workspace-topbar-actions">
+              <button
+                type="button"
+                className="theme-toggle-button"
+                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+              >
+                {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+                <span>{theme === "dark" ? "Light" : "Dark"}</span>
+              </button>
+              <EngineStatusPill status={engineStatus} />
+              <button
+                type="button"
+                className="window-icon-button floating-export-trigger"
+                aria-label="Export"
+                title="Export"
+                aria-pressed={inspectorMode === "export"}
+                onClick={() => setInspectorMode((current) => current === "export" ? "inspector" : "export")}
+              >
+                <Download size={16} />
+              </button>
+              <button
+                type="button"
+                className="window-icon-button"
+                aria-label={rightSidebarOpen ? "Collapse node sidebar" : "Expand node sidebar"}
+                title={rightSidebarOpen ? "Collapse node sidebar" : "Expand node sidebar"}
+                aria-pressed={rightSidebarOpen}
+                onClick={() => setRightSidebarOpen((current) => !current)}
+              >
+                <PanelRight size={16} />
+              </button>
+            </div>
+          </div>
           <WorkbenchToolbar
             tool={tool}
             viewMode={viewMode}
             onSetTool={setTool}
             onSetViewMode={setViewMode}
-            onImport={() => openImportPicker(activeProjectId)}
-            onSaveProject={saveProjectPackage}
-            onOpenExport={() => setInspectorMode("export")}
+            zoom={viewport.zoom}
             energyDisplayOptions={energyDisplayOptions}
             onEnergyDisplayOptionsChange={setEnergyDisplayOptions}
             canUndo={historyPast.length > 0}
@@ -1161,96 +1351,117 @@ export function App() {
             onDelete={deleteSelection}
             onAutoLayout={applyAutoLayout}
             onFitView={fitCanvasViewport}
+            onZoomIn={() => setViewport((current) => ({ ...current, zoom: clamp(current.zoom * 1.12, minCanvasZoom, maxCanvasZoom) }))}
+            onZoomOut={() => setViewport((current) => ({ ...current, zoom: clamp(current.zoom * 0.88, minCanvasZoom, maxCanvasZoom) }))}
           />
           <ProjectValidationNotice validation={projectValidation} />
 
-          <div className="workbench-view-pane" hidden={viewMode !== "canvas"}>
-            <CanvasSurface
-              canvasRef={canvasRef}
-              nodes={nodes}
-              files={files}
-              edges={edges}
-              barriers={barriers}
-              nodeMap={nodeMap}
-              selectedNodeIds={selectedNodeIds}
-              selectedEdgeIds={selectedEdgeIds}
-              selectedBarrierIds={selectedBarrierIds}
-              keyboardEdgeSourceId={keyboardEdgeSourceId}
-              tool={tool}
-              viewport={viewport}
-              rubberBandDraft={dragState?.kind === "rubber" ? dragState : null}
-              connectionDraft={connectionDraft}
-              barrierDraft={barrierDraft}
-              energyDisplayOptions={energyDisplayOptions}
-              energyRows={energyRows}
-              relativeZeroNodeId={relativeZeroNodeId}
-              onCanvasPointerDown={handleCanvasPointerDown}
-              onCanvasKeyDown={handleCanvasKeyDown}
-              onPointerMove={handlePointerMove}
-              onPointerEnd={endDrag}
-              onNodePointerDown={handleNodePointerDown}
-              onNodePointerUp={completeConnectionToNode}
-              onStartConnection={startConnection}
-              onStartBarrierAnnotation={startBarrierAnnotation}
-              onStartKeyboardConnection={startKeyboardConnection}
-              onSelectNode={selectNode}
-              onSelectEdge={selectEdge}
-              onSelectBarrier={selectBarrier}
-              onUpdateBarrierLabel={updateBarrierLabel}
-              onSetNodeCoefficient={updateNodeCoefficient}
-              onSetRelativeEnergyZero={setRelativeEnergyZeroFromNode}
-              onShowNodeSource={showNodeSourceDetails}
-              onRawFileDrop={handleCanvasRawFileDrop}
-            />
-            <MiniMap
-              nodes={nodes}
-              selectedNodeIds={selectedNodeIds}
-              viewport={viewport}
-              canvasRef={canvasRef}
-              onViewportChange={setViewport}
-            />
-            <ZoomControls
-              zoom={viewport.zoom}
-              onZoomIn={() => setViewport((current) => ({ ...current, zoom: clamp(current.zoom * 1.12, minCanvasZoom, maxCanvasZoom) }))}
-              onZoomOut={() => setViewport((current) => ({ ...current, zoom: clamp(current.zoom * 0.88, minCanvasZoom, maxCanvasZoom) }))}
-              onReset={fitCanvasViewport}
-            />
-          </div>
+          <div className={`canvas-stage view-${viewMode}`}>
+            {inspectorMode === "export" ? (
+              <aside className="export-float-panel" aria-label="Export panel">
+                <div className="export-float-header">
+                  <div>
+                    <span>Export</span>
+                    <strong>Report</strong>
+                  </div>
+                  <button type="button" aria-label="Close export panel" onClick={() => setInspectorMode("inspector")}>×</button>
+                </div>
+                <ExportDock
+                  options={exportOptions}
+                  artifacts={exportArtifacts}
+                  busy={exportBusy}
+                  status={exportStatus}
+                  rows={energyRows}
+                  onOptionsChange={setExportOptions}
+                  onExport={exportSelectedFormats}
+                />
+              </aside>
+            ) : null}
 
-          <div className="workbench-view-pane table-view-pane" hidden={viewMode !== "table"}>
-            <EnergyTableView rows={energyRows} outputUnit={energyDisplayOptions.outputUnit} onSelectNode={(nodeId) => {
-              const transition = energyTableNodeSelectionTransition(nodeId)
-              applyCanvasSelection(transition.selection)
-              setInspectorMode(transition.inspectorMode)
-              setViewMode(transition.viewMode)
-            }} />
+            {viewMode === "canvas" ? (
+              <div className="workbench-view-pane canvas-view-pane">
+                <CanvasSurface
+                  canvasRef={canvasRef}
+                  nodes={nodes}
+                  files={files}
+                  edges={edges}
+                  barriers={barriers}
+                  nodeMap={nodeMap}
+                  selectedNodeIds={selectedNodeIds}
+                  selectedEdgeIds={selectedEdgeIds}
+                  selectedBarrierIds={selectedBarrierIds}
+                  keyboardEdgeSourceId={keyboardEdgeSourceId}
+                  tool={tool}
+                  viewport={viewport}
+                  rubberBandDraft={dragState?.kind === "rubber" ? dragState : null}
+                  connectionDraft={connectionDraft}
+                  barrierDraft={barrierDraft}
+                  energyDisplayOptions={energyDisplayOptions}
+                  energyRows={energyRows}
+                  relativeZeroNodeId={relativeZeroNodeId}
+                  onCanvasPointerDown={handleCanvasPointerDown}
+                  onCanvasKeyDown={handleCanvasKeyDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerEnd={endDrag}
+                  onNodePointerDown={handleNodePointerDown}
+                  onNodePointerUp={completeConnectionToNode}
+                  onStartConnection={startConnection}
+                  onStartBarrierAnnotation={startBarrierAnnotation}
+                  onStartKeyboardConnection={startKeyboardConnection}
+                  onSelectNode={selectNode}
+                  onSelectEdge={selectEdge}
+                  onSelectBarrier={selectBarrier}
+                  onUpdateBarrierLabel={updateBarrierLabel}
+                  onSetNodeCoefficient={updateNodeCoefficient}
+                  onSetRelativeEnergyZero={setRelativeEnergyZeroFromNode}
+                  onShowNodeSource={showNodeSourceDetails}
+                  onRenameNode={renameNode}
+                  onRawFileDrop={handleCanvasRawFileDrop}
+                />
+                <MiniMap
+                  nodes={nodes}
+                  selectedNodeIds={selectedNodeIds}
+                  viewport={viewport}
+                  canvasRef={canvasRef}
+                  onViewportChange={setViewport}
+                />
+              </div>
+            ) : (
+              <div className="workbench-view-pane table-view-pane">
+                <EnergyTableView
+                  rows={energyRows}
+                  outputUnit={energyDisplayOptions.outputUnit}
+                  onSelectNode={(nodeId) => {
+                    const transition = energyTableNodeSelectionTransition(nodeId)
+                    applyCanvasSelection(transition.selection)
+                    setInspectorMode(transition.inspectorMode)
+                    setViewMode(transition.viewMode)
+                  }}
+                />
+              </div>
+            )}
           </div>
         </section>
 
-        <InspectorPanel
-          mode={inspectorMode}
-          node={selectedNode}
-          edge={selectedEdge}
-          barrier={selectedBarrier}
-          nodeMap={nodeMap}
-          file={selectedFile}
-          rows={energyRows}
-          exportOptions={exportOptions}
-          exportArtifacts={exportArtifacts}
-          exportBusy={exportBusy}
-          exportStatus={exportStatus}
-          files={files}
-          energyDisplayOptions={energyDisplayOptions}
-          onModeChange={setInspectorMode}
-          onExportOptionsChange={setExportOptions}
-          onExport={exportSelectedFormats}
-          onReviewCandidates={reviewCandidatesForFile}
-          onUpdateEdgeLabel={updateEdgeLabel}
-          onUpdateBarrierLabel={updateBarrierLabel}
-          onOpenStructure={(nodeId) => setStructurePreviewNodeId(nodeId)}
-          onEdit2DStructure={(nodeId) => setStructureEditorNodeId(nodeId)}
-          onReset2DStructure={resetNodeManualStructure}
-        />
+        {rightSidebarOpen ? (
+          <InspectorPanel
+            node={selectedNode}
+            edge={selectedEdge}
+            barrier={selectedBarrier}
+            nodeMap={nodeMap}
+            file={selectedFile}
+            rows={energyRows}
+            files={files}
+            energyDisplayOptions={energyDisplayOptions}
+            onReviewCandidates={reviewCandidatesForFile}
+            onUpdateEdgeLabel={updateEdgeLabel}
+            onUpdateBarrierLabel={updateBarrierLabel}
+            onOpenStructure={(nodeId) => setStructurePreviewNodeId(nodeId)}
+            onEdit2DStructure={(nodeId) => setStructureEditorNodeId(nodeId)}
+            onReset2DStructure={resetNodeManualStructure}
+            onOpenSourceFile={openSourceFileInSystemApp}
+          />
+        ) : null}
       </main>
       {structurePreviewNode ? (
         <StructurePreviewDialog
@@ -1338,6 +1549,72 @@ function projectFolderCreationFailureValidation(error: unknown): ProjectValidati
       message: `Project folder creation failed: ${error instanceof Error ? error.message : String(error)}`,
     }],
   }
+}
+
+function CanvasTabBar({
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onCreateTab,
+}: {
+  tabs: CanvasTabState[]
+  activeTabId: string
+  onSelectTab: (tabId: string) => void
+  onCreateTab: () => void
+}) {
+  return (
+    <nav className="canvas-tab-bar" aria-label="Canvas tabs">
+      <div className="canvas-tab-list" role="tablist" aria-label="Project canvases">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            className={tab.id === activeTabId ? "canvas-tab is-active" : "canvas-tab"}
+            aria-selected={tab.id === activeTabId}
+            onClick={() => onSelectTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+        <button type="button" className="canvas-tab-add" aria-label="New canvas" title="New canvas" onClick={onCreateTab}>
+          <Plus size={15} />
+        </button>
+      </div>
+    </nav>
+  )
+}
+
+function buildEnergyRowsSignature(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  options: EnergyDisplayOptions,
+): string {
+  const edgeSignature = edges.map((edge) => `${edge.id}:${edge.sourceId}:${edge.targetId}:${edge.label}`).join("|")
+  const nodeSignature = nodes.map((node) => [
+    node.id,
+    node.label,
+    node.kind,
+    node.formula,
+    node.energyGas ?? "",
+    node.energySolution ?? "",
+    node.energyUnit,
+    node.coefficient ?? "",
+    node.charge ?? "",
+    node.spinMultiplicity ?? "",
+    node.sourceFileId ?? "",
+    node.sourceCandidateId ?? "",
+    node.sourceObjectIndex ?? "",
+    node.parserId ?? "",
+    node.parserVersion ?? "",
+    node.manualStructureKet ?? "",
+    node.manualStructureMolfile ?? "",
+    node.manualStructureCdxml ?? "",
+    node.manualStructureSvg ?? "",
+    JSON.stringify(node.energyTable ?? null),
+    JSON.stringify(node.corrections ?? []),
+  ].join("~")).join("||")
+  return `${options.baselineNodeId ?? ""}#${options.energySource}#${options.outputUnit}#${edgeSignature}#${nodeSignature}`
 }
 
 function EngineStatusPill({ status }: { status: DesktopEngineStatus | null }) {

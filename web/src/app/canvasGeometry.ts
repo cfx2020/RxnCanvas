@@ -1,4 +1,4 @@
-import type { CanvasViewport, FlowNode, Point } from "../domain/projectPackages"
+import type { CanvasViewport, FlowEdge, FlowNode, Point } from "../domain/projectPackages"
 import { energyTableRows, type EnergyDisplayOptions } from "./energyDisplay"
 
 export type SurfaceSize = {
@@ -37,12 +37,12 @@ export type MinimapGeometry = {
 }
 
 export const nodeWidth = 210
-export const nodeHeight = 164
+export const nodeHeight = 276
 export const collapsedNodeHeight = 132
 export const canvasGridSize = 8
 export const minCanvasZoom = 0.16
 export const maxCanvasZoom = 1.65
-export const minimapSize: SurfaceSize = { width: 270, height: 128 }
+export const minimapSize: SurfaceSize = { width: 176, height: 104 }
 export const fallbackCanvasSize: SurfaceSize = { width: 900, height: 640 }
 
 const graphBounds = {
@@ -169,39 +169,118 @@ export function fitViewportToNodesForSize(nodes: FlowNode[], size: SurfaceSize):
   }
 }
 
-export function autoLayoutFlowNodes(nodes: FlowNode[], options: EnergyDisplayOptions): FlowNode[] {
-  const rows = energyTableRows(nodes, options)
+export function autoLayoutFlowNodes(nodes: FlowNode[], options: EnergyDisplayOptions, edges: FlowEdge[] = []): FlowNode[] {
+  const rows = energyTableRows(nodes, options, edges)
   const relativeById = new Map(rows.map((row) => [row.nodeId, row.relative]))
+  const visibleById = new Map(rows.map((row) => [row.nodeId, row.showInRelativeTable]))
   const sourceIndexById = new Map(nodes.map((node, index) => [node.id, index]))
-  const sorted = [...nodes].sort((left, right) => {
-    const leftValue = relativeById.get(left.id)
-    const rightValue = relativeById.get(right.id)
-    if (typeof leftValue === "number" && typeof rightValue === "number") return leftValue - rightValue
-    if (typeof leftValue === "number") return -1
-    if (typeof rightValue === "number") return 1
-    return (sourceIndexById.get(left.id) ?? 0) - (sourceIndexById.get(right.id) ?? 0)
-  })
-  const finiteValues = sorted
+  const baselineId = options.baselineNodeId ?? rows.find((row) => row.relativeRole === "baseline")?.nodeId ?? null
+  const depthById = graphDepthsFromBaseline(nodes, edges, baselineId)
+  const sorted = [...nodes].sort((left, right) => compareLayoutNodes({
+    left,
+    right,
+    baselineId,
+    visibleById,
+    relativeById,
+    depthById,
+    sourceIndexById,
+  }))
+  const finiteValues = nodes
     .map((node) => relativeById.get(node.id))
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
-  const min = finiteValues.length > 0 ? Math.min(...finiteValues) : 0
-  const max = finiteValues.length > 0 ? Math.max(...finiteValues) : 1
-  const spread = Math.max(max - min, 1)
-  const centerOffset = ((sorted.length - 1) * 260) / 2
+  const maxMagnitude = finiteValues.length > 0 ? Math.max(...finiteValues.map((value) => Math.abs(value)), 1) : 1
+  const leftX = -360
+  const stepX = 286
+  const fallbackDepth = depthById.size > 0 ? Math.max(...Array.from(depthById.values()), 0) + 1 : 1
+  const laneCounts = new Map<number, number>()
 
   return sorted.map((node, index) => {
     const relative = relativeById.get(node.id)
-    const energyRatio = typeof relative === "number" && Number.isFinite(relative)
-      ? (relative - min) / spread
-      : 0.5
+    const finite = typeof relative === "number" && Number.isFinite(relative)
+    const signedEnergyRatio = finite ? relative / maxMagnitude : 0
+    const depth = node.id === baselineId ? 0 : depthById.get(node.id) ?? fallbackDepth + index
+    const laneIndex = laneCounts.get(depth) ?? 0
+    laneCounts.set(depth, laneIndex + 1)
+    const x = node.id === baselineId
+      ? leftX
+      : leftX + Math.max(1, depth) * stepX
+    const y = finite
+      ? 184 - signedEnergyRatio * 260 + laneIndex * 28
+      : 264 + laneIndex * 86
     return {
       ...node,
       position: {
-        x: Math.round((index * 260 - centerOffset) / canvasGridSize) * canvasGridSize,
-        y: Math.round((220 - energyRatio * 420) / canvasGridSize) * canvasGridSize,
+        x: Math.round(x / canvasGridSize) * canvasGridSize,
+        y: Math.round(y / canvasGridSize) * canvasGridSize,
       },
     }
   })
+}
+
+function graphDepthsFromBaseline(nodes: FlowNode[], edges: FlowEdge[], baselineId: string | null): Map<string, number> {
+  const ids = new Set(nodes.map((node) => node.id))
+  if (!baselineId || !ids.has(baselineId)) return new Map()
+  const outgoing = new Map<string, string[]>()
+  const undirected = new Map<string, string[]>()
+  edges.forEach((edge) => {
+    if (!ids.has(edge.sourceId) || !ids.has(edge.targetId)) return
+    outgoing.set(edge.sourceId, [...(outgoing.get(edge.sourceId) ?? []), edge.targetId])
+    undirected.set(edge.sourceId, [...(undirected.get(edge.sourceId) ?? []), edge.targetId])
+    undirected.set(edge.targetId, [...(undirected.get(edge.targetId) ?? []), edge.sourceId])
+  })
+  const directedDepths = breadthFirstDepths(baselineId, outgoing)
+  if (directedDepths.size > 1) return directedDepths
+  return breadthFirstDepths(baselineId, undirected)
+}
+
+function breadthFirstDepths(startId: string, adjacency: Map<string, string[]>): Map<string, number> {
+  const depths = new Map<string, number>([[startId, 0]])
+  const queue = [startId]
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    const nextDepth = (depths.get(current) ?? 0) + 1
+    for (const next of adjacency.get(current) ?? []) {
+      if (depths.has(next)) continue
+      depths.set(next, nextDepth)
+      queue.push(next)
+    }
+  }
+  return depths
+}
+
+function compareLayoutNodes({
+  left,
+  right,
+  baselineId,
+  visibleById,
+  relativeById,
+  depthById,
+  sourceIndexById,
+}: {
+  left: FlowNode
+  right: FlowNode
+  baselineId: string | null
+  visibleById: Map<string, boolean>
+  relativeById: Map<string, number | null>
+  depthById: Map<string, number>
+  sourceIndexById: Map<string, number>
+}): number {
+  if (left.id === baselineId && right.id !== baselineId) return -1
+  if (right.id === baselineId && left.id !== baselineId) return 1
+  const leftVisible = visibleById.get(left.id) ?? true
+  const rightVisible = visibleById.get(right.id) ?? true
+  if (leftVisible !== rightVisible) return leftVisible ? -1 : 1
+  const leftDepth = depthById.get(left.id)
+  const rightDepth = depthById.get(right.id)
+  if (typeof leftDepth === "number" && typeof rightDepth === "number" && leftDepth !== rightDepth) return leftDepth - rightDepth
+  if (typeof leftDepth === "number" && typeof rightDepth !== "number") return -1
+  if (typeof rightDepth === "number" && typeof leftDepth !== "number") return 1
+  const leftValue = relativeById.get(left.id)
+  const rightValue = relativeById.get(right.id)
+  if (typeof leftValue === "number" && typeof rightValue === "number") return leftValue - rightValue
+  if (typeof leftValue === "number") return -1
+  if (typeof rightValue === "number") return 1
+  return (sourceIndexById.get(left.id) ?? 0) - (sourceIndexById.get(right.id) ?? 0)
 }
 
 export function nodeContainedInSelectionRect(node: FlowNode, rect: CanvasSelectionRect): boolean {

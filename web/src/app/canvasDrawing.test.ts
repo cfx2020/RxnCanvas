@@ -34,17 +34,17 @@ describe("canvasDrawing", () => {
       flowNode("target", { x: 320, y: 80 }),
     )
 
-    expect(segment.path).toBe("M 210 78.72 C 290 78.72, 240 158.72, 320 158.72")
-    expect(segment.labelPoint).toEqual({ x: 265, y: 100.72 })
+    expect(segment.path).toBe("M 210 138 C 247.4 138, 282.6 218, 320 218")
+    expect(segment.labelPoint).toEqual({ x: 265, y: 178 })
   })
 
   it("creates connection and barrier draft preview paths", () => {
     const source = flowNode("source", { x: 0, y: 0 })
 
     expect(createConnectionPreviewPath(source, { x: 500, y: 180 }))
-      .toBe("M 210 78.72 C 331.8 78.72, 378.2 180, 500 180")
+      .toBe("M 210 138 C 331.8 138, 378.2 180, 500 180")
     expect(createBarrierDraftPreviewPath(source, { x: 250, y: 422 }))
-      .toBe("M 105 172 C 105 262, 250 332, 250 422")
+      .toBe("M 105 284 C 105 333.68, 250 372.32, 250 422")
   })
 
   it("creates expanded and compact barrier annotation geometry", () => {
@@ -55,11 +55,11 @@ describe("canvasDrawing", () => {
 
     expect(createBarrierSegment(barrier, nodeMap, defaultEnergyDisplayOptions)).toEqual({
       id: "barrier-a",
-      arrowPath: "M 265 82 L 265 162",
-      guidePath: "M 210 82 L 265 82 M 320 162 L 265 162",
+      arrowPath: "M 105 218 L 105 298",
+      guidePath: "M 105 288 L 105 298 M 320 218 L 105 218",
       label: "ΔE‡ 5.00",
       defaultLabel: "ΔE‡ 5.00",
-      labelPoint: { x: 265, y: 122 },
+      labelPoint: { x: 127, y: 258 },
       sourceLabel: "source",
       targetLabel: "target",
     })
@@ -72,11 +72,11 @@ describe("canvasDrawing", () => {
       compactMap,
       defaultEnergyDisplayOptions,
     )).toMatchObject({
-      arrowPath: "M 265 112 L 265 168",
-      guidePath: "M 210 82 L 265 140 M 320 102 L 265 140",
+      arrowPath: "M 105 158 L 105 298",
+      guidePath: "M 105 288 L 105 298 M 320 158 L 105 158",
       label: "custom",
       defaultLabel: "ΔE‡ 2.00",
-      labelPoint: { x: 265, y: 140 },
+      labelPoint: { x: 127, y: 228 },
     })
   })
 

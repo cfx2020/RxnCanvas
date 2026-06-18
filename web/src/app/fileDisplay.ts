@@ -22,7 +22,7 @@ export type SourceFileDeletionTransition = {
   selectedFileId: string | null
   selectedFileIds: string[]
   lastSelectedFileId: string | null
-  inspectorMode: "source"
+  inspectorMode: "inspector"
 }
 
 export type SourceFileSelectionTransition = {
@@ -31,7 +31,7 @@ export type SourceFileSelectionTransition = {
   lastSelectedFileId: string
   selectedBarrierIds: string[]
   keyboardEdgeSourceId: null
-  inspectorMode: "source"
+  inspectorMode: "inspector"
 }
 
 export type NodeSourceDetailsSelection = {
@@ -42,7 +42,7 @@ export type NodeSourceDetailsSelection = {
   selectedFileIds: string[]
   lastSelectedFileId: string
   keyboardEdgeSourceId: null
-  inspectorMode: "source"
+  inspectorMode: "inspector"
 }
 
 export function formatBytes(value: number): string {
@@ -173,7 +173,7 @@ export function selectSourceFileTransition({
     lastSelectedFileId: fileId,
     selectedBarrierIds: [],
     keyboardEdgeSourceId: null,
-    inspectorMode: "source",
+    inspectorMode: "inspector",
   }
 }
 
@@ -198,7 +198,7 @@ export function deleteSourceFileTransition({
     selectedFileId: selectedFileId === deletedFileId ? fallbackFileId : selectedFileId,
     selectedFileIds: nextSelectedFileIds.length > 0 ? nextSelectedFileIds : fallbackFileId ? [fallbackFileId] : [],
     lastSelectedFileId: lastSelectedFileId === deletedFileId ? fallbackFileId : lastSelectedFileId,
-    inspectorMode: "source",
+    inspectorMode: "inspector",
   }
 }
 
@@ -223,7 +223,7 @@ export function nodeSourceDetailsSelection({
     selectedFileIds: [sourceFileId],
     lastSelectedFileId: sourceFileId,
     keyboardEdgeSourceId: null,
-    inspectorMode: "source",
+    inspectorMode: "inspector",
   }
 }
 

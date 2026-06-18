@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from rxnflow import demo_flow, export_flow_json
-from rxnflow.engine import parse_source_preview, validate_project_content
+from rxnflow.engine import EV_TO_HARTREE, parse_source_file, parse_source_preview, validate_project_content
 from rxnflow.engine_ipc import ENGINE_VERSION, handle_request
 
 
@@ -130,6 +132,56 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(parse["energyTable"]["gasBasisFunctions"], 42)
         self.assertAlmostEqual(parse["energyTable"]["ggasHartree"], -76.4)
         self.assertAlmostEqual(parse["energyTable"]["ggas1mHartree"], -76.396981)
+
+    def test_engine_import_preview_uses_cclib_standard_fields_before_text_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "cclib-gaussian.log"
+            source_path.write_text(
+                "\n".join([
+                    "Entering Gaussian System",
+                    "Stoichiometry H2O",
+                    "NBasis=    7 RedAO= T",
+                    "Charge = 0 Multiplicity = 1",
+                    "SCF Done: E(RB3LYP) = -76.431000 A.U.",
+                    "Sum of electronic and thermal Free Energies= -76.400000",
+                ]),
+                encoding="utf8",
+            )
+            fake_data = SimpleNamespace(
+                atomnos=[8, 1, 1],
+                atomcoords=[[
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.96],
+                    [0.92, 0.0, -0.24],
+                ]],
+                scfenergies=[-76.5 / EV_TO_HARTREE],
+                freeenergy=-76.39,
+                charge=0,
+                mult=1,
+                nbasis=7,
+                metadata={"methods": ["B3LYP"]},
+            )
+            fake_cclib = SimpleNamespace(io=SimpleNamespace(ccread=lambda _path: fake_data))
+            sentinel = object()
+            previous = sys.modules.get("cclib", sentinel)
+            sys.modules["cclib"] = fake_cclib
+            try:
+                parsed = parse_source_file("cclib-gaussian.log", "", str(source_path))
+            finally:
+                if previous is sentinel:
+                    sys.modules.pop("cclib", None)
+                else:
+                    sys.modules["cclib"] = previous
+
+        self.assertTrue(parsed.parsed)
+        self.assertEqual(parsed.parserId, "gaussian-log-cclib+rxnflow-text-full-file")
+        self.assertEqual(parsed.sourceKind, "Gaussian")
+        self.assertEqual(parsed.formula, "H2O")
+        self.assertEqual(parsed.candidates[0].charge, 0)
+        self.assertEqual(parsed.candidates[0].spinMultiplicity, 1)
+        self.assertEqual(parsed.coordinatePreview.atomCount if parsed.coordinatePreview else 0, 3)
+        self.assertAlmostEqual(parsed.energyTable.egasHartree if parsed.energyTable else 0, -76.5)
+        self.assertAlmostEqual(parsed.energyTable.ggasHartree if parsed.energyTable else 0, -76.39)
 
     def test_engine_import_preview_converts_explicit_xyz_energy_units(self) -> None:
         ev_xyz = parse_source_preview(

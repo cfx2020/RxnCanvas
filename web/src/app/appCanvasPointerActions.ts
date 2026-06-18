@@ -124,26 +124,30 @@ export function handleNodePointerDownAction({
 }
 
 export function handlePointerMoveAction({
-  event,
+  pointerId,
+  clientX,
+  clientY,
   connectionDraft,
   barrierDraft,
   dragState,
   screenToWorld,
   appStateSetters,
 }: {
-  event: PointerEvent<HTMLDivElement>
+  pointerId: number
+  clientX: number
+  clientY: number
   connectionDraft: ConnectionDraft | null
   barrierDraft: BarrierDraft | null
   dragState: CanvasDragState<CanvasEditSnapshot> | null
   screenToWorld: ScreenToWorld
   appStateSetters: ProjectWorkspaceStateSetters
 }): void {
-  const clientPoint = { x: event.clientX, y: event.clientY }
+  const clientPoint = { x: clientX, y: clientY }
   const move = canvasPointerMoveTransition({
     connectionDraft,
     barrierDraft,
     dragState,
-    pointerId: event.pointerId,
+    pointerId,
     clientPoint,
     worldPoint: screenToWorld(clientPoint),
   })

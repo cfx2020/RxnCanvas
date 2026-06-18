@@ -27,11 +27,11 @@ describe("appSelectionAppliers", () => {
       lastSelectedFileId: "file-a",
       selectedBarrierIds: [],
       keyboardEdgeSourceId: null,
-      inspectorMode: "source",
+      inspectorMode: "inspector",
     })
     expect(bag.setSelectedFileId).toHaveBeenCalledWith("file-a")
     expect(bag.setKeyboardEdgeSourceId).toHaveBeenCalledWith(null)
-    expect(bag.setInspectorMode).toHaveBeenCalledWith("source")
+    expect(bag.setInspectorMode).toHaveBeenCalledWith("inspector")
   })
 
   it("applies source file deletion", () => {
@@ -42,7 +42,7 @@ describe("appSelectionAppliers", () => {
       selectedFileId: "file-b",
       selectedFileIds: ["file-b"],
       lastSelectedFileId: "file-b",
-      inspectorMode: "source",
+      inspectorMode: "inspector",
     })
     expect(bag.setFiles).toHaveBeenCalledWith(files)
     expect(bag.setSelectedFileIds).toHaveBeenCalledWith(["file-b"])
@@ -58,7 +58,7 @@ describe("appSelectionAppliers", () => {
       selectedFileIds: ["file-a"],
       lastSelectedFileId: "file-a",
       keyboardEdgeSourceId: null,
-      inspectorMode: "source",
+      inspectorMode: "inspector",
     })
     expect(bag.setSelectedNodeIds).toHaveBeenCalledWith(["node-a"])
     expect(bag.setSelectedFileId).toHaveBeenCalledWith("file-a")

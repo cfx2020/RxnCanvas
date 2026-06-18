@@ -26,10 +26,15 @@ export type BarrierSegment = {
 export function createEdgeSegment(source: FlowNode, target: FlowNode): EdgeSegment {
   const start = edgeSourceAnchor(source)
   const end = edgeTargetAnchor(target)
-  const bend = Math.max(80, Math.abs(end.x - start.x) * 0.42)
+  const horizontal = Math.abs(end.x - start.x)
+  const vertical = Math.abs(end.y - start.y)
+  const bend = clamp(Math.max(horizontal * 0.34, vertical * 0.2), 28, 96)
+  const controlFrom = { x: start.x + bend, y: start.y }
+  const controlTo = { x: end.x - bend, y: end.y }
+  const labelPoint = cubicBezierPoint(start, controlFrom, controlTo, end, 0.5)
   return {
     path: cubicPath(start, end, bend),
-    labelPoint: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 18 },
+    labelPoint: { x: labelPoint.x, y: labelPoint.y },
   }
 }
 
@@ -58,15 +63,19 @@ export function createBarrierSegment(
   const source = nodeMap.get(barrier.sourceId)
   const target = nodeMap.get(barrier.targetId)
   if (!source || !target) return null
-  const sourceAnchor = { x: source.position.x + nodeWidth, y: source.position.y + nodeHeight * 0.5 }
-  const targetAnchor = { x: target.position.x, y: target.position.y + nodeHeight * 0.5 }
-  const arrowX = (sourceAnchor.x + targetAnchor.x) / 2
-  const sourceY = sourceAnchor.y
+  const sourceAnchor = { x: source.position.x + nodeWidth * 0.5, y: source.position.y + nodeHeight + 12 }
+  const targetOnRight = target.position.x + nodeWidth * 0.5 >= sourceAnchor.x
+  const targetAnchor = {
+    x: target.position.x + (targetOnRight ? 0 : nodeWidth),
+    y: target.position.y + nodeHeight * 0.5,
+  }
+  const arrowX = sourceAnchor.x
+  const sourceY = sourceAnchor.y + 10
   const targetY = targetAnchor.y
   const topY = Math.min(sourceY, targetY)
   const bottomY = Math.max(sourceY, targetY)
-  const compact = Math.abs(sourceY - targetY) < 56
-  const compactCenterY = ((sourceY + targetY) / 2) + 48
+  const compact = Math.abs(sourceY - targetY) < 48
+  const compactCenterY = ((sourceY + targetY) / 2) + (targetY >= sourceY ? 40 : -40)
   const arrowTop = compact ? compactCenterY - 28 : topY
   const arrowBottom = compact ? compactCenterY + 28 : bottomY
   const sourceGuideY = compact ? compactCenterY : sourceY
@@ -84,7 +93,7 @@ export function createBarrierSegment(
     ].join(" "),
     label: barrier.label?.trim() || defaultLabel,
     defaultLabel,
-    labelPoint: { x: arrowX, y: (arrowTop + arrowBottom) / 2 },
+    labelPoint: { x: arrowX + (targetOnRight ? 22 : -22), y: (arrowTop + arrowBottom) / 2 },
     sourceLabel: source.label,
     targetLabel: target.label,
   }
@@ -120,13 +129,27 @@ export function roundPathCoordinate(value: number): number {
 }
 
 function edgeSourceAnchor(source: FlowNode): Point {
-  return { x: source.position.x + nodeWidth, y: source.position.y + nodeHeight * 0.48 }
+  return { x: source.position.x + nodeWidth, y: source.position.y + nodeHeight * 0.5 }
 }
 
 function edgeTargetAnchor(target: FlowNode): Point {
-  return { x: target.position.x, y: target.position.y + nodeHeight * 0.48 }
+  return { x: target.position.x, y: target.position.y + nodeHeight * 0.5 }
 }
 
 function cubicPath(start: Point, end: Point, bend: number): string {
   return `M ${start.x} ${start.y} C ${start.x + bend} ${start.y}, ${end.x - bend} ${end.y}, ${end.x} ${end.y}`
+}
+
+function cubicBezierPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point {
+  const oneMinusT = 1 - t
+  return {
+    x: oneMinusT ** 3 * p0.x
+      + 3 * oneMinusT ** 2 * t * p1.x
+      + 3 * oneMinusT * t ** 2 * p2.x
+      + t ** 3 * p3.x,
+    y: oneMinusT ** 3 * p0.y
+      + 3 * oneMinusT ** 2 * t * p1.y
+      + 3 * oneMinusT * t ** 2 * p2.y
+      + t ** 3 * p3.y,
+  }
 }

@@ -108,12 +108,12 @@ describe("App", () => {
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     expect(toolbar).toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: "Search flows" })).not.toBeInTheDocument()
-    expect(within(toolbar).getByRole("button", { name: "Import" })).toBeInTheDocument()
-    expect(within(toolbar).getByRole("button", { name: "Export project" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Import files" })).toBeInTheDocument()
+    expect(within(toolbar).queryByRole("button", { name: "Export project" })).not.toBeInTheDocument()
     expect(within(toolbar).queryByRole("button", { name: "Compute" })).not.toBeInTheDocument()
     expect(within(toolbar).queryByRole("button", { name: "More canvas actions" })).not.toBeInTheDocument()
-    expect(within(toolbar).getByRole("button", { name: "Export" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Open Folder" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Workspace actions" })).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "Reaction flow workspace" })).toBeInTheDocument()
     expect(await screen.findByLabelText("Engine status: Browser preview")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toBeInTheDocument()
@@ -132,7 +132,7 @@ describe("App", () => {
     }
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Export" }))
+    fireEvent.click(screen.getByRole("button", { name: "Export" }))
     const exportPanel = screen.getByRole("region", { name: "Export panel" })
     for (const format of ["CSV", "SVG", "PDF", "PPTX", "CDX", "JSON"]) {
       expect(within(exportPanel).queryByRole("checkbox", { name: format })).not.toBeInTheDocument()
@@ -173,7 +173,8 @@ describe("App", () => {
       savedAt: "2026-06-14T00:00:00.000Z",
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Folder" }))
+    fireEvent.click(screen.getByRole("button", { name: "Workspace actions" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Use existing folder" }))
     await act(async () => {
       fireEvent.change(screen.getByLabelText("Open project package"), {
         target: {
@@ -307,7 +308,7 @@ describe("App", () => {
       pointerId: 41,
     })
 
-    expect(world.style.transform).toBe(initialTransform)
+    expect(world.style.transform).not.toBe(initialTransform)
     expect(container.querySelector(".minimap-window.is-draft")).toBeInTheDocument()
 
     fireEvent.pointerUp(minimap, {
@@ -358,7 +359,7 @@ describe("App", () => {
     expect(headerText).toContain("Ggas+1M")
     expect(headerText).toContain("Gsol")
 
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Export" }))
+    fireEvent.click(screen.getByRole("button", { name: "Export" }))
     const exportPanel = screen.getByRole("region", { name: "Export panel" })
     expect(within(exportPanel).getByRole("checkbox", { name: "PNG" })).toBeChecked()
     expect(within(exportPanel).getByRole("checkbox", { name: "CDXML" })).toBeChecked()
@@ -368,7 +369,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "gaussian.log Gaussian" }))
     expect(screen.getByRole("region", { name: "Source inspector" })).toBeInTheDocument()
-    expect(screen.getByText(/SCF Done/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open raw log" })).toBeInTheDocument()
   })
 
   it("offers a persistent dark mode toggle in the window chrome", () => {
@@ -386,11 +387,12 @@ describe("App", () => {
   it("creates named local projects and keeps project workspaces isolated", () => {
     render(<App />)
 
-    const newProject = screen.getByRole("button", { name: "New Project Folder" })
-    expect(newProject).toHaveAttribute("aria-expanded", "false")
+    const workspaceActions = screen.getByRole("button", { name: "Workspace actions" })
+    expect(workspaceActions).toHaveAttribute("aria-expanded", "false")
 
-    fireEvent.click(newProject)
-    expect(newProject).toHaveAttribute("aria-expanded", "true")
+    fireEvent.click(workspaceActions)
+    expect(workspaceActions).toHaveAttribute("aria-expanded", "true")
+    fireEvent.click(screen.getByRole("menuitem", { name: "New blank project" }))
     const form = screen.getByRole("form", { name: "Create project" })
     fireEvent.change(within(form).getByLabelText("Project name"), { target: { value: "Catalyst Screen" } })
     fireEvent.click(within(form).getByRole("button", { name: "Create Folder" }))
@@ -414,14 +416,14 @@ describe("App", () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole("button", { name: "Project actions for Diels-Alder Study" }))
-    expect(screen.getByRole("menuitem", { name: "Delete project" })).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "Remove from sidebar" })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
-    const dialog = screen.getByRole("alertdialog", { name: "Delete Diels-Alder Study" })
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
+    const dialog = screen.getByRole("alertdialog", { name: "Remove Diels-Alder Study" })
     expect(dialog).toHaveTextContent("Diels-Alder Study")
     expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm delete project" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove from sidebar" }))
 
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Nickel catalysis empty" })).toHaveAttribute("aria-current", "true")
@@ -444,7 +446,7 @@ describe("App", () => {
     })
 
     expect(await screen.findByRole("button", { name: "nickel-import.out ORCA" })).toBeInTheDocument()
-    expect(await screen.findByRole("button", { name: "Node nickel-import" })).toHaveTextContent("-12.340000 Eh")
+    expect(await screen.findByRole("button", { name: "Node nickel-import" })).toHaveTextContent("ΔG")
     expect(screen.getByRole("button", { name: "Nickel catalysis empty" })).toHaveAttribute("aria-current", "true")
     expect(screen.queryByRole("button", { name: "Node TS1 (Endo)" })).not.toBeInTheDocument()
 
@@ -470,7 +472,7 @@ describe("App", () => {
     })
 
     expect(await screen.findByRole("button", { name: "dropped-nickel.out ORCA" })).toBeInTheDocument()
-    expect(await screen.findByRole("button", { name: "Node dropped-nickel" })).toHaveTextContent("-22.500000 Eh")
+    expect(await screen.findByRole("button", { name: "Node dropped-nickel" })).toHaveTextContent("ΔG")
     expect(screen.getByRole("button", { name: "Nickel catalysis empty" })).toHaveAttribute("aria-current", "true")
 
     fireEvent.click(screen.getByRole("button", { name: "Diels-Alder Study open" }))
@@ -512,9 +514,8 @@ describe("App", () => {
     render(<App />)
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    const inspectorTabs = Array.from(inspector.querySelectorAll(".panel-tabs button"))
-      .map((button) => button.textContent)
-    expect(inspectorTabs).toEqual(["Node", "Source", "Export"])
+    expect(inspector.querySelector(".inspector-rail-header")).toBeInTheDocument()
+    expect(inspector.querySelector(".panel-tabs")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Objects" })).not.toBeInTheDocument()
     expect(screen.queryByRole("region", { name: "Object registry" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Apply correction" })).not.toBeInTheDocument()
@@ -530,11 +531,10 @@ describe("App", () => {
     render(<App />)
 
     const tsNode = screen.getByRole("button", { name: "Node TS1 (Endo)" })
-    expect(within(tsNode).getByRole("button", { name: "Use TS1 (Endo) as zero point" })).toBeInTheDocument()
+    fireEvent.click(within(tsNode).getByRole("button", { name: "More actions for TS1 (Endo)" }))
+    fireEvent.click(within(tsNode).getByRole("menuitem", { name: "Set zero" }))
 
-    fireEvent.click(within(tsNode).getByRole("button", { name: "Use TS1 (Endo) as zero point" }))
-
-    expect(within(tsNode).getByRole("button", { name: "TS1 (Endo) is the zero point" })).toBeInTheDocument()
+    expect(within(tsNode).getByText("0")).toBeInTheDocument()
     expect(within(tsNode).getByText("0.00 kcal/mol")).toBeInTheDocument()
   })
 
@@ -563,9 +563,8 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Source details" }))
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    expect(within(inspector).getByRole("button", { name: "Source" })).toHaveClass("is-active")
     expect(screen.getByRole("region", { name: "Source inspector" })).toHaveTextContent("gaussian.log")
-    expect(screen.getByText(/SCF Done/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open raw log" })).toBeInTheDocument()
   })
 
   it("creates a reaction edge from node handles and inspects the selected edge", () => {
@@ -656,7 +655,7 @@ describe("App", () => {
     fireEvent.change(within(edgeLabelForm).getByLabelText("Edge label"), { target: { value: "Delta G 4.20" } })
     fireEvent.click(within(edgeLabelForm).getByRole("button", { name: "Apply edge label" }))
 
-    expect(within(inspector).getByText("Delta G 4.20")).toBeInTheDocument()
+    expect(within(inspector).getAllByText("Delta G 4.20").length).toBeGreaterThan(0)
     expect(screen.getByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct: Delta G 4\.20/ })).toBeInTheDocument()
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
@@ -889,14 +888,12 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: "orca-water.out ORCA" })).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "Source inspector" })).toBeInTheDocument()
-    expect(screen.getByText(/FINAL SINGLE POINT ENERGY/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open raw log" })).toBeInTheDocument()
     const parsedNode = await screen.findByRole("button", { name: "Node orca-water" })
-    expect(parsedNode).toHaveTextContent("-76.431000 Eh")
-    expect(parsedNode).toHaveTextContent("Parsed source")
+    expect(parsedNode).toHaveTextContent("ΔG")
 
     fireEvent.click(parsedNode)
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    fireEvent.click(within(inspector).getByRole("button", { name: "Node" }))
     expect(within(inspector).getByText("H2O")).toBeInTheDocument()
     expect(within(inspector).getByText("3 atoms / H, O")).toBeInTheDocument()
 
@@ -1038,8 +1035,8 @@ describe("App", () => {
     const reopenedDialog = await screen.findByRole("dialog", { name: "Import candidates" })
     fireEvent.click(within(reopenedDialog).getByRole("button", { name: "Register all" }))
 
-    expect(await screen.findByRole("button", { name: "Node Frame 1" })).toHaveTextContent("-2.000000 Eh")
-    expect(await screen.findByRole("button", { name: "Node Frame 2" })).toHaveTextContent("-3.000000 Eh")
+    expect(await screen.findByRole("button", { name: "Node Frame 1" })).toHaveTextContent("ΔG")
+    expect(await screen.findByRole("button", { name: "Node Frame 2" })).toHaveTextContent("ΔG")
     expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
   })
 
@@ -1158,7 +1155,7 @@ describe("App", () => {
     render(<App />)
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Import" }))
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
     const dialog = await screen.findByRole("dialog", { name: "Import candidates" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Register selected" }))
@@ -1174,7 +1171,7 @@ describe("App", () => {
       selections: [expect.objectContaining({ objectIndices: [1] })],
     })
     expect(payload.selections[0].fileId).toBe(payload.files[0].id)
-    expect(await screen.findByRole("button", { name: "Node Engine registered frame 2" })).toHaveTextContent("-3.000000 Eh")
+    expect(await screen.findByRole("button", { name: "Node Engine registered frame 2" })).toHaveTextContent("ΔG")
   })
 
   it("uses Electron desktop APIs for native import and report export", async () => {
@@ -1233,27 +1230,13 @@ describe("App", () => {
     expect(getEngineStatus).toHaveBeenCalledTimes(1)
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Import" }))
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
     expect(await screen.findByRole("button", { name: "desktop.out ORCA" })).toBeInTheDocument()
-    expect(await screen.findByRole("button", { name: "Node engine-preview" })).toHaveTextContent("-42.500000 Eh")
+    expect(await screen.findByRole("button", { name: "Node engine-preview" })).toHaveTextContent("ΔG")
     expect(chooseFiles).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Export project" }))
-    await waitFor(() => expect(saveProjectPackage).toHaveBeenCalledTimes(1))
-    expect(saveProjectPackage.mock.calls[0][0].defaultName).toBe("diels-alder-study.rxnflow.zip")
-    expect(JSON.parse(saveProjectPackage.mock.calls[0][0].content)).toMatchObject({
-      schemaVersion: 1,
-      packageKind: "rxnflow-project",
-      files: expect.arrayContaining([
-        expect.objectContaining({
-          name: "desktop.out",
-          sourcePath: "/tmp/desktop.out",
-        }),
-      ]),
-    })
-
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Export" }))
+    fireEvent.click(screen.getByRole("button", { name: "Export" }))
     const exportPanel = screen.getByRole("region", { name: "Export panel" })
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 
@@ -1333,7 +1316,7 @@ describe("App", () => {
     render(<App />)
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Import" }))
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
     expect(await screen.findByRole("button", { name: "desktop.out ORCA" })).toBeInTheDocument()
     await waitFor(() => expect(autosaveProjectPackage).toHaveBeenCalled(), { timeout: 2500 })
@@ -1342,7 +1325,6 @@ describe("App", () => {
       sourcePath: "/external/desktop.out",
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "Source" }))
     fireEvent.click(screen.getByRole("button", { name: "desktop.out ORCA" }))
     expect(await screen.findByText("sources/01-desktop-out-desktop.out")).toBeInTheDocument()
   })
@@ -1374,7 +1356,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("Engine status: Local engine")).toBeInTheDocument()
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Export" }))
+    fireEvent.click(screen.getByRole("button", { name: "Export" }))
     const exportPanel = screen.getByRole("region", { name: "Export panel" })
     fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
 

@@ -55,7 +55,7 @@ describe("canvasGeometry", () => {
     const desktop = defaultCanvasViewportForSize(fallbackCanvasSize)
     expect(desktop.zoom).toBeCloseTo(0.687179487)
     expect(desktop.x).toBe(350)
-    expect(desktop.y).toBe(216)
+    expect(desktop.y).toBe(177)
 
     expect(defaultCanvasViewportForSize({ width: 390, height: 900 })).toEqual({
       zoom: 0.62,
@@ -95,7 +95,7 @@ describe("canvasGeometry", () => {
       flowNode("b", 5, { x: 520, y: 300 }),
     ], fallbackCanvasSize)
 
-    expect(viewport).toEqual({ zoom: 0.95, x: 103, y: 100 })
+    expect(viewport).toEqual({ zoom: 0.8923611111111112, x: 124, y: 63 })
   })
 
   it("auto-layout sorts finite relative energies and keeps positions snapped", () => {
@@ -110,9 +110,9 @@ describe("canvasGeometry", () => {
 
     expect(laidOut.map((node) => node.id)).toEqual(["low", "high", "unknown"])
     expect(laidOut.map((node) => node.position)).toEqual([
-      { x: -256, y: 224 },
-      { x: 0, y: -200 },
-      { x: 264, y: 8 },
+      { x: -360, y: 184 },
+      { x: 216, y: -72 },
+      { x: 496, y: 264 },
     ])
     for (const node of laidOut) {
       expect(Math.abs(node.position.x % canvasGridSize)).toBe(0)
@@ -123,7 +123,7 @@ describe("canvasGeometry", () => {
   it("tests selection containment by node center", () => {
     const node = flowNode("selected", 0)
 
-    expect(nodeContainedInSelectionRect(node, { x: 96, y: 72, width: 24, height: 24 })).toBe(true)
+    expect(nodeContainedInSelectionRect(node, { x: 96, y: 128, width: 24, height: 24 })).toBe(true)
     expect(nodeContainedInSelectionRect(node, { x: 0, y: 0, width: 40, height: 40 })).toBe(false)
   })
 

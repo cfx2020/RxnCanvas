@@ -278,7 +278,7 @@ export function projectWorkspaceWithImportPlan(
     selectedFileId: importedFiles[0]?.id ?? null,
     selectedFileIds: importedFiles[0]?.id ? [importedFiles[0].id] : [],
     lastSelectedFileId: importedFiles[0]?.id ?? null,
-    inspectorMode: "source",
+    inspectorMode: "inspector",
     viewMode: options.viewMode ?? "canvas",
   })
 }

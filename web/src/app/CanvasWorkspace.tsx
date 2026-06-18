@@ -8,7 +8,7 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react"
-import { Activity, ChevronDown, Maximize2, MoreHorizontal, UploadCloud, ZoomIn, ZoomOut } from "lucide-react"
+import { ChevronDown, Maximize2, MoreHorizontal, UploadCloud, ZoomIn, ZoomOut } from "lucide-react"
 import type { CanvasViewport, FlowBarrier, FlowEdge, FlowNode, Point, SourceFile } from "../domain/projectPackages"
 import type { CoordinatePreview } from "../domain/sourceParsers"
 import {
@@ -20,6 +20,7 @@ import {
   minimapSize,
   nodeHeight,
   nodeWidth,
+  viewportFromCanvasWheel,
   viewportFromMinimapPoint,
   type CanvasSelectionRect,
   type MinimapGeometry,
@@ -34,7 +35,6 @@ import {
 } from "./canvasDrawing"
 import {
   formatCoefficientValue,
-  formatEnergy,
   formatRelativeEnergy,
   nodeCoefficient,
   nodeFooterText,
@@ -46,6 +46,8 @@ import {
   filesFromDataTransfer,
   projectFileDragMimeType,
   projectFileIdsFromDataTransfer,
+  sourceFileDisplayGroupKey,
+  sourceFileLooksLikeSolutionLog,
 } from "./fileDisplay"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
 
@@ -128,6 +130,7 @@ export function CanvasSurface({
   onSetNodeCoefficient,
   onSetRelativeEnergyZero,
   onShowNodeSource,
+  onRenameNode,
   onRawFileDrop,
 }: {
   canvasRef: React.RefObject<HTMLDivElement | null>
@@ -164,6 +167,7 @@ export function CanvasSurface({
   onSetNodeCoefficient: (nodeId: string, coefficient: number) => void
   onSetRelativeEnergyZero: (nodeId: string) => void
   onShowNodeSource: (nodeId: string) => void
+  onRenameNode: (nodeId: string, label: string) => void
   onRawFileDrop: (drop: CanvasRawFileDrop) => void
 }) {
   const energyRowByNodeId = useMemo(
@@ -173,7 +177,17 @@ export function CanvasSurface({
   const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds])
   const selectedEdgeIdSet = useMemo(() => new Set(selectedEdgeIds), [selectedEdgeIds])
   const selectedBarrierIdSet = useMemo(() => new Set(selectedBarrierIds), [selectedBarrierIds])
+  const connectedInputNodeIds = useMemo(() => new Set(edges.map((edge) => edge.targetId)), [edges])
+  const connectedOutputNodeIds = useMemo(() => new Set(edges.map((edge) => edge.sourceId)), [edges])
   const fileById = useMemo(() => new Map(files.map((file) => [file.id, file])), [files])
+  const solutionLogPresenceByGroup = useMemo(() => {
+    const groups = new Map<string, boolean>()
+    files.forEach((file) => {
+      const key = sourceFileDisplayGroupKey(file)
+      groups.set(key, (groups.get(key) ?? false) || sourceFileLooksLikeSolutionLog(file))
+    })
+    return groups
+  }, [files])
 
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     if (!hasCanvasRawFileDrop(event.dataTransfer)) return
@@ -200,7 +214,7 @@ export function CanvasSurface({
   return (
     <div
       ref={canvasRef}
-      className={`canvas-surface ${tool === "pan" ? "is-panning" : "is-selecting"}${rubberBandDraft ? " has-rubber-band" : ""}`}
+      className={`canvas-surface ${tool === "pan" ? "is-panning" : "is-selecting"}${rubberBandDraft ? " has-rubber-band" : ""}${connectionDraft ? " is-connecting" : ""}`}
       aria-label="Graph canvas surface"
       aria-keyshortcuts="Delete Backspace Escape ArrowUp ArrowDown ArrowLeft ArrowRight Meta+Z Control+Z Control+Y"
       tabIndex={0}
@@ -223,8 +237,8 @@ export function CanvasSurface({
             <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
               <path d="M0,0 L8,4 L0,8 Z" fill="rgba(82, 103, 122, 0.55)" />
             </marker>
-            <marker id="barrier-arrow" markerWidth="9" markerHeight="9" refX="4.5" refY="8" orient="auto">
-              <path d="M0,0 L9,0 L4.5,8 Z" fill="rgba(217, 99, 82, 0.82)" />
+            <marker id="barrier-arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse">
+              <path d="M0,0 L8,4 L0,8 Z" fill="rgba(217, 99, 82, 0.82)" />
             </marker>
           </defs>
           {edges.map((edge) => (
@@ -258,7 +272,11 @@ export function CanvasSurface({
             coordinatePreview={coordinatePreviewForNode(node, fileById)}
             selected={selectedNodeIdSet.has(node.id)}
             keyboardConnectionActive={node.id === keyboardEdgeSourceId}
+            inputConnected={connectedInputNodeIds.has(node.id)}
+            outputConnected={connectedOutputNodeIds.has(node.id)}
             relativeEnergy={energyRowByNodeId.get(node.id)?.relative ?? null}
+            solvationStatus={solvationPairStatusForNode(node, fileById, solutionLogPresenceByGroup)}
+            energySource={energyDisplayOptions.energySource}
             outputUnit={energyDisplayOptions.outputUnit}
             energyBaseline={node.id === relativeZeroNodeId}
             onPointerDown={onNodePointerDown}
@@ -270,6 +288,7 @@ export function CanvasSurface({
             onSetCoefficient={onSetNodeCoefficient}
             onSetRelativeEnergyZero={onSetRelativeEnergyZero}
             onShowNodeSource={onShowNodeSource}
+            onRenameNode={onRenameNode}
           />
         ))}
         {rubberBandDraft ? <CanvasRubberBand draft={rubberBandDraft} /> : null}
@@ -306,7 +325,11 @@ function ReactionNodeCard({
   coordinatePreview,
   selected,
   keyboardConnectionActive,
+  inputConnected,
+  outputConnected,
   relativeEnergy,
+  solvationStatus,
+  energySource,
   outputUnit,
   energyBaseline,
   onPointerDown,
@@ -318,12 +341,17 @@ function ReactionNodeCard({
   onSetCoefficient,
   onSetRelativeEnergyZero,
   onShowNodeSource,
+  onRenameNode,
 }: {
   node: FlowNode
   coordinatePreview: CoordinatePreview | null
   selected: boolean
   keyboardConnectionActive: boolean
+  inputConnected: boolean
+  outputConnected: boolean
   relativeEnergy: number | null
+  solvationStatus: NodeSolvationStatus
+  energySource: EnergyDisplayOptions["energySource"]
   outputUnit: EnergyDisplayOptions["outputUnit"]
   energyBaseline: boolean
   onPointerDown: (event: PointerEvent<HTMLElement>, node: FlowNode) => void
@@ -335,17 +363,28 @@ function ReactionNodeCard({
   onSetCoefficient: (nodeId: string, coefficient: number) => void
   onSetRelativeEnergyZero: (nodeId: string) => void
   onShowNodeSource: (nodeId: string) => void
+  onRenameNode: (nodeId: string, label: string) => void
 }) {
   const coefficientValue = nodeCoefficient(node)
   const [coefficientEditing, setCoefficientEditing] = useState(false)
   const [coefficientDraft, setCoefficientDraft] = useState(formatCoefficientValue(coefficientValue))
   const [structureCollapsed, setStructureCollapsed] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [renameEditing, setRenameEditing] = useState(false)
+  const [renameDraft, setRenameDraft] = useState(node.label)
   const coefficientInputRef = useRef<HTMLInputElement | null>(null)
+  const sourceStatusLabel = nodeFooterText(node)
+  const solvationStatusLabel = solvationPairStatusLabel(solvationStatus)
+  const nodeStatusLight = solvationStatus === "missing" ? "missing" : (node.sourceStatus ?? solvationStatus)
+  const relativeEnergySymbol = energySource === "solution" ? "ΔG" : "ΔE"
 
   useEffect(() => {
     if (!coefficientEditing) setCoefficientDraft(formatCoefficientValue(coefficientValue))
   }, [coefficientEditing, coefficientValue])
+
+  useEffect(() => {
+    if (!renameEditing) setRenameDraft(node.label)
+  }, [node.label, renameEditing])
 
   useEffect(() => {
     if (!coefficientEditing) return
@@ -384,13 +423,13 @@ function ReactionNodeCard({
     <div
       role="button"
       tabIndex={0}
-      className={`reaction-node node-${node.kind}${selected ? " is-selected" : ""}${structureCollapsed ? " is-structure-collapsed" : ""}`}
+      className={`reaction-node node-${node.kind}${selected ? " is-selected" : ""}${structureCollapsed ? " is-structure-collapsed" : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
       aria-label={`Node ${node.label}`}
       data-flow-node-id={node.id}
       style={{
         transform: `translate3d(${node.position.x}px, ${node.position.y}px, 0)`,
         width: nodeWidth,
-        minHeight: structureCollapsed ? collapsedNodeHeight : nodeHeight,
+        height: structureCollapsed ? collapsedNodeHeight : nodeHeight,
       }}
       onPointerDown={(event) => onPointerDown(event, node)}
       onPointerUp={(event) => onPointerUp(event, node.id)}
@@ -401,9 +440,34 @@ function ReactionNodeCard({
         aria-hidden="true"
       />
       <div className="node-header">
-        <div>
-          <strong>{node.label}</strong>
-          <span>{node.formula}</span>
+        <div className="node-header-main">
+          {renameEditing ? (
+            <input
+              className="node-title-input"
+              aria-label={`Rename ${node.label}`}
+              value={renameDraft}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => setRenameDraft(event.currentTarget.value)}
+              onBlur={() => {
+                const next = renameDraft.trim()
+                setRenameEditing(false)
+                if (next && next !== node.label) onRenameNode(node.id, next)
+                else setRenameDraft(node.label)
+              }}
+              onKeyDown={(event) => {
+                event.stopPropagation()
+                if (event.key === "Enter") event.currentTarget.blur()
+                if (event.key === "Escape") {
+                  setRenameDraft(node.label)
+                  setRenameEditing(false)
+                }
+              }}
+              autoFocus
+            />
+          ) : (
+            <strong>{node.label}</strong>
+          )}
         </div>
         <span
           className="node-header-actions"
@@ -411,7 +475,7 @@ function ReactionNodeCard({
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
-          <em>{node.kind}</em>
+          <em>{nodeKindAbbreviation(node.kind)}</em>
           <button
             type="button"
             className={structureCollapsed ? "node-preview-toggle is-collapsed" : "node-preview-toggle"}
@@ -441,6 +505,26 @@ function ReactionNodeCard({
                   role="menuitem"
                   onClick={() => {
                     setActionsOpen(false)
+                    setRenameEditing(true)
+                  }}
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActionsOpen(false)
+                    onSetRelativeEnergyZero(node.id)
+                  }}
+                >
+                  Set zero
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActionsOpen(false)
                     onShowNodeSource(node.id)
                   }}
                 >
@@ -452,34 +536,19 @@ function ReactionNodeCard({
         </span>
       </div>
       {structureCollapsed ? null : <NodeStructurePreview node={node} coordinatePreview={coordinatePreview} />}
-      <div className="node-energy-grid">
-        <span>Delta G sol</span>
-        <strong>{formatEnergy(node.energySolution, node.energyUnit)}</strong>
-        <span>Delta E gas</span>
-        <strong>{formatEnergy(node.energyGas, node.energyUnit)}</strong>
-        <span>Relative</span>
+      <div className="node-energy-strip" title={`${relativeEnergySymbol} relative energy`}>
+        <span>{relativeEnergySymbol}</span>
         <strong className={energyBaseline ? "node-relative-energy is-zero" : "node-relative-energy"}>
           {formatRelativeEnergy(relativeEnergy, outputUnit)}
         </strong>
       </div>
       <div className="node-footer">
-        <span className="node-status">
-          <span className="status-dot" />
-          {nodeFooterText(node)}
-        </span>
-        <button
-          type="button"
-          className={energyBaseline ? "node-zero-control is-active" : "node-zero-control"}
-          aria-label={energyBaseline ? `${node.label} is the zero point` : `Use ${node.label} as zero point`}
-          title={energyBaseline ? `${node.label} is the zero point` : `Use ${node.label} as zero point`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            onSetRelativeEnergyZero(node.id)
-          }}
-        >
-          {energyBaseline ? "Zero" : "Set zero"}
-        </button>
+        <span
+          className={`status-light status-light-node status-light-${nodeStatusLight}`}
+          title={`${sourceStatusLabel}. ${solvationStatusLabel}`}
+          aria-label={`${sourceStatusLabel}. ${solvationStatusLabel}`}
+        />
+        <span className={energyBaseline ? "node-zero-indicator is-active" : "node-zero-indicator"}>{energyBaseline ? "0" : ""}</span>
         <span
           className="node-coefficient-control"
           onPointerDown={(event) => event.stopPropagation()}
@@ -535,7 +604,10 @@ function ReactionNodeCard({
         onPointerDown={(event) => onStartBarrierAnnotation(event, node.id)}
         onClick={(event) => event.stopPropagation()}
       >
-        <Activity size={13} aria-hidden="true" />
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+          <path className="barrier-activation-icon" d="M3.5 17.2 C7.2 17.2 7.9 7.2 11.2 7.2 C14.2 7.2 14.6 16.7 20.5 16.7" />
+          <path className="barrier-activation-dot" d="M16.8 10.6 L20.5 16.7 L13.5 15.2" />
+        </svg>
       </button>
     </div>
   )
@@ -552,24 +624,28 @@ function NodeStructurePreview({
   if (atoms.length === 0 && !node.manualStructureMolfile && !node.manualStructureSvg) {
     return (
       <div className="node-structure-preview node-structure-preview-empty" role="img" aria-label={`${node.label} formula-only structure preview`}>
-        <strong>{node.formula}</strong>
-        <span>Formula only</span>
+        <strong>2D pending</strong>
+        <span>No layout</span>
+        <span className="node-qm-badge">{formatChargeMultiplicityBadge(node)}</span>
       </div>
     )
   }
 
   return (
-    <Molecule2DDepiction
-      atoms={atoms}
-      formula={node.formula}
-      manualMolfile={node.manualStructureMolfile}
-      manualSvg={node.manualStructureSvg}
-      label={node.label}
-      width={176}
-      height={104}
-      className="node-structure-preview node-structure-2d"
-      emptyText="2D depiction pending"
-    />
+    <div className="node-structure-preview node-structure-preview-shell">
+      <Molecule2DDepiction
+        atoms={atoms}
+        formula={node.formula}
+        manualMolfile={node.manualStructureMolfile}
+        manualSvg={node.manualStructureSvg}
+        label={node.label}
+        width={176}
+        height={104}
+        className="node-structure-preview-art node-structure-2d"
+        emptyText="2D depiction pending"
+      />
+      <span className="node-qm-badge">{formatChargeMultiplicityBadge(node)}</span>
+    </div>
   )
 }
 
@@ -675,7 +751,7 @@ function BarrierAnnotation({
     >
       <path className="barrier-hit-path" d={segment.arrowPath} />
       <path className="barrier-guide" d={segment.guidePath} />
-      <path className="barrier-arrow" d={segment.arrowPath} markerEnd="url(#barrier-arrow)" />
+      <path className="barrier-arrow" d={segment.arrowPath} markerStart="url(#barrier-arrow)" markerEnd="url(#barrier-arrow)" />
       <foreignObject x={segment.labelPoint.x - 82} y={segment.labelPoint.y - 20} width="164" height="40">
         {selected ? (
           <BarrierInlineLabelEditor segment={segment} onApply={applyLabel} />
@@ -775,6 +851,7 @@ export function MiniMap({
   const dragGeometryRef = useRef<MinimapGeometry | null>(null)
   const dragCanvasSizeRef = useRef<SurfaceSize>(fallbackCanvasSize)
   const dragViewportRef = useRef<CanvasViewport | null>(null)
+  const dragWindowOffsetRef = useRef<Point | null>(null)
   const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds])
   const geometry = useMemo(
     () => createMinimapGeometry(nodes, viewport, canvasSize, minimapSize),
@@ -796,6 +873,30 @@ export function MiniMap({
     return () => observer.disconnect()
   }, [canvasRef])
 
+  const minimapRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    const minimap = minimapRef.current
+    if (!minimap) return () => undefined
+
+    const handleWheel = (event: globalThis.WheelEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const liveCanvasSize = surfaceSizeFromElement(canvasRef.current, canvasSize)
+      setCanvasSize(liveCanvasSize)
+      onViewportChange(viewportFromCanvasWheel(
+        viewport,
+        { x: 0, y: 0 },
+        { x: liveCanvasSize.width / 2, y: liveCanvasSize.height / 2 },
+        { x: event.deltaX, y: event.deltaY },
+        event.ctrlKey || event.metaKey,
+      ))
+    }
+
+    minimap.addEventListener("wheel", handleWheel, { passive: false })
+    return () => minimap.removeEventListener("wheel", handleWheel)
+  }, [canvasRef, canvasSize, onViewportChange, setCanvasSize, viewport])
+
   if (nodes.length === 0) return null
 
   const pointFromEvent = (event: PointerEvent<HTMLButtonElement>): Point => {
@@ -807,9 +908,30 @@ export function MiniMap({
       y: clamp(event.clientY - rect.top, 0, height) * (minimapSize.height / height),
     }
   }
-  const previewFromPoint = (point: Point, sourceGeometry: MinimapGeometry, sourceViewport: CanvasViewport, sourceCanvasSize: SurfaceSize) => (
-    viewportFromMinimapPoint(point, sourceGeometry, sourceViewport, sourceCanvasSize)
+  const pointInsideWindow = (point: Point, windowRect: MinimapGeometry["viewportWindow"]) => (
+    point.x >= windowRect.left
+    && point.x <= windowRect.left + windowRect.width
+    && point.y >= windowRect.top
+    && point.y <= windowRect.top + windowRect.height
   )
+  const windowCenter = (windowRect: MinimapGeometry["viewportWindow"]): Point => ({
+    x: windowRect.left + windowRect.width / 2,
+    y: windowRect.top + windowRect.height / 2,
+  })
+  const previewFromPoint = (
+    point: Point,
+    sourceGeometry: MinimapGeometry,
+    sourceViewport: CanvasViewport,
+    sourceCanvasSize: SurfaceSize,
+  ) => {
+    const offset = dragWindowOffsetRef.current ?? { x: 0, y: 0 }
+    return viewportFromMinimapPoint(
+      { x: point.x - offset.x, y: point.y - offset.y },
+      sourceGeometry,
+      sourceViewport,
+      sourceCanvasSize,
+    )
+  }
   const beginDrag = (event: PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -817,12 +939,16 @@ export function MiniMap({
     const liveCanvasSize = surfaceSizeFromElement(canvasRef.current, canvasSize)
     const liveGeometry = createMinimapGeometry(nodes, viewport, liveCanvasSize, minimapSize)
     const point = pointFromEvent(event)
+    const center = windowCenter(liveGeometry.viewportWindow)
+    dragWindowOffsetRef.current = pointInsideWindow(point, liveGeometry.viewportWindow)
+      ? { x: point.x - center.x, y: point.y - center.y }
+      : null
     dragGeometryRef.current = liveGeometry
     dragCanvasSizeRef.current = liveCanvasSize
     dragViewportRef.current = viewport
     setCanvasSize(liveCanvasSize)
     setDraftViewport(previewFromPoint(point, liveGeometry, viewport, liveCanvasSize))
-    event.currentTarget.setPointerCapture?.(event.pointerId)
+    safeSetPointerCapture(event.currentTarget, event.pointerId)
   }
   const updateDrag = (event: PointerEvent<HTMLButtonElement>) => {
     const dragGeometry = dragGeometryRef.current
@@ -830,7 +956,9 @@ export function MiniMap({
     if (!dragGeometry || !dragViewport) return
     event.preventDefault()
     event.stopPropagation()
-    setDraftViewport(previewFromPoint(pointFromEvent(event), dragGeometry, dragViewport, dragCanvasSizeRef.current))
+    const nextViewport = previewFromPoint(pointFromEvent(event), dragGeometry, dragViewport, dragCanvasSizeRef.current)
+    setDraftViewport(nextViewport)
+    onViewportChange(nextViewport)
   }
   const commitDrag = (event: PointerEvent<HTMLButtonElement>) => {
     const dragGeometry = dragGeometryRef.current
@@ -841,19 +969,21 @@ export function MiniMap({
     const nextViewport = previewFromPoint(pointFromEvent(event), dragGeometry, dragViewport, dragCanvasSizeRef.current)
     dragGeometryRef.current = null
     dragViewportRef.current = null
+    dragWindowOffsetRef.current = null
     setDraftViewport(null)
     onViewportChange(nextViewport)
-    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    safeReleasePointerCapture(event.currentTarget, event.pointerId)
   }
   const cancelDrag = (event: PointerEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     dragGeometryRef.current = null
     dragViewportRef.current = null
+    dragWindowOffsetRef.current = null
     setDraftViewport(null)
   }
-
   return (
     <button
+      ref={minimapRef}
       type="button"
       className="minimap"
       aria-label="Navigate graph minimap"
@@ -884,6 +1014,58 @@ export function MiniMap({
       />
     </button>
   )
+}
+
+type NodeSolvationStatus = "paired" | "missing" | "unknown"
+
+function nodeKindAbbreviation(kind: FlowNode["kind"]): string {
+  if (kind === "transition") return "TS"
+  if (kind === "intermediate") return "INT"
+  if (kind === "reactant") return "R"
+  return "P"
+}
+
+function formatChargeMultiplicityBadge(node: FlowNode): string {
+  const charge = typeof node.charge === "number" ? node.charge : "—"
+  const multiplicity = typeof node.spinMultiplicity === "number" ? node.spinMultiplicity : "—"
+  return `${charge},${multiplicity}`
+}
+
+function solvationPairStatusForNode(
+  node: FlowNode,
+  fileById: Map<string, SourceFile>,
+  solutionLogPresenceByGroup: Map<string, boolean>,
+): NodeSolvationStatus {
+  const table = node.energyTable
+  if (typeof table?.gsolHartree === "number" || typeof table?.esolHartree === "number") return "paired"
+  if (!node.sourceFileId) return "unknown"
+  const file = fileById.get(node.sourceFileId)
+  if (!file) return "unknown"
+  if (sourceFileLooksLikeSolutionLog(file)) return "paired"
+  if (file.kind !== "Gaussian" && file.kind !== "ORCA" && file.kind !== "MAPLE") return "unknown"
+  return solutionLogPresenceByGroup.get(sourceFileDisplayGroupKey(file)) ? "paired" : "missing"
+}
+
+function solvationPairStatusLabel(status: NodeSolvationStatus): string {
+  if (status === "paired") return "Solvation log paired"
+  if (status === "missing") return "No paired solvation log"
+  return "Solvation pairing not available"
+}
+
+function safeSetPointerCapture(element: Element, pointerId: number): void {
+  try {
+    element.setPointerCapture?.(pointerId)
+  } catch {
+    // Synthetic browser smoke events may not create a native active pointer.
+  }
+}
+
+function safeReleasePointerCapture(element: Element, pointerId: number): void {
+  try {
+    element.releasePointerCapture?.(pointerId)
+  } catch {
+    // Ignore stale/synthetic pointer ids; viewport commit already happened.
+  }
 }
 
 function surfaceSizeFromElement(element: HTMLElement | null, fallback: SurfaceSize): SurfaceSize {

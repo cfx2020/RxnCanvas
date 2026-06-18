@@ -1,6 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import { defaultReportExportOptions } from "../domain/reportExports"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
 import type { ParseCandidate, SourceParseResult } from "../domain/sourceParsers"
 import {
@@ -99,28 +98,21 @@ describe("InspectorPanels", () => {
 
     render(
       <InspectorPanel
-        mode="source"
         node={baseNode}
         edge={null}
         barrier={null}
         nodeMap={new Map([[baseNode.id, baseNode]])}
         file={file}
         rows={[]}
-        exportOptions={{ ...defaultReportExportOptions }}
-        exportArtifacts={[]}
-        exportBusy={false}
-        exportStatus="No exports"
         files={[file]}
         energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
-        onModeChange={vi.fn()}
-        onExportOptionsChange={vi.fn()}
-        onExport={vi.fn()}
         onReviewCandidates={onReviewCandidates}
         onUpdateEdgeLabel={vi.fn()}
         onUpdateBarrierLabel={vi.fn()}
         onOpenStructure={vi.fn()}
         onEdit2DStructure={vi.fn()}
         onReset2DStructure={vi.fn()}
+        onOpenSourceFile={vi.fn()}
       />,
     )
 

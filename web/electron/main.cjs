@@ -10,10 +10,10 @@ const {
   saveProjectReportArtifact,
 } = require("./project-store.cjs")
 const {
-  loadRecentProjects,
-  saveRecentProjects,
-  recordRecentProject,
-  removeRecentProject,
+  loadRecentProjectsState,
+  saveRecentProjectsState,
+  recordRecentProjectState,
+  removeRecentProjectState,
   recentProjectLabel,
 } = require("./recent-projects.cjs")
 
@@ -24,6 +24,7 @@ const runtimeSmokeTimeoutMs = Number.parseInt(process.env.RXNFLOW_DESKTOP_SMOKE_
 const userDataDirectoryOverride = process.env.RXNFLOW_DESKTOP_USER_DATA_DIR
 const projectValidationEmbeddedThresholdBytes = 1024 * 1024
 let recentProjectPaths = []
+let activeProjectPath = null
 let recentProjectsStorePath = null
 let currentProjectDirectory = null
 let currentProjectId = null
@@ -49,6 +50,10 @@ function createMainWindow() {
       sandbox: true,
     },
   })
+
+  if (process.platform === "darwin" && typeof window.setWindowButtonVisibility === "function") {
+    window.setWindowButtonVisibility(false)
+  }
 
   if (runtimeSmokeExit) {
     if (runtimeStartupRestoreSmoke) prepareStartupProjectRestore()
@@ -76,11 +81,17 @@ function prepareStartupProjectRestore() {
 
 async function restoreRecentProjectPayloads() {
   const payloads = []
-  for (const filePath of [...recentProjectPaths].reverse()) {
+  const validRecentPaths = []
+  for (const filePath of startupRestoreProjectPaths()) {
     try {
+      const startupDirectory = await projectDirectoryForStartupRestore(filePath)
+      if (!startupDirectory) {
+        await forgetRecentProject(filePath)
+        continue
+      }
       const projectPackage = await readProjectPackageWithValidation(filePath)
       activateProjectDirectory(projectPackage.content, projectPackage.projectDirectory)
-      await rememberRecentProject(projectPackage.projectDirectory ?? filePath)
+      validRecentPaths.push(projectPackage.projectDirectory ?? filePath)
       payloads.push({
         filePath,
         projectDirectory: projectPackage.projectDirectory,
@@ -94,7 +105,37 @@ async function restoreRecentProjectPayloads() {
       console.warn(`Could not restore recent RxnFlow project ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
+  if (validRecentPaths.length > 0) {
+    const newestValidPaths = validRecentPaths.reverse()
+    recentProjectPaths = uniqueRuntimeProjectPaths(newestValidPaths)
+    activeProjectPath = newestValidPaths[0] ?? activeProjectPath
+    await persistRecentProjects()
+  }
   return payloads
+}
+
+function startupRestoreProjectPaths() {
+  const paths = uniqueRuntimeProjectPaths(recentProjectPaths)
+  const activeKey = activeProjectPath ? runtimeProjectComparisonKey(activeProjectPath) : null
+  const withoutActive = activeKey
+    ? paths.filter((filePath) => runtimeProjectComparisonKey(filePath) !== activeKey)
+    : paths
+  const ordered = withoutActive.reverse()
+  if (activeProjectPath) ordered.push(activeProjectPath)
+  return uniqueRuntimeProjectPaths(ordered)
+}
+
+async function projectDirectoryForStartupRestore(filePath) {
+  const projectDirectory = await projectDirectoryForOpenedPath(filePath)
+  if (!projectDirectory) return null
+  if (isBundledOrManagedRuntimeProjectDirectory(projectDirectory)) return null
+  return projectDirectory
+}
+
+function isBundledOrManagedRuntimeProjectDirectory(projectDirectory) {
+  const userDataRoot = path.resolve(userDataDirectoryOverride || app.getPath("userData"))
+  const managedProjectsRoot = path.join(userDataRoot, "projects")
+  return isPathInside(projectDirectory, managedProjectsRoot)
 }
 
 function installRuntimeSmokeExit(window) {
@@ -141,16 +182,14 @@ function installRuntimeSmokeExit(window) {
           const poll = async () => {
             const text = document.body?.innerText || ""
             const hasWorkbench = Boolean(document.querySelector(".app-shell"))
-              && text.includes("RxnFlow")
-              && text.includes("Import")
-              && text.includes("Export")
+              && Boolean(document.querySelector(".project-rail"))
+              && Boolean(document.querySelector(".floating-export-trigger"))
             if (hasWorkbench) {
               try {
-                const inspectorTabs = Array.from(document.querySelectorAll(".inspector-panel .panel-tabs button"))
-                  .map((button) => button.textContent?.trim())
-                  .filter(Boolean)
-                if (inspectorTabs.join("|") !== "Node|Source|Export") {
-                  reject(new Error("desktop renderer inspector tabs must be Node, Source, Export"))
+                const hasNodeSidebar = Boolean(document.querySelector(".inspector-panel .inspector-rail-header"))
+                const hasExportTrigger = Boolean(document.querySelector(".floating-export-trigger"))
+                if (!hasNodeSidebar || !hasExportTrigger) {
+                  reject(new Error("desktop renderer must expose node sidebar and floating export trigger"))
                   return
                 }
                 const lowerText = text.toLowerCase()
@@ -171,15 +210,14 @@ function installRuntimeSmokeExit(window) {
                     return
                   }
                 }
-                const exportTab = Array.from(document.querySelectorAll(".inspector-panel .panel-tabs button"))
-                  .find((button) => button.textContent?.trim() === "Export")
-                if (!exportTab) {
-                  reject(new Error("desktop renderer export tab is missing"))
+                const exportTrigger = document.querySelector(".floating-export-trigger")
+                if (!exportTrigger) {
+                  reject(new Error("desktop renderer floating export trigger is missing"))
                   return
                 }
-                exportTab.click()
+                exportTrigger.click()
                 await new Promise((resolve) => window.setTimeout(resolve, 0))
-                const exportPanel = document.querySelector(".export-panel")
+                const exportPanel = document.querySelector(".export-float-panel .export-panel")
                 const exportFormats = Array.from(document.querySelectorAll(".export-format-grid label"))
                   .map((label) => label.textContent?.trim())
                   .filter(Boolean)
@@ -388,26 +426,33 @@ function recentProjectsMenuItems() {
 }
 
 async function rememberRecentProject(filePath) {
-  recentProjectPaths = recordRecentProject(recentProjectPaths, filePath)
+  const state = recordRecentProjectState({ projectPaths: recentProjectPaths, activeProjectPath }, filePath)
+  recentProjectPaths = state.projectPaths
+  activeProjectPath = state.activeProjectPath
   await persistRecentProjects()
   installApplicationMenu()
 }
 
 async function forgetRecentProject(filePath) {
-  recentProjectPaths = removeRecentProject(recentProjectPaths, filePath)
+  const state = removeRecentProjectState({ projectPaths: recentProjectPaths, activeProjectPath }, filePath)
+  recentProjectPaths = state.projectPaths
+  activeProjectPath = state.activeProjectPath
   await persistRecentProjects()
   installApplicationMenu()
 }
 
 async function clearRecentProjects() {
   recentProjectPaths = []
+  activeProjectPath = null
   await persistRecentProjects()
   installApplicationMenu()
 }
 
 async function persistRecentProjects() {
   if (!recentProjectsStorePath) return
-  recentProjectPaths = await saveRecentProjects(recentProjectsStorePath, recentProjectPaths)
+  const state = await saveRecentProjectsState(recentProjectsStorePath, { projectPaths: recentProjectPaths, activeProjectPath })
+  recentProjectPaths = state.projectPaths
+  activeProjectPath = state.activeProjectPath
 }
 
 async function openRecentProject(filePath, focusedWindow) {
@@ -594,6 +639,7 @@ ipcMain.handle("rxnflow:open-project-package", async () => {
   const result = await dialog.showOpenDialog({
     title: "Open RxnFlow project folder",
     buttonLabel: "Open Folder",
+    defaultPath: app.getPath("documents"),
     properties: ["openDirectory"],
   })
 
@@ -636,6 +682,7 @@ ipcMain.handle("rxnflow:create-project-folder", async (_event, payload) => {
   const result = await dialog.showOpenDialog({
     title: "Choose where to create the RxnFlow project folder",
     buttonLabel: "Create Project Folder Here",
+    defaultPath: app.getPath("documents"),
     properties: ["openDirectory", "createDirectory"],
   })
 
@@ -733,6 +780,57 @@ ipcMain.handle("rxnflow:autosave-project-package", async (_event, payload) => {
     content: savedProject.content,
     validation,
   }
+})
+
+ipcMain.handle("rxnflow:set-active-project", async (_event, payload) => {
+  const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
+  if (!projectId) return { ok: false }
+  const projectDirectory = projectDirectoriesById.get(projectId)
+  if (!projectDirectory) return { ok: false }
+  currentProjectId = projectId
+  currentProjectDirectory = projectDirectory
+  await rememberRecentProject(projectDirectory)
+  return { ok: true, projectDirectory }
+})
+
+ipcMain.handle("rxnflow:forget-project", async (_event, payload) => {
+  const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
+  if (!projectId) return { ok: false }
+  const projectDirectory = projectDirectoriesById.get(projectId)
+  if (!projectDirectory) return { ok: false }
+  projectDirectoriesById.delete(projectId)
+  if (currentProjectId === projectId) {
+    currentProjectId = null
+    currentProjectDirectory = null
+  }
+  await forgetRecentProject(projectDirectory)
+  return { ok: true, projectDirectory }
+})
+
+ipcMain.handle("rxnflow:open-source-file", async (_event, payload) => {
+  const candidates = []
+  const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
+  const projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
+  const storedPath = typeof payload?.storedPath === "string" ? payload.storedPath : null
+  if (projectDirectory && storedPath && isSafeProjectRelativePath(storedPath)) {
+    candidates.push(path.join(projectDirectory, storedPath))
+  }
+  const sourcePath = typeof payload?.sourcePath === "string" ? payload.sourcePath : null
+  if (sourcePath && path.isAbsolute(sourcePath)) candidates.push(sourcePath)
+
+  for (const candidate of candidates) {
+    const filePath = path.resolve(candidate)
+    try {
+      const stats = await fs.stat(filePath)
+      if (!stats.isFile()) continue
+      const error = await shell.openPath(filePath)
+      if (!error) return { ok: true, filePath }
+      return { ok: false, filePath, error }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return { ok: false, error: "Raw source file is not available in the project folder." }
 })
 
 ipcMain.handle("rxnflow:engine-status", async () => getEngineStatus())
@@ -959,6 +1057,29 @@ function projectIdentityFromContent(content) {
   }
 }
 
+function uniqueRuntimeProjectPaths(projectPaths) {
+  const seen = new Set()
+  const result = []
+  for (const projectPath of projectPaths) {
+    if (typeof projectPath !== "string" || !projectPath.trim()) continue
+    const resolved = path.resolve(projectPath)
+    const key = runtimeProjectComparisonKey(resolved)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(resolved)
+  }
+  return result
+}
+
+function runtimeProjectComparisonKey(projectPath) {
+  return process.platform === "win32" ? path.resolve(projectPath).toLowerCase() : path.resolve(projectPath)
+}
+
+function isPathInside(candidatePath, parentPath) {
+  const relativePath = path.relative(path.resolve(parentPath), path.resolve(candidatePath))
+  return relativePath === "" || (relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+}
+
 function safeProjectPathStem(value) {
   return String(value || "")
     .trim()
@@ -982,7 +1103,9 @@ function safeWorkspaceFolderName(value) {
 app.whenReady().then(async () => {
   app.setName("RxnFlow")
   recentProjectsStorePath = path.join(userDataDirectoryOverride || app.getPath("userData"), "recent-projects.json")
-  recentProjectPaths = await loadRecentProjects(recentProjectsStorePath)
+  const recentProjectState = await loadRecentProjectsState(recentProjectsStorePath)
+  recentProjectPaths = recentProjectState.projectPaths
+  activeProjectPath = recentProjectState.activeProjectPath
   installApplicationMenu()
   createMainWindow()
 

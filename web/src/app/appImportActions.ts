@@ -145,7 +145,7 @@ export function reviewCandidatesForFileAction({
   appStateSetters.setSelectedEdgeIds(transition.selection.selectedEdgeIds)
   appStateSetters.setSelectedBarrierIds(transition.selection.selectedBarrierIds)
   appStateSetters.setKeyboardEdgeSourceId(null)
-  appStateSetters.setInspectorMode("source")
+  appStateSetters.setInspectorMode("inspector")
   setCandidateReview(transition.reviewState)
 }
 

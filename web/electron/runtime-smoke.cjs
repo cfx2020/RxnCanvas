@@ -114,6 +114,7 @@ async function runStartupRestoreSmoke(executablePath) {
     fs.mkdirSync(userDataDir, { recursive: true })
     fs.writeFileSync(path.join(userDataDir, "recent-projects.json"), `${JSON.stringify({
       version: 1,
+      activeProjectPath: projectDirectory,
       projectPaths: [projectDirectory, olderProjectDirectory],
     }, null, 2)}\n`, "utf8")
 

@@ -13,9 +13,13 @@ const {
 } = require("./project-store.cjs")
 const {
   loadRecentProjects,
+  loadRecentProjectsState,
   saveRecentProjects,
+  saveRecentProjectsState,
   recordRecentProject,
+  recordRecentProjectState,
   removeRecentProject,
+  removeRecentProjectState,
   recentProjectLabel,
 } = require("./recent-projects.cjs")
 
@@ -376,10 +380,28 @@ async function verifyRecentProjectsStore() {
     if (JSON.stringify(loadedPaths) !== JSON.stringify(projectPaths)) {
       throw new Error(`Recent project persistence failed: ${JSON.stringify(loadedPaths)}`)
     }
+    const loadedState = await loadRecentProjectsState(storePath)
+    if (loadedState.activeProjectPath !== firstProject) {
+      throw new Error(`Recent active project fallback failed: ${JSON.stringify(loadedState)}`)
+    }
+
+    const activeStorePath = path.join(tempDir, "recent-projects-active.json")
+    let projectState = recordRecentProjectState({ projectPaths: [], activeProjectPath: null }, firstProject)
+    projectState = recordRecentProjectState(projectState, secondProject)
+    projectState = recordRecentProjectState(projectState, firstProject)
+    await saveRecentProjectsState(activeStorePath, projectState)
+    const reloadedState = await loadRecentProjectsState(activeStorePath)
+    if (reloadedState.activeProjectPath !== firstProject || reloadedState.projectPaths[0] !== firstProject) {
+      throw new Error(`Recent active project persistence failed: ${JSON.stringify(reloadedState)}`)
+    }
 
     const remainingPaths = removeRecentProject(loadedPaths, firstProject)
     if (remainingPaths.includes(firstProject) || remainingPaths[0] !== secondProject) {
       throw new Error(`Recent project removal failed: ${JSON.stringify(remainingPaths)}`)
+    }
+    const remainingState = removeRecentProjectState(reloadedState, firstProject)
+    if (remainingState.activeProjectPath !== secondProject || remainingState.projectPaths.includes(firstProject)) {
+      throw new Error(`Recent active project removal failed: ${JSON.stringify(remainingState)}`)
     }
 
     if (recentProjectLabel(firstProject) !== "alpha study") {

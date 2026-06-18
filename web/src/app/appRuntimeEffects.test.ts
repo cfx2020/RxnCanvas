@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest"
 import {
   autosaveProjectPackageToRuntime,
+  forgetProjectInRuntime,
   openProjectPackageFromRuntime,
   saveProjectPackageToRuntime,
   restoreStartupProjectFromRuntime,
+  setActiveProjectInRuntime,
   subscribeProjectPackageRuntimeMenus,
   watchDesktopEngineStatus,
   type RxnflowDesktopApi,
@@ -163,6 +165,20 @@ describe("appRuntimeEffects", () => {
     await Promise.resolve()
     expect(restoreProjectPackage).toHaveBeenNthCalledWith(1, "{\"id\":\"older\"}", null, { replaceProjects: true })
     expect(restoreProjectPackage).toHaveBeenNthCalledWith(2, "{\"id\":\"newer\"}", null, { replaceProjects: true })
+  })
+
+  it("persists the active desktop project when the renderer switches workspaces", async () => {
+    const setActiveProject = vi.fn(async () => ({ ok: true, projectDirectory: "/tmp/ir.rxnflow" }))
+    setActiveProjectInRuntime({ desktopApi: desktopApi({ setActiveProject }), projectId: "ir-workspace" })
+    await Promise.resolve()
+    expect(setActiveProject).toHaveBeenCalledWith({ projectId: "ir-workspace" })
+  })
+
+  it("forgets a desktop project when removed from the sidebar", async () => {
+    const forgetProject = vi.fn(async () => ({ ok: true, projectDirectory: "/tmp/ir.rxnflow" }))
+    forgetProjectInRuntime({ desktopApi: desktopApi({ forgetProject }), projectId: "ir-workspace" })
+    await Promise.resolve()
+    expect(forgetProject).toHaveBeenCalledWith({ projectId: "ir-workspace" })
   })
 
   it("watches desktop engine status", async () => {

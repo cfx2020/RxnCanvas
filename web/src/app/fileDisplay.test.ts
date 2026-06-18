@@ -161,7 +161,7 @@ describe("fileDisplay", () => {
       lastSelectedFileId: "xyz",
       selectedBarrierIds: [],
       keyboardEdgeSourceId: null,
-      inspectorMode: "source",
+      inspectorMode: "inspector",
     })
 
     expect(selectSourceFileTransition({
@@ -176,7 +176,7 @@ describe("fileDisplay", () => {
       lastSelectedFileId: "xyz",
       selectedBarrierIds: [],
       keyboardEdgeSourceId: null,
-      inspectorMode: "source",
+      inspectorMode: "inspector",
     })
 
     expect(selectSourceFileTransition({
@@ -189,7 +189,7 @@ describe("fileDisplay", () => {
       selectedFileIds: ["gas", "solution", "xyz"],
       selectedBarrierIds: [],
       keyboardEdgeSourceId: null,
-      inspectorMode: "source",
+      inspectorMode: "inspector",
     })
   })
 
@@ -211,7 +211,7 @@ describe("fileDisplay", () => {
       selectedFileId: "solution",
       selectedFileIds: ["xyz"],
       lastSelectedFileId: "solution",
-      inspectorMode: "source",
+      inspectorMode: "inspector",
     })
 
     expect(deleteSourceFileTransition({
@@ -225,7 +225,7 @@ describe("fileDisplay", () => {
       selectedFileId: null,
       selectedFileIds: [],
       lastSelectedFileId: null,
-      inspectorMode: "source",
+      inspectorMode: "inspector",
     })
   })
 
@@ -248,7 +248,7 @@ describe("fileDisplay", () => {
       selectedFileIds: ["gas"],
       lastSelectedFileId: "gas",
       keyboardEdgeSourceId: null,
-      inspectorMode: "source",
+      inspectorMode: "inspector",
     })
     expect(nodeSourceDetailsSelection({ nodes, files, nodeId: "missing-source" })).toBeNull()
     expect(nodeSourceDetailsSelection({ nodes, files, nodeId: "no-source" })).toBeNull()

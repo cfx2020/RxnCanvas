@@ -80,6 +80,7 @@ describe("CanvasWorkspace", () => {
         onSetNodeCoefficient={vi.fn()}
         onSetRelativeEnergyZero={vi.fn()}
         onShowNodeSource={vi.fn()}
+        onRenameNode={vi.fn()}
         onRawFileDrop={vi.fn()}
       />,
     )

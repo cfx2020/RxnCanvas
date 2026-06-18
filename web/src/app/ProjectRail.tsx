@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type DragEvent, type FormEvent, type MouseEvent, type ReactNode } from "react"
-import { Atom, FilePlus2, Folder, FolderPlus, MoreHorizontal, Trash2, UploadCloud } from "lucide-react"
+import { memo, useEffect, useMemo, useState, type DragEvent, type FormEvent, type MouseEvent, type ReactNode } from "react"
+import { FilePlus2, Folder, FolderOpen, FolderPlus, MoreHorizontal, Plus, Trash2, UploadCloud } from "lucide-react"
 import type { ProjectSummary, SourceFile } from "../domain/projectPackages"
 import {
   filesFromDataTransfer,
@@ -14,7 +14,7 @@ export type FileSelectionOptions = {
   range?: boolean
 }
 
-export function ProjectRail({
+export const ProjectRail = memo(function ProjectRail({
   projects,
   activeProjectId,
   files,
@@ -44,6 +44,7 @@ export function ProjectRail({
   onDeleteFile: (fileId: string) => void
 }) {
   const [projectCreatorOpen, setProjectCreatorOpen] = useState(false)
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
   const [projectNameDraft, setProjectNameDraft] = useState("")
   const [projectCreateBusy, setProjectCreateBusy] = useState(false)
   const [projectActionId, setProjectActionId] = useState<string | null>(null)
@@ -78,30 +79,43 @@ export function ProjectRail({
 
   return (
     <aside className="project-rail" aria-label="Project rail">
-      <div className="brand-block">
-        <div className="brand-mark">
-          <Atom size={18} />
-        </div>
-        <div>
-          <strong>RxnFlow</strong>
-          <span>Reaction canvas</span>
-        </div>
-      </div>
-
       <RailSection
-        title="Workspaces"
-        actionLabel="New Project Folder"
-        actionIcon={<FolderPlus size={16} />}
-        actionExpanded={projectCreatorOpen}
-        onAction={() => setProjectCreatorOpen((current) => !current)}
-        secondaryActionLabel="Open Folder"
-        secondaryActionIcon={<Folder size={16} />}
-        onSecondaryAction={onOpenProjectPackage}
+        title="Projects"
+        actionLabel="Workspace actions"
+        actionIcon={<Plus size={16} />}
+        actionExpanded={workspaceMenuOpen}
+        onAction={() => setWorkspaceMenuOpen((current) => !current)}
       >
+        {workspaceMenuOpen ? (
+          <div className="workspace-action-menu" role="menu" aria-label="Workspace actions">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setWorkspaceMenuOpen(false)
+                setProjectCreatorOpen(true)
+              }}
+            >
+              <FolderPlus size={15} />
+              <span>New blank project</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setWorkspaceMenuOpen(false)
+                void onOpenProjectPackage()
+              }}
+            >
+              <FolderOpen size={15} />
+              <span>Use existing folder</span>
+            </button>
+          </div>
+        ) : null}
         {projectCreatorOpen ? (
           <form className="project-create-form" aria-label="Create project" onSubmit={submitProject}>
             <label>
-              <span>Project name</span>
+              <span>Project folder name</span>
               <input
                 aria-label="Project name"
                 value={projectNameDraft}
@@ -117,6 +131,7 @@ export function ProjectRail({
                 Cancel
               </button>
             </div>
+            <p>Defaults to Documents in the desktop folder picker.</p>
           </form>
         ) : null}
         {projects.map((project) => (
@@ -180,7 +195,7 @@ export function ProjectRail({
     setProjectNameDraft("")
     setProjectCreatorOpen(false)
   }
-}
+})
 
 function isPromiseLike(value: unknown): value is Promise<boolean | void> {
   return Boolean(value && typeof (value as Promise<boolean | void>).then === "function")
@@ -261,17 +276,18 @@ function ProjectRailItem({
           </button>
           <button type="button" role="menuitem" onClick={onRequestDelete}>
             <Trash2 size={14} />
-            <span>Delete project</span>
+            <span>Remove from sidebar</span>
           </button>
         </div>
       ) : null}
       {confirmOpen ? (
-        <div className="project-delete-confirm" role="alertdialog" aria-label={`Delete ${project.label}`}>
-          <strong>Delete project?</strong>
+        <div className="project-delete-confirm" role="alertdialog" aria-label={`Remove ${project.label}`}>
+          <strong>Remove project?</strong>
           <span>{project.label}</span>
+          <small>The folder stays on disk.</small>
           <div>
             <button type="button" onClick={onCancelDelete}>Cancel</button>
-            <button type="button" className="is-danger" onClick={onConfirmDelete}>Confirm delete project</button>
+            <button type="button" className="is-danger" onClick={onConfirmDelete}>Remove from sidebar</button>
           </div>
         </div>
       ) : null}

@@ -10,7 +10,7 @@ import type {
 import { defaultEnergyDisplayOptions, type EnergyDisplayOptions } from "./energyDisplay"
 
 export type WorkbenchViewMode = "canvas" | "table"
-export type WorkbenchInspectorMode = "inspector" | "source" | "export"
+export type WorkbenchInspectorMode = "inspector" | "export"
 
 export type CanvasEditSnapshot = {
   nodes: FlowNode[]
@@ -195,7 +195,7 @@ export function emptyProjectWorkspace(viewport: CanvasViewport): ProjectWorkspac
     lastSelectedFileId: null,
     energyDisplayOptions: { ...defaultEnergyDisplayOptions },
     viewMode: "canvas",
-    inspectorMode: "source",
+    inspectorMode: "inspector",
   }
 }
 

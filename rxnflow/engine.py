@@ -8,6 +8,8 @@ growing this smoke core ad hoc.
 from __future__ import annotations
 
 import hashlib
+import contextlib
+import io
 import json
 import math
 import re
@@ -299,11 +301,299 @@ def parse_source_file(name: str, preview: str, source_path: str | None = None) -
                 source_path,
             ),
         )
-    return parse_source_preview(name, full_text, parse_scope="full-file", confidence="high")
+    text_result = parse_source_preview(name, full_text, parse_scope="full-file", confidence="high")
+    if not should_try_cclib(name, full_text):
+        return text_result
+    cclib_result, cclib_warning = parse_cclib_full_file(name, source_path, full_text, text_result)
+    if cclib_result is None:
+        return append_parse_warning(text_result, cclib_warning) if cclib_warning is not None else text_result
+    return merge_cclib_text_result(cclib_result, text_result)
 
 
 def append_parse_warning(result: SourceParseResult, warning: ParseWarning) -> SourceParseResult:
     return replace(result, warnings=(*result.warnings, warning))
+
+
+def should_try_cclib(name: str, full_text: str) -> bool:
+    """Return True when a full source looks like a cclib-supported output."""
+
+    lower_name = name.lower()
+    if not lower_name.endswith((".log", ".out", ".orca")):
+        return False
+    head = full_text[:12000].lower()
+    return any(
+        marker in head
+        for marker in (
+            "entering gaussian system",
+            "gaussian",
+            "scf done:",
+            "o   r   c   a",
+            "orca terminated",
+            "final single point energy",
+        )
+    )
+
+
+def parse_cclib_full_file(
+    name: str,
+    source_path: str,
+    full_text: str,
+    text_result: SourceParseResult,
+) -> tuple[SourceParseResult | None, ParseWarning | None]:
+    """Parse a complete computational output with cclib when available.
+
+    cclib is intentionally used behind the Python engine boundary. The renderer
+    still receives structured fields only, and the custom text parser remains
+    the fallback/overlay for RxnFlow-specific Gaussian workbook columns.
+    """
+
+    try:
+        import cclib  # type: ignore[import-not-found]
+    except (ImportError, ModuleNotFoundError) as exc:
+        return None, ParseWarning(
+            "cclib_unavailable",
+            f"cclib is not available; parser used RxnFlow text extraction only. {exc}",
+            name,
+        )
+
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            data = cclib.io.ccread(str(Path(source_path).expanduser()))
+    except Exception as exc:  # pragma: no cover - cclib exception types vary by version/parser
+        return None, ParseWarning(
+            "cclib_parse_failed",
+            f"cclib could not parse this full output; parser used RxnFlow text extraction only. {exc}",
+            name,
+        )
+    if data is None:
+        return None, ParseWarning(
+            "cclib_parse_empty",
+            "cclib did not return parsed data; parser used RxnFlow text extraction only.",
+            name,
+        )
+
+    atoms = atoms_from_cclib_data(data)
+    formula = formula_from_atoms(atoms) if atoms else text_result.formula
+    charge = optional_int_from_any(getattr(data, "charge", None))
+    spin = optional_int_from_any(getattr(data, "mult", None))
+    method = cclib_method_from_data(data) or text_result.method
+    energy_table = cclib_energy_table_from_data(name, data, full_text)
+    energy_gas = energy_table.egasHartree if energy_table is not None else None
+    if energy_gas is None:
+        energy_gas = text_result.energyGas
+    energy_solution = (
+        energy_table.ggasHartree
+        if energy_table is not None and energy_table.ggasHartree is not None
+        else text_result.energySolution
+    )
+    source_kind = text_result.sourceKind if text_result.sourceKind in {"Gaussian", "ORCA"} else cclib_source_kind(name, full_text)
+    parser_base = "gaussian-log-cclib" if source_kind == "Gaussian" else "orca-output-cclib"
+    candidate = parse_candidate(
+        object_index=0,
+        label=basename_without_extension(name),
+        formula=formula,
+        method=method,
+        energy_gas=energy_gas,
+        energy_solution=energy_solution,
+        energy_unit="hartree" if energy_gas is not None or energy_solution is not None else "kcal/mol",
+        coordinate_preview=coordinate_preview_from_atoms(atoms) or text_result.coordinatePreview,
+        role_hint=role_hint_from_name(name),
+        charge=charge,
+        spin_multiplicity=spin,
+        energy_table=energy_table,
+    )
+    return source_result_from_candidates(
+        label=basename_without_extension(name),
+        source_kind=source_kind,
+        kind=text_result.kind,
+        solvent=text_result.solvent,
+        parser_id=parser_id_for_scope(parser_base, "full-file"),
+        parser_version=PARSER_VERSION,
+        candidates=(candidate,),
+        energy_table=energy_table,
+        parse_scope="full-file",
+        confidence="high",
+    ), None
+
+
+def merge_cclib_text_result(cclib_result: SourceParseResult, text_result: SourceParseResult) -> SourceParseResult:
+    """Merge cclib standard fields with RxnFlow-specific text fields.
+
+    cclib is the primary source for standard computational fields such as
+    energies, atom-derived formula, method, charge/multiplicity, and
+    coordinates. The RxnFlow text parser fills gaps and contributes
+    app-specific metadata such as source kind, solvent, role hints, and labels.
+    """
+
+    cclib_primary = cclib_result.candidates[0] if cclib_result.candidates else None
+    text_primary = text_result.candidates[0] if text_result.candidates else None
+    merged_table = merge_energy_tables(cclib_primary.energyTable if cclib_primary else cclib_result.energyTable, text_result.energyTable)
+    merged_coordinate_preview = cclib_result.coordinatePreview or text_result.coordinatePreview
+    merged_candidate = parse_candidate(
+        object_index=0,
+        label=text_primary.label if text_primary is not None else cclib_result.label,
+        formula=prefer_parsed_text(cclib_result.formula, text_result.formula, "pending"),
+        method=prefer_parsed_text(cclib_result.method, text_result.method, "unassigned"),
+        energy_gas=coalesce_float(cclib_result.energyGas, text_result.energyGas),
+        energy_solution=coalesce_float(cclib_result.energySolution, text_result.energySolution),
+        energy_unit="hartree",
+        coordinate_preview=merged_coordinate_preview,
+        role_hint=text_primary.roleHint if text_primary is not None else (cclib_primary.roleHint if cclib_primary else role_hint_from_name(cclib_result.label)),
+        charge=cclib_primary.charge if cclib_primary is not None and cclib_primary.charge is not None else (text_primary.charge if text_primary else None),
+        spin_multiplicity=cclib_primary.spinMultiplicity if cclib_primary is not None and cclib_primary.spinMultiplicity is not None else (text_primary.spinMultiplicity if text_primary else None),
+        warnings=tuple(sorted((*cclib_result.warnings, *text_result.warnings), key=lambda warning: warning.code)),
+        energy_table=merged_table,
+    )
+    return source_result_from_candidates(
+        label=merged_candidate.label,
+        source_kind=text_result.sourceKind if text_result.parsed else cclib_result.sourceKind,
+        kind=text_result.kind,
+        solvent=text_result.solvent,
+        parser_id=parser_id_for_scope(
+            "gaussian-log-cclib+rxnflow-text" if (text_result.sourceKind if text_result.parsed else cclib_result.sourceKind) == "Gaussian" else "orca-output-cclib+rxnflow-text",
+            "full-file",
+        ),
+        parser_version=PARSER_VERSION,
+        candidates=(merged_candidate,),
+        warnings=tuple(sorted((*cclib_result.warnings, *text_result.warnings), key=lambda warning: warning.code)),
+        energy_table=merged_table,
+        parse_scope="full-file",
+        confidence="high",
+    )
+
+
+def atoms_from_cclib_data(data: Any) -> list[CoordinateAtom]:
+    atom_numbers = getattr(data, "atomnos", None)
+    atom_coordinates = getattr(data, "atomcoords", None)
+    if atom_numbers is None or atom_coordinates is None or len(atom_coordinates) == 0:
+        return []
+    latest_coordinates = atom_coordinates[-1]
+    atoms: list[CoordinateAtom] = []
+    for atomic_number, coordinates in zip(atom_numbers, latest_coordinates):
+        try:
+            x, y, z = float(coordinates[0]), float(coordinates[1]), float(coordinates[2])
+            atoms.append(CoordinateAtom(symbol_from_atomic_number(int(atomic_number)), x, y, z))
+        except (TypeError, ValueError, IndexError):
+            continue
+    return atoms
+
+
+def cclib_energy_table_from_data(name: str, data: Any, full_text: str) -> ParsedEnergyTableData | None:
+    scf_hartree = cclib_last_scf_hartree(data)
+    free_energy = cclib_free_energy_hartree(data)
+    basis_functions = optional_int_from_any(getattr(data, "nbasis", None))
+    is_solution = looks_like_solution_log_name(name)
+    table = ParsedEnergyTableData(
+        egasHartree=scf_hartree,
+        gasBasisFunctions=basis_functions,
+        ggasHartree=free_energy,
+        ggas1mHartree=free_energy + ONE_M_STANDARD_STATE_CORRECTION_HARTREE if free_energy is not None else None,
+        esolHartree=scf_hartree if is_solution else None,
+        solBasisFunctions=basis_functions if is_solution else None,
+        standardStateCorrectionHartree=ONE_M_STANDARD_STATE_CORRECTION_HARTREE if free_energy is not None else None,
+    )
+    exact_text_table = gaussian_energy_table(full_text) if "scf done:" in full_text.lower() else orca_energy_table(full_text)
+    table = merge_energy_tables(table, exact_text_table)
+    if is_solution and table is not None:
+        table = replace(
+            table,
+            esolHartree=table.egasHartree if table.egasHartree is not None else table.esolHartree,
+            solBasisFunctions=table.gasBasisFunctions if table.gasBasisFunctions is not None else table.solBasisFunctions,
+        )
+    return table if energy_table_has_value(table) else None
+
+
+def cclib_last_scf_hartree(data: Any) -> float | None:
+    scfenergies = getattr(data, "scfenergies", None)
+    if scfenergies is None or len(scfenergies) == 0:
+        return None
+    try:
+        return float(scfenergies[-1]) * EV_TO_HARTREE
+    except (TypeError, ValueError):
+        return None
+
+
+def cclib_free_energy_hartree(data: Any) -> float | None:
+    try:
+        value = getattr(data, "freeenergy", None)
+        if value is None:
+            return None
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def cclib_source_kind(name: str, full_text: str) -> str:
+    lower = f"{name}\n{full_text[:12000]}".lower()
+    if "o   r   c   a" in lower or "orca terminated" in lower or name.lower().endswith(".orca"):
+        return "ORCA"
+    return "Gaussian"
+
+
+def cclib_method_from_data(data: Any) -> str | None:
+    metadata = getattr(data, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    for key in ("methods", "method"):
+        value = metadata.get(key)
+        if isinstance(value, (list, tuple)) and value:
+            return " ".join(str(item) for item in value[:3] if item).strip() or None
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    functional = metadata.get("functional")
+    basis = metadata.get("basis_set") or metadata.get("basis")
+    method = " ".join(str(part) for part in (functional, basis) if part)
+    return method.strip() or None
+
+
+def looks_like_solution_log_name(name: str) -> bool:
+    stem = basename_without_extension(name).strip().lower()
+    return stem.endswith("-sol") or stem.endswith("_sol") or stem.endswith(".sol") or stem.endswith(" sol")
+
+
+def merge_energy_tables(
+    base: ParsedEnergyTableData | None,
+    overlay: ParsedEnergyTableData | None,
+) -> ParsedEnergyTableData | None:
+    merged: dict[str, Any] = {}
+    for key in ParsedEnergyTableData.__dataclass_fields__:
+        value = getattr(base, key, None) if base is not None else None
+        overlay_value = getattr(overlay, key, None) if overlay is not None else None
+        merged[key] = value if value is not None else overlay_value
+    table = ParsedEnergyTableData(**merged)
+    return table if energy_table_has_value(table) else None
+
+
+def prefer_parsed_text(primary: str | None, fallback: str | None, default: str) -> str:
+    ignored = {"", "pending", "unassigned", "unparsed source"}
+    if isinstance(primary, str) and primary.strip() and primary.strip().lower() not in ignored:
+        return primary.strip()
+    if isinstance(fallback, str) and fallback.strip() and fallback.strip().lower() not in ignored:
+        return fallback.strip()
+    return default
+
+
+def coalesce_float(*values: float | None) -> float | None:
+    for value in values:
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value)):
+            return float(value)
+    return None
+
+
+def optional_int_from_any(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    try:
+        if float(value) != float(parsed):
+            return None
+    except (TypeError, ValueError):
+        return None
+    return parsed
 
 
 def register_import_candidates(

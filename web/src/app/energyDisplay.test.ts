@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { FlowNode } from "../domain/projectPackages"
+import type { FlowEdge, FlowNode } from "../domain/projectPackages"
 import {
   defaultEnergyDisplayOptions,
   energyTableNodeSelectionTransition,
@@ -8,6 +8,7 @@ import {
   formatCoefficientValue,
   formatEnergy,
   formatRelativeEnergy,
+  kcalPerHartree,
   nodeCoefficient,
   nodeFooterText,
   relativeEnergyZeroNode,
@@ -69,4 +70,77 @@ describe("energyDisplay", () => {
     expect(nodeFooterText({ ...baseNode, sourceStatus: "staged", energyGas: null, energySolution: null })).toBe("Staged source")
     expect(nodeFooterText({ ...baseNode, sourceStatus: "demo", kind: "transition" })).toBe("Transition state")
   })
+
+  it("derives Ir-style relative energy expressions from graph links", () => {
+    const nodes: FlowNode[] = [
+      irNode("tsr", "i1N2fix14-tsr", -6774.84468, -6774.46879252),
+      irNode("tsf", "i1N2fix14-tsf", -6774.830559, -6774.44492798),
+      irNode("ts", "i1N2fix14-ts", -6774.817266, -6774.43530137, "transition"),
+      irNode("base", "4b-1", -5209.716178, -5209.21691981),
+      irNode("four-b", "4b+", -4749.27926427, -4748.79778908),
+      irNode("one", "1", -2025.48052593, -2025.64916099),
+      irNode("cl", "Cl", -460.232419976, -460.391177522),
+    ]
+    const edges: FlowEdge[] = [
+      edge("base", "four-b"),
+      edge("base", "cl"),
+      edge("one", "four-b"),
+      edge("four-b", "tsf"),
+      edge("tsf", "ts"),
+      edge("ts", "tsr"),
+    ]
+
+    const gasRows = energyTableRows(nodes, { ...defaultEnergyDisplayOptions, energySource: "gas" }, edges)
+    expect(relativeEnergyZeroNode(nodes, defaultEnergyDisplayOptions, edges)?.id).toBe("base")
+    expect(gasRows.find((row) => row.nodeId === "base")?.showInRelativeTable).toBe(true)
+    expect(gasRows.find((row) => row.nodeId === "base")?.relative).toBeCloseTo(0)
+    expect(gasRows.find((row) => row.nodeId === "one")?.relativeRole).toBe("term-only")
+    expect(gasRows.find((row) => row.nodeId === "cl")?.relative).toBeNull()
+    expect(gasRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(128.3218, 3)
+    expect(gasRows.find((row) => row.nodeId === "tsf")?.relative).toBeCloseTo(83.9137, 3)
+    expect(gasRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(92.2552, 3)
+    expect(gasRows.find((row) => row.nodeId === "tsr")?.relative).toBeCloseTo(75.0526, 3)
+
+    const shiftedRows = energyTableRows(nodes, {
+      ...defaultEnergyDisplayOptions,
+      baselineNodeId: "ts",
+      energySource: "gas",
+    }, edges)
+    expect(shiftedRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(0)
+    expect(shiftedRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(36.0666, 3)
+
+    const solutionRows = energyTableRows(nodes, defaultEnergyDisplayOptions, edges)
+    expect(solutionRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(17.5410, 3)
+    expect(solutionRows.find((row) => row.nodeId === "tsf")?.relative).toBeCloseTo(18.8099, 3)
+    expect(solutionRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(24.8503, 3)
+    expect(solutionRows.find((row) => row.nodeId === "tsr")?.relative).toBeCloseTo(3.8344, 3)
+    expect((solutionRows.find((row) => row.nodeId === "four-b")?.relativeEnergyTable?.gsolHartree ?? 0) * kcalPerHartree).toBeCloseTo(17.5410, 3)
+  })
 })
+
+function irNode(
+  id: string,
+  label: string,
+  egasHartree: number,
+  gsolHartree: number,
+  kind: FlowNode["kind"] = "intermediate",
+): FlowNode {
+  return {
+    id,
+    label,
+    formula: label,
+    kind,
+    method: "Gaussian",
+    solvent: "implicit",
+    energyGas: egasHartree,
+    energySolution: gsolHartree,
+    energyUnit: "hartree",
+    sourceStatus: "parsed",
+    energyTable: { egasHartree, gsolHartree },
+    position: { x: 0, y: 0 },
+  }
+}
+
+function edge(sourceId: string, targetId: string): FlowEdge {
+  return { id: `${sourceId}-${targetId}`, sourceId, targetId, label: "path" }
+}

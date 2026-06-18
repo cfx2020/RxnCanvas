@@ -46,6 +46,14 @@ export type RxnflowDesktopApi = {
   getStartupProjectContent?: () => Promise<ProjectPackageOpenResult>
   saveProjectPackage: (payload: { defaultName: string; content: string }) => Promise<ProjectPackageSaveResult>
   autosaveProjectPackage?: (payload: { defaultName: string; content: string }) => Promise<ProjectPackageSaveResult>
+  setActiveProject?: (payload: { projectId: string }) => Promise<{ ok: boolean; projectDirectory?: string | null }>
+  forgetProject?: (payload: { projectId: string }) => Promise<{ ok: boolean; projectDirectory?: string | null }>
+  openSourceFile?: (payload: {
+    projectId?: string
+    storedPath?: string
+    sourcePath?: string
+    name?: string
+  }) => Promise<{ ok: boolean; filePath?: string; error?: string }>
   onMenuImportFiles: (callback: () => void) => () => void
   onMenuOpenProject: (callback: () => void) => () => void
   onMenuSaveProject: (callback: () => void) => () => void
@@ -246,6 +254,32 @@ export function restoreStartupProjectFromRuntime({
   return () => {
     canceled = true
   }
+}
+
+export function setActiveProjectInRuntime({
+  desktopApi,
+  projectId,
+}: {
+  desktopApi: RxnflowDesktopApi | undefined
+  projectId: string
+}): void {
+  if (!desktopApi?.setActiveProject || !projectId) return
+  void desktopApi.setActiveProject({ projectId }).catch(() => {
+    // Active workspace persistence is best-effort; autosave still protects the project data.
+  })
+}
+
+export function forgetProjectInRuntime({
+  desktopApi,
+  projectId,
+}: {
+  desktopApi: RxnflowDesktopApi | undefined
+  projectId: string
+}): void {
+  if (!desktopApi?.forgetProject || !projectId) return
+  void desktopApi.forgetProject({ projectId }).catch(() => {
+    // Removing a project from the desktop recent store is best-effort.
+  })
 }
 
 export function watchDesktopEngineStatus({

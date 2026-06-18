@@ -1,102 +1,78 @@
-import { useEffect, useState, type FormEvent } from "react"
-import { Activity, Box, ChevronDown, FilePlus2, Link2, Maximize2, PanelRight, PencilLine, RotateCcw } from "lucide-react"
-import type { ReportExportOptions } from "../domain/reportExports"
+import { memo, useEffect, useState, type FormEvent } from "react"
+import { Activity, Box, ChevronDown, ExternalLink, FilePlus2, Link2, Maximize2, PanelRight, PencilLine, RotateCcw } from "lucide-react"
 import type { FlowBarrier, FlowEdge, FlowNode, SourceFile } from "../domain/projectPackages"
 import type { ParseCandidate } from "../domain/sourceParsers"
 import { defaultBarrierLabel } from "./canvasDrawing"
-import { type EnergyDisplayOptions, type EnergyTableRow, formatEnergy } from "./energyDisplay"
+import { type EnergyDisplayOptions, type EnergyTableRow, formatEnergy, formatRelativeEnergy } from "./energyDisplay"
 import { formatBytes } from "./fileDisplay"
-import { ExportDock, type ExportedReportArtifact } from "./ReportPanels"
 import { Molecule3DmolViewer } from "./Molecule3DmolViewer"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
 
-export type InspectorMode = "inspector" | "source" | "export"
+export type InspectorMode = "inspector" | "export"
 
 import { candidateReviewKey, nodeKindFromCandidate, type CandidateReviewEntry, type CandidateReviewViewState } from "./importRegistration"
 
-export function InspectorPanel({
-  mode,
+export const InspectorPanel = memo(function InspectorPanel({
   node,
   edge,
   barrier,
   nodeMap,
   file,
   rows,
-  exportOptions,
-  exportArtifacts,
-  exportBusy,
-  exportStatus,
   files,
   energyDisplayOptions,
-  onModeChange,
-  onExportOptionsChange,
-  onExport,
   onReviewCandidates,
   onUpdateEdgeLabel,
   onUpdateBarrierLabel,
   onOpenStructure,
   onEdit2DStructure,
   onReset2DStructure,
+  onOpenSourceFile,
 }: {
-  mode: InspectorMode
   node: FlowNode | null
   edge: FlowEdge | null
   barrier: FlowBarrier | null
   nodeMap: Map<string, FlowNode>
   file: SourceFile | null
   rows: EnergyTableRow[]
-  exportOptions: ReportExportOptions
-  exportArtifacts: ExportedReportArtifact[]
-  exportBusy: boolean
-  exportStatus: string
   files: SourceFile[]
   energyDisplayOptions: EnergyDisplayOptions
-  onModeChange: (mode: InspectorMode) => void
-  onExportOptionsChange: (options: ReportExportOptions) => void
-  onExport: () => void | Promise<void>
   onReviewCandidates: (fileId: string) => void
   onUpdateEdgeLabel: (edgeId: string, label: string) => void
   onUpdateBarrierLabel: (barrierId: string, label: string | null) => void
   onOpenStructure: (nodeId: string) => void
   onEdit2DStructure: (nodeId: string) => void
   onReset2DStructure: (nodeId: string) => void
+  onOpenSourceFile: (fileId: string) => void | Promise<void>
 }) {
+  const nodeRow = node ? rows.find((row) => row.nodeId === node.id) ?? null : null
   return (
     <aside className="inspector-panel" aria-label="Inspector">
-      <div className="panel-tabs">
-        <button type="button" className={mode === "inspector" ? "is-active" : ""} onClick={() => onModeChange("inspector")}>Node</button>
-        <button type="button" className={mode === "source" ? "is-active" : ""} onClick={() => onModeChange("source")}>Source</button>
-        <button type="button" className={mode === "export" ? "is-active" : ""} onClick={() => onModeChange("export")}>Export</button>
+      <div className="inspector-rail-header">
+        <div>
+          <span>Node</span>
+          <strong>{node?.label ?? edge?.label ?? (barrier ? "Barrier" : "Selection")}</strong>
+        </div>
+        <PanelRight size={18} aria-hidden="true" />
       </div>
-
-      {mode === "source" ? <SourceInspector file={file} onReviewCandidates={onReviewCandidates} /> : null}
-      {mode === "export" ? (
-        <ExportDock
-          options={exportOptions}
-          artifacts={exportArtifacts}
-          busy={exportBusy}
-          status={exportStatus}
-          rows={rows}
-          onOptionsChange={onExportOptionsChange}
-          onExport={onExport}
-        />
-      ) : null}
-      {mode === "inspector" ? (
-        barrier
-          ? <BarrierInspector barrier={barrier} nodeMap={nodeMap} energyDisplayOptions={energyDisplayOptions} onUpdateLabel={onUpdateBarrierLabel} />
-          : edge
-            ? <EdgeInspector edge={edge} nodeMap={nodeMap} onUpdateLabel={onUpdateEdgeLabel} />
-            : <NodeInspector
-                node={node}
-                file={node ? sourceFileForNode(node, files) : null}
-                onOpenStructure={onOpenStructure}
-                onEdit2DStructure={onEdit2DStructure}
-                onReset2DStructure={onReset2DStructure}
-              />
-      ) : null}
+      {barrier
+        ? <BarrierInspector barrier={barrier} nodeMap={nodeMap} energyDisplayOptions={energyDisplayOptions} onUpdateLabel={onUpdateBarrierLabel} />
+        : edge
+          ? <EdgeInspector edge={edge} nodeMap={nodeMap} onUpdateLabel={onUpdateEdgeLabel} />
+          : <NodeInspector
+              node={node}
+              row={nodeRow}
+              file={node ? sourceFileForNode(node, files) : file}
+              energyDisplayOptions={energyDisplayOptions}
+              onOpenStructure={onOpenStructure}
+              onEdit2DStructure={onEdit2DStructure}
+              onReset2DStructure={onReset2DStructure}
+              onReviewCandidates={onReviewCandidates}
+              onOpenSourceFile={onOpenSourceFile}
+            />}
     </aside>
   )
-}
+})
 
 function BarrierInspector({
   barrier,
@@ -254,18 +230,44 @@ function EdgeInspector({
 
 function NodeInspector({
   node,
+  row,
   file,
+  energyDisplayOptions,
   onOpenStructure,
   onEdit2DStructure,
   onReset2DStructure,
+  onReviewCandidates,
+  onOpenSourceFile,
 }: {
   node: FlowNode | null
+  row: EnergyTableRow | null
   file: SourceFile | null
+  energyDisplayOptions: EnergyDisplayOptions
   onOpenStructure: (nodeId: string) => void
   onEdit2DStructure: (nodeId: string) => void
   onReset2DStructure: (nodeId: string) => void
+  onReviewCandidates: (fileId: string) => void
+  onOpenSourceFile: (fileId: string) => void | Promise<void>
 }) {
   if (!node) {
+    if (file) {
+      return (
+        <>
+          <div className="selected-title">
+            <div>
+              <span>Source</span>
+              <strong>{file.name}</strong>
+            </div>
+            <FilePlus2 size={18} />
+          </div>
+          <NodeSourceSummary
+            file={file}
+            onReviewCandidates={onReviewCandidates}
+            onOpenSourceFile={onOpenSourceFile}
+          />
+        </>
+      )
+    }
     return (
       <div className="inspector-empty">
         <PanelRight size={20} />
@@ -357,25 +359,43 @@ function NodeInspector({
           <span className="section-badge" aria-label={`Energy unit ${node.energyUnit}`}>{node.energyUnit}</span>
         </div>
         <div className="energy-row">
-          <span>Delta E gas</span>
+          <span>ΔE gas</span>
           <strong>{formatEnergy(node.energyGas, node.energyUnit)}</strong>
         </div>
         <div className="energy-row">
-          <span>Delta G sol</span>
+          <span>ΔG sol</span>
           <strong>{formatEnergy(node.energySolution, node.energyUnit)}</strong>
         </div>
+        <div className="energy-row">
+          <span>{energyDisplayOptions.energySource === "solution" ? "ΔG rel" : "ΔE rel"}</span>
+          <strong>{row ? formatRelativeEnergy(row.relative, energyDisplayOptions.outputUnit) : "pending"}</strong>
+        </div>
       </section>
+
+      <NodeSourceSummary
+        file={file}
+        onReviewCandidates={onReviewCandidates}
+        onOpenSourceFile={onOpenSourceFile}
+      />
     </>
   )
 }
 
-function SourceInspector({ file, onReviewCandidates }: { file: SourceFile | null; onReviewCandidates: (fileId: string) => void }) {
+function NodeSourceSummary({
+  file,
+  onReviewCandidates,
+  onOpenSourceFile,
+}: {
+  file: SourceFile | null
+  onReviewCandidates: (fileId: string) => void
+  onOpenSourceFile: (fileId: string) => void | Promise<void>
+}) {
   if (!file) {
     return (
-      <div className="inspector-empty">
+      <section className="source-panel source-panel-compact">
         <FilePlus2 size={20} />
-        <strong>No source selected</strong>
-      </div>
+        <strong>No source linked</strong>
+      </section>
     )
   }
   const parse = file.parse
@@ -388,12 +408,13 @@ function SourceInspector({ file, onReviewCandidates }: { file: SourceFile | null
   const previewIsPartial = file.size > 0 && previewByteLength > 0 && previewByteLength < file.size
   const sourceTextScope = previewIsPartial ? "Preview sample" : "Complete preview text"
   const parserLabel = parse?.parserId ?? parse?.sourceKind
+  const canOpenRaw = Boolean(file.storedPath || file.sourcePath)
 
   return (
     <section className="source-panel" aria-label="Source inspector">
       <div className="selected-title">
         <div>
-          <span>Source File</span>
+          <span>Source</span>
           <strong>{file.name}</strong>
         </div>
         <FilePlus2 size={18} />
@@ -462,9 +483,18 @@ function SourceInspector({ file, onReviewCandidates }: { file: SourceFile | null
       ) : null}
       <div className="source-preview-status" aria-label="Source text scope">
         <span>{sourceTextScope}</span>
-        <strong>{previewIsPartial ? `${formatBytes(previewByteLength)} shown of ${formatBytes(file.size)}` : "The visible text is complete for this file."}</strong>
+        <strong>{previewIsPartial ? `${formatBytes(previewByteLength)} / ${formatBytes(file.size)}` : "Complete"}</strong>
       </div>
-      <pre className="source-preview">{file.preview || "No preview available."}</pre>
+      <button
+        type="button"
+        className="source-open-button"
+        disabled={!canOpenRaw}
+        title={canOpenRaw ? "Open raw log in the system app" : "No project copy or source path is available"}
+        onClick={() => void onOpenSourceFile(file.id)}
+      >
+        <ExternalLink size={15} />
+        Open raw log
+      </button>
     </section>
   )
 }

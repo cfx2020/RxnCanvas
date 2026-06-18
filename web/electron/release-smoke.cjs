@@ -145,7 +145,7 @@ function verifyRuntimeSmokeScript() {
   assert(mainSource.includes("--rxnflow-smoke-exit"), "Electron main must support --rxnflow-smoke-exit")
   assert(mainSource.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK"), "Electron main must emit runtime smoke success marker")
   assert(mainSource.includes("forbiddenRuntimeUiTerms"), "Electron runtime smoke must guard inactive UI terms")
-  assert(mainSource.includes("Node|Source|Export"), "Electron runtime smoke must verify active inspector tabs")
+  assert(mainSource.includes("node sidebar and floating export trigger"), "Electron runtime smoke must verify active node sidebar/export trigger")
   assert(mainSource.includes("PNG|CDXML|XLSX"), "Electron runtime smoke must verify active export formats")
   assert(mainSource.includes("inactiveExportFormats"), "Electron runtime smoke must guard inactive export formats")
   assert(smokeSource.includes("--rxnflow-smoke-exit"), "runtime smoke script must launch packaged app with smoke flag")

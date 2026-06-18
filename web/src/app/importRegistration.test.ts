@@ -396,7 +396,7 @@ describe("importRegistration", () => {
     expect(next.selectedFileId).toBe("single")
     expect(next.selectedFileIds).toEqual(["single"])
     expect(next.lastSelectedFileId).toBe("single")
-    expect(next.inspectorMode).toBe("source")
+    expect(next.inspectorMode).toBe("inspector")
     expect(next.viewMode).toBe("canvas")
 
     next.nodes[0].position.x = 999
@@ -438,7 +438,7 @@ describe("importRegistration", () => {
     expect(next.selectedNodeIds).toEqual([])
     expect(next.selectedFileId).toBe("existing")
     expect(next.viewMode).toBe("table")
-    expect(next.inspectorMode).toBe("source")
+    expect(next.inspectorMode).toBe("inspector")
   })
 
   it("prepares an import plan, auto nodes, review state, and workspace snapshot together", async () => {
@@ -520,7 +520,7 @@ describe("importRegistration", () => {
       lastSelectedFileId: "file-1",
       energyDisplayOptions: defaultEnergyDisplayOptions,
       viewMode: "table" as const,
-      inspectorMode: "source" as const,
+      inspectorMode: "inspector" as const,
     }
     const createdNodes = [{
       id: "registered-node",

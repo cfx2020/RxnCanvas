@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld("rxnflowDesktop", {
   getStartupProjectContent: () => ipcRenderer.invoke("rxnflow:get-startup-project-content"),
   saveProjectPackage: (payload) => ipcRenderer.invoke("rxnflow:save-project-package", payload),
   autosaveProjectPackage: (payload) => ipcRenderer.invoke("rxnflow:autosave-project-package", payload),
+  setActiveProject: (payload) => ipcRenderer.invoke("rxnflow:set-active-project", payload),
+  forgetProject: (payload) => ipcRenderer.invoke("rxnflow:forget-project", payload),
+  openSourceFile: (payload) => ipcRenderer.invoke("rxnflow:open-source-file", payload),
   onMenuImportFiles: (callback) => {
     const listener = () => callback()
     ipcRenderer.on("rxnflow:menu-import-files", listener)

@@ -115,7 +115,7 @@ describe("projectWorkspace", () => {
       files: [],
       nodes: [],
       viewport,
-      inspectorMode: "source",
+      inspectorMode: "inspector",
       viewMode: "canvas",
     })
   })
