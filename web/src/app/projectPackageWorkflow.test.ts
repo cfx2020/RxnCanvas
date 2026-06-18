@@ -22,6 +22,20 @@ function currentWorkspace(): ProjectWorkspaceSnapshot {
   return emptyProjectWorkspace({ x: 1, y: 2, zoom: 0.75 })
 }
 
+function canvases() {
+  return [{
+    id: "canvas-1",
+    label: "画布 1",
+    nodes: [],
+    edges: [],
+    barriers: [{ id: "barrier-1", sourceId: "node-a", targetId: "node-b", label: "12.4" }],
+    viewport: { x: 10, y: 20, zoom: 0.8 },
+    selectedNodeIds: [],
+    selectedEdgeIds: [],
+    selectedBarrierIds: [],
+  }]
+}
+
 describe("projectPackageWorkflow", () => {
   it("builds runtime-specific project package names and runtime transitions", () => {
     expect(projectPackageDefaultName(project.label, "desktop")).toBe("ni-screen.rxnflow")
@@ -37,19 +51,21 @@ describe("projectPackageWorkflow", () => {
     const serialized = serializeProjectPackage({
       project,
       files: [],
-      nodes: [],
-      edges: [],
-      barriers: [{ id: "barrier-1", sourceId: "node-a", targetId: "node-b", label: "12.4" }],
-      viewport: { x: 10, y: 20, zoom: 0.8 },
+      canvases: canvases(),
+      activeCanvasId: "canvas-1",
     }, "desktop")
 
     expect(serialized.defaultName).toBe("ni-screen.rxnflow")
     expect(JSON.parse(serialized.content)).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       packageKind: "rxnflow-project",
       project,
-      barriers: [{ id: "barrier-1", sourceId: "node-a", targetId: "node-b", label: "12.4" }],
-      viewport: { x: 10, y: 20, zoom: 0.8 },
+      canvases: [{
+        id: "canvas-1",
+        label: "画布 1",
+        barriers: [{ id: "barrier-1", sourceId: "node-a", targetId: "node-b", label: "12.4" }],
+        viewport: { x: 10, y: 20, zoom: 0.8 },
+      }],
     })
   })
 
@@ -64,22 +80,30 @@ describe("projectPackageWorkflow", () => {
         status: "parsed",
         preview: "SCF Done",
       }],
-      nodes: [{
-        id: "node-1",
-        label: "TS1",
-        formula: "C2H4",
-        kind: "transition",
-        method: "wB97X-D",
-        solvent: "Toluene",
-        energyGas: -10,
-        energySolution: -9.8,
-        energyUnit: "hartree",
-        sourceFileId: "file-1",
-        position: { x: 100, y: 140 },
+      canvases: [{
+        id: "canvas-1",
+        label: "画布 1",
+        nodes: [{
+          id: "node-1",
+          label: "TS1",
+          formula: "C2H4",
+          kind: "transition",
+          method: "wB97X-D",
+          solvent: "Toluene",
+          energyGas: -10,
+          energySolution: -9.8,
+          energyUnit: "hartree",
+          sourceFileId: "file-1",
+          position: { x: 100, y: 140 },
+        }],
+        edges: [],
+        barriers: [],
+        viewport: { x: 2, y: 4, zoom: 1.1 },
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+        selectedBarrierIds: [],
       }],
-      edges: [],
-      barriers: [],
-      viewport: { x: 2, y: 4, zoom: 1.1 },
+      activeCanvasId: "canvas-1",
     }, "browser")
 
     const restored = projectPackageRestoreFromContent(serialized.content)
@@ -110,21 +134,29 @@ describe("projectPackageWorkflow", () => {
     const serialized = serializeProjectPackage({
       project: { ...project, label: "Restored Project", meta: "saved" },
       files: [],
-      nodes: [{
-        id: "restored-node",
-        label: "TS1",
-        formula: "C2H4",
-        kind: "transition",
-        method: "wB97X-D",
-        solvent: "Toluene",
-        energyGas: -10,
-        energySolution: -9.8,
-        energyUnit: "hartree",
-        position: { x: 100, y: 140 },
+      canvases: [{
+        id: "canvas-1",
+        label: "画布 1",
+        nodes: [{
+          id: "restored-node",
+          label: "TS1",
+          formula: "C2H4",
+          kind: "transition",
+          method: "wB97X-D",
+          solvent: "Toluene",
+          energyGas: -10,
+          energySolution: -9.8,
+          energyUnit: "hartree",
+          position: { x: 100, y: 140 },
+        }],
+        edges: [],
+        barriers: [],
+        viewport: { x: 20, y: 30, zoom: 1.2 },
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+        selectedBarrierIds: [],
       }],
-      edges: [],
-      barriers: [],
-      viewport: { x: 20, y: 30, zoom: 1.2 },
+      activeCanvasId: "canvas-1",
     }, "browser")
 
     const transition = projectPackageRestoreTransitionFromContent({
@@ -157,21 +189,29 @@ describe("projectPackageWorkflow", () => {
     const serialized = serializeProjectPackage({
       project: { id: "ir-workspace", label: "Ir", meta: "saved" },
       files: [],
-      nodes: [{
-        id: "ir-node",
-        label: "4b-1",
-        formula: "C113H76ClIrN4O",
-        kind: "intermediate",
-        method: "Gaussian",
-        solvent: "SMD",
-        energyGas: -5208.1,
-        energySolution: -5208.2,
-        energyUnit: "hartree",
-        position: { x: 10, y: 20 },
+      canvases: [{
+        id: "canvas-1",
+        label: "画布 1",
+        nodes: [{
+          id: "ir-node",
+          label: "4b-1",
+          formula: "C113H76ClIrN4O",
+          kind: "intermediate",
+          method: "Gaussian",
+          solvent: "SMD",
+          energyGas: -5208.1,
+          energySolution: -5208.2,
+          energyUnit: "hartree",
+          position: { x: 10, y: 20 },
+        }],
+        edges: [],
+        barriers: [],
+        viewport: { x: 20, y: 30, zoom: 1.2 },
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+        selectedBarrierIds: [],
       }],
-      edges: [],
-      barriers: [],
-      viewport: { x: 20, y: 30, zoom: 1.2 },
+      activeCanvasId: "canvas-1",
     }, "desktop")
 
     const transition = projectPackageRestoreTransitionFromContent({
@@ -212,21 +252,29 @@ describe("projectPackageWorkflow", () => {
     const serializedNi = serializeProjectPackage({
       project: { id: "ni-workspace", label: "Ni", meta: "saved" },
       files: [],
-      nodes: [{
-        id: "ni-node",
-        label: "Ni TS",
-        formula: "Ni",
-        kind: "intermediate",
-        method: "Gaussian",
-        solvent: "SMD",
-        energyGas: -2,
-        energySolution: -2,
-        energyUnit: "hartree",
-        position: { x: 10, y: 20 },
+      canvases: [{
+        id: "canvas-1",
+        label: "画布 1",
+        nodes: [{
+          id: "ni-node",
+          label: "Ni TS",
+          formula: "Ni",
+          kind: "intermediate",
+          method: "Gaussian",
+          solvent: "SMD",
+          energyGas: -2,
+          energySolution: -2,
+          energyUnit: "hartree",
+          position: { x: 10, y: 20 },
+        }],
+        edges: [],
+        barriers: [],
+        viewport: { x: 20, y: 30, zoom: 1.2 },
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+        selectedBarrierIds: [],
       }],
-      edges: [],
-      barriers: [],
-      viewport: { x: 20, y: 30, zoom: 1.2 },
+      activeCanvasId: "canvas-1",
     }, "desktop")
 
     const transition = projectPackageRestoreTransitionFromContent({

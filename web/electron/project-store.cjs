@@ -152,10 +152,10 @@ function parseProjectPackageContent(content) {
     throw new Error(`Invalid RxnFlow project JSON: ${error instanceof Error ? error.message : String(error)}`)
   }
 
-  if (value?.schemaVersion !== 1 || value?.packageKind !== "rxnflow-project") {
+  if ((value?.schemaVersion !== 1 && value?.schemaVersion !== 2) || value?.packageKind !== "rxnflow-project") {
     throw new Error("Invalid RxnFlow project package envelope")
   }
-  if (!value.project || !Array.isArray(value.files) || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) {
+  if (!value.project || !Array.isArray(value.files) || (!Array.isArray(value.canvases) && (!Array.isArray(value.nodes) || !Array.isArray(value.edges)))) {
     throw new Error("Invalid RxnFlow project package content")
   }
   return value

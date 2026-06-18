@@ -1,9 +1,6 @@
 import type {
-  CanvasViewport,
-  FlowBarrier,
-  FlowEdge,
-  FlowNode,
   ProjectSummary,
+  RxnFlowProjectCanvas,
   SourceFile,
 } from "../domain/projectPackages"
 import { downloadText } from "./browserDownloads"
@@ -46,7 +43,10 @@ export type RxnflowDesktopApi = {
   getStartupProjectContent?: () => Promise<ProjectPackageOpenResult>
   saveProjectPackage: (payload: { defaultName: string; content: string }) => Promise<ProjectPackageSaveResult>
   autosaveProjectPackage?: (payload: { defaultName: string; content: string }) => Promise<ProjectPackageSaveResult>
-  setActiveProject?: (payload: { projectId: string }) => Promise<{ ok: boolean; projectDirectory?: string | null }>
+  setActiveProject?: (payload: {
+    projectId: string
+    projectDirectory?: string | null
+  }) => Promise<{ ok: boolean; projectDirectory?: string | null }>
   forgetProject?: (payload: { projectId: string }) => Promise<{ ok: boolean; projectDirectory?: string | null }>
   openSourceFile?: (payload: {
     projectId?: string
@@ -96,6 +96,7 @@ export type ProjectPackageOpenResult = {
 
 export type RestoreProjectPackageOptions = {
   replaceProjects?: boolean
+  projectDirectory?: string | null
 }
 
 export type RestoreProjectPackageHandler = (
@@ -122,6 +123,7 @@ export async function openProjectPackageFromRuntime({
   if (!result || result.canceled || !result.content) return
   restoreProjectPackage(result.content, result.validation, {
     replaceProjects: result.replaceProjects ?? Boolean(result.projectDirectory),
+    projectDirectory: result.projectDirectory,
   })
 }
 
@@ -129,29 +131,23 @@ export async function saveProjectPackageToRuntime({
   desktopApi,
   project,
   files,
-  nodes,
-  edges,
-  barriers,
-  viewport,
+  canvases,
+  activeCanvasId,
   setProjectValidation,
 }: {
   desktopApi: RxnflowDesktopApi | undefined
   project: ProjectSummary
   files: SourceFile[]
-  nodes: FlowNode[]
-  edges: FlowEdge[]
-  barriers: FlowBarrier[]
-  viewport: CanvasViewport
+  canvases: RxnFlowProjectCanvas[]
+  activeCanvasId: string
   setProjectValidation: (validation: ProjectValidationPayload | null) => void
 }): Promise<void> {
   const transition = projectPackageSaveRuntimeTransition(Boolean(desktopApi))
   const { content, defaultName } = serializeProjectPackage({
     project,
     files,
-    nodes,
-    edges,
-    barriers,
-    viewport,
+    canvases,
+    activeCanvasId,
   }, transition.runtime)
   if (transition.shouldSaveDesktop) {
     const result = await desktopApi?.saveProjectPackage({
@@ -169,29 +165,23 @@ export async function autosaveProjectPackageToRuntime({
   desktopApi,
   project,
   files,
-  nodes,
-  edges,
-  barriers,
-  viewport,
+  canvases,
+  activeCanvasId,
   setProjectValidation,
 }: {
   desktopApi: RxnflowDesktopApi | undefined
   project: ProjectSummary
   files: SourceFile[]
-  nodes: FlowNode[]
-  edges: FlowEdge[]
-  barriers: FlowBarrier[]
-  viewport: CanvasViewport
+  canvases: RxnFlowProjectCanvas[]
+  activeCanvasId: string
   setProjectValidation: (validation: ProjectValidationPayload | null) => void
 }): Promise<ProjectPackageSaveResult | null> {
   if (!desktopApi?.autosaveProjectPackage) return null
   const { content, defaultName } = serializeProjectPackage({
     project,
     files,
-    nodes,
-    edges,
-    barriers,
-    viewport,
+    canvases,
+    activeCanvasId,
   }, "desktop")
   const result = await desktopApi.autosaveProjectPackage({ defaultName, content })
   if (!result.canceled) setProjectValidation(result.validation ?? null)
@@ -215,6 +205,7 @@ export function subscribeProjectPackageRuntimeMenus({
     desktopApi?.onOpenProjectContent?.((payload) => {
       restoreProjectPackage(payload.content, payload.validation, {
         replaceProjects: payload.replaceProjects,
+        projectDirectory: payload.projectDirectory,
       })
     }),
   ].filter((dispose): dispose is () => void => typeof dispose === "function")
@@ -245,6 +236,7 @@ export function restoreStartupProjectFromRuntime({
     payloads.forEach((payload) => {
       restoreProjectPackage(payload.content, payload.validation, {
         replaceProjects: payload.replaceProjects ?? true,
+        projectDirectory: payload.projectDirectory,
       })
     })
   }).catch(() => {
@@ -259,12 +251,14 @@ export function restoreStartupProjectFromRuntime({
 export function setActiveProjectInRuntime({
   desktopApi,
   projectId,
+  projectDirectory,
 }: {
   desktopApi: RxnflowDesktopApi | undefined
   projectId: string
+  projectDirectory?: string | null
 }): void {
   if (!desktopApi?.setActiveProject || !projectId) return
-  void desktopApi.setActiveProject({ projectId }).catch(() => {
+  void desktopApi.setActiveProject({ projectId, projectDirectory }).catch(() => {
     // Active workspace persistence is best-effort; autosave still protects the project data.
   })
 }

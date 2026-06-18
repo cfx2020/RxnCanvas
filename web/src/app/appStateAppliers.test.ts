@@ -37,22 +37,40 @@ function setterBag() {
   }
 }
 
-const workspace = {
-  files: [{ id: "file-1", name: "a.log", kind: "Gaussian", size: 12, status: "parsed" as const, preview: "" }],
-  nodes: [{ id: "node-1", label: "A", formula: "H2", kind: "reactant" as const, method: "DFT", solvent: "gas", energyGas: -1, energySolution: -1, energyUnit: "hartree" as const, sourceStatus: "parsed" as const, position: { x: 1, y: 2 } }],
-  edges: [{ id: "edge-1", sourceId: "node-1", targetId: "node-2", label: "path" }],
-  barriers: [{ id: "barrier-1", sourceId: "node-1", targetId: "node-2" }],
-  viewport: { x: 1, y: 2, zoom: 0.8 },
-  selectedNodeIds: ["node-1"],
-  selectedEdgeIds: ["edge-1"],
-  selectedBarrierIds: ["barrier-1"],
-  selectedFileId: "file-1",
-  selectedFileIds: ["file-1"],
-  lastSelectedFileId: "file-1",
-  energyDisplayOptions: defaultEnergyDisplayOptions,
-  viewMode: "canvas" as const,
-  inspectorMode: "inspector" as const,
-}
+const workspace = (() => {
+  const nodes = [{ id: "node-1", label: "A", formula: "H2", kind: "reactant" as const, method: "DFT", solvent: "gas", energyGas: -1, energySolution: -1, energyUnit: "hartree" as const, sourceStatus: "parsed" as const, position: { x: 1, y: 2 } }]
+  const edges = [{ id: "edge-1", sourceId: "node-1", targetId: "node-2", label: "path" }]
+  const barriers = [{ id: "barrier-1", sourceId: "node-1", targetId: "node-2" }]
+  const viewport = { x: 1, y: 2, zoom: 0.8 }
+  return {
+    files: [{ id: "file-1", name: "a.log", kind: "Gaussian", size: 12, status: "parsed" as const, preview: "" }],
+    canvases: [{
+      id: "canvas-1",
+      label: "画布 1",
+      nodes,
+      edges,
+      barriers,
+      viewport,
+      selectedNodeIds: ["node-1"],
+      selectedEdgeIds: ["edge-1"],
+      selectedBarrierIds: ["barrier-1"],
+    }],
+    activeCanvasId: "canvas-1",
+    nodes,
+    edges,
+    barriers,
+    viewport,
+    selectedNodeIds: ["node-1"],
+    selectedEdgeIds: ["edge-1"],
+    selectedBarrierIds: ["barrier-1"],
+    selectedFileId: "file-1",
+    selectedFileIds: ["file-1"],
+    lastSelectedFileId: "file-1",
+    energyDisplayOptions: defaultEnergyDisplayOptions,
+    viewMode: "canvas" as const,
+    inspectorMode: "inspector" as const,
+  }
+})()
 
 describe("appStateAppliers", () => {
   it("applies canvas selection ids", () => {

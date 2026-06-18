@@ -9,6 +9,7 @@ import {
   subscribeProjectPackageRuntimeMenus,
   watchDesktopEngineStatus,
   type RxnflowDesktopApi,
+  type ProjectPackageOpenPayload,
 } from "./appRuntimeEffects"
 import type { DesktopEngineStatus } from "./desktopRuntime"
 
@@ -30,6 +31,18 @@ function desktopApi(overrides: Partial<RxnflowDesktopApi> = {}): RxnflowDesktopA
 }
 
 describe("appRuntimeEffects", () => {
+  const canvases = [{
+    id: "canvas-1",
+    label: "画布 1",
+    nodes: [],
+    edges: [],
+    barriers: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+    selectedNodeIds: [],
+    selectedEdgeIds: [],
+    selectedBarrierIds: [],
+  }]
+
   it("opens browser file picker when no desktop open API exists", async () => {
     const click = vi.fn()
     const restoreProjectPackage = vi.fn()
@@ -47,7 +60,10 @@ describe("appRuntimeEffects", () => {
     const restoreProjectPackage = vi.fn()
     await openProjectPackageFromRuntime({ desktopApi: api, projectInput: null, restoreProjectPackage })
     expect(api.openProjectPackage).toHaveBeenCalledTimes(1)
-    expect(restoreProjectPackage).toHaveBeenCalledWith("{}", null, { replaceProjects: false })
+    expect(restoreProjectPackage).toHaveBeenCalledWith("{}", null, {
+      replaceProjects: false,
+      projectDirectory: undefined,
+    })
   })
 
   it("opens a desktop project folder as a workspace replacement", async () => {
@@ -61,7 +77,10 @@ describe("appRuntimeEffects", () => {
     })
     const restoreProjectPackage = vi.fn()
     await openProjectPackageFromRuntime({ desktopApi: api, projectInput: null, restoreProjectPackage })
-    expect(restoreProjectPackage).toHaveBeenCalledWith("{}", null, { replaceProjects: true })
+    expect(restoreProjectPackage).toHaveBeenCalledWith("{}", null, {
+      replaceProjects: true,
+      projectDirectory: "/tmp/ir.rxnflow",
+    })
   })
 
   it("saves a desktop project package and applies validation", async () => {
@@ -71,10 +90,8 @@ describe("appRuntimeEffects", () => {
       desktopApi: api,
       project: { id: "p", label: "Project", meta: "open" },
       files: [],
-      nodes: [],
-      edges: [],
-      barriers: [],
-      viewport: { x: 0, y: 0, zoom: 1 },
+      canvases,
+      activeCanvasId: "canvas-1",
       setProjectValidation,
     })
     expect(api.saveProjectPackage).toHaveBeenCalledTimes(1)
@@ -95,10 +112,8 @@ describe("appRuntimeEffects", () => {
       desktopApi: api,
       project: { id: "p", label: "Project", meta: "open" },
       files: [],
-      nodes: [],
-      edges: [],
-      barriers: [],
-      viewport: { x: 0, y: 0, zoom: 1 },
+      canvases,
+      activeCanvasId: "canvas-1",
       setProjectValidation,
     })
     expect(autosaveProjectPackage).toHaveBeenCalledTimes(1)
@@ -128,6 +143,37 @@ describe("appRuntimeEffects", () => {
     expect(contentDispose).toHaveBeenCalledTimes(1)
   })
 
+  it("restores menu-opened desktop project content with its project directory", () => {
+    let openProjectContent: ((payload: ProjectPackageOpenPayload) => void) | null = null
+    const api = desktopApi({
+      onOpenProjectContent: vi.fn((callback) => {
+        openProjectContent = callback
+        return vi.fn()
+      }),
+    })
+    const restoreProjectPackage = vi.fn()
+    subscribeProjectPackageRuntimeMenus({
+      desktopApi: api,
+      openProjectPackage: vi.fn(),
+      saveProjectPackage: vi.fn(),
+      restoreProjectPackage,
+    })
+
+    expect(openProjectContent).not.toBeNull()
+    const emitOpenProjectContent = openProjectContent as unknown as (payload: ProjectPackageOpenPayload) => void
+    emitOpenProjectContent({
+      content: "{\"packageKind\":\"rxnflow-project\"}",
+      projectDirectory: "/tmp/recent.rxnflow",
+      validation: null,
+      replaceProjects: true,
+    })
+
+    expect(restoreProjectPackage).toHaveBeenCalledWith("{\"packageKind\":\"rxnflow-project\"}", null, {
+      replaceProjects: true,
+      projectDirectory: "/tmp/recent.rxnflow",
+    })
+  })
+
   it("restores startup project content from the desktop runtime once available", async () => {
     const getStartupProjectContent = vi.fn(async () => ({
       canceled: false,
@@ -142,7 +188,10 @@ describe("appRuntimeEffects", () => {
     const dispose = restoreStartupProjectFromRuntime({ desktopApi: api, restoreProjectPackage })
     await Promise.resolve()
     expect(getStartupProjectContent).toHaveBeenCalledTimes(1)
-    expect(restoreProjectPackage).toHaveBeenCalledWith("{\"packageKind\":\"rxnflow-project\"}", null, { replaceProjects: true })
+    expect(restoreProjectPackage).toHaveBeenCalledWith("{\"packageKind\":\"rxnflow-project\"}", null, {
+      replaceProjects: true,
+      projectDirectory: "/tmp/ir.rxnflow",
+    })
     dispose()
   })
 
@@ -163,15 +212,28 @@ describe("appRuntimeEffects", () => {
     const restoreProjectPackage = vi.fn()
     restoreStartupProjectFromRuntime({ desktopApi: api, restoreProjectPackage })
     await Promise.resolve()
-    expect(restoreProjectPackage).toHaveBeenNthCalledWith(1, "{\"id\":\"older\"}", null, { replaceProjects: true })
-    expect(restoreProjectPackage).toHaveBeenNthCalledWith(2, "{\"id\":\"newer\"}", null, { replaceProjects: true })
+    expect(restoreProjectPackage).toHaveBeenNthCalledWith(1, "{\"id\":\"older\"}", null, {
+      replaceProjects: true,
+      projectDirectory: "/tmp/older.rxnflow",
+    })
+    expect(restoreProjectPackage).toHaveBeenNthCalledWith(2, "{\"id\":\"newer\"}", null, {
+      replaceProjects: true,
+      projectDirectory: "/tmp/newer.rxnflow",
+    })
   })
 
   it("persists the active desktop project when the renderer switches workspaces", async () => {
     const setActiveProject = vi.fn(async () => ({ ok: true, projectDirectory: "/tmp/ir.rxnflow" }))
-    setActiveProjectInRuntime({ desktopApi: desktopApi({ setActiveProject }), projectId: "ir-workspace" })
+    setActiveProjectInRuntime({
+      desktopApi: desktopApi({ setActiveProject }),
+      projectId: "ir-workspace",
+      projectDirectory: "/tmp/ir.rxnflow",
+    })
     await Promise.resolve()
-    expect(setActiveProject).toHaveBeenCalledWith({ projectId: "ir-workspace" })
+    expect(setActiveProject).toHaveBeenCalledWith({
+      projectId: "ir-workspace",
+      projectDirectory: "/tmp/ir.rxnflow",
+    })
   })
 
   it("forgets a desktop project when removed from the sidebar", async () => {

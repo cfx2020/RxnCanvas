@@ -20,7 +20,12 @@ import type {
 import { desktopImportSourceFilesFromFiles, sourceFilesFromIds } from "./importSources"
 import { sourceFileDisplayGroupKey, sourceFileLooksLikeSolutionLog } from "./fileDisplay"
 import { importLayoutFromPoint } from "./importLayout"
-import { projectWorkspaceSnapshot, type ProjectWorkspaceSnapshot } from "./projectWorkspace"
+import {
+  activeCanvasSnapshot,
+  projectWorkspaceSnapshot,
+  projectWorkspaceWithActiveCanvas,
+  type ProjectWorkspaceSnapshot,
+} from "./projectWorkspace"
 
 export function projectWorkspaceImportApplyTransition(
   prepared: PreparedProjectWorkspaceImport,
@@ -265,16 +270,20 @@ export function projectWorkspaceWithImportPlan(
   options: ProjectWorkspaceImportOptions = {},
 ): ProjectWorkspaceSnapshot {
   const fileMode = options.fileMode ?? "prepend"
+  const activeCanvas = activeCanvasSnapshot(targetSnapshot)
   return projectWorkspaceSnapshot({
-    ...targetSnapshot,
+    ...projectWorkspaceWithActiveCanvas(targetSnapshot, {
+      ...activeCanvas,
+      nodes: [
+        ...activeCanvas.nodes,
+        ...autoNodes,
+      ],
+      selectedNodeIds: autoNodes[0]?.id ? [autoNodes[0].id] : [],
+      selectedEdgeIds: [],
+      selectedBarrierIds: [],
+      viewport: activeCanvas.viewport,
+    }),
     files: sourceFilesWithImportPlan(targetSnapshot.files, importPlan, fileMode),
-    nodes: [
-      ...targetSnapshot.nodes,
-      ...autoNodes,
-    ],
-    selectedNodeIds: autoNodes[0]?.id ? [autoNodes[0].id] : [],
-    selectedEdgeIds: [],
-    selectedBarrierIds: [],
     selectedFileId: importedFiles[0]?.id ?? null,
     selectedFileIds: importedFiles[0]?.id ? [importedFiles[0].id] : [],
     lastSelectedFileId: importedFiles[0]?.id ?? null,
@@ -288,15 +297,18 @@ export function projectWorkspaceWithRegisteredImportNodes(
   createdNodes: FlowNode[],
 ): ProjectWorkspaceSnapshot {
   const firstNode = createdNodes[0]
+  const activeCanvas = activeCanvasSnapshot(targetSnapshot)
   return projectWorkspaceSnapshot({
-    ...targetSnapshot,
-    nodes: [
-      ...targetSnapshot.nodes,
-      ...createdNodes,
-    ],
-    selectedNodeIds: firstNode?.id ? [firstNode.id] : [],
-    selectedEdgeIds: [],
-    selectedBarrierIds: [],
+    ...projectWorkspaceWithActiveCanvas(targetSnapshot, {
+      ...activeCanvas,
+      nodes: [
+        ...activeCanvas.nodes,
+        ...createdNodes,
+      ],
+      selectedNodeIds: firstNode?.id ? [firstNode.id] : [],
+      selectedEdgeIds: [],
+      selectedBarrierIds: [],
+    }),
     selectedFileId: firstNode?.sourceFileId ?? null,
     selectedFileIds: firstNode?.sourceFileId ? [firstNode.sourceFileId] : [],
     lastSelectedFileId: firstNode?.sourceFileId ?? null,

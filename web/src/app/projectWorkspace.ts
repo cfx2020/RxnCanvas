@@ -4,6 +4,7 @@ import type {
   FlowEdge,
   FlowNode,
   ProjectSummary,
+  RxnFlowProjectCanvas,
   RxnFlowProjectPackage,
   SourceFile,
 } from "../domain/projectPackages"
@@ -21,8 +22,12 @@ export type CanvasEditSnapshot = {
   selectedBarrierIds: string[]
 }
 
+export type ProjectCanvasSnapshot = RxnFlowProjectCanvas
+
 export type ProjectWorkspaceSnapshot = {
   files: SourceFile[]
+  canvases: ProjectCanvasSnapshot[]
+  activeCanvasId: string
   nodes: FlowNode[]
   edges: FlowEdge[]
   barriers: FlowBarrier[]
@@ -181,8 +186,11 @@ export const initialEdges: FlowEdge[] = [
 export const initialBarriers: FlowBarrier[] = []
 
 export function emptyProjectWorkspace(viewport: CanvasViewport): ProjectWorkspaceSnapshot {
+  const canvas = emptyProjectCanvas("canvas-1", "画布 1", viewport)
   return {
     files: [],
+    canvases: [canvas],
+    activeCanvasId: "canvas-1",
     nodes: [],
     edges: [],
     barriers: [],
@@ -200,16 +208,29 @@ export function emptyProjectWorkspace(viewport: CanvasViewport): ProjectWorkspac
 }
 
 export function initialProjectWorkspaces(emptyViewport: CanvasViewport): Record<string, ProjectWorkspaceSnapshot> {
+  const initialCanvas = {
+    id: "canvas-1",
+    label: "画布 1",
+    nodes: initialNodes,
+    edges: initialEdges,
+    barriers: initialBarriers,
+    viewport: emptyViewport,
+    selectedNodeIds: ["ts-endo"],
+    selectedEdgeIds: [],
+    selectedBarrierIds: [],
+  }
   return {
     "diels-alder": projectWorkspaceSnapshot({
       files: initialFiles,
-      nodes: initialNodes,
-      edges: initialEdges,
-      barriers: initialBarriers,
-      viewport: emptyViewport,
-      selectedNodeIds: ["ts-endo"],
-      selectedEdgeIds: [],
-      selectedBarrierIds: [],
+      canvases: [initialCanvas],
+      activeCanvasId: "canvas-1",
+      nodes: initialCanvas.nodes,
+      edges: initialCanvas.edges,
+      barriers: initialCanvas.barriers,
+      viewport: initialCanvas.viewport,
+      selectedNodeIds: initialCanvas.selectedNodeIds,
+      selectedEdgeIds: initialCanvas.selectedEdgeIds,
+      selectedBarrierIds: initialCanvas.selectedBarrierIds,
       selectedFileId: initialFiles[0]?.id ?? null,
       selectedFileIds: initialFiles[0]?.id ? [initialFiles[0].id] : [],
       lastSelectedFileId: initialFiles[0]?.id ?? null,
@@ -253,8 +274,10 @@ export function restoreCanvasEditSnapshot(snapshot: CanvasEditSnapshot): CanvasE
 }
 
 export function projectWorkspaceSnapshot(snapshot: ProjectWorkspaceSnapshot): ProjectWorkspaceSnapshot {
-  return {
-    files: cloneSourceFiles(snapshot.files),
+  const fallbackActiveCanvasId = snapshot.activeCanvasId || snapshot.canvases[0]?.id || "canvas-1"
+  const activeCanvasOverride = {
+    id: fallbackActiveCanvasId,
+    label: snapshot.canvases.find((canvas) => canvas.id === fallbackActiveCanvasId)?.label ?? "画布 1",
     nodes: cloneFlowNodes(snapshot.nodes),
     edges: snapshot.edges.map((edge) => ({ ...edge })),
     barriers: snapshot.barriers.map((barrier) => ({ ...barrier })),
@@ -262,6 +285,23 @@ export function projectWorkspaceSnapshot(snapshot: ProjectWorkspaceSnapshot): Pr
     selectedNodeIds: [...snapshot.selectedNodeIds],
     selectedEdgeIds: [...snapshot.selectedEdgeIds],
     selectedBarrierIds: [...snapshot.selectedBarrierIds],
+  }
+  const clonedCanvases = snapshot.canvases.length > 0
+    ? snapshot.canvases.map((canvas) => canvas.id === fallbackActiveCanvasId ? activeCanvasOverride : projectCanvasSnapshot(canvas))
+    : [activeCanvasOverride]
+  const activeCanvasId = resolveActiveCanvasId(snapshot.activeCanvasId, clonedCanvases)
+  const activeCanvas = clonedCanvases.find((canvas) => canvas.id === activeCanvasId) ?? clonedCanvases[0] ?? emptyProjectCanvas("canvas-1", "画布 1", snapshot.viewport)
+  return {
+    files: cloneSourceFiles(snapshot.files),
+    canvases: clonedCanvases,
+    activeCanvasId,
+    nodes: cloneFlowNodes(activeCanvas.nodes),
+    edges: activeCanvas.edges.map((edge) => ({ ...edge })),
+    barriers: activeCanvas.barriers.map((barrier) => ({ ...barrier })),
+    viewport: { ...activeCanvas.viewport },
+    selectedNodeIds: [...activeCanvas.selectedNodeIds],
+    selectedEdgeIds: [...activeCanvas.selectedEdgeIds],
+    selectedBarrierIds: [...activeCanvas.selectedBarrierIds],
     selectedFileId: snapshot.selectedFileId,
     selectedFileIds: [...snapshot.selectedFileIds],
     lastSelectedFileId: snapshot.lastSelectedFileId,
@@ -560,17 +600,109 @@ export function cloneFlowNodes(nodes: FlowNode[]): FlowNode[] {
   }))
 }
 
+export function projectCanvasSnapshot(canvas: ProjectCanvasSnapshot): ProjectCanvasSnapshot {
+  return {
+    id: canvas.id,
+    label: canvas.label,
+    nodes: cloneFlowNodes(canvas.nodes),
+    edges: canvas.edges.map((edge) => ({ ...edge })),
+    barriers: canvas.barriers.map((barrier) => ({ ...barrier })),
+    viewport: { ...canvas.viewport },
+    selectedNodeIds: [...canvas.selectedNodeIds],
+    selectedEdgeIds: [...canvas.selectedEdgeIds],
+    selectedBarrierIds: [...canvas.selectedBarrierIds],
+  }
+}
 
-export function projectWorkspaceFromPackage(projectPackage: RxnFlowProjectPackage): ProjectWorkspaceSnapshot {
-  return projectWorkspaceSnapshot({
-    files: projectPackage.files,
-    nodes: projectPackage.nodes,
-    edges: projectPackage.edges,
-    barriers: projectPackage.barriers,
-    viewport: projectPackage.viewport,
-    selectedNodeIds: projectPackage.nodes[0]?.id ? [projectPackage.nodes[0].id] : [],
+export function emptyProjectCanvas(id: string, label: string, viewport: CanvasViewport): ProjectCanvasSnapshot {
+  return {
+    id,
+    label,
+    nodes: [],
+    edges: [],
+    barriers: [],
+    viewport: { ...viewport },
+    selectedNodeIds: [],
     selectedEdgeIds: [],
     selectedBarrierIds: [],
+  }
+}
+
+export function resolveActiveCanvasId(activeCanvasId: string, canvases: Pick<ProjectCanvasSnapshot, "id">[]): string {
+  return canvases.some((canvas) => canvas.id === activeCanvasId)
+    ? activeCanvasId
+    : (canvases[0]?.id ?? "canvas-1")
+}
+
+export function activeCanvasSnapshot(snapshot: ProjectWorkspaceSnapshot): ProjectCanvasSnapshot {
+  const activeCanvasId = resolveActiveCanvasId(snapshot.activeCanvasId, snapshot.canvases)
+  const canvas = snapshot.canvases.find((item) => item.id === activeCanvasId) ?? snapshot.canvases[0]
+  return canvas ? projectCanvasSnapshot(canvas) : {
+    id: "canvas-1",
+    label: "画布 1",
+    nodes: cloneFlowNodes(snapshot.nodes),
+    edges: snapshot.edges.map((edge) => ({ ...edge })),
+    barriers: snapshot.barriers.map((barrier) => ({ ...barrier })),
+    viewport: { ...snapshot.viewport },
+    selectedNodeIds: [...snapshot.selectedNodeIds],
+    selectedEdgeIds: [...snapshot.selectedEdgeIds],
+    selectedBarrierIds: [...snapshot.selectedBarrierIds],
+  }
+}
+
+export function projectWorkspaceWithActiveCanvas(
+  snapshot: ProjectWorkspaceSnapshot,
+  activeCanvas: ProjectCanvasSnapshot,
+): ProjectWorkspaceSnapshot {
+  const currentCanvases = snapshot.canvases.map(projectCanvasSnapshot)
+  const nextActiveCanvas = projectCanvasSnapshot(activeCanvas)
+  const nextCanvases = currentCanvases.some((canvas) => canvas.id === nextActiveCanvas.id)
+    ? currentCanvases.map((canvas) => canvas.id === nextActiveCanvas.id ? nextActiveCanvas : canvas)
+    : [...currentCanvases, nextActiveCanvas]
+  return {
+    ...projectWorkspaceSnapshot({
+      ...snapshot,
+      nodes: nextActiveCanvas.nodes,
+      edges: nextActiveCanvas.edges,
+      barriers: nextActiveCanvas.barriers,
+      viewport: nextActiveCanvas.viewport,
+      selectedNodeIds: nextActiveCanvas.selectedNodeIds,
+      selectedEdgeIds: nextActiveCanvas.selectedEdgeIds,
+      selectedBarrierIds: nextActiveCanvas.selectedBarrierIds,
+      canvases: nextCanvases,
+      activeCanvasId: nextActiveCanvas.id,
+    }),
+    canvases: nextCanvases,
+    activeCanvasId: resolveActiveCanvasId(nextActiveCanvas.id, nextCanvases),
+  }
+}
+
+
+export function projectWorkspaceFromPackage(projectPackage: RxnFlowProjectPackage): ProjectWorkspaceSnapshot {
+  const canvases = projectPackage.canvases ?? [{
+    id: "canvas-1",
+    label: "画布 1",
+    nodes: projectPackage.nodes ?? [],
+    edges: projectPackage.edges ?? [],
+    barriers: projectPackage.barriers ?? [],
+    viewport: projectPackage.viewport ?? { x: 0, y: 0, zoom: 1 },
+    selectedNodeIds: projectPackage.nodes?.[0]?.id ? [projectPackage.nodes[0].id] : [],
+    selectedEdgeIds: [],
+    selectedBarrierIds: [],
+  }]
+  const activeCanvasId = projectPackage.activeCanvasId ?? canvases[0].id
+  const activeCanvas = canvases.find((canvas) => canvas.id === activeCanvasId) ?? canvases[0]
+  return projectWorkspaceSnapshot({
+    files: projectPackage.files,
+    canvases,
+    activeCanvasId,
+    nodes: activeCanvas?.nodes ?? [],
+    edges: activeCanvas?.edges ?? [],
+    barriers: activeCanvas?.barriers ?? [],
+    viewport: activeCanvas?.viewport ?? { x: 0, y: 0, zoom: 1 },
+    selectedNodeIds: activeCanvas?.selectedNodeIds ?? [],
+    selectedEdgeIds: activeCanvas?.selectedEdgeIds ?? [],
+    selectedBarrierIds: activeCanvas?.selectedBarrierIds ?? [],
     selectedFileId: projectPackage.files[0]?.id ?? null,
     selectedFileIds: projectPackage.files[0]?.id ? [projectPackage.files[0].id] : [],
     lastSelectedFileId: projectPackage.files[0]?.id ?? null,

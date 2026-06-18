@@ -82,16 +82,35 @@ const viewport: CanvasViewport = {
 
 describe("project packages", () => {
   it("builds the current RxnFlow project package envelope", () => {
-    const projectPackage = buildProjectPackage(project, files, nodes, edges, viewport, {
+    const projectPackage = buildProjectPackage(project, files, [{
+      id: "canvas-1",
+      label: "画布 1",
+      nodes,
+      edges,
       barriers,
+      viewport,
+      selectedNodeIds: ["ts-endo"],
+      selectedEdgeIds: [],
+      selectedBarrierIds: [],
+    }], {
+      activeCanvasId: "canvas-1",
       savedAt: "2026-06-14T00:00:00.000Z",
     })
 
     expect(projectPackage).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       packageKind: "rxnflow-project",
       project,
       files,
+      canvases: [{
+        id: "canvas-1",
+        label: "画布 1",
+        nodes,
+        edges,
+        barriers,
+        viewport,
+      }],
+      activeCanvasId: "canvas-1",
       nodes,
       edges,
       barriers,
@@ -118,40 +137,48 @@ describe("project packages", () => {
 
   it("parses and normalizes valid package content", () => {
     const content = JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       packageKind: "rxnflow-project",
       project,
       files,
-      nodes: [{
-        id: "node-a",
-        label: "Imported node",
-        kind: "bad-kind",
-        coefficient: 0,
-        energyGas: Number.NaN,
-        energyUnit: "kcal/mol",
-        corrections: [{
-          value: 2.25,
+      canvases: [{
+        id: "canvas-a",
+        label: "Path A",
+        nodes: [{
+          id: "node-a",
+          label: "Imported node",
           kind: "bad-kind",
-          unit: "bad-unit",
+          coefficient: 0,
+          energyGas: Number.NaN,
+          energyUnit: "kcal/mol",
+          corrections: [{
+            value: 2.25,
+            kind: "bad-kind",
+            unit: "bad-unit",
+          }],
+          manualStructureKet: "  custom ket  ",
+          manualStructureMolfile: "  custom molfile  ",
+          manualStructureCdxml: "  custom cdxml  ",
+          manualStructureSvg: "  custom svg  ",
+          position: { x: 12, y: 24 },
         }],
-        manualStructureKet: "  custom ket  ",
-        manualStructureMolfile: "  custom molfile  ",
-        manualStructureCdxml: "  custom cdxml  ",
-        manualStructureSvg: "  custom svg  ",
-        position: { x: 12, y: 24 },
+        edges,
+        barriers: [{
+          id: "barrier-a",
+          sourceId: "node-a",
+          targetId: "ts-endo",
+          label: "  custom barrier  ",
+        }, {
+          sourceId: "node-a",
+          targetId: "",
+          label: "",
+        }],
+        viewport,
+        selectedNodeIds: ["node-a"],
+        selectedEdgeIds: [],
+        selectedBarrierIds: [],
       }],
-      edges,
-      barriers: [{
-        id: "barrier-a",
-        sourceId: "node-a",
-        targetId: "ts-endo",
-        label: "  custom barrier  ",
-      }, {
-        sourceId: "node-a",
-        targetId: "",
-        label: "",
-      }],
-      viewport,
+      activeCanvasId: "canvas-a",
       importLedger: {
         schemaVersion: 1,
         entries: [{
@@ -171,7 +198,7 @@ describe("project packages", () => {
 
     const parsed = parseProjectPackage(content)
 
-    expect(parsed?.nodes[0]).toMatchObject({
+    expect(parsed?.nodes?.[0]).toMatchObject({
       id: "node-a",
       formula: "pending",
       kind: "intermediate",

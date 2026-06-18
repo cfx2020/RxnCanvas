@@ -201,12 +201,12 @@ function installRuntimeSmokeExit(window) {
                 if (startupRestoreSmoke) {
                   const stillShowingDemoProjects = ["Diels-Alder Study", "Nickel catalysis", "Ir screening"]
                     .filter((label) => text.includes(label))
-                  if (!text.includes("Startup Restore Smoke") || !text.includes("Older Restore Smoke") || stillShowingDemoProjects.length > 0) {
+                  if (!text.includes("Startup Restore Smoke") || stillShowingDemoProjects.length > 0) {
                     if (Date.now() <= deadline) {
                       window.setTimeout(poll, 100)
                       return
                     }
-                    reject(new Error("desktop renderer did not restore multiple recent workspaces without demo projects"))
+                    reject(new Error("desktop renderer did not restore the active recent workspace without demo projects"))
                     return
                   }
                 }
@@ -257,7 +257,7 @@ function installRuntimeSmokeExit(window) {
                 const autosaved = await desktop.autosaveProjectPackage({
                   defaultName: "runtime-smoke.rxnflow",
                   content: JSON.stringify({
-                    schemaVersion: 1,
+                    schemaVersion: 2,
                     packageKind: "rxnflow-project",
                     project: { id: "runtime-smoke", label: "Runtime Smoke", meta: "open" },
                     files: [{
@@ -268,10 +268,18 @@ function installRuntimeSmokeExit(window) {
                       status: "parsed",
                       preview: "SCF Done: E(RwB97XD) = -100.0",
                     }],
-                    nodes: [],
-                    edges: [],
-                    barriers: [],
-                    viewport: { x: 0, y: 0, zoom: 1 },
+                    canvases: [{
+                      id: "canvas-1",
+                      label: "画布 1",
+                      nodes: [],
+                      edges: [],
+                      barriers: [],
+                      viewport: { x: 0, y: 0, zoom: 1 },
+                      selectedNodeIds: [],
+                      selectedEdgeIds: [],
+                      selectedBarrierIds: [],
+                    }],
+                    activeCanvasId: "canvas-1",
                     importLedger: { schemaVersion: 1, entries: [] },
                     savedAt: "2026-06-17T00:00:00.000Z",
                   }),
@@ -785,10 +793,14 @@ ipcMain.handle("rxnflow:autosave-project-package", async (_event, payload) => {
 ipcMain.handle("rxnflow:set-active-project", async (_event, payload) => {
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
   if (!projectId) return { ok: false }
-  const projectDirectory = projectDirectoriesById.get(projectId)
+  let projectDirectory = projectDirectoriesById.get(projectId)
+  if (!projectDirectory) {
+    projectDirectory = await projectDirectoryFromActiveProjectPayload(projectId, payload)
+  }
   if (!projectDirectory) return { ok: false }
   currentProjectId = projectId
   currentProjectDirectory = projectDirectory
+  projectDirectoriesById.set(projectId, projectDirectory)
   await rememberRecentProject(projectDirectory)
   return { ok: true, projectDirectory }
 })
@@ -975,6 +987,18 @@ function projectDirectoryForIdentity(identity) {
     return currentProjectDirectory
   }
   return null
+}
+
+async function projectDirectoryFromActiveProjectPayload(projectId, payload) {
+  const projectDirectory = typeof payload?.projectDirectory === "string" ? payload.projectDirectory : null
+  if (!projectDirectory) return null
+  const resolvedDirectory = await projectDirectoryForOpenedPath(projectDirectory)
+  if (!resolvedDirectory) return null
+  const projectPackage = await readProjectPackageWithValidation(resolvedDirectory)
+  const identity = projectIdentityFromContent(projectPackage.content)
+  if (identity?.id !== projectId) return null
+  activateProjectDirectory(projectPackage.content, projectPackage.projectDirectory)
+  return projectPackage.projectDirectory
 }
 
 async function projectDirectoryForOpenedPath(openedPath) {

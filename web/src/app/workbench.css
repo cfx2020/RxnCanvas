@@ -4313,6 +4313,7 @@ select,
 
 .canvas-stage {
   grid-column: auto;
+  grid-row: 4;
   min-width: 0;
   min-height: 0;
 }
@@ -4386,6 +4387,77 @@ select,
 }
 
 @media (max-width: 1100px) {
+  body {
+    overflow: auto;
+  }
+
+  .app-shell {
+    min-width: 720px;
+  }
+
+  .workspace {
+    min-width: 720px;
+    grid-template-columns: 72px minmax(0, 1fr) 320px;
+  }
+
+  .workspace.is-left-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 320px;
+  }
+
+  .workspace.is-right-collapsed {
+    grid-template-columns: 72px minmax(0, 1fr) 0;
+  }
+
+  .workspace.is-left-collapsed.is-right-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+  }
+
+  .project-rail {
+    padding-inline: 8px;
+    align-items: center;
+  }
+
+  .project-rail .brand-block div:not(.brand-mark),
+  .rail-heading span,
+  .project-rail-main span,
+  .project-rail-main em,
+  .project-file-main span,
+  .project-file-main em,
+  .project-file-remove {
+    display: none;
+  }
+
+  .rail-heading {
+    justify-content: center;
+  }
+
+  .rail-heading-actions,
+  .rail-section,
+  .rail-list {
+    width: 100%;
+  }
+
+  .project-rail-item,
+  .project-rail-main,
+  .project-file-card,
+  .project-file-main,
+  .rail-heading button {
+    width: 46px;
+  }
+
+  .project-rail-item,
+  .project-file-card {
+    grid-template-columns: 1fr;
+    place-items: center;
+  }
+
+  .project-rail-main,
+  .project-file-main {
+    grid-template-columns: 1fr;
+    place-items: center;
+    padding: 0;
+  }
+
   .workbench-shell {
     grid-template-rows: 48px auto auto minmax(0, 1fr);
   }

@@ -115,23 +115,44 @@ export type ImportLedger = {
   entries: ImportLedgerEntry[]
 }
 
-export type RxnFlowProjectPackage = {
-  schemaVersion: 1
-  packageKind: "rxnflow-project"
-  project: ProjectSummary
-  files: SourceFile[]
+export type RxnFlowProjectCanvas = {
+  id: string
+  label: string
   nodes: FlowNode[]
   edges: FlowEdge[]
   barriers: FlowBarrier[]
   viewport: CanvasViewport
+  selectedNodeIds: string[]
+  selectedEdgeIds: string[]
+  selectedBarrierIds: string[]
+}
+
+export type RxnFlowProjectPackage = {
+  schemaVersion: 1 | 2
+  packageKind: "rxnflow-project"
+  project: ProjectSummary
+  files: SourceFile[]
+  canvases?: RxnFlowProjectCanvas[]
+  activeCanvasId?: string
+  nodes?: FlowNode[]
+  edges?: FlowEdge[]
+  barriers?: FlowBarrier[]
+  viewport?: CanvasViewport
   importLedger: ImportLedger
   savedAt: string
 }
 
-type BuildProjectPackageOptions = {
+type BuildProjectPackageLegacyOptions = {
   barriers?: FlowBarrier[]
   savedAt?: string
 }
+
+type BuildProjectPackageCanvasOptions = {
+  activeCanvasId: string
+  savedAt?: string
+}
+
+type BuildProjectPackageOptions = BuildProjectPackageLegacyOptions | BuildProjectPackageCanvasOptions
 
 export function buildProjectPackage(
   project: ProjectSummary,
@@ -139,49 +160,95 @@ export function buildProjectPackage(
   nodes: FlowNode[],
   edges: FlowEdge[],
   viewport: CanvasViewport,
-  options: string | BuildProjectPackageOptions = new Date().toISOString(),
+  options?: string | BuildProjectPackageLegacyOptions,
+): RxnFlowProjectPackage
+
+export function buildProjectPackage(
+  project: ProjectSummary,
+  files: SourceFile[],
+  canvases: RxnFlowProjectCanvas[],
+  options?: string | BuildProjectPackageCanvasOptions,
+): RxnFlowProjectPackage
+
+export function buildProjectPackage(
+  project: ProjectSummary,
+  files: SourceFile[],
+  nodesOrCanvases: FlowNode[] | RxnFlowProjectCanvas[],
+  edgesOrOptions: FlowEdge[] | string | BuildProjectPackageOptions = new Date().toISOString(),
+  viewportOrOptions?: CanvasViewport | string | BuildProjectPackageOptions,
+  maybeOptions?: string | BuildProjectPackageOptions,
 ): RxnFlowProjectPackage {
-  const savedAt = typeof options === "string" ? options : options.savedAt ?? new Date().toISOString()
-  const barriers = typeof options === "string" ? [] : options.barriers ?? []
+  const legacyMode = Array.isArray(edgesOrOptions)
+  const resolvedOptions: string | BuildProjectPackageOptions = legacyMode
+    ? ((maybeOptions as string | BuildProjectPackageOptions | undefined) ?? new Date().toISOString())
+    : ((viewportOrOptions as string | BuildProjectPackageOptions | undefined) ?? (edgesOrOptions as string | BuildProjectPackageOptions))
+  const savedAt = typeof resolvedOptions === "string" ? resolvedOptions : resolvedOptions.savedAt ?? new Date().toISOString()
+  const normalizedCanvases = legacyMode
+    ? [{
+        id: "canvas-1",
+        label: "画布 1",
+        nodes: (nodesOrCanvases as FlowNode[]).map(normalizeProjectNode),
+        edges: (edgesOrOptions as FlowEdge[]).map(normalizeProjectEdge),
+        barriers: Array.isArray((resolvedOptions as BuildProjectPackageLegacyOptions)?.barriers)
+          ? (resolvedOptions as BuildProjectPackageLegacyOptions).barriers!.map(normalizeProjectBarrier)
+          : [],
+        viewport: normalizeViewport(viewportOrOptions as unknown) ?? { x: 0, y: 0, zoom: 1 },
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+        selectedBarrierIds: [],
+      }]
+    : (nodesOrCanvases as RxnFlowProjectCanvas[]).map(normalizeProjectCanvas)
+  const activeCanvasId = legacyMode
+    ? "canvas-1"
+    : typeof resolvedOptions === "string"
+      ? normalizedCanvases[0]?.id ?? "canvas-1"
+      : "activeCanvasId" in resolvedOptions
+        ? resolvedOptions.activeCanvasId
+        : (normalizedCanvases[0]?.id ?? "canvas-1")
+  const activeCanvas = normalizedCanvases.find((canvas) => canvas.id === activeCanvasId) ?? normalizedCanvases[0] ?? defaultProjectCanvas()
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     packageKind: "rxnflow-project",
     project,
     files,
-    nodes,
-    edges,
-    barriers,
-    viewport,
-    importLedger: buildImportLedger(files, nodes),
+    canvases: normalizedCanvases,
+    activeCanvasId: resolveActiveCanvasId(activeCanvasId, normalizedCanvases),
+    nodes: activeCanvas.nodes,
+    edges: activeCanvas.edges,
+    barriers: activeCanvas.barriers,
+    viewport: activeCanvas.viewport,
+    importLedger: buildImportLedger(files, normalizedCanvases.flatMap((canvas) => canvas.nodes)),
     savedAt,
   }
 }
 
 export function parseProjectPackage(content: string): RxnFlowProjectPackage | null {
   try {
-    const value = JSON.parse(content) as Partial<RxnFlowProjectPackage>
-    if (value.schemaVersion !== 1 || value.packageKind !== "rxnflow-project") return null
-    if (!isObject(value.project) || !Array.isArray(value.files) || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) {
+    const value = JSON.parse(content) as Record<string, unknown>
+    if (value.schemaVersion !== 1 && value.schemaVersion !== 2) return null
+    if (value.packageKind !== "rxnflow-project") return null
+    if (!isObject(value.project) || !Array.isArray(value.files)) {
       return null
     }
-    const viewport = normalizeViewport(value.viewport)
-    if (!viewport) return null
 
     const files = value.files.map(normalizeProjectFile)
-    const nodes = value.nodes.map(normalizeProjectNode)
-    const edges = value.edges.map(normalizeProjectEdge)
-    const barriers = Array.isArray(value.barriers) ? value.barriers.map(normalizeProjectBarrier) : []
+    const canvases = normalizeProjectCanvases(value)
+    if (canvases.length === 0) return null
+    const activeCanvasId = resolveActiveCanvasId(value.activeCanvasId, canvases)
+    const activeCanvas = canvases.find((canvas) => canvas.id === activeCanvasId) ?? canvases[0] ?? defaultProjectCanvas()
 
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       packageKind: "rxnflow-project",
       project: normalizeProject(value.project),
       files,
-      nodes,
-      edges,
-      barriers,
-      viewport,
-      importLedger: normalizeImportLedger(value.importLedger, files, nodes),
+      canvases,
+      activeCanvasId,
+      nodes: activeCanvas.nodes,
+      edges: activeCanvas.edges,
+      barriers: activeCanvas.barriers,
+      viewport: activeCanvas.viewport,
+      importLedger: normalizeImportLedger(value.importLedger, files, canvases.flatMap((canvas) => canvas.nodes)),
       savedAt: typeof value.savedAt === "string" && value.savedAt.length > 0 ? value.savedAt : new Date(0).toISOString(),
     }
   } catch {
@@ -345,6 +412,80 @@ function normalizeProjectBarrier(barrier: FlowBarrier | Partial<FlowBarrier>, in
     targetId: stringOrFallback(barrier.targetId, ""),
     label: typeof barrier.label === "string" && barrier.label.trim().length > 0 ? barrier.label.trim() : undefined,
   }
+}
+
+function normalizeProjectCanvas(
+  canvas: RxnFlowProjectCanvas | Partial<RxnFlowProjectCanvas>,
+  index = 0,
+): RxnFlowProjectCanvas {
+  const nodes = Array.isArray(canvas.nodes) ? canvas.nodes.map(normalizeProjectNode) : []
+  const edges = Array.isArray(canvas.edges) ? canvas.edges.map(normalizeProjectEdge) : []
+  const barriers = Array.isArray(canvas.barriers) ? canvas.barriers.map(normalizeProjectBarrier) : []
+  const viewport = normalizeViewport(canvas.viewport) ?? { x: 0, y: 0, zoom: 1 }
+
+  return {
+    id: stringOrFallback(canvas.id, `canvas-${index + 1}`),
+    label: stringOrFallback(canvas.label, `画布 ${index + 1}`),
+    nodes,
+    edges,
+    barriers,
+    viewport,
+    selectedNodeIds: normalizeSelectionIds(canvas.selectedNodeIds, nodes.map((node) => node.id)),
+    selectedEdgeIds: normalizeSelectionIds(canvas.selectedEdgeIds, edges.map((edge) => edge.id)),
+    selectedBarrierIds: normalizeSelectionIds(canvas.selectedBarrierIds, barriers.map((barrier) => barrier.id)),
+  }
+}
+
+function normalizeProjectCanvases(value: Record<string, unknown>): RxnFlowProjectCanvas[] {
+  if (value.schemaVersion === 2 && Array.isArray(value.canvases)) {
+    const canvases = value.canvases.map((canvas, index) =>
+      isObject(canvas) ? normalizeProjectCanvas(canvas as Partial<RxnFlowProjectCanvas>, index) : normalizeProjectCanvas({}, index),
+    )
+    return canvases.length > 0 ? canvases : [defaultProjectCanvas()]
+  }
+
+  const viewport = normalizeViewport(value.viewport)
+  if (!viewport || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) return []
+  const nodes = value.nodes.map(normalizeProjectNode)
+  const edges = value.edges.map(normalizeProjectEdge)
+  const barriers = Array.isArray(value.barriers) ? value.barriers.map(normalizeProjectBarrier) : []
+  return [{
+    id: "canvas-1",
+    label: "画布 1",
+    nodes,
+    edges,
+    barriers,
+    viewport,
+    selectedNodeIds: nodes[0]?.id ? [nodes[0].id] : [],
+    selectedEdgeIds: [],
+    selectedBarrierIds: [],
+  }]
+}
+
+function defaultProjectCanvas(): RxnFlowProjectCanvas {
+  return {
+    id: "canvas-1",
+    label: "画布 1",
+    nodes: [],
+    edges: [],
+    barriers: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+    selectedNodeIds: [],
+    selectedEdgeIds: [],
+    selectedBarrierIds: [],
+  }
+}
+
+function resolveActiveCanvasId(value: unknown, canvases: RxnFlowProjectCanvas[]): string {
+  if (typeof value === "string" && canvases.some((canvas) => canvas.id === value)) return value
+  return canvases[0]?.id ?? "canvas-1"
+}
+
+function normalizeSelectionIds(value: unknown, validIds: string[]): string[] {
+  const validIdSet = new Set(validIds)
+  return Array.isArray(value)
+    ? value.filter((id): id is string => typeof id === "string" && validIdSet.has(id))
+    : []
 }
 
 function normalizeImportLedger(value: unknown, files: SourceFile[], nodes: FlowNode[]): ImportLedger {

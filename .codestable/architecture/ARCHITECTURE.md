@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 创建日期：2026-05-01
-> 最近更新：2026-06-17
+> 最近更新：2026-06-19
 
 ## 1. 当前产品边界
 
@@ -20,7 +20,7 @@ RxnFlow 现在处于桌面画布重构期，旧代码已备份到 `.codestable/h
 `web/` 是当前唯一 active UI 工程，技术栈为 React + TypeScript + Vite + npm。它现在提供一个本地优先画布工作台：
 
 - 左侧 project rail：本地项目/工作区列表、桌面端 `New Project Folder` 创建真实用户可见工作区文件夹、`Open Folder` 打开已有工作区文件夹、按项目隔离/恢复 renderer 工作区快照、通过 `Project actions` / `Import files into project` 把本地文件导入目标项目、通过项目行 drop 把外部文件导入目标项目、通过 `Project actions` / `Delete project` 从 renderer 本地项目列表删除项目、文件列表、导入本地文件入口，以及成对 gas/solution log 的结构行分组和成组 source 拖拽。浏览器预览仍只能通过 hidden file input 打开 JSON 项目包做 UI 验证，不能真正打开本地文件夹。
-- 中间 canvas/table：反应节点画布、节点拖拽、Select tool 空白画布框选、Pan tool 空白画布拖拽平移、节点手柄拖拽或键盘激活后创建 edge、edge 选择检查、画布平移/缩放、可拖拽导航 minimap、能量表视图。
+- 中间 canvas/table：项目级多 Canvas Tab、反应节点画布、节点拖拽、Select tool 空白画布框选、Pan tool 空白画布拖拽平移、节点手柄拖拽或键盘激活后创建 edge、edge 选择检查、画布平移/缩放、可拖拽导航 minimap、能量表视图。source files 仍是项目级共享资源；每个 canvas 单独保存 nodes / edges / barriers / viewport / selection。
 - 右侧 inspector：节点详情、source preview 和 export dock；节点详情里有 lightweight `Structure Preview` 2D 骨架图、Ketcher + Indigo WASM `Edit 2D` 手动画板（保存为单节点 manual KET/Molfile/CDXML/SVG，可 reset 回自动推断）和 3Dmol.js `3D Structure` 真实坐标查看器。Object Registry / Objects tab / correction 表单不属于当前 active UI。
 - 导入路径：Electron 模式会把本地 `sourcePath` 交给 local engine `import.preview`，由 Python engine 读取完整文件解析，renderer 只保留 64KB source preview sample；导入进入桌面工作区后由自动保存把原始 log/out/xyz 复制到工作区根目录的 `sources/`，项目元数据写入工作区内隐藏 `.rxnflow/` 目录，后续持久化使用 project-relative `storedPath`，`sourcePath` 只作为本次导入解析和复制的临时来源。浏览器开发预览继续使用 renderer-side lightweight parser fallback，不能访问本地绝对路径或写入项目文件夹。当前 active parser 识别 Gaussian / ORCA（含常见 Cartesian coordinate、charge/spin 摘要）/ MAPLE / 普通 XYZ comment energy / ASE extxyz metadata（label、charge/spin、eV energy 转 Hartree）的摘要、formula、部分坐标摘要、warnings、parser provenance、`parseScope` / `confidence` 和多帧 candidates；Gaussian/ORCA 还返回当前能量表可用的 `energyTable` 字段（Egas、Ggas、Ggas+1M、basis、Esol/Gsol pairing 输入）。单候选 source 自动生成 parsed source node；多候选 source 进入候选选择面板，支持登记选中候选或全部候选为节点，并把 candidate/parser provenance 持久化到项目节点和轻量 `importLedger`。
 - 相对能量当前由 renderer 根据画布节点、baseline 和 gas/solution source 计算，并通过画布级 `Energy`/`Unit` 控件显示；它不恢复旧 UI `Compute`/PES 面板、旧 Python `energy.compute` command、Object Registry 或 correction policy engine。
@@ -38,7 +38,7 @@ RxnFlow 现在处于桌面画布重构期，旧代码已备份到 `.codestable/h
 - `parse_source_preview()` 提供 lightweight text parser；`preview_sources()` 在有 `sourcePath` 时读取完整文件解析，并返回结构化结果而不是把完整 log 交给 renderer。
 - `rxnflow/engine_ipc.py` 提供 stdin/stdout JSON command boundary，当前支持 `engine.status`、`flow.demo`、`import.preview`、`import.register_selection`、`import.register_all` 和轻量 `project.validate/open/save`。
 - `import.preview` 返回兼容当前 UI 的扁平 parse 字段，同时附带 `parserId`、`parserVersion`、`parseScope`、`confidence`、`objectCount`、`warnings`、`candidates`、`coordinatePreview` 和当前表格使用的 `energyTable`。`import.register_selection` / `import.register_all` 提供轻量、无状态的候选登记对象摘要并保留 `energyTable`。Electron renderer 通过 preload 优先调用这些 register commands，再把对象摘要映射成画布节点；浏览器预览或 engine 失败时 fallback 到 renderer-side candidate register。
-- 工作区文件夹打开/保存路径会校验 `.rxnflow/project.json` project envelope、safe project-relative paths、file/node/edge 基础引用一致性、轻量 `importLedger` entry/file/node 引用、node 能量单位/数值/position 形状，以及工作区 `sources/` / `exports/` 文件存在性、size 和 sha256 checksum；缺失文件或不一致 checksum 是 warning，不安全路径和破坏项目结构的字段是 error。
+- 工作区文件夹打开/保存路径会校验 `.rxnflow/project.json` project envelope（当前 schemaVersion 2 为共享 source files + `canvases[]` + `activeCanvasId`）、safe project-relative paths、file/node/edge 基础引用一致性、轻量 `importLedger` entry/file/node 引用、node 能量单位/数值/position 形状，以及工作区 `sources/` / `exports/` 文件存在性、size 和 sha256 checksum；缺失文件或不一致 checksum 是 warning，不安全路径和破坏项目结构的字段是 error。
 
 它不是旧 parser/registry/graph/energy/export/platform shell 的替代品，也不提供完整真实输出兼容矩阵或报告生成。
 

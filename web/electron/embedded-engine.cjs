@@ -1084,8 +1084,8 @@ function projectRootForContent(requestedPath, contentPath, requestedPathIsDirect
 
 async function validateProjectPackage(projectPackage, projectRoot) {
   const issues = []
-  if (projectPackage.schemaVersion !== 1 || projectPackage.packageKind !== projectPackageKind) {
-    issues.push({ severity: "error", code: "invalid_envelope", message: "Expected schemaVersion 1 and packageKind rxnflow-project." })
+  if (![1, 2].includes(projectPackage.schemaVersion) || projectPackage.packageKind !== projectPackageKind) {
+    issues.push({ severity: "error", code: "invalid_envelope", message: "Expected schemaVersion 1 or 2 and packageKind rxnflow-project." })
   }
   const project = projectPackage.project
   if (!project || typeof project !== "object") {
@@ -1093,15 +1093,22 @@ async function validateProjectPackage(projectPackage, projectRoot) {
   } else if (!project.id || !project.label) {
     issues.push({ severity: "warning", code: "project_metadata_incomplete", message: "Project id or label is missing." })
   }
-  for (const key of ["files", "nodes", "edges"]) {
+  const hasCanvasArray = Array.isArray(projectPackage.canvases)
+  for (const key of hasCanvasArray ? ["files", "canvases"] : ["files", "nodes", "edges"]) {
     if (!Array.isArray(projectPackage[key])) issues.push({ severity: "error", code: `invalid_${key}`, message: `${key} must be an array.` })
   }
-  if (projectPackage.barriers !== undefined && !Array.isArray(projectPackage.barriers)) {
+  if (!hasCanvasArray && projectPackage.barriers !== undefined && !Array.isArray(projectPackage.barriers)) {
     issues.push({ severity: "error", code: "invalid_barriers", message: "barriers must be an array when present." })
   }
-  const viewport = projectPackage.viewport
-  if (!viewport || typeof viewport !== "object" || !isNumber(viewport.x) || !isNumber(viewport.y) || !isNumber(viewport.zoom) || viewport.zoom <= 0) {
-    issues.push({ severity: "error", code: "invalid_viewport", message: "viewport must contain finite x, y and positive zoom." })
+  if (!hasCanvasArray) {
+    const viewport = projectPackage.viewport
+    if (!viewport || typeof viewport !== "object" || !isNumber(viewport.x) || !isNumber(viewport.y) || !isNumber(viewport.zoom) || viewport.zoom <= 0) {
+      issues.push({ severity: "error", code: "invalid_viewport", message: "viewport must contain finite x, y and positive zoom." })
+    }
+  } else if (!Array.isArray(projectPackage.canvases) || projectPackage.canvases.length === 0) {
+    issues.push({ severity: "error", code: "invalid_canvases", message: "canvases must contain at least one canvas." })
+  } else if (typeof projectPackage.activeCanvasId !== "string" || !projectPackage.activeCanvasId) {
+    issues.push({ severity: "error", code: "invalid_active_canvas", message: "activeCanvasId is required when canvases are present." })
   }
 
   const files = Array.isArray(projectPackage.files) ? projectPackage.files : []
@@ -1136,7 +1143,10 @@ async function validateProjectPackage(projectPackage, projectRoot) {
     }
   }
 
-  const nodes = Array.isArray(projectPackage.nodes) ? projectPackage.nodes : []
+  const flattened = flattenProjectGraph(projectPackage)
+  const nodes = flattened.nodes
+  const edges = flattened.edges
+  const barriers = flattened.barriers
   const nodeIds = new Set()
   nodes.forEach((node, index) => {
     if (!node || typeof node !== "object") {
@@ -1184,7 +1194,6 @@ async function validateProjectPackage(projectPackage, projectRoot) {
   issues.push(...validateImportLedger(projectPackage.importLedger, fileIds, nodeIds, nodes))
 
   const edgeIds = new Set()
-  const edges = Array.isArray(projectPackage.edges) ? projectPackage.edges : []
   edges.forEach((edge, index) => {
     if (!edge || typeof edge !== "object") {
       issues.push({ severity: "error", code: "invalid_edge", message: `edges[${index}] must be an object.` })
@@ -1210,7 +1219,6 @@ async function validateProjectPackage(projectPackage, projectRoot) {
   })
 
   const barrierIds = new Set()
-  const barriers = Array.isArray(projectPackage.barriers) ? projectPackage.barriers : []
   barriers.forEach((barrier, index) => {
     if (!barrier || typeof barrier !== "object") {
       issues.push({ severity: "error", code: "invalid_barrier", message: `barriers[${index}] must be an object.` })
@@ -1397,15 +1405,32 @@ function projectSummary(projectPackage) {
   const files = Array.isArray(projectPackage.files) ? projectPackage.files : []
   const importLedger = projectPackage.importLedger && typeof projectPackage.importLedger === "object" ? projectPackage.importLedger : {}
   const importLedgerEntries = Array.isArray(importLedger.entries) ? importLedger.entries : []
+  const flattened = flattenProjectGraph(projectPackage)
   return {
     projectId: project.id ?? null,
     projectLabel: project.label ?? null,
     fileCount: files.length,
-    nodeCount: Array.isArray(projectPackage.nodes) ? projectPackage.nodes.length : 0,
-    edgeCount: Array.isArray(projectPackage.edges) ? projectPackage.edges.length : 0,
-    barrierCount: Array.isArray(projectPackage.barriers) ? projectPackage.barriers.length : 0,
+    nodeCount: flattened.nodes.length,
+    edgeCount: flattened.edges.length,
+    barrierCount: flattened.barriers.length,
     storedSourceCount: files.filter((file) => file && typeof file === "object" && file.storedPath).length,
     importLedgerEntryCount: importLedgerEntries.length,
+  }
+}
+
+function flattenProjectGraph(projectPackage) {
+  if (Array.isArray(projectPackage.canvases)) {
+    const canvases = projectPackage.canvases.filter((canvas) => canvas && typeof canvas === "object")
+    return {
+      nodes: canvases.flatMap((canvas) => Array.isArray(canvas.nodes) ? canvas.nodes : []),
+      edges: canvases.flatMap((canvas) => Array.isArray(canvas.edges) ? canvas.edges : []),
+      barriers: canvases.flatMap((canvas) => Array.isArray(canvas.barriers) ? canvas.barriers : []),
+    }
+  }
+  return {
+    nodes: Array.isArray(projectPackage.nodes) ? projectPackage.nodes : [],
+    edges: Array.isArray(projectPackage.edges) ? projectPackage.edges : [],
+    barriers: Array.isArray(projectPackage.barriers) ? projectPackage.barriers : [],
   }
 }
 

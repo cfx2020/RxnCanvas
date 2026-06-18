@@ -1,6 +1,11 @@
 import type { CanvasViewport, ProjectSummary, SourceFile } from "../domain/projectPackages"
 import type { WorkbenchViewMode, ProjectWorkspaceSnapshot } from "./projectWorkspace"
-import { emptyProjectWorkspace, projectWorkspaceSnapshot, saveAndActivateProjectWorkspaceTransition } from "./projectWorkspace"
+import {
+  activeCanvasSnapshot,
+  emptyProjectWorkspace,
+  projectWorkspaceSnapshot,
+  saveAndActivateProjectWorkspaceTransition,
+} from "./projectWorkspace"
 import type { CanvasRawFileDrop } from "./CanvasWorkspace"
 import {
   browserImportSourceFilesFromFiles,
@@ -103,10 +108,11 @@ export async function stageSourceFilesForProjectAction({
   const targetSnapshot = workspaces[projectId]
     ? projectWorkspaceSnapshot(workspaces[projectId])
     : emptyProjectWorkspace(emptyViewport)
+  const targetCanvas = activeCanvasSnapshot(targetSnapshot)
   const prepared = await prepareProjectWorkspaceImport({
     targetSnapshot,
     importedFiles,
-    layout: importLayoutFromCanvas(canvas, targetSnapshot.viewport),
+    layout: importLayoutFromCanvas(canvas, targetCanvas.viewport),
     options: { registerImportCandidates },
   })
   if (!prepared) return

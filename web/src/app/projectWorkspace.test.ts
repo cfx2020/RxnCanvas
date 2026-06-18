@@ -86,8 +86,9 @@ const edges: FlowEdge[] = [{ id: "edge-1", sourceId: "node-1", targetId: "node-2
 const barriers: FlowBarrier[] = [{ id: "barrier-1", sourceId: "node-1", targetId: "node-2", label: "ΔG" }]
 
 function workspace(): ProjectWorkspaceSnapshot {
-  return {
-    files,
+  const activeCanvas = {
+    id: "canvas-1",
+    label: "画布 1",
     nodes,
     edges,
     barriers,
@@ -95,6 +96,18 @@ function workspace(): ProjectWorkspaceSnapshot {
     selectedNodeIds: ["node-1"],
     selectedEdgeIds: ["edge-1"],
     selectedBarrierIds: ["barrier-1"],
+  }
+  return {
+    files,
+    canvases: [activeCanvas],
+    activeCanvasId: "canvas-1",
+    nodes: activeCanvas.nodes,
+    edges: activeCanvas.edges,
+    barriers: activeCanvas.barriers,
+    viewport: activeCanvas.viewport,
+    selectedNodeIds: activeCanvas.selectedNodeIds,
+    selectedEdgeIds: activeCanvas.selectedEdgeIds,
+    selectedBarrierIds: activeCanvas.selectedBarrierIds,
     selectedFileId: "file-1",
     selectedFileIds: ["file-1"],
     lastSelectedFileId: "file-1",

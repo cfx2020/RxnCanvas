@@ -4,6 +4,7 @@ import { restoreCanvasEditInteractionTransition, type CanvasDragState, type Canv
 import type { BarrierDraft, ConnectionDraft } from "./CanvasWorkspace"
 import type { CandidateReviewState } from "./importRegistration"
 import {
+  activeCanvasSnapshot,
   restoreCanvasEditSnapshot,
   restoreProjectWorkspaceApplyTransition,
   type CanvasEditSnapshot,
@@ -70,18 +71,7 @@ export function applyCanvasSelectionState(
 
 
 export type ImportedWorkspaceSnapshotApplication = {
-  snapshot: Pick<
-    ProjectWorkspaceSnapshot,
-    | "files"
-    | "nodes"
-    | "selectedNodeIds"
-    | "selectedEdgeIds"
-    | "selectedBarrierIds"
-    | "selectedFileId"
-    | "selectedFileIds"
-    | "lastSelectedFileId"
-    | "inspectorMode"
-  >
+  snapshot: ProjectWorkspaceSnapshot
   keyboardEdgeSourceId: string | null
   candidateReview?: CandidateReviewState | null
 }
@@ -112,15 +102,16 @@ export function applyProjectWorkspaceApplyTransitionState(
   clearEditHistory: () => void,
 ): void {
   const { workspace } = transition
+  const activeCanvas = activeCanvasSnapshot(workspace)
   setters.setFiles(workspace.files)
-  setters.setNodes(workspace.nodes)
-  setters.setEdges(workspace.edges)
-  setters.setBarriers(workspace.barriers)
-  setters.setViewport(workspace.viewport)
+  setters.setNodes(activeCanvas.nodes)
+  setters.setEdges(activeCanvas.edges)
+  setters.setBarriers(activeCanvas.barriers)
+  setters.setViewport(activeCanvas.viewport)
   applyCanvasSelectionState(setters, {
-    nodeIds: workspace.selectedNodeIds,
-    edgeIds: workspace.selectedEdgeIds,
-    barrierIds: workspace.selectedBarrierIds,
+    nodeIds: activeCanvas.selectedNodeIds,
+    edgeIds: activeCanvas.selectedEdgeIds,
+    barrierIds: activeCanvas.selectedBarrierIds,
   })
   setters.setSelectedFileId(workspace.selectedFileId)
   setters.setSelectedFileIds(workspace.selectedFileIds)

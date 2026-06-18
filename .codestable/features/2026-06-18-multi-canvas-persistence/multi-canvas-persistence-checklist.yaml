@@ -1,0 +1,112 @@
+feature: 2026-06-18-multi-canvas-persistence
+created: 2026-06-18
+
+steps:
+  - action: "微重构：把 App.tsx 内 active canvas <-> workspace snapshot 的纯 helper 拆到独立状态模块，先保持现有 runtime 多画布行为不变"
+    exit_signal: "App 仍可创建/切换运行时画布，且纯 helper 不再散落在容器 JSX 里"
+    status: done
+
+  - action: "Project schema 与 clone helper 升级：把 ProjectWorkspaceSnapshot 与 project package types 改成多画布结构，并提供 v1 单画布 normalize helper"
+    exit_signal: "单元测试证明 v1 输入会归一化成默认 canvas，v2 输入可 round-trip"
+    status: done
+
+  - action: "App active-canvas projection 收口：当前 active canvas 与 React 编辑态双向同步，切换/新建画布会更新 project workspace snapshot"
+    exit_signal: "组件测试证明不同画布内容互不覆盖，current snapshot 含全部 canvases + activeCanvasId"
+    status: done
+
+  - action: "Open / autosave / export 路径接通：serialize/restore、desktop autosave、startup restore、Export project 统一使用 v2 多画布 schema"
+    exit_signal: "保存后重开项目/重启 app 时，多画布集合和 active canvas 一致恢复"
+    status: done
+
+  - action: "旧项目兼容与坏引用修正：过滤坏 selection、空 canvases、缺失 activeCanvasId，并让旧单画布项目自动迁移"
+    exit_signal: "旧项目可直接打开且不白屏、不丢主图，坏引用被安全回退"
+    status: done
+
+  - action: "验证与范围守护：跑 web tests/build、desktop smoke/runtime smoke，并完成浏览器/桌面实际 smoke"
+    exit_signal: "验证通过，且未扩展到 path tabs、云同步、history persistence 或跨画布高级编辑"
+    status: done
+
+checks:
+  - item: "新建项目时默认仍有一个画布，项目 snapshot 中始终至少存在一个 canvas"
+    source: 验收场景
+    status: passed
+
+  - item: "画布 1 与画布 2 的节点/连线内容互不覆盖，切换往返后仍保持各自状态"
+    source: 验收场景
+    status: passed
+
+  - item: "关闭并重新打开同一工作区后，多画布集合会恢复，而不是只剩当前一个画布"
+    source: 验收场景
+    status: passed
+
+  - item: "重开项目后 active canvas 与关闭前一致；若缺失则安全回退到第一个可用 canvas"
+    source: 名词契约
+    status: passed
+
+  - item: "每个画布各自的 viewport 会恢复；切换画布时视口跟着切换"
+    source: 验收场景
+    status: passed
+
+  - item: "每个画布的 selection 可恢复，但坏引用会被过滤，不导致白屏"
+    source: 跨层纪律
+    status: passed
+
+  - item: "左侧 source 列表仍为项目级共享；切换画布不会复制或丢失 source 文件记录"
+    source: 名词契约
+    status: passed
+
+  - item: "Export project 导出的 project.json 包含多画布结构，而不是只保存当前画布"
+    source: 验收场景
+    status: passed
+
+  - item: "旧单画布 .rxnflow.json 或旧工作区打开时会自动归一化为一个默认 canvas，主图仍可编辑"
+    source: 验收场景
+    status: passed
+
+  - item: "导入 source 并 autosave 后，重启 app 恢复的多画布项目仍保留 storedPath/checksum 与 source 副本引用"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run test -- --run 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run build 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run desktop:smoke 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "npm run desktop:runtime:smoke 通过"
+    source: 验收场景
+    status: passed
+
+  - item: "浏览器 dev preview 能打开 v2 项目且不会空白或 console error"
+    source: 验收场景
+    status: passed
+
+  - item: "桌面实际 smoke 中，创建第二个画布、导入或拖入节点、关闭重开 app 后可见恢复结果"
+    source: 验收场景
+    status: passed
+
+  - item: "不实现 path tabs、relative energy sheets、path zero point 或 path-scoped stoichiometry persistence"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增 cloud sync、IndexedDB/OPFS、账号、多人协作、CRDT、冲突合并或后台目录 watcher"
+    source: 范围守护
+    status: passed
+
+  - item: "不持久化 undo/redo history、candidate review sheet、structure preview dialog、3D dialog、connection/barrier draft 或 hover UI"
+    source: 范围守护
+    status: passed
+
+  - item: "不新增跨画布复制/粘贴、跨画布引用、画布模板、画布权限、画布颜色或画布排序拖拽"
+    source: 范围守护
+    status: passed
+
+  - item: "不改 parser / cclib / engine status / source 外部打开能力的现有语义"
+    source: 范围守护
+    status: passed

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { defaultEnergyDisplayOptions } from "./energyDisplay"
 import type { SourceFile } from "../domain/projectPackages"
+import type { ProjectWorkspaceSnapshot } from "./projectWorkspace"
 import type { ParseCandidate, SourceParseResult } from "../domain/sourceParsers"
 import {
   browserImportSourceFilesFromFiles,
@@ -91,6 +92,45 @@ function sourceFile(id: string, parse?: SourceParseResult): SourceFile {
     status: "staged",
     preview: "SCF Done: E(RB3LYP) = -1.0 A.U.",
     parse,
+  }
+}
+
+function workspaceSnapshot(overrides: Partial<ProjectWorkspaceSnapshot> = {}): ProjectWorkspaceSnapshot {
+  const nodes = overrides.nodes ?? []
+  const edges = overrides.edges ?? []
+  const barriers = overrides.barriers ?? []
+  const viewport = overrides.viewport ?? { x: 0, y: 0, zoom: 1 }
+  const selectedNodeIds = overrides.selectedNodeIds ?? []
+  const selectedEdgeIds = overrides.selectedEdgeIds ?? []
+  const selectedBarrierIds = overrides.selectedBarrierIds ?? []
+  const canvases = overrides.canvases ?? [{
+    id: "canvas-1",
+    label: "画布 1",
+    nodes,
+    edges,
+    barriers,
+    viewport,
+    selectedNodeIds,
+    selectedEdgeIds,
+    selectedBarrierIds,
+  }]
+  return {
+    files: overrides.files ?? [],
+    canvases,
+    activeCanvasId: overrides.activeCanvasId ?? canvases[0]?.id ?? "canvas-1",
+    nodes,
+    edges,
+    barriers,
+    viewport,
+    selectedNodeIds,
+    selectedEdgeIds,
+    selectedBarrierIds,
+    selectedFileId: overrides.selectedFileId ?? null,
+    selectedFileIds: overrides.selectedFileIds ?? [],
+    lastSelectedFileId: overrides.lastSelectedFileId ?? null,
+    energyDisplayOptions: overrides.energyDisplayOptions ?? defaultEnergyDisplayOptions,
+    viewMode: overrides.viewMode ?? "canvas",
+    inspectorMode: overrides.inspectorMode ?? "inspector",
   }
 }
 
@@ -358,7 +398,7 @@ describe("importRegistration", () => {
   it("applies an import plan to a target project workspace snapshot", () => {
     const imported = sourceFile("single", parseResult([candidate({ candidateId: "only", roleHint: "final" })]))
     const plan = buildImportPlan([imported], layout)
-    const targetSnapshot = {
+    const targetSnapshot = workspaceSnapshot({
       files: [sourceFile("existing")],
       nodes: [{
         id: "existing-node",
@@ -384,7 +424,7 @@ describe("importRegistration", () => {
       energyDisplayOptions: defaultEnergyDisplayOptions,
       viewMode: "table" as const,
       inspectorMode: "inspector" as const,
-    }
+    })
 
     const next = projectWorkspaceWithImportPlan(targetSnapshot, [imported], plan, plan.fallbackNodes)
 
@@ -406,7 +446,7 @@ describe("importRegistration", () => {
   it("applies import plans with update file mode while preserving requested view mode", () => {
     const imported = sourceFile("existing", parseResult([candidate({ candidateId: "only", roleHint: "final" })]))
     const plan = buildImportPlan([imported], layout)
-    const targetSnapshot = {
+    const targetSnapshot = workspaceSnapshot({
       files: [{ ...sourceFile("existing"), preview: "old preview" }, sourceFile("other")],
       nodes: [],
       edges: [],
@@ -421,7 +461,7 @@ describe("importRegistration", () => {
       energyDisplayOptions: defaultEnergyDisplayOptions,
       viewMode: "table" as const,
       inspectorMode: "inspector" as const,
-    }
+    })
 
     expect(sourceFilesWithImportPlan(targetSnapshot.files, plan, "update").map((file) => [file.id, file.preview])).toEqual([
       ["existing", "SCF Done: E(RB3LYP) = -1.0 A.U."],
@@ -447,7 +487,7 @@ describe("importRegistration", () => {
       candidate({ candidateId: "image", objectIndex: 0, roleHint: "path-point" }),
       candidate({ candidateId: "final", objectIndex: 1, roleHint: "final" }),
     ]))
-    const targetSnapshot = {
+    const targetSnapshot = workspaceSnapshot({
       files: [sourceFile("existing")],
       nodes: [],
       edges: [],
@@ -462,7 +502,7 @@ describe("importRegistration", () => {
       energyDisplayOptions: defaultEnergyDisplayOptions,
       viewMode: "table" as const,
       inspectorMode: "inspector" as const,
-    }
+    })
 
     const prepared = await prepareProjectWorkspaceImport({
       targetSnapshot,
@@ -495,7 +535,7 @@ describe("importRegistration", () => {
   })
 
   it("applies registered candidate-review nodes to a workspace snapshot", () => {
-    const targetSnapshot = {
+    const targetSnapshot = workspaceSnapshot({
       files: [sourceFile("file-1")],
       nodes: [{
         id: "existing-node",
@@ -521,7 +561,7 @@ describe("importRegistration", () => {
       energyDisplayOptions: defaultEnergyDisplayOptions,
       viewMode: "table" as const,
       inspectorMode: "inspector" as const,
-    }
+    })
     const createdNodes = [{
       id: "registered-node",
       label: "Registered",

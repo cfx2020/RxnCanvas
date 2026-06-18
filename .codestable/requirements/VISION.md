@@ -2,7 +2,7 @@
 
 ## current
 
-- `project-content-persistence` — 以轻量 `.rxnflow` 项目目录保存当前桌面画布工作台可见状态
+- `project-content-persistence` — 以真实用户可见工作区文件夹保存项目内全部画布和导入来源
 - `platform-shell-entry` — 用统一命令入口让 agent、命令行和未来端侧都能操作 RxnFlow 当前轻量核心流程
 
 ## outdated

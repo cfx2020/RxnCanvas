@@ -1004,8 +1004,8 @@ def project_root_for_content(requested_path: Path, content_path: Path) -> Path |
 
 def validate_project_package(package: dict[str, Any], project_root: Path | None = None) -> list[ProjectValidationIssue]:
     issues: list[ProjectValidationIssue] = []
-    if package.get("schemaVersion") != 1 or package.get("packageKind") != PROJECT_PACKAGE_KIND:
-        issues.append(ProjectValidationIssue("error", "invalid_envelope", "Expected schemaVersion 1 and packageKind rxnflow-project."))
+    if package.get("schemaVersion") not in {1, 2} or package.get("packageKind") != PROJECT_PACKAGE_KIND:
+        issues.append(ProjectValidationIssue("error", "invalid_envelope", "Expected schemaVersion 1 or 2 and packageKind rxnflow-project."))
 
     project = package.get("project")
     if not isinstance(project, dict):
@@ -1013,20 +1013,27 @@ def validate_project_package(package: dict[str, Any], project_root: Path | None 
     elif not project.get("id") or not project.get("label"):
         issues.append(ProjectValidationIssue("warning", "project_metadata_incomplete", "Project id or label is missing."))
 
-    for key in ("files", "nodes", "edges"):
+    has_canvas_array = isinstance(package.get("canvases"), list)
+    for key in ("files", "canvases") if has_canvas_array else ("files", "nodes", "edges"):
         if not isinstance(package.get(key), list):
             issues.append(ProjectValidationIssue("error", f"invalid_{key}", f"{key} must be an array."))
-    if package.get("barriers") is not None and not isinstance(package.get("barriers"), list):
+    if not has_canvas_array and package.get("barriers") is not None and not isinstance(package.get("barriers"), list):
         issues.append(ProjectValidationIssue("error", "invalid_barriers", "barriers must be an array when present."))
 
-    viewport = package.get("viewport")
-    if not isinstance(viewport, dict) or not is_number(viewport.get("x")) or not is_number(viewport.get("y")) or not is_number(viewport.get("zoom")) or viewport.get("zoom") <= 0:
-        issues.append(ProjectValidationIssue("error", "invalid_viewport", "viewport must contain finite x, y and positive zoom."))
+    if not has_canvas_array:
+        viewport = package.get("viewport")
+        if not isinstance(viewport, dict) or not is_number(viewport.get("x")) or not is_number(viewport.get("y")) or not is_number(viewport.get("zoom")) or viewport.get("zoom") <= 0:
+            issues.append(ProjectValidationIssue("error", "invalid_viewport", "viewport must contain finite x, y and positive zoom."))
+    elif not isinstance(package.get("canvases"), list) or len(package.get("canvases")) == 0:
+        issues.append(ProjectValidationIssue("error", "invalid_canvases", "canvases must contain at least one canvas."))
+    elif not isinstance(package.get("activeCanvasId"), str) or not package.get("activeCanvasId"):
+        issues.append(ProjectValidationIssue("error", "invalid_active_canvas", "activeCanvasId is required when canvases are present."))
 
     files = package.get("files") if isinstance(package.get("files"), list) else []
-    nodes = package.get("nodes") if isinstance(package.get("nodes"), list) else []
-    edges = package.get("edges") if isinstance(package.get("edges"), list) else []
-    barriers = package.get("barriers") if isinstance(package.get("barriers"), list) else []
+    flattened = flatten_project_graph(package)
+    nodes = flattened["nodes"]
+    edges = flattened["edges"]
+    barriers = flattened["barriers"]
 
     file_ids: set[str] = set()
     for index, file in enumerate(files):
@@ -1138,6 +1145,22 @@ def validate_project_package(package: dict[str, Any], project_root: Path | None 
         issues.extend(validate_export_manifest(project_root))
 
     return issues
+
+
+def flatten_project_graph(package: dict[str, Any]) -> dict[str, list[Any]]:
+    canvases = package.get("canvases")
+    if isinstance(canvases, list):
+        valid_canvases = [canvas for canvas in canvases if isinstance(canvas, dict)]
+        return {
+            "nodes": [node for canvas in valid_canvases for node in (canvas.get("nodes") if isinstance(canvas.get("nodes"), list) else [])],
+            "edges": [edge for canvas in valid_canvases for edge in (canvas.get("edges") if isinstance(canvas.get("edges"), list) else [])],
+            "barriers": [barrier for canvas in valid_canvases for barrier in (canvas.get("barriers") if isinstance(canvas.get("barriers"), list) else [])],
+        }
+    return {
+        "nodes": package.get("nodes") if isinstance(package.get("nodes"), list) else [],
+        "edges": package.get("edges") if isinstance(package.get("edges"), list) else [],
+        "barriers": package.get("barriers") if isinstance(package.get("barriers"), list) else [],
+    }
 
 
 def validate_import_ledger(
@@ -1320,9 +1343,10 @@ def project_summary(package: dict[str, Any] | None) -> dict[str, Any]:
         }
     project = package.get("project") if isinstance(package.get("project"), dict) else {}
     files = package.get("files") if isinstance(package.get("files"), list) else []
-    nodes = package.get("nodes") if isinstance(package.get("nodes"), list) else []
-    edges = package.get("edges") if isinstance(package.get("edges"), list) else []
-    barriers = package.get("barriers") if isinstance(package.get("barriers"), list) else []
+    flattened = flatten_project_graph(package)
+    nodes = flattened["nodes"]
+    edges = flattened["edges"]
+    barriers = flattened["barriers"]
     import_ledger = package.get("importLedger") if isinstance(package.get("importLedger"), dict) else {}
     import_ledger_entries = import_ledger.get("entries") if isinstance(import_ledger.get("entries"), list) else []
     return {

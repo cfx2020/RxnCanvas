@@ -2,11 +2,8 @@ import {
   buildProjectPackage,
   parseProjectPackage,
   safeProjectFileStem,
-  type CanvasViewport,
-  type FlowBarrier,
-  type FlowEdge,
-  type FlowNode,
   type ProjectSummary,
+  type RxnFlowProjectCanvas,
   type SourceFile,
 } from "../domain/projectPackages"
 import {
@@ -33,10 +30,8 @@ export type ProjectPackageRuntime = "desktop" | "browser"
 export type ProjectPackageSerializationInput = {
   project: ProjectSummary
   files: SourceFile[]
-  nodes: FlowNode[]
-  edges: FlowEdge[]
-  barriers: FlowBarrier[]
-  viewport: CanvasViewport
+  canvases: RxnFlowProjectCanvas[]
+  activeCanvasId: string
 }
 
 export type SerializedProjectPackage = {
@@ -87,10 +82,8 @@ export function serializeProjectPackage(
   const projectPackage = buildProjectPackage(
     input.project,
     input.files,
-    input.nodes,
-    input.edges,
-    input.viewport,
-    { barriers: input.barriers },
+    input.canvases,
+    { activeCanvasId: input.activeCanvasId },
   )
   return {
     defaultName: projectPackageDefaultName(input.project.label, runtime),

@@ -82,6 +82,16 @@ import {
   type WorkbenchViewMode,
 } from "./projectWorkspace"
 import {
+  canvasTabSnapshotFromState,
+  canvasTabsFromProjectCanvases,
+  createCanvasTabState,
+  initialCanvasTabs,
+  projectCanvasesFromCanvasTabs,
+  switchCanvasTabState,
+  type CanvasTabSnapshot,
+  type CanvasTabState,
+} from "./projectCanvasState"
+import {
   CanvasSurface,
   MiniMap,
   canvasSizeFromElement,
@@ -123,6 +133,8 @@ import {
   saveProjectPackageToRuntime,
   setActiveProjectInRuntime,
   subscribeProjectPackageRuntimeMenus,
+  type RestoreProjectPackageHandler,
+  type RestoreProjectPackageOptions,
   watchDesktopEngineStatus,
 } from "./appRuntimeEffects"
 import {
@@ -188,10 +200,8 @@ type AppTheme = "light" | "dark"
 type ProjectAutosaveInput = {
   project: ProjectSummary
   files: SourceFile[]
-  nodes: FlowNode[]
-  edges: FlowEdge[]
-  barriers: FlowBarrier[]
-  viewport: CanvasViewport
+  canvases: ReturnType<typeof projectCanvasesFromCanvasTabs>
+  activeCanvasId: string
 }
 
 type ProjectRestoreRuntimeState = {
@@ -206,22 +216,6 @@ function initialAppTheme(): AppTheme {
   return window.localStorage.getItem("rxnflow-theme") === "dark" ? "dark" : "light"
 }
 
-export type CanvasTabSnapshot = {
-  nodes: FlowNode[]
-  edges: FlowEdge[]
-  barriers: FlowBarrier[]
-  viewport: CanvasViewport
-  selectedNodeIds: string[]
-  selectedEdgeIds: string[]
-  selectedBarrierIds: string[]
-}
-
-type CanvasTabState = {
-  id: string
-  label: string
-  snapshot: CanvasTabSnapshot | null
-}
-
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
@@ -233,6 +227,7 @@ export function App() {
   const autosaveInFlightRef = useRef(false)
   const autosaveQueuedRef = useRef(false)
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
+  const restoreProjectPackageRef = useRef<RestoreProjectPackageHandler | null>(null)
   const [projects, setProjects] = useState(initialProjects)
   const [projectWorkspaces, setProjectWorkspaces] = useState<Record<string, ProjectWorkspaceSnapshot>>(() => initialProjectWorkspaces(defaultCanvasViewport(null)))
   const [activeProjectId, setActiveProjectId] = useState(initialProjects[0].id)
@@ -255,7 +250,7 @@ export function App() {
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>("inspector")
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
-  const [canvasTabs, setCanvasTabs] = useState<CanvasTabState[]>([{ id: "canvas-1", label: "画布 1", snapshot: null }])
+  const [canvasTabs, setCanvasTabs] = useState<CanvasTabState[]>(() => initialCanvasTabs())
   const [activeCanvasTabId, setActiveCanvasTabId] = useState("canvas-1")
   const [keyboardEdgeSourceId, setKeyboardEdgeSourceId] = useState<string | null>(null)
   const [exportOptions, setExportOptions] = useState<ReportExportOptions>({ ...defaultReportExportOptions })
@@ -317,14 +312,26 @@ export function App() {
   const structurePreviewNode = structurePreviewNodeId ? nodes.find((node) => node.id === structurePreviewNodeId) ?? null : null
   const structureEditorNode = structureEditorNodeId ? nodes.find((node) => node.id === structureEditorNodeId) ?? null : null
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0]
-  const autosaveInput = useMemo<ProjectAutosaveInput>(() => ({
-    project: activeProject,
-    files,
+  const currentCanvasSnapshot = useMemo(() => canvasTabSnapshotFromState({
     nodes,
     edges,
     barriers,
     viewport,
-  }), [activeProject, barriers, edges, files, nodes, viewport])
+    selectedNodeIds,
+    selectedEdgeIds,
+    selectedBarrierIds,
+  }), [barriers, edges, nodes, selectedBarrierIds, selectedEdgeIds, selectedNodeIds, viewport])
+  const projectCanvases = useMemo(() => projectCanvasesFromCanvasTabs({
+    tabs: canvasTabs,
+    activeTabId: activeCanvasTabId,
+    activeSnapshot: currentCanvasSnapshot,
+  }), [activeCanvasTabId, canvasTabs, currentCanvasSnapshot])
+  const autosaveInput = useMemo<ProjectAutosaveInput>(() => ({
+    project: activeProject,
+    files,
+    canvases: projectCanvases,
+    activeCanvasId: activeCanvasTabId,
+  }), [activeCanvasTabId, activeProject, files, projectCanvases])
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes])
   const energyRowsSignature = useMemo(
@@ -369,6 +376,8 @@ export function App() {
 
   const currentProjectWorkspaceSnapshot = useCallback(() => projectWorkspaceSnapshot({
     files,
+    canvases: projectCanvases,
+    activeCanvasId: activeCanvasTabId,
     nodes,
     edges,
     barriers,
@@ -383,31 +392,18 @@ export function App() {
     viewMode,
     inspectorMode,
   }), [
-    barriers,
-    edges,
     energyDisplayOptions,
     files,
     inspectorMode,
     lastSelectedFileId,
-    nodes,
-    selectedBarrierIds,
-    selectedEdgeIds,
     selectedFileId,
     selectedFileIds,
-    selectedNodeIds,
+    activeCanvasTabId,
+    projectCanvases,
     viewMode,
-    viewport,
   ])
 
-  const currentCanvasTabSnapshot = useCallback((): CanvasTabSnapshot => ({
-    nodes,
-    edges,
-    barriers,
-    viewport,
-    selectedNodeIds,
-    selectedEdgeIds,
-    selectedBarrierIds,
-  }), [barriers, edges, nodes, selectedBarrierIds, selectedEdgeIds, selectedNodeIds, viewport])
+  const currentCanvasTabSnapshot = useCallback((): CanvasTabSnapshot => currentCanvasSnapshot, [currentCanvasSnapshot])
 
   const applyCanvasTabSnapshot = useCallback((snapshot: CanvasTabSnapshot) => {
     setNodes(snapshot.nodes)
@@ -421,18 +417,21 @@ export function App() {
   }, [clearEditHistory])
 
   const switchCanvasTab = useCallback((tabId: string) => {
-    if (tabId === activeCanvasTabId) return
     const currentSnapshot = currentCanvasTabSnapshot()
-    const nextTab = canvasTabs.find((tab) => tab.id === tabId)
-    if (!nextTab) return
-    setCanvasTabs((tabs) => tabs.map((tab) => tab.id === activeCanvasTabId ? { ...tab, snapshot: currentSnapshot } : tab))
-    setActiveCanvasTabId(tabId)
-    applyCanvasTabSnapshot(nextTab.snapshot ?? currentSnapshot)
+    const transition = switchCanvasTabState({
+      tabs: canvasTabs,
+      activeTabId: activeCanvasTabId,
+      nextTabId: tabId,
+      currentSnapshot,
+    })
+    if (!transition) return
+    setCanvasTabs(transition.tabs)
+    setActiveCanvasTabId(transition.activeTabId)
+    applyCanvasTabSnapshot(transition.snapshotToApply)
   }, [activeCanvasTabId, applyCanvasTabSnapshot, canvasTabs, currentCanvasTabSnapshot])
 
   const createCanvasTab = useCallback(() => {
     const currentSnapshot = currentCanvasTabSnapshot()
-    const tabIndex = canvasTabs.length + 1
     const id = `canvas-${Date.now()}`
     const blankSnapshot: CanvasTabSnapshot = {
       nodes: [],
@@ -443,14 +442,18 @@ export function App() {
       selectedEdgeIds: [],
       selectedBarrierIds: [],
     }
-    setCanvasTabs((tabs) => [
-      ...tabs.map((tab) => tab.id === activeCanvasTabId ? { ...tab, snapshot: currentSnapshot } : tab),
-      { id, label: `画布 ${tabIndex}`, snapshot: blankSnapshot },
-    ])
-    setActiveCanvasTabId(id)
-    applyCanvasTabSnapshot(blankSnapshot)
+    const transition = createCanvasTabState({
+      tabs: canvasTabs,
+      activeTabId: activeCanvasTabId,
+      currentSnapshot,
+      blankSnapshot,
+      nextId: id,
+    })
+    setCanvasTabs(transition.tabs)
+    setActiveCanvasTabId(transition.activeTabId)
+    applyCanvasTabSnapshot(transition.snapshotToApply)
     setViewMode("canvas")
-  }, [activeCanvasTabId, applyCanvasTabSnapshot, canvasTabs.length, currentCanvasTabSnapshot])
+  }, [activeCanvasTabId, applyCanvasTabSnapshot, canvasTabs, currentCanvasTabSnapshot])
 
   useEffect(() => {
     projectRestoreStateRef.current = {
@@ -462,10 +465,14 @@ export function App() {
   }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, projects])
 
   const applyProjectWorkspaceSnapshot = useCallback((snapshot: ProjectWorkspaceSnapshot) => {
+    setCanvasTabs(canvasTabsFromProjectCanvases(snapshot.canvases))
+    setActiveCanvasTabId(snapshot.activeCanvasId)
     applyProjectWorkspaceSnapshotState(appStateSetters, snapshot, clearEditHistory)
   }, [appStateSetters, clearEditHistory])
 
   const applyProjectTransition = useCallback((transition: ProjectTransitionApplication) => {
+    setCanvasTabs(canvasTabsFromProjectCanvases(transition.activeSnapshot.canvases))
+    setActiveCanvasTabId(transition.activeSnapshot.activeCanvasId)
     applyProjectTransitionState(appStateSetters, transition, clearEditHistory)
   }, [appStateSetters, clearEditHistory])
 
@@ -726,10 +733,8 @@ export function App() {
     const serialized = serializeProjectPackage({
       project: transition.project,
       files: emptySnapshot.files,
-      nodes: emptySnapshot.nodes,
-      edges: emptySnapshot.edges,
-      barriers: emptySnapshot.barriers,
-      viewport: emptySnapshot.viewport,
+      canvases: emptySnapshot.canvases,
+      activeCanvasId: emptySnapshot.activeCanvasId,
     }, "desktop")
 
     return desktopApi.createProjectFolder({
@@ -923,7 +928,7 @@ export function App() {
   const restoreProjectPackage = useCallback((
     content: string,
     validation?: ProjectValidationPayload | null,
-    options?: { replaceProjects?: boolean },
+    options?: RestoreProjectPackageOptions,
   ) => {
     const restoreState = projectRestoreStateRef.current ?? {
       projects,
@@ -950,8 +955,14 @@ export function App() {
       activeProjectId: transition.activeProjectId,
       activeSnapshot: transition.activeSnapshot,
     }
+    setActiveProjectInRuntime({
+      desktopApi: window.rxnflowDesktop,
+      projectId: transition.activeProjectId,
+      projectDirectory: options?.projectDirectory,
+    })
     applyProjectTransition(transition)
   }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects])
+  restoreProjectPackageRef.current = restoreProjectPackage
 
   const handleProjectInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0]
@@ -977,13 +988,11 @@ export function App() {
       desktopApi: window.rxnflowDesktop,
       project: activeProject,
       files,
-      nodes,
-      edges,
-      barriers,
-      viewport,
+      canvases: projectCanvases,
+      activeCanvasId: activeCanvasTabId,
       setProjectValidation,
     })
-  }, [activeProject, barriers, edges, files, nodes, viewport])
+  }, [activeCanvasTabId, activeProject, files, projectCanvases])
 
   useEffect(() => {
     autosaveInputRef.current = autosaveInput
@@ -1050,8 +1059,10 @@ export function App() {
 
   useEffect(() => restoreStartupProjectFromRuntime({
     desktopApi: window.rxnflowDesktop,
-    restoreProjectPackage,
-  }), [restoreProjectPackage])
+    restoreProjectPackage: (content, validation, options) => {
+      restoreProjectPackageRef.current?.(content, validation, options)
+    },
+  }), [])
 
   useEffect(() => watchDesktopEngineStatus({
     desktopApi: window.rxnflowDesktop,
@@ -1496,10 +1507,8 @@ function projectAutosaveKey(input: ProjectAutosaveInput): string {
   return JSON.stringify({
     project: input.project,
     files: input.files,
-    nodes: input.nodes,
-    edges: input.edges,
-    barriers: input.barriers,
-    viewport: input.viewport,
+    canvases: input.canvases,
+    activeCanvasId: input.activeCanvasId,
   })
 }
 
