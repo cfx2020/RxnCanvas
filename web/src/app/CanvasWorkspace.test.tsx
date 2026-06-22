@@ -79,6 +79,7 @@ describe("CanvasWorkspace", () => {
         onUpdateBarrierLabel={vi.fn()}
         onSetNodeCoefficient={vi.fn()}
         onSetRelativeEnergyZero={vi.fn()}
+        onOpenStructure={vi.fn()}
         onShowNodeSource={vi.fn()}
         onRenameNode={vi.fn()}
         onRawFileDrop={vi.fn()}

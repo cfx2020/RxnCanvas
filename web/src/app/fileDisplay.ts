@@ -29,6 +29,8 @@ export type SourceFileSelectionTransition = {
   selectedFileId: string
   selectedFileIds: string[]
   lastSelectedFileId: string
+  selectedNodeIds: string[]
+  selectedEdgeIds: string[]
   selectedBarrierIds: string[]
   keyboardEdgeSourceId: null
   inspectorMode: "inspector"
@@ -171,6 +173,8 @@ export function selectSourceFileTransition({
       options,
     }),
     lastSelectedFileId: fileId,
+    selectedNodeIds: [],
+    selectedEdgeIds: [],
     selectedBarrierIds: [],
     keyboardEdgeSourceId: null,
     inspectorMode: "inspector",

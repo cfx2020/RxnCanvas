@@ -531,9 +531,9 @@ export function App() {
   )
 
   useEffect(() => subscribeCanvasWheel({
-    canvas: canvasRef.current,
+    canvas: viewMode === "canvas" ? canvasRef.current : null,
     setViewport,
-  }), [])
+  }), [activeCanvasTabId, viewMode])
 
   const handleCanvasPointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
@@ -1425,6 +1425,7 @@ export function App() {
                   onUpdateBarrierLabel={updateBarrierLabel}
                   onSetNodeCoefficient={updateNodeCoefficient}
                   onSetRelativeEnergyZero={setRelativeEnergyZeroFromNode}
+                  onOpenStructure={(nodeId) => setStructurePreviewNodeId(nodeId)}
                   onShowNodeSource={showNodeSourceDetails}
                   onRenameNode={renameNode}
                   onRawFileDrop={handleCanvasRawFileDrop}
@@ -1479,6 +1480,11 @@ export function App() {
           node={structurePreviewNode}
           file={sourceFileForNode(structurePreviewNode, files)}
           onClose={() => setStructurePreviewNodeId(null)}
+          onEdit2DStructure={(nodeId) => {
+            setStructurePreviewNodeId(null)
+            setStructureEditorNodeId(nodeId)
+          }}
+          onReset2DStructure={resetNodeManualStructure}
         />
       ) : null}
       {structureEditorNode ? (
@@ -1629,13 +1635,8 @@ function buildEnergyRowsSignature(
 function EngineStatusPill({ status }: { status: DesktopEngineStatus | null }) {
   const ready = status?.ok === true && status.data.status === "ready"
   const browserPreview = status?.ok === false && status.error.code === "browser_preview"
-  const label = ready
-    ? "Local engine"
-    : browserPreview
-      ? "Browser preview"
-      : status === null
-        ? "Checking engine"
-        : "Engine offline"
+  if (status === null || ready || browserPreview) return null
+  const label = "Engine offline"
 
   return (
     <span

@@ -25,11 +25,15 @@ describe("appSelectionAppliers", () => {
       selectedFileId: "file-a",
       selectedFileIds: ["file-a"],
       lastSelectedFileId: "file-a",
+      selectedNodeIds: [],
+      selectedEdgeIds: [],
       selectedBarrierIds: [],
       keyboardEdgeSourceId: null,
       inspectorMode: "inspector",
     })
     expect(bag.setSelectedFileId).toHaveBeenCalledWith("file-a")
+    expect(bag.setSelectedNodeIds).toHaveBeenCalledWith([])
+    expect(bag.setSelectedEdgeIds).toHaveBeenCalledWith([])
     expect(bag.setKeyboardEdgeSourceId).toHaveBeenCalledWith(null)
     expect(bag.setInspectorMode).toHaveBeenCalledWith("inspector")
   })

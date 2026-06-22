@@ -6,11 +6,12 @@ type Molecule3DmolViewerProps = {
   atoms: CoordinateAtom[]
   formula: string
   sourceName: string
+  compact?: boolean
 }
 
 type ViewerStatus = "loading" | "ready" | "unavailable" | "error"
 
-export function Molecule3DmolViewer({ atoms, formula, sourceName }: Molecule3DmolViewerProps) {
+export function Molecule3DmolViewer({ atoms, formula, sourceName, compact = false }: Molecule3DmolViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<ViewerStatus>("loading")
   const xyz = useMemo(() => xyzFromAtoms(atoms, `${sourceName} ${formula}`), [atoms, formula, sourceName])
@@ -71,20 +72,22 @@ export function Molecule3DmolViewer({ atoms, formula, sourceName }: Molecule3Dmo
 
   if (atoms.length === 0) {
     return (
-      <div className="structure-orbit molecule-3dmol-empty" aria-label="Coordinate preview unavailable">
-        <strong>No 3D coordinates in this source</strong>
-        <span>Import Gaussian / ORCA / XYZ files with coordinate blocks to view them in 3Dmol.</span>
+      <div className={compact ? "structure-orbit molecule-3dmol-empty molecule-3dmol-compact" : "structure-orbit molecule-3dmol-empty"} aria-label="Coordinate preview unavailable">
+        <strong>{compact ? "No 3D coordinates" : "No 3D coordinates in this source"}</strong>
+        <span>{compact ? "Import coordinates to preview." : "Import Gaussian / ORCA / XYZ files with coordinate blocks to view them in 3Dmol."}</span>
       </div>
     )
   }
 
   return (
-    <div className="structure-orbit molecule-3dmol-shell">
-      <div className="molecule-3dmol-hud">
-        <span>3Dmol.js</span>
-        <span>{atoms.length} atoms</span>
-        <span>Mouse drag / wheel</span>
-      </div>
+    <div className={compact ? "structure-orbit molecule-3dmol-shell molecule-3dmol-compact" : "structure-orbit molecule-3dmol-shell"}>
+      {compact ? null : (
+        <div className="molecule-3dmol-hud">
+          <span>3Dmol.js</span>
+          <span>{atoms.length} atoms</span>
+          <span>Mouse drag / wheel</span>
+        </div>
+      )}
       {status === "loading" ? <div className="molecule-3dmol-status">Loading 3Dmol viewer…</div> : null}
       {status === "unavailable" ? <div className="molecule-3dmol-status">WebGL unavailable in this environment.</div> : null}
       {status === "error" ? <div className="molecule-3dmol-status">3Dmol failed to render this structure.</div> : null}

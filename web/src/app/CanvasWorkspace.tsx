@@ -129,6 +129,7 @@ export function CanvasSurface({
   onUpdateBarrierLabel,
   onSetNodeCoefficient,
   onSetRelativeEnergyZero,
+  onOpenStructure,
   onShowNodeSource,
   onRenameNode,
   onRawFileDrop,
@@ -166,6 +167,7 @@ export function CanvasSurface({
   onUpdateBarrierLabel: (barrierId: string, label: string | null) => void
   onSetNodeCoefficient: (nodeId: string, coefficient: number) => void
   onSetRelativeEnergyZero: (nodeId: string) => void
+  onOpenStructure: (nodeId: string) => void
   onShowNodeSource: (nodeId: string) => void
   onRenameNode: (nodeId: string, label: string) => void
   onRawFileDrop: (drop: CanvasRawFileDrop) => void
@@ -287,6 +289,7 @@ export function CanvasSurface({
             onSelectNode={onSelectNode}
             onSetCoefficient={onSetNodeCoefficient}
             onSetRelativeEnergyZero={onSetRelativeEnergyZero}
+            onOpenStructure={onOpenStructure}
             onShowNodeSource={onShowNodeSource}
             onRenameNode={onRenameNode}
           />
@@ -340,6 +343,7 @@ function ReactionNodeCard({
   onSelectNode,
   onSetCoefficient,
   onSetRelativeEnergyZero,
+  onOpenStructure,
   onShowNodeSource,
   onRenameNode,
 }: {
@@ -362,6 +366,7 @@ function ReactionNodeCard({
   onSelectNode: (nodeId: string, mode?: GraphSelectionMode) => void
   onSetCoefficient: (nodeId: string, coefficient: number) => void
   onSetRelativeEnergyZero: (nodeId: string) => void
+  onOpenStructure: (nodeId: string) => void
   onShowNodeSource: (nodeId: string) => void
   onRenameNode: (nodeId: string, label: string) => void
 }) {
@@ -466,7 +471,20 @@ function ReactionNodeCard({
               autoFocus
             />
           ) : (
-            <strong>{node.label}</strong>
+            <button
+              type="button"
+              className="node-title-button"
+              aria-label={`Rename ${node.label}`}
+              title="Rename node label"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                setRenameEditing(true)
+              }}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              {node.label}
+            </button>
           )}
         </div>
         <span
@@ -475,7 +493,6 @@ function ReactionNodeCard({
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
-          <em>{nodeKindAbbreviation(node.kind)}</em>
           <button
             type="button"
             className={structureCollapsed ? "node-preview-toggle is-collapsed" : "node-preview-toggle"}
@@ -533,9 +550,16 @@ function ReactionNodeCard({
               </span>
             ) : null}
           </span>
+          <em>{nodeKindAbbreviation(node.kind)}</em>
         </span>
       </div>
-      {structureCollapsed ? null : <NodeStructurePreview node={node} coordinatePreview={coordinatePreview} />}
+      {structureCollapsed ? null : (
+        <NodeStructurePreview
+          node={node}
+          coordinatePreview={coordinatePreview}
+          onOpenStructure={onOpenStructure}
+        />
+      )}
       <div className="node-energy-strip" title={`${relativeEnergySymbol} relative energy`}>
         <span>{relativeEnergySymbol}</span>
         <strong className={energyBaseline ? "node-relative-energy is-zero" : "node-relative-energy"}>
@@ -604,9 +628,9 @@ function ReactionNodeCard({
         onPointerDown={(event) => onStartBarrierAnnotation(event, node.id)}
         onClick={(event) => event.stopPropagation()}
       >
-        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
-          <path className="barrier-activation-icon" d="M3.5 17.2 C7.2 17.2 7.9 7.2 11.2 7.2 C14.2 7.2 14.6 16.7 20.5 16.7" />
-          <path className="barrier-activation-dot" d="M16.8 10.6 L20.5 16.7 L13.5 15.2" />
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path className="barrier-activation-axis" d="M3.5 17.4 H20.5" />
+          <path className="barrier-activation-icon" d="M4.2 16.7 C7.2 16.7 7.4 7.1 11.8 7.1 C16.1 7.1 16.5 16.7 19.8 16.7" />
         </svg>
       </button>
     </div>
@@ -616,14 +640,32 @@ function ReactionNodeCard({
 function NodeStructurePreview({
   node,
   coordinatePreview,
+  onOpenStructure,
 }: {
   node: FlowNode
   coordinatePreview: CoordinatePreview | null
+  onOpenStructure: (nodeId: string) => void
 }) {
   const atoms = coordinatePreview?.atoms ?? []
+  const openStructureButton = (
+    <button
+      type="button"
+      className="node-structure-fullscreen"
+      aria-label={`Open 3D Structure for ${node.label}`}
+      title={`Open 3D Structure for ${node.label}`}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation()
+        onOpenStructure(node.id)
+      }}
+    >
+      <Maximize2 size={13} aria-hidden="true" />
+    </button>
+  )
   if (atoms.length === 0 && !node.manualStructureMolfile && !node.manualStructureSvg) {
     return (
-      <div className="node-structure-preview node-structure-preview-empty" role="img" aria-label={`${node.label} formula-only structure preview`}>
+      <div className="node-structure-preview node-structure-preview-empty" role="group" aria-label={`${node.label} formula-only structure preview`}>
+        {openStructureButton}
         <strong>2D pending</strong>
         <span>No layout</span>
         <span className="node-qm-badge">{formatChargeMultiplicityBadge(node)}</span>
@@ -644,6 +686,7 @@ function NodeStructurePreview({
         className="node-structure-preview-art node-structure-2d"
         emptyText="2D depiction pending"
       />
+      {openStructureButton}
       <span className="node-qm-badge">{formatChargeMultiplicityBadge(node)}</span>
     </div>
   )

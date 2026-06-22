@@ -65,8 +65,6 @@ export const InspectorPanel = memo(function InspectorPanel({
               file={node ? sourceFileForNode(node, files) : file}
               energyDisplayOptions={energyDisplayOptions}
               onOpenStructure={onOpenStructure}
-              onEdit2DStructure={onEdit2DStructure}
-              onReset2DStructure={onReset2DStructure}
               onReviewCandidates={onReviewCandidates}
               onOpenSourceFile={onOpenSourceFile}
             />}
@@ -234,8 +232,6 @@ function NodeInspector({
   file,
   energyDisplayOptions,
   onOpenStructure,
-  onEdit2DStructure,
-  onReset2DStructure,
   onReviewCandidates,
   onOpenSourceFile,
 }: {
@@ -244,11 +240,10 @@ function NodeInspector({
   file: SourceFile | null
   energyDisplayOptions: EnergyDisplayOptions
   onOpenStructure: (nodeId: string) => void
-  onEdit2DStructure: (nodeId: string) => void
-  onReset2DStructure: (nodeId: string) => void
   onReviewCandidates: (fileId: string) => void
   onOpenSourceFile: (fileId: string) => void | Promise<void>
 }) {
+  const coordinatePreview = node ? sourceCoordinatePreview(node, file) : null
   if (!node) {
     if (file) {
       return (
@@ -277,16 +272,16 @@ function NodeInspector({
   }
 
   return (
-    <>
-      <div className="selected-title">
-        <div>
-          <span>Selected Node</span>
-          <strong>{node.label}</strong>
+    <div className="node-inspector-stack">
+      <section className="node-panel-summary" aria-label="Node summary">
+        <div className="node-panel-section-heading">
+          <div>
+            <span>Identity</span>
+            <strong>{node.label}</strong>
+          </div>
+          <Box size={17} aria-hidden="true" />
         </div>
-        <Box size={18} />
-      </div>
-
-      <dl className="detail-list">
+        <dl className="node-summary-grid">
         <div>
           <dt>Type</dt>
           <dd>{node.kind}</dd>
@@ -304,41 +299,32 @@ function NodeInspector({
           <dd>{node.solvent}</dd>
         </div>
       </dl>
-
-      <section className="structure-preview">
-        <div className="section-title structure-section-title">
-          <span>Structure Preview</span>
-          <span className="structure-preview-actions">
-            <button type="button" aria-label={`Edit 2D structure for ${node.label}`} onClick={() => onEdit2DStructure(node.id)}>
-              <PencilLine size={15} />
-              Edit 2D
-            </button>
-            {node.manualStructureKet || node.manualStructureMolfile || node.manualStructureCdxml || node.manualStructureSvg ? (
-              <button type="button" aria-label={`Reset 2D structure for ${node.label}`} onClick={() => onReset2DStructure(node.id)}>
-                <RotateCcw size={15} />
-                Reset 2D
-              </button>
-            ) : null}
-            <button type="button" aria-label="Open 3D Structure" onClick={() => onOpenStructure(node.id)}>
-              <Maximize2 size={15} />
-              3D Structure
-            </button>
-          </span>
-        </div>
-        <Molecule2DDepiction
-          atoms={sourceCoordinatePreview(node, file)?.atoms ?? []}
-          formula={node.formula}
-          manualMolfile={node.manualStructureMolfile}
-          manualSvg={node.manualStructureSvg}
-          label={node.label}
-          width={260}
-          height={132}
-          className="structure-sketch structure-2d-depiction"
-          emptyText="2D depiction unavailable"
-        />
       </section>
 
-      <section className="source-parse-summary" aria-label="Source parse summary">
+      <section className="node-panel-card node-structure-card" aria-label="Structure views">
+        <div className="node-panel-section-heading">
+          <div>
+            <span>Structure</span>
+            <strong>Preview</strong>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="node-structure-open-button"
+          aria-label="Open 3D Structure"
+          onClick={() => onOpenStructure(node.id)}
+        >
+          <span className="node-structure-open-icon" aria-hidden="true">
+            <Maximize2 size={15} />
+          </span>
+          <span className="node-structure-open-copy">
+            <strong>Open structure</strong>
+            <em>2D + 3D preview</em>
+          </span>
+        </button>
+      </section>
+
+      <section className="node-inspector-metrics" aria-label="Node chemistry summary">
         <div>
           <span>Charge</span>
           <strong>{node.charge ?? "unknown"}</strong>
@@ -347,15 +333,18 @@ function NodeInspector({
           <span>Spin</span>
           <strong>{node.spinMultiplicity ?? "unknown"}</strong>
         </div>
-        <div>
+        <div className="is-wide">
           <span>Coordinates</span>
-          <strong>{coordinateSummaryLabel(sourceCoordinatePreview(node, file))}</strong>
+          <strong>{coordinateSummaryLabel(coordinatePreview)}</strong>
         </div>
       </section>
 
-      <section className="energy-table">
-        <div className="section-title">
-          <span>Energetics</span>
+      <section className="node-panel-card node-energy-card" aria-label="Node energetics">
+        <div className="node-panel-section-heading">
+          <div>
+            <span>Energy</span>
+            <strong>Energetics</strong>
+          </div>
           <span className="section-badge" aria-label={`Energy unit ${node.energyUnit}`}>{node.energyUnit}</span>
         </div>
         <div className="energy-row">
@@ -372,12 +361,59 @@ function NodeInspector({
         </div>
       </section>
 
-      <NodeSourceSummary
+      <NodeSourceBrief
         file={file}
         onReviewCandidates={onReviewCandidates}
         onOpenSourceFile={onOpenSourceFile}
       />
-    </>
+    </div>
+  )
+}
+
+function NodeSourceBrief({
+  file,
+  onReviewCandidates,
+  onOpenSourceFile,
+}: {
+  file: SourceFile | null
+  onReviewCandidates: (fileId: string) => void
+  onOpenSourceFile: (fileId: string) => void | Promise<void>
+}) {
+  if (!file) {
+    return (
+      <section className="node-source-brief is-empty" aria-label="Source inspector">
+        <FilePlus2 size={16} aria-hidden="true" />
+        <strong>No source linked</strong>
+      </section>
+    )
+  }
+  const canOpenRaw = Boolean(file.storedPath || file.sourcePath)
+  const candidateCount = file.parse?.objectCount ?? file.parse?.candidates?.length ?? 0
+
+  return (
+    <section className="node-source-brief" aria-label="Source inspector">
+      <div>
+        <span>Source</span>
+        <strong>{file.name}</strong>
+        <em>{file.kind} · {file.status}</em>
+      </div>
+      <span className="node-source-actions">
+        {candidateCount > 1 ? (
+          <button type="button" aria-label="Review candidates" title="Review candidates" onClick={() => onReviewCandidates(file.id)}>
+            {candidateCount}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          aria-label="Open raw log"
+          disabled={!canOpenRaw}
+          title={canOpenRaw ? "Open raw log in the system app" : "No project copy or source path is available"}
+          onClick={() => void onOpenSourceFile(file.id)}
+        >
+          <ExternalLink size={14} aria-hidden="true" />
+        </button>
+      </span>
+    </section>
   )
 }
 
@@ -590,10 +626,14 @@ export function StructurePreviewDialog({
   node,
   file,
   onClose,
+  onEdit2DStructure,
+  onReset2DStructure,
 }: {
   node: FlowNode
   file: SourceFile | null
   onClose: () => void
+  onEdit2DStructure?: (nodeId: string) => void
+  onReset2DStructure?: (nodeId: string) => void
 }) {
   const coordinatePreview = sourceCoordinatePreview(node, file)
   const elementLabels = coordinatePreview?.elements.length
@@ -601,20 +641,74 @@ export function StructurePreviewDialog({
     : formulaElementsFromText(node.formula)
   const visibleAtoms = elementLabels.length > 0 ? elementLabels : ["C", "H", "O"]
   const coordinateAtoms = coordinatePreview?.atoms?.length ? coordinatePreview.atoms : []
+  const hasManualStructure = Boolean(node.manualStructureKet || node.manualStructureMolfile || node.manualStructureCdxml || node.manualStructureSvg)
+
+  const edit2DStructure = () => {
+    onEdit2DStructure?.(node.id)
+    onClose()
+  }
 
   return (
     <div className="structure-preview-scrim">
       <section className="structure-preview-dialog" role="dialog" aria-modal="true" aria-label="3D Structure">
         <header className="structure-preview-header">
           <div>
-            <span>3D Structure</span>
+            <span>Structure Preview</span>
             <strong>{node.label}</strong>
           </div>
           <button type="button" aria-label="Close 3D Structure" onClick={onClose}>
             <ChevronDown size={18} />
           </button>
         </header>
-        <Molecule3DmolViewer atoms={coordinateAtoms} formula={node.formula} sourceName={file?.name ?? node.label} />
+        <div className="structure-preview-body">
+          <article className="structure-dialog-pane structure-dialog-pane-2d">
+            <header>
+              <span>2D structure</span>
+              <span className="structure-dialog-actions">
+                {hasManualStructure ? (
+                  <button
+                    type="button"
+                    className="structure-dialog-action"
+                    aria-label={`Reset 2D structure for ${node.label}`}
+                    title={`Reset 2D structure for ${node.label}`}
+                    onClick={() => onReset2DStructure?.(node.id)}
+                  >
+                    <RotateCcw size={14} aria-hidden="true" />
+                  </button>
+                ) : null}
+                {onEdit2DStructure ? (
+                  <button
+                    type="button"
+                    className="structure-dialog-action"
+                    aria-label={`Edit 2D structure for ${node.label}`}
+                    title={`Edit 2D structure for ${node.label}`}
+                    onClick={edit2DStructure}
+                  >
+                    <PencilLine size={14} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </span>
+            </header>
+            <Molecule2DDepiction
+              atoms={coordinateAtoms}
+              formula={node.formula}
+              manualMolfile={node.manualStructureMolfile}
+              manualSvg={node.manualStructureSvg}
+              label={node.label}
+              width={264}
+              height={236}
+              className="structure-dialog-2d-depiction"
+              emptyText="2D unavailable"
+            />
+          </article>
+          <article className="structure-dialog-pane structure-dialog-pane-3d">
+            <header>
+              <span>3D structure</span>
+              <em>{coordinateAtoms.length ? `${coordinateAtoms.length} atoms` : "No coordinates"}</em>
+            </header>
+            <Molecule3DmolViewer atoms={coordinateAtoms} formula={node.formula} sourceName={file?.name ?? node.label} />
+          </article>
+        </div>
         <dl className="detail-list">
           <div>
             <dt>Formula</dt>

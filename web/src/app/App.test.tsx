@@ -115,7 +115,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Workspace actions" })).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "Reaction flow workspace" })).toBeInTheDocument()
-    expect(await screen.findByLabelText("Engine status: Browser preview")).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Engine status:/)).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Start edge from TS1 \(Endo\)/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Open 3D Structure" })).toBeInTheDocument()
@@ -223,6 +223,32 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(transformScale(world.style.transform)).toBeGreaterThan(initialScale)
+    })
+
+    const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Table view" }))
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Canvas view" }))
+
+    const remountedSurface = container.querySelector(".canvas-surface") as HTMLElement
+    const remountedWorld = container.querySelector(".canvas-world") as HTMLElement
+    vi.spyOn(remountedSurface, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 800,
+      width: 1000,
+      height: 800,
+      toJSON: () => ({}),
+    } as DOMRect)
+    const remountedTranslate = transformTranslate(remountedWorld.style.transform)
+    fireEvent.wheel(remountedSurface, { deltaX: -12, deltaY: 36, clientX: 700, clientY: 400, cancelable: true })
+    await waitFor(() => {
+      expect(transformTranslate(remountedWorld.style.transform)).toEqual({
+        x: remountedTranslate.x - 12,
+        y: remountedTranslate.y + 36,
+      })
     })
   })
 
@@ -542,16 +568,16 @@ describe("App", () => {
     render(<App />)
 
     const tsNode = screen.getByRole("button", { name: "Node TS1 (Endo)" })
-    expect(within(tsNode).getByRole("img", { name: "TS1 (Endo) formula-only structure preview" })).toBeInTheDocument()
+    expect(within(tsNode).getByRole("group", { name: "TS1 (Endo) formula-only structure preview" })).toBeInTheDocument()
 
     fireEvent.click(within(tsNode).getByRole("button", { name: "Collapse structure preview for TS1 (Endo)" }))
 
-    expect(within(tsNode).queryByRole("img", { name: "TS1 (Endo) formula-only structure preview" })).not.toBeInTheDocument()
+    expect(within(tsNode).queryByRole("group", { name: "TS1 (Endo) formula-only structure preview" })).not.toBeInTheDocument()
     expect(within(tsNode).getByRole("button", { name: "Show structure preview for TS1 (Endo)" })).toHaveAttribute("aria-expanded", "false")
 
     fireEvent.click(within(tsNode).getByRole("button", { name: "Show structure preview for TS1 (Endo)" }))
 
-    expect(within(tsNode).getByRole("img", { name: "TS1 (Endo) formula-only structure preview" })).toBeInTheDocument()
+    expect(within(tsNode).getByRole("group", { name: "TS1 (Endo) formula-only structure preview" })).toBeInTheDocument()
     expect(within(tsNode).getByRole("button", { name: "Collapse structure preview for TS1 (Endo)" })).toHaveAttribute("aria-expanded", "true")
   })
 
@@ -1226,8 +1252,7 @@ describe("App", () => {
 
     render(<App />)
 
-    expect(await screen.findByLabelText("Engine status: Local engine")).toBeInTheDocument()
-    expect(getEngineStatus).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(getEngineStatus).toHaveBeenCalledTimes(1))
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(screen.getByRole("button", { name: "Import files" }))
@@ -1353,7 +1378,6 @@ describe("App", () => {
     })
 
     render(<App />)
-    expect(await screen.findByLabelText("Engine status: Local engine")).toBeInTheDocument()
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(screen.getByRole("button", { name: "Export" }))
@@ -1405,7 +1429,7 @@ describe("App", () => {
     })
 
     render(<App />)
-    expect(await screen.findByLabelText("Engine status: Local engine")).toBeInTheDocument()
+    await waitFor(() => expect(openProjectContentCallback).toBeTypeOf("function"))
 
     const packageContent = JSON.stringify({
       schemaVersion: 1,
@@ -1508,7 +1532,7 @@ describe("App", () => {
     })
 
     render(<App />)
-    expect(await screen.findByLabelText("Engine status: Local engine")).toBeInTheDocument()
+    await waitFor(() => expect(openProjectContentCallback).toBeTypeOf("function"))
 
     const irPackageContent = JSON.stringify({
       schemaVersion: 1,

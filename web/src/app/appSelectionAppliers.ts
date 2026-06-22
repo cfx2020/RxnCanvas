@@ -13,6 +13,8 @@ export function applySourceFileSelectionState(
   transition: SourceFileSelectionTransition,
 ): void {
   setters.setKeyboardEdgeSourceId(transition.keyboardEdgeSourceId)
+  setters.setSelectedNodeIds(transition.selectedNodeIds)
+  setters.setSelectedEdgeIds(transition.selectedEdgeIds)
   setters.setSelectedFileId(transition.selectedFileId)
   setters.setSelectedFileIds(transition.selectedFileIds)
   setters.setLastSelectedFileId(transition.lastSelectedFileId)

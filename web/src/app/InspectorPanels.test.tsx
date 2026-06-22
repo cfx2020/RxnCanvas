@@ -98,7 +98,7 @@ describe("InspectorPanels", () => {
 
     render(
       <InspectorPanel
-        node={baseNode}
+        node={null}
         edge={null}
         barrier={null}
         nodeMap={new Map([[baseNode.id, baseNode]])}
@@ -117,7 +117,7 @@ describe("InspectorPanels", () => {
     )
 
     expect(screen.getByRole("complementary", { name: "Inspector" })).toBeInTheDocument()
-    expect(screen.getByText("geometry.log")).toBeInTheDocument()
+    expect(screen.getAllByText("geometry.log").length).toBeGreaterThan(0)
     expect(screen.getByText("gaussian-log-text-preview")).toBeInTheDocument()
     expect(screen.getByText("Choose the candidate to register.")).toBeInTheDocument()
 

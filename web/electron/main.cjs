@@ -52,7 +52,7 @@ function createMainWindow() {
   })
 
   if (process.platform === "darwin" && typeof window.setWindowButtonVisibility === "function") {
-    window.setWindowButtonVisibility(false)
+    window.setWindowButtonVisibility(true)
   }
 
   if (runtimeSmokeExit) {
