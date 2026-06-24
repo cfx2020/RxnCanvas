@@ -76,6 +76,7 @@ describe("CanvasWorkspace", () => {
         onSelectNode={vi.fn()}
         onSelectEdge={vi.fn()}
         onSelectBarrier={vi.fn()}
+        onUpdateEdgeLabel={vi.fn()}
         onUpdateBarrierLabel={vi.fn()}
         onSetNodeCoefficient={vi.fn()}
         onSetRelativeEnergyZero={vi.fn()}

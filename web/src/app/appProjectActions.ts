@@ -36,7 +36,7 @@ export function createProjectAction({
       workspaces,
       activeProjectId,
       currentSnapshot,
-      nextSnapshot: emptyProjectWorkspace(emptyViewport),
+      nextSnapshot: emptyProjectWorkspace(emptyViewport, projectLabel),
       projectLabel,
       now,
     }),

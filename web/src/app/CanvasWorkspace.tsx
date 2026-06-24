@@ -35,9 +35,10 @@ import {
 } from "./canvasDrawing"
 import {
   formatCoefficientValue,
-  formatRelativeEnergy,
+  formatRelativeEnergyValue,
   nodeCoefficient,
   nodeFooterText,
+  relativeEnergyValueFromKcal,
   type EnergyDisplayOptions,
   type EnergyTableRow,
 } from "./energyDisplay"
@@ -126,6 +127,7 @@ export function CanvasSurface({
   onSelectNode,
   onSelectEdge,
   onSelectBarrier,
+  onUpdateEdgeLabel,
   onUpdateBarrierLabel,
   onSetNodeCoefficient,
   onSetRelativeEnergyZero,
@@ -164,6 +166,7 @@ export function CanvasSurface({
   onSelectNode: (nodeId: string, mode?: GraphSelectionMode) => void
   onSelectEdge: (edgeId: string, mode?: GraphSelectionMode) => void
   onSelectBarrier: (barrierId: string, mode?: GraphSelectionMode) => void
+  onUpdateEdgeLabel: (edgeId: string, label: string) => void
   onUpdateBarrierLabel: (barrierId: string, label: string | null) => void
   onSetNodeCoefficient: (nodeId: string, coefficient: number) => void
   onSetRelativeEnergyZero: (nodeId: string) => void
@@ -250,6 +253,7 @@ export function CanvasSurface({
               nodeMap={nodeMap}
               selected={selectedEdgeIdSet.has(edge.id)}
               onSelect={onSelectEdge}
+              onUpdateLabel={onUpdateEdgeLabel}
             />
           ))}
           {connectionDraft ? <ConnectionPreview draft={connectionDraft} nodeMap={nodeMap} /> : null}
@@ -378,6 +382,7 @@ function ReactionNodeCard({
   const [renameEditing, setRenameEditing] = useState(false)
   const [renameDraft, setRenameDraft] = useState(node.label)
   const coefficientInputRef = useRef<HTMLInputElement | null>(null)
+  const nodeActionsRef = useRef<HTMLSpanElement | null>(null)
   const sourceStatusLabel = nodeFooterText(node)
   const solvationStatusLabel = solvationPairStatusLabel(solvationStatus)
   const nodeStatusLight = solvationStatus === "missing" ? "missing" : (node.sourceStatus ?? solvationStatus)
@@ -396,6 +401,27 @@ function ReactionNodeCard({
     coefficientInputRef.current?.focus()
     coefficientInputRef.current?.select()
   }, [coefficientEditing])
+
+  useEffect(() => {
+    if (!actionsOpen) return
+
+    const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (nodeActionsRef.current?.contains(target)) return
+      setActionsOpen(false)
+    }
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setActionsOpen(false)
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true)
+    document.addEventListener("keydown", closeOnEscape)
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true)
+      document.removeEventListener("keydown", closeOnEscape)
+    }
+  }, [actionsOpen])
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return
@@ -493,6 +519,43 @@ function ReactionNodeCard({
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
+          <span
+            className="node-coefficient-control node-coefficient-control-header"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {coefficientEditing ? (
+              <input
+                ref={coefficientInputRef}
+                aria-label={`Stoichiometric coefficient for ${node.label}`}
+                value={coefficientDraft}
+                inputMode="decimal"
+                onChange={(event) => setCoefficientDraft(event.currentTarget.value)}
+                onBlur={applyCoefficient}
+                onKeyDown={(event) => {
+                  event.stopPropagation()
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    event.currentTarget.blur()
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault()
+                    cancelCoefficientEdit()
+                  }
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                aria-label={`Stoichiometric coefficient for ${node.label}`}
+                title={`Stoichiometric coefficient for ${node.label}`}
+                onClick={() => setCoefficientEditing(true)}
+              >
+                <span aria-hidden="true">×</span>
+                {formatCoefficientValue(coefficientValue)}
+              </button>
+            )}
+          </span>
           <button
             type="button"
             className={structureCollapsed ? "node-preview-toggle is-collapsed" : "node-preview-toggle"}
@@ -503,7 +566,7 @@ function ReactionNodeCard({
           >
             <ChevronDown size={13} aria-hidden="true" />
           </button>
-          <span className="node-more-actions">
+          <span className="node-more-actions" ref={nodeActionsRef}>
             <button
               type="button"
               className="node-more-button"
@@ -550,7 +613,6 @@ function ReactionNodeCard({
               </span>
             ) : null}
           </span>
-          <em>{nodeKindAbbreviation(node.kind)}</em>
         </span>
       </div>
       {structureCollapsed ? null : (
@@ -560,56 +622,19 @@ function ReactionNodeCard({
           onOpenStructure={onOpenStructure}
         />
       )}
-      <div className="node-energy-strip" title={`${relativeEnergySymbol} relative energy`}>
-        <span>{relativeEnergySymbol}</span>
-        <strong className={energyBaseline ? "node-relative-energy is-zero" : "node-relative-energy"}>
-          {formatRelativeEnergy(relativeEnergy, outputUnit)}
-        </strong>
-      </div>
-      <div className="node-footer">
+      <div className="node-energy-strip node-card-meta-row" title={`${relativeEnergySymbol} relative energy`}>
+        <span className="node-card-energy-value">
+          <span>{relativeEnergySymbol}</span>
+          <strong className={energyBaseline ? "node-relative-energy is-zero" : "node-relative-energy"}>
+            {formatNodeCardRelativeEnergy(relativeEnergy, outputUnit)}
+          </strong>
+        </span>
         <span
           className={`status-light status-light-node status-light-${nodeStatusLight}`}
           title={`${sourceStatusLabel}. ${solvationStatusLabel}`}
           aria-label={`${sourceStatusLabel}. ${solvationStatusLabel}`}
         />
-        <span className={energyBaseline ? "node-zero-indicator is-active" : "node-zero-indicator"}>{energyBaseline ? "0" : ""}</span>
-        <span
-          className="node-coefficient-control"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        >
-          {coefficientEditing ? (
-            <input
-              ref={coefficientInputRef}
-              aria-label={`Stoichiometric coefficient for ${node.label}`}
-              value={coefficientDraft}
-              inputMode="decimal"
-              onChange={(event) => setCoefficientDraft(event.currentTarget.value)}
-              onBlur={applyCoefficient}
-              onKeyDown={(event) => {
-                event.stopPropagation()
-                if (event.key === "Enter") {
-                  event.preventDefault()
-                  event.currentTarget.blur()
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault()
-                  cancelCoefficientEdit()
-                }
-              }}
-            />
-          ) : (
-            <button
-              type="button"
-              aria-label={`Stoichiometric coefficient for ${node.label}`}
-              title={`Stoichiometric coefficient for ${node.label}`}
-              onClick={() => setCoefficientEditing(true)}
-            >
-              <span aria-hidden="true">×</span>
-              {formatCoefficientValue(coefficientValue)}
-            </button>
-          )}
-        </span>
+        <em className="node-kind-badge">{nodeKindAbbreviation(node.kind)}</em>
       </div>
       <span
         role="button"
@@ -635,6 +660,11 @@ function ReactionNodeCard({
       </button>
     </div>
   )
+}
+
+function formatNodeCardRelativeEnergy(value: number | null, unit: EnergyDisplayOptions["outputUnit"]): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "pending"
+  return formatRelativeEnergyValue(relativeEnergyValueFromKcal(value, unit), unit)
 }
 
 function NodeStructurePreview({
@@ -707,16 +737,20 @@ function ReactionEdge({
   nodeMap,
   selected,
   onSelect,
+  onUpdateLabel,
 }: {
   edge: FlowEdge
   nodeMap: Map<string, FlowNode>
   selected: boolean
   onSelect: (edgeId: string, mode?: GraphSelectionMode) => void
+  onUpdateLabel: (edgeId: string, label: string) => void
 }) {
   const source = nodeMap.get(edge.sourceId)
   const target = nodeMap.get(edge.targetId)
   if (!source || !target) return null
   const segment = createEdgeSegment(source, target)
+  const displayLabel = edge.label.trim() === "path" ? "" : edge.label.trim()
+  const applyLabel = (label: string) => onUpdateLabel(edge.id, label.trim() || "path")
 
   return (
     <g
@@ -737,9 +771,96 @@ function ReactionEdge({
       <path className="edge-hit-path" d={segment.path} />
       <path className="edge-visible-path" d={segment.path} markerEnd="url(#arrow)" />
       <foreignObject x={segment.labelPoint.x - 58} y={segment.labelPoint.y - 16} width="116" height="32">
-        <div className="edge-label">{edge.label}</div>
+        {selected ? (
+          <EdgeInlineLabelEditor label={displayLabel} onApply={applyLabel} />
+        ) : displayLabel ? (
+          <button
+            type="button"
+            className="edge-label"
+            aria-label={`Edit path label ${displayLabel}`}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+              onSelect(edge.id)
+            }}
+            onClick={(event) => {
+              event.stopPropagation()
+              onSelect(edge.id)
+            }}
+          >
+            {displayLabel}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="edge-label edge-label-add"
+            aria-label={`Add path label from ${source.label} to ${target.label}`}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+              onSelect(edge.id)
+            }}
+            onClick={(event) => {
+              event.stopPropagation()
+              onSelect(edge.id)
+            }}
+          >
+            Add label
+          </button>
+        )}
       </foreignObject>
     </g>
+  )
+}
+
+function EdgeInlineLabelEditor({ label, onApply }: {
+  label: string
+  onApply: (label: string) => void
+}) {
+  const [value, setValue] = useState(label)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    setValue(label)
+  }, [label])
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  const submitLabel = () => onApply(value)
+
+  return (
+    <form
+      className="edge-label-editor"
+      aria-label="Edit path label"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+      onSubmit={(event) => {
+        event.preventDefault()
+        submitLabel()
+      }}
+    >
+      <input
+        ref={inputRef}
+        aria-label="Path label"
+        value={value}
+        placeholder="Add label"
+        onChange={(event) => setValue(event.currentTarget.value)}
+        onBlur={submitLabel}
+        onKeyDown={(event) => {
+          event.stopPropagation()
+          if (event.key === "Enter") {
+            event.preventDefault()
+            event.currentTarget.blur()
+          }
+          if (event.key === "Escape") {
+            event.preventDefault()
+            setValue(label)
+            event.currentTarget.blur()
+          }
+        }}
+      />
+    </form>
   )
 }
 
@@ -774,8 +895,6 @@ function BarrierAnnotation({
   if (!segment) return null
 
   const selectBarrier = (mode: GraphSelectionMode = "replace") => onSelect(barrier.id, mode)
-  const applyLabel = (label: string | null) => onUpdateLabel(barrier.id, label)
-
   return (
     <g
       className={`barrier-annotation${selected ? " is-selected" : ""}`}
@@ -796,25 +915,21 @@ function BarrierAnnotation({
       <path className="barrier-guide" d={segment.guidePath} />
       <path className="barrier-arrow" d={segment.arrowPath} markerStart="url(#barrier-arrow)" markerEnd="url(#barrier-arrow)" />
       <foreignObject x={segment.labelPoint.x - 82} y={segment.labelPoint.y - 20} width="164" height="40">
-        {selected ? (
-          <BarrierInlineLabelEditor segment={segment} onApply={applyLabel} />
-        ) : (
-          <button
-            type="button"
-            className="barrier-label-button"
-            aria-label={`Edit barrier label from ${segment.sourceLabel} to ${segment.targetLabel}`}
-            onPointerDown={(event) => {
-              event.stopPropagation()
-              selectBarrier()
-            }}
-            onClick={(event) => {
-              event.stopPropagation()
-              selectBarrier()
-            }}
-          >
-            {segment.label}
-          </button>
-        )}
+        <button
+          type="button"
+          className="barrier-label-button"
+          aria-label={`Barrier from ${segment.sourceLabel} to ${segment.targetLabel}`}
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            selectBarrier()
+          }}
+          onClick={(event) => {
+            event.stopPropagation()
+            selectBarrier()
+          }}
+        >
+          {segment.label}
+        </button>
       </foreignObject>
     </g>
   )

@@ -303,4 +303,21 @@ describe("parseSourcePreview", () => {
     expect(parsed.candidates[0]?.spinMultiplicity).toBe(1)
     expect(parsed.coordinatePreview?.atomCount).toBe(3)
   })
+
+  it("extracts Gaussian termination and runtime metadata", () => {
+    const parsed = parseSourcePreview({
+      name: "water.log",
+      preview: [
+        "SCF Done: E(RwB97XD) = -76.431 A.U.",
+        "Job cpu time:       0 days  1 hours  2 minutes  3.4 seconds.",
+        "Elapsed time:       0 days  1 hours  3 minutes  4.5 seconds.",
+        "Normal termination of Gaussian 16",
+      ].join("\n"),
+    })
+
+    expect(parsed.terminationStatus).toBe("normal")
+    expect(parsed.terminationLabel).toBe("normal")
+    expect(parsed.jobCpuTime).toBe("0d 1h 2m 3.4s")
+    expect(parsed.elapsedTime).toBe("0d 1h 3m 4.5s")
+  })
 })

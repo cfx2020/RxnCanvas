@@ -14,10 +14,17 @@ export type CanvasTabState = {
   id: string
   label: string
   snapshot: CanvasTabSnapshot | null
+  closed?: boolean
 }
 
-export function initialCanvasTabs(): CanvasTabState[] {
-  return [{ id: "canvas-1", label: "画布 1", snapshot: null }]
+function openCanvasTab(tab: CanvasTabState): CanvasTabState {
+  if (!tab.closed) return tab
+  const { closed: _closed, ...openTab } = tab
+  return openTab
+}
+
+export function initialCanvasTabs(projectLabel = "Untitled Study"): CanvasTabState[] {
+  return [{ id: "canvas-1", label: projectLabel, snapshot: null }]
 }
 
 export function canvasTabSnapshotFromState(snapshot: CanvasTabSnapshot): CanvasTabSnapshot {
@@ -43,12 +50,16 @@ export function switchCanvasTabState({
   nextTabId: string
   currentSnapshot: CanvasTabSnapshot
 }): { tabs: CanvasTabState[]; activeTabId: string; snapshotToApply: CanvasTabSnapshot } | null {
-  if (nextTabId === activeTabId) return null
   const nextTab = tabs.find((tab) => tab.id === nextTabId)
   if (!nextTab) return null
+  if (nextTabId === activeTabId && !nextTab.closed) return null
 
   return {
-    tabs: tabs.map((tab) => tab.id === activeTabId ? { ...tab, snapshot: currentSnapshot } : tab),
+    tabs: tabs.map((tab) => {
+      if (tab.id === activeTabId) return openCanvasTab({ ...tab, snapshot: currentSnapshot })
+      if (tab.id === nextTabId) return openCanvasTab(tab)
+      return tab
+    }),
     activeTabId: nextTabId,
     snapshotToApply: nextTab.snapshot ?? currentSnapshot,
   }
@@ -60,22 +71,107 @@ export function createCanvasTabState({
   currentSnapshot,
   blankSnapshot,
   nextId,
+  nextLabel,
 }: {
   tabs: CanvasTabState[]
   activeTabId: string
   currentSnapshot: CanvasTabSnapshot
   blankSnapshot: CanvasTabSnapshot
   nextId: string
+  nextLabel: string
 }): { tabs: CanvasTabState[]; activeTabId: string; snapshotToApply: CanvasTabSnapshot } {
-  const tabIndex = tabs.length + 1
-
   return {
     tabs: [
       ...tabs.map((tab) => tab.id === activeTabId ? { ...tab, snapshot: currentSnapshot } : tab),
-      { id: nextId, label: `画布 ${tabIndex}`, snapshot: blankSnapshot },
+      { id: nextId, label: nextLabel, snapshot: blankSnapshot },
     ],
     activeTabId: nextId,
     snapshotToApply: blankSnapshot,
+  }
+}
+
+export function renameCanvasTabState({
+  tabs,
+  tabId,
+  label,
+}: {
+  tabs: CanvasTabState[]
+  tabId: string
+  label: string
+}): CanvasTabState[] {
+  const normalized = label.trim()
+  if (!normalized) return tabs
+  return tabs.map((tab) => tab.id === tabId ? { ...tab, label: normalized } : tab)
+}
+
+export function closeCanvasTabState({
+  tabs,
+  activeTabId,
+  closedTabId,
+  currentSnapshot,
+}: {
+  tabs: CanvasTabState[]
+  activeTabId: string
+  closedTabId: string
+  currentSnapshot: CanvasTabSnapshot
+}): { tabs: CanvasTabState[]; activeTabId: string; snapshotToApply: CanvasTabSnapshot } | null {
+  const openTabs = tabs.filter((tab) => !tab.closed)
+  if (openTabs.length <= 1) return null
+  if (!tabs.some((tab) => tab.id === closedTabId)) return null
+  const closedOpenIndex = openTabs.findIndex((tab) => tab.id === closedTabId)
+  if (closedOpenIndex < 0) return null
+  const nextTabs = tabs.map((tab) => {
+    if (tab.id === closedTabId) {
+      return {
+        ...tab,
+        snapshot: tab.id === activeTabId ? currentSnapshot : tab.snapshot,
+        closed: true,
+      }
+    }
+    if (tab.id === activeTabId) return openCanvasTab({ ...tab, snapshot: currentSnapshot })
+    return tab
+  })
+  const remainingOpenTabs = openTabs.filter((tab) => tab.id !== closedTabId)
+  const nextActiveTabId = closedTabId === activeTabId
+    ? remainingOpenTabs[Math.max(0, closedOpenIndex - 1)]?.id ?? remainingOpenTabs[0]?.id
+    : activeTabId
+  const nextActiveTab = nextTabs.find((tab) => tab.id === nextActiveTabId) ?? nextTabs[0]
+  if (!nextActiveTab) return null
+  return {
+    tabs: nextTabs,
+    activeTabId: nextActiveTab.id,
+    snapshotToApply: nextActiveTab.snapshot ?? currentSnapshot,
+  }
+}
+
+export function deleteCanvasTabState({
+  tabs,
+  activeTabId,
+  deletedTabId,
+  currentSnapshot,
+}: {
+  tabs: CanvasTabState[]
+  activeTabId: string
+  deletedTabId: string
+  currentSnapshot: CanvasTabSnapshot
+}): { tabs: CanvasTabState[]; activeTabId: string; snapshotToApply: CanvasTabSnapshot } | null {
+  if (tabs.length <= 1) return null
+  const deletedIndex = tabs.findIndex((tab) => tab.id === deletedTabId)
+  if (deletedIndex < 0) return null
+
+  const savedTabs = tabs.map((tab) => tab.id === activeTabId ? openCanvasTab({ ...tab, snapshot: currentSnapshot }) : tab)
+  const nextTabs = savedTabs.filter((tab) => tab.id !== deletedTabId)
+  const nextActiveTabId = deletedTabId === activeTabId
+    ? nextTabs[Math.max(0, deletedIndex - 1)]?.id ?? nextTabs[0]?.id
+    : activeTabId
+  const nextActiveTab = nextTabs.find((tab) => tab.id === nextActiveTabId) ?? nextTabs[0]
+  if (!nextActiveTab) return null
+  const reopenedTabs = nextTabs.map((tab) => tab.id === nextActiveTab.id ? openCanvasTab(tab) : tab)
+
+  return {
+    tabs: reopenedTabs,
+    activeTabId: nextActiveTab.id,
+    snapshotToApply: nextActiveTab.snapshot ?? currentSnapshot,
   }
 }
 

@@ -91,7 +91,7 @@ export function createBarrierSegment(
       `M ${roundPathCoordinate(targetAnchor.x)} ${roundPathCoordinate(targetAnchor.y)}`,
       `L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(targetGuideY)}`,
     ].join(" "),
-    label: barrier.label?.trim() || defaultLabel,
+    label: defaultLabel,
     defaultLabel,
     labelPoint: { x: arrowX + (targetOnRight ? 22 : -22), y: (arrowTop + arrowBottom) / 2 },
     sourceLabel: source.label,
@@ -106,11 +106,14 @@ export function defaultBarrierLabel(
 ): string {
   const gasDelta = energyDeltaKcal(source.energyGas, source.energyUnit, target.energyGas, target.energyUnit)
   const solutionDelta = energyDeltaKcal(source.energySolution, source.energyUnit, target.energySolution, target.energyUnit)
-  const delta = gasDelta ?? solutionDelta
-  if (typeof delta !== "number") return "ΔE‡ pending"
+  const preferredDelta = energyDisplayOptions.energySource === "solution" ? solutionDelta : gasDelta
+  const fallbackDelta = energyDisplayOptions.energySource === "solution" ? gasDelta : solutionDelta
+  const delta = preferredDelta ?? fallbackDelta
+  const preferredSymbol = energyDisplayOptions.energySource === "solution" ? "ΔG‡" : "ΔE‡"
+  const fallbackSymbol = energyDisplayOptions.energySource === "solution" ? "ΔE‡" : "ΔG‡"
+  if (typeof delta !== "number") return `${preferredSymbol} pending`
   const value = relativeEnergyValueFromKcal(delta, energyDisplayOptions.outputUnit)
-  const symbol = gasDelta !== null ? "ΔE‡" : "ΔG‡"
-  return `${symbol} ${formatBarrierValue(value, energyDisplayOptions.outputUnit)}`
+  return `${preferredDelta === null ? fallbackSymbol : preferredSymbol} ${formatBarrierValue(value, energyDisplayOptions.outputUnit)}`
 }
 
 export function energyDeltaKcal(

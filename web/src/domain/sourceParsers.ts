@@ -46,6 +46,7 @@ export type ParsedEnergyTableData = {
 
 export type ParseScope = "preview" | "full-file"
 export type ParseConfidence = "high" | "medium" | "low"
+export type ComputationTerminationStatus = "normal" | "error" | "running" | "unknown"
 
 export type ParseCandidate = {
   candidateId: string
@@ -84,6 +85,10 @@ export type SourceParseResult = {
   energyTable?: ParsedEnergyTableData | null
   parseScope?: ParseScope
   confidence?: ParseConfidence
+  terminationStatus?: ComputationTerminationStatus | null
+  terminationLabel?: string | null
+  jobCpuTime?: string | null
+  elapsedTime?: string | null
 }
 
 const parserVersion = "0.2.1"
@@ -122,6 +127,7 @@ const mapleBannerMarkers = ["M   A   P   L   E", "MAchine-learning Potential for
 export function parseSourcePreview({ name, preview }: SourceParseInput): SourceParseResult {
   const label = basenameWithoutExtension(name)
   const guessedKind = inferNodeKind(name)
+  const computation = computationMetadataFromSource(preview)
   const gaussian = parseGaussian(preview)
   if (gaussian) {
     const atoms = gaussianAtomsFromText(preview)
@@ -149,6 +155,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
         energyTable,
       })],
       energyTable,
+      computation,
     })
   }
 
@@ -178,6 +185,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
         energyTable,
       })],
       energyTable,
+      computation,
     })
   }
 
@@ -191,6 +199,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
       parserId: "xyz-ase-text-preview",
       candidates: extxyz.candidates,
       warnings: extxyz.warnings,
+      computation,
     })
   }
 
@@ -204,6 +213,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
       parserId: "maple-output-text-preview",
       candidates: maple.candidates,
       warnings: maple.warnings,
+      computation,
     })
   }
 
@@ -217,6 +227,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
       parserId: "xyz-text-preview",
       candidates: xyz.candidates,
       warnings: xyz.warnings,
+      computation,
     })
   }
 
@@ -227,6 +238,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
       kind: guessedKind,
       parserId: "xyz-text-preview",
       warning: { code: "parse_failed", message: "XYZ atom count does not match the number of coordinate lines.", target: name },
+      computation,
     })
   }
 
@@ -250,6 +262,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
     energyTable: null,
     parseScope: "preview",
     confidence: "low",
+    ...computation,
   }
 }
 
@@ -261,6 +274,7 @@ function failedSourceResult(input: {
   warning: ParseWarning
   parseScope?: ParseScope
   confidence?: ParseConfidence
+  computation?: ComputationMetadata
 }): SourceParseResult {
   return {
     label: input.label,
@@ -282,6 +296,7 @@ function failedSourceResult(input: {
     energyTable: null,
     parseScope: input.parseScope ?? "preview",
     confidence: input.confidence ?? "low",
+    ...(input.computation ?? {}),
   }
 }
 
@@ -296,6 +311,7 @@ function sourceResultFromCandidates(input: {
   energyTable?: ParsedEnergyTableData | null
   parseScope?: ParseScope
   confidence?: ParseConfidence
+  computation?: ComputationMetadata
 }): SourceParseResult {
   const primary = primaryCandidate(input.candidates)
   const parserWarnings = [...(input.warnings ?? [])].sort((left, right) => left.code.localeCompare(right.code))
@@ -325,7 +341,73 @@ function sourceResultFromCandidates(input: {
     energyTable: input.energyTable ?? primary.energyTable ?? null,
     parseScope: input.parseScope ?? "preview",
     confidence: input.confidence ?? "low",
+    ...(input.computation ?? {}),
   }
+}
+
+type ComputationMetadata = {
+  terminationStatus: ComputationTerminationStatus
+  terminationLabel: string
+  jobCpuTime: string | null
+  elapsedTime: string | null
+}
+
+function computationMetadataFromSource(sourceText: string): ComputationMetadata {
+  const termination = classifyComputationTermination(sourceText)
+  return {
+    terminationStatus: termination.status,
+    terminationLabel: termination.label,
+    jobCpuTime: jobCpuTimeFromSource(sourceText),
+    elapsedTime: elapsedTimeFromSource(sourceText),
+  }
+}
+
+function classifyComputationTermination(sourceText: string): { label: string; status: ComputationTerminationStatus } {
+  const normal = lastRegexMatchWithIndex(sourceText, /normal termination of gaussian[^\n]*/gi)
+    ?? lastRegexMatchWithIndex(sourceText, /ORCA TERMINATED NORMALLY[^\n]*/gi)
+  const normalEnd = normal ? normal.index + normal.text.length : -1
+  const errors = [
+    lastRegexMatchWithIndex(sourceText, /error termination via lnk1e in .*?\bl(\d+)\.exe\b/gi, (match) => `L${match[1]}`),
+    lastRegexMatchWithIndex(sourceText, /error termination request processed by link\s+(\d+)/gi, (match) => `L${match[1]}`),
+    lastRegexMatchWithIndex(sourceText, /segmentation fault/gi, () => "Segmentation fault"),
+    lastRegexMatchWithIndex(sourceText, /(?:ORCA finished by error|aborting the run|error termination)/gi, () => "Error termination"),
+    lastRegexMatchWithIndex(sourceText, /(?:killed|signal)/gi, () => "Killed"),
+  ]
+    .filter((item): item is { index: number; text: string; label: string } => Boolean(item))
+    .sort((left, right) => right.index - left.index)
+  const latestError = errors[0]
+  if (latestError && latestError.index > normalEnd) return { label: "error", status: "error" }
+  if (normal) return { label: "normal", status: "normal" }
+  if (latestError) return { label: "error", status: "error" }
+  return { label: "unknown", status: "unknown" }
+}
+
+function jobCpuTimeFromSource(sourceText: string): string | null {
+  return normalizedRuntimeFromLine(firstTrimmedMatch(sourceText, /^\s*Job cpu time:\s*(.+)$/gim))
+}
+
+function elapsedTimeFromSource(sourceText: string): string | null {
+  return normalizedRuntimeFromLine(firstTrimmedMatch(sourceText, /^\s*Elapsed time:\s*(.+)$/gim))
+    ?? normalizedRuntimeFromLine(firstTrimmedMatch(sourceText, /^\s*TOTAL RUN TIME:\s*(.+)$/gim))
+}
+
+function normalizedRuntimeFromLine(value: string | null): string | null {
+  if (!value) return null
+  const trimmed = value.replace(/\s+/g, " ").replace(/\.$/, "").trim()
+  const gaussian = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+hours?\s+(\d+)\s+minutes?\s+([\d.]+)\s+seconds?/i)
+  if (gaussian) return `${gaussian[1]}d ${gaussian[2]}h ${gaussian[3]}m ${gaussian[4]}s`
+  return trimmed || null
+}
+
+function lastRegexMatchWithIndex(
+  sourceText: string,
+  pattern: RegExp,
+  label?: (match: RegExpMatchArray) => string,
+): { index: number; text: string; label: string } | null {
+  const matches = Array.from(sourceText.matchAll(pattern))
+  const match = matches.at(-1)
+  if (!match || typeof match.index !== "number") return null
+  return { index: match.index, text: match[0], label: label?.(match) ?? match[0] }
 }
 
 function primaryCandidate(candidates: ParseCandidate[]): ParseCandidate {
@@ -804,6 +886,11 @@ function roleHintFromName(name: string): string {
 
 function firstGroup(pattern: RegExp, preview: string): string | null {
   return preview.match(pattern)?.[1]?.trim() ?? null
+}
+
+function firstTrimmedMatch(sourceText: string, pattern: RegExp): string | null {
+  const match = Array.from(sourceText.matchAll(pattern)).at(-1)
+  return match?.[1]?.trim() || null
 }
 
 function lastMatch(pattern: RegExp, preview: string): RegExpMatchArray | null {

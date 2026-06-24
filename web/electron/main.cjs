@@ -23,6 +23,7 @@ const runtimeStartupRestoreSmoke = process.env.RXNFLOW_DESKTOP_SMOKE_STARTUP_RES
 const runtimeSmokeTimeoutMs = Number.parseInt(process.env.RXNFLOW_DESKTOP_SMOKE_TIMEOUT_MS || "12000", 10)
 const userDataDirectoryOverride = process.env.RXNFLOW_DESKTOP_USER_DATA_DIR
 const projectValidationEmbeddedThresholdBytes = 1024 * 1024
+const macTrafficLightPosition = { x: 18, y: 18 }
 let recentProjectPaths = []
 let activeProjectPath = null
 let recentProjectsStorePath = null
@@ -42,7 +43,8 @@ function createMainWindow() {
     icon: desktopWindowIconPath(),
     show: false,
     title: "RxnFlow",
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
+    ...(process.platform === "darwin" ? { trafficLightPosition: macTrafficLightPosition } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -51,9 +53,7 @@ function createMainWindow() {
     },
   })
 
-  if (process.platform === "darwin" && typeof window.setWindowButtonVisibility === "function") {
-    window.setWindowButtonVisibility(true)
-  }
+  installMacWindowControls(window)
 
   if (runtimeSmokeExit) {
     if (runtimeStartupRestoreSmoke) prepareStartupProjectRestore()
@@ -72,6 +72,30 @@ function createMainWindow() {
   }
 
   return window
+}
+
+function installMacWindowControls(window) {
+  if (process.platform !== "darwin") return
+  const keepControlsVisible = () => {
+    if (window.isDestroyed()) return
+    if (typeof window.setWindowButtonVisibility === "function") {
+      window.setWindowButtonVisibility(true)
+    }
+    if (typeof window.setWindowButtonPosition === "function") {
+      window.setWindowButtonPosition(macTrafficLightPosition)
+    }
+  }
+  const keepControlsVisibleAfterNativeStateChange = () => {
+    keepControlsVisible()
+    setTimeout(keepControlsVisible, 0)
+  }
+
+  keepControlsVisible()
+  window.on("show", keepControlsVisibleAfterNativeStateChange)
+  window.on("focus", keepControlsVisibleAfterNativeStateChange)
+  window.on("blur", keepControlsVisibleAfterNativeStateChange)
+  window.on("enter-full-screen", keepControlsVisibleAfterNativeStateChange)
+  window.on("leave-full-screen", keepControlsVisibleAfterNativeStateChange)
 }
 
 function prepareStartupProjectRestore() {
@@ -186,10 +210,10 @@ function installRuntimeSmokeExit(window) {
               && Boolean(document.querySelector(".floating-export-trigger"))
             if (hasWorkbench) {
               try {
-                const hasNodeSidebar = Boolean(document.querySelector(".inspector-panel .inspector-rail-header"))
+                const hasNodeSidebar = Boolean(document.querySelector(".inspector-panel .node-inspector-stack"))
                 const hasExportTrigger = Boolean(document.querySelector(".floating-export-trigger"))
                 if (!hasNodeSidebar || !hasExportTrigger) {
-                  reject(new Error("desktop renderer must expose node sidebar and floating export trigger"))
+                  reject(new Error("desktop renderer must expose node inspector and floating export trigger"))
                   return
                 }
                 const lowerText = text.toLowerCase()
@@ -913,14 +937,34 @@ function shouldHydrateStoredSourceFile(file) {
   if (typeof file.storedPath !== "string" || !isSafeProjectRelativePath(file.storedPath)) return false
   const sourceKind = String(file.parse?.sourceKind || file.kind || "").toLowerCase()
   const likelyCoordinateSource = ["gaussian", "orca", "xyz", "extxyz", "maple"].some((kind) => sourceKind.includes(kind))
-  if (!likelyCoordinateSource && file.parse) return false
-  return !parseHasCoordinateAtoms(file.parse)
+  const missingFullFileMetadata = !parseHasComputationMetadata(file.parse) || !parseHasBasisFunctionCount(file.parse)
+  if (!likelyCoordinateSource && file.parse && !missingFullFileMetadata) return false
+  return !parseHasCoordinateAtoms(file.parse) || missingFullFileMetadata
 }
 
 function parseHasCoordinateAtoms(parse) {
   if (!parse || typeof parse !== "object") return false
   if (coordinatePreviewHasAtoms(parse.coordinatePreview)) return true
   return Array.isArray(parse.candidates) && parse.candidates.some((candidate) => coordinatePreviewHasAtoms(candidate?.coordinatePreview))
+}
+
+function parseHasComputationMetadata(parse) {
+  if (!parse || typeof parse !== "object") return false
+  const terminationStatus = typeof parse.terminationStatus === "string" ? parse.terminationStatus : ""
+  return ["normal", "error"].includes(terminationStatus)
+    || typeof parse.jobCpuTime === "string"
+    || typeof parse.elapsedTime === "string"
+}
+
+function parseHasBasisFunctionCount(parse) {
+  if (!parse || typeof parse !== "object") return false
+  if (energyTableHasBasisFunctionCount(parse.energyTable)) return true
+  return Array.isArray(parse.candidates) && parse.candidates.some((candidate) => energyTableHasBasisFunctionCount(candidate?.energyTable))
+}
+
+function energyTableHasBasisFunctionCount(table) {
+  if (!table || typeof table !== "object") return false
+  return Number.isFinite(table.gasBasisFunctions) || Number.isFinite(table.solBasisFunctions)
 }
 
 function coordinatePreviewHasAtoms(coordinatePreview) {

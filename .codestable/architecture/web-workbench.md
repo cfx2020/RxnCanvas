@@ -1,197 +1,200 @@
 ---
 doc_type: architecture
 slug: web-workbench
+scope: Electron/Vite renderer 当前桌面工作台的项目栏、画布/表格、Inspector、导入导出与工作区持久化表面
+summary: 当前桌面工作台采用“项目级共享 source files + active canvas 投影编辑”模型，并已同步到紧凑 toolbar、悬浮侧栏预览、可重命名节点卡和统一 node inspector/structure dialog 这套 UI 现状
 status: current
 created: 2026-05-16
-last_reviewed: 2026-06-19
-implements: [desktop-canvas-rebuild, project-content-persistence]
-tags: [web, react, vite, local-first, canvas, multi-canvas, table-view, source-preview, report-export, desktop-renderer, project-schema]
+last_reviewed: 2026-06-23
+depends_on: [core-platform]
+implements: [project-content-persistence]
+tags: [web, react, vite, desktop-renderer, local-first, canvas, multi-canvas, inspector, import, export, project-schema]
 ---
 
 # Web Workbench
 
-## 1. 当前能力
+## 0. 术语
 
-`web/` 当前是 RxnFlow 桌面客户端的 renderer 原型，而不是云 Web 或完整旧 Web Workbench。技术栈：
+- **Project workspace snapshot**：某个项目的完整 renderer 快照，包含共享 `files`、全部 `canvases[]`、`activeCanvasId`，以及当前视图/Inspector 相关 UI 状态；定义在 `web/src/app/projectWorkspace.ts` 的 `ProjectWorkspaceSnapshot`。（`web/src/app/projectWorkspace.ts:27-44`）
+- **Active canvas projection**：React 当前直接编辑的 `nodes` / `edges` / `barriers` / `viewport` / selection。切换 canvas 或保存项目时，这层投影要写回项目快照中的 `canvases[]`。（`web/src/app/projectCanvasState.ts:35-122`; `web/src/app/projectWorkspace.ts:276-330`）
+- **Source file group**：Project Rail 里用于展示的文件分组；Gaussian / ORCA / MAPLE 的 gas / solution 对会按结构名合并成一行显示。（`web/src/app/fileDisplay.ts:105-119, 234-316`）
 
-- React
-- TypeScript
-- Vite
-- npm
-- lucide-react icons
-- Vitest + Testing Library
-- Electron local engine lightweight source parser via `import.preview`
-- Electron preload/main register IPC via `window.rxnflowDesktop.registerImportCandidates`, backed by lightweight stateless `import.register_selection` / `import.register_all`
-- renderer-side lightweight source parser fallback in `web/src/domain/sourceParsers.ts`; it mirrors the engine preview contract with candidates, warnings, objectCount, parser provenance, coordinate summary fields and parsed coordinate atoms for viewer use.
-- renderer-side candidate review flow is planned by `web/src/app/importRegistration.ts`, coordinated by `web/src/app/App.tsx`, and rendered by `web/src/app/InspectorPanels.tsx`; multi-candidate imports open a soft-glass dialog, Electron mode prefers local engine register, and browser/engine failure paths fall back to renderer-side node creation with parser/candidate provenance.
-- renderer-side lightweight report export in `web/src/domain/reportExports.ts`, with save/status orchestration in `web/src/app/reportExportWorkflow.ts` and browser download primitives in `web/src/app/browserDownloads.ts`.
-- renderer-side lightweight relative energy derivation in `web/src/app/energyDisplay.ts`; current active UI does not expose Object Registry or correction editing.
-- renderer-side project state schema in `web/src/domain/projectPackages.ts`; current save format is schemaVersion 2 with project-level shared `files`, `canvases[]`, and `activeCanvasId`. It derives lightweight `importLedger` entries from files plus all canvas nodes, preserves legacy node `corrections` fields when present, persists per-canvas `nodes` / `edges` / `barriers` / `viewport` / selection, Electron persists it into real workspace folders (`.rxnflow/project.json` metadata + root `sources/` / `exports/`), and legacy single-canvas `.rxnflow.json` packages are normalized to one default canvas on open.
-- renderer-side project package open/save helper 和 browser/Electron runtime transition in `web/src/app/projectPackageWorkflow.ts`; it builds runtime-specific default filenames, serializes all canvases and active canvas, maps parsed package content into project/workspace snapshots plus validation payloads, and prepares restore transitions that replace duplicate project summaries while saving the current active workspace.
+## 1. 定位与受众
 
-当前 UI 主链路：
+`web/` 是当前 RxnFlow 桌面端的唯一 active renderer。它服务的是“本地项目、图谱编辑、结构预览、轻量导入导出”这一条桌面工作台主链路，不是旧 browser-first Web shell，也不是云端工作台。（`web/src/app/App.tsx:1382-1566`; `web/electron/main.cjs:35-56`）
 
-1. App 首屏直接进入工作台，不做 landing page。
-2. 左侧 Project Rail 展示本地项目/工作区、桌面端 `New Project Folder` 创建真实用户可见工作区文件夹、`Open Folder` 打开已有工作区文件夹、切换项目、通过 `Project actions` / `Import files into project` 或项目行 drop 把外部文件导入目标项目、通过 `Project actions` / `Delete project` 从 renderer 本地项目列表删除项目，以及本地文件列表；App 层用 renderer 内存快照隔离每个本地项目的 shared source files、`canvases[]`、`activeCanvasId`、active canvas 投影和 lightweight energy display options，避免只切换标题而复用上一项目画布。当前删除项目只移除 renderer 内存中的本地项目记录，不删除磁盘 project directory 或 source 文件。
-3. 用户可选择本地文件；Electron 模式只把 64KB preview sample 放进 renderer/source panel，同时把 `sourcePath` 传给 local engine `import.preview`，由 Python engine 读取完整 log/out 解析；文件进入桌面工作区后通过 desktop autosave 复制到当前工作区根目录 `sources/`，项目状态更新为 project-relative `storedPath` + size/sha256，Source 面板显示当前 source 是项目副本、等待 autosave 复制还是浏览器 preview。浏览器模式使用 renderer fallback parser 和 preview sample，不能写入项目文件夹。当前 active parser 识别 Gaussian / ORCA（含常见 Cartesian coordinate、charge/spin 摘要）/ MAPLE / 普通 XYZ comment energy / ASE extxyz metadata（label、charge/spin、eV energy 转 Hartree）的摘要、formula、部分坐标摘要和多帧候选，返回 `parseScope` / `confidence` / warnings/provenance；Gaussian/ORCA 返回能量表字段（Egas、basis、Ggas、Ggas+1M，pairing 后补 Esol/Gsol），并把文件作为 parsed/staged source 放进目标工作台。单候选 source 自动生成一个节点；多候选 source 打开候选选择面板，支持登记选中候选或全部候选为节点。Project Rail 文件行支持单选、Meta/Ctrl 多选、Shift 范围选择、`application/x-rxnflow-raw-file` drag payload 和行内 remove；匹配的 gas/solution log 会合并为一个结构行并以成组 source payload 拖拽，未成对单文件保留原始文件名；这些文件行操作只作用于 source 列表，不隐式新增画布节点。Project Rail 文件行或外部 source 文件 drop 到 Canvas Stage 时，会把 drop client point 转成 graph-space 坐标，并在该位置创建 source node 或候选登记面板。外部 source 文件 drop 到项目行，或通过项目行 action 导入到非当前项目时，会先更新目标项目 snapshot 再切换到该项目显示导入结果。Electron 模式优先通过 preload 调用 local engine register commands，浏览器模式或 engine 失败时使用 renderer fallback；保存项目时会把当前 files/nodes 的 candidate/parser provenance 派生为 lightweight `importLedger`。
-4. 中间 Canvas Stage 上方的 Canvas Tab Bar 展示当前项目的画布集合，`New canvas` 会追加空白 canvas 并立即切换；切换 canvas 时先把当前 active canvas 投影写回 workspace snapshot，再把目标 canvas 的 nodes / edges / barriers / viewport / selection 投影到 React 编辑态。source files 不随 canvas 复制，仍由项目共享。Canvas Stage 支持节点卡、节点结构预览折叠/展开、节点 More actions 菜单打开对应 Source details、节点 stoichiometric coefficient inline 编辑、节点卡相对能量显示和 zero point 选择、连线、节点手柄拖拽创建 edge、键盘激活节点手柄再用目标节点 Enter/Space 创建 edge、edge 选择检查、Inspector edge label 编辑、节点底部 barrier 手柄拖拽创建显式能垒标注、barrier inline label 编辑/选择/删除、节点拖拽、Select tool 空白画布框选、Pan tool 空白画布拖拽平移、普通 wheel 平移、pinch-style 或 Ctrl/Meta+wheel 缩放、可拖拽导航的 minimap 和 zoom controls；minimap 在拖动期间只显示 draft viewport window，pointer release 后提交主画布 viewport。节点/edge/barrier 支持 Shift 多选/反选，画布聚焦后支持 Delete/Backspace 删除当前选择、Escape 清空选择、方向键 20px 微调已选节点、Cmd/Ctrl+Z 和 Cmd+Shift+Z/Ctrl+Y 撤销/重做，输入框内不会触发图谱快捷键；悬浮工具条提供 Energy/Unit、Undo、Redo、Delete selection、Auto layout 和 Fit view。当前 lightweight 表格真实承载的 canvas energy modes 是 `Egas`/`Gsol`，Unit 支持 hartree/kcal/mol/kJ/mol，并直接驱动节点卡、barrier 默认标签、Auto layout 和 Table view 的相对能量显示。Auto layout 是 renderer-side lightweight 能量排序布局，不恢复旧 ShellClient `energy.compute` 后端命令。Fit view 会按当前节点 bounds 自适应，桌面优先完整展示图谱，窄屏优先让当前主画布内容进入视野。
-5. 中间 Table View 展示当前节点的结构、类型、formula、gas/solution energy 和相对值。
-6. 右侧 Inspector 支持 Node、Source 和 Export。Object Registry / Objects tab / correction 表单不属于当前 active UI；节点卡和 Node 详情提供 lightweight `Structure Preview` 2D skeletal depiction，Node 详情可用 Ketcher + Indigo WASM `Edit 2D` 手动画板保存/重置单节点 KET/Molfile/CDXML/SVG，并另提供 3Dmol.js `3D Structure` 真实坐标查看器。
-7. Export dock 当前只显示原 UI 默认报告格式 PNG/CDXML/XLSX；renderer 生成 PNG 报表图、CDXML 节点/边/能量元数据、XLSX 能量表/文件表/元数据。
-8. 顶部 window bar 显示 runtime 状态：浏览器预览为 `Browser preview`，Electron 模式通过 preload 调用 local engine status。
-9. Electron 模式下，File 菜单可打开本地工作区文件夹，并可把当前工作区导出为 `.rxnflow.zip` 压缩包；旧 `.rxnflow.json` project package 仍可通过兼容路径读取但不是主入口。桌面 renderer 对 active project 做 debounce autosave：只有已有打开/创建的工作区文件夹时才写回该文件夹；没有工作区文件夹时返回 `project_folder_required` warning，不再静默写到 Electron `userData/projects/` 托管目录。工作区目录会保存隐藏 `.rxnflow/project.json`、`.rxnflow/manifest.json`、轻量 `importLedger`、根目录 `sources/` 下带 size/sha256 的 source 副本，以及根目录 `exports/manifest.json` 下带 artifact size/sha256 的 export artifact manifest。`.rxnflow/project.json` 当前写入 schemaVersion 2，多画布集合与 `activeCanvasId` 是持久化状态；启动恢复、Open Recent、Open Folder 和 autosave 共享同一套 project directory 绑定。
+这份文档主要给三类读者：
 
-## 2. 当前刻意不做
+- feature design：确认当前 UI 真正承载了哪些桌面工作台能力；
+- issue analyze：定位项目栏 / 画布 / inspector / runtime effect 的状态 authority；
+- 新接手协作者：快速找到项目级 state、active canvas 投影、节点卡和 Inspector 的代码入口。
 
-以下旧 Web 能力不在 active UI/code 中：
+## 2. 结构与交互
 
-- ShellClient、fixture transport、HTTP transport、local-http bridge。
-- IndexedDB Browser Project Repository、Project Content 自动保存/恢复、`.rxnflow.zip` 导入 helper；当前只保留工作区 zip 导出。
-- 完整持久化 Import registry / full parser pipeline；轻量 Import preview 已提供 candidates/provenance/warnings，local engine 已有 stateless register commands，Electron renderer 已通过 preload 接入这些命令，renderer 仍保留浏览器/failure fallback，并已保存当前 UI 可表达的 lightweight `importLedger`。
-- 旧 `energy.compute` Shell command、EnergyProfilePanel、完整 EnergyProfilePanel correction policy、Object Registry / Objects tab / correction 表单，以及完整 ObjectRegistryPanel service 绑定；当前 active UI 只保留 renderer-side 相对能量显示。
-- Three.js 自研 Molecule3DViewer、atom measurement 和 2D/3D 原子联动；当前 active UI 使用 lightweight 2D `Structure Preview` / Ketcher + Indigo WASM `Edit 2D` 与 3Dmol.js `3D Structure` 坐标查看器。
-- i18n runtime、dev/test fixture API、Playwright E2E harness。
-- 旧 Python ReportExportService、report manifest、artifact index、CSV/SVG/PDF/PPTX/CDX 格式入口。
-- 云端账号、同步、对象存储或 Vercel function command executor。
+### 2.1 顶层工作台装配
 
-这些能力如果重新出现，必须先在 roadmap/feature design 中说明 UI 承载方式和桌面端边界。
+`App.tsx` 仍是 renderer 装配入口，但项目级状态转换已拆给纯 helper：
 
-## 3. 当前组件边界
+- `projectCanvasState.ts` 负责 canvas tab 的 create / switch / rename / close 纯状态转换；
+- `projectWorkspace.ts` 负责 project workspace 快照 clone / restore / active canvas resolve；
+- `App.tsx` 负责把这些纯 transition 应用到 React state，并装配 Project Rail、Canvas/Table、Inspector 与 runtime effects。（`web/src/app/App.tsx:430-481, 1498-1566`; `web/src/app/projectCanvasState.ts:3-162`; `web/src/app/projectWorkspace.ts:188-330`）
 
-当前主要实现集中在：
+当前项目模型是“项目级共享文件 + 多画布编辑态分离”：source files 属于项目，不随 canvas 复制；每个 canvas 独立保存 `nodes` / `edges` / `barriers` / `viewport` / selection。（`web/src/app/projectWorkspace.ts:188-207`; `web/src/domain/projectPackages.ts:118-143, 186-252`）
 
-- `web/src/app/App.tsx`
-- `web/src/app/CanvasWorkspace.tsx`
-- `web/src/app/Molecule2DDepiction.tsx`
-- `web/src/app/Molecule2DEditorDialog.tsx`
-- `web/src/app/ProjectRail.tsx`
-- `web/src/app/WorkbenchToolbar.tsx`
-- `web/src/app/ReportPanels.tsx`
-- `web/src/app/InspectorPanels.tsx`
-- `web/src/app/Molecule3DmolViewer.tsx`
-- `web/src/app/importRegistration.ts`
-- `web/src/app/importRegistrationTypes.ts`
-- `web/src/app/importSources.ts`
-- `web/src/app/importLayout.ts`
-- `web/src/app/importNodes.ts`
-- `web/src/app/candidateReview.ts`
-- `web/src/app/desktopImportRegistration.ts`
-- `web/src/app/importWorkspace.ts`
-- `web/src/app/projectCanvasState.ts`
-- `web/src/app/projectWorkspace.ts`
-- `web/src/app/appStateAppliers.ts`
-- `web/src/app/appRuntimeEffects.ts`
-- `web/src/app/appSelectionAppliers.ts`
-- `web/src/app/appCanvasEffects.ts`
-- `web/src/app/appReportExport.ts`
-- `web/src/app/appProjectActions.ts`
-- `web/src/app/appImportActions.ts`
-- `web/src/app/appCanvasKeyboardActions.ts`
-- `web/src/app/projectPackageWorkflow.ts`
-- `web/src/app/desktopRuntime.ts`
-- `web/src/app/reportExportWorkflow.ts`
-- `web/src/app/browserDownloads.ts`
-- `web/src/app/canvasEditState.ts`
-- `web/src/app/canvasSelectionState.ts`
-- `web/src/app/canvasMutationState.ts`
-- `web/src/app/canvasKeyboardState.ts`
-- `web/src/app/canvasDragState.ts`
-- `web/src/app/canvasLinkState.ts`
-- `web/src/app/canvasEditHistory.ts`
-- `web/src/app/canvasGeometry.ts`
-- `web/src/app/canvasDrawing.ts`
-- `web/src/app/canvasHitTesting.ts`
-- `web/src/app/energyDisplay.ts`
-- `web/src/app/fileDisplay.ts`
-- `web/src/app/workbench.css`
-- `web/src/app/App.test.tsx`
-- `web/src/app/CanvasWorkspace.test.tsx`
-- `web/src/app/InspectorPanels.test.tsx`
-- `web/src/app/Molecule2DDepiction.test.tsx`
-- `web/src/app/importRegistration.test.ts`
-- `web/src/app/projectCanvasState.test.ts`
-- `web/src/app/projectWorkspace.test.ts`
-- `web/src/app/projectPackageWorkflow.test.ts`
-- `web/src/app/reportExportWorkflow.test.ts`
-- `web/src/app/browserDownloads.test.ts`
-- `web/src/app/canvasEditState.test.ts`
-- `web/src/app/canvasEditHistory.test.ts`
-- `web/src/app/canvasGeometry.test.ts`
-- `web/src/app/canvasDrawing.test.ts`
-- `web/src/app/canvasHitTesting.test.ts`
-- `web/src/app/energyDisplay.test.ts`
-- `web/src/app/fileDisplay.test.ts`
-- `web/src/domain/sourceParsers.ts`
-- `web/src/domain/sourceParsers.test.ts`
-- `web/src/domain/reportExports.ts`
-- `web/src/domain/reportExports.test.ts`
-- `web/src/domain/projectPackages.ts`
-- `web/src/domain/projectPackages.test.ts`
+### 2.2 左侧 Project Rail / Files Rail
 
-当前组件边界：
+Project Rail 当前承载三层信息：
 
-- `App.tsx`
-  - 持有当前 renderer workspace state 和组件装配入口。App 通过 props 编排画布、Project Rail、Toolbar、Report panel 和 Inspector panel；active canvas 仍投影为 React 编辑态，但 Canvas Tab 的 create/switch 与 project canvas snapshot 转换交给 `projectCanvasState.ts`。App 不再直接承载这些区域的主要 JSX，也不再直接承载 workspace seed/deep-clone/restore snapshot、report artifact save/status、浏览器 download 纯逻辑、大段 transition-to-React-setter 赋值、source/canvas selection setter 编排、canvas DOM listener lifecycle、project create/switch/delete 计算、import/candidate review 编排、canvas keyboard shortcut 分发或 Electron/browser runtime effect 细节。
-- `CanvasWorkspace.tsx` / `Molecule2DDepiction.tsx` / `appCanvasEffects.ts`
-  - 中央画布渲染层；承载 `CanvasSurface`、`ReactionNodeCard`、节点卡 lightweight 2D skeletal structure preview（自动推断或单节点 manual KET/Molfile/CDXML/SVG）、edge/connection/barrier SVG、barrier inline label editor、`MiniMap`、`ZoomControls`、rubber-band/drop helper 和 App 仍需使用的画布 selection/size 类型 helper。画布状态机仍由 App 持有，CanvasWorkspace 只负责渲染和局部控件状态；`appCanvasEffects.ts` 承载 canvas wheel listener 和 connection draft window pointer listener 生命周期，避免 App 直接内联 DOM listener 细节。
-- `ProjectRail.tsx`
-  - 左侧本地项目/source file 列表；内部持有 `New Project Folder` 表单 UI 状态，`Open Folder` 调用 App 层 project package open，项目行 actions/drop 和 source 文件行选择/拖拽/remove 通过 props 回到 App。
-- `WorkbenchToolbar.tsx`
-  - 顶部悬浮画布命令条；负责 Import/Save、Energy/Unit、view/tool、Undo/Redo/Delete/Auto layout/Fit view/Export 控件。`workbench.css` 在窄屏下让工具条换行并隐藏分隔线，避免 Unit select 或命令按钮被裁切。
-- `ReportPanels.tsx`
-  - Export dock 和 Energy table view；Export 只暴露 PNG/CDXML/XLSX。
-- `reportExportWorkflow.ts` / `browserDownloads.ts` / `appReportExport.ts`
-  - Report export app workflow helper；负责把 active export options + project context 转为 PNG/CDXML/XLSX artifacts、串行保存、过滤取消项、生成用户可见导出状态，并隔离 Electron `saveReportArtifact` payload 编码与浏览器 download 细节。`appReportExport.ts` 承载 export busy/status/artifacts 的高层 runtime 编排；ReportPanels 只渲染 export UI，App 只把当前 state 传入 helper。
-- `InspectorPanels.tsx` / `Molecule2DEditorDialog.tsx` / `Molecule3DmolViewer.tsx`
-  - 右侧 Inspector 的 Node/Source/Export tab、SourceInspector、edge/barrier inspector、候选登记 sheet、lightweight 2D `Structure Preview`、Ketcher + Indigo WASM 2D editor dialog、3Dmol.js `3D Structure` 弹窗，以及 source display helpers。App 只导入 `sourceFileForNode` / `sourceCoordinatePreview` 参与弹窗编排。
-- `importRegistration.ts` / `importRegistrationTypes.ts`
-  - import/register 模块 barrel 与共享类型入口；App 和测试仍从 `importRegistration.ts` 取稳定公开表面，具体实现按职责拆到下列小模块。
-- `importSources.ts` / `importLayout.ts` / `importNodes.ts`
-  - source file 转换与 source id 查找、导入落点/节点 id/节点坐标计算、renderer fallback/desktop registered object 到 graph node 的映射。
-- `candidateReview.ts` / `desktopImportRegistration.ts` / `importWorkspace.ts` / `appImportActions.ts`
-  - multi-candidate review entry/default selection/review state/selection toggle、source candidate review selection transition、可注入 desktop `registerImportCandidates` bridge payload、selected/all/auto register fallback、当前项目 import apply transition、pending import project transition、import picker runtime transition、raw file drop import transition、desktop file dialog result transition、候选登记 apply transition、非当前项目 import plan 到 workspace snapshot 的合成、候选登记节点追加后的 workspace snapshot 合成。`appImportActions.ts` 承载 App-level 当前项目/跨项目 source staging、candidate review 打开/选择/登记、browser file import、desktop file import、raw file drop 和 import picker 分发；App 只负责传入 refs、当前 snapshot 和 state appliers。
-- `projectCanvasState.ts` / `projectWorkspace.ts` / `appStateAppliers.ts` / `appSelectionAppliers.ts` / `appProjectActions.ts`
-  - Project/workspace 纯 state helper；`projectCanvasState.ts` 承载 Canvas Tab runtime state、create/switch transition、Canvas Tab 与 project `canvases[]` 之间的纯转换。`projectWorkspace.ts` 负责 demo seed、empty workspace、initial workspace map、canvas edit snapshot/restore、multi-canvas project workspace snapshot/restore/apply transition、本地项目 summary/fallback 生成、创建/切换/保存当前并激活目标/删除项目 workspace transition、workspace deep clone、active canvas resolve/project package restore snapshot。`appStateAppliers.ts` 承载 App 层 transition/snapshot 到 React setters 的机械赋值，包括 active canvas 投影、canvas selection、project workspace restore、project transition apply、imported workspace snapshot apply 和 canvas edit snapshot restore；`appSelectionAppliers.ts` 承载 source file selection/delete、node source details、node/edge/barrier selection transition 和 canvas collection mutation transition 到 React setters 的机械赋值；`appProjectActions.ts` 承载 create/switch/delete project 的 App-level action 合成，统一返回可应用 transition 或 inactive delete action。
-- `projectPackageWorkflow.ts` / `desktopRuntime.ts` / `appRuntimeEffects.ts`
-  - Project package app workflow helper；负责 `.rxnflow` / `.rxnflow.json` 默认文件名、当前项目包序列化（shared files + all canvases + activeCanvasId）、打开内容解析、invalid package validation payload、package-to-workspace snapshot 映射、browser/Electron runtime transition，以及打开项目时的 restore transition 合成（保存当前 workspace、替换重复项目摘要、激活恢复项目）。`desktopRuntime.ts` 负责 renderer 可见 engine status 类型和 browser preview / engine failure status payload。`appRuntimeEffects.ts` 承载 renderer 对 `window.rxnflowDesktop` 的 typed API surface、project open/save browser/Electron runtime effect、native menu subscription、startup restore、active project directory binding 和 engine status probe；App 只负责把 React ref/state/context 传入这些 effect helper。
-- `canvasEditState.ts` / `canvasEditHistory.ts` / `appCanvasKeyboardActions.ts`
-  - Canvas edit 纯状态 helper 与兼容导出口；当前直接负责清空/恢复 canvas interaction transition、删除 selection 并清空交互 transition、删除节点时级联移除相关 edge/barrier，以及 bounded undo/redo history 栈转移。`canvasSelectionState.ts` 拆出 selection id toggle/replace、node/edge/barrier exclusive selection 构造、node/edge/barrier 选择 transition 和 selection 查询 helper；`canvasMutationState.ts` 从大状态机中拆出 edge/barrier label 和 node coefficient 更新 transition，并把 inspector apply 字段一并返回；`canvasKeyboardState.ts` 拆出 keyboard shortcut action / preventDefault transition 和 editable target 判定；`appCanvasKeyboardActions.ts` 承载 React keyboard event 到 undo/redo/delete/clear/nudge handlers 的分发；`canvasDragState.ts` 拆出 canvas/node pointer-down 起始 drag state 与 selection 派生 transition、pointer move / draft move 动作分类 transition、node drag / rubber-band / pan pointer-end 收尾 transition、已选节点 nudge transition、node drag 位置落点/是否移动判断、rubber-band 选区节点集合和 pointer draft current 更新；`canvasLinkState.ts` 拆出 connection/barrier draft 起始和完成 transition、键盘连线 source/edge transition、connection/barrier draft target 归一化、追加 edge/barrier 记录和 edge/barrier 创建 transition。App 仍持有 React state 和 pointer event 生命周期，但不再把这些选择集合/history 栈变换散落在 JSX 容器里。
-- `canvasGeometry.ts` / `canvasDrawing.ts` / `canvasHitTesting.ts`
-  - 画布几何、client/world 坐标换算、wheel/pan viewport 更新、selection、minimap、edge/barrier path 和 DOM hit-testing 等计算/适配；CanvasWorkspace/App 复用这些 helper，测试锁定坐标、viewport 手势、SVG path 和节点命中行为。
-- `energyDisplay.ts` / `fileDisplay.ts`
-  - 能量显示/relative table/table-node selection/coefficient/zero-point selection transition helper 与 source file 分组、文件选择/selection/delete transition（含 source inspector/keyboard edge cleanup apply 字段）、节点 source details selection（含 source inspector/keyboard edge cleanup apply 字段）、drag payload、路径/格式显示 helper；UI 组件通过这些模块拿稳定显示契约，避免把领域显示逻辑写进 JSX。
+1. 项目列表；
+2. active project 下的 canvas 列表（仅当 canvas 数量大于 1 时显示）；
+3. 项目共享文件列表。（`web/src/app/ProjectRail.tsx:188-245`）
 
-当前 renderer 已把报告格式细节拆到 `reportExports.ts`，导出保存/status 编排拆到 `reportExportWorkflow.ts`，项目包 envelope / normalize 逻辑拆到 `projectPackages.ts`，renderer open/save 纯编排拆到 `projectPackageWorkflow.ts`。当前约束是不要把这些职责重新塞回单个大容器组件。
+当前交互现状：
 
-## 4. 桌面端考虑
+- 项目行保留三点菜单，只提供 `Import files into project` 与 `Remove from sidebar`；删除项目只移除 renderer / recent 列表，不删除磁盘工作区文件夹。（`web/src/app/ProjectRail.tsx:300-345`）
+- 左侧栏折叠后，不是完全失去入口；`App.tsx` 会渲染一个固定在左侧的 hover preview trigger，hover / focus 时弹出半悬浮的 Project Rail 预览层。（`web/src/app/App.tsx:1382-1412`; `web/src/app/workbench.css:5341-5395`）
+- 文件列表仍按 gas / solution 对分组，但不再显示单独的 gas / sol 文本 badge；分组名直接回到结构名，三点菜单收敛为 `Delete file and nodes`。（`web/src/app/fileDisplay.ts:234-316`; `web/src/app/ProjectRail.tsx:351-465`）
+- 点击文件行时，如果当前 active canvas 里存在 `sourceFileId` 对应节点，UI 会优先切到该节点的 node selection / inspector，而不是停在 source-only 面板；如果当前 active canvas 没有对应节点，才回落到普通文件选择。（`web/src/app/App.tsx:1139-1156`; `web/src/app/fileDisplay.ts:209-232`）
+- `Delete file and nodes` 当前会先删除文件，再级联移除 **当前 active canvas 投影态** 中 `sourceFileId` 匹配的 nodes / edges / barriers，并修复当前文件选择状态。（`web/src/app/App.tsx:1158-1183`; `web/src/app/fileDisplay.ts:184-206`）
 
-当前 Web renderer 避免依赖浏览器专属长期存储或云后端；当前桌面端共享约束如下：
+> 这里特意写“当前 active canvas 投影态”，因为当前实现直接操作 `App.tsx` 中的投影态 `nodes / edges / barriers`，不是遍历全部已保存 canvas snapshot。这是当前实现边界，不应在文档里扩写成“全项目所有画布都会同时删”。
 
-- `web/electron/main.cjs` 已提供最小 Electron BrowserWindow、macOS/Windows 菜单和文件选择 IPC。
-- `web/electron/preload.cjs` 暴露受限 `window.rxnflowDesktop` API；renderer 不启用 Node integration。
-- `web/electron/engine-bridge.cjs` 已提供 local engine bridge：开发态优先 spawn `python3 -m rxnflow.engine_ipc`，执行 `engine.status` / `import.preview` / `import.register_selection` / `import.register_all` / 轻量 `project.validate/open/save` 并返回结构化结果；如果 Python engine unavailable / timeout / bad response，会降级到 packaged `web/electron/embedded-engine.cjs`，继续提供同一组当前 UI 承载的轻量命令；`preload.cjs` 暴露 `registerImportCandidates` 给 renderer 的 candidate review flow。
-- 浏览器模式继续使用 file input 和 renderer fallback parser；Electron 模式使用原生 open dialog 读取 source preview sample 和 `sourcePath`，并优先使用 local engine `import.preview` 的 full-file 解析结果。
-- 轻量 source parser 当前同时存在于 local engine、embedded engine 和 renderer fallback 中；Electron/Python 路径使用 full-file parse，浏览器 fallback 仍是 preview/sample parse。它已经返回 `parserId`、`parserVersion`、`parseScope`、`confidence`、`objectCount`、`warnings`、`candidates`、`coordinatePreview` 和 `energyTable`。local engine 已提供 lightweight stateless register commands；Electron renderer 优先使用这些命令完成 selected/all register，浏览器和 engine failure path 使用 renderer fallback。`projectPackages.ts` 保存时从 files/nodes 派生 lightweight `importLedger`，打开旧轻量 package 时会回填 ledger。完整 cclib/ASE parser、虚拟滚动完整 log viewer 和旧持久化 registry workflow不属于当前 renderer contract。
-- 浏览器模式继续使用 download；Electron 模式使用原生 save dialog 保存 PNG/CDXML/XLSX report artifact。
-- Electron 模式提供 `createProjectFolder` / `openProjectPackage` / `saveProjectPackage` / `autosaveProjectPackage` / `getStartupProjectContent` / `setActiveProject` IPC。Project Rail 的 `New Project Folder` 会让用户选择父目录并创建真实工作区文件夹，`Open Folder` 和 native menu 都调用同一个 open path；浏览器开发预览下该按钮仍通过 hidden file input 读取 `.rxnflow.json` package 做 UI 验证。desktop autosave 不弹保存对话框，会按 active project id 写入已打开/创建的工作区文件夹；如果没有工作区文件夹则返回 `project_folder_required` warning，不再写 Electron `userData/projects/` 托管主项目。导入 source 后，autosave 会把 `sourcePath` 指向的原始文件复制到工作区根目录 `sources/` 并返回去掉 session-only `sourcePath` 的 saved content，renderer 用返回内容刷新 `storedPath` / checksum。顶部 toolbar 的 `Export project` 和 File 菜单的 `Export RxnFlow Project Zip` 用 `saveProjectPackage` 把整个工作区导出为 `.rxnflow.zip` 压缩包。工作区写入 schemaVersion 2 `.rxnflow/project.json`（shared files、`canvases[]`、`activeCanvasId`、lightweight `importLedger`）、`.rxnflow/manifest.json`、`sources/` source 副本和 `exports/manifest.json`；打开时读取工作区文件夹，也兼容旧单画布 `.rxnflow.json` package 并归一化到默认 canvas。打开/创建/自动保存成功的工作区路径会记录到 `File > Open Recent`，recent store 位于 Electron `userData` 下的 JSON 文件；startup restore 会按 recent store 恢复项目内容，renderer 恢复后再把 project id 与 project directory 绑定回 main process。Python engine 和 embedded fallback 都能校验/读写同一个 lightweight `rxnflow-project` envelope，并在打开工作区时检查 file/node/edge/barrier/importLedger 基础引用、node 能量单位/数值/position/coefficient 形状，以及 source/export 文件缺失、size 不一致和 sha256 不一致。renderer 会把返回的 validation issues 显示为 canvas 内 `Project warnings` / `Project needs repair` 软玻璃悬浮提示。当前目录格式仍是轻量 project store，不包含旧 ProjectContent 深校验、migration、content index 或完整 artifact cleanup/repair 语义。
-- `electron-builder` 已配置 macOS `dmg/zip` 与 Windows x64 `nsis/portable` target；`desktop:icons` 会从 `web/build/icon.svg` 生成 PNG/ICNS/ICO 资产，builder 已接入 mac/win icon 配置；macOS builder 已启用 hardened runtime，并使用 `web/build/entitlements.mac.plist`。`desktop:release:smoke` 会验证 builder 配置、图标资产、embedded engine fallback、Windows installer smoke wiring、runtime smoke wiring、发布 CI workflow、当前平台 unpacked app 结构，以及存在时的 Windows artifacts。`desktop:runtime:smoke` 会启动当前平台 packaged unpacked app，等待 renderer 工作台渲染，并通过 preload 验证 engine status 与 candidate registration 后退出。当前 macOS/arm64 环境已通过 unsigned local `desktop:pack` 刷新带 `icon.icns` 的 mac-arm64 unpacked app，并已通过 `desktop:pack:win` 刷新 Windows x64 `win-unpacked/RxnFlow.exe`；仓库中仍保留此前 `desktop:dist:win` 生成并通过结构验证的 NSIS setup 和 portable artifacts，但“最新 renderer 对应的 Windows installer/portable 已运行验证”目前只以 Windows CI 或 Windows 机器重产证据为准。
-- `.github/workflows/desktop-release.yml` 是当前发布验证入口：PR/push 跑 core/web/Electron smoke、macOS packaged runtime smoke 和 Windows packaged runtime smoke；手动勾选 `notarize_macos` 且配置 Apple Developer ID secrets 后，才执行签名 macOS artifacts、`desktop:notarize:mac`、staple 和 `spctl`。
-- 当前 packaged runtime smoke 证明 Electron process、renderer workbench、startup recent-project restore、multi-canvas lightweight importLedger persistence 和 embedded lightweight desktop engine commands 可用。它不证明完整 cclib/ASE parser、旧持久化 registry 或旧 ProjectContent engine 已恢复。
-- 当前不要求用户手动启动 Python、本地 bridge 或命令行服务；Electron smoke 会自动探测 local engine。
-- macOS/Windows 差异应放在 Electron shell 和 packaging 层，renderer 保持平台无关。
+### 2.3 多 Canvas / Canvas-Table 工作区
 
-## 5. QA
+多画布现在是第一层数据模型，不再只是 UI tab 装饰：
 
-当前验证命令：
+- 新建 canvas 时会基于项目名生成默认标签；
+- canvas tab 支持 inline rename 和 close；
+- active project 下的左侧 rail 也能直接切换 canvas；
+- 保存格式使用 `schemaVersion: 2` 的 `canvases[] + activeCanvasId`。（`web/src/app/App.tsx:439-481, 1718-1765`; `web/src/app/projectCanvasState.ts:57-122`; `web/src/domain/projectPackages.ts:130-143, 186-252`; `web/src/app/workbench.css:6088-6136`）
 
-```bash
-cd web && npm run test
-cd web && npm run build
-cd web && npm run desktop:smoke
-```
+Canvas / Table 切换不再是硬切，`workbench-view-track` 通过 opacity + translate 做横向滑动过渡。（`web/src/app/App.tsx:1504-1566`; `web/src/app/workbench.css:6138-6167`）
 
-UI 改动还需要真实浏览器验证桌面与窄屏：
+当前画布交互包括：
 
-- 桌面：canvas/table/source/export 均可打开；Canvas Tab Bar 可创建第二个 canvas、切换往返不互相覆盖节点/edge/barrier/viewport/selection，保存/自动保存/关闭重开后恢复全部 canvas 和关闭前 active canvas；Project Rail 的 `New Project Folder` / `Open Folder` 可见，浏览器预览能恢复 `.rxnflow.json` package；Project Rail 项目行的 `Project actions` 可打开 `Import files into project` 和 `Delete project`，项目行可接收外部 source 文件 drop 到该项目，删除需经确认后才移除当前 renderer 本地项目列表项；Project Rail source 文件行可单选、多选、范围选择、拖拽 raw-file payload、成对 gas/solution log 结构行拖拽成组 payload、drop 到画布指定位置创建 source node 或候选登记面板，并可从列表移除；外部 source 文件也可 drop 到画布指定位置导入；Select tool 可框选节点且不移动 viewport，Pan tool 可空白拖拽平移画布；节点/edge/barrier 选择后 Delete selection 或 Delete/Backspace 可移除当前选择，Shift 可多选/反选，Escape 可清空选择，方向键可微调已选节点，节点 coefficient、节点相对能量 zero point、Inspector edge label 和 barrier inline label 可编辑，Undo/Redo 可恢复画布编辑；Energy/Unit 会直接更新节点卡和 Table view，相对能量 zero point 可从节点卡设置；Auto layout 会重排节点，Fit view 会把当前节点 bounds 放入视图；节点卡和 Inspector `Structure Preview` 对有坐标 source 显示 2D skeletal SVG、无自动补出的隐式氢文本，Node Inspector `Edit 2D` 可打开 Ketcher editor 并保存/重置 manual KET/Molfile/CDXML/SVG，`3D Structure` 弹窗可打开；Export 只显示 PNG/CDXML/XLSX；runtime status 可见；无 local-http / Python bridge / ShellClient / cloud / sync / Search flows / Settings / Preferences / More canvas actions / Add Node / Compute / Profile / Objects / Object Registry / Apply correction 文案，无横向溢出，默认视图不让节点被 inspector 遮挡。
-- 窄屏：toolbar 可见且可换行，Energy/Unit select 不被裁切，无横向溢出，默认视图让当前主节点进入 canvas 可见区域。
-- 可访问性：工具条、minimap、zoom controls、画布、节点、节点 coefficient 控件、节点连接手柄、节点 barrier 手柄和 barrier label 控件有可访问名称；画布可聚焦并支持原 UI 图谱快捷键，节点连接手柄支持键盘创建 edge；CSS 保持 `letter-spacing: 0` 并提供 `prefers-reduced-motion` 降级。
+- Select / Pan 双工具；
+- wheel 平移、Ctrl/Meta+wheel 或触控板 pinch 缩放；
+- minimap、fit view、zoom controls；
+- Delete / Escape / 方向键 / Undo / Redo；
+- 节点拖拽、边连接、过渡态能垒拖拽创建、框选；
+- Auto layout 轻量布局；
+- edge path label 直接在画布上编辑。（`web/src/app/App.tsx:558-561, 1504-1566`; `web/src/app/CanvasWorkspace.tsx:752-835, 879-935`; `web/src/app/WorkbenchToolbar.tsx:19-158`）
+
+关于标签与能垒的当前 contract：
+
+- edge 默认标签 `path` 在画布上不显示；只有显式命名后才显示文字按钮，否则显示 `Add label` 入口。（`web/src/app/CanvasWorkspace.tsx:752-809`）
+- barrier annotation 在画布上是数据驱动的只读按钮，默认值来自当前能量显示源（`ΔE‡` 或 `ΔG‡`）；真正的文本编辑入口在右侧 Barrier inspector，不再以画布内 inline editor 作为主路径。（`web/src/app/CanvasWorkspace.tsx:879-935`; `web/src/app/InspectorPanels.tsx:68-145`）
+
+为了避免切换 view / canvas 后触控板滚动失效，wheel 订阅被拆到 `subscribeCanvasWheel()`，并在 `activeCanvasTabId` 或 `viewMode` 变化时重新绑定。（`web/src/app/appCanvasEffects.ts:8-31`; `web/src/app/App.tsx:558-561`）
+
+### 2.4 Window chrome / toolbar / runtime status
+
+当前桌面 chrome 已按桌面 app 语义回到“可拖动顶栏 + 保留交互控件 no-drag”：
+
+- Electron 主窗口在 macOS 使用 `hiddenInset` title bar，并显式调用 `setWindowButtonVisibility(true)` 恢复 traffic lights；（`web/electron/main.cjs:35-56`）
+- CSS 把 `window-bar`、`workspace-topbar`、`canvas-tab-bar` 设为 drag region，把按钮、输入框、Project Rail、Inspector、toolbar、dialog 等可交互区设为 no-drag；因此用户可以直接拖顶部移动窗口。（`web/src/app/workbench.css:3436-3447, 3924-3937, 5859-5875`）
+- 右侧栏开关不是跟着侧栏一起移动，而是固定在窗口右上角的 `right-sidebar-fixed-toggle`；（`web/src/app/App.tsx:1371-1380`; `web/src/app/workbench.css:5330-5339`）
+- Engine status pill 固定留在顶栏动作区：浏览器预览显示 `Browser preview`，Electron 则显示 local engine 探测结果。（`web/src/app/App.tsx:1447`; `web/src/app/desktopRuntime.ts:1-37`）
+
+Floating toolbar 现在是紧凑胶囊样式：
+
+- 能量源选择只有 `ΔEgas` / `ΔGsol`；
+- 单位选择只有 `Eh` / `kcal` / `kJ`；
+- 按钮间距、segmented 控件和 zoom readout 都做了压缩；
+- toolbar 自身仍是当前画布命令条，不承载项目管理或 source inspector 操作。（`web/src/app/WorkbenchToolbar.tsx:19-158`; `web/src/app/workbench.css:6025-6087`）
+
+### 2.5 节点卡与 Inspector
+
+节点卡 `ReactionNodeCard` 已不再沿用旧 overview/debug 风格，而是当前这套紧凑卡片：
+
+- 标题支持 inline rename；
+- 右上角只有结构折叠按钮和三点菜单；
+- 结构区默认显示 2D preview，hover / focus 时出现全屏按钮，点击后打开结构对话框；
+- 底部 meta row 固定为“相对能量 + 状态灯 + 系数 + 种类 badge”；卡片上不再显示相对能量单位，也不再显示旧 `0` 角标；
+- barrier handle 图标已经换成活化能“驼峰曲线”样式，而不是旧折线/箭头感图标。（`web/src/app/CanvasWorkspace.tsx:330-663, 670-723`）
+
+右侧 Node inspector 已合并成统一 overview-style panel：
+
+- `Node` summary 卡里展示 type、formula（带下标与分子量）、method、basis、charge/spin、solvent、energy、free energy、job CPU、elapsed、相对能量和 atom count；（`web/src/app/InspectorPanels.tsx:268-332, 413-486`）
+- termination pill 现在只走 `normal / error / unknown` 这一层语义，依据 source text 末尾的正常结束或错误结束特征判断；（`web/src/app/InspectorPanels.tsx:277-280, 516-537`）
+- structure 区不再把 2D / 3D 挤在 inspector 里，而是收敛成一个 `Open structure` 按钮，下面跟 optimization sparkline；（`web/src/app/InspectorPanels.tsx:335-357, 540-579`）
+- node source brief 只保留 source 名称、kind/status、candidate review 入口和 `Open raw log`，不再把 stored path 直接堆在 node 面板里。（`web/src/app/InspectorPanels.tsx:620-665`）
+
+结构对话框当前 contract：
+
+- 打开后是单个 dialog；
+- 左侧显示 2D structure，右侧显示 3D structure；
+- 2D 侧可继续进入手动编辑或 reset manual structure；
+- 对话框支持点击遮罩关闭与 `Escape` 关闭。（`web/src/app/InspectorPanels.tsx:872-997`）
+
+当没有节点、只有文件被选中时，Inspector 会回落到 source summary，而不是旧 source tab / node tab 的分裂语义。（`web/src/app/InspectorPanels.tsx:222-266, 667-780`）
+
+## 3. 数据与状态
+
+当前 renderer 的关键数据结构如下：
+
+- `ProjectWorkspaceSnapshot`：项目级 runtime authority，含共享文件、全部 canvas、当前 active canvas 投影和 UI 状态。（`web/src/app/projectWorkspace.ts:27-44`）
+- `CanvasTabState` / `CanvasTabSnapshot`：canvas tab runtime 结构，负责切换前保存当前投影、切换后恢复目标投影。（`web/src/app/projectCanvasState.ts:3-122`）
+- `RxnFlowProjectCanvas`：持久化层单个画布结构，包含图元、viewport 与 selection。（`web/src/domain/projectPackages.ts:118-128`）
+- `RxnFlowProjectPackage`：当前持久化 envelope，`schemaVersion` 为 2，authority 是 `files + canvases[] + activeCanvasId + importLedger`；同时仍写出 active canvas 的 `nodes / edges / barriers / viewport` 作为兼容字段。（`web/src/domain/projectPackages.ts:130-143, 186-252`）
+- `ImportLedger`：保存 candidate / parser provenance 的轻量来源账本；序列化时由项目共享 `files` 和 **全部 canvases 的 nodes** 派生，而不是只看当前 active canvas。（`web/src/domain/projectPackages.ts:97-116, 268-343`）
+
+当前持久化 / 恢复状态流：
+
+1. `projectWorkspaceSnapshot()` 保证 active canvas 投影写回 `canvases[]`；（`web/src/app/projectWorkspace.ts:276-312`）
+2. `buildProjectPackage()` 把项目写成 schema v2 package；（`web/src/domain/projectPackages.ts:157-223`）
+3. `parseProjectPackage()` 打开时把 legacy 单画布内容归一化为 `canvases[]`；（`web/src/domain/projectPackages.ts:225-257, 439-481`）
+4. startup restore 通过一次性的 desktop IPC 获取项目内容，再恢复 renderer 并把 `projectId -> projectDirectory` 重新绑定回 runtime。（`web/src/app/appRuntimeEffects.ts:220-264`）
+
+## 4. 关键决策
+
+- **active canvas 投影转换留在纯 helper，不重新塞回容器组件**：见 `.codestable/compound/2026-06-19-decision-active-canvas-projection-helper.md`。这直接决定了当前 `projectCanvasState.ts` / `projectWorkspace.ts` 的存在方式，也约束后续 canvas 功能继续先扩 helper contract 再接 UI。
+- **startup restore 视为 one-shot IPC**：见 `.codestable/compound/2026-06-19-learning-startup-restore-one-shot-ipc.md`。这就是为什么恢复逻辑放在稳定 effect 入口，并在恢复后主动回写 active project directory runtime binding。
+- **原始 log/out/xyz 不是长期 authority，项目权威数据是结构化 project data**：见 `.codestable/compound/2026-06-06-decision-canonical-import-data.md`。当前桌面工作区虽然会复制 source 到 `sources/`，但保存/恢复权威仍是 `rxnflow-project` 结构、节点 provenance 和轻量 `importLedger`，而不是重新把 raw 文件当主数据模型。
+
+## 5. 代码锚点
+
+- `web/src/app/App.tsx:430-481` — canvas create / rename / close / switch 的 App-level 装配入口。
+- `web/src/app/App.tsx:558-561` — canvas wheel 订阅随 active canvas / view 切换重绑。
+- `web/src/app/App.tsx:1139-1183` — 文件点击优先选中关联节点，以及 `Delete file and nodes` 的当前实现。
+- `web/src/app/App.tsx:1371-1412` — fixed right sidebar toggle 与 collapsed left rail hover preview。
+- `web/src/app/App.tsx:1504-1566` — canvas/table 双 pane 渲染与切换动画入口。
+- `web/src/app/ProjectRail.tsx:188-245` — active project canvas 列表和文件列表装配。
+- `web/src/app/ProjectRail.tsx:300-465` — 项目三点菜单、文件三点菜单和文件行交互。
+- `web/src/app/fileDisplay.ts:105-119, 234-316` — source file grouping、gas/solution 对展示名规则。
+- `web/src/app/projectCanvasState.ts:35-122` — active canvas 投影切换、创建、重命名、关闭的纯状态 contract。
+- `web/src/app/projectWorkspace.ts:27-44, 188-330` — project workspace snapshot shape、空项目、restore/apply 流程。
+- `web/src/domain/projectPackages.ts:118-143, 186-343` — schema v2 持久化格式、legacy normalize 和 `importLedger` 派生。
+- `web/src/app/CanvasWorkspace.tsx:330-723` — 节点卡、2D preview、全屏结构入口、barrier hump icon。
+- `web/src/app/CanvasWorkspace.tsx:752-935` — path label 画布编辑与 barrier annotation 画布按钮。
+- `web/src/app/InspectorPanels.tsx:68-145` — Barrier inspector 与 barrier label 编辑。
+- `web/src/app/InspectorPanels.tsx:222-357, 620-780, 872-997` — unified node inspector、source summary/source brief、structure dialog。
+- `web/src/app/WorkbenchToolbar.tsx:19-158` — 紧凑 toolbar 的命令和能量/单位切换。
+- `web/src/app/appRuntimeEffects.ts:220-264` — startup restore 与 `setActiveProject` runtime 绑定。
+- `web/src/app/desktopRuntime.ts:1-37` — browser preview / engine failure 的 runtime status payload。
+- `web/electron/main.cjs:35-56` — Electron 主窗口 title bar 与 macOS traffic lights 恢复。
+- `web/src/app/workbench.css:5330-5395, 6025-6167, 5859-5875` — fixed sidebar toggle、hover rail、紧凑 toolbar、view track 动画和 drag/no-drag chrome 规则。
+
+## 6. 已知约束 / 边界情况
+
+- 当前 workbench 仍是本地优先桌面 renderer；不恢复 local-http bridge、云同步、旧 Object Registry/correction surface 或完整 parser/registry workflow。（`web/src/app/App.tsx:1382-1566`; `/Users/linsay/Desktop/code/rxnflow/.codestable/architecture/ARCHITECTURE.md`）
+- `Delete file and nodes` 的级联删除当前只覆盖 active canvas 投影态；如果未来要扩成“删文件即全项目所有画布同步清理”，那会是新的实现与验收动作，而不是当前现状。（`web/src/app/App.tsx:1158-1183`; `web/src/app/projectWorkspace.ts:27-44`）
+- barrier 默认标签受当前 energy source 影响；因此 UI 切换 `ΔEgas` / `ΔGsol` 会同时影响 barrier 默认文案与相对能量表达。（`web/src/app/InspectorPanels.tsx:81-97`; `web/src/app/WorkbenchToolbar.tsx:58-87`）
+- startup restore / recent project payload 仍按 one-shot IPC 设计，不能绑到会频繁重建的 effect/callback 上。（`web/src/app/appRuntimeEffects.ts:220-249`; `.codestable/attention.md`）
+- 桌面 chrome 依赖 drag / no-drag CSS 边界；后续如果改 toolbar、tab bar 或 topbar，需要特别检查窗口拖拽是否仍成立。（`web/src/app/workbench.css:3436-3447, 5859-5875`）
+
+## 7. 相关文档
+
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/architecture/ARCHITECTURE.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/architecture/core-platform.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/requirements/project-content-persistence.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/compound/2026-06-19-decision-active-canvas-projection-helper.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/compound/2026-06-19-learning-startup-restore-one-shot-ipc.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/compound/2026-06-06-decision-canonical-import-data.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/features/2026-06-18-multi-canvas-persistence/multi-canvas-persistence-design.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/features/2026-06-18-multi-canvas-persistence/multi-canvas-persistence-acceptance.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/issues/2026-06-19-workbench-ui-regressions/workbench-ui-regressions-fix-note.md`
+
+## 变更日志
+
+- 2026-06-23：按当前实现回写多画布 tab rename/close、collapsed rail hover preview、fixed right sidebar toggle、紧凑 toolbar、节点卡新 meta row、统一 node inspector / structure dialog，以及当前文件点击/删除语义。

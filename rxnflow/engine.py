@@ -23,6 +23,7 @@ NodeKind = Literal["reactant", "transition", "intermediate", "product"]
 EnergyUnit = Literal["kcal/mol", "hartree"]
 ParseScope = Literal["preview", "full-file"]
 ParseConfidence = Literal["high", "medium", "low"]
+ComputationTerminationStatus = Literal["normal", "error", "running", "unknown"]
 PARSER_VERSION = "0.2.1"
 EV_TO_HARTREE = 0.03674932217565499
 ONE_M_STANDARD_STATE_CORRECTION_HARTREE = 0.003019
@@ -158,6 +159,18 @@ class SourceParseResult:
     energyTable: ParsedEnergyTableData | None = None
     parseScope: ParseScope = "preview"
     confidence: ParseConfidence = "low"
+    terminationStatus: ComputationTerminationStatus | None = None
+    terminationLabel: str | None = None
+    jobCpuTime: str | None = None
+    elapsedTime: str | None = None
+
+
+@dataclass(frozen=True)
+class ComputationMetadata:
+    terminationStatus: ComputationTerminationStatus
+    terminationLabel: str
+    jobCpuTime: str | None = None
+    elapsedTime: str | None = None
 
 
 @dataclass(frozen=True)
@@ -413,6 +426,7 @@ def parse_cclib_full_file(
         energy_table=energy_table,
         parse_scope="full-file",
         confidence="high",
+        computation=computation_metadata_from_source(full_text),
     ), None
 
 
@@ -459,6 +473,7 @@ def merge_cclib_text_result(cclib_result: SourceParseResult, text_result: Source
         energy_table=merged_table,
         parse_scope="full-file",
         confidence="high",
+        computation=computation_metadata_from_result(text_result),
     )
 
 
@@ -759,6 +774,10 @@ def source_parse_result_from_payload(payload: dict[str, Any], source_name: str) 
         energyTable=energy_table or (candidates[0].energyTable if candidates else None),
         parseScope=parse_scope_or_default(payload.get("parseScope"), "preview"),
         confidence=parse_confidence_or_default(payload.get("confidence"), "low"),
+        terminationStatus=termination_status_or_default(payload.get("terminationStatus"), None),
+        terminationLabel=optional_string(payload.get("terminationLabel")),
+        jobCpuTime=optional_string(payload.get("jobCpuTime")),
+        elapsedTime=optional_string(payload.get("elapsedTime")),
     )
 
 
@@ -867,6 +886,10 @@ def parse_scope_or_default(value: Any, default: ParseScope) -> ParseScope:
 
 def parse_confidence_or_default(value: Any, default: ParseConfidence) -> ParseConfidence:
     return value if value in {"high", "medium", "low"} else default
+
+
+def termination_status_or_default(value: Any, default: ComputationTerminationStatus | None) -> ComputationTerminationStatus | None:
+    return value if value in {"normal", "error", "running", "unknown"} else default
 
 
 def registered_import_object(file: dict[str, Any], parse_result: SourceParseResult, candidate: ParseCandidate) -> RegisteredImportObject:
@@ -1551,6 +1574,92 @@ def node_kind_or_default(value: Any, default: NodeKind) -> NodeKind:
     return value if value in {"reactant", "transition", "intermediate", "product"} else default
 
 
+def computation_metadata_from_source(source_text: str) -> ComputationMetadata:
+    termination = classify_computation_termination(source_text)
+    return ComputationMetadata(
+        terminationStatus=termination["status"],
+        terminationLabel=termination["label"],
+        jobCpuTime=job_cpu_time_from_source(source_text),
+        elapsedTime=elapsed_time_from_source(source_text),
+    )
+
+
+def computation_metadata_from_result(result: SourceParseResult) -> ComputationMetadata:
+    return ComputationMetadata(
+        terminationStatus=result.terminationStatus or "unknown",
+        terminationLabel=result.terminationLabel or "unknown",
+        jobCpuTime=result.jobCpuTime,
+        elapsedTime=result.elapsedTime,
+    )
+
+
+def classify_computation_termination(source_text: str) -> dict[str, ComputationTerminationStatus | str]:
+    normal = last_regex_match_with_index(re.compile(r"normal termination of gaussian[^\n]*", re.IGNORECASE), source_text)
+    if normal is None:
+        normal = last_regex_match_with_index(re.compile(r"ORCA TERMINATED NORMALLY[^\n]*", re.IGNORECASE), source_text)
+    normal_end = normal["index"] + len(str(normal["text"])) if normal else -1
+    error_matches = [
+        last_regex_match_with_index(re.compile(r"error termination via lnk1e in .*?\bl(\d+)\.exe\b", re.IGNORECASE), source_text, lambda match: f"L{match.group(1)}"),
+        last_regex_match_with_index(re.compile(r"error termination request processed by link\s+(\d+)", re.IGNORECASE), source_text, lambda match: f"L{match.group(1)}"),
+        last_regex_match_with_index(re.compile(r"segmentation fault", re.IGNORECASE), source_text, lambda _match: "Segmentation fault"),
+        last_regex_match_with_index(re.compile(r"(?:ORCA finished by error|aborting the run|error termination)", re.IGNORECASE), source_text, lambda _match: "Error termination"),
+        last_regex_match_with_index(re.compile(r"(?:killed|signal)", re.IGNORECASE), source_text, lambda _match: "Killed"),
+    ]
+    errors = sorted((item for item in error_matches if item is not None), key=lambda item: int(item["index"]), reverse=True)
+    latest_error = errors[0] if errors else None
+    if latest_error and int(latest_error["index"]) > normal_end:
+        return {"label": "error", "status": "error"}
+    if normal:
+        return {"label": "normal", "status": "normal"}
+    if latest_error:
+        return {"label": "error", "status": "error"}
+    return {"label": "unknown", "status": "unknown"}
+
+
+def job_cpu_time_from_source(source_text: str) -> str | None:
+    return normalized_runtime_from_line(first_trimmed_match(re.compile(r"^\s*Job cpu time:\s*(.+)$", re.IGNORECASE | re.MULTILINE), source_text))
+
+
+def elapsed_time_from_source(source_text: str) -> str | None:
+    return (
+        normalized_runtime_from_line(first_trimmed_match(re.compile(r"^\s*Elapsed time:\s*(.+)$", re.IGNORECASE | re.MULTILINE), source_text))
+        or normalized_runtime_from_line(first_trimmed_match(re.compile(r"^\s*TOTAL RUN TIME:\s*(.+)$", re.IGNORECASE | re.MULTILINE), source_text))
+    )
+
+
+def normalized_runtime_from_line(value: str | None) -> str | None:
+    if not value:
+        return None
+    trimmed = re.sub(r"\s+", " ", value).removesuffix(".").strip()
+    match = re.search(r"(\d+)\s+days?\s+(\d+)\s+hours?\s+(\d+)\s+minutes?\s+([\d.]+)\s+seconds?", trimmed, re.IGNORECASE)
+    if match:
+        return f"{match.group(1)}d {match.group(2)}h {match.group(3)}m {match.group(4)}s"
+    return trimmed or None
+
+
+def first_trimmed_match(pattern: re.Pattern[str], source_text: str) -> str | None:
+    matches = list(pattern.finditer(source_text))
+    if not matches:
+        return None
+    return matches[-1].group(1).strip()
+
+
+def last_regex_match_with_index(
+    pattern: re.Pattern[str],
+    source_text: str,
+    label: Any = None,
+) -> dict[str, int | str] | None:
+    matches = list(pattern.finditer(source_text))
+    if not matches:
+        return None
+    match = matches[-1]
+    return {
+        "index": match.start(),
+        "text": match.group(0),
+        "label": label(match) if callable(label) else match.group(0),
+    }
+
+
 def parse_source_preview(
     name: str,
     preview: str,
@@ -1559,6 +1668,7 @@ def parse_source_preview(
 ) -> SourceParseResult:
     label = basename_without_extension(name)
     guessed_kind = infer_node_kind(name)
+    computation = computation_metadata_from_source(preview)
     gaussian = parse_gaussian(preview)
     if gaussian:
         energy_gas, energy_solution, method = gaussian
@@ -1592,6 +1702,7 @@ def parse_source_preview(
             energy_table=energy_table,
             parse_scope=parse_scope,
             confidence=confidence,
+            computation=computation,
         )
 
     orca = parse_orca(preview)
@@ -1626,6 +1737,7 @@ def parse_source_preview(
             energy_table=energy_table,
             parse_scope=parse_scope,
             confidence=confidence,
+            computation=computation,
         )
 
     extxyz = parse_extxyz_preview(name, preview)
@@ -1641,6 +1753,7 @@ def parse_source_preview(
             warnings=extxyz[1],
             parse_scope=parse_scope,
             confidence=confidence,
+            computation=computation,
         )
 
     maple = parse_maple_preview(name, preview)
@@ -1656,6 +1769,7 @@ def parse_source_preview(
             warnings=maple[1],
             parse_scope=parse_scope,
             confidence=confidence,
+            computation=computation,
         )
 
     xyz = parse_xyz_preview(name, preview)
@@ -1671,6 +1785,7 @@ def parse_source_preview(
             warnings=xyz[1],
             parse_scope=parse_scope,
             confidence=confidence,
+            computation=computation,
         )
 
     if looks_like_xyz_input(name, preview):
@@ -1683,6 +1798,7 @@ def parse_source_preview(
             warning=ParseWarning("parse_failed", "XYZ atom count does not match the number of coordinate lines.", name),
             parse_scope=parse_scope,
             confidence=confidence,
+            computation=computation,
         )
 
     return SourceParseResult(
@@ -1705,6 +1821,10 @@ def parse_source_preview(
         energyTable=None,
         parseScope=parse_scope,
         confidence=confidence,
+        terminationStatus=computation.terminationStatus,
+        terminationLabel=computation.terminationLabel,
+        jobCpuTime=computation.jobCpuTime,
+        elapsedTime=computation.elapsedTime,
     )
 
 
@@ -1718,6 +1838,7 @@ def failed_source_result(
     warning: ParseWarning,
     parse_scope: ParseScope = "preview",
     confidence: ParseConfidence = "low",
+    computation: ComputationMetadata | None = None,
 ) -> SourceParseResult:
     return SourceParseResult(
         label=label,
@@ -1739,6 +1860,10 @@ def failed_source_result(
         energyTable=None,
         parseScope=parse_scope,
         confidence=confidence,
+        terminationStatus=computation.terminationStatus if computation is not None else None,
+        terminationLabel=computation.terminationLabel if computation is not None else None,
+        jobCpuTime=computation.jobCpuTime if computation is not None else None,
+        elapsedTime=computation.elapsedTime if computation is not None else None,
     )
 
 
@@ -1755,6 +1880,7 @@ def source_result_from_candidates(
     energy_table: ParsedEnergyTableData | None = None,
     parse_scope: ParseScope = "preview",
     confidence: ParseConfidence = "low",
+    computation: ComputationMetadata | None = None,
 ) -> SourceParseResult:
     primary = primary_candidate(candidates)
     result_warnings = tuple(sorted(warnings, key=lambda warning: warning.code))
@@ -1783,6 +1909,10 @@ def source_result_from_candidates(
         energyTable=energy_table or primary.energyTable,
         parseScope=parse_scope,
         confidence=confidence,
+        terminationStatus=computation.terminationStatus if computation is not None else None,
+        terminationLabel=computation.terminationLabel if computation is not None else None,
+        jobCpuTime=computation.jobCpuTime if computation is not None else None,
+        elapsedTime=computation.elapsedTime if computation is not None else None,
     )
 
 

@@ -185,8 +185,8 @@ export const initialEdges: FlowEdge[] = [
 
 export const initialBarriers: FlowBarrier[] = []
 
-export function emptyProjectWorkspace(viewport: CanvasViewport): ProjectWorkspaceSnapshot {
-  const canvas = emptyProjectCanvas("canvas-1", "画布 1", viewport)
+export function emptyProjectWorkspace(viewport: CanvasViewport, projectLabel = "Untitled Study"): ProjectWorkspaceSnapshot {
+  const canvas = emptyProjectCanvas("canvas-1", projectLabel, viewport)
   return {
     files: [],
     canvases: [canvas],
@@ -210,7 +210,7 @@ export function emptyProjectWorkspace(viewport: CanvasViewport): ProjectWorkspac
 export function initialProjectWorkspaces(emptyViewport: CanvasViewport): Record<string, ProjectWorkspaceSnapshot> {
   const initialCanvas = {
     id: "canvas-1",
-    label: "画布 1",
+    label: "Diels-Alder Study",
     nodes: initialNodes,
     edges: initialEdges,
     barriers: initialBarriers,
@@ -238,8 +238,8 @@ export function initialProjectWorkspaces(emptyViewport: CanvasViewport): Record<
       viewMode: "canvas",
       inspectorMode: "inspector",
     }),
-    nickel: emptyProjectWorkspace(emptyViewport),
-    "ir-screening": emptyProjectWorkspace(emptyViewport),
+    nickel: emptyProjectWorkspace(emptyViewport, "Nickel catalysis"),
+    "ir-screening": emptyProjectWorkspace(emptyViewport, "Ir screening"),
   }
 }
 
@@ -277,7 +277,7 @@ export function projectWorkspaceSnapshot(snapshot: ProjectWorkspaceSnapshot): Pr
   const fallbackActiveCanvasId = snapshot.activeCanvasId || snapshot.canvases[0]?.id || "canvas-1"
   const activeCanvasOverride = {
     id: fallbackActiveCanvasId,
-    label: snapshot.canvases.find((canvas) => canvas.id === fallbackActiveCanvasId)?.label ?? "画布 1",
+    label: snapshot.canvases.find((canvas) => canvas.id === fallbackActiveCanvasId)?.label ?? "Untitled Study",
     nodes: cloneFlowNodes(snapshot.nodes),
     edges: snapshot.edges.map((edge) => ({ ...edge })),
     barriers: snapshot.barriers.map((barrier) => ({ ...barrier })),
@@ -290,7 +290,7 @@ export function projectWorkspaceSnapshot(snapshot: ProjectWorkspaceSnapshot): Pr
     ? snapshot.canvases.map((canvas) => canvas.id === fallbackActiveCanvasId ? activeCanvasOverride : projectCanvasSnapshot(canvas))
     : [activeCanvasOverride]
   const activeCanvasId = resolveActiveCanvasId(snapshot.activeCanvasId, clonedCanvases)
-  const activeCanvas = clonedCanvases.find((canvas) => canvas.id === activeCanvasId) ?? clonedCanvases[0] ?? emptyProjectCanvas("canvas-1", "画布 1", snapshot.viewport)
+  const activeCanvas = clonedCanvases.find((canvas) => canvas.id === activeCanvasId) ?? clonedCanvases[0] ?? emptyProjectCanvas("canvas-1", "Untitled Study", snapshot.viewport)
   return {
     files: cloneSourceFiles(snapshot.files),
     canvases: clonedCanvases,

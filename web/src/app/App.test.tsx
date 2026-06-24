@@ -123,6 +123,34 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Add Node" })).not.toBeInTheDocument()
   })
 
+  it("uses only native macOS traffic lights in the desktop shell", () => {
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles: vi.fn(),
+        getEngineStatus: vi.fn().mockResolvedValue({
+          status: "ready",
+          engineVersion: "test",
+          capabilities: [],
+        }),
+        saveJsonSnapshot: vi.fn(),
+        saveReportArtifact: vi.fn(),
+        openProjectPackage: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+        onOpenProjectContent: vi.fn(() => vi.fn()),
+      },
+    })
+
+    const { container } = render(<App />)
+
+    expect(container.querySelector(".app-shell.is-macos-desktop")).toBeInTheDocument()
+    expect(container.querySelector(".macos-traffic-light-ghosts")).not.toBeInTheDocument()
+  })
+
   it("keeps non-desktop bridge workflows out of the active workbench", () => {
     render(<App />)
 
@@ -355,13 +383,13 @@ describe("App", () => {
     const unitSelect = screen.getByLabelText("Unit")
 
     expect(within(energySelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Egas",
-      "Gsol",
+      "ΔEgas",
+      "ΔGsol",
     ])
     expect(within(unitSelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "hartree",
-      "kcal/mol",
-      "kJ/mol",
+      "Eh",
+      "kcal",
+      "kJ",
     ])
 
     fireEvent.change(energySelect, { target: { value: "gas" } })
@@ -458,27 +486,45 @@ describe("App", () => {
     expect(screen.getByText("No local files")).toBeInTheDocument()
   })
 
-  it("imports files into an inactive project from project actions", async () => {
+  it("creates canvases from project actions and only deletes them from the sidebar", () => {
     render(<App />)
 
-    fireEvent.click(screen.getByRole("button", { name: "Project actions for Nickel catalysis" }))
-    fireEvent.click(screen.getByRole("menuitem", { name: "Import files into project" }))
+    fireEvent.click(screen.getByRole("button", { name: "Project actions for Diels-Alder Study" }))
+    expect(screen.getByRole("menuitem", { name: "New canvas" })).toBeInTheDocument()
+    expect(screen.queryByRole("menuitem", { name: "Import files into project" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("menuitem", { name: "New canvas" }))
 
-    const input = screen.getByLabelText("Import calculation files")
-    const file = new File(["FINAL SINGLE POINT ENERGY -12.34"], "nickel-import.out", { type: "text/plain" })
-    await act(async () => {
-      fireEvent.change(input, { target: { files: [file] } })
-      await Promise.resolve()
-    })
+    const tabList = screen.getByRole("tablist", { name: "Project canvases" })
+    expect(within(tabList).getByRole("tab", { name: "Diels-Alder Study 1" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("button", { name: "Diels-Alder Study 1" })).toBeInTheDocument()
 
-    expect(await screen.findByRole("button", { name: "nickel-import.out ORCA" })).toBeInTheDocument()
-    expect(await screen.findByRole("button", { name: "Node nickel-import" })).toHaveTextContent("ΔG")
-    expect(screen.getByRole("button", { name: "Nickel catalysis empty" })).toHaveAttribute("aria-current", "true")
-    expect(screen.queryByRole("button", { name: "Node TS1 (Endo)" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Close canvas Diels-Alder Study 1" }))
 
-    fireEvent.click(screen.getByRole("button", { name: "Diels-Alder Study open" }))
-    expect(screen.queryByRole("button", { name: "nickel-import.out ORCA" })).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toBeInTheDocument()
+    expect(within(tabList).queryByRole("tab", { name: "Diels-Alder Study 1" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Diels-Alder Study 1" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Diels-Alder Study 1" }))
+    expect(within(tabList).getByRole("tab", { name: "Diels-Alder Study 1" })).toHaveAttribute("aria-selected", "true")
+
+    fireEvent.click(screen.getByRole("button", { name: "Canvas actions for Diels-Alder Study 1" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete canvas" }))
+
+    expect(within(tabList).queryByRole("tab", { name: "Diels-Alder Study 1" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Diels-Alder Study 1" })).not.toBeInTheDocument()
+    expect(within(tabList).getByRole("tab", { name: "Diels-Alder Study" })).toHaveAttribute("aria-selected", "true")
+  })
+
+  it("creates a canvas from the top tab plus without switching to an empty phantom project", () => {
+    render(<App />)
+
+    const tabList = screen.getByRole("tablist", { name: "Project canvases" })
+    fireEvent.click(screen.getByRole("button", { name: "New canvas" }))
+
+    expect(within(tabList).getByRole("tab", { name: "Diels-Alder Study 1" })).toHaveAttribute("aria-selected", "true")
+    expect(within(tabList).queryByRole("tab", { name: "Untitled Study" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Diels-Alder Study open" })).toHaveAttribute("aria-current", "true")
+    expect(screen.getByRole("button", { name: "gaussian.log Gaussian" })).toBeInTheDocument()
+    expect(screen.queryByText("No local files")).not.toBeInTheDocument()
   })
 
   it("imports dropped local files into an inactive project row", async () => {
@@ -517,13 +563,12 @@ describe("App", () => {
     })
 
     const rail = screen.getByRole("complementary", { name: "Project rail" })
-    expect(await within(rail).findByText("Bfix6-ts")).toBeInTheDocument()
-    expect(within(rail).queryByText("Bfix6-ts.log")).not.toBeInTheDocument()
-    expect(within(rail).queryByText("Bfix6-ts-sol.log")).not.toBeInTheDocument()
-    expect(within(rail).getByText("gas")).toBeInTheDocument()
-    expect(within(rail).getByText("sol")).toBeInTheDocument()
+    const groupedRowButton = await within(rail).findByRole("button", { name: "Bfix6-ts Gaussian" })
+    expect(groupedRowButton).toBeInTheDocument()
+    expect(within(rail).queryByRole("button", { name: "Bfix6-ts.log Gaussian" })).not.toBeInTheDocument()
+    expect(within(rail).queryByRole("button", { name: "Bfix6-ts-sol.log Gaussian" })).not.toBeInTheDocument()
 
-    const row = within(rail).getByText("Bfix6-ts").closest(".project-file-card") as HTMLElement
+    const row = groupedRowButton.closest(".project-file-card") as HTMLElement
     const dataTransfer = new TestDataTransfer()
     fireEvent.dragStart(row, { dataTransfer })
     const payload = JSON.parse(dataTransfer.getData("application/x-rxnflow-raw-file"))
@@ -540,7 +585,7 @@ describe("App", () => {
     render(<App />)
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    expect(inspector.querySelector(".inspector-rail-header")).toBeInTheDocument()
+    expect(inspector.querySelector(".inspector-rail-header")).not.toBeInTheDocument()
     expect(inspector.querySelector(".panel-tabs")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Objects" })).not.toBeInTheDocument()
     expect(screen.queryByRole("region", { name: "Object registry" })).not.toBeInTheDocument()
@@ -560,8 +605,9 @@ describe("App", () => {
     fireEvent.click(within(tsNode).getByRole("button", { name: "More actions for TS1 (Endo)" }))
     fireEvent.click(within(tsNode).getByRole("menuitem", { name: "Set zero" }))
 
-    expect(within(tsNode).getByText("0")).toBeInTheDocument()
-    expect(within(tsNode).getByText("0.00 kcal/mol")).toBeInTheDocument()
+    expect(within(tsNode).queryByText("0")).not.toBeInTheDocument()
+    expect(within(tsNode).getByText("0.00")).toBeInTheDocument()
+    expect(within(tsNode).queryByText("0.00 kcal/mol")).not.toBeInTheDocument()
   })
 
   it("collapses and restores a node structure preview from the canvas card", () => {
@@ -729,7 +775,12 @@ describe("App", () => {
 
     expect(container.querySelector(".barrier-arrow")).toBeInTheDocument()
     expect(container.querySelector(".barrier-guide")).toBeInTheDocument()
-    expect(screen.getByRole("textbox", { name: "Barrier label" })).toHaveValue("ΔE‡ 19.15")
+    expect(
+      screen.getByRole("button", {
+        name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔG‡ 20.96",
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Barrier from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 20.96")
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
     expect(within(inspector).getByText("Selected Barrier")).toBeInTheDocument()
@@ -737,11 +788,11 @@ describe("App", () => {
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(within(toolbar).getByRole("button", { name: "Delete selection" }))
 
-    expect(screen.queryByRole("textbox", { name: "Barrier label" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Barrier from 1,3-Butadiene to TS1 (Endo)" })).not.toBeInTheDocument()
     expect(container.querySelector(".barrier-arrow")).not.toBeInTheDocument()
   })
 
-  it("edits explicit barrier annotation labels inline", () => {
+  it("updates explicit barrier annotation labels when energy source changes", () => {
     render(<App />)
 
     const targetNode = screen.getByRole("button", { name: "Node TS1 (Endo)" })
@@ -755,19 +806,17 @@ describe("App", () => {
       restoreElementsFromPoint()
     }
 
-    const labelInput = screen.getByRole("textbox", { name: "Barrier label" })
-    fireEvent.change(labelInput, { target: { value: "OA barrier" } })
-    fireEvent.blur(labelInput)
+    const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
+    expect(screen.getByRole("button", { name: "Barrier from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 20.96")
 
-    expect(screen.getByRole("textbox", { name: "Barrier label" })).toHaveValue("OA barrier")
+    fireEvent.change(within(toolbar).getByRole("combobox", { name: "Energy" }), { target: { value: "gas" } })
 
-    fireEvent.keyDown(screen.getByRole("button", { name: "Node 1,3-Butadiene" }), { key: "Enter" })
-
-    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("OA barrier")
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" }))
-
-    expect(screen.getByRole("textbox", { name: "Barrier label" })).toHaveValue("OA barrier")
+    expect(screen.getByRole("button", { name: "Barrier from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔE‡ 19.15")
+    expect(
+      screen.getByRole("button", {
+        name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔE‡ 19.15",
+      }),
+    ).toBeInTheDocument()
   })
 
   it("supports undo, redo, delete selection, auto layout, and fit view canvas commands", () => {
@@ -920,8 +969,10 @@ describe("App", () => {
 
     fireEvent.click(parsedNode)
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    expect(within(inspector).getByText("H2O")).toBeInTheDocument()
-    expect(within(inspector).getByText("3 atoms / H, O")).toBeInTheDocument()
+    const formulaField = within(inspector).getByText("Formula").closest("div")
+    expect(formulaField).toHaveTextContent("H2O")
+    expect(formulaField).toHaveTextContent("(3)")
+    expect(within(inspector).queryByText("3 atoms")).not.toBeInTheDocument()
 
     fireEvent.click(within(inspector).getByRole("button", { name: "Open 3D Structure" }))
     const dialog = screen.getByRole("dialog", { name: "3D Structure" })
@@ -965,9 +1016,11 @@ describe("App", () => {
     expect(orcaRow).toHaveClass("project-file-card--selected")
     expect(mapleRow).toHaveClass("project-file-card--selected")
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove orca.out from project" }))
+    fireEvent.click(screen.getByRole("button", { name: "More actions for orca.out" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete file and nodes" }))
     expect(screen.queryByRole("button", { name: "orca.out ORCA" })).not.toBeInTheDocument()
-    expect(document.querySelectorAll(".reaction-node")).toHaveLength(initialNodeCount)
+    expect(screen.queryByRole("button", { name: "Node Maleic Anhydride" })).not.toBeInTheDocument()
+    expect(document.querySelectorAll(".reaction-node")).toHaveLength(initialNodeCount - 1)
   })
 
   it("drops project file rows onto the canvas at graph-space position", async () => {
@@ -1055,8 +1108,10 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Node Frame 2" })).not.toBeInTheDocument()
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Later" }))
-    const sourceInspector = screen.getByRole("region", { name: "Source inspector" })
-    fireEvent.click(within(sourceInspector).getByRole("button", { name: "Review candidates" }))
+    expect(screen.queryByRole("region", { name: "Source inspector" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for path.xyz" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Review candidates" }))
 
     const reopenedDialog = await screen.findByRole("dialog", { name: "Import candidates" })
     fireEvent.click(within(reopenedDialog).getByRole("button", { name: "Register all" }))
@@ -1351,7 +1406,12 @@ describe("App", () => {
     })
 
     fireEvent.click(screen.getByRole("button", { name: "desktop.out ORCA" }))
-    expect(await screen.findByText("sources/01-desktop-out-desktop.out")).toBeInTheDocument()
+    const inspector = screen.getByRole("complementary", { name: "Inspector" })
+    expect(within(inspector).getByText("engine-preview")).toBeInTheDocument()
+    const sourceInspector = within(inspector).getByRole("region", { name: "Source inspector" })
+    expect(sourceInspector).toHaveTextContent("desktop.out")
+    expect(within(sourceInspector).getByRole("button", { name: "Open raw log" })).toBeEnabled()
+    expect(screen.queryByText("sources/01-desktop-out-desktop.out")).not.toBeInTheDocument()
   })
 
   it("keeps canceled Electron report exports out of the export summary", async () => {

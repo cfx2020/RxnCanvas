@@ -138,16 +138,26 @@ function verifyWindowsInstallerSmokeScript() {
 
 function verifyRuntimeSmokeScript() {
   const mainPath = path.join(projectRoot, "electron", "main.cjs")
+  const appSourcePath = path.join(projectRoot, "src", "app", "App.tsx")
+  const workbenchCssPath = path.join(projectRoot, "src", "app", "workbench.css")
   const runtimeSmokePath = path.join(projectRoot, "electron", "runtime-smoke.cjs")
   assert(fs.existsSync(runtimeSmokePath), "missing electron/runtime-smoke.cjs")
   const mainSource = fs.readFileSync(mainPath, "utf8")
+  const appSource = fs.readFileSync(appSourcePath, "utf8")
+  const workbenchCss = fs.readFileSync(workbenchCssPath, "utf8")
   const smokeSource = fs.readFileSync(runtimeSmokePath, "utf8")
   assert(mainSource.includes("--rxnflow-smoke-exit"), "Electron main must support --rxnflow-smoke-exit")
   assert(mainSource.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK"), "Electron main must emit runtime smoke success marker")
   assert(mainSource.includes("forbiddenRuntimeUiTerms"), "Electron runtime smoke must guard inactive UI terms")
-  assert(mainSource.includes("node sidebar and floating export trigger"), "Electron runtime smoke must verify active node sidebar/export trigger")
+  assert(mainSource.includes("node inspector and floating export trigger"), "Electron runtime smoke must verify active node inspector/export trigger")
   assert(mainSource.includes("PNG|CDXML|XLSX"), "Electron runtime smoke must verify active export formats")
   assert(mainSource.includes("inactiveExportFormats"), "Electron runtime smoke must guard inactive export formats")
+  assert(mainSource.includes("titleBarStyle: process.platform === \"darwin\" ? \"hidden\" : \"default\""), "macOS window must use hidden titlebar instead of hiddenInset")
+  assert(mainSource.includes("trafficLightPosition: macTrafficLightPosition"), "macOS traffic lights must use a stable explicit position")
+  assert(mainSource.includes("installMacWindowControls(window)"), "Electron main must keep native macOS window controls visible")
+  assert(!appSource.includes("macos-traffic-light-ghosts"), "renderer must not draw fake macOS traffic-light dots")
+  assert(!workbenchCss.includes(".macos-traffic-light-ghosts"), "workbench CSS must not draw fake macOS traffic-light dots")
+  assert(!workbenchCss.includes(".app-shell.is-macos-desktop::before"), "workbench CSS must not draw a custom macOS traffic-light backing layer")
   assert(smokeSource.includes("--rxnflow-smoke-exit"), "runtime smoke script must launch packaged app with smoke flag")
 }
 

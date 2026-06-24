@@ -1,5 +1,6 @@
-import { memo } from "react"
+import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type Ref } from "react"
 import {
+  GripVertical,
   Hand,
   LayoutDashboard,
   Maximize2,
@@ -12,6 +13,7 @@ import {
   ZoomOut,
 } from "lucide-react"
 import type { EnergyDisplayOptions } from "./energyDisplay"
+import type { ToolbarPlacement } from "./toolbarPlacement"
 
 type ViewMode = "canvas" | "table"
 type CanvasTool = "select" | "pan"
@@ -34,6 +36,10 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
   onFitView,
   onZoomIn,
   onZoomOut,
+  placement,
+  onDragStart,
+  toolbarRef,
+  style,
 }: {
   tool: CanvasTool
   viewMode: ViewMode
@@ -52,38 +58,64 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
   onFitView: () => void
   onZoomIn: () => void
   onZoomOut: () => void
+  placement: ToolbarPlacement
+  onDragStart: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  toolbarRef?: Ref<HTMLDivElement>
+  style?: CSSProperties
 }) {
+  const layout = placement.mode === "floating" ? "horizontal" : "vertical"
+  const docked = placement.mode !== "floating"
+
   return (
-    <div className="floating-toolbar" role="toolbar" aria-label="Canvas commands">
-        <label className="toolbar-select-group">
-          <span>Δ</span>
-          <select
-            aria-label="Energy"
-            value={energyDisplayOptions.energySource}
-            onChange={(event) => onEnergyDisplayOptionsChange({
-              ...energyDisplayOptions,
-              energySource: event.currentTarget.value as EnergyDisplayOptions["energySource"],
-            })}
-          >
-            <option value="gas">Egas</option>
-            <option value="solution">Gsol</option>
-          </select>
-        </label>
-        <label className="toolbar-select-group">
-          <span>Unit</span>
-          <select
-            aria-label="Unit"
-            value={energyDisplayOptions.outputUnit}
-            onChange={(event) => onEnergyDisplayOptionsChange({
-              ...energyDisplayOptions,
-              outputUnit: event.currentTarget.value as EnergyDisplayOptions["outputUnit"],
-            })}
-          >
-            <option value="hartree">hartree</option>
-            <option value="kcal/mol">kcal/mol</option>
-            <option value="kj/mol">kJ/mol</option>
-          </select>
-        </label>
+    <div
+      ref={toolbarRef}
+      className={`floating-toolbar layout-${layout}${docked ? ` is-docked dock-${placement.mode}` : ""}`}
+      data-layout={layout}
+      data-placement={placement.mode}
+      style={style}
+      role="toolbar"
+      aria-label="Canvas commands"
+    >
+        <button
+          type="button"
+          className="toolbar-drag-handle"
+          aria-label={docked ? "Drag toolbar away from edge" : "Move toolbar"}
+          title={docked ? "Drag away from edge" : "Move toolbar"}
+          onPointerDown={onDragStart}
+        >
+          <GripVertical size={16} />
+        </button>
+        <div className="toolbar-energy-chip" role="group" aria-label="Energy display">
+          <label className="toolbar-select-group toolbar-select-compact">
+            <span className="visually-hidden">Energy</span>
+            <select
+              aria-label="Energy"
+              value={energyDisplayOptions.energySource}
+              onChange={(event) => onEnergyDisplayOptionsChange({
+                ...energyDisplayOptions,
+                energySource: event.currentTarget.value as EnergyDisplayOptions["energySource"],
+              })}
+            >
+              <option value="gas">ΔEgas</option>
+              <option value="solution">ΔGsol</option>
+            </select>
+          </label>
+          <label className="toolbar-select-group toolbar-select-compact">
+            <span className="visually-hidden">Unit</span>
+            <select
+              aria-label="Unit"
+              value={energyDisplayOptions.outputUnit}
+              onChange={(event) => onEnergyDisplayOptionsChange({
+                ...energyDisplayOptions,
+                outputUnit: event.currentTarget.value as EnergyDisplayOptions["outputUnit"],
+              })}
+            >
+              <option value="hartree">Eh</option>
+              <option value="kcal/mol">kcal</option>
+              <option value="kj/mol">kJ</option>
+            </select>
+          </label>
+        </div>
         <div className="toolbar-divider" />
         <div className="toolbar-segmented" data-view-mode={viewMode} role="group" aria-label="Workbench view">
           <button

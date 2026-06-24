@@ -2,7 +2,7 @@
 
 > 状态：当前
 > 创建日期：2026-05-01
-> 最近更新：2026-06-19
+> 最近更新：2026-06-23
 
 ## 1. 当前产品边界
 
@@ -19,13 +19,13 @@ RxnFlow 现在处于桌面画布重构期，旧代码已备份到 `.codestable/h
 
 `web/` 是当前唯一 active UI 工程，技术栈为 React + TypeScript + Vite + npm。它现在提供一个本地优先画布工作台：
 
-- 左侧 project rail：本地项目/工作区列表、桌面端 `New Project Folder` 创建真实用户可见工作区文件夹、`Open Folder` 打开已有工作区文件夹、按项目隔离/恢复 renderer 工作区快照、通过 `Project actions` / `Import files into project` 把本地文件导入目标项目、通过项目行 drop 把外部文件导入目标项目、通过 `Project actions` / `Delete project` 从 renderer 本地项目列表删除项目、文件列表、导入本地文件入口，以及成对 gas/solution log 的结构行分组和成组 source 拖拽。浏览器预览仍只能通过 hidden file input 打开 JSON 项目包做 UI 验证，不能真正打开本地文件夹。
-- 中间 canvas/table：项目级多 Canvas Tab、反应节点画布、节点拖拽、Select tool 空白画布框选、Pan tool 空白画布拖拽平移、节点手柄拖拽或键盘激活后创建 edge、edge 选择检查、画布平移/缩放、可拖拽导航 minimap、能量表视图。source files 仍是项目级共享资源；每个 canvas 单独保存 nodes / edges / barriers / viewport / selection。
-- 右侧 inspector：节点详情、source preview 和 export dock；节点详情里有 lightweight `Structure Preview` 2D 骨架图、Ketcher + Indigo WASM `Edit 2D` 手动画板（保存为单节点 manual KET/Molfile/CDXML/SVG，可 reset 回自动推断）和 3Dmol.js `3D Structure` 真实坐标查看器。Object Registry / Objects tab / correction 表单不属于当前 active UI。
+- 左侧 project rail：本地项目/工作区列表、桌面端 `New Project Folder` 创建真实用户可见工作区文件夹、`Open Folder` 打开已有工作区文件夹、按项目隔离/恢复 renderer 工作区快照、通过 `Project actions` / `Import files into project` 把本地文件导入目标项目、通过项目行 drop 把外部文件导入目标项目、通过 `Project actions` / `Remove from sidebar` 从 renderer 本地项目列表移除项目引用（不删除磁盘文件夹）、active project 下的 canvas 列表，以及按结构名分组的文件列表与成组 source 拖拽。左侧栏折叠后仍保留 hover preview rail。浏览器预览仍只能通过 hidden file input 打开 JSON 项目包做 UI 验证，不能真正打开本地文件夹。
+- 中间 canvas/table：项目级多 Canvas Tab，支持按项目名派生默认标签、新建、重命名、关闭与持久化恢复；反应节点画布、节点拖拽、Select tool 空白画布框选、Pan tool 空白画布拖拽平移、节点手柄拖拽或键盘激活后创建 edge、edge label 画布内编辑、barrier 注释按钮、画布平移/缩放、可拖拽导航 minimap、能量表视图，以及带滑动动画的 canvas/table 切换。source files 仍是项目级共享资源；每个 canvas 单独保存 nodes / edges / barriers / viewport / selection。
+- 右侧 inspector：节点详情、source preview 和 export dock；节点详情现在是统一 node panel，含 formula+分子量、method/basis、charge-spin、energy/free energy、termination、elapsed、optimization curve，以及单按钮打开的 structure dialog。结构对话框打开后左侧显示 2D、右侧显示 3D。Object Registry / Objects tab / correction 表单不属于当前 active UI。
 - 导入路径：Electron 模式会把本地 `sourcePath` 交给 local engine `import.preview`，由 Python engine 读取完整文件解析，renderer 只保留 64KB source preview sample；导入进入桌面工作区后由自动保存把原始 log/out/xyz 复制到工作区根目录的 `sources/`，项目元数据写入工作区内隐藏 `.rxnflow/` 目录，后续持久化使用 project-relative `storedPath`，`sourcePath` 只作为本次导入解析和复制的临时来源。浏览器开发预览继续使用 renderer-side lightweight parser fallback，不能访问本地绝对路径或写入项目文件夹。当前 active parser 识别 Gaussian / ORCA（含常见 Cartesian coordinate、charge/spin 摘要）/ MAPLE / 普通 XYZ comment energy / ASE extxyz metadata（label、charge/spin、eV energy 转 Hartree）的摘要、formula、部分坐标摘要、warnings、parser provenance、`parseScope` / `confidence` 和多帧 candidates；Gaussian/ORCA 还返回当前能量表可用的 `energyTable` 字段（Egas、Ggas、Ggas+1M、basis、Esol/Gsol pairing 输入）。单候选 source 自动生成 parsed source node；多候选 source 进入候选选择面板，支持登记选中候选或全部候选为节点，并把 candidate/parser provenance 持久化到项目节点和轻量 `importLedger`。
-- 相对能量当前由 renderer 根据画布节点、baseline 和 gas/solution source 计算，并通过画布级 `Energy`/`Unit` 控件显示；它不恢复旧 UI `Compute`/PES 面板、旧 Python `energy.compute` command、Object Registry 或 correction policy engine。
+- 相对能量当前由 renderer 根据画布节点、baseline 和 gas/solution source 计算，并通过画布级紧凑 `ΔEgas` / `ΔGsol` 与单位控件显示；它不恢复旧 UI `Compute`/PES 面板、旧 Python `energy.compute` command、Object Registry 或 correction policy engine。
 - Export 当前恢复原 UI 默认承载的 PNG/CDXML/XLSX 报告 artifact，由 renderer-side `web/src/domain/reportExports.ts` 生成；CSV/SVG/PDF/PPTX/CDX 和旧 Python ReportExportService 不在当前 active UI 中伪造。
-- Electron 模式右上角显示 local engine 状态；浏览器预览显示 `Browser preview`。
+- Electron 模式右上角显示 local engine 状态；浏览器预览显示 `Browser preview`。macOS traffic lights 已在 Electron 主窗口显式恢复，workspace topbar / canvas tab bar 使用 drag region 支持拖动窗口。
 
 当前 Web renderer 不依赖本地 HTTP bridge、IndexedDB project repository、ShellClient、Three.js 分子 viewer、i18n runtime 或 Playwright E2E harness。节点卡/Inspector `Structure Preview` 使用项目内轻量 SVG 从导入坐标生成 2D skeletal depiction，并可由用户在 Node Inspector 手动保存/重置单节点 KET/Molfile/CDXML/SVG；`3D Structure` 使用 3Dmol.js 做真实坐标 ball-stick 预览，但不是 Three.js 自研测量工具，也不做 2D/3D 原子联动或 atom-map 工作流。这些旧能力如需恢复，必须按 roadmap 逐项重新设计。
 

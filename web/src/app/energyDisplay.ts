@@ -306,9 +306,18 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
   const pathSet = new Set(mainPath)
   const startId = mainPath[0]
   const firstPathPointId = mainPath[1]
+  const pathIndexById = new Map(mainPath.map((nodeId, index) => [nodeId, index]))
   const sideProducts = (successors.get(startId) ?? []).filter((nodeId) => nodeId !== firstPathPointId && !pathSet.has(nodeId))
-  const externalReactants = (predecessors.get(firstPathPointId) ?? []).filter((nodeId) => nodeId !== startId && !pathSet.has(nodeId))
-  const hasAuxiliaryTerms = sideProducts.length > 0 || externalReactants.length > 0
+  const externalReactantsByPathIndex = new Map<number, string[]>()
+  mainPath.forEach((nodeId, index) => {
+    if (index === 0) return
+    const previousPathNodeId = mainPath[index - 1]
+    const externalReactants = (predecessors.get(nodeId) ?? [])
+      .filter((predecessorId) => predecessorId !== previousPathNodeId && !pathSet.has(predecessorId))
+      .sort((a, b) => (nodeOrder.get(a) ?? 0) - (nodeOrder.get(b) ?? 0))
+    externalReactantsByPathIndex.set(index, externalReactants)
+  })
+  const allExternalReactants = uniqueNodeIds(Array.from(externalReactantsByPathIndex.values()).flat(), nodeOrder)
   const roleByNodeId = new Map<string, RelativeEnergyRole>()
   const termsByNodeId = new Map<string, EnergyExpressionTerm[]>()
   const relativeTableVisibilityByNodeId = new Map<string, boolean>()
@@ -328,7 +337,7 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
     }
 
     const termIds = [nodeId, ...sideProducts]
-    const negativeTermIds = index === 1 ? [startId] : [startId, ...externalReactants]
+    const negativeTermIds = index === 1 ? [startId] : [startId, ...externalReactantsThroughPathIndex(index, externalReactantsByPathIndex, nodeOrder)]
     const terms = compactExpressionTerms([
       ...termIds.flatMap((id) => nodeSelfTerms(nodeById, id)),
       ...negativeTermIds.flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
@@ -338,11 +347,13 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
     relativeTableVisibilityByNodeId.set(nodeId, true)
   })
 
-  const auxiliaryTermIds = new Set([...sideProducts, ...externalReactants])
+  const auxiliaryTermIds = new Set([...sideProducts, ...allExternalReactants])
   const distanceFromStart = reachableNodeDistances(startId, successors)
+  const pathIndexFromStart = reachablePathIndexes(startId, successors, pathIndexById)
   for (const [nodeId, distance] of distanceFromStart) {
     if (distance === 0 || auxiliaryTermIds.has(nodeId) || roleByNodeId.get(nodeId) === "path-point") continue
-    const negativeTermIds = distance === 1 ? [startId] : [startId, ...externalReactants]
+    const upstreamPathIndex = pathIndexFromStart.get(nodeId) ?? (distance <= 1 ? 1 : mainPath.length - 1)
+    const negativeTermIds = distance === 1 ? [startId] : [startId, ...externalReactantsThroughPathIndex(upstreamPathIndex, externalReactantsByPathIndex, nodeOrder)]
     const terms = compactExpressionTerms([
       ...nodeSelfTerms(nodeById, nodeId),
       ...sideProducts.flatMap((id) => nodeSelfTerms(nodeById, id)),
@@ -403,6 +414,23 @@ function longestDirectedPath(
   return best
 }
 
+function externalReactantsThroughPathIndex(
+  pathIndex: number,
+  externalReactantsByPathIndex: Map<number, string[]>,
+  nodeOrder: Map<string, number>,
+): string[] {
+  if (pathIndex <= 1) return []
+  const reactants: string[] = []
+  for (let index = 1; index <= pathIndex; index += 1) {
+    reactants.push(...(externalReactantsByPathIndex.get(index) ?? []))
+  }
+  return uniqueNodeIds(reactants, nodeOrder)
+}
+
+function uniqueNodeIds(nodeIds: string[], nodeOrder: Map<string, number>): string[] {
+  return Array.from(new Set(nodeIds)).sort((a, b) => (nodeOrder.get(a) ?? 0) - (nodeOrder.get(b) ?? 0))
+}
+
 function reachableNodeDistances(startId: string, successors: Map<string, string[]>): Map<string, number> {
   const distances = new Map<string, number>([[startId, 0]])
   const queue = [startId]
@@ -416,6 +444,26 @@ function reachableNodeDistances(startId: string, successors: Map<string, string[
     }
   }
   return distances
+}
+
+function reachablePathIndexes(
+  startId: string,
+  successors: Map<string, string[]>,
+  pathIndexById: Map<string, number>,
+): Map<string, number> {
+  const indexes = new Map<string, number>([[startId, pathIndexById.get(startId) ?? 0]])
+  const queue = [startId]
+  for (let index = 0; index < queue.length; index += 1) {
+    const nodeId = queue[index]
+    const currentPathIndex = indexes.get(nodeId) ?? 0
+    for (const nextId of successors.get(nodeId) ?? []) {
+      const nextPathIndex = Math.max(currentPathIndex, pathIndexById.get(nextId) ?? currentPathIndex)
+      if (indexes.has(nextId) && (indexes.get(nextId) ?? 0) >= nextPathIndex) continue
+      indexes.set(nextId, nextPathIndex)
+      queue.push(nextId)
+    }
+  }
+  return indexes
 }
 
 function nodeSelfTerms(nodeById: Map<string, FlowNode>, nodeId: string, sign = 1): EnergyExpressionTerm[] {

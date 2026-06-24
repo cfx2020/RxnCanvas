@@ -115,6 +115,29 @@ describe("energyDisplay", () => {
     expect(solutionRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(24.8503, 3)
     expect(solutionRows.find((row) => row.nodeId === "tsr")?.relative).toBeCloseTo(3.8344, 3)
     expect((solutionRows.find((row) => row.nodeId === "four-b")?.relativeEnergyTable?.gsolHartree ?? 0) * kcalPerHartree).toBeCloseTo(17.5410, 3)
+
+    const missingLaterReactantRows = energyTableRows(nodes, defaultEnergyDisplayOptions, [
+      edge("base", "four-b"),
+      edge("base", "cl"),
+      edge("four-b", "tsf"),
+      edge("tsf", "ts"),
+      edge("ts", "tsr"),
+    ])
+    expect(missingLaterReactantRows.find((row) => row.nodeId === "tsf")?.relative).toBeLessThan(-1000000)
+
+    const laterReactantEdges: FlowEdge[] = [
+      edge("base", "four-b"),
+      edge("base", "cl"),
+      edge("four-b", "tsf"),
+      edge("one", "tsf"),
+      edge("tsf", "ts"),
+      edge("ts", "tsr"),
+    ]
+    const laterReactantRows = energyTableRows(nodes, defaultEnergyDisplayOptions, laterReactantEdges)
+    expect(laterReactantRows.find((row) => row.nodeId === "one")?.relativeRole).toBe("term-only")
+    expect(laterReactantRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(17.5410, 3)
+    expect(laterReactantRows.find((row) => row.nodeId === "tsf")?.relative).toBeCloseTo(18.8099, 3)
+    expect(laterReactantRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(24.8503, 3)
   })
 })
 

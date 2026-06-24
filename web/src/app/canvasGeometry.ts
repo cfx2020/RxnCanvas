@@ -37,8 +37,8 @@ export type MinimapGeometry = {
 }
 
 export const nodeWidth = 210
-export const nodeHeight = 276
-export const collapsedNodeHeight = 132
+export const nodeHeight = 214
+export const collapsedNodeHeight = 104
 export const canvasGridSize = 8
 export const minCanvasZoom = 0.16
 export const maxCanvasZoom = 1.65

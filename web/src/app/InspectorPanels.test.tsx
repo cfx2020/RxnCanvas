@@ -89,7 +89,7 @@ function sourceFile(parse = sourceParseResult()): SourceFile {
 }
 
 describe("InspectorPanels", () => {
-  it("renders source parser candidates and forwards review actions", () => {
+  it("does not render a standalone source panel when no node is selected", () => {
     const onReviewCandidates = vi.fn()
     const file = sourceFile(sourceParseResult([
       candidate,
@@ -117,12 +117,11 @@ describe("InspectorPanels", () => {
     )
 
     expect(screen.getByRole("complementary", { name: "Inspector" })).toBeInTheDocument()
-    expect(screen.getAllByText("geometry.log").length).toBeGreaterThan(0)
-    expect(screen.getByText("gaussian-log-text-preview")).toBeInTheDocument()
-    expect(screen.getByText("Choose the candidate to register.")).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole("button", { name: "Review candidates" }))
-    expect(onReviewCandidates).toHaveBeenCalledWith("source-a")
+    expect(screen.getByText("No node selected")).toBeInTheDocument()
+    expect(screen.queryByText("geometry.log")).not.toBeInTheDocument()
+    expect(screen.queryByText("gaussian-log-text-preview")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Review candidates" })).not.toBeInTheDocument()
+    expect(onReviewCandidates).not.toHaveBeenCalled()
   })
 
   it("keeps candidate review selection keys and display labels stable", () => {

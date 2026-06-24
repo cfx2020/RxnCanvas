@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ChangeEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -84,9 +85,12 @@ import {
 import {
   canvasTabSnapshotFromState,
   canvasTabsFromProjectCanvases,
+  closeCanvasTabState,
   createCanvasTabState,
+  deleteCanvasTabState,
   initialCanvasTabs,
   projectCanvasesFromCanvasTabs,
+  renameCanvasTabState,
   switchCanvasTabState,
   type CanvasTabSnapshot,
   type CanvasTabState,
@@ -119,6 +123,13 @@ import {
 import { ProjectRail, type FileSelectionOptions } from "./ProjectRail"
 import { EnergyTableView, ExportDock, type ExportedReportArtifact } from "./ReportPanels"
 import { WorkbenchToolbar } from "./WorkbenchToolbar"
+import {
+  clampToolbarPlacement,
+  defaultFloatingToolbarPlacement,
+  resolveToolbarDropPlacement,
+  type ToolbarMetrics,
+  type ToolbarPlacement,
+} from "./toolbarPlacement"
 import {
   applyCanvasSelectionState,
   applyProjectTransitionState,
@@ -216,8 +227,34 @@ function initialAppTheme(): AppTheme {
   return window.localStorage.getItem("rxnflow-theme") === "dark" ? "dark" : "light"
 }
 
+function initialToolbarPlacement(): ToolbarPlacement {
+  if (typeof window === "undefined" || typeof window.localStorage?.getItem !== "function") {
+    return { mode: "floating", x: 0, y: 10 }
+  }
+  try {
+    const raw = window.localStorage.getItem("rxnflow-toolbar-placement")
+    if (!raw) return { mode: "floating", x: 0, y: 10 }
+    const parsed = JSON.parse(raw) as Partial<ToolbarPlacement>
+    if (parsed.mode === "left" || parsed.mode === "right") {
+      return { mode: parsed.mode, y: Number.isFinite((parsed as { y?: number }).y) ? Number((parsed as { y?: number }).y) : 10 }
+    }
+    if (parsed.mode === "floating") {
+      return {
+        mode: "floating",
+        x: Number.isFinite((parsed as { x?: number }).x) ? Number((parsed as { x?: number }).x) : 0,
+        y: Number.isFinite((parsed as { y?: number }).y) ? Number((parsed as { y?: number }).y) : 10,
+      }
+    }
+  } catch {
+    // ignore malformed state
+  }
+  return { mode: "floating", x: 0, y: 10 }
+}
+
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null)
+  const canvasStageRef = useRef<HTMLDivElement | null>(null)
+  const toolbarRef = useRef<HTMLDivElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const projectInputRef = useRef<HTMLInputElement | null>(null)
   const pendingImportProjectIdRef = useRef<string | null>(null)
@@ -228,6 +265,8 @@ export function App() {
   const autosaveQueuedRef = useRef(false)
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
   const restoreProjectPackageRef = useRef<RestoreProjectPackageHandler | null>(null)
+  const exportPanelRef = useRef<HTMLElement | null>(null)
+  const exportTriggerRef = useRef<HTMLButtonElement | null>(null)
   const [projects, setProjects] = useState(initialProjects)
   const [projectWorkspaces, setProjectWorkspaces] = useState<Record<string, ProjectWorkspaceSnapshot>>(() => initialProjectWorkspaces(defaultCanvasViewport(null)))
   const [activeProjectId, setActiveProjectId] = useState(initialProjects[0].id)
@@ -250,7 +289,8 @@ export function App() {
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>("inspector")
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
-  const [canvasTabs, setCanvasTabs] = useState<CanvasTabState[]>(() => initialCanvasTabs())
+  const [leftRailPreviewOpen, setLeftRailPreviewOpen] = useState(false)
+  const [canvasTabs, setCanvasTabs] = useState<CanvasTabState[]>(() => initialCanvasTabs(initialProjects[0].label))
   const [activeCanvasTabId, setActiveCanvasTabId] = useState("canvas-1")
   const [keyboardEdgeSourceId, setKeyboardEdgeSourceId] = useState<string | null>(null)
   const [exportOptions, setExportOptions] = useState<ReportExportOptions>({ ...defaultReportExportOptions })
@@ -267,6 +307,12 @@ export function App() {
   const [historyPast, setHistoryPast] = useState<CanvasEditSnapshot[]>([])
   const [historyFuture, setHistoryFuture] = useState<CanvasEditSnapshot[]>([])
   const [theme, setTheme] = useState<AppTheme>(() => initialAppTheme())
+  const [toolbarPlacement, setToolbarPlacement] = useState<ToolbarPlacement>(() => initialToolbarPlacement())
+  const [toolbarMetrics, setToolbarMetrics] = useState<ToolbarMetrics | null>(null)
+  const toolbarDragOffsetRef = useRef<Point | null>(null)
+  const toolbarDragMetricsRef = useRef<ToolbarMetrics | null>(null)
+  const toolbarDragPlacementRef = useRef<{ x: number; y: number } | null>(null)
+  const toolbarFloatingSizeRef = useRef<{ width: number; height: number } | null>(null)
 
   const appStateSetters = useMemo(() => ({
     setProjects,
@@ -326,6 +372,7 @@ export function App() {
     activeTabId: activeCanvasTabId,
     activeSnapshot: currentCanvasSnapshot,
   }), [activeCanvasTabId, canvasTabs, currentCanvasSnapshot])
+  const openCanvasTabs = useMemo(() => canvasTabs.filter((tab) => !tab.closed), [canvasTabs])
   const autosaveInput = useMemo<ProjectAutosaveInput>(() => ({
     project: activeProject,
     files,
@@ -333,6 +380,8 @@ export function App() {
     activeCanvasId: activeCanvasTabId,
   }), [activeCanvasTabId, activeProject, files, projectCanvases])
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
+  const activeProjectLabel = activeProject?.label ?? "Untitled Study"
+  const isMacDesktop = window.rxnflowDesktop?.platform === "darwin"
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes])
   const energyRowsSignature = useMemo(
     () => buildEnergyRowsSignature(nodes, edges, energyDisplayOptions),
@@ -353,6 +402,150 @@ export function App() {
   })
   const pointerMoveFrameRef = useRef<number | null>(null)
   const pendingPointerMoveRef = useRef<{ pointerId: number; clientX: number; clientY: number } | null>(null)
+
+  useLayoutEffect(() => {
+    const updateToolbarMetrics = () => {
+      const stage = canvasStageRef.current
+      const toolbar = toolbarRef.current
+      if (!stage || !toolbar) return
+      const stageRect = stage.getBoundingClientRect()
+      const toolbarRect = toolbar.getBoundingClientRect()
+      const nextMetrics: ToolbarMetrics = {
+        stageWidth: stageRect.width,
+        stageHeight: stageRect.height,
+        toolbarWidth: toolbarRect.width,
+        toolbarHeight: toolbarRect.height,
+      }
+      setToolbarMetrics(nextMetrics)
+      if (toolbarPlacement.mode === "floating") {
+        toolbarFloatingSizeRef.current = {
+          width: toolbarRect.width,
+          height: toolbarRect.height,
+        }
+      }
+      setToolbarPlacement((current) => {
+        const seeded = current.mode === "floating" && current.x === 0
+          ? defaultFloatingToolbarPlacement(nextMetrics)
+          : current
+        return clampToolbarPlacement(seeded, nextMetrics)
+      })
+    }
+
+    updateToolbarMetrics()
+    window.addEventListener("resize", updateToolbarMetrics)
+    return () => window.removeEventListener("resize", updateToolbarMetrics)
+  }, [leftSidebarOpen, rightSidebarOpen, toolbarPlacement.mode, viewMode])
+
+  useEffect(() => {
+    if (typeof window.localStorage?.setItem !== "function") return
+    window.localStorage.setItem("rxnflow-toolbar-placement", JSON.stringify(toolbarPlacement))
+  }, [toolbarPlacement])
+
+  const handleToolbarDragStart = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    const stage = canvasStageRef.current
+    const toolbar = toolbarRef.current
+    const currentMetrics = toolbarMetrics
+    if (!stage || !toolbar || !currentMetrics) return
+    const stageRect = stage.getBoundingClientRect()
+    const toolbarRect = toolbar.getBoundingClientRect()
+    const floatingSize = toolbarFloatingSizeRef.current
+    const dragMetrics: ToolbarMetrics = toolbarPlacement.mode === "floating"
+      ? currentMetrics
+      : {
+          stageWidth: currentMetrics.stageWidth,
+          stageHeight: currentMetrics.stageHeight,
+          toolbarWidth: floatingSize?.width ?? 722,
+          toolbarHeight: floatingSize?.height ?? 50,
+        }
+    const floatingSeed: { mode: "floating"; x: number; y: number } = toolbarPlacement.mode === "floating"
+      ? toolbarPlacement
+      : {
+          mode: "floating" as const,
+          x: toolbarPlacement.mode === "right" ? stageRect.width - dragMetrics.toolbarWidth - 10 : 10,
+          y: toolbarPlacement.y,
+        }
+    const seededPlacementResult = clampToolbarPlacement(floatingSeed, dragMetrics)
+    const seededPlacement = {
+      x: seededPlacementResult.mode === "floating" ? seededPlacementResult.x : floatingSeed.x,
+      y: seededPlacementResult.y,
+    }
+    toolbarDragOffsetRef.current = toolbarPlacement.mode === "floating"
+      ? {
+          x: event.clientX - toolbarRect.left,
+          y: event.clientY - toolbarRect.top,
+        }
+      : {
+          x: dragMetrics.toolbarWidth / 2,
+          y: Math.min(
+            Math.max(event.clientY - toolbarRect.top, 12),
+            Math.max(12, dragMetrics.toolbarHeight - 12),
+          ),
+        }
+    toolbarDragMetricsRef.current = dragMetrics
+    toolbarDragPlacementRef.current = seededPlacement
+    setToolbarPlacement({ mode: "floating", x: seededPlacement.x, y: seededPlacement.y })
+    const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+      const currentStage = canvasStageRef.current
+      const dragOffset = toolbarDragOffsetRef.current
+      const metrics = toolbarDragMetricsRef.current
+      if (!currentStage || !dragOffset || !metrics) return
+      const stageBounds = currentStage.getBoundingClientRect()
+      const nextX = moveEvent.clientX - stageBounds.left - dragOffset.x
+      const nextY = moveEvent.clientY - stageBounds.top - dragOffset.y
+      const nextPlacementResult = clampToolbarPlacement({ mode: "floating", x: nextX, y: nextY }, metrics)
+      const nextPlacement = {
+        x: nextPlacementResult.mode === "floating" ? nextPlacementResult.x : nextX,
+        y: nextPlacementResult.y,
+      }
+      toolbarDragPlacementRef.current = nextPlacement
+      setToolbarPlacement({ mode: "floating", x: nextPlacement.x, y: nextPlacement.y })
+    }
+    const handlePointerUp = () => {
+      if (!toolbarDragOffsetRef.current) return
+      const metrics = toolbarDragMetricsRef.current
+      const candidate = toolbarDragPlacementRef.current
+      toolbarDragOffsetRef.current = null
+      toolbarDragMetricsRef.current = null
+      toolbarDragPlacementRef.current = null
+      if (metrics) {
+        const floatingCandidate = candidate ?? seededPlacement
+        setToolbarPlacement(resolveToolbarDropPlacement(floatingCandidate, metrics))
+      }
+      window.removeEventListener("pointermove", handlePointerMove)
+      window.removeEventListener("pointerup", handlePointerUp)
+    }
+    window.addEventListener("pointermove", handlePointerMove)
+    window.addEventListener("pointerup", handlePointerUp)
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    event.preventDefault()
+    event.stopPropagation()
+  }, [toolbarMetrics, toolbarPlacement])
+
+  const toolbarStyle = useMemo(() => {
+    if (!toolbarMetrics) return undefined
+    if (toolbarPlacement.mode === "floating") {
+      return {
+        "--rxnflow-toolbar-left": `${toolbarPlacement.x}px`,
+        "--rxnflow-toolbar-top": `${toolbarPlacement.y}px`,
+        "--rxnflow-toolbar-right": "auto",
+        "--rxnflow-toolbar-transform": "none",
+      } as CSSProperties
+    }
+    if (toolbarPlacement.mode === "right") {
+      return {
+        "--rxnflow-toolbar-left": "auto",
+        "--rxnflow-toolbar-right": "10px",
+        "--rxnflow-toolbar-top": `${toolbarPlacement.y}px`,
+        "--rxnflow-toolbar-transform": "none",
+      } as CSSProperties
+    }
+    return {
+      "--rxnflow-toolbar-left": "10px",
+      "--rxnflow-toolbar-right": "auto",
+      "--rxnflow-toolbar-top": `${toolbarPlacement.y}px`,
+      "--rxnflow-toolbar-transform": "none",
+    } as CSSProperties
+  }, [toolbarMetrics, toolbarPlacement])
 
   const applyCanvasSelection = useCallback((selection: CanvasSelectionIds) => {
     applyCanvasSelectionState(appStateSetters, selection)
@@ -416,6 +609,18 @@ export function App() {
     clearEditHistory()
   }, [clearEditHistory])
 
+  const applyProjectWorkspaceSnapshot = useCallback((snapshot: ProjectWorkspaceSnapshot) => {
+    setCanvasTabs(canvasTabsFromProjectCanvases(snapshot.canvases))
+    setActiveCanvasTabId(snapshot.activeCanvasId)
+    applyProjectWorkspaceSnapshotState(appStateSetters, snapshot, clearEditHistory)
+  }, [appStateSetters, clearEditHistory])
+
+  const applyProjectTransition = useCallback((transition: ProjectTransitionApplication) => {
+    setCanvasTabs(canvasTabsFromProjectCanvases(transition.activeSnapshot.canvases))
+    setActiveCanvasTabId(transition.activeSnapshot.activeCanvasId)
+    applyProjectTransitionState(appStateSetters, transition, clearEditHistory)
+  }, [appStateSetters, clearEditHistory])
+
   const switchCanvasTab = useCallback((tabId: string) => {
     const currentSnapshot = currentCanvasTabSnapshot()
     const transition = switchCanvasTabState({
@@ -430,7 +635,8 @@ export function App() {
     applyCanvasTabSnapshot(transition.snapshotToApply)
   }, [activeCanvasTabId, applyCanvasTabSnapshot, canvasTabs, currentCanvasTabSnapshot])
 
-  const createCanvasTab = useCallback(() => {
+  const createCanvasTab = useCallback((projectId?: string) => {
+    const targetProjectId = typeof projectId === "string" && projectId.length > 0 ? projectId : activeProjectId
     const currentSnapshot = currentCanvasTabSnapshot()
     const id = `canvas-${Date.now()}`
     const blankSnapshot: CanvasTabSnapshot = {
@@ -442,13 +648,105 @@ export function App() {
       selectedEdgeIds: [],
       selectedBarrierIds: [],
     }
+    if (targetProjectId !== activeProjectId) {
+      const targetProject = projects.find((project) => project.id === targetProjectId)
+      const targetWorkspace = projectWorkspaceSnapshot(
+        projectWorkspaces[targetProjectId] ?? emptyProjectWorkspace(defaultCanvasViewport(canvasRef.current), targetProject?.label),
+      )
+      const targetTabs = canvasTabsFromProjectCanvases(targetWorkspace.canvases)
+      const targetCurrentSnapshot = canvasTabSnapshotFromWorkspace(targetWorkspace)
+      const targetTransition = createCanvasTabState({
+        tabs: targetTabs,
+        activeTabId: targetWorkspace.activeCanvasId,
+        currentSnapshot: targetCurrentSnapshot,
+        blankSnapshot,
+        nextId: id,
+        nextLabel: nextCanvasLabel(targetProject?.label ?? targetWorkspace.canvases[0]?.label ?? activeProjectLabel, targetTabs),
+      })
+      const activeSnapshot = projectWorkspaceSnapshot({
+        ...targetWorkspace,
+        canvases: projectCanvasesFromCanvasTabs({
+          tabs: targetTransition.tabs,
+          activeTabId: targetTransition.activeTabId,
+          activeSnapshot: blankSnapshot,
+        }),
+        activeCanvasId: targetTransition.activeTabId,
+        nodes: blankSnapshot.nodes,
+        edges: blankSnapshot.edges,
+        barriers: blankSnapshot.barriers,
+        viewport: blankSnapshot.viewport,
+        selectedNodeIds: blankSnapshot.selectedNodeIds,
+        selectedEdgeIds: blankSnapshot.selectedEdgeIds,
+        selectedBarrierIds: blankSnapshot.selectedBarrierIds,
+        viewMode: "canvas",
+      })
+      applyProjectTransition({
+        workspaces: {
+          ...projectWorkspaces,
+          [activeProjectId]: projectWorkspaceSnapshot(currentProjectWorkspaceSnapshot()),
+          [targetProjectId]: activeSnapshot,
+        },
+        activeProjectId: targetProjectId,
+        activeSnapshot,
+        validation: null,
+      })
+      setCanvasTabs(targetTransition.tabs)
+      setActiveCanvasTabId(targetTransition.activeTabId)
+      setViewMode("canvas")
+      return
+    }
     const transition = createCanvasTabState({
       tabs: canvasTabs,
       activeTabId: activeCanvasTabId,
       currentSnapshot,
       blankSnapshot,
       nextId: id,
+      nextLabel: nextCanvasLabel(activeProjectLabel, canvasTabs),
     })
+    setCanvasTabs(transition.tabs)
+    setActiveCanvasTabId(transition.activeTabId)
+    applyCanvasTabSnapshot(transition.snapshotToApply)
+    setViewMode("canvas")
+  }, [
+    activeCanvasTabId,
+    activeProjectId,
+    activeProjectLabel,
+    applyCanvasTabSnapshot,
+    applyProjectTransition,
+    canvasTabs,
+    currentCanvasTabSnapshot,
+    currentProjectWorkspaceSnapshot,
+    projectWorkspaces,
+    projects,
+  ])
+
+  const renameCanvasTab = useCallback((tabId: string, label: string) => {
+    setCanvasTabs((current) => renameCanvasTabState({ tabs: current, tabId, label }))
+  }, [])
+
+  const closeCanvasTab = useCallback((tabId: string) => {
+    const currentSnapshot = currentCanvasTabSnapshot()
+    const transition = closeCanvasTabState({
+      tabs: canvasTabs,
+      activeTabId: activeCanvasTabId,
+      closedTabId: tabId,
+      currentSnapshot,
+    })
+    if (!transition) return
+    setCanvasTabs(transition.tabs)
+    setActiveCanvasTabId(transition.activeTabId)
+    applyCanvasTabSnapshot(transition.snapshotToApply)
+  }, [activeCanvasTabId, applyCanvasTabSnapshot, canvasTabs, currentCanvasTabSnapshot])
+
+  const deleteCanvasTab = useCallback((tabId: string) => {
+    const currentSnapshot = currentCanvasTabSnapshot()
+    const transition = deleteCanvasTabState({
+      tabs: canvasTabs,
+      activeTabId: activeCanvasTabId,
+      deletedTabId: tabId,
+      currentSnapshot,
+    })
+    if (!transition) return
     setCanvasTabs(transition.tabs)
     setActiveCanvasTabId(transition.activeTabId)
     applyCanvasTabSnapshot(transition.snapshotToApply)
@@ -464,17 +762,6 @@ export function App() {
     }
   }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, projects])
 
-  const applyProjectWorkspaceSnapshot = useCallback((snapshot: ProjectWorkspaceSnapshot) => {
-    setCanvasTabs(canvasTabsFromProjectCanvases(snapshot.canvases))
-    setActiveCanvasTabId(snapshot.activeCanvasId)
-    applyProjectWorkspaceSnapshotState(appStateSetters, snapshot, clearEditHistory)
-  }, [appStateSetters, clearEditHistory])
-
-  const applyProjectTransition = useCallback((transition: ProjectTransitionApplication) => {
-    setCanvasTabs(canvasTabsFromProjectCanvases(transition.activeSnapshot.canvases))
-    setActiveCanvasTabId(transition.activeSnapshot.activeCanvasId)
-    applyProjectTransitionState(appStateSetters, transition, clearEditHistory)
-  }, [appStateSetters, clearEditHistory])
 
   const undoEdit = useCallback(() => {
     undoCanvasEditAction({
@@ -676,6 +963,32 @@ export function App() {
     if (typeof document === "undefined") return
     document.documentElement.style.setProperty("color-scheme", theme)
   }, [theme])
+
+  useEffect(() => {
+    if (leftSidebarOpen) setLeftRailPreviewOpen(false)
+  }, [leftSidebarOpen])
+
+  useEffect(() => {
+    if (inspectorMode !== "export") return
+
+    const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (exportPanelRef.current?.contains(target)) return
+      if (exportTriggerRef.current?.contains(target)) return
+      setInspectorMode("inspector")
+    }
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setInspectorMode("inspector")
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true)
+    document.addEventListener("keydown", closeOnEscape)
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true)
+      document.removeEventListener("keydown", closeOnEscape)
+    }
+  }, [inspectorMode])
 
   const startConnection = useCallback((event: PointerEvent<HTMLElement>, sourceId: string) => {
     startConnectionAction({
@@ -1086,6 +1399,14 @@ export function App() {
   }, [activeProjectId, importFiles])
 
   const selectFile = useCallback((fileId: string, options: FileSelectionOptions = {}) => {
+    const relatedNode = nodes.find((node) => node.sourceFileId === fileId)
+    if (relatedNode && !options.additive && !options.range) {
+      const selection = nodeSourceDetailsSelection({ nodes, files, nodeId: relatedNode.id })
+      if (selection) {
+        applyNodeSourceDetailsSelectionState(appStateSetters, selection)
+        return
+      }
+    }
     const transition = selectSourceFileTransition({
       files,
       currentSelectedFileIds: selectedFileIds,
@@ -1094,9 +1415,25 @@ export function App() {
       options,
     })
     applySourceFileSelectionState(appStateSetters, transition)
-  }, [appStateSetters, files, lastSelectedFileId, selectedFileIds])
+  }, [appStateSetters, files, lastSelectedFileId, nodes, selectedFileIds])
 
   const deleteProjectFile = useCallback((fileId: string) => {
+    const deletedNodeIds = new Set(nodes.filter((node) => node.sourceFileId === fileId).map((node) => node.id))
+    if (deletedNodeIds.size > 0) {
+      pushEditHistory()
+      setNodes((current) => current.filter((node) => !deletedNodeIds.has(node.id)))
+      setEdges((current) => current.filter((edge) => !deletedNodeIds.has(edge.sourceId) && !deletedNodeIds.has(edge.targetId)))
+      setBarriers((current) => current.filter((barrier) => !deletedNodeIds.has(barrier.sourceId) && !deletedNodeIds.has(barrier.targetId)))
+      setSelectedNodeIds((current) => current.filter((nodeId) => !deletedNodeIds.has(nodeId)))
+      setSelectedEdgeIds((current) => current.filter((edgeId) => {
+        const edge = edges.find((item) => item.id === edgeId)
+        return edge ? !deletedNodeIds.has(edge.sourceId) && !deletedNodeIds.has(edge.targetId) : true
+      }))
+      setSelectedBarrierIds((current) => current.filter((barrierId) => {
+        const barrier = barriers.find((item) => item.id === barrierId)
+        return barrier ? !deletedNodeIds.has(barrier.sourceId) && !deletedNodeIds.has(barrier.targetId) : true
+      }))
+    }
     const transition = deleteSourceFileTransition({
       files,
       selectedFileId,
@@ -1105,7 +1442,7 @@ export function App() {
       deletedFileId: fileId,
     })
     applySourceFileDeletionState(appStateSetters, transition)
-  }, [appStateSetters, files, lastSelectedFileId, selectedFileId, selectedFileIds])
+  }, [appStateSetters, barriers, edges, files, lastSelectedFileId, nodes, pushEditHistory, selectedFileId, selectedFileIds])
 
   const selectNode = useCallback((nodeId: string, mode: GraphSelectionMode = "replace") => {
     if (keyboardEdgeSourceId && keyboardEdgeSourceId !== nodeId) {
@@ -1254,8 +1591,32 @@ export function App() {
     })
   }, [clearCanvasSelection, deleteSelection, hasCanvasSelection, nudgeSelectedNodes, redoEdit, undoEdit])
 
+  const renderProjectRail = () => (
+    <ProjectRail
+      projects={projects}
+      activeProjectId={activeProjectId}
+      files={files}
+      selectedFileId={selectedFileId}
+      selectedFileIds={selectedFileIds}
+      onCreateProject={createProject}
+      onOpenProject={openProject}
+      onDeleteProject={deleteProject}
+      onOpenProjectPackage={openProjectPackage}
+      onImportFiles={openImportPicker}
+      onDropProjectFiles={(projectId, droppedFiles) => void importFiles(droppedFiles, projectId)}
+      onSelectFile={selectFile}
+      onDeleteFile={deleteProjectFile}
+      onReviewCandidates={reviewCandidatesForFile}
+      canvases={canvasTabs}
+      activeCanvasId={activeCanvasTabId}
+      onSelectCanvas={switchCanvasTab}
+      onCreateCanvas={createCanvasTab}
+      onDeleteCanvas={deleteCanvasTab}
+    />
+  )
+
   return (
-    <div className={`app-shell theme-${theme}`}>
+    <div className={`app-shell theme-${theme}${isMacDesktop ? " is-macos-desktop" : ""}`}>
       <input
         ref={importInputRef}
         className="visually-hidden"
@@ -1272,104 +1633,128 @@ export function App() {
         onChange={handleProjectInputChange}
         aria-label="Open project package"
       />
+      {leftSidebarOpen ? (
+        <button
+          type="button"
+          className="window-icon-button left-sidebar-fixed-toggle"
+          aria-label="Collapse project sidebar"
+          title="Collapse project sidebar"
+          aria-pressed={leftSidebarOpen}
+          onClick={() => setLeftSidebarOpen(false)}
+        >
+          <PanelLeft size={16} />
+        </button>
+      ) : null}
+      <div className="workspace-topbar-actions desktop-window-actions" aria-label="Window actions">
+        <button
+          type="button"
+          className="theme-toggle-button"
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+        >
+          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+          <span>{theme === "dark" ? "Light" : "Dark"}</span>
+        </button>
+        <span className="window-action-drag-gap" aria-hidden="true" />
+        <EngineStatusPill status={engineStatus} />
+        <button
+          ref={exportTriggerRef}
+          type="button"
+          className="window-icon-button floating-export-trigger"
+          aria-label="Export"
+          title="Export"
+          aria-pressed={inspectorMode === "export"}
+          onClick={() => setInspectorMode((current) => current === "export" ? "inspector" : "export")}
+        >
+          <Download size={16} />
+        </button>
+        <span className="window-action-drag-gap" aria-hidden="true" />
+        <button
+          type="button"
+          className="window-icon-button right-sidebar-fixed-toggle"
+          aria-label={rightSidebarOpen ? "Collapse node sidebar" : "Expand node sidebar"}
+          title={rightSidebarOpen ? "Collapse node sidebar" : "Expand node sidebar"}
+          aria-pressed={rightSidebarOpen}
+          onClick={() => setRightSidebarOpen((current) => !current)}
+        >
+          <PanelRight size={16} />
+        </button>
+      </div>
 
       <main className={`workspace${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}`}>
-        {leftSidebarOpen ? (
-          <ProjectRail
-            projects={projects}
-            activeProjectId={activeProjectId}
-            files={files}
-            selectedFileId={selectedFileId}
-            selectedFileIds={selectedFileIds}
-            onCreateProject={createProject}
-            onOpenProject={openProject}
-            onDeleteProject={deleteProject}
-            onOpenProjectPackage={openProjectPackage}
-            onImportFiles={openImportPicker}
-            onDropProjectFiles={(projectId, droppedFiles) => void importFiles(droppedFiles, projectId)}
-            onSelectFile={selectFile}
-            onDeleteFile={deleteProjectFile}
-          />
+        {leftSidebarOpen ? renderProjectRail() : null}
+        {!leftSidebarOpen ? (
+          <div
+            className={`project-rail-hover${leftRailPreviewOpen ? " is-open" : ""}`}
+            onMouseEnter={() => setLeftRailPreviewOpen(true)}
+            onMouseLeave={() => setLeftRailPreviewOpen(false)}
+            onFocus={() => setLeftRailPreviewOpen(true)}
+            onBlur={(event) => {
+              const nextFocus = event.relatedTarget
+              if (!(nextFocus instanceof Node) || !event.currentTarget.contains(nextFocus)) {
+                setLeftRailPreviewOpen(false)
+              }
+            }}
+          >
+            <button
+              type="button"
+              className="project-rail-hover-trigger"
+              aria-label="Preview project sidebar"
+              title="Preview project sidebar"
+              onClick={() => setLeftSidebarOpen(true)}
+            >
+              <PanelLeft size={16} />
+            </button>
+            {leftRailPreviewOpen ? (
+              <div className="project-rail-hover-panel">
+                {renderProjectRail()}
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         <section className={`workbench-shell view-${viewMode}`} aria-label="Reaction flow workspace">
           <div className="workspace-topbar">
             <div className="workspace-topbar-left">
-              <button
-                type="button"
-                className="window-icon-button"
-                aria-label={leftSidebarOpen ? "Collapse project sidebar" : "Expand project sidebar"}
-                title={leftSidebarOpen ? "Collapse project sidebar" : "Expand project sidebar"}
-                aria-pressed={leftSidebarOpen}
-                onClick={() => setLeftSidebarOpen((current) => !current)}
-              >
-                <PanelLeft size={16} />
-              </button>
               <CanvasTabBar
-                tabs={canvasTabs}
+                tabs={openCanvasTabs}
                 activeTabId={activeCanvasTabId}
                 onSelectTab={switchCanvasTab}
                 onCreateTab={createCanvasTab}
+                onRenameTab={renameCanvasTab}
+                onCloseTab={closeCanvasTab}
               />
             </div>
-            <div className="workspace-topbar-actions">
-              <button
-                type="button"
-                className="theme-toggle-button"
-                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-                title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-                onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
-              >
-                {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-                <span>{theme === "dark" ? "Light" : "Dark"}</span>
-              </button>
-              <EngineStatusPill status={engineStatus} />
-              <button
-                type="button"
-                className="window-icon-button floating-export-trigger"
-                aria-label="Export"
-                title="Export"
-                aria-pressed={inspectorMode === "export"}
-                onClick={() => setInspectorMode((current) => current === "export" ? "inspector" : "export")}
-              >
-                <Download size={16} />
-              </button>
-              <button
-                type="button"
-                className="window-icon-button"
-                aria-label={rightSidebarOpen ? "Collapse node sidebar" : "Expand node sidebar"}
-                title={rightSidebarOpen ? "Collapse node sidebar" : "Expand node sidebar"}
-                aria-pressed={rightSidebarOpen}
-                onClick={() => setRightSidebarOpen((current) => !current)}
-              >
-                <PanelRight size={16} />
-              </button>
-            </div>
           </div>
-          <WorkbenchToolbar
-            tool={tool}
-            viewMode={viewMode}
-            onSetTool={setTool}
-            onSetViewMode={setViewMode}
-            zoom={viewport.zoom}
-            energyDisplayOptions={energyDisplayOptions}
-            onEnergyDisplayOptionsChange={setEnergyDisplayOptions}
-            canUndo={historyPast.length > 0}
-            canRedo={historyFuture.length > 0}
-            canDelete={hasCanvasSelection}
-            onUndo={undoEdit}
-            onRedo={redoEdit}
-            onDelete={deleteSelection}
-            onAutoLayout={applyAutoLayout}
-            onFitView={fitCanvasViewport}
-            onZoomIn={() => setViewport((current) => ({ ...current, zoom: clamp(current.zoom * 1.12, minCanvasZoom, maxCanvasZoom) }))}
-            onZoomOut={() => setViewport((current) => ({ ...current, zoom: clamp(current.zoom * 0.88, minCanvasZoom, maxCanvasZoom) }))}
-          />
           <ProjectValidationNotice validation={projectValidation} />
 
-          <div className={`canvas-stage view-${viewMode}`}>
+          <div ref={canvasStageRef} className={`canvas-stage view-${viewMode}`}>
+            <WorkbenchToolbar
+              tool={tool}
+              viewMode={viewMode}
+              onSetTool={setTool}
+              onSetViewMode={setViewMode}
+              zoom={viewport.zoom}
+              energyDisplayOptions={energyDisplayOptions}
+              onEnergyDisplayOptionsChange={setEnergyDisplayOptions}
+              canUndo={historyPast.length > 0}
+              canRedo={historyFuture.length > 0}
+              canDelete={hasCanvasSelection}
+              onUndo={undoEdit}
+              onRedo={redoEdit}
+              onDelete={deleteSelection}
+              onAutoLayout={applyAutoLayout}
+              onFitView={fitCanvasViewport}
+              onZoomIn={() => setViewport((current) => ({ ...current, zoom: clamp(current.zoom * 1.12, minCanvasZoom, maxCanvasZoom) }))}
+              onZoomOut={() => setViewport((current) => ({ ...current, zoom: clamp(current.zoom * 0.88, minCanvasZoom, maxCanvasZoom) }))}
+              placement={toolbarPlacement}
+              onDragStart={handleToolbarDragStart}
+              toolbarRef={toolbarRef}
+              style={toolbarStyle}
+            />
             {inspectorMode === "export" ? (
-              <aside className="export-float-panel" aria-label="Export panel">
+              <aside className="export-float-panel" aria-label="Export panel" ref={exportPanelRef}>
                 <div className="export-float-header">
                   <div>
                     <span>Export</span>
@@ -1389,8 +1774,8 @@ export function App() {
               </aside>
             ) : null}
 
-            {viewMode === "canvas" ? (
-              <div className="workbench-view-pane canvas-view-pane">
+            <div className="workbench-view-track" data-view-mode={viewMode}>
+              <div className="workbench-view-pane canvas-view-pane" hidden={viewMode !== "canvas"}>
                 <CanvasSurface
                   canvasRef={canvasRef}
                   nodes={nodes}
@@ -1422,6 +1807,7 @@ export function App() {
                   onSelectNode={selectNode}
                   onSelectEdge={selectEdge}
                   onSelectBarrier={selectBarrier}
+                  onUpdateEdgeLabel={updateEdgeLabel}
                   onUpdateBarrierLabel={updateBarrierLabel}
                   onSetNodeCoefficient={updateNodeCoefficient}
                   onSetRelativeEnergyZero={setRelativeEnergyZeroFromNode}
@@ -1438,8 +1824,7 @@ export function App() {
                   onViewportChange={setViewport}
                 />
               </div>
-            ) : (
-              <div className="workbench-view-pane table-view-pane">
+              <div className="workbench-view-pane table-view-pane" hidden={viewMode !== "table"}>
                 <EnergyTableView
                   rows={energyRows}
                   outputUnit={energyDisplayOptions.outputUnit}
@@ -1451,7 +1836,7 @@ export function App() {
                   }}
                 />
               </div>
-            )}
+            </div>
           </div>
         </section>
 
@@ -1479,6 +1864,8 @@ export function App() {
         <StructurePreviewDialog
           node={structurePreviewNode}
           file={sourceFileForNode(structurePreviewNode, files)}
+          leftSidebarOpen={leftSidebarOpen}
+          rightSidebarOpen={rightSidebarOpen}
           onClose={() => setStructurePreviewNodeId(null)}
           onEdit2DStructure={(nodeId) => {
             setStructurePreviewNodeId(null)
@@ -1571,33 +1958,109 @@ function CanvasTabBar({
   activeTabId,
   onSelectTab,
   onCreateTab,
+  onRenameTab,
+  onCloseTab,
 }: {
   tabs: CanvasTabState[]
   activeTabId: string
   onSelectTab: (tabId: string) => void
   onCreateTab: () => void
+  onRenameTab: (tabId: string, label: string) => void
+  onCloseTab: (tabId: string) => void
 }) {
+  const [editingTabId, setEditingTabId] = useState<string | null>(null)
+  const [draftLabel, setDraftLabel] = useState("")
+
+  const beginRename = (tab: CanvasTabState) => {
+    setEditingTabId(tab.id)
+    setDraftLabel(tab.label)
+  }
+  const submitRename = (tab: CanvasTabState) => {
+    const next = draftLabel.trim()
+    if (next && next !== tab.label) onRenameTab(tab.id, next)
+    setEditingTabId(null)
+    setDraftLabel("")
+  }
+
   return (
     <nav className="canvas-tab-bar" aria-label="Canvas tabs">
       <div className="canvas-tab-list" role="tablist" aria-label="Project canvases">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            className={tab.id === activeTabId ? "canvas-tab is-active" : "canvas-tab"}
-            aria-selected={tab.id === activeTabId}
-            onClick={() => onSelectTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-        <button type="button" className="canvas-tab-add" aria-label="New canvas" title="New canvas" onClick={onCreateTab}>
+        {tabs.map((tab) => {
+          const editing = editingTabId === tab.id
+          return (
+            <span key={tab.id} className={tab.id === activeTabId ? "canvas-tab-shell is-active" : "canvas-tab-shell"}>
+              {editing ? (
+                <input
+                  className="canvas-tab-input"
+                  aria-label={`Rename canvas ${tab.label}`}
+                  value={draftLabel}
+                  onChange={(event) => setDraftLabel(event.currentTarget.value)}
+                  onBlur={() => submitRename(tab)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur()
+                    if (event.key === "Escape") {
+                      setEditingTabId(null)
+                      setDraftLabel("")
+                    }
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <button
+                  type="button"
+                  role="tab"
+                  className={tab.id === activeTabId ? "canvas-tab is-active" : "canvas-tab"}
+                  aria-selected={tab.id === activeTabId}
+                  onClick={() => onSelectTab(tab.id)}
+                  onDoubleClick={() => beginRename(tab)}
+                  title="Double-click to rename"
+                >
+                  {tab.label}
+                </button>
+              )}
+              {tabs.length > 1 ? (
+                <button
+                  type="button"
+                  className="canvas-tab-close"
+                  aria-label={`Close canvas ${tab.label}`}
+                  title={`Close ${tab.label}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onCloseTab(tab.id)
+                  }}
+                >
+                  ×
+                </button>
+              ) : null}
+            </span>
+          )
+        })}
+        <button type="button" className="canvas-tab-add" aria-label="New canvas" title="New canvas" onClick={() => onCreateTab()}>
           <Plus size={15} />
         </button>
       </div>
     </nav>
   )
+}
+
+function nextCanvasLabel(projectLabel: string, tabs: CanvasTabState[]): string {
+  const base = projectLabel.trim() || "Untitled Study"
+  if (!tabs.some((tab) => tab.label === base)) return base
+  let index = 1
+  while (tabs.some((tab) => tab.label === `${base} ${index}`)) index += 1
+  return `${base} ${index}`
+}
+
+function canvasTabSnapshotFromWorkspace(snapshot: ProjectWorkspaceSnapshot): CanvasTabSnapshot {
+  return {
+    nodes: snapshot.nodes,
+    edges: snapshot.edges,
+    barriers: snapshot.barriers,
+    viewport: snapshot.viewport,
+    selectedNodeIds: snapshot.selectedNodeIds,
+    selectedEdgeIds: snapshot.selectedEdgeIds,
+    selectedBarrierIds: snapshot.selectedBarrierIds,
+  }
 }
 
 function buildEnergyRowsSignature(

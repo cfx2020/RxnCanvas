@@ -34,17 +34,17 @@ describe("canvasDrawing", () => {
       flowNode("target", { x: 320, y: 80 }),
     )
 
-    expect(segment.path).toBe("M 210 138 C 247.4 138, 282.6 218, 320 218")
-    expect(segment.labelPoint).toEqual({ x: 265, y: 178 })
+    expect(segment.path).toBe("M 210 107 C 247.4 107, 282.6 187, 320 187")
+    expect(segment.labelPoint).toEqual({ x: 265, y: 147 })
   })
 
   it("creates connection and barrier draft preview paths", () => {
     const source = flowNode("source", { x: 0, y: 0 })
 
     expect(createConnectionPreviewPath(source, { x: 500, y: 180 }))
-      .toBe("M 210 138 C 331.8 138, 378.2 180, 500 180")
+      .toBe("M 210 107 C 331.8 107, 378.2 180, 500 180")
     expect(createBarrierDraftPreviewPath(source, { x: 250, y: 422 }))
-      .toBe("M 105 284 C 105 333.68, 250 372.32, 250 422")
+      .toBe("M 105 222 C 105 294, 250 350, 250 422")
   })
 
   it("creates expanded and compact barrier annotation geometry", () => {
@@ -55,11 +55,11 @@ describe("canvasDrawing", () => {
 
     expect(createBarrierSegment(barrier, nodeMap, defaultEnergyDisplayOptions)).toEqual({
       id: "barrier-a",
-      arrowPath: "M 105 218 L 105 298",
-      guidePath: "M 105 288 L 105 298 M 320 218 L 105 218",
-      label: "ΔE‡ 5.00",
-      defaultLabel: "ΔE‡ 5.00",
-      labelPoint: { x: 127, y: 258 },
+      arrowPath: "M 105 187 L 105 236",
+      guidePath: "M 105 226 L 105 236 M 320 187 L 105 187",
+      label: "ΔG‡ 7.00",
+      defaultLabel: "ΔG‡ 7.00",
+      labelPoint: { x: 127, y: 211.5 },
       sourceLabel: "source",
       targetLabel: "target",
     })
@@ -72,20 +72,20 @@ describe("canvasDrawing", () => {
       compactMap,
       defaultEnergyDisplayOptions,
     )).toMatchObject({
-      arrowPath: "M 105 158 L 105 298",
-      guidePath: "M 105 288 L 105 298 M 320 158 L 105 158",
-      label: "custom",
-      defaultLabel: "ΔE‡ 2.00",
-      labelPoint: { x: 127, y: 228 },
+      arrowPath: "M 105 127 L 105 236",
+      guidePath: "M 105 226 L 105 236 M 320 127 L 105 127",
+      label: "ΔG‡ 4.00",
+      defaultLabel: "ΔG‡ 4.00",
+      labelPoint: { x: 127, y: 181.5 },
     })
   })
 
-  it("formats barrier labels from gas first and falls back to solution values", () => {
+  it("formats barrier labels from selected energy display and falls back", () => {
     expect(defaultBarrierLabel(
       flowNode("source", { x: 0, y: 0 }, 0, 0),
       flowNode("target", { x: 0, y: 0 }, 2, 6),
       defaultEnergyDisplayOptions,
-    )).toBe("ΔE‡ 2.00")
+    )).toBe("ΔG‡ 6.00")
 
     expect(defaultBarrierLabel(
       { ...flowNode("source", { x: 0, y: 0 }, 0, 0), energyGas: null },
@@ -97,7 +97,7 @@ describe("canvasDrawing", () => {
       { ...flowNode("source", { x: 0, y: 0 }), energyGas: null, energySolution: null },
       { ...flowNode("target", { x: 0, y: 0 }), energyGas: null, energySolution: null },
       defaultEnergyDisplayOptions,
-    )).toBe("ΔE‡ pending")
+    )).toBe("ΔG‡ pending")
   })
 
   it("normalizes drawing support values", () => {

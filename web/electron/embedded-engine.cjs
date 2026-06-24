@@ -315,6 +315,10 @@ function sourceParseResultFromPayload(payload, sourceName) {
     energyTable: energyTable ?? candidates[0]?.energyTable ?? null,
     parseScope: parseScopeOrDefault(payload.parseScope, "preview"),
     confidence: parseConfidenceOrDefault(payload.confidence, "low"),
+    terminationStatus: terminationStatusOrDefault(payload.terminationStatus, null),
+    terminationLabel: optionalString(payload.terminationLabel),
+    jobCpuTime: optionalString(payload.jobCpuTime),
+    elapsedTime: optionalString(payload.elapsedTime),
   }
 }
 
@@ -379,6 +383,7 @@ function nodeKindFromCandidate(candidate, fallback) {
 function parseSourcePreview(name, preview, parseScope = "preview", confidence = "low") {
   const label = basenameWithoutExtension(name)
   const guessedKind = inferNodeKind(name)
+  const computation = computationMetadataFromSource(preview)
   const gaussian = parseGaussian(preview)
   if (gaussian) {
     const atoms = gaussianAtomsFromText(preview)
@@ -408,6 +413,7 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
       energyTable,
       parseScope,
       confidence,
+      computation,
     })
   }
 
@@ -439,6 +445,7 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
       energyTable,
       parseScope,
       confidence,
+      computation,
     })
   }
 
@@ -454,6 +461,7 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
       warnings: extxyz.warnings,
       parseScope,
       confidence,
+      computation,
     })
   }
 
@@ -469,6 +477,7 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
       warnings: maple.warnings,
       parseScope,
       confidence,
+      computation,
     })
   }
 
@@ -484,6 +493,7 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
       warnings: xyz.warnings,
       parseScope,
       confidence,
+      computation,
     })
   }
 
@@ -496,6 +506,7 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
       warning: { code: "parse_failed", message: "XYZ atom count does not match the number of coordinate lines.", target: name },
       parseScope,
       confidence,
+      computation,
     })
   }
 
@@ -519,6 +530,7 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
     energyTable: null,
     parseScope,
     confidence,
+    ...computation,
   }
 }
 
@@ -543,6 +555,7 @@ function failedSourceResult(input) {
     energyTable: null,
     parseScope: input.parseScope ?? "preview",
     confidence: input.confidence ?? "low",
+    ...(input.computation ?? {}),
   }
 }
 
@@ -572,7 +585,62 @@ function sourceResultFromCandidates(input) {
     energyTable: input.energyTable ?? primary.energyTable ?? null,
     parseScope: input.parseScope ?? "preview",
     confidence: input.confidence ?? "low",
+    ...(input.computation ?? {}),
   }
+}
+
+function computationMetadataFromSource(sourceText) {
+  const termination = classifyComputationTermination(sourceText)
+  return {
+    terminationStatus: termination.status,
+    terminationLabel: termination.label,
+    jobCpuTime: jobCpuTimeFromSource(sourceText),
+    elapsedTime: elapsedTimeFromSource(sourceText),
+  }
+}
+
+function classifyComputationTermination(sourceText) {
+  const normal = lastRegexMatchWithIndex(sourceText, /normal termination of gaussian[^\n]*/gi)
+    ?? lastRegexMatchWithIndex(sourceText, /ORCA TERMINATED NORMALLY[^\n]*/gi)
+  const normalEnd = normal ? normal.index + normal.text.length : -1
+  const errors = [
+    lastRegexMatchWithIndex(sourceText, /error termination via lnk1e in .*?\bl(\d+)\.exe\b/gi, (match) => `L${match[1]}`),
+    lastRegexMatchWithIndex(sourceText, /error termination request processed by link\s+(\d+)/gi, (match) => `L${match[1]}`),
+    lastRegexMatchWithIndex(sourceText, /segmentation fault/gi, () => "Segmentation fault"),
+    lastRegexMatchWithIndex(sourceText, /(?:ORCA finished by error|aborting the run|error termination)/gi, () => "Error termination"),
+    lastRegexMatchWithIndex(sourceText, /(?:killed|signal)/gi, () => "Killed"),
+  ]
+    .filter(Boolean)
+    .sort((left, right) => right.index - left.index)
+  const latestError = errors[0]
+  if (latestError && latestError.index > normalEnd) return { label: "error", status: "error" }
+  if (normal) return { label: "normal", status: "normal" }
+  if (latestError) return { label: "error", status: "error" }
+  return { label: "unknown", status: "unknown" }
+}
+
+function jobCpuTimeFromSource(sourceText) {
+  return normalizedRuntimeFromLine(firstTrimmedMatch(sourceText, /^\s*Job cpu time:\s*(.+)$/gim))
+}
+
+function elapsedTimeFromSource(sourceText) {
+  return normalizedRuntimeFromLine(firstTrimmedMatch(sourceText, /^\s*Elapsed time:\s*(.+)$/gim))
+    ?? normalizedRuntimeFromLine(firstTrimmedMatch(sourceText, /^\s*TOTAL RUN TIME:\s*(.+)$/gim))
+}
+
+function normalizedRuntimeFromLine(value) {
+  if (!value) return null
+  const trimmed = String(value).replace(/\s+/g, " ").replace(/\.$/, "").trim()
+  const gaussian = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+hours?\s+(\d+)\s+minutes?\s+([\d.]+)\s+seconds?/i)
+  if (gaussian) return `${gaussian[1]}d ${gaussian[2]}h ${gaussian[3]}m ${gaussian[4]}s`
+  return trimmed || null
+}
+
+function lastRegexMatchWithIndex(sourceText, pattern, label) {
+  const matches = Array.from(String(sourceText).matchAll(pattern))
+  const match = matches.at(-1)
+  if (!match || typeof match.index !== "number") return null
+  return { index: match.index, text: match[0], label: label?.(match) ?? match[0] }
 }
 
 function primaryCandidate(candidates) {
@@ -1501,6 +1569,10 @@ function parseConfidenceOrDefault(value, fallback) {
   return value === "high" || value === "medium" || value === "low" ? value : fallback
 }
 
+function terminationStatusOrDefault(value, fallback) {
+  return value === "normal" || value === "error" || value === "running" || value === "unknown" ? value : fallback
+}
+
 function inferNodeKind(name) {
   const lower = name.toLowerCase()
   if (/\b(ts|transition|saddle)\b/.test(lower)) return "transition"
@@ -1557,6 +1629,11 @@ function roleHintFromName(name) {
 
 function firstGroup(pattern, preview) {
   return preview.match(pattern)?.[1]?.trim() ?? null
+}
+
+function firstTrimmedMatch(sourceText, pattern) {
+  const match = Array.from(String(sourceText).matchAll(pattern)).at(-1)
+  return match?.[1]?.trim() || null
 }
 
 function lastMatch(pattern, preview) {
