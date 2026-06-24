@@ -286,6 +286,7 @@ export function App() {
   const [barrierDraft, setBarrierDraft] = useState<BarrierDraft | null>(null)
   const [tool, setTool] = useState<"select" | "pan">("select")
   const [viewMode, setViewMode] = useState<WorkbenchViewMode>("canvas")
+  const [tableDrawerMounted, setTableDrawerMounted] = useState(false)
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>("inspector")
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
@@ -357,6 +358,7 @@ export function App() {
   const selectedFile = selectedFileId ? files.find((file) => file.id === selectedFileId) ?? null : null
   const structurePreviewNode = structurePreviewNodeId ? nodes.find((node) => node.id === structurePreviewNodeId) ?? null : null
   const structureEditorNode = structureEditorNodeId ? nodes.find((node) => node.id === structureEditorNodeId) ?? null : null
+  const tableDrawerOpen = viewMode === "table"
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0]
   const currentCanvasSnapshot = useMemo(() => canvasTabSnapshotFromState({
     nodes,
@@ -440,6 +442,24 @@ export function App() {
     if (typeof window.localStorage?.setItem !== "function") return
     window.localStorage.setItem("rxnflow-toolbar-placement", JSON.stringify(toolbarPlacement))
   }, [toolbarPlacement])
+
+  useEffect(() => {
+    if (tableDrawerOpen) {
+      setTableDrawerMounted(true)
+      return
+    }
+    const timeout = window.setTimeout(() => setTableDrawerMounted(false), 280)
+    return () => window.clearTimeout(timeout)
+  }, [tableDrawerOpen])
+
+  useEffect(() => {
+    if (!tableDrawerOpen) return
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setViewMode("canvas")
+    }
+    window.addEventListener("keydown", closeOnEscape)
+    return () => window.removeEventListener("keydown", closeOnEscape)
+  }, [tableDrawerOpen])
 
   const handleToolbarDragStart = useCallback((event: PointerEvent<HTMLButtonElement>) => {
     const stage = canvasStageRef.current
@@ -1714,7 +1734,7 @@ export function App() {
           </div>
         ) : null}
 
-        <section className={`workbench-shell view-${viewMode}`} aria-label="Reaction flow workspace">
+        <section className={`workbench-shell view-canvas${tableDrawerOpen ? " has-table-drawer" : ""}`} aria-label="Reaction flow workspace">
           <div className="workspace-topbar">
             <div className="workspace-topbar-left">
               <CanvasTabBar
@@ -1729,7 +1749,7 @@ export function App() {
           </div>
           <ProjectValidationNotice validation={projectValidation} />
 
-          <div ref={canvasStageRef} className={`canvas-stage view-${viewMode}`}>
+          <div ref={canvasStageRef} className={`canvas-stage view-canvas${tableDrawerOpen ? " has-table-drawer" : ""}`}>
             <WorkbenchToolbar
               tool={tool}
               viewMode={viewMode}
@@ -1774,8 +1794,8 @@ export function App() {
               </aside>
             ) : null}
 
-            <div className="workbench-view-track" data-view-mode={viewMode}>
-              <div className="workbench-view-pane canvas-view-pane" hidden={viewMode !== "canvas"}>
+            <div className="workbench-view-track" data-view-mode="canvas">
+              <div className="workbench-view-pane canvas-view-pane">
                 <CanvasSurface
                   canvasRef={canvasRef}
                   nodes={nodes}
@@ -1824,10 +1844,16 @@ export function App() {
                   onViewportChange={setViewport}
                 />
               </div>
-              <div className="workbench-view-pane table-view-pane" hidden={viewMode !== "table"}>
+            </div>
+            {tableDrawerMounted ? (
+              <div
+                className={tableDrawerOpen ? "table-drawer-shell is-open" : "table-drawer-shell"}
+                aria-hidden={!tableDrawerOpen}
+              >
                 <EnergyTableView
                   rows={energyRows}
                   outputUnit={energyDisplayOptions.outputUnit}
+                  onClose={() => setViewMode("canvas")}
                   onSelectNode={(nodeId) => {
                     const transition = energyTableNodeSelectionTransition(nodeId)
                     applyCanvasSelection(transition.selection)
@@ -1836,7 +1862,7 @@ export function App() {
                   }}
                 />
               </div>
-            </div>
+            ) : null}
           </div>
         </section>
 

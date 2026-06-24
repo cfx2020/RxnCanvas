@@ -117,28 +117,16 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
           </label>
         </div>
         <div className="toolbar-divider" />
-        <div className="toolbar-segmented" data-view-mode={viewMode} role="group" aria-label="Workbench view">
-          <button
-            type="button"
-            className={viewMode === "canvas" ? "is-active" : ""}
-            aria-pressed={viewMode === "canvas"}
-            aria-label="Canvas view"
-            title="Canvas view"
-            onClick={() => onSetViewMode("canvas")}
-          >
-            <LayoutDashboard size={18} />
-          </button>
-          <button
-            type="button"
-            className={viewMode === "table" ? "is-active" : ""}
-            aria-pressed={viewMode === "table"}
-            aria-label="Table view"
-            title="Table view"
-            onClick={() => onSetViewMode("table")}
-          >
-            <Table2 size={18} />
-          </button>
-        </div>
+        <button
+          type="button"
+          className={viewMode === "table" ? "toolbar-table-toggle is-active" : "toolbar-table-toggle"}
+          aria-pressed={viewMode === "table"}
+          aria-label="Table view"
+          title={viewMode === "table" ? "Close table" : "Open table"}
+          onClick={() => onSetViewMode(viewMode === "table" ? "canvas" : "table")}
+        >
+          <Table2 size={18} />
+        </button>
         <div className="toolbar-divider" />
         <button
           type="button"

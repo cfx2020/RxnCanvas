@@ -1,5 +1,5 @@
 import { memo, useMemo, useState, type ReactNode } from "react"
-import { Download } from "lucide-react"
+import { Download, X } from "lucide-react"
 import {
   reportExportFormats,
   type ReportExportArtifact,
@@ -106,10 +106,12 @@ export const EnergyTableView = memo(function EnergyTableView({
   rows,
   outputUnit: _outputUnit,
   onSelectNode,
+  onClose,
 }: {
   rows: EnergyTableRow[]
   outputUnit: EnergyDisplayOptions["outputUnit"]
   onSelectNode: (nodeId: string) => void
+  onClose?: () => void
 }) {
   const [tableMode, setTableMode] = useState<EnergyTableMode>("absolute")
   const visibleRows = useMemo(
@@ -144,6 +146,17 @@ export const EnergyTableView = memo(function EnergyTableView({
             </button>
           </div>
           <span>{visibleRows.length} rows</span>
+          {onClose ? (
+            <button
+              type="button"
+              className="workbench-energy-table-close"
+              aria-label="Close table view"
+              title="Close table"
+              onClick={onClose}
+            >
+              <X size={16} />
+            </button>
+          ) : null}
         </div>
       </header>
       {rows.length === 0 ? (

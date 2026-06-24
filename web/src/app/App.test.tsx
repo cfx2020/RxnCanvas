@@ -255,7 +255,7 @@ describe("App", () => {
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(within(toolbar).getByRole("button", { name: "Table view" }))
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Canvas view" }))
+    fireEvent.click(screen.getByRole("button", { name: "Close table view" }))
 
     const remountedSurface = container.querySelector(".canvas-surface") as HTMLElement
     const remountedWorld = container.querySelector(".canvas-world") as HTMLElement

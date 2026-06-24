@@ -551,8 +551,10 @@ function ReactionNodeCard({
                 title={`Stoichiometric coefficient for ${node.label}`}
                 onClick={() => setCoefficientEditing(true)}
               >
-                <span aria-hidden="true">×</span>
-                {formatCoefficientValue(coefficientValue)}
+                <span className="node-coefficient-label" aria-hidden="true">
+                  <span className="node-coefficient-multiply">×</span>
+                  <span className="node-coefficient-value">{formatCoefficientValue(coefficientValue)}</span>
+                </span>
               </button>
             )}
           </span>
