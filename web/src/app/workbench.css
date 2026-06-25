@@ -8501,6 +8501,13 @@ select,
   app-region: no-drag !important;
 }
 
+.project-rail,
+.inspector-panel,
+.project-rail-hover {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
 .workspace-topbar-actions .engine-status-pill,
 .workspace-topbar-actions .engine-status,
 .workspace-topbar-actions .window-action-drag-gap {
@@ -8763,6 +8770,8 @@ select,
 .project-rail,
 .inspector-panel {
   padding-top: var(--rxnflow-titlebar-height) !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
 }
 
 .project-rail-hover-panel {
@@ -8825,4 +8834,159 @@ select,
   pointer-events: none !important;
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
+}
+
+
+/* 2026-06-26 native titlebar hit-test fix: when the left sidebar is collapsed,
+   reserve tab space with margin instead of padding. Padding keeps the draggable
+   tab-list box underneath the fixed left sidebar trigger, and Electron's native
+   hit-test then treats the trigger area as a drag region even though the button
+   visually hovers. */
+.workspace.is-left-collapsed .workspace-topbar-left {
+  margin-left: var(--rxnflow-left-collapsed-tab-reserve) !important;
+  padding-left: 0 !important;
+}
+
+
+/* 2026-06-26 native titlebar hit-test fix, part 2: the topbar itself spans
+   beneath the fixed sidebar and right-action buttons when sidebars collapse.
+   Do not mark the whole topbar as drag; only its safe child tab/list areas may
+   opt into dragging. */
+.workspace-topbar {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+/* 2026-06-26 dark project rail polish: keep project, canvas and file rows in
+   one visual system. Earlier dark-mode rules tinted the inner buttons, which
+   made inactive rows look like clipped rectangular slabs beside the active
+   full-width pills. */
+.theme-dark .project-rail {
+  --rail-dark-surface: rgba(9, 20, 30, 0.84);
+  --rail-dark-row-hover: rgba(36, 53, 66, 0.74);
+  --rail-dark-row-active: rgba(28, 91, 78, 0.48);
+  --rail-dark-row-text: #d8e6f0;
+  --rail-dark-row-muted: #8ea3b4;
+  --rail-dark-row-active-text: #a8f5df;
+  --rail-dark-row-icon: #a9bdcc;
+  --rail-dark-hairline: rgba(145, 180, 199, 0.12);
+  background: var(--rail-dark-surface) !important;
+  border-right-color: var(--rail-dark-hairline) !important;
+}
+
+.theme-dark .project-rail .rail-list {
+  gap: 5px !important;
+}
+
+.theme-dark .project-rail .rail-heading {
+  color: var(--rail-dark-row-muted) !important;
+}
+
+.theme-dark .project-rail-item,
+.theme-dark .project-file-card {
+  height: 40px !important;
+  min-height: 40px !important;
+  border: 1px solid transparent !important;
+  border-radius: 13px !important;
+  padding: 0 7px !important;
+  background: transparent !important;
+  color: var(--rail-dark-row-text) !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .project-rail-main,
+.theme-dark .project-file-main {
+  height: 38px !important;
+  min-height: 38px !important;
+  border: 0 !important;
+  border-radius: 11px !important;
+  padding: 0 3px !important;
+  background: transparent !important;
+  color: inherit !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .project-rail-item:hover,
+.theme-dark .project-rail-item:focus-within,
+.theme-dark .project-rail-item.has-open-actions,
+.theme-dark .project-file-card:hover,
+.theme-dark .project-file-card:focus-within,
+.theme-dark .project-file-card.has-open-actions {
+  background: var(--rail-dark-row-hover) !important;
+  color: #eef6fb !important;
+}
+
+.theme-dark .project-rail-item.is-active,
+.theme-dark .project-file-card.is-active,
+.theme-dark .project-file-card.project-file-card--selected {
+  background: var(--rail-dark-row-active) !important;
+  color: var(--rail-dark-row-active-text) !important;
+}
+
+.theme-dark .project-rail-item.is-active .project-rail-main,
+.theme-dark .project-file-card.is-active .project-file-main,
+.theme-dark .project-file-card.project-file-card--selected .project-file-main {
+  color: inherit !important;
+}
+
+.theme-dark .project-canvas-list {
+  margin: 3px 0 8px 18px !important;
+  padding-left: 10px !important;
+  border-left: 1px solid var(--rail-dark-hairline) !important;
+  gap: 4px !important;
+}
+
+.theme-dark .project-canvas-row-shell {
+  height: 32px !important;
+  min-height: 32px !important;
+  border: 1px solid transparent !important;
+  border-radius: 11px !important;
+  background: transparent !important;
+  color: var(--rail-dark-row-muted) !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .project-canvas-row {
+  height: 30px !important;
+  min-height: 30px !important;
+  background: transparent !important;
+  color: inherit !important;
+}
+
+.theme-dark .project-canvas-row-shell:hover,
+.theme-dark .project-canvas-row-shell:focus-within,
+.theme-dark .project-canvas-row-shell.has-open-actions {
+  background: var(--rail-dark-row-hover) !important;
+  color: #eef6fb !important;
+}
+
+.theme-dark .project-canvas-row-shell.is-active {
+  background: var(--rail-dark-row-active) !important;
+  color: var(--rail-dark-row-active-text) !important;
+}
+
+.theme-dark .project-rail-action,
+.theme-dark .project-file-more,
+.theme-dark .project-canvas-more {
+  color: var(--rail-dark-row-icon) !important;
+}
+
+.theme-dark .project-file-kind-icon {
+  background: rgba(31, 48, 61, 0.92) !important;
+  color: var(--rail-dark-row-icon) !important;
+}
+
+.theme-dark .project-file-card.is-active .project-file-kind-icon,
+.theme-dark .project-file-card.project-file-card--selected .project-file-kind-icon {
+  background: rgba(42, 113, 94, 0.5) !important;
+  color: var(--rail-dark-row-active-text) !important;
+}
+
+.theme-dark .project-file-kind-icon.kind-gaussian::after {
+  border-color: var(--rail-dark-surface) !important;
+}
+
+.theme-dark .project-file-card.is-active .project-file-kind-icon.kind-gaussian::after,
+.theme-dark .project-file-card.project-file-card--selected .project-file-kind-icon.kind-gaussian::after {
+  border-color: #214d43 !important;
 }
