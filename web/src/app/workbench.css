@@ -8990,3 +8990,142 @@ select,
 .theme-dark .project-file-card.project-file-card--selected .project-file-kind-icon.kind-gaussian::after {
   border-color: #214d43 !important;
 }
+
+/* 2026-06-26 inactive dark tab hover: the tab shell must be the only hover
+   surface. A previous dark rule also painted the inner .canvas-tab whenever the
+   shell hovered, so the label side and the close-button side looked like two
+   stacked layers. */
+.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab,
+.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab,
+.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:hover,
+.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:focus-visible,
+.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
+.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .canvas-tab-shell:not(.is-active):hover,
+.theme-dark .canvas-tab-shell:not(.is-active):focus-within {
+  background: var(--rxnflow-titlebar-hover) !important;
+  box-shadow: none !important;
+}
+
+/* 2026-06-26 node coefficient badge optical centering: the badge lives inside
+   a scaled canvas, so default font line boxes sit visibly low. Keep the pill as
+   the button surface and apply one measured optical offset to the ×/number run. */
+.node-coefficient-control-header button {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  line-height: 1 !important;
+}
+
+.node-coefficient-label {
+  position: static !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 1px !important;
+  height: 12px !important;
+  line-height: 1 !important;
+  transform: translateY(-2px) !important;
+}
+
+.node-coefficient-multiply,
+.node-coefficient-value {
+  height: 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  transform: none !important;
+}
+
+.node-coefficient-multiply {
+  width: 0.58em !important;
+  font-size: 10.5px !important;
+  font-weight: 900 !important;
+}
+
+.node-coefficient-value {
+  min-width: 0.55em !important;
+  font-size: 10.5px !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.03em !important;
+}
+
+/* 2026-06-26 native titlebar map cleanup: paint one continuous titlebar
+   surface edge-to-edge, keep the right action wrapper click-safe, and expose
+   explicit drag gaps between buttons. This avoids Electron treating the button
+   pixels as native titlebar drag regions after sidebar collapse. */
+.app-shell {
+  position: relative !important;
+  --rxnflow-project-rail-width: 248px;
+  --rxnflow-titlebar-left-button-left: calc(var(--rxnflow-project-rail-width) + 12px);
+  --rxnflow-titlebar-left-button-reserve: 44px;
+}
+
+.app-shell::before {
+  content: "" !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: var(--rxnflow-titlebar-height, 48px) !important;
+  background: var(--rxnflow-titlebar-surface) !important;
+  border-bottom: 1px solid var(--rxnflow-titlebar-divider) !important;
+  pointer-events: none !important;
+  z-index: 80 !important;
+}
+
+.workspace-topbar,
+.workspace-topbar-left,
+.canvas-tab-bar {
+  position: relative !important;
+  z-index: 100 !important;
+}
+
+.workspace-topbar-actions,
+.desktop-window-actions {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.workspace-topbar-actions > button,
+.workspace-topbar-actions button,
+.workspace-topbar-actions .theme-toggle-button,
+.workspace-topbar-actions .floating-export-trigger,
+.workspace-topbar-actions .right-sidebar-fixed-toggle {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.workspace-topbar-actions .window-action-drag-gap {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.left-sidebar-fixed-toggle {
+  left: var(--rxnflow-titlebar-left-button-left) !important;
+}
+
+.workspace:not(.is-left-collapsed) .workspace-topbar-left {
+  margin-left: var(--rxnflow-titlebar-left-button-reserve) !important;
+  padding-left: 0 !important;
+}
+
+/* Electron native hit-testing still lets an underlying draggable tab strip win
+   if that strip geometrically extends beneath fixed chrome buttons. Reserve
+   the right action cluster in the tab strip's own box, especially after the
+   left rail collapses and the tab strip shifts right. */
+.workspace.is-left-collapsed .workspace-topbar-left {
+  max-width: calc(100% - var(--rxnflow-left-collapsed-tab-reserve) - 168px) !important;
+  flex-basis: calc(100% - var(--rxnflow-left-collapsed-tab-reserve) - 168px) !important;
+}
