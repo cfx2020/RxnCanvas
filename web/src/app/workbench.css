@@ -8705,3 +8705,124 @@ select,
     transition: none !important;
   }
 }
+
+/* 2026-06-25 macOS titlebar hitboxes: keep the action buttons out of the
+   draggable region while preserving narrow draggable gaps between them. The
+   titlebar itself is a single 48px row: traffic lights, side toggles, right
+   actions and canvas tabs all live in that row instead of stacking chrome rows. */
+.app-shell {
+  --rxnflow-titlebar-height: 48px;
+  --rxnflow-titlebar-tab-height: 40px;
+  --rxnflow-titlebar-tab-add-size: 38px;
+  --rxnflow-titlebar-control-top: 10px;
+  --rxnflow-sidebar-flyout-top: 40px;
+  --rxnflow-sidebar-flyout-height-gap: 58px;
+}
+
+.workspace {
+  height: 100vh !important;
+}
+
+.workbench-shell {
+  grid-template-rows: var(--rxnflow-titlebar-height) auto auto minmax(0, 1fr) !important;
+}
+
+.workspace-topbar {
+  min-height: var(--rxnflow-titlebar-height) !important;
+  height: var(--rxnflow-titlebar-height) !important;
+  padding: 0 16px 0 12px !important;
+  align-items: stretch !important;
+}
+
+.workspace-topbar-left,
+.canvas-tab-bar,
+.canvas-tab-list {
+  height: var(--rxnflow-titlebar-height) !important;
+}
+
+.canvas-tab-list {
+  align-items: flex-end !important;
+}
+
+.canvas-tab-shell,
+.canvas-tab-shell .canvas-tab,
+.canvas-tab-shell.is-active .canvas-tab {
+  height: var(--rxnflow-titlebar-tab-height) !important;
+  min-height: var(--rxnflow-titlebar-tab-height) !important;
+  line-height: var(--rxnflow-titlebar-tab-height) !important;
+}
+
+.canvas-tab-add {
+  width: var(--rxnflow-titlebar-tab-add-size) !important;
+  min-width: var(--rxnflow-titlebar-tab-add-size) !important;
+  height: var(--rxnflow-titlebar-tab-add-size) !important;
+  min-height: var(--rxnflow-titlebar-tab-add-size) !important;
+  margin-bottom: 1px !important;
+}
+
+.project-rail,
+.inspector-panel {
+  padding-top: var(--rxnflow-titlebar-height) !important;
+}
+
+.project-rail-hover-panel {
+  top: var(--rxnflow-sidebar-flyout-top) !important;
+  max-height: calc(100vh - var(--rxnflow-sidebar-flyout-height-gap)) !important;
+}
+
+.project-rail-hover-panel .project-rail {
+  height: calc(100vh - var(--rxnflow-sidebar-flyout-height-gap)) !important;
+}
+
+.left-sidebar-fixed-toggle,
+.project-rail-hover,
+.workspace-topbar-actions {
+  top: var(--rxnflow-titlebar-control-top) !important;
+}
+
+.left-sidebar-fixed-toggle,
+.project-rail-hover-trigger,
+.desktop-window-actions,
+.workspace-topbar-actions,
+.workspace-topbar-actions > button,
+.workspace-topbar-actions button,
+.workspace-topbar-actions .theme-toggle-button,
+.workspace-topbar-actions .floating-export-trigger,
+.workspace-topbar-actions .right-sidebar-fixed-toggle {
+  pointer-events: auto !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.workspace-topbar-actions {
+  align-items: center !important;
+  z-index: 1200 !important;
+  isolation: isolate !important;
+}
+
+.workspace-topbar-actions > button,
+.project-rail-hover-trigger {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.left-sidebar-fixed-toggle {
+  position: fixed !important;
+  z-index: 1200 !important;
+}
+
+.workspace-topbar-actions .engine-status-pill,
+.workspace-topbar-actions .engine-status,
+.workspace-topbar-actions .window-action-drag-gap {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.workspace-topbar-actions > button > svg,
+.workspace-topbar-actions > button > span,
+.left-sidebar-fixed-toggle > svg,
+.project-rail-hover-trigger > svg {
+  pointer-events: none !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
