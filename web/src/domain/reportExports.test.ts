@@ -83,9 +83,10 @@ describe("report exports", () => {
     expect(cdxml).toContain("Reactant &lt;A&gt;")
     expect(cdxml).toContain("TS &amp; B")
     expect(cdxml).toContain("25.10 kcal/mol")
-    expect(cdxml).toContain("<arrow")
+    expect(cdxml).toContain("GraphicType=\"Line\"")
     expect(cdxml).toContain("RxnFlow manual molecule CDXML")
-    expect(cdxml).toContain("<fragment id=\"2\">")
+    expect(cdxml).toContain("<fragment id=\"")
+    expect(cdxml).toContain("p=\"81.4 238\"")
   })
 
   it("builds a minimal valid XLSX zip package", () => {
@@ -97,6 +98,10 @@ describe("report exports", () => {
     expect(decoded).toContain("Energy Table")
     expect(decoded).toContain("Import Files")
     expect(decoded).toContain("Export Metadata")
+    expect(decoded).toContain("Egas")
+    expect(decoded).toContain("ΔEgas")
+    expect(decoded).toContain("B2*627.5095")
+    expect(decoded).toContain("B3-B$2")
     expect(decoded).toContain("Reactant &lt;A&gt;")
     expect(decoded).toContain("rxnflow-renderer-xlsx-v1")
   })
