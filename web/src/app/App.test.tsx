@@ -644,10 +644,13 @@ describe("App", () => {
     const rail = screen.getByRole("complementary", { name: "Project rail" })
     const groupedRowButton = await within(rail).findByRole("button", { name: "Bfix6-ts Gaussian" })
     expect(groupedRowButton).toBeInTheDocument()
+    expect(groupedRowButton).toHaveAttribute("title", "Solvation log paired")
     expect(within(rail).queryByRole("button", { name: "Bfix6-ts.log Gaussian" })).not.toBeInTheDocument()
     expect(within(rail).queryByRole("button", { name: "Bfix6-ts-sol.log Gaussian" })).not.toBeInTheDocument()
 
     const row = groupedRowButton.closest(".project-file-card") as HTMLElement
+    expect(row.querySelector(".project-file-phase-badges")).not.toBeInTheDocument()
+
     const dataTransfer = new TestDataTransfer()
     fireEvent.dragStart(row, { dataTransfer })
     const payload = JSON.parse(dataTransfer.getData("application/x-rxnflow-raw-file"))
@@ -1228,6 +1231,7 @@ describe("App", () => {
       const node = Array.from(container.querySelectorAll(".reaction-node[data-flow-node-id]"))
         .find((element) => element.getAttribute("data-flow-node-id")?.startsWith("imported-file-") && element.getAttribute("data-flow-node-id")?.includes("-drop-")) as HTMLElement | undefined
       expect(node).toBeDefined()
+      expect(node?.querySelector(".status-light-node.status-light-missing")).toBeInTheDocument()
       expect(node?.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
     })
   })

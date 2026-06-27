@@ -487,6 +487,12 @@ function ProjectFileRow({
   const { primaryFile } = group
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
   const reviewFile = group.files.find((file) => (file.parse?.objectCount ?? file.parse?.candidates?.length ?? 0) > 1)
+  const missingSolutionLog = group.hasGasLog && !group.hasSolutionLog
+  const solvationPairTitle = missingSolutionLog
+    ? "No paired solvation log"
+    : group.hasSolutionLog
+      ? "Solvation log paired"
+      : undefined
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLSpanElement | null>(null)
 
@@ -548,12 +554,20 @@ function ProjectFileRow({
         className="project-file-main"
         aria-pressed={selected}
         aria-label={`${group.displayName} ${group.displayKind}`}
+        title={solvationPairTitle}
         onClick={selectFromEvent}
       >
         <span className={`project-file-kind-icon kind-${group.displayKind.toLowerCase()}`} aria-hidden="true">
           <FilePlus2 size={14} />
         </span>
         <span>{group.displayName}</span>
+        {missingSolutionLog ? (
+          <span
+            className="project-file-phase-badges has-missing-solution"
+            title="No paired solvation log"
+            aria-hidden="true"
+          />
+        ) : null}
       </button>
       <span className="project-file-menu" ref={menuRef}>
         <button

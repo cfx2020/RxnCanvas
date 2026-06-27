@@ -979,6 +979,11 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
         />
       )}
       <div className="node-energy-strip node-card-meta-row" title={nodeEnergyStripTitle(relativeEnergySymbol, relativeRole)}>
+        <span
+          className={`status-light status-light-node status-light-${nodeStatusLight}`}
+          title={`${sourceStatusLabel}. ${solvationStatusLabel}`}
+          aria-label={`${sourceStatusLabel}. ${solvationStatusLabel}`}
+        />
         {nodeTermRoleLabel(relativeRole) ? (
           <span className="node-card-energy-value node-card-energy-term" title={nodeEnergyStripTitle(relativeEnergySymbol, relativeRole)}>
             <strong>{nodeTermRoleLabel(relativeRole)}</strong>
@@ -991,11 +996,6 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
             </strong>
           </span>
         )}
-        <span
-          className={`status-light status-light-node status-light-${nodeStatusLight}`}
-          title={`${sourceStatusLabel}. ${solvationStatusLabel}`}
-          aria-label={`${sourceStatusLabel}. ${solvationStatusLabel}`}
-        />
         <em className="node-kind-badge">{nodeKindAbbreviation(node.kind)}</em>
       </div>
       <span

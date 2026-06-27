@@ -14117,3 +14117,87 @@ select,
     transition: none !important;
   }
 }
+
+/* 2026-06-28 project file gas/sol status restore:
+   File grouping still computes gas/solution presence; only missing sol should
+   be visible as a quiet warning light. Paired state moves to native tooltip. */
+.project-rail .project-file-main {
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+}
+
+.project-rail .project-file-phase-badges {
+  display: none !important;
+}
+
+.project-rail .project-file-phase-badges.has-missing-solution {
+  width: 6px !important;
+  height: 6px !important;
+  min-width: 6px !important;
+  display: inline-block !important;
+  border-radius: 999px !important;
+  background: #ef8f35 !important;
+  box-shadow: 0 0 0 3px rgba(239, 143, 53, 0.16) !important;
+}
+
+.app-shell.theme-dark .project-rail .project-file-phase-badges.has-missing-solution {
+  background: #f6a04e !important;
+  box-shadow: 0 0 0 3px rgba(246, 160, 78, 0.18) !important;
+}
+
+@media (max-width: 1180px) {
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main .project-file-phase-badges {
+    display: none !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main .project-file-phase-badges.has-missing-solution {
+    display: inline-block !important;
+  }
+}
+
+.reaction-node .node-energy-strip.node-card-meta-row {
+  display: grid !important;
+  grid-template-columns: 14px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  justify-content: stretch !important;
+  gap: 6px !important;
+}
+
+.reaction-node .node-energy-strip.node-card-meta-row .status-light-node {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  justify-self: center !important;
+  align-self: center !important;
+  width: 8px !important;
+  height: 8px !important;
+  display: inline-block !important;
+  visibility: hidden !important;
+  margin: 0 !important;
+  position: static !important;
+}
+
+.reaction-node .node-energy-strip.node-card-meta-row .status-light-node.status-light-missing {
+  visibility: visible !important;
+  background: #ef8f35 !important;
+  box-shadow: 0 0 0 4px rgba(239, 143, 53, 0.16), 0 0 18px rgba(239, 143, 53, 0.28) !important;
+}
+
+.reaction-node .node-energy-strip.node-card-meta-row .node-card-energy-value {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  justify-self: end !important;
+}
+
+.reaction-node .node-energy-strip.node-card-meta-row .node-kind-badge {
+  grid-column: 3 !important;
+  grid-row: 1 !important;
+  justify-self: end !important;
+}
+
+.app-shell.theme-dark .reaction-node .node-energy-strip.node-card-meta-row .status-light-node.status-light-missing {
+  background: #f6a04e !important;
+  box-shadow: 0 0 0 4px rgba(246, 160, 78, 0.18), 0 0 18px rgba(246, 160, 78, 0.3) !important;
+}
