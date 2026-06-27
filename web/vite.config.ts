@@ -13,16 +13,16 @@ export default defineConfig(({ mode }) => {
       "process.env": JSON.stringify({ NODE_ENV: nodeEnv }),
     },
     build: {
+      modulePreload: {
+        resolveDependencies(filename, deps) {
+          if (filename.startsWith("KetcherEditorHost-")) return deps
+          return deps.filter((dep) => !dep.includes("ketcher-vendor"))
+        },
+      },
       rollupOptions: {
         output: {
           manualChunks(id) {
             if (id.includes("/node_modules/lodash/")) return "lodash-vendor"
-            if (id.includes("/node_modules/ketcher")
-              || id.includes("/node_modules/@babel/runtime")
-              || id.includes("/node_modules/indigo-ketcher")
-              || id.includes("/node_modules/@epam")) {
-              return "ketcher-vendor"
-            }
           },
         },
       },

@@ -944,6 +944,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
         tabIndex={0}
         className={`node-connector node-connector-out${keyboardConnectionActive ? " is-keyboard-active" : ""}`}
         aria-label={`Start edge from ${node.label}`}
+        title={`Start edge from ${node.label}`}
         aria-pressed={keyboardConnectionActive}
         onPointerDown={(event) => onStartConnection(event, node.id)}
         onKeyDown={handleConnectorKeyDown}
@@ -1841,7 +1842,7 @@ export function ZoomControls({
 }) {
   return (
     <div className="zoom-controls" aria-label="Zoom controls">
-      <button type="button" onClick={onReset} aria-label="Reset canvas view">
+      <button type="button" onClick={onReset} aria-label="Reset canvas view" title="Reset canvas view">
         <Maximize2 size={17} />
       </button>
       <button type="button" onClick={onZoomOut} aria-label="Zoom out">

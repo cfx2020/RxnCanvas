@@ -1,8 +1,28 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { Ketcher } from "ketcher-core"
 import { Editor } from "ketcher-react"
 import { StandaloneStructServiceProvider } from "ketcher-standalone"
-import "ketcher-react/dist/index.css"
+import ketcherStylesheetHref from "ketcher-react/dist/index.css?url"
+let ketcherStylesheetPromise: Promise<void> | null = null
+
+function ensureKetcherStylesheet(): Promise<void> {
+  if (typeof document === "undefined") return Promise.resolve()
+  if (document.querySelector(`link[data-rxnflow-ketcher-style="true"]`)) return Promise.resolve()
+  if (ketcherStylesheetPromise) return ketcherStylesheetPromise
+  ketcherStylesheetPromise = new Promise<void>((resolve, reject) => {
+    const link = document.createElement("link")
+    link.rel = "stylesheet"
+    link.href = ketcherStylesheetHref
+    link.dataset.rxnflowKetcherStyle = "true"
+    link.onload = () => resolve()
+    link.onerror = () => reject(new Error("Ketcher stylesheet failed to load."))
+    document.head.appendChild(link)
+  }).catch((error) => {
+    ketcherStylesheetPromise = null
+    throw error
+  })
+  return ketcherStylesheetPromise
+}
 
 type KetcherEditorHostProps = {
   initialStructure: string
@@ -13,6 +33,27 @@ type KetcherEditorHostProps = {
 export function KetcherEditorHost({ initialStructure, onReady, onError }: KetcherEditorHostProps) {
   const structServiceProvider = useMemo(() => new StandaloneStructServiceProvider(), [])
   const staticResourcesUrl = import.meta.env.BASE_URL || "/"
+  const [stylesReady, setStylesReady] = useState(false)
+
+  useEffect(() => {
+    let canceled = false
+    ensureKetcherStylesheet()
+      .then(() => {
+        if (!canceled) setStylesReady(true)
+      })
+      .catch((error: unknown) => {
+        console.error("RxnFlow Ketcher stylesheet failed", error)
+        if (!canceled) {
+          setStylesReady(true)
+          onError("Ketcher styles could not load; the editor may look incomplete.")
+        }
+      })
+    return () => {
+      canceled = true
+    }
+  }, [onError])
+
+  if (!stylesReady) return <div className="molecule-editor-status">Loading Ketcher editor…</div>
 
   return (
     <Editor

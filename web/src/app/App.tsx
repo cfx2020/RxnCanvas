@@ -1985,18 +1985,6 @@ export function App() {
     },
   }), [])
 
-  useEffect(() => {
-    syncNativeControlTooltips()
-    const observer = new MutationObserver(() => syncNativeControlTooltips())
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["aria-label", "title"],
-    })
-    return () => observer.disconnect()
-  }, [])
-
   useEffect(() => watchDesktopEngineStatus({
     desktopApi: window.rxnflowDesktop,
     setEngineStatus,
@@ -3012,22 +3000,6 @@ function isEditablePasteTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   const tag = target.tagName.toLowerCase()
   return target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select"
-}
-
-function syncNativeControlTooltips(root: ParentNode = document): void {
-  const controls = root.querySelectorAll<HTMLElement>(
-    'button[aria-label], [role="button"][aria-label], [role="menuitem"][aria-label]',
-  )
-  controls.forEach((control) => {
-    const label = control.getAttribute("aria-label")?.trim()
-    if (!label) return
-    const isAutoTitle = control.dataset.rxnflowAutoTitle === "true"
-    const currentTitle = control.getAttribute("title")?.trim()
-    if (currentTitle && !isAutoTitle) return
-    if (currentTitle === label && isAutoTitle) return
-    control.setAttribute("title", label)
-    control.dataset.rxnflowAutoTitle = "true"
-  })
 }
 
 function imageFilesFromClipboardData(clipboardData: DataTransfer | null): File[] {

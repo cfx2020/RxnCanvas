@@ -13346,55 +13346,6 @@ select,
   app-region: no-drag !important;
 }
 
-/* 2026-06-27 sidebar titlebar geometry hardening:
-   1) When the right inspector is open, the workbench topbar stops at the
-      canvas/inspector boundary. The inspector itself starts below the titlebar,
-      leaving a transparent titlebar gap under the fixed right actions. Fill
-      only that empty gap with a native drag bridge; keep the actual buttons as
-      no-drag islands above it.
-   2) When the project rail collapses, keep a stable titlebar reserve at the
-      left edge instead of letting the workbench jump to x=0 and then adding a
-      margin inside the tab strip. That makes the Chrome-style tabs animate from
-      their collapsed position instead of appearing to slide in from the far
-      left during expansion. */
-.app-shell {
-  --rxnflow-right-titlebar-action-reserve: 130px;
-  --rxnflow-left-collapsed-workbench-reserve: calc(
-    var(--rxnflow-titlebar-left-button-left, 104px) + var(--rxnflow-titlebar-tab-add-size, 28px)
-  );
-}
-
-.right-titlebar-drag-bridge {
-  position: fixed !important;
-  top: 0 !important;
-  right: var(--rxnflow-right-titlebar-action-reserve) !important;
-  width: max(0px, calc(var(--rxnflow-inspector-width, 288px) - var(--rxnflow-right-titlebar-action-reserve))) !important;
-  height: var(--rxnflow-titlebar-height, 36px) !important;
-  z-index: 1000 !important;
-  background: transparent !important;
-  pointer-events: auto !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.workspace.is-left-collapsed {
-  grid-template-columns:
-    var(--rxnflow-left-collapsed-workbench-reserve)
-    minmax(0, 1fr)
-    var(--rxnflow-inspector-width) !important;
-}
-
-.workspace.is-left-collapsed.is-right-collapsed {
-  grid-template-columns:
-    var(--rxnflow-left-collapsed-workbench-reserve)
-    minmax(0, 1fr)
-    0 !important;
-}
-
-.workspace.is-left-collapsed .workspace-topbar-left {
-  margin-left: 0 !important;
-}
-
 /* 2026-06-27 2D editor modal hardening:
    Ketcher needs real vertical space for its left/right tool palettes and the
    editor should float above the inspector instead of reserving/losing a right
@@ -13646,25 +13597,9 @@ select,
    One stable, state-independent titlebar drag surface spans the whole window.
    Sidebar expanded/collapsed layouts must not change native hit testing:
    empty titlebar pixels drag the window; only real controls opt out. */
-.desktop-titlebar-drag-surface {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: var(--rxnflow-titlebar-height, 48px) !important;
-  z-index: 90 !important;
-  background: transparent !important;
-  pointer-events: auto !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
 
-.right-titlebar-drag-bridge {
-  display: none !important;
-  pointer-events: none !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
+
+
 
 .workspace-topbar,
 .workspace-topbar-left,
@@ -13728,9 +13663,7 @@ select,
 /* 2026-06-27 unified titlebar z-order correction:
    keep the drag surface above sidebar panes as well, while actual tabs and
    fixed titlebar controls stay above it as no-drag interactive islands. */
-.desktop-titlebar-drag-surface {
-  z-index: 1100 !important;
-}
+
 
 .workspace-topbar,
 .workspace-topbar-left,
@@ -13819,9 +13752,9 @@ select,
 }
 
 /* 2026-06-27 native Electron titlebar contract reset.
-   Electron docs: draggable regions ignore pointer events; interactive controls
-   must be no-drag descendants of the draggable titlebar, not siblings layered
-   over/under a separate drag surface. */
+   Single contract: the whole fixed titlebar is native drag; only real controls
+   and editable tabs are no-drag islands. Sidebar open/collapsed state must not
+   add separate drag slabs above the titlebar. */
 .desktop-titlebar-drag-surface,
 .right-titlebar-drag-bridge {
   display: none !important;
@@ -13832,9 +13765,7 @@ select,
 
 .desktop-titlebar-shell {
   position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
+  inset: 0 0 auto 0 !important;
   height: var(--rxnflow-titlebar-height, 48px) !important;
   z-index: 3000 !important;
   pointer-events: auto !important;
@@ -13848,6 +13779,13 @@ select,
   pointer-events: none !important;
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
+}
+
+.app-shell {
+  --rxnflow-right-titlebar-action-reserve: 130px;
+  --rxnflow-left-collapsed-workbench-reserve: calc(
+    var(--rxnflow-titlebar-left-button-left, 104px) + var(--rxnflow-titlebar-tab-add-size, 28px)
+  );
 }
 
 .desktop-titlebar-shell .desktop-titlebar-tabs {
@@ -13878,11 +13816,19 @@ select,
 
 .desktop-titlebar-shell .workspace-topbar-left,
 .desktop-titlebar-shell .canvas-tab-bar,
+.desktop-titlebar-shell .canvas-tab-list,
+.desktop-titlebar-shell .workspace-topbar-actions,
+.desktop-titlebar-shell .workspace-topbar-actions.desktop-window-actions,
+.desktop-titlebar-shell .desktop-window-actions {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.desktop-titlebar-shell .workspace-topbar-left,
+.desktop-titlebar-shell .canvas-tab-bar,
 .desktop-titlebar-shell .canvas-tab-list {
   height: var(--rxnflow-titlebar-height, 48px) !important;
   pointer-events: auto !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
 }
 
 .desktop-titlebar-shell .workspace-topbar-actions,
@@ -13893,8 +13839,6 @@ select,
   right: 14px !important;
   z-index: 2 !important;
   pointer-events: auto !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
 }
 
 .desktop-titlebar-shell .left-sidebar-fixed-toggle {
@@ -13904,35 +13848,23 @@ select,
   z-index: 2 !important;
 }
 
-.desktop-titlebar-shell .left-sidebar-fixed-toggle,
-.desktop-titlebar-shell .left-sidebar-fixed-toggle *,
+.desktop-titlebar-shell button,
+.desktop-titlebar-shell input,
+.desktop-titlebar-shell select,
+.desktop-titlebar-shell textarea,
+.desktop-titlebar-shell [role="button"],
 .desktop-titlebar-shell .canvas-tab-shell,
 .desktop-titlebar-shell .canvas-tab-shell *,
 .desktop-titlebar-shell .canvas-tab-add,
-.desktop-titlebar-shell .canvas-tab-input,
-.desktop-titlebar-shell .workspace-topbar button,
-.desktop-titlebar-shell .workspace-topbar input,
-.desktop-titlebar-shell .workspace-topbar select,
-.desktop-titlebar-shell .workspace-topbar textarea,
-.desktop-titlebar-shell .workspace-topbar [role="button"],
-.desktop-titlebar-shell .workspace-topbar-actions > button,
-.desktop-titlebar-shell .workspace-topbar-actions > button *,
-.desktop-titlebar-shell .workspace-topbar-actions button,
-.desktop-titlebar-shell .workspace-topbar-actions button *,
-.desktop-titlebar-shell .workspace-topbar-actions .theme-toggle-button,
-.desktop-titlebar-shell .workspace-topbar-actions .theme-toggle-button *,
-.desktop-titlebar-shell .workspace-topbar-actions .floating-export-trigger,
-.desktop-titlebar-shell .workspace-topbar-actions .floating-export-trigger *,
-.desktop-titlebar-shell .workspace-topbar-actions .right-sidebar-fixed-toggle,
-.desktop-titlebar-shell .workspace-topbar-actions .right-sidebar-fixed-toggle * {
+.desktop-titlebar-shell .canvas-tab-input {
   pointer-events: auto !important;
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
 }
 
-.desktop-titlebar-shell .workspace-topbar-actions .window-action-drag-gap,
-.desktop-titlebar-shell .workspace-topbar-actions .engine-status-pill,
-.desktop-titlebar-shell .workspace-topbar-actions .engine-status {
+.desktop-titlebar-shell .window-action-drag-gap,
+.desktop-titlebar-shell .engine-status-pill,
+.desktop-titlebar-shell .engine-status {
   pointer-events: auto !important;
   -webkit-app-region: drag !important;
   app-region: drag !important;
