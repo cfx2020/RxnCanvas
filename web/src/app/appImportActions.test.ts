@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import {
   handleCanvasRawFileDropAction,
   importDesktopFilesAction,
+  importFilesForProjectAction,
   openImportPickerAction,
   toggleCandidateReviewSelectionAction,
 } from "./appImportActions"
@@ -50,6 +51,21 @@ describe("appImportActions", () => {
     expect(stageSourceFilesForProject).toHaveBeenCalledTimes(1)
     expect(stageSourceFilesForProject.mock.calls[0][0]).toBe("p3")
     expect(stageSourceFilesForProject.mock.calls[0][1][0].name).toBe("a.log")
+    expect(stageSourceFilesForProject.mock.calls[0][2]).toEqual({ autoRegister: false })
+  })
+
+  it("stages browser-selected imports in the project sidebar without auto-registering canvas nodes", async () => {
+    const stageSourceFilesForProject = vi.fn()
+    await importFilesForProjectAction({
+      fileList: [new File(["SCF Done: E = -1.0"], "picked.log")],
+      projectId: "p4",
+      stageSourceFilesForProject,
+    })
+
+    expect(stageSourceFilesForProject).toHaveBeenCalledTimes(1)
+    expect(stageSourceFilesForProject.mock.calls[0][0]).toBe("p4")
+    expect(stageSourceFilesForProject.mock.calls[0][1][0].name).toBe("picked.log")
+    expect(stageSourceFilesForProject.mock.calls[0][2]).toEqual({ autoRegister: false })
   })
 
   it("stages project-file drops with update mode", async () => {
@@ -62,6 +78,7 @@ describe("appImportActions", () => {
     expect(stageCurrentProjectSourceFiles).toHaveBeenCalledTimes(1)
     expect(stageCurrentProjectSourceFiles.mock.calls[0][0][0].id).toBe("file-1")
     expect(stageCurrentProjectSourceFiles.mock.calls[0][1].fileMode).toBe("update")
+    expect(stageCurrentProjectSourceFiles.mock.calls[0][1].autoRegister).toBe(true)
   })
 
   it("leaves null candidate review unchanged", () => {

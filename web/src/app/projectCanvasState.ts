@@ -1,9 +1,10 @@
-import type { CanvasViewport, FlowBarrier, FlowEdge, FlowNode, RxnFlowProjectCanvas } from "../domain/projectPackages"
+import type { CanvasAnnotation, CanvasViewport, FlowBarrier, FlowEdge, FlowNode, RxnFlowProjectCanvas } from "../domain/projectPackages"
 
 export type CanvasTabSnapshot = {
   nodes: FlowNode[]
   edges: FlowEdge[]
   barriers: FlowBarrier[]
+  annotations?: CanvasAnnotation[]
   viewport: CanvasViewport
   selectedNodeIds: string[]
   selectedEdgeIds: string[]
@@ -32,6 +33,7 @@ export function canvasTabSnapshotFromState(snapshot: CanvasTabSnapshot): CanvasT
     nodes: snapshot.nodes,
     edges: snapshot.edges,
     barriers: snapshot.barriers,
+    annotations: snapshot.annotations ?? [],
     viewport: snapshot.viewport,
     selectedNodeIds: snapshot.selectedNodeIds,
     selectedEdgeIds: snapshot.selectedEdgeIds,
@@ -183,6 +185,7 @@ export function canvasTabsFromProjectCanvases(canvases: RxnFlowProjectCanvas[]):
       nodes: canvas.nodes,
       edges: canvas.edges,
       barriers: canvas.barriers,
+      annotations: canvas.annotations ?? [],
       viewport: canvas.viewport,
       selectedNodeIds: canvas.selectedNodeIds,
       selectedEdgeIds: canvas.selectedEdgeIds,
@@ -208,6 +211,7 @@ export function projectCanvasesFromCanvasTabs({
       nodes: snapshot.nodes,
       edges: snapshot.edges,
       barriers: snapshot.barriers,
+      annotations: snapshot.annotations ?? [],
       viewport: snapshot.viewport,
       selectedNodeIds: snapshot.selectedNodeIds,
       selectedEdgeIds: snapshot.selectedEdgeIds,

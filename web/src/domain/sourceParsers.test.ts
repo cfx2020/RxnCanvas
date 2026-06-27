@@ -49,6 +49,51 @@ describe("parseSourcePreview", () => {
     expect(parsed.coordinatePreview?.atoms?.[0]).toEqual({ element: "Ir", x: 0, y: 0, z: 0 })
   })
 
+  it("extracts Gaussian normal-mode vibration displacements", () => {
+    const parsed = parseSourcePreview({
+      name: "ts-vibration.log",
+      preview: [
+        " Stoichiometry    H2O",
+        "                          Standard orientation:",
+        " ---------------------------------------------------------------------",
+        " Center     Atomic      Atomic             Coordinates (Angstroms)",
+        " Number     Number       Type             X           Y           Z",
+        " ---------------------------------------------------------------------",
+        "      1          8           0        0.000000    0.000000    0.000000",
+        "      2          1           0        0.000000    0.000000    0.960000",
+        "      3          1           0        0.920000    0.000000   -0.240000",
+        " ---------------------------------------------------------------------",
+        " SCF Done:  E(RB3LYP) =  -76.431000     A.U.",
+        " Frequencies --   -423.1200    1580.5000    3650.1000",
+        " Red. masses --      1.2345       1.1111       1.2222",
+        " Frc consts  --      0.1234       0.2222       0.3333",
+        " IR Inten    --     12.3000       2.0000       3.0000",
+        " Raman Activ --      1.0000       2.0000       3.0000",
+        " Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z",
+        "   1   8     0.010  0.000  0.000    0.000  0.020  0.000    0.000  0.000  0.030",
+        "   2   1    -0.010  0.000  0.000    0.000 -0.020  0.000    0.000  0.000 -0.030",
+        "   3   1     0.000  0.010  0.000    0.000  0.000  0.020    0.030  0.000  0.000",
+      ].join("\n"),
+    })
+
+    const modes = parsed.coordinatePreview?.vibrationModes ?? []
+    expect(modes).toHaveLength(3)
+    expect(modes[0]).toMatchObject({
+      modeId: "mode-1-imaginary-423.12",
+      modeIndex: 0,
+      frequencyCm1: -423.12,
+      kind: "imaginary",
+      reducedMassAmu: 1.2345,
+      forceConstant: 0.1234,
+      irIntensityKmMol: 12.3,
+      ramanActivity: 1,
+      source: "rxnflow-text",
+    })
+    expect(modes[0]?.displacements).toHaveLength(3)
+    expect(modes[0]?.displacements[0]).toEqual({ atomIndex: 0, dx: 0.01, dy: 0, dz: 0 })
+    expect(parsed.warnings.map((warning) => warning.code)).not.toContain("vibration_shape_mismatch")
+  })
+
   it("extracts ORCA final energy and implicit solvent correction", () => {
     const parsed = parseSourcePreview({
       name: "adduct.out",

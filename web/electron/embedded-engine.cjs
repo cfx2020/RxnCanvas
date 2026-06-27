@@ -387,6 +387,7 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
   const gaussian = parseGaussian(preview)
   if (gaussian) {
     const atoms = gaussianAtomsFromText(preview)
+    const vibrations = gaussianVibrationalModesFromText(preview, atoms.length, name)
     const formula = inferFormulaFromText(preview) ?? (atoms.length > 0 ? formulaFromAtoms(atoms) : "pending")
     const [charge, spinMultiplicity] = gaussianChargeMultiplicity(preview)
     const energyTable = gaussianEnergyTable(preview)
@@ -406,10 +407,12 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
         energyGas: gaussian.energyGas,
         energySolution: gaussian.energySolution,
         energyUnit: "hartree",
-        coordinatePreview: coordinatePreviewFromAtoms(atoms),
+        coordinatePreview: coordinatePreviewFromAtoms(atoms, vibrations.modes),
         roleHint: roleHintFromName(name),
+        warnings: vibrations.warnings,
         energyTable,
       })],
+      warnings: vibrations.warnings,
       energyTable,
       parseScope,
       confidence,
@@ -420,6 +423,7 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
   const orca = parseOrca(preview)
   if (orca) {
     const atoms = orcaAtomsFromText(preview)
+    const vibrationWarnings = orcaVibrationUnavailableWarnings(preview, name)
     const [charge, spinMultiplicity] = orcaChargeMultiplicity(preview)
     const energyTable = orcaEnergyTable(preview)
     return sourceResultFromCandidates({
@@ -440,8 +444,10 @@ function parseSourcePreview(name, preview, parseScope = "preview", confidence = 
         energyUnit: "hartree",
         coordinatePreview: coordinatePreviewFromAtoms(atoms),
         roleHint: roleHintFromName(name),
+        warnings: vibrationWarnings,
         energyTable,
       })],
+      warnings: vibrationWarnings,
       energyTable,
       parseScope,
       confidence,
@@ -731,6 +737,12 @@ function orcaEnergyTable(preview) {
     gsolHartree: null,
   }
   return Object.values(table).some((value) => typeof value === "number" && Number.isFinite(value)) ? table : null
+}
+
+function orcaVibrationUnavailableWarnings(preview, target) {
+  return /VIBRATIONAL FREQUENCIES|NORMAL MODES/i.test(preview)
+    ? [{ code: "vibration_unavailable", message: "ORCA vibration data needs the full-file cclib parser or a recognized normal-mode block.", target }]
+    : []
 }
 
 function orcaAtomsFromText(preview) {
@@ -1506,7 +1518,136 @@ function sourceFileId(file) {
   return stringOrDefault(file?.id, safeIdentifier(stringOrDefault(file?.name, "source")))
 }
 
-function coordinatePreviewFromAtoms(atoms) {
+function gaussianVibrationalModesFromText(sourceText, atomCount, target, source = "embedded-text") {
+  if (atomCount <= 0) return { modes: [], warnings: [] }
+  const frequencyPattern = new RegExp(`Frequencies\\s+--\\s+((?:${numberPattern}\\s*)+)`, "i")
+  const reducedMassPattern = new RegExp(`Red\\.\\s*masses\\s+--\\s+((?:${numberPattern}\\s*)+)`, "i")
+  const forceConstantPattern = new RegExp(`Frc\\s*consts?\\s+--\\s+((?:${numberPattern}\\s*)+)`, "i")
+  const irIntensityPattern = new RegExp(`IR\\s+Inten\\s+--\\s+((?:${numberPattern}\\s*)+)`, "i")
+  const ramanActivityPattern = new RegExp(`Raman\\s+Activ\\s+--\\s+((?:${numberPattern}\\s*)+)`, "i")
+  const lines = String(sourceText).split(/\r?\n/)
+  const modes = []
+  const warnings = []
+  lines.forEach((line, index) => {
+    const match = line.match(frequencyPattern)
+    if (!match) return
+    const frequencies = numbersFromText(match[1])
+    const modeCount = frequencies.length
+    const displacementStart = gaussianDisplacementStart(lines, index + 1, atomCount)
+    if (modeCount === 0 || displacementStart < 0) {
+      warnings.push({ code: "vibration_parse_partial", message: "Gaussian frequency lines were found, but normal-mode displacements were not recognized.", target })
+      return
+    }
+    const displacements = gaussianDisplacementsFromLines(lines, displacementStart, atomCount, modeCount)
+    const reducedMasses = nearbyNumbers(lines, index, reducedMassPattern, modeCount)
+    const forceConstants = nearbyNumbers(lines, index, forceConstantPattern, modeCount)
+    const irIntensities = nearbyNumbers(lines, index, irIntensityPattern, modeCount)
+    const ramanActivities = nearbyNumbers(lines, index, ramanActivityPattern, modeCount)
+    frequencies.forEach((frequencyCm1, modeOffset) => {
+      const modeDisplacements = displacements[modeOffset] ?? []
+      if (modeDisplacements.length !== atomCount) {
+        warnings.push({ code: "vibration_shape_mismatch", message: `Vibration mode ${modes.length + 1} displacement count does not match atom count.`, target })
+        return
+      }
+      const modeIndex = modes.length
+      modes.push({
+        modeId: vibrationModeId(modeIndex, frequencyCm1),
+        modeIndex,
+        frequencyCm1,
+        kind: frequencyCm1 < 0 ? "imaginary" : "real",
+        displacements: modeDisplacements,
+        reducedMassAmu: reducedMasses[modeOffset] ?? null,
+        forceConstant: forceConstants[modeOffset] ?? null,
+        irIntensityKmMol: irIntensities[modeOffset] ?? null,
+        ramanActivity: ramanActivities[modeOffset] ?? null,
+        source,
+      })
+    })
+  })
+  if (modes.length === 0 && /Frequencies\s+--/i.test(sourceText) && !warnings.some((warning) => warning.code === "vibration_parse_partial")) {
+    warnings.push({ code: "vibration_parse_partial", message: "Frequency data was detected, but no complete normal modes were parsed.", target })
+  }
+  return { modes, warnings }
+}
+
+function normalizeVibrationalModes(value, atomCount) {
+  if (!Array.isArray(value) || atomCount <= 0) return { modes: [], warnings: [] }
+  const warnings = []
+  const modes = []
+  value.forEach((mode, rawIndex) => {
+    if (!mode || typeof mode !== "object" || !isNumber(mode.frequencyCm1)) return
+    const displacements = arrayOrEmpty(mode.displacements).map((item) => normalizeVibrationDisplacement(item, atomCount)).filter(Boolean)
+    if (displacements.length !== atomCount) {
+      warnings.push({ code: "vibration_shape_mismatch", message: `Vibration mode ${rawIndex + 1} does not match the coordinate payload shape.` })
+      return
+    }
+    const modeIndex = Number.isInteger(mode.modeIndex) ? mode.modeIndex : modes.length
+    modes.push({
+      modeId: typeof mode.modeId === "string" && mode.modeId ? mode.modeId : vibrationModeId(modeIndex, mode.frequencyCm1),
+      modeIndex,
+      frequencyCm1: mode.frequencyCm1,
+      kind: mode.kind === "imaginary" || mode.kind === "real" || mode.kind === "unknown" ? mode.kind : (mode.frequencyCm1 < 0 ? "imaginary" : "real"),
+      displacements,
+      reducedMassAmu: optionalNumber(mode.reducedMassAmu),
+      forceConstant: optionalNumber(mode.forceConstant),
+      irIntensityKmMol: optionalNumber(mode.irIntensityKmMol),
+      ramanActivity: optionalNumber(mode.ramanActivity),
+      source: mode.source === "cclib" || mode.source === "rxnflow-text" ? mode.source : "embedded-text",
+    })
+  })
+  return { modes, warnings }
+}
+
+function normalizeVibrationDisplacement(value, atomCount) {
+  if (!value || typeof value !== "object") return null
+  if (!Number.isInteger(value.atomIndex) || value.atomIndex < 0 || value.atomIndex >= atomCount) return null
+  if (!isNumber(value.dx) || !isNumber(value.dy) || !isNumber(value.dz)) return null
+  return { atomIndex: value.atomIndex, dx: value.dx, dy: value.dy, dz: value.dz }
+}
+
+function gaussianDisplacementStart(lines, start, atomCount) {
+  for (let index = start; index < Math.min(lines.length, start + atomCount + 18); index += 1) {
+    if (/^\s*Atom\s+AN\b/i.test(lines[index] ?? "")) return index + 1
+  }
+  return -1
+}
+
+function gaussianDisplacementsFromLines(lines, start, atomCount, modeCount) {
+  const modes = Array.from({ length: modeCount }, () => [])
+  for (let lineIndex = start; lineIndex < Math.min(lines.length, start + atomCount + 4); lineIndex += 1) {
+    const parts = (lines[lineIndex] ?? "").trim().split(/\s+/)
+    if (parts.length < 2 + modeCount * 3) break
+    const atomIndex = Number.parseInt(parts[0] ?? "", 10) - 1
+    if (!Number.isInteger(atomIndex) || atomIndex < 0 || atomIndex >= atomCount) break
+    for (let modeOffset = 0; modeOffset < modeCount; modeOffset += 1) {
+      const base = 2 + modeOffset * 3
+      const dx = parseNumber(parts[base])
+      const dy = parseNumber(parts[base + 1])
+      const dz = parseNumber(parts[base + 2])
+      if (dx === null || dy === null || dz === null) continue
+      modes[modeOffset].push({ atomIndex, dx, dy, dz })
+    }
+  }
+  return modes
+}
+
+function nearbyNumbers(lines, start, pattern, expected) {
+  for (const line of lines.slice(start + 1, start + 8)) {
+    const match = line.match(pattern)
+    if (match) return numbersFromText(match[1]).slice(0, expected)
+  }
+  return []
+}
+
+function numbersFromText(value) {
+  return String(value ?? "").trim().split(/\s+/).map(parseNumber).filter((number) => number !== null)
+}
+
+function vibrationModeId(modeIndex, frequencyCm1) {
+  return `mode-${modeIndex + 1}-${frequencyCm1 < 0 ? "imaginary" : "real"}-${Math.abs(frequencyCm1).toFixed(2)}`
+}
+
+function coordinatePreviewFromAtoms(atoms, vibrationModes = []) {
   if (atoms.length === 0) return null
   const coordinateAtoms = atoms.every(isCoordinateAtom) ? atoms.map((atom) => ({ ...atom })) : undefined
   return {
@@ -1514,6 +1655,7 @@ function coordinatePreviewFromAtoms(atoms) {
     has3d: Boolean(coordinateAtoms?.length),
     elements: Array.from(new Set(atoms.map(atomElement))).sort(),
     ...(coordinateAtoms ? { atoms: coordinateAtoms } : {}),
+    ...(vibrationModes.length > 0 ? { vibrationModes } : {}),
     previewKind: "text",
   }
 }
@@ -1524,11 +1666,13 @@ function coordinatePreviewFromPayload(payload) {
   if (atomCount === null) return null
   const atoms = arrayOrEmpty(payload.atoms).map(coordinateAtomFromPayload).filter(Boolean)
   const elements = arrayOrEmpty(payload.elements).filter((value) => typeof value === "string")
+  const { modes } = normalizeVibrationalModes(payload.vibrationModes, atomCount)
   return {
     atomCount,
     has3d: Boolean(payload.has3d) || atoms.length > 0,
     elements: elements.length > 0 ? elements : Array.from(new Set(atoms.map((atom) => atom.element))).sort(),
     ...(atoms.length > 0 ? { atoms } : {}),
+    ...(modes.length > 0 ? { vibrationModes: modes } : {}),
     previewKind: stringOrDefault(payload.previewKind, "text"),
   }
 }

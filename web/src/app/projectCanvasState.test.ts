@@ -26,6 +26,7 @@ function snapshot(id: string): CanvasTabSnapshot {
     }],
     edges: [],
     barriers: [],
+    annotations: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     selectedNodeIds: [id],
     selectedEdgeIds: [],

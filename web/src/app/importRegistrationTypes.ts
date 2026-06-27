@@ -124,6 +124,7 @@ export type SourceCandidateReviewTransition = {
 export type StageSourceFilesOptions = {
   layout?: ImportNodeLayout
   fileMode?: "prepend" | "update"
+  autoRegister?: boolean
 }
 
 export type PendingImportProjectTransition = {
@@ -190,6 +191,7 @@ export type CandidateReviewRegistrationApplyTransition = {
 export type ProjectWorkspaceImportOptions = {
   fileMode?: "prepend" | "update"
   viewMode?: ProjectWorkspaceSnapshot["viewMode"]
+  autoRegister?: boolean
 }
 
 export type PrepareProjectWorkspaceImportOptions = ProjectWorkspaceImportOptions & {

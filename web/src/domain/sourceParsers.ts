@@ -1,3 +1,5 @@
+import { gaussianVibrationalModesFromText } from "./vibrations"
+
 export type ParsedEnergyUnit = "kcal/mol" | "hartree"
 export type ParsedNodeKind = "reactant" | "transition" | "intermediate" | "product"
 
@@ -19,11 +21,32 @@ export type CoordinateAtom = {
   z: number
 }
 
+export type VibrationDisplacement = {
+  atomIndex: number
+  dx: number
+  dy: number
+  dz: number
+}
+
+export type VibrationalMode = {
+  modeId: string
+  modeIndex: number
+  frequencyCm1: number
+  kind: "imaginary" | "real" | "unknown"
+  displacements: VibrationDisplacement[]
+  reducedMassAmu?: number | null
+  forceConstant?: number | null
+  irIntensityKmMol?: number | null
+  ramanActivity?: number | null
+  source: "cclib" | "rxnflow-text" | "embedded-text"
+}
+
 export type CoordinatePreview = {
   atomCount: number
   has3d: boolean
   elements: string[]
   atoms?: CoordinateAtom[]
+  vibrationModes?: VibrationalMode[]
   previewKind: "text" | "unavailable" | string
 }
 
@@ -131,6 +154,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
   const gaussian = parseGaussian(preview)
   if (gaussian) {
     const atoms = gaussianAtomsFromText(preview)
+    const vibrations = gaussianVibrationalModesFromText(preview, atoms.length, name)
     const formula = inferFormulaFromText(preview) ?? (atoms.length > 0 ? formulaFromAtoms(atoms) : "pending")
     const [charge, spinMultiplicity] = gaussianChargeMultiplicity(preview)
     const energyTable = gaussianEnergyTable(preview)
@@ -150,10 +174,12 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
         energyGas: gaussian.energyGas,
         energySolution: gaussian.energySolution,
         energyUnit: "hartree",
-        coordinatePreview: coordinatePreviewFromAtoms(atoms),
+        coordinatePreview: coordinatePreviewFromAtoms(atoms, vibrations.modes),
         roleHint: roleHintFromName(name),
+        warnings: vibrations.warnings,
         energyTable,
       })],
+      warnings: vibrations.warnings,
       energyTable,
       computation,
     })
@@ -162,6 +188,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
   const orca = parseOrca(preview)
   if (orca) {
     const atoms = orcaAtomsFromText(preview)
+    const vibrationWarnings = orcaVibrationUnavailableWarnings(preview, name)
     const [charge, spinMultiplicity] = orcaChargeMultiplicity(preview)
     const energyTable = orcaEnergyTable(preview)
     return sourceResultFromCandidates({
@@ -182,8 +209,10 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
         energyUnit: "hartree",
         coordinatePreview: coordinatePreviewFromAtoms(atoms),
         roleHint: roleHintFromName(name),
+        warnings: vibrationWarnings,
         energyTable,
       })],
+      warnings: vibrationWarnings,
       energyTable,
       computation,
     })
@@ -463,6 +492,12 @@ function parseOrca(preview: string): { energyGas: number; energySolution: number
     energyGas,
     energySolution: typeof solvation === "number" ? energyGas + solvation : null,
   }
+}
+
+function orcaVibrationUnavailableWarnings(preview: string, target: string): ParseWarning[] {
+  return /VIBRATIONAL FREQUENCIES|NORMAL MODES/i.test(preview)
+    ? [{ code: "vibration_unavailable", message: "ORCA vibration data needs the full-file cclib parser or a recognized normal-mode block.", target }]
+    : []
 }
 
 function orcaEnergyTable(preview: string): ParsedEnergyTableData | null {
@@ -824,7 +859,7 @@ function gaussianMethodFromText(preview: string): string | null {
   return match[1].split(/\s+/).find((token) => token.includes("/"))?.split("/", 1)[0] ?? null
 }
 
-function coordinatePreviewFromAtoms(atoms: Array<string | CoordinateAtom>): CoordinatePreview | null {
+function coordinatePreviewFromAtoms(atoms: Array<string | CoordinateAtom>, vibrationModes: VibrationalMode[] = []): CoordinatePreview | null {
   if (atoms.length === 0) return null
   const elements = atomElements(atoms)
   const coordinateAtoms = atoms.every(isCoordinateAtom) ? atoms : undefined
@@ -833,6 +868,7 @@ function coordinatePreviewFromAtoms(atoms: Array<string | CoordinateAtom>): Coor
     has3d: Boolean(coordinateAtoms?.length),
     elements: Array.from(new Set(elements)).sort(),
     atoms: coordinateAtoms,
+    ...(vibrationModes.length > 0 ? { vibrationModes } : {}),
     previewKind: "text",
   }
 }

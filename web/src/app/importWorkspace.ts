@@ -67,7 +67,7 @@ export function canvasRawFileDropImportTransition(
   files: SourceFile[],
 ): CanvasRawFileDropImportTransition | null {
   const layout = importLayoutFromPoint(drop.position)
-  const options: StageSourceFilesOptions = { layout }
+  const options: StageSourceFilesOptions = { layout, autoRegister: true }
   if (drop.kind === "external-files") {
     return {
       kind: "external-files",
@@ -342,8 +342,11 @@ export async function prepareProjectWorkspaceImport({
   if (importedFiles.length === 0) return null
 
   const importPlan = buildImportPlan(importedFiles, layout)
-  const reviewState = candidateReviewStateFromPlan(importPlan)
-  const autoNodes = await automaticImportNodesFromPlan(options.registerImportCandidates, importPlan)
+  const autoRegister = options.autoRegister ?? true
+  const reviewState = autoRegister ? candidateReviewStateFromPlan(importPlan) : null
+  const autoNodes = autoRegister
+    ? await automaticImportNodesFromPlan(options.registerImportCandidates, importPlan)
+    : []
   const snapshot = projectWorkspaceWithImportPlan(
     targetSnapshot,
     importedFiles,

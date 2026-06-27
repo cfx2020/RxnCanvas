@@ -534,6 +534,54 @@ describe("importRegistration", () => {
     })).resolves.toBeNull()
   })
 
+  it("can stage imported source files without auto-placing nodes on the canvas", async () => {
+    const single = sourceFile("single", parseResult([candidate({ candidateId: "only", roleHint: "final" })]))
+    const multi = sourceFile("multi", parseResult([
+      candidate({ candidateId: "image", objectIndex: 0, roleHint: "path-point" }),
+      candidate({ candidateId: "final", objectIndex: 1, roleHint: "final" }),
+    ]))
+    const targetSnapshot = workspaceSnapshot({
+      files: [sourceFile("existing")],
+      nodes: [{
+        id: "existing-node",
+        label: "Existing",
+        formula: "H2",
+        kind: "reactant" as const,
+        method: "DFT",
+        solvent: "none",
+        energyGas: null,
+        energySolution: null,
+        energyUnit: "hartree" as const,
+        position: { x: 1, y: 2 },
+      }],
+      selectedNodeIds: ["existing-node"],
+      selectedFileId: "existing",
+      selectedFileIds: ["existing"],
+      lastSelectedFileId: "existing",
+      viewMode: "canvas" as const,
+    })
+
+    const prepared = await prepareProjectWorkspaceImport({
+      targetSnapshot,
+      importedFiles: [single, multi],
+      layout,
+      options: { autoRegister: false, viewMode: targetSnapshot.viewMode },
+    })
+
+    expect(prepared).not.toBeNull()
+    expect(prepared?.autoNodes).toEqual([])
+    expect(prepared?.reviewState).toBeNull()
+    expect(prepared?.snapshot.files.map((file) => file.id)).toEqual(["single", "multi", "existing"])
+    expect(prepared?.snapshot.nodes.map((node) => node.id)).toEqual(["existing-node"])
+    expect(prepared?.snapshot.selectedNodeIds).toEqual([])
+    expect(prepared?.snapshot.selectedFileId).toBe("single")
+    expect(prepared?.snapshot.viewMode).toBe("canvas")
+
+    const transition = projectWorkspaceImportApplyTransition(prepared!)
+    expect(transition.shouldPushEditHistory).toBe(false)
+    expect(transition.reviewState).toBeNull()
+  })
+
   it("applies registered candidate-review nodes to a workspace snapshot", () => {
     const targetSnapshot = workspaceSnapshot({
       files: [sourceFile("file-1")],

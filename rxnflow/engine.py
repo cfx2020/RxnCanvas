@@ -189,11 +189,34 @@ class CoordinateAtom:
 
 
 @dataclass(frozen=True)
+class VibrationDisplacement:
+    atomIndex: int
+    dx: float
+    dy: float
+    dz: float
+
+
+@dataclass(frozen=True)
+class VibrationalMode:
+    modeId: str
+    modeIndex: int
+    frequencyCm1: float
+    kind: Literal["imaginary", "real", "unknown"]
+    displacements: tuple[VibrationDisplacement, ...]
+    reducedMassAmu: float | None = None
+    forceConstant: float | None = None
+    irIntensityKmMol: float | None = None
+    ramanActivity: float | None = None
+    source: Literal["cclib", "rxnflow-text", "embedded-text"] = "rxnflow-text"
+
+
+@dataclass(frozen=True)
 class CoordinatePreview:
     atomCount: int
     has3d: bool
     elements: tuple[str, ...]
     atoms: tuple[CoordinateAtom, ...] = ()
+    vibrationModes: tuple[VibrationalMode, ...] = ()
     previewKind: str = "text"
 
 
@@ -386,6 +409,11 @@ def parse_cclib_full_file(
         )
 
     atoms = atoms_from_cclib_data(data)
+    vibration_modes, vibration_warnings = vibrational_modes_from_cclib_data(data, len(atoms), name)
+    if not vibration_modes:
+        text_vibration_modes, text_vibration_warnings = gaussian_vibrational_modes_from_text(full_text, len(atoms), name, "rxnflow-text")
+        vibration_modes = text_vibration_modes
+        vibration_warnings = (*vibration_warnings, *text_vibration_warnings)
     formula = formula_from_atoms(atoms) if atoms else text_result.formula
     charge = optional_int_from_any(getattr(data, "charge", None))
     spin = optional_int_from_any(getattr(data, "mult", None))
@@ -409,10 +437,11 @@ def parse_cclib_full_file(
         energy_gas=energy_gas,
         energy_solution=energy_solution,
         energy_unit="hartree" if energy_gas is not None or energy_solution is not None else "kcal/mol",
-        coordinate_preview=coordinate_preview_from_atoms(atoms) or text_result.coordinatePreview,
+        coordinate_preview=coordinate_preview_from_atoms(atoms, vibration_modes) or text_result.coordinatePreview,
         role_hint=role_hint_from_name(name),
         charge=charge,
         spin_multiplicity=spin,
+        warnings=vibration_warnings,
         energy_table=energy_table,
     )
     return source_result_from_candidates(
@@ -423,6 +452,7 @@ def parse_cclib_full_file(
         parser_id=parser_id_for_scope(parser_base, "full-file"),
         parser_version=PARSER_VERSION,
         candidates=(candidate,),
+        warnings=vibration_warnings,
         energy_table=energy_table,
         parse_scope="full-file",
         confidence="high",
@@ -491,6 +521,170 @@ def atoms_from_cclib_data(data: Any) -> list[CoordinateAtom]:
         except (TypeError, ValueError, IndexError):
             continue
     return atoms
+
+
+def vibrational_modes_from_cclib_data(data: Any, atom_count: int, target: str) -> tuple[tuple[VibrationalMode, ...], tuple[ParseWarning, ...]]:
+    frequencies = getattr(data, "vibfreqs", None)
+    displacements = getattr(data, "vibdisps", None)
+    if frequencies is None or displacements is None or atom_count <= 0:
+        return (), ()
+    reduced_masses = getattr(data, "vibrmasses", None)
+    force_constants = getattr(data, "vibfconsts", None)
+    ir_intensities = getattr(data, "vibirs", None)
+    raman_activities = getattr(data, "vibramans", None)
+    modes: list[VibrationalMode] = []
+    warnings: list[ParseWarning] = []
+    for raw_index, raw_frequency in enumerate(frequencies):
+        frequency = optional_float(raw_frequency)
+        raw_displacements = displacements[raw_index] if raw_index < len(displacements) else None
+        mode_displacements = displacement_tuple_from_cclib(raw_displacements, atom_count)
+        if frequency is None or len(mode_displacements) != atom_count:
+            warnings.append(ParseWarning("vibration_shape_mismatch", f"Vibration mode {raw_index + 1} does not match atom count.", target))
+            continue
+        mode_index = len(modes)
+        modes.append(VibrationalMode(
+            modeId=vibration_mode_id(mode_index, frequency),
+            modeIndex=mode_index,
+            frequencyCm1=frequency,
+            kind="imaginary" if frequency < 0 else "real",
+            displacements=mode_displacements,
+            reducedMassAmu=optional_sequence_float(reduced_masses, raw_index),
+            forceConstant=optional_sequence_float(force_constants, raw_index),
+            irIntensityKmMol=optional_sequence_float(ir_intensities, raw_index),
+            ramanActivity=optional_sequence_float(raman_activities, raw_index),
+            source="cclib",
+        ))
+    return tuple(modes), tuple(warnings)
+
+
+def gaussian_vibrational_modes_from_text(
+    source_text: str,
+    atom_count: int,
+    target: str,
+    source: Literal["rxnflow-text", "embedded-text"] = "rxnflow-text",
+) -> tuple[tuple[VibrationalMode, ...], tuple[ParseWarning, ...]]:
+    if atom_count <= 0:
+        return (), ()
+    lines = source_text.splitlines()
+    modes: list[VibrationalMode] = []
+    warnings: list[ParseWarning] = []
+    frequency_pattern = re.compile(rf"Frequencies\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
+    reduced_mass_pattern = re.compile(rf"Red\.\s*masses\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
+    force_constant_pattern = re.compile(rf"Frc\s*consts?\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
+    ir_intensity_pattern = re.compile(rf"IR\s+Inten\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
+    raman_activity_pattern = re.compile(rf"Raman\s+Activ\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
+    for index, line in enumerate(lines):
+        match = frequency_pattern.search(line)
+        if match is None:
+            continue
+        frequencies = numbers_from_text(match.group(1))
+        if not frequencies:
+            continue
+        mode_count = len(frequencies)
+        displacement_start = gaussian_displacement_start(lines, index + 1, atom_count)
+        if displacement_start < 0:
+            warnings.append(ParseWarning("vibration_parse_partial", "Gaussian frequency lines were found, but normal-mode displacements were not recognized.", target))
+            continue
+        displacements = gaussian_displacements_from_lines(lines, displacement_start, atom_count, mode_count)
+        reduced_masses = nearby_numbers(lines, index, reduced_mass_pattern, mode_count)
+        force_constants = nearby_numbers(lines, index, force_constant_pattern, mode_count)
+        ir_intensities = nearby_numbers(lines, index, ir_intensity_pattern, mode_count)
+        raman_activities = nearby_numbers(lines, index, raman_activity_pattern, mode_count)
+        for offset, frequency in enumerate(frequencies):
+            mode_displacements = displacements[offset] if offset < len(displacements) else ()
+            if len(mode_displacements) != atom_count:
+                warnings.append(ParseWarning("vibration_shape_mismatch", f"Vibration mode {len(modes) + 1} displacement count does not match atom count.", target))
+                continue
+            mode_index = len(modes)
+            modes.append(VibrationalMode(
+                modeId=vibration_mode_id(mode_index, frequency),
+                modeIndex=mode_index,
+                frequencyCm1=frequency,
+                kind="imaginary" if frequency < 0 else "real",
+                displacements=mode_displacements,
+                reducedMassAmu=optional_list_float(reduced_masses, offset),
+                forceConstant=optional_list_float(force_constants, offset),
+                irIntensityKmMol=optional_list_float(ir_intensities, offset),
+                ramanActivity=optional_list_float(raman_activities, offset),
+                source=source,
+            ))
+    if not modes and "Frequencies --" in source_text and not any(warning.code == "vibration_parse_partial" for warning in warnings):
+        warnings.append(ParseWarning("vibration_parse_partial", "Frequency data was detected, but no complete normal modes were parsed.", target))
+    return tuple(modes), tuple(warnings)
+
+
+def displacement_tuple_from_cclib(raw_displacements: Any, atom_count: int) -> tuple[VibrationDisplacement, ...]:
+    if raw_displacements is None:
+        return ()
+    displacements: list[VibrationDisplacement] = []
+    for atom_index in range(atom_count):
+        try:
+            dx, dy, dz = float(raw_displacements[atom_index][0]), float(raw_displacements[atom_index][1]), float(raw_displacements[atom_index][2])
+        except (TypeError, ValueError, IndexError):
+            return ()
+        if not all(math.isfinite(value) for value in (dx, dy, dz)):
+            return ()
+        displacements.append(VibrationDisplacement(atom_index, dx, dy, dz))
+    return tuple(displacements)
+
+
+def gaussian_displacement_start(lines: list[str], start: int, atom_count: int) -> int:
+    for index in range(start, min(len(lines), start + atom_count + 18)):
+        if re.match(r"^\s*Atom\s+AN\b", lines[index], re.IGNORECASE):
+            return index + 1
+    return -1
+
+
+def gaussian_displacements_from_lines(lines: list[str], start: int, atom_count: int, mode_count: int) -> tuple[tuple[VibrationDisplacement, ...], ...]:
+    modes: list[list[VibrationDisplacement]] = [[] for _ in range(mode_count)]
+    for line in lines[start:start + atom_count + 4]:
+        parts = line.split()
+        if len(parts) < 2 + mode_count * 3:
+            break
+        try:
+            atom_index = int(parts[0]) - 1
+        except ValueError:
+            break
+        if atom_index < 0 or atom_index >= atom_count:
+            break
+        for mode_offset in range(mode_count):
+            base = 2 + mode_offset * 3
+            values = [parse_number(parts[base]), parse_number(parts[base + 1]), parse_number(parts[base + 2])]
+            if any(value is None for value in values):
+                continue
+            modes[mode_offset].append(VibrationDisplacement(atom_index, values[0] or 0.0, values[1] or 0.0, values[2] or 0.0))
+    return tuple(tuple(mode) for mode in modes)
+
+
+def nearby_numbers(lines: list[str], start: int, pattern: re.Pattern[str], expected: int) -> list[float]:
+    for line in lines[start + 1:start + 8]:
+        match = pattern.search(line)
+        if match is not None:
+            return numbers_from_text(match.group(1))[:expected]
+    return []
+
+
+def numbers_from_text(value: str) -> list[float]:
+    numbers = [parse_number(part) for part in value.split()]
+    return [number for number in numbers if number is not None]
+
+
+def vibration_mode_id(mode_index: int, frequency_cm1: float) -> str:
+    kind = "imaginary" if frequency_cm1 < 0 else "real"
+    return f"mode-{mode_index + 1}-{kind}-{abs(frequency_cm1):.2f}"
+
+
+def optional_sequence_float(sequence: Any, index: int) -> float | None:
+    if sequence is None:
+        return None
+    try:
+        return optional_float(sequence[index])
+    except (TypeError, IndexError):
+        return None
+
+
+def optional_list_float(values: list[float], index: int) -> float | None:
+    return values[index] if index < len(values) else None
 
 
 def cclib_energy_table_from_data(name: str, data: Any, full_text: str) -> ParsedEnergyTableData | None:
@@ -831,13 +1025,69 @@ def coordinate_preview_from_payload(payload: Any) -> CoordinatePreview | None:
     elements = tuple(str(element) for element in list_or_empty(payload.get("elements")) if isinstance(element, str))
     if not elements and atoms:
         elements = tuple(sorted({atom.element for atom in atoms}))
+    vibration_modes, _warnings = vibrational_modes_from_payload(payload.get("vibrationModes"), atom_count, "payload")
     return CoordinatePreview(
         atomCount=atom_count,
         has3d=bool(payload.get("has3d")) or bool(atoms),
         elements=elements,
         atoms=atoms,
+        vibrationModes=vibration_modes,
         previewKind=string_or_default(payload.get("previewKind"), "text"),
     )
+
+
+def vibrational_modes_from_payload(payload: Any, atom_count: int, target: str) -> tuple[tuple[VibrationalMode, ...], tuple[ParseWarning, ...]]:
+    if not isinstance(payload, list) or atom_count <= 0:
+        return (), ()
+    modes: list[VibrationalMode] = []
+    warnings: list[ParseWarning] = []
+    for raw_index, raw_mode in enumerate(payload):
+        if not isinstance(raw_mode, dict):
+            continue
+        frequency = optional_float(raw_mode.get("frequencyCm1"))
+        raw_displacements = list_or_empty(raw_mode.get("displacements"))
+        displacements: list[VibrationDisplacement] = []
+        for raw_displacement in raw_displacements:
+            displacement = vibration_displacement_from_payload(raw_displacement, atom_count)
+            if displacement is not None:
+                displacements.append(displacement)
+        if frequency is None or len(displacements) != atom_count:
+            warnings.append(ParseWarning("vibration_shape_mismatch", f"Vibration mode {raw_index + 1} does not match the coordinate payload shape.", target))
+            continue
+        mode_index = optional_int(raw_mode.get("modeIndex"))
+        if mode_index is None:
+            mode_index = len(modes)
+        kind = raw_mode.get("kind")
+        if kind not in {"imaginary", "real", "unknown"}:
+            kind = "imaginary" if frequency < 0 else "real"
+        source = raw_mode.get("source")
+        if source not in {"cclib", "rxnflow-text", "embedded-text"}:
+            source = "rxnflow-text"
+        modes.append(VibrationalMode(
+            modeId=string_or_default(raw_mode.get("modeId"), vibration_mode_id(mode_index, frequency)),
+            modeIndex=mode_index,
+            frequencyCm1=frequency,
+            kind=kind,  # type: ignore[arg-type]
+            displacements=tuple(displacements),
+            reducedMassAmu=optional_float(raw_mode.get("reducedMassAmu")),
+            forceConstant=optional_float(raw_mode.get("forceConstant")),
+            irIntensityKmMol=optional_float(raw_mode.get("irIntensityKmMol")),
+            ramanActivity=optional_float(raw_mode.get("ramanActivity")),
+            source=source,  # type: ignore[arg-type]
+        ))
+    return tuple(modes), tuple(warnings)
+
+
+def vibration_displacement_from_payload(payload: Any, atom_count: int) -> VibrationDisplacement | None:
+    if not isinstance(payload, dict):
+        return None
+    atom_index = optional_int(payload.get("atomIndex"))
+    dx = optional_float(payload.get("dx"))
+    dy = optional_float(payload.get("dy"))
+    dz = optional_float(payload.get("dz"))
+    if atom_index is None or atom_index < 0 or atom_index >= atom_count or dx is None or dy is None or dz is None:
+        return None
+    return VibrationDisplacement(atom_index, dx, dy, dz)
 
 
 def coordinate_atom_from_payload(payload: Any) -> CoordinateAtom | None:
@@ -1673,6 +1923,7 @@ def parse_source_preview(
     if gaussian:
         energy_gas, energy_solution, method = gaussian
         atoms = gaussian_atoms_from_text(preview)
+        vibration_modes, vibration_warnings = gaussian_vibrational_modes_from_text(preview, len(atoms), name, "rxnflow-text")
         formula = infer_formula_from_text(preview) or (formula_from_atoms(atoms) if atoms else "pending")
         charge, spin = gaussian_charge_multiplicity(preview)
         energy_table = gaussian_energy_table(preview)
@@ -1692,13 +1943,15 @@ def parse_source_preview(
                     energy_gas=energy_gas,
                     energy_solution=energy_solution,
                     energy_unit="hartree",
-                    coordinate_preview=coordinate_preview_from_atoms(atoms),
+                    coordinate_preview=coordinate_preview_from_atoms(atoms, vibration_modes),
                     role_hint=role_hint_from_name(name),
                     charge=charge,
                     spin_multiplicity=spin,
+                    warnings=vibration_warnings,
                     energy_table=energy_table,
                 ),
             ),
+            warnings=vibration_warnings,
             energy_table=energy_table,
             parse_scope=parse_scope,
             confidence=confidence,
@@ -1709,6 +1962,7 @@ def parse_source_preview(
     if orca:
         energy_gas, energy_solution = orca
         atoms = orca_atoms_from_text(preview)
+        vibration_warnings = orca_vibration_unavailable_warnings(preview, name)
         charge, spin = orca_charge_multiplicity(preview)
         energy_table = orca_energy_table(preview)
         return source_result_from_candidates(
@@ -1731,9 +1985,11 @@ def parse_source_preview(
                     role_hint=role_hint_from_name(name),
                     charge=charge,
                     spin_multiplicity=spin,
+                    warnings=vibration_warnings,
                     energy_table=energy_table,
                 ),
             ),
+            warnings=vibration_warnings,
             energy_table=energy_table,
             parse_scope=parse_scope,
             confidence=confidence,
@@ -2163,6 +2419,12 @@ def orca_energy_table(preview: str) -> ParsedEnergyTableData | None:
     return table if energy_table_has_value(table) else None
 
 
+def orca_vibration_unavailable_warnings(preview: str, target: str) -> tuple[ParseWarning, ...]:
+    if re.search(r"VIBRATIONAL FREQUENCIES|NORMAL MODES", preview, re.IGNORECASE):
+        return (ParseWarning("vibration_unavailable", "ORCA vibration data needs the full-file cclib parser or a recognized normal-mode block.", target),)
+    return ()
+
+
 def orca_atoms_from_text(preview: str) -> list[CoordinateAtom]:
     lines = preview.splitlines()
     best_atoms: list[CoordinateAtom] = []
@@ -2422,7 +2684,10 @@ def gaussian_method_from_text(preview: str) -> str | None:
     return None
 
 
-def coordinate_preview_from_atoms(atoms: list[str | CoordinateAtom]) -> CoordinatePreview | None:
+def coordinate_preview_from_atoms(
+    atoms: list[str | CoordinateAtom],
+    vibration_modes: tuple[VibrationalMode, ...] = (),
+) -> CoordinatePreview | None:
     if not atoms:
         return None
     coordinate_atoms: tuple[CoordinateAtom, ...] = tuple(atoms) if all(isinstance(atom, CoordinateAtom) for atom in atoms) else ()
@@ -2431,6 +2696,7 @@ def coordinate_preview_from_atoms(atoms: list[str | CoordinateAtom]) -> Coordina
         has3d=bool(coordinate_atoms),
         elements=tuple(sorted({atom_element(atom) for atom in atoms})),
         atoms=coordinate_atoms,
+        vibrationModes=vibration_modes,
         previewKind="text",
     )
 

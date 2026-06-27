@@ -264,6 +264,93 @@ describe("project packages", () => {
     })
   })
 
+  it("preserves valid vibration payloads and drops invalid modes during package parse", () => {
+    const parseWithVibration = {
+      label: "gaussian",
+      sourceKind: "Gaussian",
+      formula: "H2",
+      kind: "transition",
+      method: "B3LYP",
+      solvent: "unassigned",
+      energyGas: -1,
+      energySolution: null,
+      energyUnit: "hartree",
+      parsed: true,
+      parserId: "gaussian-log-text-preview",
+      parserVersion: "0.2.1",
+      objectCount: 1,
+      warnings: [],
+      candidates: [{
+        candidateId: "candidate-1-h2",
+        objectIndex: 0,
+        label: "h2",
+        formula: "H2",
+        charge: 0,
+        spinMultiplicity: 1,
+        method: "B3LYP",
+        energyGas: -1,
+        energySolution: null,
+        energyUnit: "hartree",
+        coordinatePreview: {
+          atomCount: 2,
+          has3d: true,
+          elements: ["H"],
+          atoms: [
+            { element: "H", x: 0, y: 0, z: 0 },
+            { element: "H", x: 0, y: 0, z: 0.74 },
+          ],
+          vibrationModes: [{
+            modeId: "mode-1-imaginary-42.00",
+            modeIndex: 0,
+            frequencyCm1: -42,
+            kind: "imaginary",
+            source: "rxnflow-text",
+            displacements: [
+              { atomIndex: 0, dx: 0.1, dy: 0, dz: 0 },
+              { atomIndex: 1, dx: -0.1, dy: 0, dz: 0 },
+            ],
+          }, {
+            modeId: "bad",
+            modeIndex: 1,
+            frequencyCm1: 10,
+            kind: "real",
+            source: "rxnflow-text",
+            displacements: [{ atomIndex: 0, dx: 0, dy: 0, dz: 0 }],
+          }],
+          previewKind: "text",
+        },
+        roleHint: "transition",
+        warnings: [],
+      }],
+      coordinatePreview: null,
+    }
+    const parsed = parseProjectPackage(JSON.stringify({
+      schemaVersion: 2,
+      packageKind: "rxnflow-project",
+      project,
+      files: [{ ...files[0], parse: parseWithVibration }],
+      canvases: [{
+        id: "canvas-a",
+        label: "Path A",
+        nodes,
+        edges,
+        barriers: [],
+        viewport,
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+        selectedBarrierIds: [],
+      }],
+      activeCanvasId: "canvas-a",
+      importLedger: { schemaVersion: 1, entries: [] },
+      savedAt: "2026-06-14T00:00:00.000Z",
+    }))
+
+    const modes = parsed?.files[0]?.parse?.candidates[0]?.coordinatePreview?.vibrationModes ?? []
+    expect(modes).toHaveLength(1)
+    expect(modes[0]?.displacements).toHaveLength(2)
+    expect(parsed?.files[0]?.parse?.warnings.map((warning) => warning.code)).toContain("vibration_shape_mismatch")
+  })
+
   it("backfills import ledger entries for older lightweight packages", () => {
     const parsed = parseProjectPackage(JSON.stringify({
       schemaVersion: 1,

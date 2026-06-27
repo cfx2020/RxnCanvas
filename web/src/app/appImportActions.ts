@@ -56,11 +56,12 @@ export async function stageCurrentProjectSourceFilesAction({
   if (importedFiles.length === 0) return
   const importLayout = options.layout ?? importLayoutFromCanvas(canvas, viewport)
   const fileMode = options.fileMode ?? "prepend"
+  const autoRegister = options.autoRegister ?? true
   const prepared = await prepareProjectWorkspaceImport({
     targetSnapshot: currentSnapshot,
     importedFiles,
     layout: importLayout,
-    options: { fileMode, viewMode, registerImportCandidates },
+    options: { fileMode, viewMode, registerImportCandidates, autoRegister },
   })
   if (!prepared) return
   const transition = projectWorkspaceImportApplyTransition(prepared)
@@ -75,6 +76,7 @@ export async function stageCurrentProjectSourceFilesAction({
 export async function stageSourceFilesForProjectAction({
   projectId,
   importedFiles,
+  options = {},
   activeProjectId,
   projects,
   workspaces,
@@ -88,6 +90,7 @@ export async function stageSourceFilesForProjectAction({
 }: {
   projectId: string
   importedFiles: ImportSourceFile[]
+  options?: StageSourceFilesOptions
   activeProjectId: string
   projects: ProjectSummary[]
   workspaces: Record<string, ProjectWorkspaceSnapshot>
@@ -100,7 +103,7 @@ export async function stageSourceFilesForProjectAction({
   setCandidateReview: (review: CandidateReviewState | null) => void
 }): Promise<void> {
   if (projectId === activeProjectId) {
-    await stageCurrentProjectSourceFiles(importedFiles)
+    await stageCurrentProjectSourceFiles(importedFiles, options)
     return
   }
   if (importedFiles.length === 0 || !projects.some((project) => project.id === projectId)) return
@@ -113,7 +116,7 @@ export async function stageSourceFilesForProjectAction({
     targetSnapshot,
     importedFiles,
     layout: importLayoutFromCanvas(canvas, targetCanvas.viewport),
-    options: { registerImportCandidates },
+    options: { registerImportCandidates, autoRegister: options.autoRegister ?? true },
   })
   if (!prepared) return
   const transition = saveAndActivateProjectWorkspaceTransition({
@@ -211,10 +214,10 @@ export async function importFilesForProjectAction({
 }: {
   fileList: FileList | File[]
   projectId: string
-  stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[]) => Promise<void>
+  stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
 }): Promise<void> {
   const importedFiles = await browserImportSourceFilesFromFiles(fileList)
-  await stageSourceFilesForProject(projectId, importedFiles)
+  await stageSourceFilesForProject(projectId, importedFiles, { autoRegister: false })
 }
 
 export async function handleCanvasRawFileDropAction({
@@ -243,11 +246,11 @@ export async function importDesktopFilesAction({
 }: {
   projectId: string
   chooseFiles: (() => Promise<Parameters<typeof desktopImportFilesTransition>[0]>) | undefined
-  stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[]) => Promise<void>
+  stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
 }): Promise<void> {
   const transition = desktopImportFilesTransition(await chooseFiles?.())
   if (!transition) return
-  await stageSourceFilesForProject(projectId, transition.importedFiles)
+  await stageSourceFilesForProject(projectId, transition.importedFiles, { autoRegister: false })
 }
 
 export function openImportPickerAction({

@@ -1,4 +1,5 @@
 import type {
+  CanvasAnnotation,
   CanvasViewport,
   FlowBarrier,
   FlowEdge,
@@ -17,6 +18,7 @@ export type CanvasEditSnapshot = {
   nodes: FlowNode[]
   edges: FlowEdge[]
   barriers: FlowBarrier[]
+  annotations?: CanvasAnnotation[]
   selectedNodeIds: string[]
   selectedEdgeIds: string[]
   selectedBarrierIds: string[]
@@ -31,6 +33,7 @@ export type ProjectWorkspaceSnapshot = {
   nodes: FlowNode[]
   edges: FlowEdge[]
   barriers: FlowBarrier[]
+  annotations?: CanvasAnnotation[]
   viewport: CanvasViewport
   selectedNodeIds: string[]
   selectedEdgeIds: string[]
@@ -194,6 +197,7 @@ export function emptyProjectWorkspace(viewport: CanvasViewport, projectLabel = "
     nodes: [],
     edges: [],
     barriers: [],
+    annotations: [],
     viewport,
     selectedNodeIds: [],
     selectedEdgeIds: [],
@@ -214,6 +218,7 @@ export function initialProjectWorkspaces(emptyViewport: CanvasViewport): Record<
     nodes: initialNodes,
     edges: initialEdges,
     barriers: initialBarriers,
+    annotations: [],
     viewport: emptyViewport,
     selectedNodeIds: ["ts-endo"],
     selectedEdgeIds: [],
@@ -227,6 +232,7 @@ export function initialProjectWorkspaces(emptyViewport: CanvasViewport): Record<
       nodes: initialCanvas.nodes,
       edges: initialCanvas.edges,
       barriers: initialCanvas.barriers,
+      annotations: initialCanvas.annotations,
       viewport: initialCanvas.viewport,
       selectedNodeIds: initialCanvas.selectedNodeIds,
       selectedEdgeIds: initialCanvas.selectedEdgeIds,
@@ -250,11 +256,13 @@ export function canvasEditSnapshot(
   selectedNodeIds: string[],
   selectedEdgeIds: string[],
   selectedBarrierIds: string[],
+  annotations: CanvasAnnotation[] = [],
 ): CanvasEditSnapshot {
   return {
     nodes: cloneFlowNodes(nodes),
     edges: edges.map((edge) => ({ ...edge })),
     barriers: barriers.map((barrier) => ({ ...barrier })),
+    annotations: cloneCanvasAnnotations(annotations),
     selectedNodeIds: [...selectedNodeIds],
     selectedEdgeIds: [...selectedEdgeIds],
     selectedBarrierIds: [...selectedBarrierIds],
@@ -270,6 +278,7 @@ export function restoreCanvasEditSnapshot(snapshot: CanvasEditSnapshot): CanvasE
     snapshot.selectedNodeIds,
     snapshot.selectedEdgeIds,
     snapshot.selectedBarrierIds,
+    snapshot.annotations ?? [],
   )
 }
 
@@ -281,6 +290,7 @@ export function projectWorkspaceSnapshot(snapshot: ProjectWorkspaceSnapshot): Pr
     nodes: cloneFlowNodes(snapshot.nodes),
     edges: snapshot.edges.map((edge) => ({ ...edge })),
     barriers: snapshot.barriers.map((barrier) => ({ ...barrier })),
+    annotations: cloneCanvasAnnotations(snapshot.annotations ?? []),
     viewport: { ...snapshot.viewport },
     selectedNodeIds: [...snapshot.selectedNodeIds],
     selectedEdgeIds: [...snapshot.selectedEdgeIds],
@@ -298,6 +308,7 @@ export function projectWorkspaceSnapshot(snapshot: ProjectWorkspaceSnapshot): Pr
     nodes: cloneFlowNodes(activeCanvas.nodes),
     edges: activeCanvas.edges.map((edge) => ({ ...edge })),
     barriers: activeCanvas.barriers.map((barrier) => ({ ...barrier })),
+    annotations: cloneCanvasAnnotations(activeCanvas.annotations ?? []),
     viewport: { ...activeCanvas.viewport },
     selectedNodeIds: [...activeCanvas.selectedNodeIds],
     selectedEdgeIds: [...activeCanvas.selectedEdgeIds],
@@ -592,10 +603,18 @@ export function cloneSourceFiles(files: SourceFile[]): SourceFile[] {
   }))
 }
 
+export function cloneCanvasAnnotations(annotations: CanvasAnnotation[]): CanvasAnnotation[] {
+  return annotations.map((annotation) => ({
+    ...annotation,
+    position: { ...annotation.position },
+  }))
+}
+
 export function cloneFlowNodes(nodes: FlowNode[]): FlowNode[] {
   return nodes.map((node) => ({
     ...node,
     position: { ...node.position },
+    size: node.size ? { ...node.size } : undefined,
     corrections: node.corrections?.map((correction) => ({ ...correction })),
   }))
 }
@@ -607,6 +626,7 @@ export function projectCanvasSnapshot(canvas: ProjectCanvasSnapshot): ProjectCan
     nodes: cloneFlowNodes(canvas.nodes),
     edges: canvas.edges.map((edge) => ({ ...edge })),
     barriers: canvas.barriers.map((barrier) => ({ ...barrier })),
+    annotations: cloneCanvasAnnotations(canvas.annotations ?? []),
     viewport: { ...canvas.viewport },
     selectedNodeIds: [...canvas.selectedNodeIds],
     selectedEdgeIds: [...canvas.selectedEdgeIds],
@@ -621,6 +641,7 @@ export function emptyProjectCanvas(id: string, label: string, viewport: CanvasVi
     nodes: [],
     edges: [],
     barriers: [],
+    annotations: [],
     viewport: { ...viewport },
     selectedNodeIds: [],
     selectedEdgeIds: [],
@@ -643,6 +664,7 @@ export function activeCanvasSnapshot(snapshot: ProjectWorkspaceSnapshot): Projec
     nodes: cloneFlowNodes(snapshot.nodes),
     edges: snapshot.edges.map((edge) => ({ ...edge })),
     barriers: snapshot.barriers.map((barrier) => ({ ...barrier })),
+    annotations: cloneCanvasAnnotations(snapshot.annotations ?? []),
     viewport: { ...snapshot.viewport },
     selectedNodeIds: [...snapshot.selectedNodeIds],
     selectedEdgeIds: [...snapshot.selectedEdgeIds],
@@ -665,6 +687,7 @@ export function projectWorkspaceWithActiveCanvas(
       nodes: nextActiveCanvas.nodes,
       edges: nextActiveCanvas.edges,
       barriers: nextActiveCanvas.barriers,
+      annotations: nextActiveCanvas.annotations ?? [],
       viewport: nextActiveCanvas.viewport,
       selectedNodeIds: nextActiveCanvas.selectedNodeIds,
       selectedEdgeIds: nextActiveCanvas.selectedEdgeIds,
@@ -685,6 +708,7 @@ export function projectWorkspaceFromPackage(projectPackage: RxnFlowProjectPackag
     nodes: projectPackage.nodes ?? [],
     edges: projectPackage.edges ?? [],
     barriers: projectPackage.barriers ?? [],
+    annotations: [],
     viewport: projectPackage.viewport ?? { x: 0, y: 0, zoom: 1 },
     selectedNodeIds: projectPackage.nodes?.[0]?.id ? [projectPackage.nodes[0].id] : [],
     selectedEdgeIds: [],
@@ -699,6 +723,7 @@ export function projectWorkspaceFromPackage(projectPackage: RxnFlowProjectPackag
     nodes: activeCanvas?.nodes ?? [],
     edges: activeCanvas?.edges ?? [],
     barriers: activeCanvas?.barriers ?? [],
+    annotations: activeCanvas?.annotations ?? [],
     viewport: activeCanvas?.viewport ?? { x: 0, y: 0, zoom: 1 },
     selectedNodeIds: activeCanvas?.selectedNodeIds ?? [],
     selectedEdgeIds: activeCanvas?.selectedEdgeIds ?? [],

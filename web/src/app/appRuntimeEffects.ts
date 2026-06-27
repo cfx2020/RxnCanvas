@@ -10,6 +10,10 @@ import {
   type DesktopEngineStatus,
 } from "./desktopRuntime"
 import type {
+  DesktopPreferences,
+  SourceOpenerProfile,
+} from "./desktopPreferences"
+import type {
   DesktopImportRegistrationPayload,
   DesktopImportRegistrationResponse,
   DesktopSourceFile,
@@ -53,7 +57,28 @@ export type RxnflowDesktopApi = {
     storedPath?: string
     sourcePath?: string
     name?: string
-  }) => Promise<{ ok: boolean; filePath?: string; error?: string }>
+    sourceKind?: string
+    parserId?: string | null
+  }) => Promise<{ ok: boolean; filePath?: string; appPath?: string; profile?: SourceOpenerProfile; canceled?: boolean; error?: string }>
+  getPreferences?: () => Promise<{ ok: boolean; preferences?: DesktopPreferences; error?: string }>
+  setPreferences?: (patch: Partial<DesktopPreferences>) => Promise<{ ok: boolean; preferences?: DesktopPreferences; error?: string }>
+  chooseExternalApp?: (payload: { profile: SourceOpenerProfile }) => Promise<{
+    canceled: boolean
+    appPath?: string
+    label?: string
+    preferences?: DesktopPreferences
+  }>
+  readChemicalClipboard?: () => Promise<{
+    ok: boolean
+    formats: string[]
+    text?: string
+    html?: string
+    payloads?: Array<{ format: string; text: string }>
+    error?: string
+  }>
+  getWindowState?: () => Promise<{ isFullScreen: boolean; isMaximized: boolean }>
+  onWindowStateChanged?: (callback: (state: { isFullScreen: boolean; isMaximized: boolean }) => void) => () => void
+  onPreferencesChanged?: (callback: (preferences: DesktopPreferences) => void) => () => void
   onMenuImportFiles: (callback: () => void) => () => void
   onMenuOpenProject: (callback: () => void) => () => void
   onMenuSaveProject: (callback: () => void) => () => void

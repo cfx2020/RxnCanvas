@@ -1,4 +1,5 @@
-import type { ParsedEnergyTableData, ParsedEnergyUnit, SourceParseResult } from "./sourceParsers"
+import type { CoordinatePreview, ParseCandidate, ParsedEnergyTableData, ParsedEnergyUnit, SourceParseResult } from "./sourceParsers"
+import { normalizeVibrationalModes } from "./vibrations"
 
 export type NodeKind = "reactant" | "transition" | "intermediate" | "product"
 
@@ -11,6 +12,11 @@ export type CanvasViewport = {
   x: number
   y: number
   zoom: number
+}
+
+export type NodeSize = {
+  width: number
+  height: number
 }
 
 export type EnergyCorrectionKind = "manual" | "solvation" | "resonance" | "other"
@@ -59,6 +65,7 @@ export type FlowNode = {
   manualStructureCdxml?: string
   manualStructureSvg?: string
   position: Point
+  size?: NodeSize
 }
 
 export type FlowEdge = {
@@ -74,6 +81,26 @@ export type FlowBarrier = {
   targetId: string
   label?: string
 }
+
+export type CanvasTextAnnotation = {
+  id: string
+  type: "text"
+  position: Point
+  text: string
+  width?: number
+}
+
+export type CanvasImageAnnotation = {
+  id: string
+  type: "image"
+  position: Point
+  dataUrl: string
+  width: number
+  height: number
+  name?: string
+}
+
+export type CanvasAnnotation = CanvasTextAnnotation | CanvasImageAnnotation
 
 export type ProjectSummary = {
   id: string
@@ -121,6 +148,7 @@ export type RxnFlowProjectCanvas = {
   nodes: FlowNode[]
   edges: FlowEdge[]
   barriers: FlowBarrier[]
+  annotations?: CanvasAnnotation[]
   viewport: CanvasViewport
   selectedNodeIds: string[]
   selectedEdgeIds: string[]
@@ -192,6 +220,7 @@ export function buildProjectPackage(
         barriers: Array.isArray((resolvedOptions as BuildProjectPackageLegacyOptions)?.barriers)
           ? (resolvedOptions as BuildProjectPackageLegacyOptions).barriers!.map(normalizeProjectBarrier)
           : [],
+        annotations: [],
         viewport: normalizeViewport(viewportOrOptions as unknown) ?? { x: 0, y: 0, zoom: 1 },
         selectedNodeIds: [],
         selectedEdgeIds: [],
@@ -393,6 +422,7 @@ function normalizeProjectNode(node: FlowNode | Partial<FlowNode>, index: number)
     manualStructureCdxml: nonEmptyStringOrUndefined(node.manualStructureCdxml),
     manualStructureSvg: nonEmptyStringOrUndefined(node.manualStructureSvg),
     position: normalizePoint(node.position),
+    size: normalizeNodeSize(node.size),
   }
 }
 
@@ -414,6 +444,34 @@ function normalizeProjectBarrier(barrier: FlowBarrier | Partial<FlowBarrier>, in
   }
 }
 
+function normalizeCanvasAnnotation(annotation: CanvasAnnotation | Partial<CanvasAnnotation>, index: number): CanvasAnnotation | null {
+  if (!isObject(annotation)) return null
+  const position = normalizePoint(annotation.position)
+  if (annotation.type === "image") {
+    const dataUrl = typeof annotation.dataUrl === "string" && annotation.dataUrl.startsWith("data:image/") ? annotation.dataUrl : ""
+    if (!dataUrl) return null
+    return {
+      id: stringOrFallback(annotation.id, `annotation-${index + 1}`),
+      type: "image",
+      position,
+      dataUrl,
+      width: clampNumber(finiteNumberOrFallback(annotation.width, 240), 48, 720),
+      height: clampNumber(finiteNumberOrFallback(annotation.height, 160), 48, 720),
+      name: typeof annotation.name === "string" && annotation.name.trim().length > 0 ? annotation.name.trim() : undefined,
+    }
+  }
+  if (annotation.type === "text") {
+    return {
+      id: stringOrFallback(annotation.id, `annotation-${index + 1}`),
+      type: "text",
+      position,
+      text: typeof annotation.text === "string" ? annotation.text : "",
+      width: finiteNumberOrUndefined(annotation.width),
+    }
+  }
+  return null
+}
+
 function normalizeProjectCanvas(
   canvas: RxnFlowProjectCanvas | Partial<RxnFlowProjectCanvas>,
   index = 0,
@@ -429,6 +487,7 @@ function normalizeProjectCanvas(
     nodes,
     edges,
     barriers,
+    annotations: [],
     viewport,
     selectedNodeIds: normalizeSelectionIds(canvas.selectedNodeIds, nodes.map((node) => node.id)),
     selectedEdgeIds: normalizeSelectionIds(canvas.selectedEdgeIds, edges.map((edge) => edge.id)),
@@ -455,6 +514,7 @@ function normalizeProjectCanvases(value: Record<string, unknown>): RxnFlowProjec
     nodes,
     edges,
     barriers,
+    annotations: [],
     viewport,
     selectedNodeIds: nodes[0]?.id ? [nodes[0].id] : [],
     selectedEdgeIds: [],
@@ -469,6 +529,7 @@ function defaultProjectCanvas(): RxnFlowProjectCanvas {
     nodes: [],
     edges: [],
     barriers: [],
+    annotations: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     selectedNodeIds: [],
     selectedEdgeIds: [],
@@ -535,6 +596,14 @@ function normalizePoint(point: unknown): Point {
   }
 }
 
+function normalizeNodeSize(size: unknown): NodeSize | undefined {
+  if (!isObject(size)) return undefined
+  const width = finiteNumberOrNull(size.width)
+  const height = finiteNumberOrNull(size.height)
+  if (width === null || height === null || width <= 0 || height <= 0) return undefined
+  return { width, height }
+}
+
 function normalizeEnergyTableData(value: unknown): ParsedEnergyTableData | null {
   if (!isObject(value)) return null
   const table: ParsedEnergyTableData = {}
@@ -597,6 +666,10 @@ function finiteNumberOrFallback(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
 function finiteNumberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null
 }
@@ -612,7 +685,41 @@ function finiteNonZeroNumberOrUndefined(value: unknown): number | undefined {
 function normalizeSourceParseResult(value: unknown): SourceParseResult | undefined {
   if (!isObject(value)) return undefined
   if (typeof value.label !== "string" || typeof value.sourceKind !== "string") return undefined
-  return value as SourceParseResult
+  const parse = value as SourceParseResult
+  const payloadWarnings = Array.isArray(parse.warnings) ? parse.warnings : []
+  const warnings = [...payloadWarnings]
+  const candidates = Array.isArray(parse.candidates)
+    ? parse.candidates.map((candidate) => normalizeParseCandidate(candidate, warnings))
+    : []
+  return {
+    ...parse,
+    warnings,
+    candidates,
+    coordinatePreview: normalizeCoordinatePreview(parse.coordinatePreview, warnings),
+  }
+}
+
+function normalizeParseCandidate(candidate: ParseCandidate, warnings: SourceParseResult["warnings"]): ParseCandidate {
+  return {
+    ...candidate,
+    warnings: Array.isArray(candidate.warnings) ? candidate.warnings : [],
+    coordinatePreview: normalizeCoordinatePreview(candidate.coordinatePreview, warnings),
+  }
+}
+
+function normalizeCoordinatePreview(value: CoordinatePreview | null | undefined, warnings: SourceParseResult["warnings"]): CoordinatePreview | null {
+  if (!isObject(value)) return null
+  const atomCount = finiteNumberOrUndefined(value.atomCount)
+  if (atomCount === undefined) return null
+  const normalized = normalizeVibrationalModes(value.vibrationModes, atomCount, "project")
+  warnings.push(...normalized.warnings)
+  return {
+    ...value,
+    atomCount,
+    has3d: Boolean(value.has3d) || Boolean(value.atoms?.length),
+    elements: Array.isArray(value.elements) ? value.elements.filter((element) => typeof element === "string") : [],
+    ...(normalized.modes.length > 0 ? { vibrationModes: normalized.modes } : { vibrationModes: undefined }),
+  }
 }
 
 function isNodeKind(value: unknown): value is NodeKind {

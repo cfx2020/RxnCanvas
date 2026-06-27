@@ -133,6 +133,40 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertAlmostEqual(parse["energyTable"]["ggasHartree"], -76.4)
         self.assertAlmostEqual(parse["energyTable"]["ggas1mHartree"], -76.396981)
 
+    def test_engine_import_preview_extracts_gaussian_vibration_modes(self) -> None:
+        parsed = parse_source_preview(
+            "ts-vibration.log",
+            "\n".join([
+                "Stoichiometry H2O",
+                "                          Standard orientation:",
+                " ---------------------------------------------------------------------",
+                " Center     Atomic      Atomic             Coordinates (Angstroms)",
+                " Number     Number       Type             X           Y           Z",
+                " ---------------------------------------------------------------------",
+                "      1          8           0        0.000000    0.000000    0.000000",
+                "      2          1           0        0.000000    0.000000    0.960000",
+                "      3          1           0        0.920000    0.000000   -0.240000",
+                " ---------------------------------------------------------------------",
+                " SCF Done:  E(RB3LYP) =  -76.431000     A.U.",
+                " Frequencies --   -423.1200    1580.5000    3650.1000",
+                " Red. masses --      1.2345       1.1111       1.2222",
+                " Frc consts  --      0.1234       0.2222       0.3333",
+                " IR Inten    --     12.3000       2.0000       3.0000",
+                " Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z",
+                "   1   8     0.010  0.000  0.000    0.000  0.020  0.000    0.000  0.000  0.030",
+                "   2   1    -0.010  0.000  0.000    0.000 -0.020  0.000    0.000  0.000 -0.030",
+                "   3   1     0.000  0.010  0.000    0.000  0.000  0.020    0.030  0.000  0.000",
+            ]),
+        )
+
+        modes = parsed.coordinatePreview.vibrationModes if parsed.coordinatePreview else ()
+        self.assertEqual(len(modes), 3)
+        self.assertEqual(modes[0].kind, "imaginary")
+        self.assertEqual(modes[0].source, "rxnflow-text")
+        self.assertAlmostEqual(modes[0].frequencyCm1, -423.12)
+        self.assertEqual(len(modes[0].displacements), 3)
+        self.assertEqual(modes[0].displacements[0].atomIndex, 0)
+
     def test_engine_import_preview_uses_cclib_standard_fields_before_text_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source_path = Path(directory) / "cclib-gaussian.log"
@@ -156,6 +190,13 @@ class EngineSmokeTest(unittest.TestCase):
                 ]],
                 scfenergies=[-76.5 / EV_TO_HARTREE],
                 freeenergy=-76.39,
+                vibfreqs=[-123.4],
+                vibdisps=[[
+                    [0.01, 0.0, 0.0],
+                    [-0.01, 0.0, 0.0],
+                    [0.0, 0.01, 0.0],
+                ]],
+                vibirs=[5.0],
                 charge=0,
                 mult=1,
                 nbasis=7,
@@ -180,6 +221,8 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(parsed.candidates[0].charge, 0)
         self.assertEqual(parsed.candidates[0].spinMultiplicity, 1)
         self.assertEqual(parsed.coordinatePreview.atomCount if parsed.coordinatePreview else 0, 3)
+        self.assertEqual(len(parsed.coordinatePreview.vibrationModes if parsed.coordinatePreview else ()), 1)
+        self.assertEqual(parsed.coordinatePreview.vibrationModes[0].source if parsed.coordinatePreview else "", "cclib")
         self.assertAlmostEqual(parsed.energyTable.egasHartree if parsed.energyTable else 0, -76.5)
         self.assertAlmostEqual(parsed.energyTable.ggasHartree if parsed.energyTable else 0, -76.39)
 

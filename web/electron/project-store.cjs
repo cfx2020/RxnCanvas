@@ -60,9 +60,11 @@ async function saveProjectDirectory(projectPath, content, options = {}) {
 
   const files = Array.isArray(projectPackage.files) ? projectPackage.files : []
   const persistedFiles = []
+  const usedStoredPaths = new Set()
   for (const [index, file] of files.entries()) {
     persistedFiles.push(await persistSourceFile(projectDirectory, file, index, {
       previousProjectDirectory: options.previousProjectDirectory,
+      usedStoredPaths,
     }))
   }
 
@@ -75,6 +77,7 @@ async function saveProjectDirectory(projectPath, content, options = {}) {
   await fs.writeFile(path.join(projectDirectory, projectStateFile), savedContent, "utf8")
   await writeProjectManifest(projectDirectory, savedPackage)
   await ensureExportManifest(projectDirectory, savedPackage)
+  await pruneUnreferencedSourceFiles(projectDirectory, savedPackage.files)
 
   return {
     filePath: projectDirectory,
@@ -162,7 +165,8 @@ function parseProjectPackageContent(content) {
 }
 
 async function persistSourceFile(projectDirectory, file, index, options) {
-  const storedPath = toProjectPath(path.join(sourcesDirectory, safeSourceFileName(file, index)))
+  const storedPath = sourceStoredPathForFile(file, index, options.usedStoredPaths)
+  options.usedStoredPaths?.add(storedPath)
   const targetPath = path.join(projectDirectory, storedPath)
   const sourcePath = await resolveSourcePath(projectDirectory, file, options.previousProjectDirectory)
 
@@ -182,6 +186,45 @@ async function persistSourceFile(projectDirectory, file, index, options) {
     checksum: `sha256:${crypto.createHash("sha256").update(buffer).digest("hex")}`,
     storedPath,
   }
+}
+
+function sourceStoredPathForFile(file, index, usedStoredPaths) {
+  if (typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)) {
+    const storedPath = toProjectPath(file.storedPath)
+    if (!usedStoredPaths?.has(storedPath)) return storedPath
+  }
+
+  const baseName = safeSourceFileName(file, index)
+  let storedPath = toProjectPath(path.join(sourcesDirectory, baseName))
+  let suffix = 2
+  while (usedStoredPaths?.has(storedPath)) {
+    storedPath = toProjectPath(path.join(sourcesDirectory, withFileNameSuffix(baseName, suffix)))
+    suffix += 1
+  }
+  return storedPath
+}
+
+async function pruneUnreferencedSourceFiles(projectDirectory, files) {
+  const referenced = new Set(
+    (Array.isArray(files) ? files : [])
+      .map((file) => file?.storedPath)
+      .filter(isSafeStoredSourcePath)
+      .map(toProjectPath),
+  )
+  const sourceRoot = path.join(projectDirectory, sourcesDirectory)
+  let dirents
+  try {
+    dirents = await fs.readdir(sourceRoot, { withFileTypes: true })
+  } catch {
+    return
+  }
+
+  await Promise.all(dirents.map(async (dirent) => {
+    if (!dirent.isFile()) return
+    const storedPath = toProjectPath(path.join(sourcesDirectory, dirent.name))
+    if (referenced.has(storedPath)) return
+    await fs.unlink(path.join(sourceRoot, dirent.name)).catch(() => undefined)
+  }))
 }
 
 async function resolveSourcePath(projectDirectory, file, previousProjectDirectory) {
@@ -413,8 +456,13 @@ function safeSourceFileName(file, index) {
   const originalName = typeof file?.name === "string" && file.name ? file.name : `source-${index + 1}.txt`
   const extension = safeExtension(path.extname(originalName))
   const baseName = safeStem(path.basename(originalName, path.extname(originalName))) || "source"
-  const id = safeStem(typeof file?.id === "string" ? file.id : `file-${index + 1}`)
-  return `${String(index + 1).padStart(2, "0")}-${id}-${baseName}${extension}`
+  return `${baseName}${extension}`
+}
+
+function withFileNameSuffix(fileName, suffix) {
+  const extension = path.extname(fileName)
+  const baseName = path.basename(fileName, extension)
+  return `${baseName}-${suffix}${extension || ".txt"}`
 }
 
 function safeFileName(fileName) {
@@ -442,8 +490,14 @@ function isSafeProjectPath(projectPath) {
   return !projectPath.split(/[\\/]+/).includes("..")
 }
 
+function isSafeStoredSourcePath(projectPath) {
+  if (!isSafeProjectPath(projectPath)) return false
+  const parts = toProjectPath(projectPath).split("/")
+  return parts[0] === sourcesDirectory && parts.length > 1 && parts.every(Boolean)
+}
+
 function toProjectPath(projectPath) {
-  return projectPath.split(path.sep).join("/")
+  return String(projectPath).split(/[\\/]+/).join("/")
 }
 
 module.exports = {
