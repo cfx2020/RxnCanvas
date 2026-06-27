@@ -81,7 +81,7 @@ describe("energyDisplay", () => {
       irNode("one", "1", -2025.48052593, -2025.64916099),
       irNode("cl", "Cl", -460.232419976, -460.391177522),
     ]
-    const edges: FlowEdge[] = [
+    const firstPointReactantEdges: FlowEdge[] = [
       edge("base", "four-b"),
       edge("base", "cl"),
       edge("one", "four-b"),
@@ -89,27 +89,43 @@ describe("energyDisplay", () => {
       edge("tsf", "ts"),
       edge("ts", "tsr"),
     ]
+    const laterReactantEdges: FlowEdge[] = [
+      edge("base", "four-b"),
+      edge("base", "cl"),
+      edge("four-b", "tsf"),
+      edge("one", "tsf"),
+      edge("tsf", "ts"),
+      edge("ts", "tsr"),
+    ]
 
-    const gasRows = energyTableRows(nodes, { ...defaultEnergyDisplayOptions, energySource: "gas" }, edges)
-    expect(relativeEnergyZeroNode(nodes, defaultEnergyDisplayOptions, edges)?.id).toBe("base")
+    const gasRows = energyTableRows(nodes, { ...defaultEnergyDisplayOptions, energySource: "gas" }, laterReactantEdges)
+    expect(relativeEnergyZeroNode(nodes, defaultEnergyDisplayOptions, laterReactantEdges)?.id).toBe("base")
     expect(gasRows.find((row) => row.nodeId === "base")?.showInRelativeTable).toBe(true)
     expect(gasRows.find((row) => row.nodeId === "base")?.relative).toBeCloseTo(0)
-    expect(gasRows.find((row) => row.nodeId === "one")?.relativeRole).toBe("term-only")
+    expect(gasRows.find((row) => row.nodeId === "one")?.relativeRole).toBe("addition-term")
+    expect(gasRows.find((row) => row.nodeId === "cl")?.relativeRole).toBe("release-term")
     expect(gasRows.find((row) => row.nodeId === "cl")?.relative).toBeNull()
+    expect(expressionSignature(rowById(gasRows, "four-b"))).toEqual(["1:4b+", "1:Cl", "-1:4b-1"])
+    expect(expressionSignature(rowById(gasRows, "tsf"))).toEqual(["1:i1N2fix14-tsf", "1:Cl", "-1:4b-1", "-1:1"])
     expect(gasRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(128.3218, 3)
     expect(gasRows.find((row) => row.nodeId === "tsf")?.relative).toBeCloseTo(83.9137, 3)
     expect(gasRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(92.2552, 3)
     expect(gasRows.find((row) => row.nodeId === "tsr")?.relative).toBeCloseTo(75.0526, 3)
 
+    const firstPointReactantRows = energyTableRows(nodes, defaultEnergyDisplayOptions, firstPointReactantEdges)
+    expect(expressionSignature(rowById(firstPointReactantRows, "four-b"))).toEqual(["1:4b+", "1:Cl", "-1:4b-1", "-1:1"])
+    expect(expressionSignature(rowById(firstPointReactantRows, "tsf"))).toEqual(["1:i1N2fix14-tsf", "1:Cl", "-1:4b-1", "-1:1"])
+    expect(rowById(firstPointReactantRows, "four-b").relative).toBeGreaterThan(1000000)
+
     const shiftedRows = energyTableRows(nodes, {
       ...defaultEnergyDisplayOptions,
       baselineNodeId: "ts",
       energySource: "gas",
-    }, edges)
+    }, laterReactantEdges)
     expect(shiftedRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(0)
     expect(shiftedRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(36.0666, 3)
 
-    const solutionRows = energyTableRows(nodes, defaultEnergyDisplayOptions, edges)
+    const solutionRows = energyTableRows(nodes, defaultEnergyDisplayOptions, laterReactantEdges)
     expect(solutionRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(17.5410, 3)
     expect(solutionRows.find((row) => row.nodeId === "tsf")?.relative).toBeCloseTo(18.8099, 3)
     expect(solutionRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(24.8503, 3)
@@ -125,19 +141,17 @@ describe("energyDisplay", () => {
     ])
     expect(missingLaterReactantRows.find((row) => row.nodeId === "tsf")?.relative).toBeLessThan(-1000000)
 
-    const laterReactantEdges: FlowEdge[] = [
-      edge("base", "four-b"),
-      edge("base", "cl"),
-      edge("four-b", "tsf"),
-      edge("one", "tsf"),
-      edge("tsf", "ts"),
-      edge("ts", "tsr"),
-    ]
     const laterReactantRows = energyTableRows(nodes, defaultEnergyDisplayOptions, laterReactantEdges)
-    expect(laterReactantRows.find((row) => row.nodeId === "one")?.relativeRole).toBe("term-only")
+    expect(laterReactantRows.find((row) => row.nodeId === "one")?.relativeRole).toBe("addition-term")
     expect(laterReactantRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(17.5410, 3)
     expect(laterReactantRows.find((row) => row.nodeId === "tsf")?.relative).toBeCloseTo(18.8099, 3)
     expect(laterReactantRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(24.8503, 3)
+
+    const orphan = irNode("orphan", "newly imported log", -101, -100)
+    const rowsWithOrphan = energyTableRows([...nodes, orphan], defaultEnergyDisplayOptions, laterReactantEdges)
+    expect(rowsWithOrphan.find((row) => row.nodeId === "orphan")?.relativeRole).toBe("standalone")
+    expect(rowsWithOrphan.find((row) => row.nodeId === "orphan")?.showInRelativeTable).toBe(true)
+    expect(rowsWithOrphan.find((row) => row.nodeId === "orphan")?.relative).not.toBeNull()
   })
 })
 
@@ -166,4 +180,14 @@ function irNode(
 
 function edge(sourceId: string, targetId: string): FlowEdge {
   return { id: `${sourceId}-${targetId}`, sourceId, targetId, label: "path" }
+}
+
+function rowById(rows: ReturnType<typeof energyTableRows>, nodeId: string) {
+  const row = rows.find((item) => item.nodeId === nodeId)
+  if (!row) throw new Error(`Missing row ${nodeId}`)
+  return row
+}
+
+function expressionSignature(row: ReturnType<typeof energyTableRows>[number]): string[] {
+  return row.expressionTerms.map((term) => `${term.coefficient}:${term.label}`)
 }

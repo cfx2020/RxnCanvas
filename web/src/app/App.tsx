@@ -44,7 +44,7 @@ import {
   resizedNodeSize,
   worldPointFromClientPoint,
 } from "./canvasGeometry"
-import { createBarrierSegment, createEdgeSegment } from "./canvasDrawing"
+import { createBarrierSegment, createEdgeSegment, type BarrierRelativeEnergyLookup } from "./canvasDrawing"
 import {
   applyNodeSize,
   canvasBarrierSelectionTransition,
@@ -518,6 +518,10 @@ export function App() {
     () => energyTableRows(nodes, energyDisplayOptions, edges),
     [energyRowsSignature],
   )
+  const relativeEnergyByNodeId = useMemo<BarrierRelativeEnergyLookup>(
+    () => new Map(energyRows.map((row) => [row.nodeId, row.relative])),
+    [energyRows],
+  )
   const relativeZeroNodeId = useMemo(
     () => relativeEnergyZeroNode(nodes, energyDisplayOptions, edges)?.id ?? null,
     [edges, energyDisplayOptions, nodes],
@@ -629,7 +633,7 @@ export function App() {
       const previewNodeMap = new Map(cache.nodeMap)
       previewNodeMap.set(nodeId, previewNode)
       for (const barrierPreview of cache.barriers) {
-        const segment = createBarrierSegment(barrierPreview.barrier, previewNodeMap, energyDisplayOptions)
+        const segment = createBarrierSegment(barrierPreview.barrier, previewNodeMap, energyDisplayOptions, relativeEnergyByNodeId)
         if (!segment) continue
         barrierPreview.hitPath?.setAttribute("d", segment.arrowPath)
         barrierPreview.guidePath?.setAttribute("d", segment.guidePath)
@@ -639,7 +643,7 @@ export function App() {
         }
       }
     }
-  }, [buildNodeDragPreviewCache, energyDisplayOptions])
+  }, [buildNodeDragPreviewCache, energyDisplayOptions, relativeEnergyByNodeId])
 
   const clearDragPreview = useCallback(() => {
     canvasRef.current?.classList.remove("is-live-pan", "is-live-node-drag", "is-live-node-resize")
@@ -693,7 +697,7 @@ export function App() {
       const previewNodeMap = new Map(cache.nodeMap)
       previewNodeMap.set(nodeId, previewNode)
       for (const barrierPreview of cache.barriers) {
-        const segment = createBarrierSegment(barrierPreview.barrier, previewNodeMap, energyDisplayOptions)
+        const segment = createBarrierSegment(barrierPreview.barrier, previewNodeMap, energyDisplayOptions, relativeEnergyByNodeId)
         if (!segment) continue
         barrierPreview.hitPath?.setAttribute("d", segment.arrowPath)
         barrierPreview.guidePath?.setAttribute("d", segment.guidePath)
@@ -703,7 +707,7 @@ export function App() {
         }
       }
     }
-  }, [energyDisplayOptions, nodeMap, startNodeResizePreview])
+  }, [energyDisplayOptions, nodeMap, relativeEnergyByNodeId, startNodeResizePreview])
 
   useLayoutEffect(() => {
     const updateToolbarMetrics = () => {

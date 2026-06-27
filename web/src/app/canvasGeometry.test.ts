@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { FlowNode } from "../domain/projectPackages"
+import type { FlowNode, NodeKind } from "../domain/projectPackages"
 import { defaultEnergyDisplayOptions } from "./energyDisplay"
 import {
   autoLayoutFlowNodes,
@@ -21,12 +21,17 @@ import {
   worldPointFromClientPoint,
 } from "./canvasGeometry"
 
-function flowNode(id: string, energySolution: number | null, position = { x: 0, y: 0 }): FlowNode {
+function flowNode(
+  id: string,
+  energySolution: number | null,
+  position = { x: 0, y: 0 },
+  kind: NodeKind = "reactant",
+): FlowNode {
   return {
     id,
     label: id,
     formula: "H2",
-    kind: "reactant",
+    kind,
     method: "wB97X-D",
     solvent: "SMD",
     energyGas: null,
@@ -146,6 +151,25 @@ describe("canvasGeometry", () => {
     expect(byId.get("released")?.position.y).toBe(byId.get("added-1")?.position.y)
     expect(byId.get("added-1")?.position).not.toEqual(byId.get("added-2")?.position)
     expect(byId.get("released")?.position.x).toBe(byId.get("product")?.position.x)
+  })
+
+  it("auto-layout aligns transition barriers to the same energy ruler scale", () => {
+    const laidOut = autoLayoutFlowNodes([
+      flowNode("reactant", 0),
+      flowNode("ts", 12, { x: 0, y: 0 }, "transition"),
+      flowNode("product", 3),
+    ], {
+      ...defaultEnergyDisplayOptions,
+      baselineNodeId: "reactant",
+    }, [
+      { id: "e-reactant-ts", sourceId: "reactant", targetId: "ts", label: "" },
+      { id: "e-ts-product", sourceId: "ts", targetId: "product", label: "" },
+    ])
+
+    const byId = new Map(laidOut.map((node) => [node.id, node]))
+    expect(byId.get("reactant")?.position).toEqual({ x: -320, y: 184 })
+    expect(byId.get("ts")?.position).toEqual({ x: -16, y: -168 })
+    expect(byId.get("product")?.position).toEqual({ x: 280, y: 128 })
   })
 
   it("tests selection containment by node center", () => {

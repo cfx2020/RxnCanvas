@@ -32,6 +32,7 @@ import {
   createConnectionPreviewPath,
   createEdgeSegment,
   type BarrierSegment,
+  type BarrierRelativeEnergyLookup,
 } from "./canvasDrawing"
 import {
   formatCoefficientValue,
@@ -256,9 +257,16 @@ export function CanvasSurface({
     () => new Map(energyRows.map((row) => [row.nodeId, row])),
     [energyRows],
   )
+  const relativeEnergyByNodeId = useMemo<BarrierRelativeEnergyLookup>(
+    () => new Map(energyRows.map((row) => [row.nodeId, row.relative])),
+    [energyRows],
+  )
   const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds])
   const selectedEdgeIdSet = useMemo(() => new Set(selectedEdgeIds), [selectedEdgeIds])
   const selectedBarrierIdSet = useMemo(() => new Set(selectedBarrierIds), [selectedBarrierIds])
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
+  const hoveredEdgeIdRef = useRef<string | null>(null)
+  const hoveredEdgeClearTimerRef = useRef<number | null>(null)
   const connectedInputNodeIds = useMemo(() => new Set(edges.map((edge) => edge.targetId)), [edges])
   const connectedOutputNodeIds = useMemo(() => new Set(edges.map((edge) => edge.sourceId)), [edges])
   const fileById = useMemo(() => new Map(files.map((file) => [file.id, file])), [files])
@@ -290,6 +298,32 @@ export function CanvasSurface({
   const stableOnRenameNode = useLatestCallback(onRenameNode)
   const stableOnRenameRequestHandled = useLatestCallback(onRenameRequestHandled)
   const stableOnOpenContextMenu = useLatestCallback(onOpenContextMenu)
+  const stableOnHoverEdge = useLatestCallback((edgeId: string | null) => {
+    if (edgeId) {
+      if (hoveredEdgeClearTimerRef.current !== null) {
+        window.clearTimeout(hoveredEdgeClearTimerRef.current)
+        hoveredEdgeClearTimerRef.current = null
+      }
+      if (hoveredEdgeIdRef.current !== edgeId) {
+        hoveredEdgeIdRef.current = edgeId
+        setHoveredEdgeId(edgeId)
+      }
+      return
+    }
+    if (hoveredEdgeClearTimerRef.current !== null || hoveredEdgeIdRef.current === null) return
+    hoveredEdgeClearTimerRef.current = window.setTimeout(() => {
+      hoveredEdgeIdRef.current = null
+      setHoveredEdgeId(null)
+      hoveredEdgeClearTimerRef.current = null
+    }, 180)
+  })
+
+  useEffect(() => () => {
+    if (hoveredEdgeClearTimerRef.current !== null) {
+      window.clearTimeout(hoveredEdgeClearTimerRef.current)
+    }
+  }, [])
+
   const currentSelection = (): CanvasContextSelection => ({
     nodeIds: selectedNodeIds,
     edgeIds: selectedEdgeIds,
@@ -325,6 +359,15 @@ export function CanvasSurface({
     onCanvasKeyDown(event)
   }
 
+  const handleSurfacePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    stableOnHoverEdge(flowEdgeIdFromEventTarget(event.target))
+    onPointerMove(event)
+  }
+
+  const handleSurfaceMouseMove = (event: MouseEvent<HTMLDivElement>) => {
+    stableOnHoverEdge(flowEdgeIdFromEventTarget(event.target))
+  }
+
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     if (!hasCanvasRawFileDrop(event.dataTransfer)) return
     event.preventDefault()
@@ -356,7 +399,9 @@ export function CanvasSurface({
       tabIndex={0}
       onPointerDown={onCanvasPointerDown}
       onKeyDown={handleSurfaceKeyDown}
-      onPointerMove={onPointerMove}
+      onPointerMove={handleSurfacePointerMove}
+      onMouseMove={handleSurfaceMouseMove}
+      onMouseLeave={() => stableOnHoverEdge(null)}
       onPointerUp={onPointerEnd}
       onPointerCancel={onPointerEnd}
       onContextMenu={openSelectionContextMenu}
@@ -385,6 +430,7 @@ export function CanvasSurface({
               nodeMap={nodeMap}
               selected={selectedEdgeIdSet.has(edge.id)}
               onSelect={stableOnSelectEdge}
+              onHover={stableOnHoverEdge}
               onContextMenu={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
@@ -405,6 +451,7 @@ export function CanvasSurface({
               barrier={barrier}
               nodeMap={nodeMap}
               energyDisplayOptions={energyDisplayOptions}
+              relativeEnergyByNodeId={relativeEnergyByNodeId}
               selected={selectedBarrierIdSet.has(barrier.id)}
               onSelect={stableOnSelectBarrier}
               onContextMenu={(event) => {
@@ -432,6 +479,7 @@ export function CanvasSurface({
             inputConnected={connectedInputNodeIds.has(node.id)}
             outputConnected={connectedOutputNodeIds.has(node.id)}
             relativeEnergy={energyRowByNodeId.get(node.id)?.relative ?? null}
+            relativeRole={energyRowByNodeId.get(node.id)?.relativeRole ?? "standalone"}
             solvationStatus={solvationPairStatusForNode(node, fileById, solutionLogPresenceByGroup)}
             energySource={energyDisplayOptions.energySource}
             outputUnit={energyDisplayOptions.outputUnit}
@@ -468,6 +516,8 @@ export function CanvasSurface({
             edge={edge}
             nodeMap={nodeMap}
             selected={selectedEdgeIdSet.has(edge.id)}
+            hovered={hoveredEdgeId === edge.id}
+            onHover={stableOnHoverEdge}
             onUpdateLabel={stableOnUpdateEdgeLabel}
           />
         ))}
@@ -477,6 +527,7 @@ export function CanvasSurface({
             barrier={barrier}
             nodeMap={nodeMap}
             energyDisplayOptions={energyDisplayOptions}
+            relativeEnergyByNodeId={relativeEnergyByNodeId}
             selected={selectedBarrierIdSet.has(barrier.id)}
             onUpdateLabel={stableOnUpdateBarrierLabel}
           />
@@ -664,6 +715,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   inputConnected,
   outputConnected,
   relativeEnergy,
+  relativeRole,
   solvationStatus,
   energySource,
   outputUnit,
@@ -692,6 +744,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   inputConnected: boolean
   outputConnected: boolean
   relativeEnergy: number | null
+  relativeRole: EnergyTableRow["relativeRole"]
   solvationStatus: NodeSolvationStatus
   energySource: EnergyDisplayOptions["energySource"]
   outputUnit: EnergyDisplayOptions["outputUnit"]
@@ -925,13 +978,19 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
           onOpenStructure={onOpenStructure}
         />
       )}
-      <div className="node-energy-strip node-card-meta-row" title={`${relativeEnergySymbol} relative energy`}>
-        <span className="node-card-energy-value">
-          <span>{relativeEnergySymbol}</span>
-          <strong className={energyBaseline ? "node-relative-energy is-zero" : "node-relative-energy"}>
-            {formatNodeCardRelativeEnergy(relativeEnergy, outputUnit)}
-          </strong>
-        </span>
+      <div className="node-energy-strip node-card-meta-row" title={nodeEnergyStripTitle(relativeEnergySymbol, relativeRole)}>
+        {nodeTermRoleLabel(relativeRole) ? (
+          <span className="node-card-energy-value node-card-energy-term" title={nodeEnergyStripTitle(relativeEnergySymbol, relativeRole)}>
+            <strong>{nodeTermRoleLabel(relativeRole)}</strong>
+          </span>
+        ) : (
+          <span className="node-card-energy-value">
+            <span>{relativeEnergySymbol}</span>
+            <strong className={energyBaseline ? "node-relative-energy is-zero" : "node-relative-energy"}>
+              {formatNodeCardRelativeEnergy(relativeEnergy, outputUnit)}
+            </strong>
+          </span>
+        )}
         <span
           className={`status-light status-light-node status-light-${nodeStatusLight}`}
           title={`${sourceStatusLabel}. ${solvationStatusLabel}`}
@@ -978,6 +1037,18 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
 function formatNodeCardRelativeEnergy(value: number | null, unit: EnergyDisplayOptions["outputUnit"]): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "pending"
   return formatRelativeEnergyValue(relativeEnergyValueFromKcal(value, unit), unit)
+}
+
+function nodeEnergyStripTitle(symbol: string, role: EnergyTableRow["relativeRole"]): string {
+  if (role === "addition-term") return "Added reactant term used in the path energy expression"
+  if (role === "release-term") return "Released product term used in the path energy expression"
+  return `${symbol} relative energy`
+}
+
+function nodeTermRoleLabel(role: EnergyTableRow["relativeRole"]): "addition" | "release" | null {
+  if (role === "addition-term") return "addition"
+  if (role === "release-term") return "release"
+  return null
 }
 
 function NodeStructurePreview({
@@ -1061,6 +1132,7 @@ type ReactionNodeCardComparableProps = {
   inputConnected: boolean
   outputConnected: boolean
   relativeEnergy: number | null
+  relativeRole: EnergyTableRow["relativeRole"]
   solvationStatus: NodeSolvationStatus
   energySource: EnergyDisplayOptions["energySource"]
   outputUnit: EnergyDisplayOptions["outputUnit"]
@@ -1080,6 +1152,7 @@ function areReactionNodeCardPropsEqual(
     && previous.inputConnected === next.inputConnected
     && previous.outputConnected === next.outputConnected
     && Object.is(previous.relativeEnergy, next.relativeEnergy)
+    && previous.relativeRole === next.relativeRole
     && previous.solvationStatus === next.solvationStatus
     && previous.energySource === next.energySource
     && previous.outputUnit === next.outputUnit
@@ -1093,6 +1166,10 @@ type EdgeComparableProps = {
   selected: boolean
 }
 
+type EdgeLabelComparableProps = EdgeComparableProps & {
+  hovered: boolean
+}
+
 function areReactionEdgePropsEqual(previous: EdgeComparableProps, next: EdgeComparableProps): boolean {
   return previous.edge === next.edge
     && previous.selected === next.selected
@@ -1100,14 +1177,16 @@ function areReactionEdgePropsEqual(previous: EdgeComparableProps, next: EdgeComp
     && previous.nodeMap.get(previous.edge.targetId) === next.nodeMap.get(next.edge.targetId)
 }
 
-function areReactionEdgeLabelPropsEqual(previous: EdgeComparableProps, next: EdgeComparableProps): boolean {
+function areReactionEdgeLabelPropsEqual(previous: EdgeLabelComparableProps, next: EdgeLabelComparableProps): boolean {
   return areReactionEdgePropsEqual(previous, next)
+    && previous.hovered === next.hovered
 }
 
 type BarrierComparableProps = {
   barrier: FlowBarrier
   nodeMap: Map<string, FlowNode>
   energyDisplayOptions: EnergyDisplayOptions
+  relativeEnergyByNodeId: BarrierRelativeEnergyLookup
   selected: boolean
 }
 
@@ -1115,6 +1194,7 @@ function areBarrierAnnotationPropsEqual(previous: BarrierComparableProps, next: 
   return previous.barrier === next.barrier
     && previous.selected === next.selected
     && previous.energyDisplayOptions === next.energyDisplayOptions
+    && previous.relativeEnergyByNodeId === next.relativeEnergyByNodeId
     && previous.nodeMap.get(previous.barrier.sourceId) === next.nodeMap.get(next.barrier.sourceId)
     && previous.nodeMap.get(previous.barrier.targetId) === next.nodeMap.get(next.barrier.targetId)
 }
@@ -1128,12 +1208,14 @@ const ReactionEdge = memo(function ReactionEdge({
   nodeMap,
   selected,
   onSelect,
+  onHover,
   onContextMenu,
 }: {
   edge: FlowEdge
   nodeMap: Map<string, FlowNode>
   selected: boolean
   onSelect: (edgeId: string, mode?: GraphSelectionMode) => void
+  onHover: (edgeId: string | null) => void
   onContextMenu: (event: MouseEvent<SVGGElement>) => void
 }) {
   const source = nodeMap.get(edge.sourceId)
@@ -1143,13 +1225,17 @@ const ReactionEdge = memo(function ReactionEdge({
 
   return (
     <g
-      className={`${edge.id === "edge-4" ? "edge is-soft" : "edge"}${selected ? " is-selected" : ""}`}
+      className={`edge${selected ? " is-selected" : ""}`}
       data-flow-edge-id={edge.id}
       data-flow-edge-source-id={edge.sourceId}
       data-flow-edge-target-id={edge.targetId}
       role="button"
       tabIndex={0}
       aria-label={`Edge ${source.label} to ${target.label}: ${edge.label}`}
+      onPointerEnter={() => onHover(edge.id)}
+      onPointerLeave={() => onHover(null)}
+      onMouseEnter={() => onHover(edge.id)}
+      onMouseLeave={() => onHover(null)}
       onContextMenu={onContextMenu}
       onPointerDown={(event) => {
         event.stopPropagation()
@@ -1178,11 +1264,15 @@ const ReactionEdgeLabel = memo(function ReactionEdgeLabel({
   edge,
   nodeMap,
   selected,
+  hovered,
+  onHover,
   onUpdateLabel,
 }: {
   edge: FlowEdge
   nodeMap: Map<string, FlowNode>
   selected: boolean
+  hovered: boolean
+  onHover: (edgeId: string | null) => void
   onUpdateLabel: (edgeId: string, label: string) => void
 }) {
   const [editingLabel, setEditingLabel] = useState(false)
@@ -1210,13 +1300,18 @@ const ReactionEdgeLabel = memo(function ReactionEdgeLabel({
 
   return (
     <div
-      className={`canvas-label-anchor edge-label-anchor${selected ? " is-selected" : ""}${displayLabel ? "" : " is-empty"}`}
+      className={`canvas-label-anchor edge-label-anchor${selected ? " is-selected" : ""}${hovered ? " is-hovered" : ""}${editingLabel ? " is-editing" : ""}${displayLabel ? "" : " is-empty"}`}
       data-flow-edge-label-id={edge.id}
+      data-flow-edge-id={edge.id}
       style={{
         transform: `translate(${segment.labelPoint.x - labelWidth / 2}px, ${segment.labelPoint.y - 16}px)`,
         width: labelWidth,
         height: 32,
       }}
+      onPointerEnter={() => onHover(edge.id)}
+      onPointerLeave={() => onHover(null)}
+      onMouseEnter={() => onHover(edge.id)}
+      onMouseLeave={() => onHover(null)}
     >
       {editingLabel ? (
         <EdgeInlineLabelEditor
@@ -1355,6 +1450,7 @@ const BarrierAnnotation = memo(function BarrierAnnotation({
   barrier,
   nodeMap,
   energyDisplayOptions,
+  relativeEnergyByNodeId,
   selected,
   onSelect,
   onContextMenu,
@@ -1362,11 +1458,12 @@ const BarrierAnnotation = memo(function BarrierAnnotation({
   barrier: FlowBarrier
   nodeMap: Map<string, FlowNode>
   energyDisplayOptions: EnergyDisplayOptions
+  relativeEnergyByNodeId: BarrierRelativeEnergyLookup
   selected: boolean
   onSelect: (barrierId: string, mode?: GraphSelectionMode) => void
   onContextMenu: (event: MouseEvent<SVGGElement>) => void
 }) {
-  const segment = createBarrierSegment(barrier, nodeMap, energyDisplayOptions)
+  const segment = createBarrierSegment(barrier, nodeMap, energyDisplayOptions, relativeEnergyByNodeId)
   if (!segment) return null
 
   const selectBarrier = (mode: GraphSelectionMode = "replace") => onSelect(barrier.id, mode)
@@ -1408,18 +1505,20 @@ const BarrierAnnotationLabel = memo(function BarrierAnnotationLabel({
   barrier,
   nodeMap,
   energyDisplayOptions,
+  relativeEnergyByNodeId,
   selected,
   onUpdateLabel,
 }: {
   barrier: FlowBarrier
   nodeMap: Map<string, FlowNode>
   energyDisplayOptions: EnergyDisplayOptions
+  relativeEnergyByNodeId: BarrierRelativeEnergyLookup
   selected: boolean
   onUpdateLabel: (barrierId: string, label: string | null) => void
 }) {
   const [editingLabel, setEditingLabel] = useState(false)
   const [draftLabel, setDraftLabel] = useState("")
-  const segment = createBarrierSegment(barrier, nodeMap, energyDisplayOptions)
+  const segment = createBarrierSegment(barrier, nodeMap, energyDisplayOptions, relativeEnergyByNodeId)
   const displayLabel = segment?.label ?? ""
   const widthText = editingLabel ? draftLabel : displayLabel
   const labelWidth = autoTextBoxWidthForValue(widthText, {
@@ -1813,6 +1912,11 @@ function canvasWorldPointFromClient(
     x: (clientX - (rect?.left ?? 0) - viewport.x) / viewport.zoom,
     y: (clientY - (rect?.top ?? 0) - viewport.y) / viewport.zoom,
   }
+}
+
+function flowEdgeIdFromEventTarget(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) return null
+  return target.closest<HTMLElement | SVGGElement>(".edge, .edge-label-anchor")?.dataset.flowEdgeId ?? null
 }
 
 function useLatestCallback<TCallback extends (...args: never[]) => unknown>(callback: TCallback): TCallback {

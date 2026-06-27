@@ -7,7 +7,7 @@ export type EnergyDisplayOptions = {
   outputUnit: "hartree" | "kcal/mol" | "kj/mol"
 }
 
-export type RelativeEnergyRole = "standalone" | "baseline" | "path-point" | "term-only"
+export type RelativeEnergyRole = "standalone" | "baseline" | "path-point" | "addition-term" | "release-term"
 
 export type EnergyExpressionTerm = {
   nodeId: string
@@ -130,7 +130,7 @@ export function energyTableRows(
   for (const node of nodes) {
     const role = model.roleByNodeId.get(node.id) ?? "standalone"
     const terms = model.termsByNodeId.get(node.id) ?? nodeSelfTerms(nodeById, node.id)
-    if (role === "term-only") {
+    if (relativeEnergyRoleIsTerm(role)) {
       expressionTableByNodeId.set(node.id, null)
       expressionKcalByNodeId.set(node.id, null)
       continue
@@ -146,8 +146,8 @@ export function energyTableRows(
     const role = model.roleByNodeId.get(node.id) ?? "standalone"
     const expressionTable = expressionTableByNodeId.get(node.id) ?? null
     const expressionKcal = expressionKcalByNodeId.get(node.id) ?? null
-    const relativeEnergyTable = role === "term-only" ? null : subtractEnergyTables(expressionTable, baselineTable)
-    const relative = role === "term-only" || typeof expressionKcal !== "number" || typeof baselineKcal !== "number"
+    const relativeEnergyTable = relativeEnergyRoleIsTerm(role) ? null : subtractEnergyTables(expressionTable, baselineTable)
+    const relative = relativeEnergyRoleIsTerm(role) || typeof expressionKcal !== "number" || typeof baselineKcal !== "number"
       ? null
       : expressionKcal - baselineKcal
     return {
@@ -168,6 +168,11 @@ export function energyTableRows(
       expressionTerms: model.termsByNodeId.get(node.id) ?? nodeSelfTerms(nodeById, node.id),
     }
   })
+}
+
+
+function relativeEnergyRoleIsTerm(role: RelativeEnergyRole): boolean {
+  return role === "addition-term" || role === "release-term"
 }
 
 export function normalizedNodeEnergyTable(node: FlowNode): ParsedEnergyTableData | null {
@@ -323,9 +328,21 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
   const relativeTableVisibilityByNodeId = new Map<string, boolean>()
 
   for (const node of nodes) {
-    roleByNodeId.set(node.id, "term-only")
-    termsByNodeId.set(node.id, [])
-    relativeTableVisibilityByNodeId.set(node.id, false)
+    roleByNodeId.set(node.id, "standalone")
+    termsByNodeId.set(node.id, nodeSelfTerms(nodeById, node.id))
+    relativeTableVisibilityByNodeId.set(node.id, true)
+  }
+
+  const auxiliaryTermIds = new Set([...sideProducts, ...allExternalReactants])
+  for (const nodeId of sideProducts) {
+    roleByNodeId.set(nodeId, "release-term")
+    termsByNodeId.set(nodeId, [])
+    relativeTableVisibilityByNodeId.set(nodeId, false)
+  }
+  for (const nodeId of allExternalReactants) {
+    roleByNodeId.set(nodeId, "addition-term")
+    termsByNodeId.set(nodeId, [])
+    relativeTableVisibilityByNodeId.set(nodeId, false)
   }
 
   mainPath.forEach((nodeId, index) => {
@@ -337,7 +354,7 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
     }
 
     const termIds = [nodeId, ...sideProducts]
-    const negativeTermIds = index === 1 ? [startId] : [startId, ...externalReactantsThroughPathIndex(index, externalReactantsByPathIndex, nodeOrder)]
+    const negativeTermIds = [startId, ...externalReactantsThroughPathIndex(index, externalReactantsByPathIndex, nodeOrder)]
     const terms = compactExpressionTerms([
       ...termIds.flatMap((id) => nodeSelfTerms(nodeById, id)),
       ...negativeTermIds.flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
@@ -347,13 +364,12 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
     relativeTableVisibilityByNodeId.set(nodeId, true)
   })
 
-  const auxiliaryTermIds = new Set([...sideProducts, ...allExternalReactants])
   const distanceFromStart = reachableNodeDistances(startId, successors)
   const pathIndexFromStart = reachablePathIndexes(startId, successors, pathIndexById)
   for (const [nodeId, distance] of distanceFromStart) {
     if (distance === 0 || auxiliaryTermIds.has(nodeId) || roleByNodeId.get(nodeId) === "path-point") continue
     const upstreamPathIndex = pathIndexFromStart.get(nodeId) ?? (distance <= 1 ? 1 : mainPath.length - 1)
-    const negativeTermIds = distance === 1 ? [startId] : [startId, ...externalReactantsThroughPathIndex(upstreamPathIndex, externalReactantsByPathIndex, nodeOrder)]
+    const negativeTermIds = [startId, ...externalReactantsThroughPathIndex(upstreamPathIndex, externalReactantsByPathIndex, nodeOrder)]
     const terms = compactExpressionTerms([
       ...nodeSelfTerms(nodeById, nodeId),
       ...sideProducts.flatMap((id) => nodeSelfTerms(nodeById, id)),
@@ -419,7 +435,7 @@ function externalReactantsThroughPathIndex(
   externalReactantsByPathIndex: Map<number, string[]>,
   nodeOrder: Map<string, number>,
 ): string[] {
-  if (pathIndex <= 1) return []
+  if (pathIndex < 1) return []
   const reactants: string[] = []
   for (let index = 1; index <= pathIndex; index += 1) {
     reactants.push(...(externalReactantsByPathIndex.get(index) ?? []))

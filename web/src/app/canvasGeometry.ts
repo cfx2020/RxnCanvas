@@ -249,6 +249,7 @@ export function autoLayoutFlowNodes(nodes: FlowNode[], options: EnergyDisplayOpt
   const leftX = -320
   const stepX = 300
   const mainBaseY = 184
+  const mainBaseEnergyY = mainBaseY + nodeHeight * 0.5
   const energyAmplitude = 220
   const unknownMainY = 264
   const highestMainY = Math.min(
@@ -258,7 +259,7 @@ export function autoLayoutFlowNodes(nodes: FlowNode[], options: EnergyDisplayOpt
       .map((node) => {
         const relative = relativeById.get(node.id)
         return typeof relative === "number" && Number.isFinite(relative)
-          ? mainBaseY - (relative / maxMagnitude) * energyAmplitude
+          ? mainEnergyAnchorY(relative, maxMagnitude, mainBaseEnergyY, energyAmplitude) - layoutEnergyAnchorOffset(node)
           : unknownMainY
       }),
     mainBaseY,
@@ -280,7 +281,7 @@ export function autoLayoutFlowNodes(nodes: FlowNode[], options: EnergyDisplayOpt
       const signedEnergyRatio = finite ? relative / maxMagnitude : 0
       const x = leftX + mainIndex * stepX
       const y = finite
-        ? mainBaseY - signedEnergyRatio * energyAmplitude
+        ? mainEnergyAnchorY(relative, maxMagnitude, mainBaseEnergyY, energyAmplitude) - layoutEnergyAnchorOffset(node)
         : unknownMainY
       return {
         ...node,
@@ -304,6 +305,20 @@ export function autoLayoutFlowNodes(nodes: FlowNode[], options: EnergyDisplayOpt
       },
     }
   })
+}
+
+function mainEnergyAnchorY(
+  relative: number,
+  maxMagnitude: number,
+  mainBaseEnergyY: number,
+  energyAmplitude: number,
+): number {
+  return mainBaseEnergyY - (relative / maxMagnitude) * energyAmplitude
+}
+
+function layoutEnergyAnchorOffset(node: FlowNode): number {
+  const size = flowNodeSize(node)
+  return node.kind === "transition" ? size.height + 28 : size.height * 0.5
 }
 
 type LayoutGraph = {

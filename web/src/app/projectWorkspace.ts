@@ -182,7 +182,6 @@ export const initialEdges: FlowEdge[] = [
   { id: "edge-1", sourceId: "butadiene", targetId: "ts-endo", label: "+ Diene" },
   { id: "edge-2", sourceId: "maleic", targetId: "ts-endo", label: "+ Dienophile" },
   { id: "edge-3", sourceId: "ts-endo", targetId: "endo", label: "-18.53" },
-  { id: "edge-4", sourceId: "ts-endo", targetId: "ts-exo", label: "Delta G 1.73" },
   { id: "edge-5", sourceId: "ts-exo", targetId: "exo", label: "-11.98" },
 ]
 

@@ -473,7 +473,7 @@ describe("App", () => {
     fireEvent.change(energySelect, { target: { value: "gas" } })
     fireEvent.change(unitSelect, { target: { value: "hartree" } })
 
-    expect(screen.getAllByText("0.030517 Eh").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("0.076907 Eh").length).toBeGreaterThan(0)
   })
 
   it("keeps original workbench routes visible without a backend bridge", () => {
@@ -875,16 +875,16 @@ describe("App", () => {
     expect(container.querySelector(".barrier-guide")).toBeInTheDocument()
     expect(
       screen.getByRole("button", {
-        name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔG‡ 20.96",
+        name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔG‡ 51.17",
       }),
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 20.96")
+    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 51.17")
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
     expect(within(inspector).queryByText("Selected Barrier")).not.toBeInTheDocument()
     expect(within(inspector).getByRole("region", { name: "Source inspector" })).toHaveTextContent("gaussian.log")
 
-    const barrier = screen.getByRole("button", { name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔG‡ 20.96" })
+    const barrier = screen.getByRole("button", { name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔG‡ 51.17" })
     fireEvent.contextMenu(barrier, { clientX: 620, clientY: 320 })
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }))
 
@@ -943,14 +943,14 @@ describe("App", () => {
     }
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
-    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 20.96")
+    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 51.17")
 
     fireEvent.change(within(toolbar).getByRole("combobox", { name: "Energy" }), { target: { value: "gas" } })
 
-    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔE‡ 19.15")
+    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔE‡ 48.26")
     expect(
       screen.getByRole("button", {
-        name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔE‡ 19.15",
+        name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔE‡ 48.26",
       }),
     ).toBeInTheDocument()
   })

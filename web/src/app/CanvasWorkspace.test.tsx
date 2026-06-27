@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import type { CanvasViewport, FlowNode } from "../domain/projectPackages"
-import { defaultEnergyDisplayOptions } from "./energyDisplay"
+import type { CanvasViewport, FlowEdge, FlowNode } from "../domain/projectPackages"
+import { defaultEnergyDisplayOptions, type EnergyTableRow } from "./energyDisplay"
 import {
   CanvasSurface,
   ZoomControls,
@@ -38,6 +38,191 @@ describe("CanvasWorkspace", () => {
     expect(onZoomIn).toHaveBeenCalledOnce()
     expect(onZoomOut).toHaveBeenCalledOnce()
     expect(onReset).toHaveBeenCalledOnce()
+  })
+
+
+  it("renders addition and release terms without a pending relative energy", () => {
+    const node: FlowNode = {
+      id: "external-reactant",
+      label: "Maleic Anhydride",
+      formula: "C4H2O3",
+      kind: "reactant",
+      method: "wB97X-D",
+      solvent: "SMD",
+      energyGas: -100,
+      energySolution: -99,
+      energyUnit: "kcal/mol",
+      sourceStatus: "parsed",
+      position: { x: 80, y: 120 },
+    }
+    const row: EnergyTableRow = {
+      nodeId: node.id,
+      label: node.label,
+      kind: node.kind,
+      formula: node.formula,
+      charge: null,
+      spinMultiplicity: null,
+      gas: node.energyGas,
+      solution: node.energySolution,
+      energyUnit: node.energyUnit,
+      energyTable: null,
+      relativeEnergyTable: null,
+      relative: null,
+      relativeRole: "addition-term",
+      showInRelativeTable: false,
+      expressionTerms: [],
+    }
+    const releaseNode: FlowNode = {
+      ...node,
+      id: "released-product",
+      label: "Chloride",
+      formula: "Cl",
+      position: { x: 340, y: 120 },
+    }
+    const releaseRow: EnergyTableRow = {
+      ...row,
+      nodeId: releaseNode.id,
+      label: releaseNode.label,
+      formula: releaseNode.formula,
+      relativeRole: "release-term",
+    }
+
+    render(
+      <CanvasSurface
+        canvasRef={{ current: null }}
+        nodes={[node, releaseNode]}
+        files={[]}
+        edges={[]}
+        barriers={[]}
+        nodeMap={new Map([[node.id, node], [releaseNode.id, releaseNode]])}
+        selectedNodeIds={[]}
+        selectedEdgeIds={[]}
+        selectedBarrierIds={[]}
+        keyboardEdgeSourceId={null}
+        tool="select"
+        viewport={{ x: 0, y: 0, zoom: 1 }}
+        rubberBandDraft={null}
+        connectionDraft={null}
+        barrierDraft={null}
+        energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
+        energyRows={[row, releaseRow]}
+        relativeZeroNodeId={null}
+        onCanvasPointerDown={vi.fn()}
+        onCanvasKeyDown={vi.fn()}
+        onPointerMove={vi.fn()}
+        onPointerEnd={vi.fn()}
+        onNodePointerDown={vi.fn()}
+        onNodeResizePointerDown={vi.fn()}
+        onNodePointerUp={vi.fn()}
+        onStartConnection={vi.fn()}
+        onStartBarrierAnnotation={vi.fn()}
+        onStartKeyboardConnection={vi.fn()}
+        onSelectNode={vi.fn()}
+        onSelectEdge={vi.fn()}
+        onSelectBarrier={vi.fn()}
+        onUpdateEdgeLabel={vi.fn()}
+        onUpdateBarrierLabel={vi.fn()}
+        onSetNodeCoefficient={vi.fn()}
+        onSetRelativeEnergyZero={vi.fn()}
+        onOpenStructure={vi.fn()}
+        onShowNodeSource={vi.fn()}
+        onRenameNode={vi.fn()}
+        renameEditingNodeId={null}
+        onRenameRequestHandled={vi.fn()}
+        onOpenContextMenu={vi.fn()}
+        onRawFileDrop={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText("addition")).toBeInTheDocument()
+    expect(screen.getByText("release")).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/ΔG\s*=\s*pending/)
+  })
+
+  it("reveals empty edge label affordances only when the curve is hovered", () => {
+    const source: FlowNode = {
+      id: "source",
+      label: "Reactant",
+      formula: "C2H4",
+      kind: "reactant",
+      method: "wB97X-D",
+      solvent: "gas",
+      energyGas: -100,
+      energySolution: null,
+      energyUnit: "hartree",
+      sourceStatus: "parsed",
+      position: { x: 120, y: 160 },
+    }
+    const target: FlowNode = {
+      ...source,
+      id: "target",
+      label: "Product",
+      kind: "product",
+      position: { x: 460, y: 180 },
+    }
+    const edge: FlowEdge = {
+      id: "edge-new",
+      sourceId: source.id,
+      targetId: target.id,
+      label: "path",
+    }
+    const { container } = render(
+      <CanvasSurface
+        canvasRef={{ current: null }}
+        nodes={[source, target]}
+        files={[]}
+        edges={[edge]}
+        barriers={[]}
+        nodeMap={new Map([[source.id, source], [target.id, target]])}
+        selectedNodeIds={[]}
+        selectedEdgeIds={[]}
+        selectedBarrierIds={[]}
+        keyboardEdgeSourceId={null}
+        tool="select"
+        viewport={{ x: 0, y: 0, zoom: 1 }}
+        rubberBandDraft={null}
+        connectionDraft={null}
+        barrierDraft={null}
+        energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
+        energyRows={[]}
+        relativeZeroNodeId={null}
+        onCanvasPointerDown={vi.fn()}
+        onCanvasKeyDown={vi.fn()}
+        onPointerMove={vi.fn()}
+        onPointerEnd={vi.fn()}
+        onNodePointerDown={vi.fn()}
+        onNodeResizePointerDown={vi.fn()}
+        onNodePointerUp={vi.fn()}
+        onStartConnection={vi.fn()}
+        onStartBarrierAnnotation={vi.fn()}
+        onStartKeyboardConnection={vi.fn()}
+        onSelectNode={vi.fn()}
+        onSelectEdge={vi.fn()}
+        onSelectBarrier={vi.fn()}
+        onUpdateEdgeLabel={vi.fn()}
+        onUpdateBarrierLabel={vi.fn()}
+        onSetNodeCoefficient={vi.fn()}
+        onSetRelativeEnergyZero={vi.fn()}
+        onOpenStructure={vi.fn()}
+        onShowNodeSource={vi.fn()}
+        onRenameNode={vi.fn()}
+        renameEditingNodeId={null}
+        onRenameRequestHandled={vi.fn()}
+        onOpenContextMenu={vi.fn()}
+        onRawFileDrop={vi.fn()}
+      />,
+    )
+
+    const labelAnchor = container.querySelector<HTMLElement>(".edge-label-anchor[data-flow-edge-id='edge-new']")
+    expect(labelAnchor).toHaveClass("is-empty")
+    expect(labelAnchor).not.toHaveClass("is-hovered")
+
+    const edgeCurve = screen.getByRole("button", { name: "Edge Reactant to Product: path" })
+    fireEvent.pointerEnter(edgeCurve)
+    expect(labelAnchor).toHaveClass("is-hovered")
+
+    fireEvent.click(screen.getByRole("button", { name: "Add path label from Reactant to Product" }))
+    expect(screen.getByRole("textbox", { name: "Path label" })).toBeInTheDocument()
   })
 
   it("renders the empty canvas state without inactive feature text", () => {

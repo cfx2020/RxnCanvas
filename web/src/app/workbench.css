@@ -1103,11 +1103,6 @@ input:focus-visible,
   pointer-events: stroke;
 }
 
-.edge.is-soft .edge-visible-path {
-  stroke-dasharray: 8 8;
-  stroke: rgba(118, 145, 162, 0.45);
-}
-
 .edge.is-selected .edge-visible-path {
   stroke: rgba(22, 126, 104, 0.86);
   stroke-width: 3;
@@ -1181,6 +1176,7 @@ input:focus-visible,
 
 .barrier-arrow {
   stroke: rgba(217, 99, 82, 0.78);
+  stroke-dasharray: 6 7;
   stroke-width: 2.6;
 }
 
@@ -9824,7 +9820,7 @@ select,
 
 .project-rail-resize-handle {
   position: absolute !important;
-  top: var(--rxnflow-titlebar-height, 36px) !important;
+  top: 0 !important;
   right: -5px !important;
   bottom: 0 !important;
   z-index: 140 !important;
@@ -9841,8 +9837,8 @@ select,
 .project-rail-resize-handle::after {
   content: "" !important;
   position: absolute !important;
-  top: 12px !important;
-  bottom: 12px !important;
+  top: 0 !important;
+  bottom: 0 !important;
   left: 4px !important;
   width: 2px !important;
   border-radius: 999px !important;
@@ -9921,10 +9917,14 @@ select,
   --rxnflow-sidebar-flyout-top: 38px !important;
   --rxnflow-sidebar-flyout-height-gap: 54px !important;
   --rxnflow-sidebar-divider: rgba(126, 152, 169, 0.18);
+  --rxnflow-inspector-surface: rgb(247, 252, 253);
+  --rxnflow-inspector-divider: rgba(118, 144, 160, 0.22);
 }
 
 .theme-dark {
   --rxnflow-sidebar-divider: rgba(145, 180, 199, 0.14);
+  --rxnflow-inspector-surface: rgb(14, 28, 39);
+  --rxnflow-inspector-divider: rgba(145, 180, 199, 0.16);
 }
 
 .workbench-shell {
@@ -10005,25 +10005,20 @@ select,
   color: #c9d7e2 !important;
 }
 
-/* 2026-06-26 continuous rail divider: the fixed titlebar surface can tint the
-   rail's own border at the very top. Paint the sidebar/canvas separator as a
-   single independent hairline above the titlebar surface so it stays the same
-   strength from top to bottom. */
-.workspace::before {
+/* 2026-06-26 continuous rail divider: keep the sidebar/canvas separator attached
+   to the rail itself. A fixed workspace-level hairline appears/disappears at
+   the end of the rail open animation; the rail-owned line moves with the pane. */
+.workspace:not(.is-left-collapsed) .project-rail::before {
   content: "" !important;
-  position: fixed !important;
+  position: absolute !important;
   top: 0 !important;
   bottom: 0 !important;
-  left: calc(var(--rxnflow-project-rail-width, 248px) - 1px) !important;
+  right: 0 !important;
   width: 1px !important;
   background: var(--rxnflow-sidebar-divider) !important;
   pointer-events: none !important;
-  z-index: 115 !important;
+  z-index: 2 !important;
   opacity: 1 !important;
-}
-
-.workspace.is-left-collapsed::before {
-  opacity: 0 !important;
 }
 
 .project-rail,
@@ -11014,11 +11009,22 @@ select,
 .workspace:not(.is-right-collapsed) .inspector-panel {
   width: var(--rxnflow-inspector-width) !important;
   border-top-left-radius: 0 !important;
-  background: rgba(250, 253, 255, 0.74) !important;
+  background: var(--rxnflow-inspector-surface) !important;
+}
+
+.workspace:not(.is-right-collapsed) .inspector-panel::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 1px !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 1px !important;
+  background: var(--rxnflow-inspector-divider) !important;
+  pointer-events: none !important;
 }
 
 .theme-dark .workspace:not(.is-right-collapsed) .inspector-panel {
-  background: rgba(12, 24, 34, 0.84) !important;
+  background: var(--rxnflow-inspector-surface) !important;
 }
 
 .node-summary-grid div,
@@ -13893,4 +13899,51 @@ select,
 .app-shell.is-window-fullscreen.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs,
 .app-shell.is-window-maximized.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
   left: 58px !important;
+}
+
+/* 2026-06-27 edge labels: empty Add label capsules should be contextual.
+   Keep existing labels visible, but only reveal the Add label affordance when
+   the matching curve is hovered/selected or the capsule itself has focus. */
+.edge-label-anchor.is-empty {
+  pointer-events: none !important;
+}
+
+.edge-label-anchor.is-empty .edge-label-add {
+  opacity: 0 !important;
+  transform: translateY(2px) scale(0.96) !important;
+  background: rgba(248, 252, 252, 0) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
+  transition: opacity 120ms ease, transform 120ms ease, background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease !important;
+}
+
+.edge-label-anchor.is-empty:focus-within,
+.edge-label-anchor.is-empty.is-hovered,
+.edge-label-anchor.is-empty.is-editing {
+  pointer-events: auto !important;
+}
+
+.edge-label-anchor.is-empty:focus-within .edge-label-add,
+.edge-label-anchor.is-empty.is-hovered .edge-label-add,
+.edge-label-anchor.is-empty.is-editing .edge-label-add {
+  opacity: 1 !important;
+  transform: translateY(0) scale(1) !important;
+  background: rgba(248, 252, 252, 0.88) !important;
+  border-color: rgba(136, 164, 181, 0.2) !important;
+  box-shadow: 0 10px 22px rgba(43, 68, 86, 0.1) !important;
+  pointer-events: auto !important;
+}
+
+.theme-dark .edge-label-anchor.is-empty .edge-label-add {
+  background: rgba(25, 36, 45, 0) !important;
+  border-color: transparent !important;
+}
+
+.theme-dark .edge-label-anchor.is-empty:focus-within .edge-label-add,
+.theme-dark .edge-label-anchor.is-empty.is-hovered .edge-label-add,
+.theme-dark .edge-label-anchor.is-empty.is-editing .edge-label-add {
+  background: rgba(31, 45, 56, 0.92) !important;
+  border-color: rgba(112, 140, 158, 0.28) !important;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.26) !important;
 }

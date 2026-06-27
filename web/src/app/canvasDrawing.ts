@@ -23,6 +23,8 @@ export type BarrierSegment = {
   targetLabel: string
 }
 
+export type BarrierRelativeEnergyLookup = ReadonlyMap<string, number | null>
+
 export function createEdgeSegment(source: FlowNode, target: FlowNode): EdgeSegment {
   const start = edgeSourceAnchor(source)
   const end = edgeTargetAnchor(target)
@@ -60,64 +62,106 @@ export function createBarrierSegment(
   barrier: FlowBarrier,
   nodeMap: Map<string, FlowNode>,
   energyDisplayOptions: EnergyDisplayOptions,
+  relativeEnergyByNodeId?: BarrierRelativeEnergyLookup,
 ): BarrierSegment | null {
   const source = nodeMap.get(barrier.sourceId)
   const target = nodeMap.get(barrier.targetId)
   if (!source || !target) return null
-  const sourceSize = flowNodeSize(source)
-  const targetSize = flowNodeSize(target)
-  const sourceAnchor = { x: source.position.x + sourceSize.width * 0.5, y: source.position.y + sourceSize.height + 12 }
-  const targetOnRight = target.position.x + targetSize.width * 0.5 >= sourceAnchor.x
-  const targetAnchor = {
-    x: target.position.x + (targetOnRight ? 0 : targetSize.width),
-    y: target.position.y + targetSize.height * 0.5,
-  }
-  const arrowX = sourceAnchor.x
-  const sourceY = sourceAnchor.y + 10
-  const targetY = targetAnchor.y
-  const topY = Math.min(sourceY, targetY)
-  const bottomY = Math.max(sourceY, targetY)
-  const compact = Math.abs(sourceY - targetY) < 48
-  const compactCenterY = ((sourceY + targetY) / 2) + (targetY >= sourceY ? 40 : -40)
-  const arrowTop = compact ? compactCenterY - 28 : topY
-  const arrowBottom = compact ? compactCenterY + 28 : bottomY
-  const sourceGuideY = compact ? compactCenterY : sourceY
-  const targetGuideY = compact ? compactCenterY : sourceY > targetY ? arrowTop : arrowBottom
-  const defaultLabel = defaultBarrierLabel(source, target, energyDisplayOptions)
+  const endpoints = resolveBarrierEndpoints(source, target, relativeEnergyByNodeId)
+  const peakSize = flowNodeSize(endpoints.peak)
+  const referenceAnchor = barrierReferenceAnchor(endpoints.reference, endpoints.peak)
+  const rulerGapFromPeak = 28
+  const minRulerSpan = 76
+  const arrowX = endpoints.peak.position.x + peakSize.width * 0.5
+  const peakEnergyY = endpoints.peak.position.y + peakSize.height + rulerGapFromPeak
+  const referenceEnergyY = Math.max(referenceAnchor.y, peakEnergyY + minRulerSpan)
+  const arrowTop = Math.min(peakEnergyY, referenceEnergyY)
+  const arrowBottom = Math.max(peakEnergyY, referenceEnergyY)
+  const defaultLabel = defaultBarrierLabel(source, target, energyDisplayOptions, relativeEnergyByNodeId)
   const label = barrier.label?.trim() || defaultLabel
 
   return {
     id: barrier.id,
     arrowPath: `M ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(arrowTop)} L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(arrowBottom)}`,
     guidePath: [
-      `M ${roundPathCoordinate(sourceAnchor.x)} ${roundPathCoordinate(sourceAnchor.y)}`,
-      `L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(sourceGuideY)}`,
-      `M ${roundPathCoordinate(targetAnchor.x)} ${roundPathCoordinate(targetAnchor.y)}`,
-      `L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(targetGuideY)}`,
-    ].join(" "),
+      `M ${roundPathCoordinate(referenceAnchor.x)} ${roundPathCoordinate(referenceAnchor.y)}`,
+      referenceAnchor.y === referenceEnergyY
+        ? ""
+        : `L ${roundPathCoordinate(referenceAnchor.x)} ${roundPathCoordinate(referenceEnergyY)}`,
+      `L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(referenceEnergyY)}`,
+    ].filter(Boolean).join(" "),
     label,
     defaultLabel,
     labelPoint: { x: arrowX, y: (arrowTop + arrowBottom) / 2 },
-    sourceLabel: source.label,
-    targetLabel: target.label,
+    sourceLabel: endpoints.reference.label,
+    targetLabel: endpoints.peak.label,
   }
+}
+
+function barrierReferenceAnchor(reference: FlowNode, peak: FlowNode): Point {
+  return peak.position.x >= reference.position.x
+    ? edgeSourceAnchor(reference)
+    : edgeTargetAnchor(reference)
 }
 
 export function defaultBarrierLabel(
   source: FlowNode,
   target: FlowNode,
   energyDisplayOptions: EnergyDisplayOptions,
+  relativeEnergyByNodeId?: BarrierRelativeEnergyLookup,
 ): string {
-  const gasDelta = energyDeltaKcal(source.energyGas, source.energyUnit, target.energyGas, target.energyUnit)
-  const solutionDelta = energyDeltaKcal(source.energySolution, source.energyUnit, target.energySolution, target.energyUnit)
+  const preferredSymbol = energyDisplayOptions.energySource === "solution" ? "ΔG‡" : "ΔE‡"
+  const endpoints = resolveBarrierEndpoints(source, target, relativeEnergyByNodeId)
+  if (relativeEnergyByNodeId) {
+    const referenceRelative = relativeEnergyByNodeId.get(endpoints.reference.id)
+    const peakRelative = relativeEnergyByNodeId.get(endpoints.peak.id)
+    const delta = typeof referenceRelative === "number" && typeof peakRelative === "number"
+      ? peakRelative - referenceRelative
+      : null
+    if (typeof delta !== "number") return `${preferredSymbol} pending`
+    const value = relativeEnergyValueFromKcal(delta, energyDisplayOptions.outputUnit)
+    return `${preferredSymbol} ${formatBarrierValue(value, energyDisplayOptions.outputUnit)}`
+  }
+
+  const gasDelta = energyDeltaKcal(endpoints.reference.energyGas, endpoints.reference.energyUnit, endpoints.peak.energyGas, endpoints.peak.energyUnit)
+  const solutionDelta = energyDeltaKcal(endpoints.reference.energySolution, endpoints.reference.energyUnit, endpoints.peak.energySolution, endpoints.peak.energyUnit)
   const preferredDelta = energyDisplayOptions.energySource === "solution" ? solutionDelta : gasDelta
   const fallbackDelta = energyDisplayOptions.energySource === "solution" ? gasDelta : solutionDelta
   const delta = preferredDelta ?? fallbackDelta
-  const preferredSymbol = energyDisplayOptions.energySource === "solution" ? "ΔG‡" : "ΔE‡"
   const fallbackSymbol = energyDisplayOptions.energySource === "solution" ? "ΔE‡" : "ΔG‡"
   if (typeof delta !== "number") return `${preferredSymbol} pending`
   const value = relativeEnergyValueFromKcal(delta, energyDisplayOptions.outputUnit)
   return `${preferredDelta === null ? fallbackSymbol : preferredSymbol} ${formatBarrierValue(value, energyDisplayOptions.outputUnit)}`
+}
+
+
+type BarrierResolvedEndpoints = {
+  reference: FlowNode
+  peak: FlowNode
+}
+
+function resolveBarrierEndpoints(
+  source: FlowNode,
+  target: FlowNode,
+  relativeEnergyByNodeId?: BarrierRelativeEnergyLookup,
+): BarrierResolvedEndpoints {
+  const sourceIsTransition = source.kind === "transition"
+  const targetIsTransition = target.kind === "transition"
+  if (sourceIsTransition !== targetIsTransition) {
+    return sourceIsTransition
+      ? { reference: target, peak: source }
+      : { reference: source, peak: target }
+  }
+
+  const sourceRelative = relativeEnergyByNodeId?.get(source.id)
+  const targetRelative = relativeEnergyByNodeId?.get(target.id)
+  if (typeof sourceRelative === "number" && typeof targetRelative === "number" && sourceRelative !== targetRelative) {
+    return sourceRelative > targetRelative
+      ? { reference: target, peak: source }
+      : { reference: source, peak: target }
+  }
+
+  return { reference: source, peak: target }
 }
 
 export function energyDeltaKcal(

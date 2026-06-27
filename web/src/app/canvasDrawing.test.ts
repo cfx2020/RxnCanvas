@@ -11,12 +11,18 @@ import {
   roundPathCoordinate,
 } from "./canvasDrawing"
 
-function flowNode(id: string, position: { x: number; y: number }, energyGas = 0, energySolution = 0): FlowNode {
+function flowNode(
+  id: string,
+  position: { x: number; y: number },
+  energyGas = 0,
+  energySolution = 0,
+  kind: FlowNode["kind"] = "reactant",
+): FlowNode {
   return {
     id,
     label: id,
     formula: "H2",
-    kind: "reactant",
+    kind,
     method: "wB97X-D",
     solvent: "SMD",
     energyGas,
@@ -47,24 +53,24 @@ describe("canvasDrawing", () => {
       .toBe("M 105 222 C 105 294, 250 350, 250 422")
   })
 
-  it("creates expanded and compact barrier annotation geometry", () => {
-    const source = flowNode("source", { x: 0, y: 0 }, 0, 0)
-    const target = flowNode("target", { x: 320, y: 80 }, 5, 7)
+  it("creates an energy-ruler barrier annotation geometry", () => {
+    const source = flowNode("source", { x: 0, y: 320 }, 0, 0)
+    const target = flowNode("target", { x: 320, y: 40 }, 5, 7)
     const nodeMap = new Map([source, target].map((node) => [node.id, node]))
     const barrier: FlowBarrier = { id: "barrier-a", sourceId: source.id, targetId: target.id }
 
     expect(createBarrierSegment(barrier, nodeMap, defaultEnergyDisplayOptions)).toEqual({
       id: "barrier-a",
-      arrowPath: "M 105 187 L 105 236",
-      guidePath: "M 105 226 L 105 236 M 320 187 L 105 187",
+      arrowPath: "M 425 282 L 425 427",
+      guidePath: "M 210 427 L 425 427",
       label: "ΔG‡ 7.00",
       defaultLabel: "ΔG‡ 7.00",
-      labelPoint: { x: 105, y: 211.5 },
+      labelPoint: { x: 425, y: 354.5 },
       sourceLabel: "source",
       targetLabel: "target",
     })
 
-    const compactTarget = flowNode("compact", { x: 320, y: 20 }, 2, 4)
+    const compactTarget = flowNode("compact", { x: 320, y: 80 }, 2, 4)
     const compactMap = new Map([source, compactTarget].map((node) => [node.id, node]))
 
     expect(createBarrierSegment(
@@ -72,12 +78,94 @@ describe("canvasDrawing", () => {
       compactMap,
       defaultEnergyDisplayOptions,
     )).toMatchObject({
-      arrowPath: "M 105 127 L 105 236",
-      guidePath: "M 105 226 L 105 236 M 320 127 L 105 127",
+      arrowPath: "M 425 322 L 425 427",
+      guidePath: "M 210 427 L 425 427",
       label: "custom",
       defaultLabel: "ΔG‡ 4.00",
-      labelPoint: { x: 105, y: 181.5 },
+      labelPoint: { x: 425, y: 374.5 },
     })
+  })
+
+  it("anchors reversed transition barriers under the transition peak", () => {
+    const intermediate = flowNode("tsf", { x: 0, y: 320 }, 0, 0, "intermediate")
+    const transition = flowNode("ts", { x: 320, y: 40 }, 5, 7, "transition")
+    const nodeMap = new Map([intermediate, transition].map((node) => [node.id, node]))
+    const relativeLookup = new Map([["tsf", 18.81], ["ts", 24.85]])
+
+    expect(createBarrierSegment(
+      { id: "forward", sourceId: intermediate.id, targetId: transition.id },
+      nodeMap,
+      defaultEnergyDisplayOptions,
+      relativeLookup,
+    )).toMatchObject({
+      arrowPath: "M 425 282 L 425 427",
+      guidePath: "M 210 427 L 425 427",
+      label: "ΔG‡ 6.04",
+      sourceLabel: "tsf",
+      targetLabel: "ts",
+    })
+
+    expect(createBarrierSegment(
+      { id: "reversed", sourceId: transition.id, targetId: intermediate.id },
+      nodeMap,
+      defaultEnergyDisplayOptions,
+      relativeLookup,
+    )).toMatchObject({
+      arrowPath: "M 425 282 L 425 427",
+      guidePath: "M 210 427 L 425 427",
+      label: "ΔG‡ 6.04",
+      sourceLabel: "tsf",
+      targetLabel: "ts",
+    })
+  })
+
+  it("keeps a minimum visible ruler span when nodes are too close", () => {
+    const source = flowNode("source", { x: 0, y: 0 }, 0, 0)
+    const nearbyTarget = flowNode("target", { x: 320, y: 68 }, 5, 7)
+    const nodeMap = new Map([source, nearbyTarget].map((node) => [node.id, node]))
+
+    const segment = createBarrierSegment(
+      { id: "barrier-a", sourceId: source.id, targetId: nearbyTarget.id },
+      nodeMap,
+      defaultEnergyDisplayOptions,
+    )
+
+    expect(segment?.arrowPath).toBe("M 425 310 L 425 386")
+    expect(segment?.guidePath).toBe("M 210 107 L 210 386 L 425 386")
+    expect(segment?.labelPoint).toEqual({ x: 425, y: 348 })
+  })
+
+  it("formats barrier labels from path-relative energy rows when available", () => {
+    const source = flowNode("source", { x: 0, y: 0 }, 0, 0)
+    const target = flowNode("target", { x: 0, y: 0 }, 2, 6)
+
+    expect(defaultBarrierLabel(
+      source,
+      target,
+      defaultEnergyDisplayOptions,
+      new Map([["source", 0], ["target", 12.34]]),
+    )).toBe("ΔG‡ 12.34")
+
+    expect(defaultBarrierLabel(
+      { ...target, kind: "transition" },
+      source,
+      defaultEnergyDisplayOptions,
+      new Map([["source", 0], ["target", 12.34]]),
+    )).toBe("ΔG‡ 12.34")
+
+    expect(defaultBarrierLabel(
+      source,
+      target,
+      defaultEnergyDisplayOptions,
+      new Map([["source", null], ["target", 12.34]]),
+    )).toBe("ΔG‡ pending")
+
+    expect(defaultBarrierLabel(
+      source,
+      target,
+      defaultEnergyDisplayOptions,
+      new Map([["target", 12.34]]),
+    )).toBe("ΔG‡ pending")
   })
 
   it("formats barrier labels from selected energy display and falls back", () => {
