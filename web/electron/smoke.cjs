@@ -478,6 +478,63 @@ async function verifyProjectDirectoryStore() {
       throw new Error(`Project source copy failed: ${storedRaw}`)
     }
 
+    const rawFilePathB = path.join(tempDir, "4b.log")
+    const rawFilePathC = path.join(tempDir, "4b-sol.log")
+    fs.writeFileSync(rawFilePathB, "SCF Done: E(RwB97XD) = -101.0", "utf8")
+    fs.writeFileSync(rawFilePathC, "SCF Done: E(RwB97XD) = -102.0", "utf8")
+    const multiSourceProject = {
+      ...JSON.parse(projectContent),
+      files: [
+        JSON.parse(projectContent).files[0],
+        {
+          id: "desktop-file-4b",
+          name: "4b.log",
+          kind: "Gaussian",
+          size: 31,
+          status: "parsed",
+          preview: "SCF Done: E(RwB97XD) = -101.0",
+          sourcePath: rawFilePathB,
+        },
+        {
+          id: "desktop-file-4b-sol",
+          name: "4b-sol.log",
+          kind: "Gaussian",
+          size: 31,
+          status: "parsed",
+          preview: "SCF Done: E(RwB97XD) = -102.0",
+          sourcePath: rawFilePathC,
+        },
+      ],
+    }
+    const savedMultiSource = await saveProjectContent(projectPath, JSON.stringify(multiSourceProject), {
+      previousProjectDirectory: projectPath,
+    })
+    const restoredMultiSource = JSON.parse(savedMultiSource.content)
+    const keptSourcePathBeforeDelete = restoredMultiSource.files?.[2]?.storedPath
+    const deletedMiddleSourceProject = {
+      ...restoredMultiSource,
+      files: [restoredMultiSource.files[0], restoredMultiSource.files[2]],
+    }
+    const savedAfterDelete = await saveProjectContent(projectPath, JSON.stringify(deletedMiddleSourceProject), {
+      previousProjectDirectory: projectPath,
+    })
+    const restoredAfterDelete = JSON.parse(savedAfterDelete.content)
+    if (restoredAfterDelete.files?.length !== 2) {
+      throw new Error(`Project source deletion did not persist file count: ${savedAfterDelete.content}`)
+    }
+    if (restoredAfterDelete.files?.[1]?.storedPath !== keptSourcePathBeforeDelete) {
+      throw new Error(`Project source deletion renumbered a kept source: ${JSON.stringify({
+        before: keptSourcePathBeforeDelete,
+        after: restoredAfterDelete.files?.[1]?.storedPath,
+      })}`)
+    }
+    if (!fs.readFileSync(path.join(projectPath, keptSourcePathBeforeDelete), "utf8").includes("-102.0")) {
+      throw new Error("Project source deletion did not preserve kept source bytes")
+    }
+    if (fs.existsSync(path.join(projectPath, restoredMultiSource.files?.[1]?.storedPath))) {
+      throw new Error("Project source deletion left an unreferenced middle source copy")
+    }
+
     const artifactContent = Buffer.from("png-bytes")
     const artifactResult = await saveProjectReportArtifact(projectPath, {
       defaultName: "rxnflow-profile.png",
@@ -496,7 +553,7 @@ async function verifyProjectDirectoryStore() {
     const archivePath = path.join(tempDir, "alpha-study.rxnflow.zip")
     await exportProjectWorkspaceArchive(projectPath, archivePath)
     const archiveBytes = fs.readFileSync(archivePath)
-    for (const entryName of [".rxnflow/project.json", ".rxnflow/manifest.json", "sources/01-gaussian-log-gaussian.log", "exports/manifest.json"]) {
+    for (const entryName of [".rxnflow/project.json", ".rxnflow/manifest.json", "sources/gaussian.log", "exports/manifest.json"]) {
       if (!archiveBytes.includes(Buffer.from(entryName))) {
         throw new Error(`Project archive is missing ${entryName}`)
       }

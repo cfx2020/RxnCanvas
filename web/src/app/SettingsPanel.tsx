@@ -1,0 +1,181 @@
+import type { ReactNode } from "react"
+import { FileText, FlaskConical, Monitor, Palette, Ruler, X } from "lucide-react"
+import type { AppearancePreference, DesktopPreferences, EnergyOutputUnitPreference, SourceOpenerProfile } from "./desktopPreferences"
+
+const appearanceOptions: Array<{ value: AppearancePreference; label: string; description: string }> = [
+  { value: "system", label: "Follow system", description: "Use macOS / Windows appearance." },
+  { value: "light", label: "Light", description: "Keep RxnFlow bright." },
+  { value: "dark", label: "Dark", description: "Use the dark workbench." },
+]
+
+const energyUnitOptions: Array<{ value: EnergyOutputUnitPreference; label: string; description: string }> = [
+  { value: "kcal/mol", label: "kcal", description: "Default for reaction profiles." },
+  { value: "hartree", label: "Eh", description: "Absolute quantum chemistry unit." },
+  { value: "kj/mol", label: "kJ", description: "SI-friendly reports." },
+]
+
+export function SettingsPanel({
+  preferences,
+  desktopAvailable,
+  onAppearanceChange,
+  onEnergyUnitChange,
+  onChooseOpener,
+  onClearOpener,
+  onClose,
+}: {
+  preferences: DesktopPreferences
+  desktopAvailable: boolean
+  onAppearanceChange: (appearance: AppearancePreference) => void
+  onEnergyUnitChange: (unit: EnergyOutputUnitPreference) => void
+  onChooseOpener: (profile: SourceOpenerProfile) => void
+  onClearOpener: (profile: SourceOpenerProfile) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="settings-backdrop" onPointerDown={onClose}>
+      <aside
+        className="settings-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <header className="settings-panel-header">
+          <div className="settings-panel-titlemark" aria-hidden="true">
+            <Palette size={16} />
+          </div>
+          <div>
+            <strong>Preferences</strong>
+            <span>Local workspace settings for this computer.</span>
+          </div>
+          <button type="button" className="settings-panel-close" aria-label="Close settings" title="Close settings" onClick={onClose}>
+            <X size={15} aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="settings-panel-body">
+          <section className="settings-section" aria-labelledby="settings-section-appearance">
+            <div className="settings-section-heading">
+              <span className="settings-section-icon" aria-hidden="true"><Monitor size={15} /></span>
+              <div>
+                <h2 id="settings-section-appearance">Appearance</h2>
+                <p>Choose how RxnFlow follows your system theme.</p>
+              </div>
+            </div>
+            <label className="settings-row">
+              <span className="settings-row-copy">
+                <strong>Theme</strong>
+                <em>{appearanceOptions.find((option) => option.value === preferences.appearance)?.description}</em>
+              </span>
+              <select
+                aria-label="Appearance"
+                value={preferences.appearance}
+                onChange={(event) => onAppearanceChange(event.currentTarget.value as AppearancePreference)}
+              >
+                {appearanceOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          </section>
+
+          <section className="settings-section" aria-labelledby="settings-section-units">
+            <div className="settings-section-heading">
+              <span className="settings-section-icon" aria-hidden="true"><Ruler size={15} /></span>
+              <div>
+                <h2 id="settings-section-units">Energy display</h2>
+                <p>Controls the unit used across canvas labels and tables.</p>
+              </div>
+            </div>
+            <label className="settings-row">
+              <span className="settings-row-copy">
+                <strong>Default unit</strong>
+                <em>{energyUnitOptions.find((option) => option.value === preferences.energyOutputUnit)?.description}</em>
+              </span>
+              <select
+                aria-label="Energy unit"
+                value={preferences.energyOutputUnit}
+                onChange={(event) => onEnergyUnitChange(event.currentTarget.value as EnergyOutputUnitPreference)}
+              >
+                {energyUnitOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          </section>
+
+          <section className="settings-section" aria-labelledby="settings-section-openers">
+            <div className="settings-section-heading">
+              <span className="settings-section-icon" aria-hidden="true"><FlaskConical size={15} /></span>
+              <div>
+                <h2 id="settings-section-openers">External apps</h2>
+                <p>Pick which local applications open calculation outputs.</p>
+              </div>
+            </div>
+            <OpenerField
+              icon={<FlaskConical size={15} />}
+              label="Gaussian logs"
+              description="Open Gaussian output with GaussView or another molecular viewer."
+              profile="gaussian"
+              value={preferences.sourceOpeners.gaussian?.label ?? preferences.sourceOpeners.gaussian?.appPath ?? "Not set"}
+              desktopAvailable={desktopAvailable}
+              onChooseOpener={onChooseOpener}
+              onClearOpener={onClearOpener}
+            />
+            <OpenerField
+              icon={<FileText size={15} />}
+              label="Text outputs"
+              description="Open ORCA, MAPLE and other text files with your preferred editor."
+              profile="text"
+              value={preferences.sourceOpeners.text?.label ?? preferences.sourceOpeners.text?.appPath ?? "Not set"}
+              desktopAvailable={desktopAvailable}
+              onChooseOpener={onChooseOpener}
+              onClearOpener={onClearOpener}
+            />
+          </section>
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+function OpenerField({
+  icon,
+  label,
+  description,
+  profile,
+  value,
+  desktopAvailable,
+  onChooseOpener,
+  onClearOpener,
+}: {
+  icon: ReactNode
+  label: string
+  description: string
+  profile: SourceOpenerProfile
+  value: string
+  desktopAvailable: boolean
+  onChooseOpener: (profile: SourceOpenerProfile) => void
+  onClearOpener: (profile: SourceOpenerProfile) => void
+}) {
+  const displayedValue = desktopAvailable ? value : "Desktop app only"
+  const configured = desktopAvailable && value !== "Not set"
+  return (
+    <div className="settings-row settings-opener-field">
+      <span className="settings-row-glyph" aria-hidden="true">{icon}</span>
+      <span className="settings-row-copy">
+        <strong>{label}</strong>
+        <em>{description}</em>
+      </span>
+      <div className="settings-opener-control">
+        <div className={`settings-opener-value${configured ? " is-configured" : ""}`} title={displayedValue}>
+          {displayedValue}
+        </div>
+        <div className="settings-opener-actions">
+          <button type="button" onClick={() => onChooseOpener(profile)} disabled={!desktopAvailable}>Choose</button>
+          <button type="button" onClick={() => onClearOpener(profile)} disabled={!desktopAvailable || !configured}>Clear</button>
+        </div>
+      </div>
+    </div>
+  )
+}

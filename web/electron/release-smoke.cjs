@@ -150,7 +150,7 @@ function verifyRuntimeSmokeScript() {
   assert(mainSource.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK"), "Electron main must emit runtime smoke success marker")
   assert(mainSource.includes("forbiddenRuntimeUiTerms"), "Electron runtime smoke must guard inactive UI terms")
   assert(mainSource.includes("node inspector and floating export trigger"), "Electron runtime smoke must verify active node inspector/export trigger")
-  assert(mainSource.includes("PNG|CDXML|XLSX"), "Electron runtime smoke must verify active export formats")
+  assert(mainSource.includes("PNG|XLSX|CDXML"), "Electron runtime smoke must verify active export menu formats")
   assert(mainSource.includes("inactiveExportFormats"), "Electron runtime smoke must guard inactive export formats")
   assert(mainSource.includes("titleBarStyle: process.platform === \"darwin\" ? \"hidden\" : \"default\""), "macOS window must use hidden titlebar instead of hiddenInset")
   assert(mainSource.includes("trafficLightPosition: macTrafficLightPosition"), "macOS traffic lights must use a stable explicit position")

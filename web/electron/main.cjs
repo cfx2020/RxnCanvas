@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron")
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, shell } = require("electron")
 const fs = require("node:fs/promises")
 const path = require("node:path")
 const { getEngineStatus, runEngineRequest } = require("./engine-bridge.cjs")
@@ -16,6 +16,17 @@ const {
   removeRecentProjectState,
   recentProjectLabel,
 } = require("./recent-projects.cjs")
+const {
+  loadPreferences,
+  patchPreferences,
+  savePreferences,
+} = require("./preferences-store.cjs")
+const {
+  appLabel,
+  openFileWithApp,
+  resolveOpenerApp,
+  sourceOpenerProfile,
+} = require("./source-openers.cjs")
 
 const devServerUrl = process.env.RXNFLOW_DESKTOP_DEV_SERVER
 const runtimeSmokeExit = process.argv.includes("--rxnflow-smoke-exit")
@@ -23,7 +34,7 @@ const runtimeStartupRestoreSmoke = process.env.RXNFLOW_DESKTOP_SMOKE_STARTUP_RES
 const runtimeSmokeTimeoutMs = Number.parseInt(process.env.RXNFLOW_DESKTOP_SMOKE_TIMEOUT_MS || "12000", 10)
 const userDataDirectoryOverride = process.env.RXNFLOW_DESKTOP_USER_DATA_DIR
 const projectValidationEmbeddedThresholdBytes = 1024 * 1024
-const macTrafficLightPosition = { x: 18, y: 18 }
+const macTrafficLightPosition = { x: 18, y: 12 }
 let recentProjectPaths = []
 let activeProjectPath = null
 let recentProjectsStorePath = null
@@ -54,6 +65,7 @@ function createMainWindow() {
   })
 
   installMacWindowControls(window)
+  installWindowStateBridge(window)
 
   if (runtimeSmokeExit) {
     if (runtimeStartupRestoreSmoke) prepareStartupProjectRestore()
@@ -72,6 +84,31 @@ function createMainWindow() {
   }
 
   return window
+}
+
+function windowStatePayload(window) {
+  return {
+    isFullScreen: typeof window.isFullScreen === "function" ? window.isFullScreen() : false,
+    isMaximized: typeof window.isMaximized === "function" ? window.isMaximized() : false,
+  }
+}
+
+function sendWindowState(window) {
+  if (window.isDestroyed() || window.webContents.isDestroyed()) return
+  window.webContents.send("rxnflow:window-state-changed", windowStatePayload(window))
+}
+
+function installWindowStateBridge(window) {
+  const notifySoon = () => {
+    sendWindowState(window)
+    setTimeout(() => sendWindowState(window), 0)
+  }
+  window.on("maximize", notifySoon)
+  window.on("unmaximize", notifySoon)
+  window.on("enter-full-screen", notifySoon)
+  window.on("leave-full-screen", notifySoon)
+  window.on("restore", notifySoon)
+  window.webContents.on("did-finish-load", notifySoon)
 }
 
 function installMacWindowControls(window) {
@@ -157,9 +194,82 @@ async function projectDirectoryForStartupRestore(filePath) {
 }
 
 function isBundledOrManagedRuntimeProjectDirectory(projectDirectory) {
-  const userDataRoot = path.resolve(userDataDirectoryOverride || app.getPath("userData"))
+  const userDataRoot = path.resolve(userDataDirectory())
   const managedProjectsRoot = path.join(userDataRoot, "projects")
   return isPathInside(projectDirectory, managedProjectsRoot)
+}
+
+function userDataDirectory() {
+  return userDataDirectoryOverride || app.getPath("userData")
+}
+
+async function updatePreferences(patch) {
+  const preferences = await patchPreferences(userDataDirectory(), patch)
+  nativeTheme.themeSource = preferences.appearance
+  broadcastPreferencesChanged(preferences)
+  return preferences
+}
+
+function broadcastPreferencesChanged(preferences) {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    if (!window.isDestroyed()) window.webContents.send("rxnflow:preferences-changed", preferences)
+  })
+}
+
+async function chooseExternalApplication(profile) {
+  const result = await dialog.showOpenDialog({
+    title: profile === "gaussian" ? "Choose GaussView" : "Choose text editor",
+    message: profile === "gaussian" ? "Choose the application used to open Gaussian source files." : "Choose the application used to open text output files.",
+    properties: process.platform === "darwin" ? ["openFile", "openDirectory"] : ["openFile"],
+  })
+  if (result.canceled || !result.filePaths[0]) return null
+  const appPath = path.resolve(result.filePaths[0])
+  return {
+    appPath,
+    label: appLabel(appPath),
+  }
+}
+
+const chemicalClipboardFormatPattern = /(cdxml|chem|chemical|molfile|mdl|mol|rxn|skc|com\.cambridgesoft|public\.utf8|text|xml|html)/i
+const maxClipboardPayloadChars = 2 * 1024 * 1024
+
+function chemicalClipboardPayloads(formats) {
+  const payloads = []
+  const seen = new Set()
+  for (const format of formats) {
+    if (!chemicalClipboardFormatPattern.test(format)) continue
+    try {
+      const buffer = clipboard.readBuffer(format)
+      const decoded = decodeClipboardBuffer(buffer)
+      if (!decoded || seen.has(decoded)) continue
+      seen.add(decoded)
+      payloads.push({ format, text: clampClipboardText(decoded) })
+    } catch (_error) {
+      // Some native pasteboard flavors advertise a format but cannot be read
+      // from the sandboxed renderer path. Ignore those and keep the readable
+      // formats; the renderer will try each candidate in priority order.
+    }
+  }
+  return payloads
+}
+
+function clampClipboardText(text) {
+  return text.length > maxClipboardPayloadChars ? text.slice(0, maxClipboardPayloadChars) : text
+}
+
+function decodeClipboardBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) return ""
+  const hasUtf16Pattern = buffer.length > 3 && (
+    (buffer[0] === 0xff && buffer[1] === 0xfe)
+    || (buffer[0] === 0xfe && buffer[1] === 0xff)
+    || buffer.subarray(0, Math.min(buffer.length, 80)).filter((byte, index) => index % 2 === 1 && byte === 0).length > 12
+  )
+  const utf8 = buffer.toString("utf8").replace(/\u0000/g, "").trim()
+  const utf16 = hasUtf16Pattern ? buffer.toString("utf16le").replace(/^\ufeff/, "").replace(/\u0000/g, "").trim() : ""
+  const decoded = utf16.length > utf8.length ? utf16 : utf8
+  if (!decoded) return ""
+  const printableRatio = decoded.replace(/[^\x09\x0a\x0d\x20-\x7e\u00a0-\uffff]/g, "").length / Math.max(decoded.length, 1)
+  return printableRatio > 0.72 ? decoded : ""
 }
 
 function installRuntimeSmokeExit(window) {
@@ -195,7 +305,6 @@ function installRuntimeSmokeExit(window) {
             "Compute",
             "Profile",
             "Search flows",
-            "Settings",
             "Preferences",
             "More canvas actions",
             "Add Node",
@@ -242,11 +351,11 @@ function installRuntimeSmokeExit(window) {
                 exportTrigger.click()
                 await new Promise((resolve) => window.setTimeout(resolve, 0))
                 const exportPanel = document.querySelector(".export-float-panel .export-panel")
-                const exportFormats = Array.from(document.querySelectorAll(".export-format-grid label"))
-                  .map((label) => label.textContent?.trim())
+                const exportFormats = Array.from(document.querySelectorAll(".export-menu-item"))
+                  .map((button) => button.textContent?.trim())
                   .filter(Boolean)
-                if (!exportPanel || exportFormats.join("|") !== "PNG|CDXML|XLSX") {
-                  reject(new Error("desktop renderer export formats must be PNG, CDXML, XLSX"))
+                if (!exportPanel || exportFormats.join("|") !== "PNG|XLSX|CDXML") {
+                  reject(new Error("desktop renderer export formats must be PNG, XLSX, CDXML"))
                   return
                 }
                 const inactiveExportFormats = ["CSV", "SVG", "PDF", "PPTX", "CDX", "JSON"]
@@ -512,6 +621,11 @@ async function openRecentProject(filePath, focusedWindow) {
     })
   }
 }
+
+ipcMain.handle("rxnflow:get-window-state", async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  return window ? windowStatePayload(window) : { isFullScreen: false, isMaximized: false }
+})
 
 ipcMain.handle("rxnflow:choose-files", async () => {
   const result = await dialog.showOpenDialog({
@@ -843,6 +957,51 @@ ipcMain.handle("rxnflow:forget-project", async (_event, payload) => {
   return { ok: true, projectDirectory }
 })
 
+ipcMain.handle("rxnflow:get-preferences", async () => {
+  const preferences = await loadPreferences(userDataDirectory())
+  nativeTheme.themeSource = preferences.appearance
+  return { ok: true, preferences }
+})
+
+ipcMain.handle("rxnflow:set-preferences", async (_event, patch) => {
+  const preferences = await updatePreferences(patch && typeof patch === "object" ? patch : {})
+  return { ok: true, preferences }
+})
+
+ipcMain.handle("rxnflow:choose-external-app", async (_event, payload) => {
+  const profile = payload?.profile === "gaussian" ? "gaussian" : "text"
+  const selected = await chooseExternalApplication(profile)
+  if (!selected) return { canceled: true }
+  const preferences = await updatePreferences({
+    sourceOpeners: {
+      [profile]: selected,
+    },
+  })
+  return { canceled: false, ...selected, preferences }
+})
+
+ipcMain.handle("rxnflow:read-chemical-clipboard", async () => {
+  try {
+    const formats = clipboard.availableFormats("clipboard")
+    const text = clipboard.readText("clipboard")
+    const html = clipboard.readHTML("clipboard")
+    const payloads = chemicalClipboardPayloads(formats)
+    return {
+      ok: true,
+      formats,
+      ...(text ? { text: clampClipboardText(text) } : {}),
+      ...(html ? { html: clampClipboardText(html) } : {}),
+      payloads,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      formats: [],
+      error: error instanceof Error ? error.message : "Could not read clipboard.",
+    }
+  }
+})
+
 ipcMain.handle("rxnflow:open-source-file", async (_event, payload) => {
   const candidates = []
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
@@ -859,9 +1018,18 @@ ipcMain.handle("rxnflow:open-source-file", async (_event, payload) => {
     try {
       const stats = await fs.stat(filePath)
       if (!stats.isFile()) continue
-      const error = await shell.openPath(filePath)
-      if (!error) return { ok: true, filePath }
-      return { ok: false, filePath, error }
+      const profile = sourceOpenerProfile(payload)
+      let preferences = await loadPreferences(userDataDirectory())
+      let opener = await resolveOpenerApp({ profile, preferences, platform: process.platform })
+      if (!opener) {
+        const selected = await chooseExternalApplication(profile)
+        if (!selected) return { ok: false, canceled: true, filePath, profile }
+        preferences = await updatePreferences({ sourceOpeners: { [profile]: selected } })
+        opener = { ...selected, source: "selected" }
+      }
+      const result = await openFileWithApp({ appPath: opener.appPath, filePath, platform: process.platform })
+      if (result.ok) return { ok: true, filePath, profile, appPath: opener.appPath }
+      return { ok: false, filePath, profile, appPath: opener.appPath, error: result.error }
     } catch {
       // Try the next candidate.
     }
@@ -1170,7 +1338,9 @@ function safeWorkspaceFolderName(value) {
 
 app.whenReady().then(async () => {
   app.setName("RxnFlow")
-  recentProjectsStorePath = path.join(userDataDirectoryOverride || app.getPath("userData"), "recent-projects.json")
+  recentProjectsStorePath = path.join(userDataDirectory(), "recent-projects.json")
+  const preferences = await loadPreferences(userDataDirectory())
+  nativeTheme.themeSource = preferences.appearance
   const recentProjectState = await loadRecentProjectsState(recentProjectsStorePath)
   recentProjectPaths = recentProjectState.projectPaths
   activeProjectPath = recentProjectState.activeProjectPath

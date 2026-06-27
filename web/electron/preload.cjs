@@ -15,6 +15,21 @@ contextBridge.exposeInMainWorld("rxnflowDesktop", {
   setActiveProject: (payload) => ipcRenderer.invoke("rxnflow:set-active-project", payload),
   forgetProject: (payload) => ipcRenderer.invoke("rxnflow:forget-project", payload),
   openSourceFile: (payload) => ipcRenderer.invoke("rxnflow:open-source-file", payload),
+  getPreferences: () => ipcRenderer.invoke("rxnflow:get-preferences"),
+  setPreferences: (payload) => ipcRenderer.invoke("rxnflow:set-preferences", payload),
+  chooseExternalApp: (payload) => ipcRenderer.invoke("rxnflow:choose-external-app", payload),
+  readChemicalClipboard: () => ipcRenderer.invoke("rxnflow:read-chemical-clipboard"),
+  getWindowState: () => ipcRenderer.invoke("rxnflow:get-window-state"),
+  onWindowStateChanged: (callback) => {
+    const listener = (_event, state) => callback(state)
+    ipcRenderer.on("rxnflow:window-state-changed", listener)
+    return () => ipcRenderer.removeListener("rxnflow:window-state-changed", listener)
+  },
+  onPreferencesChanged: (callback) => {
+    const listener = (_event, preferences) => callback(preferences)
+    ipcRenderer.on("rxnflow:preferences-changed", listener)
+    return () => ipcRenderer.removeListener("rxnflow:preferences-changed", listener)
+  },
   onMenuImportFiles: (callback) => {
     const listener = () => callback()
     ipcRenderer.on("rxnflow:menu-import-files", listener)
