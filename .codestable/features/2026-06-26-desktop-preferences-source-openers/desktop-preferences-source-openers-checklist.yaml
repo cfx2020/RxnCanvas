@@ -1,0 +1,51 @@
+feature: 2026-06-26-desktop-preferences-source-openers
+created: 2026-06-26
+
+steps:
+  - action: "偏好契约：定义 DesktopPreferences、默认值、读取/写入/校验和 browser fallback"
+    exit_signal: "启动时能拿到 appearance=system 默认值，坏 JSON 自动回退默认并不崩"
+    status: done
+  - action: "Electron opener pipeline：实现 source 路径解析、profile 分类、默认 app 探测、选择应用弹窗和无 shell 打开"
+    exit_signal: "Gaussian source 走 gaussian profile，ORCA/MAPLE source 走 text profile；缺路径时返回清晰错误"
+    status: done
+  - action: "Renderer 设置 UI：左下角 Settings 按钮 + panel，能显示和更新 appearance / energy unit / gaussian app / text app"
+    exit_signal: "点击设置按钮能打开 panel，修改主题、单位和 app path 会写入 preference API"
+    status: done
+  - action: "主题与单位接入：appearance + effectiveTheme 支持 system/dark/light；output unit 迁到 preference，默认 kcal"
+    exit_signal: "system 模式跟随 prefers-color-scheme；dark/light 固定；单位显示随偏好同步"
+    status: done
+  - action: "Toolbar 与右键菜单瘦身：移除 Unit select 和 Delete button，新增 canvas/node context menu"
+    exit_signal: "工具栏不再出现 Unit / Delete；右键节点可 Rename / Set zero / Source details，右键选中内容可 Delete；键盘 Delete 仍可用"
+    status: done
+  - action: "Source 按钮联调：Source 组件按钮文案/tooltip 调整为 Open with external app，调用增强 payload"
+    exit_signal: "点击 Gaussian/ORCA/MAPLE source 触发正确 opener 行为；取消选择 app 后不会报崩溃 warning"
+    status: done
+  - action: "验证收尾：补测试、运行 build/test、浏览器验证设置面板、主题、右键菜单，Electron smoke 覆盖 preference IPC 形状"
+    exit_signal: "Web test/build 通过，Electron main/preload 相关 smoke 通过，UI 在桌面宽度和窄屏无重叠"
+    status: done
+
+checks:
+  - item: "DesktopPreferences 包含 schemaVersion、appearance、energyOutputUnit、sourceOpeners.gaussian/text"
+    source: 名词契约
+    status: passed
+  - item: "偏好保存在 Electron userData，不写入项目 JSON"
+    source: 范围守护
+    status: passed
+  - item: "Source opener 不使用 shell 字符串拼接，应用路径只来自 preference/default probe/user selection"
+    source: 安全约束
+    status: passed
+  - item: "Settings 面板包含 Appearance、Energy unit、Gaussian opener、Text opener"
+    source: 验收场景
+    status: passed
+  - item: "Browser fallback 下 opener controls disabled / Desktop only"
+    source: 编排骨架
+    status: passed
+  - item: "Source open payload 传 sourceKind/parserId，Gaussian 走 gaussian，ORCA/MAPLE/其他走 text"
+    source: 编排骨架
+    status: passed
+  - item: "悬浮工具栏 DOM 不再出现 Unit / Delete selection"
+    source: 范围守护
+    status: passed
+  - item: "节点三点菜单入口不再作为用户可见 node-more-button"
+    source: 范围守护
+    status: passed
