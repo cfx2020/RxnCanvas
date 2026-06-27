@@ -89,7 +89,7 @@ function sourceFile(parse = sourceParseResult()): SourceFile {
 }
 
 describe("InspectorPanels", () => {
-  it("does not render a standalone source panel when no node is selected", () => {
+  it("shows source details when a file is selected and no node is selected", () => {
     const onReviewCandidates = vi.fn()
     const file = sourceFile(sourceParseResult([
       candidate,
@@ -99,16 +99,11 @@ describe("InspectorPanels", () => {
     render(
       <InspectorPanel
         node={null}
-        edge={null}
-        barrier={null}
-        nodeMap={new Map([[baseNode.id, baseNode]])}
         file={file}
         rows={[]}
         files={[file]}
         energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
         onReviewCandidates={onReviewCandidates}
-        onUpdateEdgeLabel={vi.fn()}
-        onUpdateBarrierLabel={vi.fn()}
         onOpenStructure={vi.fn()}
         onEdit2DStructure={vi.fn()}
         onReset2DStructure={vi.fn()}
@@ -117,10 +112,12 @@ describe("InspectorPanels", () => {
     )
 
     expect(screen.getByRole("complementary", { name: "Inspector" })).toBeInTheDocument()
-    expect(screen.getByText("No node selected")).toBeInTheDocument()
-    expect(screen.queryByText("geometry.log")).not.toBeInTheDocument()
+    expect(screen.queryByText("No node selected")).not.toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Source summary" })).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Source inspector" })).toBeInTheDocument()
+    expect(screen.getAllByText("geometry.log")).toHaveLength(2)
     expect(screen.queryByText("gaussian-log-text-preview")).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Review candidates" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Review candidates" })).toBeInTheDocument()
     expect(onReviewCandidates).not.toHaveBeenCalled()
   })
 
@@ -172,10 +169,28 @@ describe("InspectorPanels", () => {
 
     expect(screen.getByRole("dialog", { name: "3D Structure" })).toBeInTheDocument()
     expect(screen.getByText("TS node")).toBeInTheDocument()
-    expect(screen.getByText("3")).toBeInTheDocument()
-    expect(screen.getByText("C, H, O")).toBeInTheDocument()
-    expect(screen.getByText("geometry.log")).toBeInTheDocument()
+    expect(screen.queryByText("C, H, O")).not.toBeInTheDocument()
+    expect(screen.queryByText("geometry.log")).not.toBeInTheDocument()
     expect(screen.getByRole("img", { name: "3Dmol ball-and-stick model with 3 atoms" })).toBeInTheDocument()
-    expect(screen.getByText("3Dmol.js")).toBeInTheDocument()
+    expect(screen.queryByText("3Dmol.js")).not.toBeInTheDocument()
+    expect(screen.queryByText("全屏打开")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Open 3D structure fullscreen" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Play vibration" })).toBeInTheDocument()
+  })
+
+  it("uses disabled icons instead of visible copy for missing structure previews", () => {
+    render(
+      <StructurePreviewDialog
+        node={{ ...baseNode, sourceFileId: undefined, sourceCandidateId: undefined }}
+        file={null}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole("img", { name: "TS node 2D unavailable" })).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: "Coordinate preview unavailable" })).toBeInTheDocument()
+    expect(screen.queryByText("2D unavailable")).not.toBeInTheDocument()
+    expect(screen.queryByText("No 3D coordinates in this source")).not.toBeInTheDocument()
+    expect(screen.queryByText("Import coordinate blocks to preview the structure.")).not.toBeInTheDocument()
   })
 })

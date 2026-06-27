@@ -1,101 +1,44 @@
 import { memo, useMemo, useState, type ReactNode } from "react"
-import { Download, X } from "lucide-react"
+import { X } from "lucide-react"
 import {
-  reportExportFormats,
+  reportExportCapability,
   type ReportExportArtifact,
-  type ReportExportOptions,
+  type ReportExportFormat,
 } from "../domain/reportExports"
 import { kcalPerHartree, type EnergyDisplayOptions, type EnergyTableRow } from "./energyDisplay"
-import { displayExportDestination, formatBytes } from "./fileDisplay"
 
 export type ExportedReportArtifact = ReportExportArtifact & {
   destination?: string
 }
 
 export function ExportDock({
-  options,
-  artifacts,
   busy,
   status,
-  rows,
-  onOptionsChange,
-  onExport,
+  onExportFormat,
 }: {
-  options: ReportExportOptions
-  artifacts: ExportedReportArtifact[]
   busy: boolean
   status: string
-  rows: EnergyTableRow[]
-  onOptionsChange: (options: ReportExportOptions) => void
-  onExport: () => void | Promise<void>
+  onExportFormat: (format: ReportExportFormat) => void | Promise<void>
 }) {
-  const formats = options.formats
+  const formats: ReportExportFormat[] = ["png", "xlsx", "cdxml"]
 
   return (
-    <section className="export-panel" aria-label="Export panel">
-      <div className="selected-title">
-        <div>
-          <span>Report Export</span>
-          <strong>{options.title || "Reaction path report"}</strong>
-        </div>
-        <Download size={18} />
-      </div>
-      <div className="export-format-grid" aria-label="Export formats">
-        {reportExportFormats().map((format) => (
-          <label key={format} className="export-format-option">
-            <input
-              type="checkbox"
-              aria-label={format.toUpperCase()}
-              checked={formats.includes(format)}
-              onChange={(event) => {
-                onOptionsChange({
-                  ...options,
-                  formats: event.currentTarget.checked
-                    ? [...formats, format]
-                    : formats.filter((item) => item !== format),
-                })
-              }}
-            />
-            <span>{format.toUpperCase()}</span>
-          </label>
+    <section className="export-panel export-menu" aria-label="Export panel">
+      <div className="export-menu-list" role="menu" aria-label="Export formats">
+        {formats.map((format) => (
+          <button
+            key={format}
+            type="button"
+            role="menuitem"
+            className="export-menu-item"
+            disabled={busy}
+            onClick={() => onExportFormat(format)}
+          >
+            {reportExportCapability(format).label}
+          </button>
         ))}
       </div>
-      <div className="report-export-options" aria-label="Export options">
-        <label className="export-field">
-          <span>Basename</span>
-          <input
-            value={options.basename}
-            onChange={(event) => onOptionsChange({ ...options, basename: event.currentTarget.value })}
-            placeholder="rxnflow-report"
-          />
-        </label>
-        <label className="export-field">
-          <span>Report title</span>
-          <input
-            value={options.title}
-            onChange={(event) => onOptionsChange({ ...options, title: event.currentTarget.value })}
-            placeholder="Reaction path report"
-          />
-        </label>
-      </div>
-      <button type="button" className="command-button report-export-primary" disabled={busy || formats.length === 0} onClick={onExport}>
-        <Download size={17} />
-        <span>{busy ? "Exporting" : "Export"}</span>
-      </button>
-      <div className="artifact-list" aria-label="Export summary">
-        {artifacts.length === 0 ? (
-          <article className="artifact-card">
-            <strong>{rows.length} table rows ready</strong>
-            <code>{status}</code>
-          </article>
-        ) : artifacts.map((artifact) => (
-          <article key={artifact.id} className="artifact-card">
-            <strong>{artifact.format.toUpperCase()}</strong>
-            <code>{artifact.fileName} / {formatBytes(artifact.byteLength)}</code>
-            {artifact.destination ? <code>Saved to {displayExportDestination(artifact.destination)}</code> : null}
-          </article>
-        ))}
-      </div>
+      <span className="visually-hidden" role="status">{status}</span>
     </section>
   )
 }

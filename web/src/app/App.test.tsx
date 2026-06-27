@@ -76,7 +76,7 @@ function dispatchPointer(
 }
 
 function transformTranslate(transform: string): { x: number; y: number } {
-  const match = transform.match(/translate3d\(([^p]+)px,\s*([^p]+)px,\s*0\)/)
+  const match = transform.match(/translate(?:3d)?\(([^p]+)px,\s*([^p,)]+)px(?:,\s*0)?\)/)
   return {
     x: match ? Number(match[1]) : Number.NaN,
     y: match ? Number(match[2]) : Number.NaN,
@@ -95,6 +95,29 @@ function mockSurfaceRect(surface: HTMLElement, width = 1000, height = 800) {
     height,
     toJSON: () => ({}),
   } as DOMRect)
+}
+
+function mockImageNaturalSize(width = 120, height = 80) {
+  const originalImage = window.Image
+  class MockImage {
+    naturalWidth = width
+    naturalHeight = height
+    onload: ((event: Event) => void) | null = null
+
+    set src(_value: string) {
+      queueMicrotask(() => this.onload?.(new Event("load")))
+    }
+  }
+  Object.defineProperty(window, "Image", {
+    configurable: true,
+    value: MockImage,
+  })
+  return () => {
+    Object.defineProperty(window, "Image", {
+      configurable: true,
+      value: originalImage,
+    })
+  }
 }
 
 describe("App", () => {
@@ -121,6 +144,16 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Open 3D Structure" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Energy unit/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Add Node" })).not.toBeInTheDocument()
+    expect(within(toolbar).getByRole("button", { name: "Insert image" })).toBeInTheDocument()
+    expect(within(toolbar).getByRole("button", { name: "Pan tool" })).toHaveAttribute("aria-pressed", "true")
+    expect(within(toolbar).getByRole("button", { name: "Select tool" })).toHaveAttribute("aria-pressed", "false")
+    expect((screen.getByRole("button", { name: "Node TS1 (Endo)" }) as HTMLElement).style.transform).toMatch(/^translate\(/)
+    expect((screen.getByLabelText("Graph canvas surface").querySelector(".canvas-world") as HTMLElement).style.transform).toMatch(/^translate\(/)
+    expect(document.querySelectorAll('[style*="translate3d"]').length).toBe(0)
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Start edge from TS1 (Endo)" })).toHaveAttribute("title", "Start edge from TS1 (Endo)")
+      expect(screen.getByRole("button", { name: "Reset canvas view" })).toHaveAttribute("title", "Reset canvas view")
+    })
   })
 
   it("uses only native macOS traffic lights in the desktop shell", () => {
@@ -155,7 +188,7 @@ describe("App", () => {
     render(<App />)
 
     const activeText = document.body.textContent ?? ""
-    for (const forbidden of ["local-http", "Python bridge", "ShellClient", "cloud", "sync", "Search flows", "Settings", "Preferences", "Add Node", "Compute", "Profile", "Computer Profile", "Objects", "Object Registry", "Apply correction"]) {
+    for (const forbidden of ["local-http", "Python bridge", "ShellClient", "cloud", "sync", "Search flows", "Preferences", "Add Node", "Compute", "Profile", "Computer Profile", "Objects", "Object Registry", "Apply correction"]) {
       expect(activeText).not.toMatch(new RegExp(forbidden, "i"))
     }
 
@@ -164,6 +197,7 @@ describe("App", () => {
     const exportPanel = screen.getByRole("region", { name: "Export panel" })
     for (const format of ["CSV", "SVG", "PDF", "PPTX", "CDX", "JSON"]) {
       expect(within(exportPanel).queryByRole("checkbox", { name: format })).not.toBeInTheDocument()
+      expect(within(exportPanel).queryByRole("menuitem", { name: format })).not.toBeInTheDocument()
     }
   })
 
@@ -255,7 +289,9 @@ describe("App", () => {
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(within(toolbar).getByRole("button", { name: "Table view" }))
+    expect(document.querySelector(".table-drawer-shell")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Close table view" }))
+    expect(document.querySelector(".table-drawer-shell")).not.toBeInTheDocument()
 
     const remountedSurface = container.querySelector(".canvas-surface") as HTMLElement
     const remountedWorld = container.querySelector(".canvas-world") as HTMLElement
@@ -288,10 +324,11 @@ describe("App", () => {
     const world = container.querySelector(".canvas-world") as HTMLElement
     mockSurfaceRect(surface, 1000, 800)
 
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Select tool" }))
     const beforeSelectDrag = world.style.transform
     dispatchPointer(surface, "pointerDown", { button: 0, clientX: 0, clientY: 360, pointerId: 71 })
     dispatchPointer(surface, "pointerMove", { button: 0, clientX: 120, clientY: 520, pointerId: 71 })
-    expect(container.querySelector(".canvas-rubber-band")).toBeInTheDocument()
+    await waitFor(() => expect(container.querySelector(".canvas-rubber-band")).toBeInTheDocument())
     dispatchPointer(surface, "pointerUp", { button: 0, clientX: 120, clientY: 520, pointerId: 71 })
 
     expect(container.querySelector(".canvas-rubber-band")).not.toBeInTheDocument()
@@ -311,20 +348,29 @@ describe("App", () => {
     })
   })
 
-  it("keeps node drag previews continuous and snaps the persisted position on release", () => {
+  it("keeps node drag previews continuous and snaps the persisted position on release", async () => {
     render(<App />)
 
     const node = screen.getByRole("button", { name: "Node TS1 (Endo)" })
     const start = transformTranslate(node.style.transform)
+    const connectedEdge = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): + Diene" })
+    const connectedPath = connectedEdge.querySelector(".edge-visible-path") as SVGPathElement
+    const connectedPathBefore = connectedPath.getAttribute("d")
 
     dispatchPointer(node, "pointerDown", { button: 0, clientX: 320, clientY: 240, pointerId: 73 })
     dispatchPointer(node, "pointerMove", { button: 0, clientX: 333, clientY: 247, pointerId: 73 })
 
-    const preview = transformTranslate(node.style.transform)
-    expect(preview.x).not.toBe(start.x)
-    expect(preview.y).not.toBe(start.y)
-    expect(preview.x % 8).not.toBe(0)
-    expect(preview.y % 8).not.toBe(0)
+    let preview = start
+    await waitFor(() => {
+      preview = transformTranslate(node.style.transform)
+      expect(preview.x).not.toBe(start.x)
+      expect(preview.y).not.toBe(start.y)
+      expect(node.style.transform).toMatch(/^translate\(/)
+      expect(node.style.transform).not.toContain("translate3d")
+      expect(preview.x % 8).not.toBe(0)
+      expect(preview.y % 8).not.toBe(0)
+    })
+    expect(connectedPath.getAttribute("d")).not.toBe(connectedPathBefore)
 
     dispatchPointer(node, "pointerUp", { button: 0, clientX: 333, clientY: 247, pointerId: 73 })
 
@@ -334,6 +380,33 @@ describe("App", () => {
     expect(persisted).toEqual({
       x: Math.round(preview.x / 8) * 8,
       y: Math.round(preview.y / 8) * 8,
+    })
+  })
+
+  it("resizes node cards from the bottom-right handle and records undo history", async () => {
+    render(<App />)
+
+    const node = screen.getByRole("button", { name: "Node TS1 (Endo)" })
+    const handle = screen.getByRole("button", { name: "Resize node TS1 (Endo)" })
+    const initialWidth = Number.parseFloat(node.style.width)
+    const initialHeight = Number.parseFloat(node.style.height)
+
+    dispatchPointer(handle, "pointerDown", { button: 0, clientX: 420, clientY: 350, pointerId: 99 })
+    dispatchPointer(window, "pointerMove", { button: 0, clientX: 492, clientY: 414, pointerId: 99 })
+    dispatchPointer(window, "pointerUp", { button: 0, clientX: 492, clientY: 414, pointerId: 99 })
+
+    await waitFor(() => {
+      expect(Number.parseFloat(node.style.width)).toBeGreaterThan(initialWidth)
+      expect(Number.parseFloat(node.style.height)).toBeGreaterThan(initialHeight)
+    })
+    expect(Number.parseFloat(node.style.width) % 8).toBe(0)
+    expect(Number.parseFloat(node.style.height) % 8).toBe(0)
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo canvas edit" }))
+
+    await waitFor(() => {
+      expect(Number.parseFloat(node.style.width)).toBe(initialWidth)
+      expect(Number.parseFloat(node.style.height)).toBe(initialHeight)
     })
   })
 
@@ -376,19 +449,24 @@ describe("App", () => {
     expect(container.querySelector(".minimap-window.is-draft")).not.toBeInTheDocument()
   })
 
-  it("offers table-backed canvas energy controls and updates relative energies directly", () => {
+  it("offers table-backed canvas energy controls and moves unit selection into settings", () => {
     render(<App />)
 
-    const energySelect = screen.getByLabelText("Energy")
-    const unitSelect = screen.getByLabelText("Unit")
+    const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
+    const energySelect = within(toolbar).getByLabelText("Energy")
 
     expect(within(energySelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
       "ΔEgas",
       "ΔGsol",
     ])
+    expect(within(toolbar).queryByLabelText("Unit")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }))
+    const settings = screen.getByRole("dialog", { name: "Settings" })
+    const unitSelect = within(settings).getByRole("combobox", { name: "Energy unit" })
     expect(within(unitSelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Eh",
       "kcal",
+      "Eh",
       "kJ",
     ])
 
@@ -405,6 +483,7 @@ describe("App", () => {
     fireEvent.click(within(toolbar).getByRole("button", { name: "Table view" }))
     const energyTable = screen.getByRole("region", { name: "Energy table" })
     expect(energyTable).toBeInTheDocument()
+    expect(document.querySelector(".app-shell")).toHaveClass("has-overlay-view")
     expect(within(energyTable).getByRole("button", { name: "Absolute" })).toHaveAttribute("aria-pressed", "true")
     expect(within(energyTable).getByRole("button", { name: "Relative" })).toBeInTheDocument()
     expect(within(energyTable).getByText("Charge / Multiplicity")).toBeInTheDocument()
@@ -415,15 +494,15 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Export" }))
     const exportPanel = screen.getByRole("region", { name: "Export panel" })
-    expect(within(exportPanel).getByRole("checkbox", { name: "PNG" })).toBeChecked()
-    expect(within(exportPanel).getByRole("checkbox", { name: "CDXML" })).toBeChecked()
-    expect(within(exportPanel).getByRole("checkbox", { name: "XLSX" })).toBeChecked()
+    expect(within(exportPanel).getByRole("menuitem", { name: "PNG" })).toBeInTheDocument()
+    expect(within(exportPanel).getByRole("menuitem", { name: "XLSX" })).toBeInTheDocument()
+    expect(within(exportPanel).getByRole("menuitem", { name: "CDXML" })).toBeInTheDocument()
     expect(within(exportPanel).queryByRole("checkbox", { name: "JSON" })).not.toBeInTheDocument()
     expect(within(exportPanel).queryByRole("checkbox", { name: "CSV" })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "gaussian.log Gaussian" }))
     expect(screen.getByRole("region", { name: "Source inspector" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Open raw log" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open with external app" })).toBeInTheDocument()
   })
 
   it("offers a persistent dark mode toggle in the window chrome", () => {
@@ -470,14 +549,14 @@ describe("App", () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole("button", { name: "Project actions for Diels-Alder Study" }))
-    expect(screen.getByRole("menuitem", { name: "Remove from sidebar" })).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "Delete project" })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
-    const dialog = screen.getByRole("alertdialog", { name: "Remove Diels-Alder Study" })
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
+    const dialog = screen.getByRole("alertdialog", { name: "Delete Diels-Alder Study" })
     expect(dialog).toHaveTextContent("Diels-Alder Study")
     expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Remove from sidebar" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete project" }))
 
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Nickel catalysis empty" })).toHaveAttribute("aria-current", "true")
@@ -544,7 +623,7 @@ describe("App", () => {
     })
 
     expect(await screen.findByRole("button", { name: "dropped-nickel.out ORCA" })).toBeInTheDocument()
-    expect(await screen.findByRole("button", { name: "Node dropped-nickel" })).toHaveTextContent("ΔG")
+    expect(screen.queryByRole("button", { name: "Node dropped-nickel" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Nickel catalysis empty" })).toHaveAttribute("aria-current", "true")
 
     fireEvent.click(screen.getByRole("button", { name: "Diels-Alder Study open" }))
@@ -593,6 +672,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open 3D Structure" }))
     const dialog = screen.getByRole("dialog", { name: "3D Structure" })
+    expect(document.querySelector(".app-shell")).toHaveClass("has-overlay-view")
     expect(dialog).toHaveTextContent("TS1 (Endo)")
     fireEvent.click(within(dialog).getByRole("button", { name: "Close 3D Structure" }))
     expect(screen.queryByRole("dialog", { name: "3D Structure" })).not.toBeInTheDocument()
@@ -602,8 +682,8 @@ describe("App", () => {
     render(<App />)
 
     const tsNode = screen.getByRole("button", { name: "Node TS1 (Endo)" })
-    fireEvent.click(within(tsNode).getByRole("button", { name: "More actions for TS1 (Endo)" }))
-    fireEvent.click(within(tsNode).getByRole("menuitem", { name: "Set zero" }))
+    fireEvent.contextMenu(tsNode, { clientX: 680, clientY: 240 })
+    fireEvent.click(screen.getByRole("menuitem", { name: "Set zero" }))
 
     expect(within(tsNode).queryByText("0")).not.toBeInTheDocument()
     expect(within(tsNode).getByText("0.00")).toBeInTheDocument()
@@ -627,19 +707,19 @@ describe("App", () => {
     expect(within(tsNode).getByRole("button", { name: "Collapse structure preview for TS1 (Endo)" })).toHaveAttribute("aria-expanded", "true")
   })
 
-  it("opens source details from the node action menu", () => {
+  it("opens source details from the node context menu", () => {
     render(<App />)
 
     const tsNode = screen.getByRole("button", { name: "Node TS1 (Endo)" })
-    fireEvent.click(within(tsNode).getByRole("button", { name: "More actions for TS1 (Endo)" }))
+    fireEvent.contextMenu(tsNode, { clientX: 680, clientY: 240 })
     fireEvent.click(screen.getByRole("menuitem", { name: "Source details" }))
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
     expect(screen.getByRole("region", { name: "Source inspector" })).toHaveTextContent("gaussian.log")
-    expect(screen.getByRole("button", { name: "Open raw log" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open with external app" })).toBeInTheDocument()
   })
 
-  it("creates a reaction edge from node handles and inspects the selected edge", () => {
+  it("creates a reaction edge from node handles without showing edge editors in the inspector", () => {
     render(<App />)
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Start edge from TS1 (Endo)" }), {
@@ -655,9 +735,8 @@ describe("App", () => {
     })
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    expect(within(inspector).getByText("Selected Edge")).toBeInTheDocument()
-    expect(within(inspector).getByText("TS1 (Endo)")).toBeInTheDocument()
-    expect(within(inspector).getByText("Exo Adduct")).toBeInTheDocument()
+    expect(within(inspector).queryByText("Selected Edge")).not.toBeInTheDocument()
+    expect(within(inspector).getByRole("region", { name: "Source inspector" })).toHaveTextContent("gaussian.log")
     expect(screen.getAllByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct/ })).toHaveLength(1)
   })
 
@@ -709,13 +788,12 @@ describe("App", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "Node Exo Adduct" }), { key: "Enter" })
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    expect(within(inspector).getByText("Selected Edge")).toBeInTheDocument()
-    expect(within(inspector).getByText("TS1 (Endo)")).toBeInTheDocument()
-    expect(within(inspector).getByText("Exo Adduct")).toBeInTheDocument()
+    expect(within(inspector).queryByText("Selected Edge")).not.toBeInTheDocument()
+    expect(within(inspector).getByRole("region", { name: "Source inspector" })).toHaveTextContent("gaussian.log")
     expect(screen.getAllByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct/ })).toHaveLength(1)
   })
 
-  it("edits selected edge labels and tracks the change in canvas history", () => {
+  it("edits edge labels inline and tracks the change in canvas history", () => {
     render(<App />)
 
     const startHandle = screen.getByRole("button", { name: "Start edge from TS1 (Endo)" })
@@ -723,11 +801,14 @@ describe("App", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "Node Exo Adduct" }), { key: "Enter" })
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    const edgeLabelForm = within(inspector).getByRole("form", { name: "Edit edge label" })
-    fireEvent.change(within(edgeLabelForm).getByLabelText("Edge label"), { target: { value: "Delta G 4.20" } })
-    fireEvent.click(within(edgeLabelForm).getByRole("button", { name: "Apply edge label" }))
+    expect(within(inspector).queryByRole("form", { name: "Edit edge label" })).not.toBeInTheDocument()
 
-    expect(within(inspector).getAllByText("Delta G 4.20").length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole("button", { name: "Add path label from TS1 (Endo) to Exo Adduct" }))
+    const edgeLabelInput = screen.getByRole("textbox", { name: "Path label" })
+    fireEvent.change(edgeLabelInput, { target: { value: "Delta G 4.20" } })
+    fireEvent.keyDown(edgeLabelInput, { key: "Enter" })
+
+    expect(within(inspector).queryByText("Selected Edge")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct: Delta G 4\.20/ })).toBeInTheDocument()
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
@@ -736,6 +817,23 @@ describe("App", () => {
 
     fireEvent.click(within(toolbar).getByRole("button", { name: "Redo canvas edit" }))
     expect(screen.getByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct: Delta G 4\.20/ })).toBeInTheDocument()
+  })
+
+  it("opens path label editing from the capsule without selecting the curve", () => {
+    render(<App />)
+
+    const edgeCurve = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): + Diene" })
+    const edgeLabel = screen.getByRole("button", { name: "Edit path label + Diene" })
+
+    fireEvent.pointerDown(edgeLabel, { button: 0, pointerId: 11 })
+
+    expect(screen.queryByRole("textbox", { name: "Path label" })).not.toBeInTheDocument()
+    expect(edgeCurve).not.toHaveClass("is-selected")
+    fireEvent.click(edgeLabel)
+
+    expect(screen.getByRole("textbox", { name: "Path label" })).toHaveValue("+ Diene")
+    expect(edgeCurve).not.toHaveClass("is-selected")
+    expect(screen.getByRole("complementary", { name: "Inspector" })).toHaveTextContent("TS1 (Endo)")
   })
 
   it("edits node stoichiometric coefficients inline and tracks the change in canvas history", () => {
@@ -780,16 +878,54 @@ describe("App", () => {
         name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔG‡ 20.96",
       }),
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Barrier from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 20.96")
+    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 20.96")
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    expect(within(inspector).getByText("Selected Barrier")).toBeInTheDocument()
+    expect(within(inspector).queryByText("Selected Barrier")).not.toBeInTheDocument()
+    expect(within(inspector).getByRole("region", { name: "Source inspector" })).toHaveTextContent("gaussian.log")
 
-    const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Delete selection" }))
+    const barrier = screen.getByRole("button", { name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔG‡ 20.96" })
+    fireEvent.contextMenu(barrier, { clientX: 620, clientY: 320 })
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }))
 
-    expect(screen.queryByRole("button", { name: "Barrier from 1,3-Butadiene to TS1 (Endo)" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).not.toBeInTheDocument()
     expect(container.querySelector(".barrier-arrow")).not.toBeInTheDocument()
+  })
+
+  it("adds canvas image annotations from the toolbar picker and pasted image files", async () => {
+    const restoreImage = mockImageNaturalSize()
+    try {
+      render(<App />)
+
+      const imageInput = screen.getByLabelText("Insert image file") as HTMLInputElement
+      const picked = new File(["picked"], "scheme.png", { type: "image/png" })
+      await act(async () => {
+        fireEvent.change(imageInput, { target: { files: [picked] } })
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(await screen.findByAltText("scheme.png")).toBeInTheDocument()
+
+      const pasted = new File(["pasted"], "clipboard.png", { type: "image/png" })
+      const pasteEvent = createEvent.paste(window)
+      Object.defineProperty(pasteEvent, "clipboardData", {
+        value: {
+          files: [pasted],
+          items: [],
+          types: ["Files"],
+        },
+      })
+      await act(async () => {
+        fireEvent(window, pasteEvent)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(await screen.findByAltText("clipboard.png")).toBeInTheDocument()
+    } finally {
+      restoreImage()
+    }
   })
 
   it("updates explicit barrier annotation labels when energy source changes", () => {
@@ -807,11 +943,11 @@ describe("App", () => {
     }
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
-    expect(screen.getByRole("button", { name: "Barrier from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 20.96")
+    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 20.96")
 
     fireEvent.change(within(toolbar).getByRole("combobox", { name: "Energy" }), { target: { value: "gas" } })
 
-    expect(screen.getByRole("button", { name: "Barrier from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔE‡ 19.15")
+    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔE‡ 19.15")
     expect(
       screen.getByRole("button", {
         name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔE‡ 19.15",
@@ -825,11 +961,10 @@ describe("App", () => {
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     const undo = within(toolbar).getByRole("button", { name: "Undo canvas edit" })
     const redo = within(toolbar).getByRole("button", { name: "Redo canvas edit" })
-    const deleteSelection = within(toolbar).getByRole("button", { name: "Delete selection" })
 
     expect(undo).toBeDisabled()
     expect(redo).toBeDisabled()
-    expect(deleteSelection).toBeEnabled()
+    expect(within(toolbar).queryByRole("button", { name: "Delete selection" })).not.toBeInTheDocument()
 
     const startHandle = screen.getByRole("button", { name: "Start edge from TS1 (Endo)" })
     fireEvent.keyDown(startHandle, { key: "Enter" })
@@ -842,10 +977,11 @@ describe("App", () => {
     expect(redo).toBeEnabled()
 
     fireEvent.click(redo)
-    expect(screen.getAllByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct/ })).toHaveLength(1)
-    expect(deleteSelection).toBeEnabled()
+    const createdEdge = screen.getAllByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct/ })[0]
+    expect(createdEdge).toBeInTheDocument()
 
-    fireEvent.click(deleteSelection)
+    fireEvent.contextMenu(createdEdge, { clientX: 720, clientY: 360 })
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }))
     expect(screen.queryByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct/ })).not.toBeInTheDocument()
     fireEvent.click(undo)
     expect(screen.getAllByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct/ })).toHaveLength(1)
@@ -870,7 +1006,7 @@ describe("App", () => {
     } as DOMRect)
     fireEvent.click(screen.getByRole("button", { name: "Zoom in" }))
     const beforeFit = world.style.transform
-    fireEvent.click(within(toolbar).getByRole("button", { name: "Fit view" }))
+    fireEvent.click(screen.getByRole("button", { name: "Reset canvas view" }))
     expect(world.style.transform).not.toBe(beforeFit)
   })
 
@@ -959,11 +1095,22 @@ describe("App", () => {
       "FINAL SINGLE POINT ENERGY     -76.431",
       "CPCM SOLVATION ENERGY = -0.001",
     ].join("\n")], "orca-water.out", { type: "text/plain" })
-    fireEvent.change(input, { target: { files: [file] } })
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } })
+      await Promise.resolve()
+    })
 
-    expect(await screen.findByRole("button", { name: "orca-water.out ORCA" })).toBeInTheDocument()
+    const sourceButton = await screen.findByRole("button", { name: "orca-water.out ORCA" })
+    expect(sourceButton).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Node orca-water" })).not.toBeInTheDocument()
+    fireEvent.click(sourceButton)
     expect(screen.getByRole("region", { name: "Source inspector" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Open raw log" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open with external app" })).toBeInTheDocument()
+
+    const sourceRow = sourceButton.closest(".project-file-card") as HTMLElement
+    const dataTransfer = new TestDataTransfer()
+    fireEvent.dragStart(sourceRow, { dataTransfer })
+    dispatchDrop(screen.getByLabelText("Graph canvas surface"), dataTransfer, 640, 360)
     const parsedNode = await screen.findByRole("button", { name: "Node orca-water" })
     expect(parsedNode).toHaveTextContent("ΔG")
 
@@ -977,10 +1124,10 @@ describe("App", () => {
     fireEvent.click(within(inspector).getByRole("button", { name: "Open 3D Structure" }))
     const dialog = screen.getByRole("dialog", { name: "3D Structure" })
     expect(dialog).toHaveTextContent("orca-water")
-    expect(dialog).toHaveTextContent("H2O")
-    expect(dialog).toHaveTextContent("3")
-    expect(dialog).toHaveTextContent("H, O")
-    expect(dialog).toHaveTextContent("orca-water.out")
+    expect(dialog).not.toHaveTextContent("H, O")
+    expect(dialog).not.toHaveTextContent("orca-water.out")
+    expect(within(dialog).queryByRole("button", { name: "Open 3D structure fullscreen" })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole("button", { name: "Play vibration" })).toBeInTheDocument()
   })
 
   it("selects, drags, and deletes project file rows without adding canvas nodes", () => {
@@ -1053,7 +1200,7 @@ describe("App", () => {
           return nodeId?.startsWith("imported-orca-out-") && nodeId.includes("-drop-")
         }) as HTMLElement | undefined
       expect(node).toBeDefined()
-      expect(node?.style.transform).toContain(`translate3d(${expectedX}px, ${expectedY}px, 0)`)
+      expect(node?.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
     })
   })
 
@@ -1081,7 +1228,7 @@ describe("App", () => {
       const node = Array.from(container.querySelectorAll(".reaction-node[data-flow-node-id]"))
         .find((element) => element.getAttribute("data-flow-node-id")?.startsWith("imported-file-") && element.getAttribute("data-flow-node-id")?.includes("-drop-")) as HTMLElement | undefined
       expect(node).toBeDefined()
-      expect(node?.style.transform).toContain(`translate3d(${expectedX}px, ${expectedY}px, 0)`)
+      expect(node?.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
     })
   })
 
@@ -1100,15 +1247,16 @@ describe("App", () => {
       "H 0 0 1",
     ].join("\n")
     const file = new File([xyz], "path.xyz", { type: "chemical/x-xyz" })
-    fireEvent.change(input, { target: { files: [file] } })
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } })
+      await Promise.resolve()
+    })
 
-    const dialog = await screen.findByRole("dialog", { name: "Import candidates" })
-    expect(within(dialog).getByText("2 candidates")).toBeInTheDocument()
+    const sourceButton = await screen.findByRole("button", { name: "path.xyz MAPLE" })
+    expect(sourceButton).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node Frame 1" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node Frame 2" })).not.toBeInTheDocument()
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Later" }))
-    expect(screen.queryByRole("region", { name: "Source inspector" })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "More actions for path.xyz" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Review candidates" }))
@@ -1235,9 +1383,14 @@ describe("App", () => {
 
     render(<App />)
 
-    const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
+    expect(await screen.findByRole("button", { name: "native-path.xyz XYZ" })).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
+    expect(registerImportCandidates).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for native-path.xyz" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Review candidates" }))
     const dialog = await screen.findByRole("dialog", { name: "Import candidates" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Register selected" }))
 
@@ -1309,27 +1462,38 @@ describe("App", () => {
 
     await waitFor(() => expect(getEngineStatus).toHaveBeenCalledTimes(1))
 
-    const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
-    expect(await screen.findByRole("button", { name: "desktop.out ORCA" })).toBeInTheDocument()
+    const sourceButton = await screen.findByRole("button", { name: "desktop.out ORCA" })
+    expect(sourceButton).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Node engine-preview" })).not.toBeInTheDocument()
+    const sourceRow = sourceButton.closest(".project-file-card") as HTMLElement
+    const dataTransfer = new TestDataTransfer()
+    fireEvent.dragStart(sourceRow, { dataTransfer })
+    dispatchDrop(screen.getByLabelText("Graph canvas surface"), dataTransfer, 640, 360)
     expect(await screen.findByRole("button", { name: "Node engine-preview" })).toHaveTextContent("ΔG")
     expect(chooseFiles).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole("button", { name: "Export" }))
-    const exportPanel = screen.getByRole("region", { name: "Export panel" })
-    fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
+    let exportPanel = screen.getByRole("region", { name: "Export panel" })
+    fireEvent.click(within(exportPanel).getByRole("menuitem", { name: "PNG" }))
+    await waitFor(() => expect(saveReportArtifact).toHaveBeenCalledTimes(1))
 
+    fireEvent.click(screen.getByRole("button", { name: "Export" }))
+    exportPanel = screen.getByRole("region", { name: "Export panel" })
+    fireEvent.click(within(exportPanel).getByRole("menuitem", { name: "XLSX" }))
+    await waitFor(() => expect(saveReportArtifact).toHaveBeenCalledTimes(2))
+
+    fireEvent.click(screen.getByRole("button", { name: "Export" }))
+    exportPanel = screen.getByRole("region", { name: "Export panel" })
+    fireEvent.click(within(exportPanel).getByRole("menuitem", { name: "CDXML" }))
     await waitFor(() => expect(saveReportArtifact).toHaveBeenCalledTimes(3))
     expect(saveReportArtifact.mock.calls.map((call) => call[0].defaultName)).toEqual([
       "rxnflow-report.png",
-      "rxnflow-report.cdxml",
       "rxnflow-report.xlsx",
+      "rxnflow-report.cdxml",
     ])
-    expect(saveReportArtifact.mock.calls[1][0].content).toContain("engine-preview")
-    expect(await within(exportPanel).findByText("Saved to exports/rxnflow-report.png")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("Saved to exports/rxnflow-report.cdxml")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("Saved to exports/rxnflow-report.xlsx")).toBeInTheDocument()
+    expect(saveReportArtifact.mock.calls[2][0].content).toContain("engine-preview")
   })
 
   it("autosaves desktop imports as project-owned source copies", async () => {
@@ -1410,7 +1574,7 @@ describe("App", () => {
     expect(within(inspector).getByText("engine-preview")).toBeInTheDocument()
     const sourceInspector = within(inspector).getByRole("region", { name: "Source inspector" })
     expect(sourceInspector).toHaveTextContent("desktop.out")
-    expect(within(sourceInspector).getByRole("button", { name: "Open raw log" })).toBeEnabled()
+    expect(within(sourceInspector).getByRole("button", { name: "Open with external app" })).toBeEnabled()
     expect(screen.queryByText("sources/01-desktop-out-desktop.out")).not.toBeInTheDocument()
   })
 
@@ -1442,12 +1606,10 @@ describe("App", () => {
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(screen.getByRole("button", { name: "Export" }))
     const exportPanel = screen.getByRole("region", { name: "Export panel" })
-    fireEvent.click(within(exportPanel).getByRole("button", { name: "Export" }))
+    fireEvent.click(within(exportPanel).getByRole("menuitem", { name: "PNG" }))
 
-    await waitFor(() => expect(saveReportArtifact).toHaveBeenCalledTimes(3))
-    expect(await within(exportPanel).findByText("Export canceled.")).toBeInTheDocument()
-    expect(within(exportPanel).getByText("6 table rows ready")).toBeInTheDocument()
-    expect(within(exportPanel).queryByText(/Saved to/)).not.toBeInTheDocument()
+    await waitFor(() => expect(saveReportArtifact).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole("region", { name: "Export panel" })).not.toBeInTheDocument()
   })
 
   it("restores a project package opened from the native recent projects menu", async () => {
@@ -1548,9 +1710,8 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Nickel catalysis empty" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Ir screening empty" })).not.toBeInTheDocument()
-    const projectValidation = screen.getByRole("status", { name: "Project validation" })
-    expect(projectValidation).toHaveTextContent("Project warnings")
-    expect(projectValidation).toHaveTextContent("files[0].storedPath does not exist")
+    expect(screen.queryByRole("status", { name: "Project validation" })).not.toBeInTheDocument()
+    expect(screen.queryByText("files[0].storedPath does not exist")).not.toBeInTheDocument()
   })
 
   it("opens a second desktop workspace without removing the first real workspace", async () => {

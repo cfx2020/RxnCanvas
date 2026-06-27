@@ -69,6 +69,7 @@ describe("CanvasWorkspace", () => {
         onPointerMove={vi.fn()}
         onPointerEnd={vi.fn()}
         onNodePointerDown={vi.fn()}
+        onNodeResizePointerDown={vi.fn()}
         onNodePointerUp={vi.fn()}
         onStartConnection={vi.fn()}
         onStartBarrierAnnotation={vi.fn()}
@@ -83,6 +84,9 @@ describe("CanvasWorkspace", () => {
         onOpenStructure={vi.fn()}
         onShowNodeSource={vi.fn()}
         onRenameNode={vi.fn()}
+        renameEditingNodeId={null}
+        onRenameRequestHandled={vi.fn()}
+        onOpenContextMenu={vi.fn()}
         onRawFileDrop={vi.fn()}
       />,
     )

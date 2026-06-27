@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import type { CoordinateAtom } from "../domain/sourceParsers"
+import { StructureUnavailableIcon } from "./StructureUnavailableIcon"
 
 type Molecule2DDepictionProps = {
   atoms: CoordinateAtom[]
@@ -60,11 +61,11 @@ export function Molecule2DDepiction({
     <div
       className={`molecule-2d-depiction molecule-2d-depiction-placeholder ${className}`.trim()}
       role="img"
-      aria-label={`${label} 2D structure depiction pending`}
+      aria-label={`${label} ${emptyText}`}
       title={formula}
       data-testid="molecule-2d-depiction-placeholder"
     >
-      <strong>{emptyText}</strong>
+      <StructureUnavailableIcon className="structure-unavailable-icon" />
     </div>
   )
 }

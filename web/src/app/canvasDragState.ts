@@ -1,5 +1,6 @@
-import type { CanvasViewport, FlowNode, Point } from "../domain/projectPackages"
+import type { CanvasViewport, FlowNode, NodeSize, Point } from "../domain/projectPackages"
 import {
+  flowNodeSize,
   nodeContainedInSelectionRect,
   nodeDragPosition,
   type CanvasSelectionRect,
@@ -17,6 +18,7 @@ export type CanvasPointerDraft = {
   pointerId: number
   sourceId: string
   current: Point
+  snapTargetId?: string
 }
 
 export type CanvasDragState<TSnapshot = unknown> =
@@ -337,6 +339,14 @@ export function applyNodePosition(nodes: FlowNode[], nodeId: string, position: P
   ))
 }
 
+export function applyNodeSize(nodes: FlowNode[], nodeId: string, size: NodeSize): FlowNode[] {
+  return nodes.map((node) => (
+    node.id === nodeId
+      ? { ...node, size }
+      : node
+  ))
+}
+
 export function nodeDragMoved(
   snapshot: Pick<CanvasEditSnapshot, "nodes">,
   nodeId: string,
@@ -346,6 +356,17 @@ export function nodeDragMoved(
   return !previousPosition
     || previousPosition.x !== finalPosition.x
     || previousPosition.y !== finalPosition.y
+}
+
+export function nodeSizeChanged(
+  snapshot: Pick<CanvasEditSnapshot, "nodes">,
+  nodeId: string,
+  finalSize: NodeSize,
+): boolean {
+  const previousNode = snapshot.nodes.find((node) => node.id === nodeId)
+  if (!previousNode) return true
+  const previousSize = flowNodeSize(previousNode)
+  return previousSize.width !== finalSize.width || previousSize.height !== finalSize.height
 }
 
 export function nodeIdsInSelectionRect(nodes: FlowNode[], rect: CanvasSelectionRect): string[] {

@@ -1,8 +1,7 @@
-import { memo, useEffect, useState, type FormEvent } from "react"
-import { Activity, ChevronDown, ExternalLink, FilePlus2, Link2, Maximize2, PanelRight, PencilLine, RotateCcw } from "lucide-react"
-import type { FlowBarrier, FlowEdge, FlowNode, SourceFile } from "../domain/projectPackages"
+import { memo, useEffect, useMemo, useState } from "react"
+import { ChevronDown, ExternalLink, FilePlus2, Maximize2, PanelRight, Pause, PencilLine, Play, RotateCcw, X } from "lucide-react"
+import type { FlowNode, SourceFile } from "../domain/projectPackages"
 import type { ParseCandidate } from "../domain/sourceParsers"
-import { defaultBarrierLabel } from "./canvasDrawing"
 import { type EnergyDisplayOptions, type EnergyTableRow, formatEnergy, formatRelativeEnergy } from "./energyDisplay"
 import { Molecule3DmolViewer } from "./Molecule3DmolViewer"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
@@ -13,32 +12,22 @@ import { candidateReviewKey, nodeKindFromCandidate, type CandidateReviewEntry, t
 
 export const InspectorPanel = memo(function InspectorPanel({
   node,
-  edge,
-  barrier,
-  nodeMap,
   file,
   rows,
   files,
   energyDisplayOptions,
   onReviewCandidates,
-  onUpdateEdgeLabel,
-  onUpdateBarrierLabel,
   onOpenStructure,
   onEdit2DStructure,
   onReset2DStructure,
   onOpenSourceFile,
 }: {
   node: FlowNode | null
-  edge: FlowEdge | null
-  barrier: FlowBarrier | null
-  nodeMap: Map<string, FlowNode>
   file: SourceFile | null
   rows: EnergyTableRow[]
   files: SourceFile[]
   energyDisplayOptions: EnergyDisplayOptions
   onReviewCandidates: (fileId: string) => void
-  onUpdateEdgeLabel: (edgeId: string, label: string) => void
-  onUpdateBarrierLabel: (barrierId: string, label: string | null) => void
   onOpenStructure: (nodeId: string) => void
   onEdit2DStructure: (nodeId: string) => void
   onReset2DStructure: (nodeId: string) => void
@@ -47,176 +36,18 @@ export const InspectorPanel = memo(function InspectorPanel({
   const nodeRow = node ? rows.find((row) => row.nodeId === node.id) ?? null : null
   return (
     <aside className="inspector-panel" aria-label="Inspector">
-      {barrier
-        ? <BarrierInspector barrier={barrier} nodeMap={nodeMap} energyDisplayOptions={energyDisplayOptions} onUpdateLabel={onUpdateBarrierLabel} />
-        : edge
-          ? <EdgeInspector edge={edge} nodeMap={nodeMap} onUpdateLabel={onUpdateEdgeLabel} />
-          : <NodeInspector
-              node={node}
-              row={nodeRow}
-              file={node ? sourceFileForNode(node, files) : file}
-              energyDisplayOptions={energyDisplayOptions}
-              onOpenStructure={onOpenStructure}
-              onReviewCandidates={onReviewCandidates}
-              onOpenSourceFile={onOpenSourceFile}
-            />}
+      <NodeInspector
+        node={node}
+        row={nodeRow}
+        file={node ? sourceFileForNode(node, files) : file}
+        energyDisplayOptions={energyDisplayOptions}
+        onOpenStructure={onOpenStructure}
+        onReviewCandidates={onReviewCandidates}
+        onOpenSourceFile={onOpenSourceFile}
+      />
     </aside>
   )
 })
-
-function BarrierInspector({
-  barrier,
-  nodeMap,
-  energyDisplayOptions,
-  onUpdateLabel,
-}: {
-  barrier: FlowBarrier
-  nodeMap: Map<string, FlowNode>
-  energyDisplayOptions: EnergyDisplayOptions
-  onUpdateLabel: (barrierId: string, label: string | null) => void
-}) {
-  const source = nodeMap.get(barrier.sourceId)
-  const target = nodeMap.get(barrier.targetId)
-  const defaultLabel = source && target ? defaultBarrierLabel(source, target, energyDisplayOptions) : "ΔE‡ pending"
-  const displayLabel = barrier.label?.trim() || defaultLabel
-  const [draftLabel, setDraftLabel] = useState(displayLabel)
-  const normalizedDraft = draftLabel.trim()
-  const nextLabel = normalizedDraft && normalizedDraft !== defaultLabel ? normalizedDraft : undefined
-  const currentLabel = barrier.label?.trim() || undefined
-  const labelChanged = nextLabel !== currentLabel
-
-  useEffect(() => {
-    setDraftLabel(displayLabel)
-  }, [barrier.id, displayLabel])
-
-  const submitLabel = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!labelChanged) return
-    onUpdateLabel(barrier.id, nextLabel ?? null)
-  }
-
-  return (
-    <>
-      <div className="selected-title">
-        <div>
-          <span>Selected Barrier</span>
-          <strong>{displayLabel}</strong>
-        </div>
-        <Activity size={18} />
-      </div>
-      <dl className="detail-list">
-        <div>
-          <dt>From</dt>
-          <dd>{source?.label ?? barrier.sourceId}</dd>
-        </div>
-        <div>
-          <dt>To</dt>
-          <dd>{target?.label ?? barrier.targetId}</dd>
-        </div>
-        <div>
-          <dt>Default</dt>
-          <dd>{defaultLabel}</dd>
-        </div>
-      </dl>
-      <form className="edge-label-form" aria-label="Edit barrier label" onSubmit={submitLabel}>
-        <label className="export-field">
-          <span>Barrier label</span>
-          <input
-            value={draftLabel}
-            onChange={(event) => setDraftLabel(event.currentTarget.value)}
-            aria-label="Barrier inspector label"
-          />
-        </label>
-        <div className="edge-label-actions">
-          <button
-            type="button"
-            onClick={() => setDraftLabel(displayLabel)}
-            disabled={!labelChanged}
-          >
-            Reset
-          </button>
-          <button type="submit" className="command-button" disabled={!labelChanged}>
-            Apply barrier label
-          </button>
-        </div>
-      </form>
-    </>
-  )
-}
-
-function EdgeInspector({
-  edge,
-  nodeMap,
-  onUpdateLabel,
-}: {
-  edge: FlowEdge
-  nodeMap: Map<string, FlowNode>
-  onUpdateLabel: (edgeId: string, label: string) => void
-}) {
-  const source = nodeMap.get(edge.sourceId)
-  const target = nodeMap.get(edge.targetId)
-  const [draftLabel, setDraftLabel] = useState(edge.label)
-  const normalizedDraft = draftLabel.trim() || "path"
-  const labelChanged = normalizedDraft !== edge.label
-
-  useEffect(() => {
-    setDraftLabel(edge.label)
-  }, [edge.id, edge.label])
-
-  const submitLabel = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!labelChanged) return
-    onUpdateLabel(edge.id, draftLabel)
-  }
-
-  return (
-    <>
-      <div className="selected-title">
-        <div>
-          <span>Selected Edge</span>
-          <strong>{edge.label}</strong>
-        </div>
-        <Link2 size={18} />
-      </div>
-      <dl className="detail-list">
-        <div>
-          <dt>From</dt>
-          <dd>{source?.label ?? edge.sourceId}</dd>
-        </div>
-        <div>
-          <dt>To</dt>
-          <dd>{target?.label ?? edge.targetId}</dd>
-        </div>
-        <div>
-          <dt>Role</dt>
-          <dd>Reaction path</dd>
-        </div>
-      </dl>
-      <form className="edge-label-form" aria-label="Edit edge label" onSubmit={submitLabel}>
-        <label className="export-field">
-          <span>Edge label</span>
-          <input
-            value={draftLabel}
-            onChange={(event) => setDraftLabel(event.currentTarget.value)}
-            aria-label="Edge label"
-          />
-        </label>
-        <div className="edge-label-actions">
-          <button
-            type="button"
-            onClick={() => setDraftLabel(edge.label)}
-            disabled={!labelChanged}
-          >
-            Reset
-          </button>
-          <button type="submit" className="command-button" disabled={!labelChanged}>
-            Apply edge label
-          </button>
-        </div>
-      </form>
-    </>
-  )
-}
 
 function NodeInspector({
   node,
@@ -238,6 +69,46 @@ function NodeInspector({
   const coordinatePreview = node ? sourceCoordinatePreview(node, file) : null
   const overview = node ? nodeComputationOverview(node, file) : null
   if (!node) {
+    if (file) {
+      return (
+        <div className="node-inspector-stack">
+          <section className="node-panel-summary" aria-label="Source summary">
+            <div className="node-panel-section-heading">
+              <div>
+                <span>Source</span>
+                <strong>{file.parse?.label ?? file.name}</strong>
+              </div>
+              <span className={`termination-pill termination-${file.parse?.terminationStatus ?? "unknown"}`}>
+                {file.parse?.terminationLabel ?? file.parse?.terminationStatus ?? "source"}
+              </span>
+            </div>
+            <dl className="node-summary-grid">
+              <div>
+                <dt>File</dt>
+                <dd>{file.name}</dd>
+              </div>
+              <div>
+                <dt>Type</dt>
+                <dd>{file.kind}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{file.status}</dd>
+              </div>
+              <div>
+                <dt>Objects</dt>
+                <dd>{file.parse?.objectCount ?? file.parse?.candidates?.length ?? "pending"}</dd>
+              </div>
+            </dl>
+          </section>
+          <NodeSourceBrief
+            file={file}
+            onReviewCandidates={onReviewCandidates}
+            onOpenSourceFile={onOpenSourceFile}
+          />
+        </div>
+      )
+    }
     return (
       <div className="inspector-empty">
         <PanelRight size={20} />
@@ -595,9 +466,9 @@ function NodeSourceBrief({
         ) : null}
         <button
           type="button"
-          aria-label="Open raw log"
+          aria-label="Open with external app"
           disabled={!canOpenRaw}
-          title={canOpenRaw ? "Open raw log in the system app" : "No project copy or source path is available"}
+          title={canOpenRaw ? "Open with external app" : "No project copy or source path is available"}
           onClick={() => void onOpenSourceFile(file.id)}
         >
           <ExternalLink size={14} aria-hidden="true" />
@@ -712,11 +583,12 @@ export function StructurePreviewDialog({
   onReset2DStructure?: (nodeId: string) => void
 }) {
   const coordinatePreview = sourceCoordinatePreview(node, file)
-  const elementLabels = coordinatePreview?.elements.length
-    ? coordinatePreview.elements
-    : formulaElementsFromText(node.formula)
-  const visibleAtoms = elementLabels.length > 0 ? elementLabels : ["C", "H", "O"]
   const coordinateAtoms = coordinatePreview?.atoms?.length ? coordinatePreview.atoms : []
+  const defaultVibrationMode = useMemo(() => {
+    const modes = coordinatePreview?.vibrationModes ?? []
+    return modes.find((mode) => mode.kind === "imaginary" || mode.frequencyCm1 < 0) ?? modes[0] ?? null
+  }, [coordinatePreview?.vibrationModes])
+  const [vibrationPlaying, setVibrationPlaying] = useState(false)
   const hasManualStructure = Boolean(node.manualStructureKet || node.manualStructureMolfile || node.manualStructureCdxml || node.manualStructureSvg)
 
   const edit2DStructure = () => {
@@ -732,6 +604,10 @@ export function StructurePreviewDialog({
     return () => document.removeEventListener("keydown", closeOnEscape)
   }, [onClose])
 
+  useEffect(() => {
+    if (!defaultVibrationMode) setVibrationPlaying(false)
+  }, [defaultVibrationMode])
+
   return (
     <div
       className={`structure-preview-scrim${leftSidebarOpen ? " has-left-sidebar" : ""}${rightSidebarOpen ? " has-right-sidebar" : ""}`}
@@ -745,39 +621,12 @@ export function StructurePreviewDialog({
             <span>Structure Preview</span>
             <strong>{node.label}</strong>
           </div>
-          <button type="button" aria-label="Close 3D Structure" onClick={onClose}>
-            <ChevronDown size={18} />
+          <button type="button" className="structure-preview-close-button" aria-label="Close 3D Structure" onClick={onClose}>
+            <X size={18} />
           </button>
         </header>
         <div className="structure-preview-body">
-          <article className="structure-dialog-pane structure-dialog-pane-2d">
-            <header>
-              <span>2D structure</span>
-              <span className="structure-dialog-actions">
-                {hasManualStructure ? (
-                  <button
-                    type="button"
-                    className="structure-dialog-action"
-                    aria-label={`Reset 2D structure for ${node.label}`}
-                    title={`Reset 2D structure for ${node.label}`}
-                    onClick={() => onReset2DStructure?.(node.id)}
-                  >
-                    <RotateCcw size={14} aria-hidden="true" />
-                  </button>
-                ) : null}
-                {onEdit2DStructure ? (
-                  <button
-                    type="button"
-                    className="structure-dialog-action"
-                    aria-label={`Edit 2D structure for ${node.label}`}
-                    title={`Edit 2D structure for ${node.label}`}
-                    onClick={edit2DStructure}
-                  >
-                    <PencilLine size={14} aria-hidden="true" />
-                  </button>
-                ) : null}
-              </span>
-            </header>
+          <article className="structure-dialog-pane structure-dialog-pane-2d" aria-label="2D structure">
             <Molecule2DDepiction
               atoms={coordinateAtoms}
               formula={node.formula}
@@ -789,33 +638,53 @@ export function StructurePreviewDialog({
               className="structure-dialog-2d-depiction"
               emptyText="2D unavailable"
             />
+            <span className="structure-dialog-preview-actions structure-dialog-preview-actions-2d">
+              {hasManualStructure ? (
+                <button
+                  type="button"
+                  className="structure-dialog-action"
+                  aria-label={`Reset 2D structure for ${node.label}`}
+                  title={`Reset 2D structure for ${node.label}`}
+                  onClick={() => onReset2DStructure?.(node.id)}
+                >
+                  <RotateCcw size={14} aria-hidden="true" />
+                </button>
+              ) : null}
+              {onEdit2DStructure ? (
+                <button
+                  type="button"
+                  className="structure-dialog-action"
+                  aria-label={`Edit 2D structure for ${node.label}`}
+                  title={`Edit 2D structure for ${node.label}`}
+                  onClick={edit2DStructure}
+                >
+                  <PencilLine size={14} aria-hidden="true" />
+                </button>
+              ) : null}
+            </span>
           </article>
-          <article className="structure-dialog-pane structure-dialog-pane-3d">
-            <header>
-              <span>3D structure</span>
-              <em>{coordinateAtoms.length ? `${coordinateAtoms.length} atoms` : "No coordinates"}</em>
-            </header>
-            <Molecule3DmolViewer atoms={coordinateAtoms} formula={node.formula} sourceName={file?.name ?? node.label} />
+          <article className="structure-dialog-pane structure-dialog-pane-3d" aria-label="3D structure">
+            <Molecule3DmolViewer
+              atoms={coordinateAtoms}
+              formula={node.formula}
+              sourceName={file?.name ?? node.label}
+              vibrationMode={defaultVibrationMode}
+              vibrationPlaying={vibrationPlaying}
+            />
+            <span className="structure-dialog-preview-actions structure-dialog-preview-actions-3d">
+              <button
+                type="button"
+                className={`structure-dialog-action structure-dialog-vibration-action${vibrationPlaying ? " is-active" : ""}`}
+                aria-label={vibrationPlaying ? "Pause vibration" : "Play vibration"}
+                title={defaultVibrationMode ? (vibrationPlaying ? "暂停振动" : "播放振动") : "没有振动数据，请重新导入频率输出文件"}
+                disabled={!defaultVibrationMode}
+                onClick={() => setVibrationPlaying((playing) => !playing)}
+              >
+                {vibrationPlaying ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+              </button>
+            </span>
           </article>
         </div>
-        <dl className="detail-list">
-          <div>
-            <dt>Formula</dt>
-            <dd>{node.formula}</dd>
-          </div>
-          <div>
-            <dt>Atoms</dt>
-            <dd>{coordinatePreview?.atomCount ?? "unknown"}</dd>
-          </div>
-          <div>
-            <dt>Elements</dt>
-            <dd>{visibleAtoms.join(", ")}</dd>
-          </div>
-          <div>
-            <dt>Source</dt>
-            <dd>{file?.name ?? "current node"}</dd>
-          </div>
-        </dl>
       </section>
     </div>
   )
@@ -832,8 +701,4 @@ export function sourceCoordinatePreview(node: FlowNode, file: SourceFile | null)
     ? parse.candidates.find((item) => item.candidateId === node.sourceCandidateId)
     : undefined
   return candidate?.coordinatePreview ?? parse.coordinatePreview
-}
-
-function formulaElementsFromText(formula: string): string[] {
-  return Array.from(formula.matchAll(/[A-Z][a-z]?/g), (match) => match[0])
 }

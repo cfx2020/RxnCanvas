@@ -37,6 +37,12 @@ function setterBag() {
   }
 }
 
+function expectSelectionSetterToProduce(setter: ReturnType<typeof vi.fn>, current: string[], expected: string[]) {
+  expect(setter).toHaveBeenCalled()
+  const argument = setter.mock.calls.at(-1)?.[0]
+  expect(typeof argument === "function" ? argument(current) : argument).toEqual(expected)
+}
+
 const workspace = (() => {
   const nodes = [{ id: "node-1", label: "A", formula: "H2", kind: "reactant" as const, method: "DFT", solvent: "gas", energyGas: -1, energySolution: -1, energyUnit: "hartree" as const, sourceStatus: "parsed" as const, position: { x: 1, y: 2 } }]
   const edges = [{ id: "edge-1", sourceId: "node-1", targetId: "node-2", label: "path" }]
@@ -76,9 +82,12 @@ describe("appStateAppliers", () => {
   it("applies canvas selection ids", () => {
     const setters = setterBag()
     applyCanvasSelectionState(setters, { nodeIds: ["n"], edgeIds: ["e"], barrierIds: ["b"] })
-    expect(setters.setSelectedNodeIds).toHaveBeenCalledWith(["n"])
-    expect(setters.setSelectedEdgeIds).toHaveBeenCalledWith(["e"])
-    expect(setters.setSelectedBarrierIds).toHaveBeenCalledWith(["b"])
+    expectSelectionSetterToProduce(setters.setSelectedNodeIds, [], ["n"])
+    expectSelectionSetterToProduce(setters.setSelectedEdgeIds, [], ["e"])
+    expectSelectionSetterToProduce(setters.setSelectedBarrierIds, [], ["b"])
+    const nodeUpdater = setters.setSelectedNodeIds.mock.calls[0][0]
+    const sameCurrent = ["n"]
+    expect(nodeUpdater(sameCurrent)).toBe(sameCurrent)
   })
 
   it("applies a project transition and clears edit history", () => {
@@ -96,7 +105,7 @@ describe("appStateAppliers", () => {
     expect(setters.setProjectWorkspaces).toHaveBeenCalledWith({ p1: workspace })
     expect(setters.setActiveProjectId).toHaveBeenCalledWith("p1")
     expect(setters.setFiles).toHaveBeenCalledWith(workspace.files)
-    expect(setters.setSelectedNodeIds).toHaveBeenCalledWith(["node-1"])
+    expectSelectionSetterToProduce(setters.setSelectedNodeIds, [], ["node-1"])
     expect(setters.setKeyboardEdgeSourceId).toHaveBeenCalledWith(null)
     expect(setters.setProjectValidation).toHaveBeenCalledWith(null)
     expect(clearEditHistory).toHaveBeenCalledTimes(1)

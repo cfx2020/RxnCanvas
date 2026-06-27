@@ -59,7 +59,7 @@ describe("canvasDrawing", () => {
       guidePath: "M 105 226 L 105 236 M 320 187 L 105 187",
       label: "ΔG‡ 7.00",
       defaultLabel: "ΔG‡ 7.00",
-      labelPoint: { x: 127, y: 211.5 },
+      labelPoint: { x: 105, y: 211.5 },
       sourceLabel: "source",
       targetLabel: "target",
     })
@@ -74,9 +74,9 @@ describe("canvasDrawing", () => {
     )).toMatchObject({
       arrowPath: "M 105 127 L 105 236",
       guidePath: "M 105 226 L 105 236 M 320 127 L 105 127",
-      label: "ΔG‡ 4.00",
+      label: "custom",
       defaultLabel: "ΔG‡ 4.00",
-      labelPoint: { x: 127, y: 181.5 },
+      labelPoint: { x: 105, y: 181.5 },
     })
   })
 

@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type ReactNode } from "react"
-import { FilePlus2, Folder, FolderOpen, FolderPlus, MoreHorizontal, Plus, Trash2, UploadCloud } from "lucide-react"
+import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react"
+import { FilePlus2, Folder, FolderOpen, FolderPlus, MoreHorizontal, Plus, Settings2, Trash2, UploadCloud } from "lucide-react"
 import type { ProjectSummary, SourceFile } from "../domain/projectPackages"
 import type { CanvasTabState } from "./projectCanvasState"
 import {
@@ -35,6 +35,12 @@ export const ProjectRail = memo(function ProjectRail({
   onSelectCanvas,
   onCreateCanvas,
   onDeleteCanvas,
+  onOpenSettings,
+  width,
+  minWidth,
+  maxWidth,
+  onResizePointerDown,
+  onResizeStep,
 }: {
   projects: ProjectSummary[]
   activeProjectId: string
@@ -55,6 +61,12 @@ export const ProjectRail = memo(function ProjectRail({
   onSelectCanvas?: (canvasId: string) => void
   onCreateCanvas?: (projectId?: string) => void
   onDeleteCanvas?: (canvasId: string) => void
+  onOpenSettings?: () => void
+  width?: number
+  minWidth?: number
+  maxWidth?: number
+  onResizePointerDown?: (event: PointerEvent<HTMLElement>) => void
+  onResizeStep?: (nextWidth: number) => void
 }) {
   const [projectCreatorOpen, setProjectCreatorOpen] = useState(false)
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
@@ -120,6 +132,23 @@ export const ProjectRail = memo(function ProjectRail({
       return
     }
     if (result !== false) closeProjectCreator()
+  }
+
+  const resizeSidebarFromKeyboard = (event: KeyboardEvent<HTMLElement>) => {
+    if (!onResizeStep || typeof width !== "number") return
+    if (event.key === "ArrowRight") {
+      event.preventDefault()
+      onResizeStep(width + 12)
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault()
+      onResizeStep(width - 12)
+    } else if (event.key === "Home" && typeof minWidth === "number") {
+      event.preventDefault()
+      onResizeStep(minWidth)
+    } else if (event.key === "End" && typeof maxWidth === "number") {
+      event.preventDefault()
+      onResizeStep(maxWidth)
+    }
   }
 
   return (
@@ -297,6 +326,30 @@ export const ProjectRail = memo(function ProjectRail({
           />
         ))}
       </RailSection>
+
+      {onOpenSettings ? (
+        <div className="project-rail-footer">
+          <button type="button" className="project-rail-settings" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
+            <Settings2 size={15} aria-hidden="true" />
+            <span>Settings</span>
+          </button>
+        </div>
+      ) : null}
+      {onResizePointerDown ? (
+        <div
+          className="project-rail-resize-handle"
+          role="separator"
+          aria-label="Resize project sidebar"
+          aria-orientation="vertical"
+          aria-valuemin={minWidth}
+          aria-valuemax={maxWidth}
+          aria-valuenow={width}
+          tabIndex={0}
+          title="Drag to resize project sidebar"
+          onPointerDown={onResizePointerDown}
+          onKeyDown={resizeSidebarFromKeyboard}
+        />
+      ) : null}
     </aside>
   )
 
@@ -382,20 +435,31 @@ function ProjectRailItem({
             <Plus size={14} />
             <span>New canvas</span>
           </button>
-          <button type="button" role="menuitem" onClick={onRequestDelete}>
+          <button type="button" role="menuitem" className="is-danger" onClick={onRequestDelete}>
             <Trash2 size={14} />
-            <span>Remove from sidebar</span>
+            <span>Delete project</span>
           </button>
         </div>
       ) : null}
       {confirmOpen ? (
-        <div className="project-delete-confirm" role="alertdialog" aria-label={`Remove ${project.label}`}>
-          <strong>Remove project?</strong>
-          <span>{project.label}</span>
-          <small>The folder stays on disk.</small>
-          <div>
-            <button type="button" onClick={onCancelDelete}>Cancel</button>
-            <button type="button" className="is-danger" onClick={onConfirmDelete}>Remove from sidebar</button>
+        <div className="project-delete-confirm" role="alertdialog" aria-label={`Delete ${project.label}`}>
+          <div className="project-delete-confirm-header">
+            <span className="project-delete-confirm-icon" aria-hidden="true">
+              <Trash2 size={16} />
+            </span>
+            <div>
+              <strong>Delete project from workspace?</strong>
+              <span>{project.label}</span>
+            </div>
+          </div>
+          <p>
+            Deletes this project from the current workspace, including its canvases and imported log
+            registrations.
+          </p>
+          <small>Original source files on disk are not deleted.</small>
+          <div className="project-delete-confirm-actions">
+            <button type="button" className="is-secondary" onClick={onCancelDelete}>Cancel</button>
+            <button type="button" className="is-danger" onClick={onConfirmDelete}>Delete project</button>
           </div>
         </div>
       ) : null}

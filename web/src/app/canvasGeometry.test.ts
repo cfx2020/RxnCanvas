@@ -110,14 +110,42 @@ describe("canvasGeometry", () => {
 
     expect(laidOut.map((node) => node.id)).toEqual(["low", "high", "unknown"])
     expect(laidOut.map((node) => node.position)).toEqual([
-      { x: -360, y: 184 },
-      { x: 216, y: -72 },
-      { x: 496, y: 264 },
+      { x: -320, y: 184 },
+      { x: -16, y: -32 },
+      { x: 280, y: 264 },
     ])
     for (const node of laidOut) {
       expect(Math.abs(node.position.x % canvasGridSize)).toBe(0)
       expect(Math.abs(node.position.y % canvasGridSize)).toBe(0)
     }
+  })
+
+  it("auto-layout keeps off-path participants above the main reaction path without overlap", () => {
+    const laidOut = autoLayoutFlowNodes([
+      flowNode("reactant", 0),
+      flowNode("ts", 12),
+      flowNode("product", 3),
+      flowNode("added-1", null),
+      flowNode("added-2", null),
+      flowNode("released", null),
+    ], {
+      ...defaultEnergyDisplayOptions,
+      baselineNodeId: "reactant",
+    }, [
+      { id: "e-reactant-ts", sourceId: "reactant", targetId: "ts", label: "" },
+      { id: "e-ts-product", sourceId: "ts", targetId: "product", label: "" },
+      { id: "e-reactant-added-1", sourceId: "reactant", targetId: "added-1", label: "" },
+      { id: "e-reactant-added-2", sourceId: "reactant", targetId: "added-2", label: "" },
+      { id: "e-product-released", sourceId: "product", targetId: "released", label: "" },
+    ])
+
+    const byId = new Map(laidOut.map((node) => [node.id, node]))
+    expect(["reactant", "ts", "product"].map((id) => byId.get(id)?.position.x)).toEqual([-320, -16, 280])
+    expect(byId.get("added-1")?.position.y).toBeLessThan(byId.get("ts")?.position.y ?? 0)
+    expect(byId.get("added-2")?.position.y).toBeLessThan(byId.get("added-1")?.position.y ?? 0)
+    expect(byId.get("released")?.position.y).toBe(byId.get("added-1")?.position.y)
+    expect(byId.get("added-1")?.position).not.toEqual(byId.get("added-2")?.position)
+    expect(byId.get("released")?.position.x).toBe(byId.get("product")?.position.x)
   })
 
   it("tests selection containment by node center", () => {

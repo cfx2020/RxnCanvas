@@ -1,5 +1,10 @@
 import type { PointerEvent } from "react"
 import type { CanvasViewport, FlowBarrier, FlowEdge, FlowNode, Point } from "../domain/projectPackages"
+import {
+  connectionSnapRadiusPx,
+  nearestConnectionMagnetTarget,
+  updateConnectionDraftWithMagnetTarget,
+} from "./canvasConnectionMagnetism"
 import { pannedViewportFromDrag } from "./canvasGeometry"
 import { flowNodeIdAtClientPoint } from "./canvasHitTesting"
 import {
@@ -25,6 +30,11 @@ import {
 import type { PushCanvasEditHistory } from "./appCanvasEditActions"
 
 export type ScreenToWorld = (point: Point) => Point
+
+export type CanvasDragPreview = {
+  previewViewport?: (viewport: CanvasViewport) => void
+  previewNodePosition?: (nodeId: string, position: Point) => void
+}
 
 export function flowNodeIdAtDocumentPoint({
   clientX,
@@ -101,6 +111,7 @@ export function handleNodePointerDownAction({
   appStateSetters: ProjectWorkspaceStateSetters
 }): void {
   if (event.button !== 0) return
+  event.preventDefault()
   event.stopPropagation()
   event.currentTarget.setPointerCapture?.(event.pointerId)
   const transition = canvasNodePointerDownTransition({
@@ -130,8 +141,12 @@ export function handlePointerMoveAction({
   connectionDraft,
   barrierDraft,
   dragState,
+  nodes = [],
+  connectionSnapRadiusWorld = connectionSnapRadiusPx,
+  viewport,
   screenToWorld,
   appStateSetters,
+  dragPreview,
 }: {
   pointerId: number
   clientX: number
@@ -139,20 +154,33 @@ export function handlePointerMoveAction({
   connectionDraft: ConnectionDraft | null
   barrierDraft: BarrierDraft | null
   dragState: CanvasDragState<CanvasEditSnapshot> | null
+  nodes?: FlowNode[]
+  connectionSnapRadiusWorld?: number
+  viewport?: CanvasViewport
   screenToWorld: ScreenToWorld
   appStateSetters: ProjectWorkspaceStateSetters
+  dragPreview?: CanvasDragPreview
 }): void {
   const clientPoint = { x: clientX, y: clientY }
+  const worldPoint = screenToWorld(clientPoint)
   const move = canvasPointerMoveTransition({
     connectionDraft,
     barrierDraft,
     dragState,
     pointerId,
     clientPoint,
-    worldPoint: screenToWorld(clientPoint),
+    worldPoint,
   })
   if (move.kind === "connection-draft") {
-    appStateSetters.setConnectionDraft(move.connectionDraft)
+    appStateSetters.setConnectionDraft((currentDraft) => (
+      updateConnectionDraftWithMagnetTarget({
+        draft: currentDraft,
+        pointerId,
+        current: worldPoint,
+        nodes,
+        radius: connectionSnapRadiusWorld,
+      })
+    ))
     return
   }
   if (move.kind === "barrier-draft") {
@@ -161,6 +189,10 @@ export function handlePointerMoveAction({
   }
   if (move.kind === "none") return
   if (move.kind === "pan") {
+    if (dragPreview?.previewViewport && viewport) {
+      dragPreview.previewViewport(pannedViewportFromDrag(viewport, move.drag, move.clientPoint))
+      return
+    }
     appStateSetters.setViewport((current) => pannedViewportFromDrag(current, move.drag, move.clientPoint))
     return
   }
@@ -169,6 +201,10 @@ export function handlePointerMoveAction({
     return
   }
 
+  if (dragPreview?.previewNodePosition) {
+    dragPreview.previewNodePosition(move.nodeId, move.position)
+    return
+  }
   appStateSetters.setNodes((current) => applyNodePosition(current, move.nodeId, move.position))
 }
 
@@ -200,6 +236,9 @@ export function finishConnectionDraftAtClientPointAction({
   clientX,
   clientY,
   connectionDraft,
+  nodes = [],
+  releasePoint,
+  connectionSnapRadiusWorld = connectionSnapRadiusPx,
   nodeIdSet,
   edges,
   appStateSetters,
@@ -210,6 +249,9 @@ export function finishConnectionDraftAtClientPointAction({
   clientX: number
   clientY: number
   connectionDraft: ConnectionDraft | null
+  nodes?: FlowNode[]
+  releasePoint?: Point
+  connectionSnapRadiusWorld?: number
   nodeIdSet: Set<string>
   edges: FlowEdge[]
   appStateSetters: ProjectWorkspaceStateSetters
@@ -217,7 +259,15 @@ export function finishConnectionDraftAtClientPointAction({
   now?: number
 }): boolean {
   if (!connectionDraft) return false
-  const targetId = flowNodeIdAtDocumentPoint({
+  const magneticTarget = releasePoint
+    ? nearestConnectionMagnetTarget({
+      nodes,
+      sourceId: connectionDraft.sourceId,
+      current: releasePoint,
+      radius: connectionSnapRadiusWorld,
+    })
+    : null
+  const targetId = magneticTarget?.targetId ?? (releasePoint ? null : connectionDraft.snapTargetId) ?? flowNodeIdAtDocumentPoint({
     clientX,
     clientY,
     excludedNodeId: connectionDraft.sourceId,

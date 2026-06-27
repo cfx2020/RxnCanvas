@@ -1057,6 +1057,10 @@ input:focus-visible,
   position: absolute;
   inset: 0;
   transform-origin: 0 0;
+}
+
+.canvas-surface.is-live-pan .canvas-world,
+.canvas-surface.is-live-node-drag .reaction-node.is-live-dragging {
   will-change: transform;
 }
 
@@ -1124,6 +1128,20 @@ input:focus-visible,
   stroke-dasharray: 7 7;
   stroke-linecap: round;
   stroke-width: 2.4;
+  pointer-events: none;
+}
+
+.connection-preview-path.is-snapped {
+  stroke: rgba(15, 143, 116, 0.92);
+  stroke-dasharray: none;
+  stroke-width: 3.2;
+  filter: drop-shadow(0 0 7px rgba(31, 162, 131, 0.28));
+}
+
+.connection-preview-snap-halo {
+  fill: rgba(31, 162, 131, 0.1);
+  stroke: rgba(31, 162, 131, 0.42);
+  stroke-width: 1.6;
   pointer-events: none;
 }
 
@@ -1655,6 +1673,12 @@ input:focus-visible,
     0 0 0 5px rgba(255, 255, 255, 0.48),
     0 10px 22px rgba(58, 85, 104, 0.18);
   transform: translateY(-50%);
+  transition:
+    background 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease,
+    width 150ms ease,
+    height 150ms ease;
 }
 
 .node-connector-in {
@@ -1682,6 +1706,17 @@ input:focus-visible,
   box-shadow:
     0 0 0 8px rgba(51, 214, 169, 0.18),
     0 12px 28px rgba(31, 162, 131, 0.2);
+}
+
+.reaction-node.is-connection-snap-target .node-connector-in {
+  width: 16px;
+  height: 16px;
+  background: #1fa283;
+  box-shadow:
+    0 0 0 6px rgba(255, 255, 255, 0.76),
+    0 0 0 13px rgba(31, 162, 131, 0.18),
+    0 16px 32px rgba(31, 162, 131, 0.28);
+  transform: translateY(-50%) scale(1.08);
 }
 
 .node-barrier-handle {
@@ -3062,6 +3097,34 @@ input:focus-visible,
 }
 
 .molecule-editor-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.molecule-editor-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.structure-preview-header .molecule-editor-header-actions button {
+  width: auto;
+  min-width: 0;
+  height: 38px;
+  min-height: 38px;
+  border: 0;
+  border-radius: 13px;
+  padding: 0 14px;
+  background: rgba(228, 240, 244, 0.86);
+  color: #40566b;
+  font-size: 13px;
+  font-weight: 850;
+  box-shadow: none;
+}
+
+.structure-preview-header .molecule-editor-header-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -5718,7 +5781,7 @@ select,
 .structure-preview-scrim {
   --structure-left-rail: 0px;
   --structure-right-rail: 0px;
-  --structure-top-chrome: 48px;
+  --structure-top-chrome: var(--rxnflow-titlebar-height, 48px);
   position: fixed;
   inset: 0;
   z-index: 60;
@@ -5729,7 +5792,7 @@ select,
 }
 
 .structure-preview-scrim.has-left-sidebar {
-  --structure-left-rail: 248px;
+  --structure-left-rail: var(--rxnflow-project-rail-width, 212px);
 }
 
 .structure-preview-scrim.has-right-sidebar {
@@ -6123,7 +6186,7 @@ select,
   color: #bf3a2f;
 }
 .canvas-tab-input {
-  width: 156px;
+  width: var(--canvas-tab-input-width, 156px);
   height: 30px;
   margin: 0 28px 0 8px;
   border: 1px solid rgba(31, 162, 131, 0.28);
@@ -7189,7 +7252,7 @@ select,
 }
 
 .canvas-tab-input {
-  width: 148px !important;
+  width: var(--canvas-tab-input-width, 148px) !important;
   height: 26px !important;
   margin: 0 28px 0 8px !important;
   border-radius: 999px !important;
@@ -8562,9 +8625,10 @@ select,
 }
 
 /* 2026-06-25 table drawer: the energy table is no longer a full workbench mode
-   that disables canvas tools. The toolbar exposes one table launcher; the table
-   itself slides up from the bottom as a sheet and covers the canvas until the
-   user closes it. */
+   that disables canvas tools. The toolbar exposes one table launcher.
+   2026-06-27: align the opener with Structure Preview — a quiet blurred
+   canvas scrim with a centered floating panel instead of a separate sheet
+   grammar. */
 .toolbar-table-toggle.is-active {
   background: rgba(211, 244, 238, 0.95) !important;
   color: #0f7965 !important;
@@ -8582,42 +8646,59 @@ select,
 
 .table-drawer-shell {
   position: absolute !important;
-  inset: 14px 14px 0 !important;
+  inset: 0 !important;
   z-index: 28 !important;
-  display: flex !important;
+  display: grid !important;
+  place-items: center !important;
   min-width: 0 !important;
   min-height: 0 !important;
+  padding: 20px !important;
   pointer-events: none !important;
   opacity: 0 !important;
-  transform: translateY(calc(100% + 22px)) !important;
+  background: rgba(28, 45, 58, 0) !important;
+  backdrop-filter: blur(0) !important;
+  transform: none !important;
   transition:
-    transform 280ms cubic-bezier(.22, 1, .36, 1),
-    opacity 140ms ease !important;
-  will-change: transform, opacity !important;
+    opacity 160ms ease,
+    background 180ms ease,
+    backdrop-filter 180ms ease !important;
+  will-change: opacity, background, backdrop-filter !important;
 }
 
 .table-drawer-shell.is-open {
   pointer-events: auto !important;
   opacity: 1 !important;
-  transform: translateY(0) !important;
+  background: rgba(28, 45, 58, 0.28) !important;
+  backdrop-filter: blur(14px) !important;
 }
 
 .table-drawer-shell .workbench-energy-table-panel {
-  width: 100% !important;
-  height: 100% !important;
-  max-height: none !important;
+  width: min(1040px, 100%) !important;
+  height: min(640px, 100%) !important;
+  max-height: 100% !important;
   margin: 0 !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
-  border-radius: 26px 26px 0 0 !important;
-  border-color: rgba(126, 152, 169, 0.2) !important;
+  border-radius: 24px !important;
+  border-color: rgba(126, 152, 169, 0.24) !important;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 252, 0.97)) !important;
+    linear-gradient(180deg, rgba(250, 253, 255, 0.92), rgba(246, 251, 252, 0.9)) !important;
   box-shadow:
-    0 -18px 48px rgba(41, 67, 84, 0.16),
+    0 34px 110px rgba(36, 59, 72, 0.26),
     inset 0 1px 0 rgba(255, 255, 255, 0.84) !important;
   backdrop-filter: blur(26px) !important;
+  opacity: 0 !important;
+  transform: translateY(16px) scale(0.985) !important;
+  transition:
+    opacity 170ms ease,
+    transform 240ms cubic-bezier(.22, 1, .36, 1) !important;
+  will-change: opacity, transform !important;
+}
+
+.table-drawer-shell.is-open .workbench-energy-table-panel {
+  opacity: 1 !important;
+  transform: translateY(0) scale(1) !important;
 }
 
 .table-drawer-shell .workbench-energy-table-header {
@@ -8669,9 +8750,9 @@ select,
 .theme-dark .table-drawer-shell .workbench-energy-table-panel {
   border-color: rgba(145, 180, 199, 0.18) !important;
   background:
-    linear-gradient(180deg, rgba(16, 31, 42, 0.98), rgba(12, 25, 35, 0.98)) !important;
+    linear-gradient(180deg, rgba(16, 31, 42, 0.94), rgba(12, 25, 35, 0.92)) !important;
   box-shadow:
-    0 -20px 52px rgba(0, 0, 0, 0.28),
+    0 34px 110px rgba(0, 0, 0, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
 }
 
@@ -8693,7 +8774,12 @@ select,
 
 @media (max-width: 980px) {
   .table-drawer-shell {
-    inset: 8px 8px 0 !important;
+    padding: 10px !important;
+  }
+
+  .table-drawer-shell .workbench-energy-table-panel {
+    width: 100% !important;
+    height: 100% !important;
   }
 
   .table-drawer-shell .workbench-energy-table-header {
@@ -9063,7 +9149,7 @@ select,
    pixels as native titlebar drag regions after sidebar collapse. */
 .app-shell {
   position: relative !important;
-  --rxnflow-project-rail-width: 248px;
+  --rxnflow-project-rail-width: 212px;
   --rxnflow-titlebar-left-button-left: calc(var(--rxnflow-project-rail-width) + 12px);
   --rxnflow-titlebar-left-button-reserve: 44px;
 }
@@ -9677,4 +9763,4202 @@ select,
   .export-float-panel::before {
     right: 64px !important;
   }
+}
+
+/* 2026-06-26 Codex-style fixed sidebar chrome: use one persistent left
+   sidebar button beside the traffic lights. Opening/collapsing moves the rail
+   as a sheet; the button itself never jumps between the rail edge and the
+   collapsed titlebar. Also keep side rails as continuous surfaces instead of
+   drawing hard seams through the native titlebar area. */
+.app-shell {
+  --rxnflow-titlebar-left-button-left: 104px !important;
+  --rxnflow-titlebar-left-button-reserve: 44px !important;
+}
+
+.left-sidebar-fixed-toggle {
+  left: var(--rxnflow-titlebar-left-button-left) !important;
+  top: var(--rxnflow-titlebar-control-top) !important;
+  position: fixed !important;
+  z-index: 1300 !important;
+  pointer-events: auto !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.left-sidebar-fixed-toggle[aria-pressed="true"],
+.left-sidebar-fixed-toggle:hover,
+.left-sidebar-fixed-toggle:focus-visible {
+  outline: none !important;
+  border-color: transparent !important;
+  background: rgba(68, 87, 103, 0.1) !important;
+  color: #183247 !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .left-sidebar-fixed-toggle[aria-pressed="true"],
+.theme-dark .left-sidebar-fixed-toggle:hover,
+.theme-dark .left-sidebar-fixed-toggle:focus-visible {
+  background: rgba(196, 215, 228, 0.13) !important;
+  color: #f2f7fb !important;
+}
+
+.project-rail-hover,
+.project-rail-hover-panel,
+.project-rail-hover-trigger {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.workspace {
+  overflow: hidden !important;
+}
+
+.project-rail {
+  width: var(--rxnflow-project-rail-width, 248px) !important;
+  min-width: var(--rxnflow-project-rail-width, 248px) !important;
+  max-width: var(--rxnflow-project-rail-width, 248px) !important;
+  transform: translateX(0) !important;
+  transition: transform 190ms cubic-bezier(0.2, 0.72, 0.25, 1), opacity 150ms ease !important;
+  will-change: transform !important;
+}
+
+.project-rail-resize-handle {
+  position: absolute !important;
+  top: var(--rxnflow-titlebar-height, 36px) !important;
+  right: -5px !important;
+  bottom: 0 !important;
+  z-index: 140 !important;
+  width: 10px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  cursor: col-resize !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  touch-action: none !important;
+}
+
+.project-rail-resize-handle::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 12px !important;
+  bottom: 12px !important;
+  left: 4px !important;
+  width: 2px !important;
+  border-radius: 999px !important;
+  background: rgba(31, 162, 131, 0) !important;
+  transition: background 140ms ease, box-shadow 140ms ease !important;
+}
+
+.project-rail-resize-handle:hover::after,
+.project-rail-resize-handle:focus-visible::after {
+  background: rgba(31, 162, 131, 0.55) !important;
+  box-shadow: 0 0 0 4px rgba(31, 162, 131, 0.12) !important;
+}
+
+.workspace.is-left-collapsed .project-rail {
+  transform: translateX(calc(-1 * var(--rxnflow-project-rail-width, 248px))) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.project-rail,
+.inspector-panel,
+.theme-dark .project-rail,
+.theme-dark .inspector-panel {
+  border-left: 0 !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+}
+
+.project-rail {
+  background: var(--rxnflow-titlebar-surface) !important;
+}
+
+.theme-dark .project-rail {
+  --rail-dark-surface: var(--rxnflow-titlebar-surface) !important;
+  background: var(--rxnflow-titlebar-surface) !important;
+}
+
+.app-shell::before {
+  border-bottom-color: transparent !important;
+}
+
+.workspace-topbar,
+.workspace-topbar-left,
+.canvas-tab-bar,
+.theme-dark .workspace-topbar,
+.theme-dark .canvas-tab-bar {
+  border-bottom-color: transparent !important;
+}
+
+.workspace:not(.is-left-collapsed) .workspace-topbar-left {
+  margin-left: var(--rxnflow-titlebar-left-button-reserve) !important;
+  padding-left: 0 !important;
+}
+
+.workspace.is-left-collapsed .workspace-topbar-left {
+  margin-left: var(--rxnflow-left-collapsed-tab-reserve) !important;
+  max-width: calc(100% - var(--rxnflow-left-collapsed-tab-reserve) - 168px) !important;
+  flex-basis: calc(100% - var(--rxnflow-left-collapsed-tab-reserve) - 168px) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-rail {
+    transition: none !important;
+  }
+}
+
+/* 2026-06-26 sidebar divider and denser tabs: keep the Codex-like vertical
+   rail/content separator, while avoiding the earlier internal chrome seams.
+   The tab strip is also tightened so the selected tab reads like a compact
+   native titlebar tab instead of a tall toolbar row. */
+.app-shell {
+  --rxnflow-titlebar-height: 44px !important;
+  --rxnflow-titlebar-tab-height: 34px !important;
+  --rxnflow-titlebar-tab-add-size: 32px !important;
+  --rxnflow-titlebar-control-top: 7px !important;
+  --rxnflow-sidebar-flyout-top: 38px !important;
+  --rxnflow-sidebar-flyout-height-gap: 54px !important;
+  --rxnflow-sidebar-divider: rgba(126, 152, 169, 0.18);
+}
+
+.theme-dark {
+  --rxnflow-sidebar-divider: rgba(145, 180, 199, 0.14);
+}
+
+.workbench-shell {
+  grid-template-rows: var(--rxnflow-titlebar-height) auto auto minmax(0, 1fr) !important;
+}
+
+.workspace-topbar,
+.workspace-topbar-left,
+.canvas-tab-bar,
+.canvas-tab-list {
+  height: var(--rxnflow-titlebar-height) !important;
+  min-height: var(--rxnflow-titlebar-height) !important;
+}
+
+.canvas-tab-shell,
+.canvas-tab-shell .canvas-tab,
+.canvas-tab-shell.is-active .canvas-tab {
+  height: var(--rxnflow-titlebar-tab-height) !important;
+  min-height: var(--rxnflow-titlebar-tab-height) !important;
+  line-height: var(--rxnflow-titlebar-tab-height) !important;
+}
+
+.canvas-tab-shell .canvas-tab,
+.canvas-tab-shell.is-active .canvas-tab {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.canvas-tab-add {
+  width: var(--rxnflow-titlebar-tab-add-size) !important;
+  min-width: var(--rxnflow-titlebar-tab-add-size) !important;
+  height: var(--rxnflow-titlebar-tab-add-size) !important;
+  min-height: var(--rxnflow-titlebar-tab-add-size) !important;
+}
+
+.left-sidebar-fixed-toggle,
+.workspace-topbar-actions {
+  top: var(--rxnflow-titlebar-control-top) !important;
+}
+
+.project-rail,
+.theme-dark .project-rail {
+  border-right: 1px solid var(--rxnflow-sidebar-divider) !important;
+}
+
+.inspector-panel,
+.theme-dark .inspector-panel {
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+.project-rail,
+.inspector-panel {
+  padding-top: var(--rxnflow-titlebar-height) !important;
+}
+
+.app-shell::before {
+  height: var(--rxnflow-titlebar-height) !important;
+}
+
+/* 2026-06-26 titlebar control final alignment: the fixed sidebar button is a
+   toggle, not a selected tab, so its expanded state should not stay highlighted.
+   Nudge all titlebar controls down to visually share the native traffic-light
+   centerline in the packaged macOS shell. */
+.app-shell {
+  --rxnflow-titlebar-control-top: 10px !important;
+}
+
+.left-sidebar-fixed-toggle[aria-pressed="true"]:not(:hover):not(:focus-visible) {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: #4c6174 !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .left-sidebar-fixed-toggle[aria-pressed="true"]:not(:hover):not(:focus-visible) {
+  background: transparent !important;
+  color: #c9d7e2 !important;
+}
+
+/* 2026-06-26 continuous rail divider: the fixed titlebar surface can tint the
+   rail's own border at the very top. Paint the sidebar/canvas separator as a
+   single independent hairline above the titlebar surface so it stays the same
+   strength from top to bottom. */
+.workspace::before {
+  content: "" !important;
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: calc(var(--rxnflow-project-rail-width, 248px) - 1px) !important;
+  width: 1px !important;
+  background: var(--rxnflow-sidebar-divider) !important;
+  pointer-events: none !important;
+  z-index: 115 !important;
+  opacity: 1 !important;
+}
+
+.workspace.is-left-collapsed::before {
+  opacity: 0 !important;
+}
+
+.project-rail,
+.theme-dark .project-rail {
+  border-right-color: transparent !important;
+}
+
+/* 2026-06-26 Chrome-style canvas tabs: active canvas tabs become the top edge
+   of the canvas surface, with small bottom shoulders that curve into the
+   workbench. Inactive tabs stay in the titlebar layer and always expose their
+   close affordance at low contrast, matching Chrome's tab model. */
+.app-shell {
+  --rxnflow-chrome-tabbar-surface: rgba(230, 234, 242, 0.68);
+  --rxnflow-chrome-tab-muted-text: #4f6173;
+  --rxnflow-chrome-tab-active-text: #172f43;
+}
+
+.theme-dark {
+  --rxnflow-chrome-tabbar-surface: rgba(19, 31, 43, 0.72);
+  --rxnflow-chrome-tab-muted-text: #b8c9d6;
+  --rxnflow-chrome-tab-active-text: #f2f7fb;
+}
+
+.workspace-topbar,
+.canvas-tab-bar {
+  background: var(--rxnflow-chrome-tabbar-surface) !important;
+  backdrop-filter: blur(18px) !important;
+}
+
+.workspace-topbar::after {
+  background: transparent !important;
+}
+
+.canvas-tab-list {
+  align-items: flex-end !important;
+  gap: 4px !important;
+}
+
+.canvas-tab-shell {
+  isolation: isolate !important;
+  height: var(--rxnflow-titlebar-tab-height) !important;
+  min-width: 150px !important;
+  max-width: 224px !important;
+  margin-bottom: 0 !important;
+  border: 0 !important;
+  border-radius: 16px 16px 0 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.canvas-tab-shell:not(.is-active) {
+  background: transparent !important;
+}
+
+.canvas-tab-shell:not(.is-active):hover,
+.canvas-tab-shell:not(.is-active):focus-within {
+  background: rgba(255, 255, 255, 0.32) !important;
+}
+
+.theme-dark .canvas-tab-shell:not(.is-active):hover,
+.theme-dark .canvas-tab-shell:not(.is-active):focus-within {
+  background: rgba(196, 215, 228, 0.11) !important;
+}
+
+.canvas-tab-shell.is-active {
+  z-index: 3 !important;
+  margin-bottom: -1px !important;
+  background: var(--rxnflow-canvas-base) !important;
+  border-radius: 17px 17px 0 0 !important;
+  box-shadow: none !important;
+}
+
+.canvas-tab-shell.is-active::before,
+.canvas-tab-shell.is-active::after {
+  content: "" !important;
+  display: block !important;
+  position: absolute !important;
+  bottom: 0 !important;
+  width: 16px !important;
+  height: 16px !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+
+.canvas-tab-shell.is-active::before {
+  left: -16px !important;
+  background: radial-gradient(circle at 0 0, transparent 15.5px, var(--rxnflow-canvas-base) 16px) !important;
+}
+
+.canvas-tab-shell.is-active::after {
+  right: -16px !important;
+  background: radial-gradient(circle at 100% 0, transparent 15.5px, var(--rxnflow-canvas-base) 16px) !important;
+}
+
+.canvas-tab-shell .canvas-tab,
+.canvas-tab-shell.is-active .canvas-tab {
+  height: var(--rxnflow-titlebar-tab-height) !important;
+  min-height: var(--rxnflow-titlebar-tab-height) !important;
+  border: 0 !important;
+  border-radius: 16px 16px 0 0 !important;
+  padding: 0 34px 0 18px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--rxnflow-chrome-tab-muted-text) !important;
+  font-size: 13px !important;
+  font-weight: 760 !important;
+  line-height: var(--rxnflow-titlebar-tab-height) !important;
+}
+
+.canvas-tab-shell.is-active .canvas-tab {
+  color: var(--rxnflow-chrome-tab-active-text) !important;
+}
+
+.canvas-tab-close {
+  top: 50% !important;
+  right: 8px !important;
+  transform: translateY(-50%) !important;
+  width: 22px !important;
+  height: 22px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: var(--rxnflow-chrome-tab-muted-text) !important;
+  opacity: 0.72 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  line-height: 1 !important;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease !important;
+}
+
+.canvas-tab-shell.is-active .canvas-tab-close,
+.canvas-tab-shell:hover .canvas-tab-close,
+.canvas-tab-shell:focus-within .canvas-tab-close,
+.canvas-tab-close:focus-visible {
+  opacity: 1 !important;
+}
+
+.canvas-tab-close:hover,
+.canvas-tab-close:focus-visible {
+  outline: none !important;
+  background: rgba(68, 87, 103, 0.12) !important;
+  color: #182c3f !important;
+}
+
+.theme-dark .canvas-tab-close:hover,
+.theme-dark .canvas-tab-close:focus-visible {
+  background: rgba(196, 215, 228, 0.14) !important;
+  color: #f2f7fb !important;
+}
+
+.canvas-tab-add {
+  margin-left: 8px !important;
+  margin-bottom: 1px !important;
+  border-radius: 12px !important;
+}
+
+.app-shell .canvas-tab-shell.is-active,
+.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
+.app-shell.theme-dark .canvas-tab-shell.is-active {
+  background: var(--rxnflow-canvas-base) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.app-shell .canvas-tab-shell.is-active .canvas-tab,
+.app-shell:not(.theme-dark) .canvas-tab-shell.is-active .canvas-tab,
+.app-shell.theme-dark .canvas-tab-shell.is-active .canvas-tab {
+  color: var(--rxnflow-chrome-tab-active-text) !important;
+}
+
+/* 2026-06-26 Chrome tab cleanup pass: remove the extra local tabbar
+   translucency layers and reserve block next to the left rail. A single
+   titlebar surface sits behind the tabs; the active tab and its two shoulders
+   are painted with the exact canvas base color so the seam is clean. */
+.workspace:not(.is-left-collapsed) .workspace-topbar-left {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+.app-shell::before {
+  background: var(--rxnflow-chrome-tabbar-surface) !important;
+}
+
+.workspace-topbar,
+.canvas-tab-bar,
+.workspace-topbar-left {
+  background: transparent !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+.workspace-topbar {
+  padding-left: 0 !important;
+}
+
+.canvas-tab-bar {
+  left: 0 !important;
+  width: 100% !important;
+  padding: 0 12px !important;
+}
+
+.canvas-tab-list {
+  gap: 2px !important;
+  padding-left: 0 !important;
+  align-items: flex-end !important;
+}
+
+.canvas-tab-shell {
+  height: var(--rxnflow-titlebar-tab-height) !important;
+  margin-bottom: 0 !important;
+  border-radius: 16px 16px 0 0 !important;
+}
+
+.app-shell .canvas-tab-shell.is-active,
+.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
+.app-shell.theme-dark .canvas-tab-shell.is-active {
+  margin-bottom: 0 !important;
+  background-color: var(--rxnflow-canvas-base) !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 16px 16px 0 0 !important;
+}
+
+.canvas-tab-shell.is-active::before,
+.canvas-tab-shell.is-active::after {
+  content: "" !important;
+  display: block !important;
+  position: absolute !important;
+  bottom: 0 !important;
+  width: 16px !important;
+  height: 16px !important;
+  background: transparent !important;
+  background-image: none !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+
+.canvas-tab-shell.is-active::before {
+  left: -16px !important;
+  right: auto !important;
+  border-bottom-right-radius: 16px !important;
+  box-shadow: 8px 8px 0 8px var(--rxnflow-canvas-base) !important;
+}
+
+.canvas-tab-shell.is-active::after {
+  right: -16px !important;
+  left: auto !important;
+  border-bottom-left-radius: 16px !important;
+  box-shadow: -8px 8px 0 8px var(--rxnflow-canvas-base) !important;
+}
+
+.canvas-tab-shell .canvas-tab,
+.canvas-tab-shell.is-active .canvas-tab {
+  border-radius: 16px 16px 0 0 !important;
+}
+
+/* 2026-06-26 seamless Chrome tab join: let the active tab overpaint the first
+   pixels of the canvas so there is no titlebar/canvas hairline at its bottom.
+   Also move the add-tab separator away from the active tab shoulder. */
+.workspace-topbar,
+.workspace-topbar-left,
+.canvas-tab-bar,
+.canvas-tab-list {
+  overflow: visible !important;
+}
+
+.app-shell .canvas-tab-shell.is-active,
+.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
+.app-shell.theme-dark .canvas-tab-shell.is-active {
+  box-shadow: 0 2px 0 0 var(--rxnflow-canvas-base) !important;
+}
+
+.canvas-tab-add {
+  margin-left: 22px !important;
+}
+
+.canvas-tab-add::before {
+  left: -10px !important;
+}
+
+.app-shell .canvas-tab-shell.is-active,
+.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
+.app-shell.theme-dark .canvas-tab-shell.is-active {
+  box-shadow: 0 1px 0 0 var(--rxnflow-canvas-base) !important;
+}
+
+/* 2026-06-26 Chrome color continuity correction: keep the canvas flat and let
+   the active tab share the exact same surface token. This avoids both the
+   earlier white join band and the gradient-vs-tab color mismatch. */
+.app-shell {
+  --rxnflow-chrome-active-tab-surface: var(--rxnflow-canvas-base);
+}
+
+.theme-dark {
+  --rxnflow-chrome-active-tab-surface: var(--rxnflow-canvas-base);
+}
+
+.canvas-stage {
+  background-color: var(--rxnflow-canvas-base) !important;
+  background-image: none !important;
+}
+
+.canvas-stage::before {
+  inset: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+.canvas-stage::after {
+  content: none !important;
+  display: none !important;
+}
+
+.app-shell .canvas-tab-shell.is-active,
+.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
+.app-shell.theme-dark .canvas-tab-shell.is-active {
+  background-color: var(--rxnflow-chrome-active-tab-surface) !important;
+  box-shadow: 0 1px 0 0 var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+.canvas-tab-shell.is-active::before {
+  box-shadow: 8px 8px 0 8px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+.canvas-tab-shell.is-active::after {
+  box-shadow: -8px 8px 0 8px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+.canvas-tab-add {
+  margin-left: 30px !important;
+}
+
+.canvas-tab-add::before {
+  left: -12px !important;
+}
+
+/* 2026-06-26 classic export menu: reduce the export popover to a native-feeling
+   menu with only the three report formats. No header, no card stack, no form. */
+.workspace-topbar-actions .floating-export-trigger[aria-pressed="true"]::after {
+  content: none !important;
+  display: none !important;
+}
+
+.export-float-panel,
+.theme-dark .export-float-panel {
+  top: calc(var(--rxnflow-titlebar-control-top, 10px) + 34px) !important;
+  right: 46px !important;
+  width: 142px !important;
+  max-height: none !important;
+  display: block !important;
+  overflow: hidden !important;
+  padding: 5px !important;
+  border-radius: 11px !important;
+  transform-origin: top right !important;
+}
+
+.export-float-panel {
+  border: 1px solid rgba(101, 121, 136, 0.18) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow:
+    0 18px 44px rgba(25, 43, 56, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.62) inset !important;
+  backdrop-filter: blur(18px) saturate(1.05) !important;
+}
+
+.theme-dark .export-float-panel {
+  border-color: rgba(145, 180, 199, 0.2) !important;
+  background: rgba(19, 31, 42, 0.96) !important;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.46),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset !important;
+}
+
+.export-float-panel::before,
+.theme-dark .export-float-panel::before {
+  content: none !important;
+  display: none !important;
+}
+
+.export-float-panel .export-panel,
+.export-float-panel .export-menu,
+.theme-dark .export-float-panel .export-panel,
+.theme-dark .export-float-panel .export-menu {
+  display: block !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.export-menu-list {
+  display: grid !important;
+  gap: 2px !important;
+}
+
+.export-menu-item {
+  width: 100% !important;
+  height: 30px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  padding: 0 10px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #23384b !important;
+  font: inherit !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+  text-align: left !important;
+  cursor: pointer !important;
+  transition: background-color 90ms ease, color 90ms ease !important;
+}
+
+.export-menu-item:hover,
+.export-menu-item:focus-visible {
+  outline: none !important;
+  background: rgba(28, 119, 236, 0.12) !important;
+  color: #132d45 !important;
+}
+
+.export-menu-item:active:not(:disabled) {
+  background: rgba(28, 119, 236, 0.18) !important;
+}
+
+.export-menu-item:disabled {
+  cursor: default !important;
+  opacity: 0.55 !important;
+}
+
+.theme-dark .export-menu-item {
+  color: #e3edf6 !important;
+}
+
+.theme-dark .export-menu-item:hover,
+.theme-dark .export-menu-item:focus-visible {
+  background: rgba(112, 172, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+.theme-dark .export-menu-item:active:not(:disabled) {
+  background: rgba(112, 172, 255, 0.25) !important;
+}
+
+@media (max-width: 720px) {
+  .export-float-panel,
+  .theme-dark .export-float-panel {
+    top: calc(var(--rxnflow-titlebar-height, 48px) + 6px) !important;
+    right: 12px !important;
+    left: auto !important;
+    width: 142px !important;
+  }
+}
+
+/* 2026-06-26 Chrome tab hover tuning: inactive tabs should read as a clear
+   hover pill, not as a faint smear that almost touches the active canvas tab. */
+.app-shell {
+  --rxnflow-chrome-tab-hover-surface: rgba(204, 214, 231, 0.82);
+  --rxnflow-chrome-tab-hover-border: rgba(123, 143, 166, 0.16);
+  --rxnflow-chrome-tab-hover-text: #172c40;
+}
+
+.theme-dark {
+  --rxnflow-chrome-tab-hover-surface: rgba(72, 91, 108, 0.58);
+  --rxnflow-chrome-tab-hover-border: rgba(161, 190, 210, 0.14);
+  --rxnflow-chrome-tab-hover-text: #f3f8fc;
+}
+
+.canvas-tab-list {
+  gap: 18px !important;
+}
+
+.canvas-tab-shell:not(.is-active) {
+  z-index: 1 !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+  transition:
+    background-color 100ms ease,
+    box-shadow 100ms ease,
+    color 100ms ease !important;
+}
+
+.canvas-tab-shell:not(.is-active):hover,
+.canvas-tab-shell:not(.is-active):focus-within {
+  background: var(--rxnflow-chrome-tab-hover-surface) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--rxnflow-chrome-tab-hover-border),
+    0 1px 2px rgba(32, 49, 64, 0.06) !important;
+}
+
+.canvas-tab-shell:not(.is-active) .canvas-tab {
+  border-radius: 16px !important;
+}
+
+.canvas-tab-shell:not(.is-active):hover .canvas-tab,
+.canvas-tab-shell:not(.is-active):focus-within .canvas-tab {
+  color: var(--rxnflow-chrome-tab-hover-text) !important;
+}
+
+.canvas-tab-shell.is-active {
+  z-index: 3 !important;
+}
+
+.canvas-tab-shell.is-active::before,
+.canvas-tab-shell.is-active::after {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.canvas-tab-shell.is-active::before {
+  left: -10px !important;
+  box-shadow: 5px 5px 0 5px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+.canvas-tab-shell.is-active::after {
+  right: -10px !important;
+  box-shadow: -5px 5px 0 5px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+/* 2026-06-26 continuous expanded sidebars: the global titlebar tint should sit
+   behind the expanded left/right rails, not over their top 44px. Otherwise the
+   sidebar reads as "titlebar strip + content strip" instead of one native pane. */
+.workspace:not(.is-left-collapsed) .project-rail,
+.workspace:not(.is-right-collapsed) .inspector-panel {
+  z-index: 90 !important;
+  border-top: 0 !important;
+  background-image: none !important;
+}
+
+.workspace:not(.is-left-collapsed) .project-rail {
+  background: var(--rxnflow-titlebar-surface) !important;
+}
+
+.workspace:not(.is-right-collapsed) .inspector-panel {
+  background: rgba(250, 253, 255, 0.66) !important;
+}
+
+.theme-dark .workspace:not(.is-left-collapsed) .project-rail {
+  background: var(--rxnflow-titlebar-surface) !important;
+}
+
+.theme-dark .workspace:not(.is-right-collapsed) .inspector-panel {
+  background: rgba(12, 24, 34, 0.78) !important;
+}
+
+/* 2026-06-26 Chrome tab strip continuity pass: tabs should behave like one
+   connected strip with curved joins. Avoid isolated pill islands, remove the
+   add-tab divider, and let the active tab shoulders softly consume the small
+   inter-tab gutter. */
+.app-shell {
+  --rxnflow-chrome-tab-hover-surface: rgba(199, 210, 229, 0.74);
+  --rxnflow-chrome-tab-hover-border: rgba(112, 132, 157, 0.14);
+  --rxnflow-chrome-tabbar-surface: rgba(228, 235, 242, 0.78);
+}
+
+.theme-dark {
+  --rxnflow-chrome-tab-hover-surface: rgba(70, 88, 106, 0.54);
+  --rxnflow-chrome-tab-hover-border: rgba(161, 190, 210, 0.12);
+  --rxnflow-chrome-tabbar-surface: rgba(18, 30, 42, 0.78);
+}
+
+.app-shell::before {
+  background: var(--rxnflow-chrome-tabbar-surface) !important;
+}
+
+.canvas-tab-list {
+  gap: 6px !important;
+}
+
+.canvas-tab-shell {
+  min-width: 156px !important;
+}
+
+.canvas-tab-shell:not(.is-active) {
+  border-radius: 15px !important;
+  overflow: hidden !important;
+}
+
+.canvas-tab-shell:not(.is-active):hover,
+.canvas-tab-shell:not(.is-active):focus-within {
+  background: var(--rxnflow-chrome-tab-hover-surface) !important;
+  box-shadow: inset 0 0 0 1px var(--rxnflow-chrome-tab-hover-border) !important;
+}
+
+.canvas-tab-shell.is-active {
+  border-radius: 16px 16px 0 0 !important;
+}
+
+.canvas-tab-shell.is-active::before,
+.canvas-tab-shell.is-active::after {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.canvas-tab-shell.is-active::before {
+  left: -14px !important;
+  box-shadow: 7px 7px 0 7px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+.canvas-tab-shell.is-active::after {
+  right: -14px !important;
+  box-shadow: -7px 7px 0 7px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+.canvas-tab-add {
+  margin-left: 4px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.canvas-tab-add::before {
+  content: none !important;
+  display: none !important;
+}
+
+/* 2026-06-26 Chrome inactive-tab hover baseline: inactive hover tabs should
+   float inside the tab strip with a small bottom gutter. Only the active tab
+   attaches to the canvas surface. */
+.canvas-tab-shell:not(.is-active) {
+  height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
+  min-height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
+  margin-bottom: 4px !important;
+}
+
+.canvas-tab-shell:not(.is-active) .canvas-tab {
+  height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
+  min-height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
+  line-height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
+}
+
+/* 2026-06-26 Chrome tab radius tuning: avoid capsule-shaped inactive hover
+   tabs. Chrome's tab hover reads as a rounded rectangle with flatter sides,
+   while only the active tab uses curved shoulders into the content surface. */
+.canvas-tab-shell:not(.is-active),
+.canvas-tab-shell:not(.is-active) .canvas-tab {
+  border-radius: 10px !important;
+}
+
+.canvas-tab-shell.is-active,
+.canvas-tab-shell.is-active .canvas-tab {
+  border-radius: 13px 13px 0 0 !important;
+}
+
+.canvas-tab-shell.is-active::before,
+.canvas-tab-shell.is-active::after {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.canvas-tab-shell.is-active::before {
+  left: -12px !important;
+  box-shadow: 6px 6px 0 6px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+.canvas-tab-shell.is-active::after {
+  right: -12px !important;
+  box-shadow: -6px 6px 0 6px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+/* 2026-06-26 tab radius unification: inactive hover tabs and the active tab
+   must share the same corner curvature. Earlier higher-specificity active-tab
+   rules kept the active shell at 16px while inactive hover had 10px. */
+.app-shell {
+  --rxnflow-chrome-tab-radius: 12px;
+}
+
+.app-shell .canvas-tab-shell:not(.is-active),
+.app-shell .canvas-tab-shell:not(.is-active) .canvas-tab,
+.app-shell:not(.theme-dark) .canvas-tab-shell:not(.is-active),
+.app-shell:not(.theme-dark) .canvas-tab-shell:not(.is-active) .canvas-tab,
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active),
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab {
+  border-radius: var(--rxnflow-chrome-tab-radius) !important;
+}
+
+.app-shell .canvas-tab-shell.is-active,
+.app-shell .canvas-tab-shell.is-active .canvas-tab,
+.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
+.app-shell:not(.theme-dark) .canvas-tab-shell.is-active .canvas-tab,
+.app-shell.theme-dark .canvas-tab-shell.is-active,
+.app-shell.theme-dark .canvas-tab-shell.is-active .canvas-tab {
+  border-radius: var(--rxnflow-chrome-tab-radius) var(--rxnflow-chrome-tab-radius) 0 0 !important;
+}
+
+/* 2026-06-26 inactive tab hover 4px inset: keep the inactive tab in the same
+   34px slot as active tabs, but draw the hover surface 4px inset on every side.
+   This avoids a tall capsule and matches Chrome's inset hover geometry. */
+.canvas-tab-shell:not(.is-active) {
+  height: var(--rxnflow-titlebar-tab-height) !important;
+  min-height: var(--rxnflow-titlebar-tab-height) !important;
+  margin-bottom: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.canvas-tab-shell:not(.is-active)::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 4px !important;
+  border-radius: var(--rxnflow-chrome-tab-radius) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+  transition: background-color 100ms ease, box-shadow 100ms ease !important;
+}
+
+.canvas-tab-shell:not(.is-active):hover::before,
+.canvas-tab-shell:not(.is-active):focus-within::before {
+  background: var(--rxnflow-chrome-tab-hover-surface) !important;
+  box-shadow: inset 0 0 0 1px var(--rxnflow-chrome-tab-hover-border) !important;
+}
+
+.canvas-tab-shell:not(.is-active):hover,
+.canvas-tab-shell:not(.is-active):focus-within {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.canvas-tab-shell:not(.is-active) .canvas-tab {
+  height: var(--rxnflow-titlebar-tab-height) !important;
+  min-height: var(--rxnflow-titlebar-tab-height) !important;
+  line-height: var(--rxnflow-titlebar-tab-height) !important;
+  padding-left: 18px !important;
+  padding-right: 34px !important;
+}
+
+/* 2026-06-26 compact Chrome tabbar slot: shrink the titlebar slot itself.
+   Keep the inactive hover layer 4px away vertically, but tighten the horizontal
+   gutter so the pill does not look over-padded compared with Chrome. */
+.app-shell {
+  --rxnflow-titlebar-height: 36px !important;
+  --rxnflow-titlebar-tab-height: 32px !important;
+  --rxnflow-titlebar-tab-add-size: 28px !important;
+  --rxnflow-titlebar-control-top: 3px !important;
+}
+
+.canvas-tab-shell:not(.is-active) {
+  height: var(--rxnflow-titlebar-height) !important;
+  min-height: var(--rxnflow-titlebar-height) !important;
+  margin-bottom: 0 !important;
+}
+
+.canvas-tab-shell:not(.is-active) .canvas-tab {
+  height: var(--rxnflow-titlebar-height) !important;
+  min-height: var(--rxnflow-titlebar-height) !important;
+  line-height: var(--rxnflow-titlebar-height) !important;
+}
+
+.canvas-tab-shell:not(.is-active)::before {
+  inset: 4px !important;
+}
+
+.canvas-tab-add {
+  margin-bottom: 4px !important;
+}
+
+@media (max-width: 1100px) {
+  .app-shell {
+    --rxnflow-titlebar-left-button-left: 19px !important;
+  }
+}
+
+/* 2026-06-26 Chrome hover gap correction: keep the hover capsule's visible
+   gap equal on every side. The tab strip still needs 12px of left padding so a
+   first active tab's shoulder can curve cleanly, but when the first tab is
+   inactive the hover surface should extend back over that reserved shoulder
+   gutter, leaving the same 4px gap as the top/bottom. The 12px inter-tab gap
+   gives the same 4px air between an inactive hover capsule and the neighboring
+   active-tab shoulder. */
+.canvas-tab-list {
+  gap: 12px !important;
+}
+
+.canvas-tab-list > .canvas-tab-shell:first-child:not(.is-active)::before {
+  left: -8px !important;
+}
+
+/* 2026-06-26 Chrome hover optical correction: compare the inactive hover
+   surface against the neighboring tab body, not only against the active
+   shoulder curve. Extend the hover skin into the shared shoulder gutter on
+   both sides where needed, and make the corners a little squarer. */
+.app-shell {
+  --rxnflow-chrome-tab-radius: 9px !important;
+}
+
+.canvas-tab-shell:not(.is-active):has(+ .canvas-tab-shell.is-active)::before {
+  right: -8px !important;
+}
+
+.canvas-tab-shell.is-active + .canvas-tab-shell:not(.is-active)::before {
+  left: -8px !important;
+}
+
+.canvas-tab-shell.is-active::before,
+.canvas-tab-shell.is-active::after {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.canvas-tab-shell.is-active::before {
+  left: -10px !important;
+  box-shadow: 5px 5px 0 5px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+.canvas-tab-shell.is-active::after {
+  right: -10px !important;
+  box-shadow: -5px 5px 0 5px var(--rxnflow-chrome-active-tab-surface) !important;
+}
+
+
+/* 2026-06-26 tab hover color + add-button placement: use the same quiet
+   titlebar hover tint as the add-tab button, and pull the add button back
+   toward the active tab after the larger inter-tab gap used for hover spacing. */
+.app-shell {
+  --rxnflow-chrome-tab-hover-surface: var(--rxnflow-titlebar-hover) !important;
+  --rxnflow-chrome-tab-hover-border: transparent !important;
+}
+
+.canvas-tab-shell:not(.is-active):hover::before,
+.canvas-tab-shell:not(.is-active):focus-within::before {
+  box-shadow: none !important;
+}
+
+.canvas-tab-shell.is-active + .canvas-tab-add {
+  margin-left: -2px !important;
+}
+
+
+/* 2026-06-26 tab text baseline alignment: inactive tab shells occupy the full
+   36px titlebar slot while active tabs start 4px lower and are 32px tall. Make
+   the inactive inner button use the same 32px line box at the same y=4 origin,
+   so label / close glyph share the active tab's optical baseline without
+   changing the hover capsule geometry. */
+.canvas-tab-shell:not(.is-active) .canvas-tab {
+  height: var(--rxnflow-titlebar-tab-height) !important;
+  min-height: var(--rxnflow-titlebar-tab-height) !important;
+  margin-top: 4px !important;
+  line-height: var(--rxnflow-titlebar-tab-height) !important;
+  transform: none !important;
+}
+
+.canvas-tab-shell:not(.is-active) .canvas-tab-close {
+  top: calc(50% + 2px) !important;
+}
+
+/* 2026-06-26 macOS chrome alignment: keep the compact 36px titlebar's
+   controls on one centerline. Electron moves the native traffic lights to
+   y=12 in the desktop shell, so the DOM chrome can stay at the web metric
+   instead of being pushed visibly low. */
+.app-shell.is-macos-desktop {
+  --rxnflow-titlebar-control-top: 3px !important;
+}
+
+/* 2026-06-26 right inspector drawer origin: the node inspector should emerge
+   from the canvas area, not paint a blank continuation through the native
+   titlebar. Keep the global titlebar surface behind the window controls and
+   start the inspector surface at the same y as the canvas. */
+.workspace:not(.is-right-collapsed) .inspector-panel {
+  align-self: start !important;
+  top: var(--rxnflow-titlebar-height) !important;
+  height: calc(100% - var(--rxnflow-titlebar-height)) !important;
+  max-height: calc(100% - var(--rxnflow-titlebar-height)) !important;
+  min-height: 0 !important;
+  padding: 14px !important;
+  border-top-left-radius: 26px !important;
+  border-top-right-radius: 0 !important;
+}
+
+/* 2026-06-26 node resize affordance: keep the card itself draggable for move,
+   but expose a small native-feeling bottom-right handle that only resizes the
+   node card. */
+.node-resize-handle {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  z-index: 5;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0;
+  background: transparent;
+  color: rgba(111, 123, 130, 0.58);
+  cursor: nwse-resize;
+  opacity: 0;
+  touch-action: none;
+  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.node-resize-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4.8 21.2H6.2C14.5 21.2 21.2 14.5 21.2 6.2V4.8' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round'/%3E%3C/svg%3E") center / 24px 24px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4.8 21.2H6.2C14.5 21.2 21.2 14.5 21.2 6.2V4.8' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round'/%3E%3C/svg%3E") center / 24px 24px no-repeat;
+}
+
+.reaction-node:hover .node-resize-handle,
+.reaction-node:focus-within .node-resize-handle,
+.reaction-node.is-selected .node-resize-handle {
+  opacity: 1;
+}
+
+.node-resize-handle:hover,
+.node-resize-handle:focus-visible {
+  outline: none;
+  background: transparent;
+  color: rgba(15, 121, 101, 0.78);
+}
+
+.theme-dark .node-resize-handle {
+  color: rgba(164, 190, 205, 0.56);
+}
+
+.theme-dark .node-resize-handle:hover,
+.theme-dark .node-resize-handle:focus-visible {
+  background: transparent;
+  color: rgba(122, 232, 195, 0.82);
+}
+
+/* 2026-06-26 node meta row separation: the energy value and kind badge are two
+   independent pills, not a segmented control. Remove the inherited outer row
+   frame and leave clear air between the two surfaces. */
+.node-energy-strip.node-card-meta-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.node-card-energy-value,
+.node-kind-badge {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.node-card-energy-value {
+  flex: 0 1 auto !important;
+  width: auto !important;
+  max-width: calc(100% - 46px) !important;
+}
+
+.node-kind-badge {
+  flex: 0 0 auto !important;
+}
+
+/* 2026-06-26 right inspector density/corner cleanup: the right sidebar is a
+   persistent native pane, not a floating card. Keep it slimmer to give the
+   canvas more room, and let its left edge meet the canvas cleanly instead of
+   showing a rounded "extra skin" at the upper-left corner. */
+.app-shell {
+  --rxnflow-inspector-width: 288px !important;
+}
+
+.workspace {
+  grid-template-columns: var(--rxnflow-project-rail-width, 248px) minmax(0, 1fr) var(--rxnflow-inspector-width) !important;
+}
+
+.workspace.is-left-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) var(--rxnflow-inspector-width) !important;
+}
+
+.workspace.is-right-collapsed {
+  grid-template-columns: var(--rxnflow-project-rail-width, 248px) minmax(0, 1fr) 0 !important;
+}
+
+.workspace.is-left-collapsed.is-right-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+}
+
+.workspace:not(.is-right-collapsed) .inspector-panel {
+  width: var(--rxnflow-inspector-width) !important;
+  border-top-left-radius: 0 !important;
+  background: rgba(250, 253, 255, 0.74) !important;
+}
+
+.theme-dark .workspace:not(.is-right-collapsed) .inspector-panel {
+  background: rgba(12, 24, 34, 0.84) !important;
+}
+
+.node-summary-grid div,
+.node-overview-grid div {
+  grid-template-columns: 86px minmax(0, 1fr) !important;
+}
+
+/* 2026-06-26 structure preview flattening: keep only one visual layer around
+   each actual preview. The old pane cards, 3Dmol HUD labels and bottom metadata
+   made the dialog feel like nested cards inside nested cards. */
+.structure-preview-dialog {
+  width: min(900px, calc(100vw - var(--structure-left-rail, 0px) - var(--structure-right-rail, 0px) - 40px)) !important;
+  gap: 18px !important;
+  padding: 20px !important;
+}
+
+.structure-preview-header {
+  align-items: flex-start !important;
+}
+
+.structure-preview-close-button {
+  width: 38px !important;
+  height: 38px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 0 !important;
+  border-radius: 13px !important;
+  padding: 0 !important;
+  background: rgba(228, 240, 244, 0.72) !important;
+  color: #40566b !important;
+}
+
+.structure-preview-close-button:hover,
+.structure-preview-close-button:focus-visible {
+  outline: none !important;
+  background: rgba(207, 229, 236, 0.86) !important;
+  color: #20374a !important;
+}
+
+.structure-preview-body {
+  grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr) !important;
+  gap: 18px !important;
+  align-items: stretch !important;
+}
+
+.structure-dialog-pane {
+  position: relative !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.structure-dialog-2d-depiction,
+.structure-dialog-pane-3d .structure-orbit {
+  height: min(310px, calc(100vh - var(--structure-top-chrome, 48px) - 170px)) !important;
+  min-height: 236px !important;
+}
+
+.structure-dialog-preview-actions {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.structure-dialog-action {
+  width: auto !important;
+  min-width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 9px;
+  background: rgba(232, 243, 247, 0.82);
+  color: #466076;
+  box-shadow: none;
+}
+
+.structure-dialog-action:hover,
+.structure-dialog-action:focus-visible,
+.structure-dialog-action.is-active {
+  outline: none;
+  background: rgba(210, 232, 238, 0.92);
+  color: #20384b;
+}
+
+.structure-dialog-action:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.structure-dialog-vibration-action {
+  width: 34px !important;
+  padding: 0;
+}
+
+.molecule-3dmol-hud {
+  display: none !important;
+}
+
+.molecule-3dmol-shell {
+  position: relative;
+}
+
+.molecule-3dmol-inspection-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 6;
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 13px;
+  background: rgba(245, 250, 252, 0.84);
+  box-shadow: 0 10px 26px rgba(31, 46, 61, 0.12);
+  backdrop-filter: blur(16px);
+}
+
+.molecule-3dmol-inspection-toolbar button {
+  min-width: 32px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 8px;
+  background: transparent;
+  color: #435c72;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.molecule-3dmol-inspection-toolbar button:hover,
+.molecule-3dmol-inspection-toolbar button:focus-visible,
+.molecule-3dmol-inspection-toolbar button.is-active {
+  outline: none;
+  background: rgba(214, 232, 239, 0.9);
+  color: #193245;
+}
+
+.molecule-3dmol-label-cloud,
+.molecule-3dmol-measurements,
+.molecule-3dmol-selection-readout {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.molecule-3dmol-label-cloud {
+  right: 12px;
+  bottom: 12px;
+  max-width: min(360px, 55%);
+}
+
+.molecule-3dmol-measurements,
+.molecule-3dmol-selection-readout {
+  left: 12px;
+  bottom: 12px;
+}
+
+.molecule-3dmol-label-cloud span,
+.molecule-3dmol-measurements span,
+.molecule-3dmol-selection-readout span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 10px;
+  padding: 0 10px;
+  background: rgba(246, 252, 250, 0.9);
+  color: #243d4f;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(31, 46, 61, 0.12);
+  backdrop-filter: blur(12px);
+}
+
+.theme-dark .structure-preview-close-button,
+.theme-dark .structure-dialog-action {
+  background: rgba(35, 52, 64, 0.78) !important;
+  color: #d7e8f2 !important;
+}
+
+.theme-dark .molecule-3dmol-inspection-toolbar {
+  background: rgba(24, 36, 46, 0.84);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+}
+
+.theme-dark .molecule-3dmol-inspection-toolbar button {
+  color: #d3e6f0;
+}
+
+.theme-dark .molecule-3dmol-inspection-toolbar button:hover,
+.theme-dark .molecule-3dmol-inspection-toolbar button:focus-visible,
+.theme-dark .molecule-3dmol-inspection-toolbar button.is-active {
+  background: rgba(55, 79, 94, 0.92);
+  color: #f5fbff;
+}
+
+.theme-dark .molecule-3dmol-label-cloud span,
+.theme-dark .molecule-3dmol-measurements span,
+.theme-dark .molecule-3dmol-selection-readout span {
+  background: rgba(21, 38, 48, 0.88);
+  color: #e5f5f2;
+}
+
+.theme-dark .structure-preview-close-button:hover,
+.theme-dark .structure-preview-close-button:focus-visible,
+.theme-dark .structure-dialog-action:hover,
+.theme-dark .structure-dialog-action:focus-visible {
+  background: rgba(49, 72, 86, 0.9) !important;
+  color: #f4fbff !important;
+}
+
+.structure-preview-scrim.has-right-sidebar {
+  --structure-right-rail: var(--rxnflow-inspector-width, 288px) !important;
+}
+
+/* 2026-06-26 inline canvas label editing: capsules are text-sized and centered in their SVG anchors. */
+.edge-label,
+.edge-label-editor input,
+.barrier-label-button,
+.barrier-label-editor input {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  transform: none !important;
+}
+
+.edge-label,
+.edge-label-editor input {
+  height: 28px !important;
+  min-height: 28px !important;
+  margin: 2px 0 !important;
+  padding: 0 10px !important;
+}
+
+.barrier-label-button,
+.barrier-label-editor input {
+  height: 34px !important;
+  min-height: 34px !important;
+  margin: 3px 0 !important;
+  padding: 0 12px !important;
+}
+
+.edge-label,
+.barrier-label-button {
+  display: grid !important;
+  place-items: center !important;
+}
+
+.edge-label-editor,
+.barrier-label-editor {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+}
+
+.canvas-label-anchor {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  z-index: 8 !important;
+  pointer-events: none !important;
+}
+
+.canvas-label-anchor > * {
+  pointer-events: auto !important;
+}
+
+.edge-label-anchor .edge-label-add {
+  opacity: 0 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+.edge-label-anchor:hover .edge-label-add,
+.edge-label-anchor:focus-within .edge-label-add,
+.edge-label-anchor.is-selected .edge-label-add {
+  opacity: 1 !important;
+  background: rgba(248, 252, 252, 0.78) !important;
+  border-color: rgba(136, 164, 181, 0.16) !important;
+}
+
+/* 2026-06-26 structure empty states: keep unavailable previews quiet; no instructional copy inside the panes. */
+.structure-unavailable-icon {
+  width: 42px;
+  height: 42px;
+  color: rgba(79, 105, 122, 0.32);
+}
+
+.molecule-2d-depiction-placeholder,
+.molecule-3dmol-empty {
+  gap: 0 !important;
+  color: rgba(79, 105, 122, 0.32) !important;
+}
+
+.theme-dark .structure-unavailable-icon,
+.theme-dark .molecule-2d-depiction-placeholder,
+.theme-dark .molecule-3dmol-empty {
+  color: rgba(157, 180, 198, 0.34) !important;
+}
+
+/* 2026-06-26 right inspector top seam: the first node summary should be part of
+   the sidebar surface, not a floating rounded card. This removes the tiny
+   rounded "skin" that peeked out at the top of the right pane. */
+.workspace:not(.is-right-collapsed) .inspector-panel {
+  overflow-x: hidden !important;
+  clip-path: inset(0) !important;
+}
+
+.workspace:not(.is-right-collapsed) .inspector-panel .node-inspector-stack > .node-panel-summary:first-child {
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 2026-06-26 magnetic edge drafting: when the pointer enters a target port's
+   magnetic radius, snap the preview endpoint onto that port and make the input
+   dot visibly "catch" the line. */
+.connection-preview-path.is-snapped {
+  stroke: rgba(15, 143, 116, 0.92) !important;
+  stroke-dasharray: none !important;
+  stroke-width: 3.2px !important;
+  filter: drop-shadow(0 0 7px rgba(31, 162, 131, 0.28)) !important;
+}
+
+.connection-preview-snap-halo {
+  fill: rgba(31, 162, 131, 0.1) !important;
+  stroke: rgba(31, 162, 131, 0.42) !important;
+  stroke-width: 1.6px !important;
+  pointer-events: none !important;
+}
+
+.reaction-node.is-connection-snap-target .node-connector-in {
+  width: 16px !important;
+  height: 16px !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  background: #1fa283 !important;
+  box-shadow:
+    0 0 0 6px rgba(255, 255, 255, 0.76),
+    0 0 0 13px rgba(31, 162, 131, 0.18),
+    0 16px 32px rgba(31, 162, 131, 0.28) !important;
+  transform: translateY(-50%) scale(1.08) !important;
+}
+
+/* 2026-06-26 preferences + context menus: keep low-frequency actions out of the floating toolbar. */
+.project-rail-footer {
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.project-rail-settings {
+  width: 100%;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(126, 152, 169, 0.14);
+  border-radius: 12px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.42);
+  color: #53687b;
+  font-size: 12px;
+  font-weight: 820;
+  text-align: left;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.project-rail-settings:hover,
+.project-rail-settings:focus-visible {
+  outline: none;
+  background: rgba(232, 250, 246, 0.92);
+  color: #0f7965;
+  box-shadow: 0 10px 24px rgba(41, 91, 104, 0.1);
+}
+
+.settings-panel {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 140;
+  width: min(320px, calc(100vw - 32px));
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(126, 152, 169, 0.18);
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #26394d;
+  box-shadow: 0 24px 70px rgba(34, 55, 72, 0.18);
+  backdrop-filter: blur(22px);
+  -webkit-app-region: no-drag;
+}
+
+.settings-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-panel-header div {
+  display: grid;
+  gap: 2px;
+}
+
+.settings-panel-header strong {
+  font-size: 13px;
+  font-weight: 880;
+}
+
+.settings-panel-header span,
+.settings-field span {
+  color: #718597;
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.settings-panel-close {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(233, 242, 246, 0.8);
+  color: #52687c;
+}
+
+.settings-panel-close:hover,
+.settings-panel-close:focus-visible {
+  outline: none;
+  background: rgba(221, 235, 241, 0.95);
+}
+
+.settings-field {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-field select {
+  width: 100%;
+  height: 38px;
+  border: 1px solid rgba(126, 152, 169, 0.18);
+  border-radius: 11px;
+  padding: 0 10px;
+  background: rgba(248, 252, 252, 0.86);
+  color: #26394d;
+  font-size: 12px;
+  font-weight: 780;
+  outline: none;
+}
+
+.settings-field select:focus-visible {
+  border-color: rgba(31, 162, 131, 0.42);
+  box-shadow: 0 0 0 4px rgba(31, 162, 131, 0.12);
+}
+
+.settings-opener-field {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.settings-opener-field > span {
+  grid-column: 1 / -1;
+}
+
+.settings-opener-value {
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  border: 1px solid rgba(126, 152, 169, 0.16);
+  border-radius: 11px;
+  padding: 0 10px;
+  overflow: hidden;
+  background: rgba(248, 252, 252, 0.68);
+  color: #40566b;
+  font-size: 11px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-opener-actions {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.settings-opener-actions button {
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 9px;
+  background: rgba(232, 242, 246, 0.86);
+  color: #40566b;
+  font-size: 11px;
+  font-weight: 820;
+}
+
+.settings-opener-actions button:hover,
+.settings-opener-actions button:focus-visible {
+  outline: none;
+  background: rgba(214, 235, 241, 0.94);
+}
+
+.settings-opener-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.canvas-context-menu {
+  position: fixed;
+  z-index: 180;
+  min-width: 168px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(126, 152, 169, 0.18);
+  border-radius: 13px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 50px rgba(34, 55, 72, 0.18);
+  backdrop-filter: blur(20px);
+  -webkit-app-region: no-drag;
+}
+
+.canvas-context-menu button {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 10px;
+  background: transparent;
+  color: #40566b;
+  font-size: 12px;
+  font-weight: 820;
+  text-align: left;
+}
+
+.canvas-context-menu button:hover,
+.canvas-context-menu button:focus-visible {
+  outline: none;
+  background: rgba(232, 250, 246, 0.94);
+  color: #0f7965;
+}
+
+.canvas-context-menu button.is-danger {
+  color: #b53d34;
+}
+
+.canvas-context-menu button.is-danger:hover,
+.canvas-context-menu button.is-danger:focus-visible {
+  background: rgba(255, 106, 92, 0.12);
+  color: #a9342d;
+}
+
+.canvas-context-menu-divider {
+  height: 1px;
+  margin: 3px 4px;
+  background: rgba(126, 152, 169, 0.14);
+}
+
+.theme-dark .project-rail-settings {
+  border-color: rgba(145, 180, 199, 0.12);
+  background: rgba(28, 43, 56, 0.5);
+  color: #b8c9d6;
+}
+
+.theme-dark .project-rail-settings:hover,
+.theme-dark .project-rail-settings:focus-visible {
+  background: rgba(30, 109, 94, 0.28);
+  color: #bdf7e8;
+}
+
+.theme-dark .settings-panel,
+.theme-dark .canvas-context-menu {
+  border-color: rgba(145, 180, 199, 0.14);
+  background: rgba(17, 29, 40, 0.94);
+  color: #edf7ff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+}
+
+.theme-dark .settings-panel-header span,
+.theme-dark .settings-field span {
+  color: #9db4c6;
+}
+
+.theme-dark .settings-panel-close,
+.theme-dark .settings-field select,
+.theme-dark .settings-opener-value,
+.theme-dark .settings-opener-actions button {
+  border-color: rgba(145, 180, 199, 0.14);
+  background: rgba(28, 43, 56, 0.88);
+  color: #dfeef8;
+}
+
+.theme-dark .settings-opener-actions button:hover,
+.theme-dark .settings-opener-actions button:focus-visible {
+  background: rgba(50, 76, 92, 0.92);
+}
+
+.theme-dark .canvas-context-menu button {
+  color: #d8e8f4;
+}
+
+.theme-dark .canvas-context-menu button:hover,
+.theme-dark .canvas-context-menu button:focus-visible {
+  background: rgba(30, 109, 94, 0.28);
+  color: #bdf7e8;
+}
+
+.theme-dark .canvas-context-menu-divider {
+  background: rgba(145, 180, 199, 0.14);
+}
+
+/* 2026-06-26 canvas text/image annotations + minimap zoom controls */
+.canvas-surface.is-text-tool {
+  cursor: text;
+}
+
+.canvas-annotation {
+  position: absolute;
+  z-index: 5;
+  transform-origin: top left;
+  pointer-events: auto;
+}
+
+.canvas-text-annotation {
+  min-width: 72px;
+}
+
+.canvas-text-annotation-button,
+.canvas-text-annotation-input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid rgba(111, 138, 154, 0.16);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #21364a;
+  box-shadow: 0 12px 28px rgba(55, 78, 96, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(16px);
+  font: 700 14px/1.35 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.canvas-text-annotation-button {
+  padding: 8px 10px;
+  cursor: text;
+}
+
+.canvas-text-annotation-button:hover,
+.canvas-text-annotation-button:focus-visible,
+.canvas-text-annotation.is-editing .canvas-text-annotation-input {
+  outline: none;
+  border-color: rgba(69, 143, 189, 0.35);
+  box-shadow: 0 14px 34px rgba(55, 78, 96, 0.15), 0 0 0 4px rgba(69, 143, 189, 0.12);
+}
+
+.canvas-text-annotation-input {
+  padding: 8px 10px;
+  resize: none;
+  overflow: hidden;
+}
+
+.canvas-image-annotation {
+  overflow: hidden;
+  border: 1px solid rgba(111, 138, 154, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 18px 44px rgba(55, 78, 96, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(16px);
+}
+
+.canvas-image-annotation img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.minimap-stack {
+  position: absolute;
+  z-index: 8;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.minimap-stack .minimap {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  flex: 0 0 auto;
+}
+
+.minimap-stack .zoom-controls {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  min-height: 38px;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(126, 152, 169, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 18px 46px rgba(54, 74, 88, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.minimap-stack .zoom-controls button {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  border-radius: 10px;
+}
+
+.minimap-stack .zoom-controls span {
+  min-width: 42px;
+  font-size: 12px;
+}
+
+.theme-dark .canvas-text-annotation-button,
+.theme-dark .canvas-text-annotation-input,
+.theme-dark .canvas-image-annotation,
+.theme-dark .minimap-stack .zoom-controls {
+  border-color: rgba(145, 180, 199, 0.18);
+  background: rgba(17, 29, 40, 0.76);
+  color: #dceaf4;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 2026-06-26 dark tab contrast fix: the tab shell owns the selected/hover
+   layer. Inner tab and close buttons must stay transparent, otherwise dark
+   mode paints nested rounded rectangles around the label and the × control. */
+.theme-dark {
+  --rxnflow-titlebar-surface: rgb(10, 23, 33);
+  --rxnflow-titlebar-hover: rgba(69, 91, 109, 0.34);
+  --rxnflow-titlebar-divider: rgba(145, 180, 199, 0.1);
+}
+
+.theme-dark .workspace-topbar {
+  background: var(--rxnflow-titlebar-surface) !important;
+}
+
+.theme-dark .canvas-tab-shell,
+.theme-dark .canvas-tab-shell .canvas-tab,
+.theme-dark .canvas-tab-shell .canvas-tab-close {
+  box-shadow: none !important;
+}
+
+.theme-dark .canvas-tab-shell.is-active {
+  border-color: transparent !important;
+  background: var(--rxnflow-canvas-base) !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .canvas-tab-shell.is-active .canvas-tab,
+.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab,
+.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab,
+.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab,
+.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:hover,
+.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:focus-visible,
+.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
+.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
+  background: transparent !important;
+}
+
+.theme-dark .canvas-tab-shell:not(.is-active):hover,
+.theme-dark .canvas-tab-shell:not(.is-active):focus-within {
+  background: var(--rxnflow-titlebar-hover) !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab,
+.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab,
+.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab-close,
+.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab-close {
+  color: #edf5fb !important;
+}
+
+/* Final dark-tab cascade guard: older Chrome-join rules use
+   `.app-shell.theme-dark ...` and can otherwise reintroduce a bottom shadow or
+   paint both shell hover + inset hover. In dark mode, keep one active surface
+   and one inactive hover skin only. */
+.app-shell.theme-dark {
+  --rxnflow-titlebar-surface: rgb(10, 23, 33);
+  --rxnflow-titlebar-hover: rgba(74, 96, 114, 0.32);
+  --rxnflow-chrome-tab-hover-surface: var(--rxnflow-titlebar-hover) !important;
+  --rxnflow-chrome-tab-hover-border: transparent !important;
+}
+
+.app-shell.theme-dark .canvas-tab-shell.is-active {
+  background: var(--rxnflow-canvas-base) !important;
+  box-shadow: none !important;
+}
+
+.app-shell.theme-dark .canvas-tab-shell.is-active .canvas-tab {
+  border-radius: var(--rxnflow-chrome-tab-radius) var(--rxnflow-chrome-tab-radius) 0 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.app-shell.theme-dark .canvas-tab-shell.is-active::before {
+  box-shadow: 5px 5px 0 5px var(--rxnflow-canvas-base) !important;
+}
+
+.app-shell.theme-dark .canvas-tab-shell.is-active::after {
+  box-shadow: -5px 5px 0 5px var(--rxnflow-canvas-base) !important;
+}
+
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active),
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active):hover,
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active):focus-within,
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab,
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab,
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab,
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close,
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active):hover::before,
+.app-shell.theme-dark .canvas-tab-shell:not(.is-active):focus-within::before {
+  background: var(--rxnflow-chrome-tab-hover-surface) !important;
+  box-shadow: none !important;
+}
+
+/* 2026-06-26 dark chrome parity + native drag final guard.
+   Keep dark chrome as flat as light mode: no separate right-side slab, and use
+   hole-based hit testing so only real controls are no-drag. */
+.app-shell.theme-dark {
+  --rxnflow-chrome-tabbar-surface: var(--rxnflow-canvas-base) !important;
+}
+
+.app-shell::before,
+.app-shell.theme-dark::before {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.app-shell.theme-dark::before {
+  background: var(--rxnflow-canvas-base) !important;
+  border-bottom-color: transparent !important;
+}
+
+.workspace-topbar,
+.workspace-topbar-left,
+.canvas-tab-bar,
+.canvas-tab-list,
+.window-action-drag-gap,
+.project-rail,
+.project-rail .rail-section,
+.project-rail .rail-list,
+.project-rail-footer {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.app-shell.theme-dark .workspace-topbar,
+.app-shell.theme-dark .workspace-topbar-left,
+.app-shell.theme-dark .canvas-tab-bar,
+.app-shell.theme-dark .workspace-topbar-actions,
+.app-shell.theme-dark .desktop-window-actions {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.workspace-topbar-actions,
+.desktop-window-actions,
+.app-shell.theme-dark .workspace-topbar-actions,
+.app-shell.theme-dark .desktop-window-actions {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.workspace-topbar button,
+.workspace-topbar input,
+.workspace-topbar select,
+.workspace-topbar textarea,
+.workspace-topbar [role="button"],
+.canvas-tab-shell,
+.canvas-tab-shell *,
+.canvas-tab-add,
+.canvas-tab-input,
+.left-sidebar-fixed-toggle,
+.project-rail-hover-trigger,
+.workspace-topbar-actions > button,
+.workspace-topbar-actions button,
+.export-float-panel,
+.project-rail button,
+.project-rail input,
+.project-rail select,
+.project-rail textarea,
+.project-rail a,
+.project-rail [role="button"],
+.project-rail [role="menu"],
+.project-rail [role="menuitem"],
+.project-rail .project-rail-item,
+.project-rail .project-file-card,
+.project-rail .project-canvas-row-shell,
+.project-rail .workspace-action-menu,
+.project-rail .project-action-menu,
+.project-rail .project-file-action-menu,
+.project-rail .project-canvas-action-menu,
+.inspector-panel,
+.inspector-panel *,
+.floating-toolbar,
+.settings-panel,
+.canvas-context-menu,
+.structure-preview-dialog {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+/* 2026-06-27 Electron titlebar hit-test guard: the right action cluster must
+   never be a draggable parent. In packaged macOS, a fixed parent marked drag can
+   keep swallowing child button hover/clicks after the right sidebar toggles.
+   Keep only the explicit spacer/status atoms draggable; every real button is a
+   stable no-drag island. */
+.workspace-topbar-actions,
+.desktop-window-actions,
+.app-shell.theme-dark .workspace-topbar-actions,
+.app-shell.theme-dark .desktop-window-actions {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.workspace-topbar-actions > button,
+.workspace-topbar-actions button,
+.workspace-topbar-actions .theme-toggle-button,
+.workspace-topbar-actions .floating-export-trigger,
+.workspace-topbar-actions .right-sidebar-fixed-toggle {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.workspace-topbar-actions .engine-status-pill,
+.workspace-topbar-actions .engine-status,
+.workspace-topbar-actions .window-action-drag-gap {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+  pointer-events: auto !important;
+}
+
+/* Dark rail row alignment/contrast: one row layer, one text baseline. */
+.app-shell.theme-dark .project-rail {
+  --rail-dark-surface: rgb(10, 23, 33);
+  --rail-dark-row-hover: rgba(43, 61, 76, 0.68);
+  --rail-dark-row-active: rgba(31, 96, 82, 0.46);
+  --rail-dark-row-text: #d9e8f2;
+  --rail-dark-row-active-text: #aef6e1;
+  background: var(--rail-dark-surface) !important;
+  color: var(--rail-dark-row-text) !important;
+}
+
+.app-shell.theme-dark .project-rail-item,
+.app-shell.theme-dark .project-file-card {
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 7px !important;
+  border: 0 !important;
+  border-radius: 13px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--rail-dark-row-text) !important;
+}
+
+.app-shell.theme-dark .project-rail-item:hover,
+.app-shell.theme-dark .project-rail-item:focus-within,
+.app-shell.theme-dark .project-rail-item.has-open-actions,
+.app-shell.theme-dark .project-file-card:hover,
+.app-shell.theme-dark .project-file-card:focus-within,
+.app-shell.theme-dark .project-file-card.has-open-actions {
+  background: var(--rail-dark-row-hover) !important;
+  color: #f0f7fc !important;
+}
+
+.app-shell.theme-dark .project-rail-item.is-active,
+.app-shell.theme-dark .project-file-card.is-active,
+.app-shell.theme-dark .project-file-card.project-file-card--selected {
+  background: var(--rail-dark-row-active) !important;
+  color: var(--rail-dark-row-active-text) !important;
+}
+
+.app-shell.theme-dark .project-rail-main,
+.app-shell.theme-dark .project-file-main {
+  height: 40px !important;
+  min-height: 40px !important;
+  display: grid !important;
+  align-items: center !important;
+  padding: 0 3px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
+  line-height: 18px !important;
+}
+
+.app-shell.theme-dark .project-rail-main > span,
+.app-shell.theme-dark .project-file-main > span:not(.project-file-kind-icon),
+.app-shell.theme-dark .project-canvas-row > span,
+.app-shell.theme-dark .project-rail-settings > span {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 18px !important;
+  height: 18px !important;
+  line-height: 18px !important;
+  font-size: 13px !important;
+  font-weight: 760 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.app-shell.theme-dark .project-rail-main > svg,
+.app-shell.theme-dark .project-file-kind-icon,
+.app-shell.theme-dark .project-file-more,
+.app-shell.theme-dark .project-rail-action,
+.app-shell.theme-dark .project-canvas-more,
+.app-shell.theme-dark .project-rail-settings > svg {
+  align-self: center !important;
+}
+
+.app-shell.theme-dark .project-file-kind-icon,
+.app-shell.theme-dark .project-file-card.is-active .project-file-kind-icon,
+.app-shell.theme-dark .project-file-card.project-file-card--selected .project-file-kind-icon {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: currentColor !important;
+  opacity: 0.9 !important;
+}
+
+.app-shell.theme-dark .project-file-kind-icon.kind-gaussian::after,
+.app-shell.theme-dark .project-file-card.is-active .project-file-kind-icon.kind-gaussian::after,
+.app-shell.theme-dark .project-file-card.project-file-card--selected .project-file-kind-icon.kind-gaussian::after {
+  border-color: var(--rail-dark-surface) !important;
+  background: var(--rail-dark-row-hover) !important;
+  color: #d9e8f2 !important;
+}
+
+/* 2026-06-27 project rail action hit map + destructive confirmation polish.
+   Keep visual surfaces and clickable boxes identical: 44px menu rows, stable
+   heading actions, and one elevated open project layer. */
+.project-rail .rail-heading-actions {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transition: none !important;
+}
+
+.project-rail .rail-heading button {
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  border-radius: 11px !important;
+  cursor: pointer !important;
+}
+
+.project-rail .rail-heading button:hover,
+.project-rail .rail-heading button:focus-visible,
+.project-rail .rail-heading button[aria-expanded="true"] {
+  outline: none !important;
+  background: rgba(226, 250, 245, 0.78) !important;
+  color: #0f7965 !important;
+  box-shadow: none !important;
+}
+
+.project-rail .project-rail-action,
+.project-rail .project-file-more,
+.project-rail .project-canvas-more {
+  pointer-events: auto !important;
+}
+
+.project-rail .project-rail-action > *,
+.project-rail .project-file-more > *,
+.project-rail .project-canvas-more > *,
+.project-rail .rail-heading button > * {
+  pointer-events: none !important;
+}
+
+.project-rail-project-group {
+  position: relative !important;
+}
+
+.project-rail-item.has-open-actions {
+  z-index: 220 !important;
+}
+
+.project-rail .project-action-menu,
+.project-rail .project-delete-confirm {
+  z-index: 240 !important;
+  right: 2px !important;
+  width: min(220px, calc(100% - 4px)) !important;
+  pointer-events: auto !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.project-rail .project-action-menu {
+  top: 38px !important;
+  gap: 4px !important;
+  padding: 6px !important;
+  border: 1px solid rgba(126, 152, 169, 0.18) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 255, 255, 0.97) !important;
+  box-shadow:
+    0 18px 42px rgba(37, 63, 78, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+}
+
+.project-rail .project-action-menu button {
+  width: 100% !important;
+  min-height: 44px !important;
+  height: 44px !important;
+  border-radius: 13px !important;
+  padding: 0 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  cursor: pointer !important;
+  transition:
+    background 130ms ease,
+    color 130ms ease,
+    transform 130ms ease !important;
+}
+
+.project-rail .project-action-menu button > svg,
+.project-rail .project-action-menu button > span {
+  pointer-events: none !important;
+}
+
+.project-rail .project-action-menu button.is-neutral {
+  color: #30475b !important;
+}
+
+.project-rail .project-action-menu button.is-neutral:hover,
+.project-rail .project-action-menu button.is-neutral:focus-visible {
+  background: rgba(226, 250, 245, 0.82) !important;
+  color: #0f7965 !important;
+}
+
+.project-rail .project-action-menu button.is-danger {
+  color: #a43a34 !important;
+}
+
+.project-rail .project-action-menu button.is-danger:hover,
+.project-rail .project-action-menu button.is-danger:focus-visible {
+  outline: none !important;
+  background: rgba(212, 74, 64, 0.12) !important;
+  color: #9f2f29 !important;
+}
+
+.project-rail .project-delete-confirm {
+  top: 38px !important;
+  left: 8px !important;
+  right: auto !important;
+  width: min(316px, calc(100vw - 32px)) !important;
+  display: grid !important;
+  gap: 10px !important;
+  padding: 12px !important;
+  border: 1px solid rgba(212, 74, 64, 0.18) !important;
+  border-radius: 18px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 247, 246, 0.96)) !important;
+  color: #32465a !important;
+  box-shadow:
+    0 22px 52px rgba(61, 36, 34, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+.project-delete-confirm-header {
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.project-delete-confirm-header > div {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 2px !important;
+}
+
+.project-delete-confirm-icon {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 12px !important;
+  display: grid !important;
+  place-items: center !important;
+  background: rgba(212, 74, 64, 0.12) !important;
+  color: #a43a34 !important;
+}
+
+.project-delete-confirm strong {
+  color: #213548 !important;
+  font-size: 13px !important;
+  font-weight: 860 !important;
+  line-height: 1.22 !important;
+}
+
+.project-delete-confirm span:not(.project-delete-confirm-icon) {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: #a43a34 !important;
+  font-size: 12px !important;
+  font-weight: 820 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.project-delete-confirm p,
+.project-delete-confirm small {
+  margin: 0 !important;
+  color: #657789 !important;
+  font-size: 11px !important;
+  font-weight: 680 !important;
+  line-height: 1.42 !important;
+}
+
+.project-delete-confirm small {
+  color: #8a5b58 !important;
+}
+
+.project-delete-confirm-actions {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) !important;
+  gap: 8px !important;
+  margin-top: 2px !important;
+}
+
+.project-delete-confirm button {
+  min-height: 40px !important;
+  height: 40px !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  padding: 0 10px !important;
+  cursor: pointer !important;
+  font-size: 12px !important;
+  font-weight: 840 !important;
+  transition:
+    background 130ms ease,
+    color 130ms ease,
+    box-shadow 130ms ease,
+    transform 130ms ease !important;
+}
+
+.project-delete-confirm button:hover,
+.project-delete-confirm button:focus-visible {
+  outline: none !important;
+}
+
+.project-delete-confirm button.is-secondary {
+  background: rgba(229, 239, 243, 0.92) !important;
+  color: #40566b !important;
+}
+
+.project-delete-confirm button.is-secondary:hover,
+.project-delete-confirm button.is-secondary:focus-visible {
+  background: rgba(216, 231, 236, 0.96) !important;
+}
+
+.project-delete-confirm button.is-danger {
+  background: #b93f37 !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 26px rgba(185, 63, 55, 0.22) !important;
+}
+
+.project-delete-confirm button.is-danger:hover,
+.project-delete-confirm button.is-danger:focus-visible {
+  background: #a9342d !important;
+  box-shadow: 0 14px 30px rgba(185, 63, 55, 0.28) !important;
+}
+
+.app-shell.theme-dark .project-rail .rail-heading button:hover,
+.app-shell.theme-dark .project-rail .rail-heading button:focus-visible,
+.app-shell.theme-dark .project-rail .rail-heading button[aria-expanded="true"] {
+  background: rgba(43, 61, 76, 0.74) !important;
+  color: #aef6e1 !important;
+}
+
+.app-shell.theme-dark .project-rail .project-action-menu {
+  border-color: rgba(145, 180, 199, 0.16) !important;
+  background: rgba(18, 34, 46, 0.98) !important;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+.app-shell.theme-dark .project-rail .project-action-menu button.is-neutral {
+  color: #d9e8f2 !important;
+}
+
+.app-shell.theme-dark .project-rail .project-action-menu button.is-neutral:hover,
+.app-shell.theme-dark .project-rail .project-action-menu button.is-neutral:focus-visible {
+  background: rgba(42, 75, 73, 0.72) !important;
+  color: #aef6e1 !important;
+}
+
+.app-shell.theme-dark .project-rail .project-action-menu button.is-danger {
+  color: #ffb0aa !important;
+}
+
+.app-shell.theme-dark .project-rail .project-action-menu button.is-danger:hover,
+.app-shell.theme-dark .project-rail .project-action-menu button.is-danger:focus-visible {
+  background: rgba(220, 86, 76, 0.18) !important;
+  color: #ffd2cf !important;
+}
+
+.app-shell.theme-dark .project-rail .project-delete-confirm {
+  border-color: rgba(220, 86, 76, 0.22) !important;
+  background:
+    linear-gradient(180deg, rgba(22, 37, 49, 0.98), rgba(18, 30, 41, 0.97)) !important;
+  color: #d9e8f2 !important;
+  box-shadow:
+    0 22px 52px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+.app-shell.theme-dark .project-delete-confirm-icon {
+  background: rgba(220, 86, 76, 0.18) !important;
+  color: #ffb0aa !important;
+}
+
+.app-shell.theme-dark .project-delete-confirm strong {
+  color: #f2f7fb !important;
+}
+
+.app-shell.theme-dark .project-delete-confirm span:not(.project-delete-confirm-icon) {
+  color: #ffb0aa !important;
+}
+
+.app-shell.theme-dark .project-delete-confirm p {
+  color: #a7bac8 !important;
+}
+
+.app-shell.theme-dark .project-delete-confirm small {
+  color: #d8aaa6 !important;
+}
+
+.app-shell.theme-dark .project-delete-confirm button.is-secondary {
+  background: rgba(43, 61, 76, 0.78) !important;
+  color: #d9e8f2 !important;
+}
+
+.app-shell.theme-dark .project-delete-confirm button.is-secondary:hover,
+.app-shell.theme-dark .project-delete-confirm button.is-secondary:focus-visible {
+  background: rgba(55, 76, 93, 0.9) !important;
+}
+
+/* 2026-06-27 node compact labels + canvas label hit-test repair. */
+.node-header-main {
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
+  max-width: calc(100% - 78px) !important;
+}
+
+.node-title-button,
+.node-title-input {
+  box-sizing: border-box !important;
+  flex: 0 0 auto !important;
+  max-width: 100% !important;
+}
+
+.node-title-button {
+  display: inline-grid !important;
+  align-items: center !important;
+  justify-content: start !important;
+  min-width: 24px !important;
+  padding-inline: 0 !important;
+}
+
+.node-title-input {
+  min-width: 34px !important;
+  padding-inline: 8px !important;
+}
+
+.node-energy-strip.node-card-meta-row {
+  justify-content: flex-start !important;
+  gap: 8px !important;
+}
+
+.node-card-energy-value {
+  flex: 0 1 auto !important;
+  width: auto !important;
+  max-width: calc(100% - 42px) !important;
+}
+
+.node-kind-badge {
+  flex: 0 0 auto !important;
+}
+
+.canvas-label-anchor {
+  pointer-events: auto !important;
+}
+
+.canvas-label-anchor > * {
+  pointer-events: auto !important;
+}
+
+.edge-label-anchor .edge-label-add {
+  opacity: 1 !important;
+  background: rgba(248, 252, 252, 0.78) !important;
+  border-color: rgba(136, 164, 181, 0.16) !important;
+}
+
+/* 2026-06-27 responsive layout hardening.
+   Earlier polish layers left the 1100px breakpoint half-compact: labels were
+   hidden, but the project rail still kept its full 212px grid column because a
+   later width-variable rule won the cascade. On desktop windows that are CSS-
+   narrow (retina screenshots can still look physically large), that creates the
+   "big empty rail with overlapping icons/text" failure. Treat the sidebars as
+   adaptive panes: full rail on roomy screens, icon rail on medium screens, and
+   right inspector as an overlay on narrow screens. */
+@media (max-width: 1180px) {
+  .app-shell {
+    --rxnflow-responsive-rail-width: 72px;
+    --rxnflow-responsive-inspector-width: clamp(248px, 28vw, 272px);
+  }
+
+  .workspace {
+    min-width: 0 !important;
+    grid-template-columns:
+      var(--rxnflow-responsive-rail-width)
+      minmax(0, 1fr)
+      var(--rxnflow-responsive-inspector-width) !important;
+  }
+
+  .workspace.is-left-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) var(--rxnflow-responsive-inspector-width) !important;
+  }
+
+  .workspace.is-right-collapsed {
+    grid-template-columns: var(--rxnflow-responsive-rail-width) minmax(0, 1fr) 0 !important;
+  }
+
+  .workspace.is-left-collapsed.is-right-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+  }
+
+  .workspace:not(.is-left-collapsed) .project-rail {
+    width: var(--rxnflow-responsive-rail-width) !important;
+    min-width: var(--rxnflow-responsive-rail-width) !important;
+    max-width: var(--rxnflow-responsive-rail-width) !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding-inline: 8px !important;
+  }
+
+  .project-rail .brand-block,
+  .project-rail .rail-heading,
+  .project-rail .rail-heading-actions,
+  .project-rail .rail-section,
+  .project-rail .rail-list,
+  .project-rail .project-rail-project-group,
+  .project-rail .project-canvas-list {
+    width: 100% !important;
+    justify-content: center !important;
+    justify-items: center !important;
+  }
+
+  .project-rail .brand-block div:not(.brand-mark),
+  .project-rail .rail-heading > span,
+  .project-rail .project-rail-main span,
+  .project-rail .project-rail-main em,
+  .project-rail .project-file-main span,
+  .project-rail .project-file-main em,
+  .project-rail .project-file-phase-badges,
+  .project-rail .project-file-remove,
+  .project-rail .project-rail-settings span {
+    display: none !important;
+  }
+
+  .project-rail .project-rail-item,
+  .project-rail .project-rail-main,
+  .project-rail .project-file-card,
+  .project-rail .project-file-main,
+  .project-rail .project-rail-settings,
+  .project-rail .rail-heading button {
+    width: 46px !important;
+    min-width: 46px !important;
+    max-width: 46px !important;
+  }
+
+  .project-rail .project-rail-item,
+  .project-rail .project-rail-main,
+  .project-rail .project-file-card,
+  .project-rail .project-file-main {
+    grid-template-columns: 1fr !important;
+    place-items: center !important;
+    padding: 0 !important;
+  }
+
+  .project-rail .project-file-card {
+    min-height: 46px !important;
+  }
+
+  .project-rail .project-file-main {
+    min-height: 44px !important;
+    gap: 0 !important;
+  }
+
+  .project-rail .project-file-kind-icon,
+  .project-rail .project-rail-main svg {
+    margin: 0 !important;
+  }
+
+  .project-rail .project-rail-resize-handle {
+    display: none !important;
+  }
+
+  .workspace:not(.is-right-collapsed) .inspector-panel {
+    width: var(--rxnflow-responsive-inspector-width) !important;
+    min-width: 0 !important;
+  }
+
+  .node-summary-grid div,
+  .node-overview-grid div {
+    grid-template-columns: 74px minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .node-summary-grid dt,
+  .node-overview-grid dt,
+  .node-summary-grid dd,
+  .node-overview-grid dd {
+    min-width: 0 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .canvas-stage .floating-toolbar {
+    max-width: calc(100% - 24px) !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    --rxnflow-responsive-rail-width: 64px;
+  }
+
+  .workspace {
+    height: 100vh !important;
+    min-height: 0 !important;
+    min-width: 0 !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    grid-template-columns: var(--rxnflow-responsive-rail-width) minmax(0, 1fr) 0 !important;
+  }
+
+  .workspace.is-left-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+  }
+
+  .workspace:not(.is-left-collapsed) .project-rail {
+    grid-row: 1 !important;
+    top: auto !important;
+    height: 100vh !important;
+    width: var(--rxnflow-responsive-rail-width) !important;
+    min-width: var(--rxnflow-responsive-rail-width) !important;
+    max-width: var(--rxnflow-responsive-rail-width) !important;
+    padding-inline: 7px !important;
+  }
+
+  .workspace:not(.is-right-collapsed) .inspector-panel {
+    position: fixed !important;
+    top: var(--rxnflow-titlebar-height, 36px) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    z-index: 45 !important;
+    width: min(310px, calc(100vw - var(--rxnflow-responsive-rail-width) - 10px)) !important;
+    height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    border-left: 1px solid rgba(118, 144, 160, 0.22) !important;
+    box-shadow: -22px 0 70px rgba(22, 40, 55, 0.18) !important;
+  }
+
+  .workbench-shell {
+    grid-row: 1 !important;
+    height: 100vh !important;
+    min-height: 0 !important;
+  }
+
+  .canvas-stage,
+  .workbench-view-track,
+  .workbench-view-pane {
+    min-height: 0 !important;
+  }
+
+  .workspace.is-right-collapsed .inspector-panel {
+    display: none !important;
+  }
+
+  .workspace-topbar {
+    min-width: 0 !important;
+  }
+
+  .workspace-topbar-left {
+    min-width: 0 !important;
+    padding-left: 54px !important;
+  }
+
+  .canvas-tab-shell .canvas-tab,
+  .canvas-tab-shell.is-active .canvas-tab {
+    max-width: clamp(104px, 30vw, 150px) !important;
+  }
+
+  .floating-toolbar {
+    max-width: calc(100% - 18px) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace:not(.is-left-collapsed) .project-rail {
+    top: auto !important;
+  }
+
+  .workspace:not(.is-right-collapsed) .inspector-panel {
+    top: var(--rxnflow-titlebar-height, 36px) !important;
+  }
+
+  .project-rail .project-rail-item,
+  .project-rail .project-rail-main,
+  .project-rail .project-file-card,
+  .project-rail .project-file-main,
+  .project-rail .project-rail-settings,
+  .project-rail .rail-heading button {
+    width: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+  }
+
+  .workspace-topbar-left {
+    padding-left: 48px !important;
+  }
+}
+
+/* 2026-06-27 Settings redesign: make preferences a real app settings sheet,
+   not a context-menu-shaped popover. Quiet left rail trigger, grouped rows,
+   native-feeling controls, and paired dark/light surfaces. */
+.project-rail-settings,
+.app-shell.theme-dark .project-rail-settings {
+  min-height: 40px !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: inherit !important;
+  padding: 0 8px !important;
+  border-radius: 12px !important;
+  cursor: pointer !important;
+}
+
+.project-rail-settings:hover,
+.project-rail-settings:focus-visible,
+.app-shell.theme-dark .project-rail-settings:hover,
+.app-shell.theme-dark .project-rail-settings:focus-visible {
+  background: rgba(42, 75, 73, 0.08) !important;
+  color: #0f7965 !important;
+  box-shadow: none !important;
+}
+
+.project-rail-settings:focus-visible {
+  box-shadow: 0 0 0 3px rgba(31, 162, 131, 0.14) !important;
+}
+
+.app-shell.theme-dark .project-rail-settings:hover,
+.app-shell.theme-dark .project-rail-settings:focus-visible {
+  background: rgba(43, 61, 76, 0.58) !important;
+  color: #aef6e1 !important;
+}
+
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 170;
+  display: grid;
+  place-items: center;
+  padding: max(18px, var(--rxnflow-titlebar-height, 36px)) 18px 18px;
+  background: rgba(26, 42, 54, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.settings-panel,
+.theme-dark .settings-panel,
+.app-shell.theme-dark .settings-panel {
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  top: auto !important;
+  width: min(620px, calc(100vw - 36px)) !important;
+  max-height: min(720px, calc(100vh - 44px)) !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(126, 152, 169, 0.18) !important;
+  border-radius: 22px !important;
+  padding: 0 !important;
+  background:
+    linear-gradient(180deg, rgba(252, 254, 255, 0.98), rgba(244, 249, 250, 0.96)) !important;
+  color: #213448 !important;
+  box-shadow:
+    0 28px 90px rgba(28, 48, 64, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(26px) !important;
+}
+
+.settings-panel-header {
+  min-height: 72px !important;
+  display: grid !important;
+  grid-template-columns: 38px minmax(0, 1fr) 34px !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 14px 16px 12px !important;
+  border-bottom: 1px solid rgba(126, 152, 169, 0.12) !important;
+  background: rgba(255, 255, 255, 0.42) !important;
+}
+
+.settings-panel-titlemark,
+.settings-section-icon,
+.settings-row-glyph {
+  display: grid !important;
+  place-items: center !important;
+  color: #0f7965 !important;
+  background: rgba(214, 246, 239, 0.78) !important;
+}
+
+.settings-panel-titlemark {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 14px !important;
+}
+
+.settings-panel-header div:not(.settings-panel-titlemark) {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 3px !important;
+}
+
+.settings-panel-header strong {
+  color: #1f3145 !important;
+  font-size: 16px !important;
+  font-weight: 860 !important;
+  letter-spacing: -0.015em !important;
+}
+
+.settings-panel-header span {
+  overflow: hidden !important;
+  color: #6d8092 !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.settings-panel-close,
+.theme-dark .settings-panel-close,
+.app-shell.theme-dark .settings-panel-close {
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  border: 0 !important;
+  border-radius: 11px !important;
+  background: transparent !important;
+  color: #52687c !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+}
+
+.settings-panel-close:hover,
+.settings-panel-close:focus-visible {
+  outline: none !important;
+  background: rgba(226, 238, 243, 0.9) !important;
+  color: #20374a !important;
+}
+
+.settings-panel-body {
+  min-height: 0 !important;
+  display: grid !important;
+  gap: 14px !important;
+  overflow: auto !important;
+  padding: 16px !important;
+}
+
+.settings-section {
+  display: grid !important;
+  gap: 10px !important;
+}
+
+.settings-section-heading {
+  display: grid !important;
+  grid-template-columns: 30px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 0 2px !important;
+}
+
+.settings-section-icon,
+.settings-row-glyph {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 11px !important;
+}
+
+.settings-section h2 {
+  margin: 0 !important;
+  color: #26394d !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.01em !important;
+  text-transform: uppercase !important;
+}
+
+.settings-section p,
+.settings-row-copy em {
+  margin: 0 !important;
+  color: #6f8294 !important;
+  font-size: 12px !important;
+  font-style: normal !important;
+  font-weight: 620 !important;
+  line-height: 1.35 !important;
+}
+
+.settings-row,
+.settings-opener-field {
+  min-height: 58px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  border: 1px solid rgba(126, 152, 169, 0.13) !important;
+  border-radius: 16px !important;
+  padding: 11px 12px !important;
+  background: rgba(255, 255, 255, 0.62) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74) !important;
+}
+
+.settings-opener-field {
+  grid-template-columns: 30px minmax(0, 1fr) minmax(180px, 230px) !important;
+}
+
+.settings-row-copy {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 3px !important;
+}
+
+.settings-row-copy strong {
+  color: #213448 !important;
+  font-size: 13px !important;
+  font-weight: 820 !important;
+  letter-spacing: -0.005em !important;
+}
+
+.settings-field span,
+.settings-opener-field > span:not(.settings-row-glyph),
+.settings-row > span:not(.settings-row-copy):not(.settings-row-glyph) {
+  color: inherit !important;
+}
+
+.settings-row select,
+.settings-field select,
+.theme-dark .settings-field select,
+.app-shell.theme-dark .settings-field select {
+  width: auto !important;
+  min-width: 138px !important;
+  height: 36px !important;
+  border: 1px solid rgba(126, 152, 169, 0.16) !important;
+  border-radius: 12px !important;
+  padding: 0 34px 0 12px !important;
+  background: rgba(244, 249, 250, 0.92) !important;
+  color: #213448 !important;
+  font-size: 12px !important;
+  font-weight: 760 !important;
+  outline: none !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+}
+
+.settings-row select:focus-visible,
+.settings-field select:focus-visible {
+  border-color: rgba(31, 162, 131, 0.42) !important;
+  box-shadow: 0 0 0 4px rgba(31, 162, 131, 0.12) !important;
+}
+
+.settings-opener-control {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 7px !important;
+  justify-items: end !important;
+}
+
+.settings-opener-value,
+.theme-dark .settings-opener-value,
+.app-shell.theme-dark .settings-opener-value {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 28px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  color: #6c7f91 !important;
+  font-size: 11px !important;
+  font-weight: 690 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  box-shadow: none !important;
+}
+
+.settings-opener-value.is-configured {
+  color: #0f7965 !important;
+}
+
+.settings-opener-actions {
+  display: inline-flex !important;
+  gap: 6px !important;
+}
+
+.settings-opener-actions button,
+.theme-dark .settings-opener-actions button,
+.app-shell.theme-dark .settings-opener-actions button {
+  height: 30px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  padding: 0 10px !important;
+  background: rgba(229, 239, 243, 0.88) !important;
+  color: #40566b !important;
+  font-size: 11px !important;
+  font-weight: 820 !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+}
+
+.settings-opener-actions button:hover,
+.settings-opener-actions button:focus-visible {
+  outline: none !important;
+  background: rgba(213, 237, 232, 0.96) !important;
+  color: #0f7965 !important;
+}
+
+.settings-opener-actions button:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.45 !important;
+}
+
+.app-shell.theme-dark .settings-backdrop,
+.theme-dark .settings-backdrop {
+  background: rgba(0, 0, 0, 0.38) !important;
+}
+
+.app-shell.theme-dark .settings-panel,
+.theme-dark .settings-panel {
+  border-color: rgba(145, 180, 199, 0.14) !important;
+  background:
+    linear-gradient(180deg, rgba(17, 31, 43, 0.98), rgba(12, 25, 35, 0.96)) !important;
+  color: #edf7ff !important;
+  box-shadow:
+    0 30px 100px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+.app-shell.theme-dark .settings-panel-header,
+.theme-dark .settings-panel-header {
+  border-bottom-color: rgba(145, 180, 199, 0.11) !important;
+  background: rgba(22, 38, 51, 0.52) !important;
+}
+
+.app-shell.theme-dark .settings-panel-titlemark,
+.app-shell.theme-dark .settings-section-icon,
+.app-shell.theme-dark .settings-row-glyph,
+.theme-dark .settings-panel-titlemark,
+.theme-dark .settings-section-icon,
+.theme-dark .settings-row-glyph {
+  background: rgba(30, 109, 94, 0.28) !important;
+  color: #aef6e1 !important;
+}
+
+.app-shell.theme-dark .settings-panel-header strong,
+.app-shell.theme-dark .settings-section h2,
+.app-shell.theme-dark .settings-row-copy strong,
+.theme-dark .settings-panel-header strong,
+.theme-dark .settings-section h2,
+.theme-dark .settings-row-copy strong {
+  color: #edf7ff !important;
+}
+
+.app-shell.theme-dark .settings-panel-header span,
+.app-shell.theme-dark .settings-section p,
+.app-shell.theme-dark .settings-row-copy em,
+.theme-dark .settings-panel-header span,
+.theme-dark .settings-section p,
+.theme-dark .settings-row-copy em {
+  color: #9db4c6 !important;
+}
+
+.app-shell.theme-dark .settings-row,
+.app-shell.theme-dark .settings-opener-field,
+.theme-dark .settings-row,
+.theme-dark .settings-opener-field {
+  border-color: rgba(145, 180, 199, 0.12) !important;
+  background: rgba(21, 36, 48, 0.7) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+.app-shell.theme-dark .settings-row select,
+.app-shell.theme-dark .settings-field select,
+.theme-dark .settings-row select,
+.theme-dark .settings-field select {
+  border-color: rgba(145, 180, 199, 0.14) !important;
+  background: rgba(30, 47, 60, 0.92) !important;
+  color: #e4f0f8 !important;
+}
+
+.app-shell.theme-dark .settings-panel-close,
+.theme-dark .settings-panel-close {
+  color: #b8c9d6 !important;
+}
+
+.app-shell.theme-dark .settings-panel-close:hover,
+.app-shell.theme-dark .settings-panel-close:focus-visible,
+.theme-dark .settings-panel-close:hover,
+.theme-dark .settings-panel-close:focus-visible {
+  background: rgba(43, 61, 76, 0.72) !important;
+  color: #f2f8fc !important;
+}
+
+.app-shell.theme-dark .settings-opener-value,
+.theme-dark .settings-opener-value {
+  color: #9db4c6 !important;
+}
+
+.app-shell.theme-dark .settings-opener-value.is-configured,
+.theme-dark .settings-opener-value.is-configured {
+  color: #aef6e1 !important;
+}
+
+.app-shell.theme-dark .settings-opener-actions button,
+.theme-dark .settings-opener-actions button {
+  background: rgba(43, 61, 76, 0.82) !important;
+  color: #d9e8f2 !important;
+}
+
+.app-shell.theme-dark .settings-opener-actions button:hover,
+.app-shell.theme-dark .settings-opener-actions button:focus-visible,
+.theme-dark .settings-opener-actions button:hover,
+.theme-dark .settings-opener-actions button:focus-visible {
+  background: rgba(30, 109, 94, 0.35) !important;
+  color: #aef6e1 !important;
+}
+
+@media (max-width: 680px) {
+  .settings-backdrop {
+    align-items: end !important;
+    padding: 12px !important;
+  }
+
+  .settings-panel,
+  .theme-dark .settings-panel,
+  .app-shell.theme-dark .settings-panel {
+    width: 100% !important;
+    max-height: min(760px, calc(100vh - 24px)) !important;
+    border-radius: 22px !important;
+  }
+
+  .settings-row,
+  .settings-opener-field {
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: stretch !important;
+  }
+
+  .settings-opener-field {
+    grid-template-columns: 30px minmax(0, 1fr) !important;
+  }
+
+  .settings-opener-control {
+    grid-column: 1 / -1 !important;
+    justify-items: stretch !important;
+  }
+
+  .settings-opener-value {
+    justify-content: flex-start !important;
+  }
+
+  .settings-row select,
+  .settings-field select {
+    width: 100% !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-backdrop,
+  .settings-panel,
+  .project-rail-settings,
+  .settings-opener-actions button,
+  .settings-panel-close {
+    transition: none !important;
+  }
+}
+
+/* 2026-06-27 overlay tab join fix: when a blurred table / structure overlay is
+   open, the active Chrome-style tab must stop drawing its canvas-join shoulders.
+   Otherwise the tab's pseudo corner feet sit on top of the scrim and read as
+   stray white blobs next to the tab, as seen when opening Structure or Table. */
+.app-shell.has-overlay-view .canvas-tab-shell.is-active,
+.app-shell.has-overlay-view .canvas-tab-shell.is-active .canvas-tab,
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active,
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active .canvas-tab {
+  border-radius: var(--rxnflow-chrome-tab-radius) !important;
+}
+
+.app-shell.has-overlay-view .canvas-tab-shell.is-active {
+  margin-bottom: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.app-shell.has-overlay-view .canvas-tab-shell.is-active .canvas-tab {
+  height: calc(var(--rxnflow-titlebar-height) - 8px) !important;
+  min-height: calc(var(--rxnflow-titlebar-height) - 8px) !important;
+  line-height: calc(var(--rxnflow-titlebar-height) - 8px) !important;
+  margin: 4px 0 !important;
+  background: rgba(247, 252, 253, 0.94) !important;
+  box-shadow: inset 0 0 0 1px rgba(126, 152, 169, 0.14) !important;
+}
+
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active .canvas-tab {
+  background: rgba(22, 39, 53, 0.94) !important;
+  box-shadow: inset 0 0 0 1px rgba(145, 180, 199, 0.12) !important;
+}
+
+.app-shell.has-overlay-view .canvas-tab-shell.is-active::before,
+.app-shell.has-overlay-view .canvas-tab-shell.is-active::after,
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active::before,
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active::after {
+  content: none !important;
+  display: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* 2026-06-27 fixed Chrome tab slot: overlay mode moves the visible active-tab
+   paint from the outer shell to the inner button so the canvas-join shoulders
+   disappear. Keep the shell as a fixed Chrome-like tab slot and force the
+   inner button to fill it; otherwise short labels such as “Ir” collapse to
+   text width when Table / Structure overlays are open. Tabs only compress when
+   there are enough open tabs to exhaust the strip width. */
+.app-shell {
+  --rxnflow-canvas-tab-width: 174px;
+  --rxnflow-canvas-tab-min-width: 112px;
+  --rxnflow-canvas-tab-max-width: 174px;
+}
+
+.canvas-tab-list {
+  display: flex !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.canvas-tab-shell {
+  flex: 0 1 var(--rxnflow-canvas-tab-width) !important;
+  width: var(--rxnflow-canvas-tab-width) !important;
+  min-width: var(--rxnflow-canvas-tab-min-width) !important;
+  max-width: var(--rxnflow-canvas-tab-max-width) !important;
+}
+
+.canvas-tab-shell .canvas-tab,
+.canvas-tab-shell.is-active .canvas-tab {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  justify-content: flex-start !important;
+}
+
+.canvas-tab-add {
+  flex: 0 0 var(--rxnflow-titlebar-tab-add-size, 28px) !important;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    --rxnflow-canvas-tab-width: 148px;
+    --rxnflow-canvas-tab-min-width: 96px;
+    --rxnflow-canvas-tab-max-width: 148px;
+  }
+}
+
+/* 2026-06-27 titlebar no-drag island final guard:
+   The titlebar backing pseudo-element is visual only. If it participates in
+   Electron app-region hit testing, it can win over fixed action buttons after a
+   sidebar/export/theme state change and the buttons become draggable window
+   chrome. Treat the fixed titlebar controls as complete no-drag islands,
+   including the tiny spacers between icons; the tab strip and empty topbar
+   remain the native drag affordance. */
+.app-shell::before,
+.app-shell.theme-dark::before {
+  -webkit-app-region: initial !important;
+  app-region: initial !important;
+  pointer-events: none !important;
+}
+
+.left-sidebar-fixed-toggle,
+.left-sidebar-fixed-toggle[aria-pressed="true"],
+.left-sidebar-fixed-toggle[aria-pressed="false"],
+.left-sidebar-fixed-toggle:hover,
+.left-sidebar-fixed-toggle:focus-visible,
+.workspace-topbar-actions,
+.workspace-topbar-actions.desktop-window-actions,
+.desktop-window-actions,
+.workspace-topbar-actions > button,
+.workspace-topbar-actions button,
+.workspace-topbar-actions .theme-toggle-button,
+.workspace-topbar-actions .floating-export-trigger,
+.workspace-topbar-actions .floating-export-trigger[aria-pressed="true"],
+.workspace-topbar-actions .floating-export-trigger[aria-pressed="false"],
+.workspace-topbar-actions .right-sidebar-fixed-toggle,
+.workspace-topbar-actions .right-sidebar-fixed-toggle[aria-pressed="true"],
+.workspace-topbar-actions .right-sidebar-fixed-toggle[aria-pressed="false"] {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.left-sidebar-fixed-toggle *,
+.workspace-topbar-actions > button *,
+.workspace-topbar-actions button * {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.workspace-topbar-actions .window-action-drag-gap,
+.workspace-topbar-actions .engine-status-pill,
+.workspace-topbar-actions .engine-status {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+/* 2026-06-27 native drag-map hardening:
+   Electron/macOS does not behave like normal DOM hit testing when an underlying
+   draggable region geometrically overlaps a no-drag button. The real mouse can
+   still start a window drag even though `elementFromPoint()` reports the
+   button. Keep broad structural slabs out of the drag map; only the bounded tab
+   strip is allowed to be draggable. This removes the project rail under the
+   left sidebar toggle and the collapsed topbar under the right actions from the
+   native drag region. */
+.project-rail,
+.workspace-topbar,
+.workspace-topbar::before,
+.workspace-topbar::after,
+.app-shell.theme-dark .workspace-topbar {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.workspace-topbar-left,
+.canvas-tab-bar,
+.canvas-tab-list {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.canvas-tab-shell,
+.canvas-tab-shell *,
+.canvas-tab-add,
+.canvas-tab-input,
+.workspace-topbar-actions,
+.workspace-topbar-actions *,
+.left-sidebar-fixed-toggle,
+.left-sidebar-fixed-toggle * {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+/* 2026-06-27 sidebar titlebar geometry hardening:
+   1) When the right inspector is open, the workbench topbar stops at the
+      canvas/inspector boundary. The inspector itself starts below the titlebar,
+      leaving a transparent titlebar gap under the fixed right actions. Fill
+      only that empty gap with a native drag bridge; keep the actual buttons as
+      no-drag islands above it.
+   2) When the project rail collapses, keep a stable titlebar reserve at the
+      left edge instead of letting the workbench jump to x=0 and then adding a
+      margin inside the tab strip. That makes the Chrome-style tabs animate from
+      their collapsed position instead of appearing to slide in from the far
+      left during expansion. */
+.app-shell {
+  --rxnflow-right-titlebar-action-reserve: 130px;
+  --rxnflow-left-collapsed-workbench-reserve: calc(
+    var(--rxnflow-titlebar-left-button-left, 104px) + var(--rxnflow-titlebar-tab-add-size, 28px)
+  );
+}
+
+.right-titlebar-drag-bridge {
+  position: fixed !important;
+  top: 0 !important;
+  right: var(--rxnflow-right-titlebar-action-reserve) !important;
+  width: max(0px, calc(var(--rxnflow-inspector-width, 288px) - var(--rxnflow-right-titlebar-action-reserve))) !important;
+  height: var(--rxnflow-titlebar-height, 36px) !important;
+  z-index: 1000 !important;
+  background: transparent !important;
+  pointer-events: auto !important;
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.workspace.is-left-collapsed {
+  grid-template-columns:
+    var(--rxnflow-left-collapsed-workbench-reserve)
+    minmax(0, 1fr)
+    var(--rxnflow-inspector-width) !important;
+}
+
+.workspace.is-left-collapsed.is-right-collapsed {
+  grid-template-columns:
+    var(--rxnflow-left-collapsed-workbench-reserve)
+    minmax(0, 1fr)
+    0 !important;
+}
+
+.workspace.is-left-collapsed .workspace-topbar-left {
+  margin-left: 0 !important;
+}
+
+/* 2026-06-27 2D editor modal hardening:
+   Ketcher needs real vertical space for its left/right tool palettes and the
+   editor should float above the inspector instead of reserving/losing a right
+   gutter. Keep the titlebar clear, but cover the workbench sidebars below it. */
+.molecule-editor-scrim,
+.molecule-editor-scrim.has-left-sidebar,
+.molecule-editor-scrim.has-right-sidebar {
+  --structure-left-rail: 0px !important;
+  --structure-right-rail: 0px !important;
+  z-index: 320 !important;
+}
+
+.molecule-editor-scrim::before {
+  right: 0 !important;
+  left: 0 !important;
+}
+
+.molecule-editor-dialog {
+  width: min(1220px, calc(100vw - 48px)) !important;
+  height: min(800px, calc(100vh - var(--structure-top-chrome, 36px) - 34px)) !important;
+  max-height: calc(100vh - var(--structure-top-chrome, 36px) - 34px) !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  gap: 14px !important;
+  overflow: hidden !important;
+}
+
+.molecule-editor-dialog .structure-preview-header {
+  align-items: center !important;
+}
+
+.molecule-editor-close-button {
+  flex: 0 0 auto !important;
+}
+
+.molecule-editor-header-actions {
+  min-width: 0 !important;
+  -webkit-app-region: no-drag !important;
+}
+
+.structure-preview-header .molecule-editor-header-actions button,
+.structure-preview-header .molecule-editor-header-actions .command-button,
+.structure-preview-header .molecule-editor-header-actions .command-button:not(:disabled) {
+  width: auto !important;
+  min-width: 0 !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 14px !important;
+  background: rgba(228, 240, 244, 0.86) !important;
+  color: #40566b !important;
+  box-shadow: none !important;
+}
+
+.molecule-editor-shell {
+  min-height: 0 !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+.molecule-editor-host {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.molecule-editor-host-ketcher > div {
+  height: 100% !important;
+}
+
+.molecule-editor-actions {
+  justify-content: flex-end !important;
+}
+
+.molecule-editor-actions > div {
+  min-width: 0 !important;
+}
+
+.molecule-editor-actions .command-button {
+  min-width: 0 !important;
+  width: auto !important;
+}
+
+.molecule-editor-actions .command-button,
+.molecule-editor-actions .command-button:not(:disabled) {
+  background: rgba(228, 240, 244, 0.86) !important;
+  color: #40566b !important;
+  box-shadow: none !important;
+}
+
+.molecule-editor-actions button:hover,
+.molecule-editor-actions button:focus-visible,
+.molecule-editor-actions .command-button:hover,
+.molecule-editor-actions .command-button:focus-visible {
+  outline: none !important;
+  background: rgba(207, 229, 236, 0.86) !important;
+  color: #20374a !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .molecule-editor-actions button,
+.theme-dark .molecule-editor-actions .command-button,
+.theme-dark .molecule-editor-actions .command-button:not(:disabled) {
+  background: rgba(35, 52, 64, 0.78) !important;
+  color: #d7e8f2 !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .molecule-editor-actions button:hover,
+.theme-dark .molecule-editor-actions button:focus-visible,
+.theme-dark .molecule-editor-actions .command-button:hover,
+.theme-dark .molecule-editor-actions .command-button:focus-visible {
+  background: rgba(49, 72, 86, 0.9) !important;
+  color: #f4fbff !important;
+}
+
+.structure-preview-header .molecule-editor-header-actions button:hover,
+.structure-preview-header .molecule-editor-header-actions button:focus-visible,
+.structure-preview-header .molecule-editor-header-actions .command-button:hover,
+.structure-preview-header .molecule-editor-header-actions .command-button:focus-visible {
+  outline: none !important;
+  background: rgba(207, 229, 236, 0.86) !important;
+  color: #20374a !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .structure-preview-header .molecule-editor-header-actions button,
+.theme-dark .structure-preview-header .molecule-editor-header-actions .command-button,
+.theme-dark .structure-preview-header .molecule-editor-header-actions .command-button:not(:disabled) {
+  background: rgba(35, 52, 64, 0.78) !important;
+  color: #d7e8f2 !important;
+  box-shadow: none !important;
+}
+
+.theme-dark .structure-preview-header .molecule-editor-header-actions button:hover,
+.theme-dark .structure-preview-header .molecule-editor-header-actions button:focus-visible,
+.theme-dark .structure-preview-header .molecule-editor-header-actions .command-button:hover,
+.theme-dark .structure-preview-header .molecule-editor-header-actions .command-button:focus-visible {
+  background: rgba(49, 72, 86, 0.9) !important;
+  color: #f4fbff !important;
+}
+
+.molecule-editor-host button[data-rxnflow-tooltip],
+.molecule-editor-host [role="button"][data-rxnflow-tooltip] {
+  position: relative !important;
+  overflow: visible !important;
+}
+
+.molecule-editor-host button[data-rxnflow-tooltip]:hover::after,
+.molecule-editor-host button[data-rxnflow-tooltip]:focus-visible::after,
+.molecule-editor-host [role="button"][data-rxnflow-tooltip]:hover::after,
+.molecule-editor-host [role="button"][data-rxnflow-tooltip]:focus-visible::after {
+  content: attr(data-rxnflow-tooltip);
+  position: absolute;
+  z-index: 9999;
+  top: calc(100% + 7px);
+  left: 50%;
+  max-width: 260px;
+  transform: translateX(-50%);
+  border-radius: 9px;
+  padding: 6px 8px;
+  background: rgba(20, 32, 43, 0.94);
+  color: #f6fbff;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
+  box-shadow: 0 10px 26px rgba(20, 32, 43, 0.22);
+}
+
+/* The overlay tab should meet the blurred workbench without Chrome-tab
+   shoulder feet or rounded bottom corners. */
+.app-shell.has-overlay-view .canvas-tab-shell.is-active,
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active {
+  height: calc(var(--rxnflow-titlebar-height) - 4px) !important;
+  margin-top: 4px !important;
+  margin-bottom: 0 !important;
+  border-radius: var(--rxnflow-chrome-tab-radius) var(--rxnflow-chrome-tab-radius) 0 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.app-shell.has-overlay-view .canvas-tab-shell.is-active .canvas-tab,
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active .canvas-tab {
+  height: 100% !important;
+  min-height: 100% !important;
+  line-height: calc(var(--rxnflow-titlebar-height) - 4px) !important;
+  margin: 0 !important;
+  border-radius: var(--rxnflow-chrome-tab-radius) var(--rxnflow-chrome-tab-radius) 0 0 !important;
+}
+
+.app-shell.has-overlay-view .canvas-tab-shell.is-active::before,
+.app-shell.has-overlay-view .canvas-tab-shell.is-active::after,
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active::before,
+.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* 2026-06-27 left-collapsed canvas fill fix:
+   Keep the collapsed titlebar tabs safely to the right of the traffic lights
+   and sidebar button, but do not reserve that gutter in the workspace grid.
+   Reserving it in the grid pushes the canvas itself right and exposes a tall
+   non-canvas color block. Codex/Chrome-like behavior is split: titlebar content
+   stops at the control gutter, while the canvas continues sliding left and
+   covers the area below. */
+.workspace.is-left-collapsed {
+  grid-template-columns:
+    0
+    minmax(0, 1fr)
+    var(--rxnflow-inspector-width) !important;
+}
+
+.workspace.is-left-collapsed.is-right-collapsed {
+  grid-template-columns:
+    0
+    minmax(0, 1fr)
+    0 !important;
+}
+
+.workspace.is-left-collapsed .workspace-topbar {
+  padding-left: 0 !important;
+}
+
+.workspace-topbar-left {
+  transition:
+    margin-left 180ms ease,
+    max-width 180ms ease,
+    flex-basis 180ms ease !important;
+  will-change: margin-left, max-width, flex-basis;
+}
+
+.workspace.is-left-collapsed .workspace-topbar-left {
+  margin-left: var(--rxnflow-left-collapsed-tab-reserve, 132px) !important;
+  padding-left: 0 !important;
+  max-width: calc(100% - var(--rxnflow-left-collapsed-tab-reserve, 132px) - 168px) !important;
+  flex-basis: calc(100% - var(--rxnflow-left-collapsed-tab-reserve, 132px) - 168px) !important;
+}
+
+@media (max-width: 760px) {
+  .workspace.is-left-collapsed .workspace-topbar-left {
+    margin-left: calc(var(--rxnflow-titlebar-left-button-left, 19px) + 42px) !important;
+    max-width: calc(100% - var(--rxnflow-titlebar-left-button-left, 19px) - 150px) !important;
+    flex-basis: calc(100% - var(--rxnflow-titlebar-left-button-left, 19px) - 150px) !important;
+  }
+}
+
+/* 2026-06-27 unified native titlebar drag contract.
+   One stable, state-independent titlebar drag surface spans the whole window.
+   Sidebar expanded/collapsed layouts must not change native hit testing:
+   empty titlebar pixels drag the window; only real controls opt out. */
+.desktop-titlebar-drag-surface {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: var(--rxnflow-titlebar-height, 48px) !important;
+  z-index: 90 !important;
+  background: transparent !important;
+  pointer-events: auto !important;
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.right-titlebar-drag-bridge {
+  display: none !important;
+  pointer-events: none !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.workspace-topbar,
+.workspace-topbar-left,
+.canvas-tab-bar,
+.canvas-tab-list {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.workspace-topbar {
+  z-index: 100 !important;
+}
+
+.workspace-topbar-actions,
+.workspace-topbar-actions.desktop-window-actions,
+.desktop-window-actions {
+  z-index: 1300 !important;
+  pointer-events: auto !important;
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.left-sidebar-fixed-toggle {
+  z-index: 1300 !important;
+}
+
+.left-sidebar-fixed-toggle,
+.left-sidebar-fixed-toggle *,
+.canvas-tab-shell,
+.canvas-tab-shell *,
+.canvas-tab-add,
+.canvas-tab-input,
+.workspace-topbar button,
+.workspace-topbar input,
+.workspace-topbar select,
+.workspace-topbar textarea,
+.workspace-topbar [role="button"],
+.workspace-topbar-actions > button,
+.workspace-topbar-actions > button *,
+.workspace-topbar-actions button,
+.workspace-topbar-actions button *,
+.workspace-topbar-actions .theme-toggle-button,
+.workspace-topbar-actions .theme-toggle-button *,
+.workspace-topbar-actions .floating-export-trigger,
+.workspace-topbar-actions .floating-export-trigger *,
+.workspace-topbar-actions .right-sidebar-fixed-toggle,
+.workspace-topbar-actions .right-sidebar-fixed-toggle * {
+  pointer-events: auto !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.workspace-topbar-actions .window-action-drag-gap,
+.workspace-topbar-actions .engine-status-pill,
+.workspace-topbar-actions .engine-status {
+  pointer-events: auto !important;
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+/* 2026-06-27 unified titlebar z-order correction:
+   keep the drag surface above sidebar panes as well, while actual tabs and
+   fixed titlebar controls stay above it as no-drag interactive islands. */
+.desktop-titlebar-drag-surface {
+  z-index: 1100 !important;
+}
+
+.workspace-topbar,
+.workspace-topbar-left,
+.canvas-tab-bar,
+.canvas-tab-list {
+  z-index: 1200 !important;
+}
+
+.workspace-topbar-actions,
+.workspace-topbar-actions.desktop-window-actions,
+.desktop-window-actions,
+.left-sidebar-fixed-toggle {
+  z-index: 1300 !important;
+}
+
+/* 2026-06-27 unified titlebar drag contract, theme-specific specificity guard. */
+.app-shell .workspace-topbar-actions,
+.app-shell .workspace-topbar-actions.desktop-window-actions,
+.app-shell .desktop-window-actions,
+.app-shell.theme-dark .workspace-topbar-actions,
+.app-shell.theme-dark .workspace-topbar-actions.desktop-window-actions,
+.app-shell.theme-dark .desktop-window-actions {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.app-shell .workspace-topbar-actions > button,
+.app-shell .workspace-topbar-actions > button *,
+.app-shell .workspace-topbar-actions button,
+.app-shell .workspace-topbar-actions button *,
+.app-shell .workspace-topbar-actions .theme-toggle-button,
+.app-shell .workspace-topbar-actions .theme-toggle-button *,
+.app-shell .workspace-topbar-actions .floating-export-trigger,
+.app-shell .workspace-topbar-actions .floating-export-trigger *,
+.app-shell .workspace-topbar-actions .right-sidebar-fixed-toggle,
+.app-shell .workspace-topbar-actions .right-sidebar-fixed-toggle *,
+.app-shell.theme-dark .workspace-topbar-actions > button,
+.app-shell.theme-dark .workspace-topbar-actions > button *,
+.app-shell.theme-dark .workspace-topbar-actions button,
+.app-shell.theme-dark .workspace-topbar-actions button *,
+.app-shell.theme-dark .workspace-topbar-actions .theme-toggle-button,
+.app-shell.theme-dark .workspace-topbar-actions .theme-toggle-button *,
+.app-shell.theme-dark .workspace-topbar-actions .floating-export-trigger,
+.app-shell.theme-dark .workspace-topbar-actions .floating-export-trigger *,
+.app-shell.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle,
+.app-shell.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle * {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.app-shell .workspace-topbar-actions .window-action-drag-gap,
+.app-shell .workspace-topbar-actions .engine-status-pill,
+.app-shell .workspace-topbar-actions .engine-status,
+.app-shell.theme-dark .workspace-topbar-actions .window-action-drag-gap,
+.app-shell.theme-dark .workspace-topbar-actions .engine-status-pill,
+.app-shell.theme-dark .workspace-topbar-actions .engine-status {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+/* 2026-06-27 unified titlebar drag contract, topbar specificity guard. */
+.app-shell .workspace-topbar,
+.app-shell .workspace-topbar-left,
+.app-shell .canvas-tab-bar,
+.app-shell .canvas-tab-list,
+.app-shell.theme-dark .workspace-topbar,
+.app-shell.theme-dark .workspace-topbar-left,
+.app-shell.theme-dark .canvas-tab-bar,
+.app-shell.theme-dark .canvas-tab-list,
+.workspace.is-right-collapsed .workspace-topbar,
+.workspace:not(.is-right-collapsed) .workspace-topbar {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.app-shell .canvas-tab-shell,
+.app-shell .canvas-tab-shell *,
+.app-shell .canvas-tab-add,
+.app-shell .canvas-tab-input,
+.app-shell.theme-dark .canvas-tab-shell,
+.app-shell.theme-dark .canvas-tab-shell *,
+.app-shell.theme-dark .canvas-tab-add,
+.app-shell.theme-dark .canvas-tab-input {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+/* 2026-06-27 native Electron titlebar contract reset.
+   Electron docs: draggable regions ignore pointer events; interactive controls
+   must be no-drag descendants of the draggable titlebar, not siblings layered
+   over/under a separate drag surface. */
+.desktop-titlebar-drag-surface,
+.right-titlebar-drag-bridge {
+  display: none !important;
+  pointer-events: none !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.desktop-titlebar-shell {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: var(--rxnflow-titlebar-height, 48px) !important;
+  z-index: 3000 !important;
+  pointer-events: auto !important;
+  background: transparent !important;
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.workspace-topbar-placeholder {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.desktop-titlebar-shell .desktop-titlebar-tabs {
+  position: absolute !important;
+  top: 0 !important;
+  left: var(--rxnflow-project-rail-width, 212px) !important;
+  right: var(--rxnflow-inspector-width, 288px) !important;
+  height: var(--rxnflow-titlebar-height, 48px) !important;
+  min-height: var(--rxnflow-titlebar-height, 48px) !important;
+  padding: 0 16px 0 12px !important;
+  pointer-events: auto !important;
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.app-shell.is-right-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
+  right: var(--rxnflow-right-titlebar-action-reserve, 130px) !important;
+}
+
+.app-shell.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
+  left: var(--rxnflow-left-collapsed-workbench-reserve, 132px) !important;
+}
+
+.app-shell.is-window-edge-to-edge {
+  --rxnflow-titlebar-left-button-left: 12px;
+  --rxnflow-left-collapsed-workbench-reserve: 58px;
+}
+
+.desktop-titlebar-shell .workspace-topbar-left,
+.desktop-titlebar-shell .canvas-tab-bar,
+.desktop-titlebar-shell .canvas-tab-list {
+  height: var(--rxnflow-titlebar-height, 48px) !important;
+  pointer-events: auto !important;
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.desktop-titlebar-shell .workspace-topbar-actions,
+.desktop-titlebar-shell .workspace-topbar-actions.desktop-window-actions,
+.desktop-titlebar-shell .desktop-window-actions {
+  position: fixed !important;
+  top: var(--rxnflow-titlebar-control-top, 10px) !important;
+  right: 14px !important;
+  z-index: 2 !important;
+  pointer-events: auto !important;
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+.desktop-titlebar-shell .left-sidebar-fixed-toggle {
+  position: fixed !important;
+  left: var(--rxnflow-titlebar-left-button-left, 104px) !important;
+  top: var(--rxnflow-titlebar-control-top, 10px) !important;
+  z-index: 2 !important;
+}
+
+.desktop-titlebar-shell .left-sidebar-fixed-toggle,
+.desktop-titlebar-shell .left-sidebar-fixed-toggle *,
+.desktop-titlebar-shell .canvas-tab-shell,
+.desktop-titlebar-shell .canvas-tab-shell *,
+.desktop-titlebar-shell .canvas-tab-add,
+.desktop-titlebar-shell .canvas-tab-input,
+.desktop-titlebar-shell .workspace-topbar button,
+.desktop-titlebar-shell .workspace-topbar input,
+.desktop-titlebar-shell .workspace-topbar select,
+.desktop-titlebar-shell .workspace-topbar textarea,
+.desktop-titlebar-shell .workspace-topbar [role="button"],
+.desktop-titlebar-shell .workspace-topbar-actions > button,
+.desktop-titlebar-shell .workspace-topbar-actions > button *,
+.desktop-titlebar-shell .workspace-topbar-actions button,
+.desktop-titlebar-shell .workspace-topbar-actions button *,
+.desktop-titlebar-shell .workspace-topbar-actions .theme-toggle-button,
+.desktop-titlebar-shell .workspace-topbar-actions .theme-toggle-button *,
+.desktop-titlebar-shell .workspace-topbar-actions .floating-export-trigger,
+.desktop-titlebar-shell .workspace-topbar-actions .floating-export-trigger *,
+.desktop-titlebar-shell .workspace-topbar-actions .right-sidebar-fixed-toggle,
+.desktop-titlebar-shell .workspace-topbar-actions .right-sidebar-fixed-toggle * {
+  pointer-events: auto !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.desktop-titlebar-shell .workspace-topbar-actions .window-action-drag-gap,
+.desktop-titlebar-shell .workspace-topbar-actions .engine-status-pill,
+.desktop-titlebar-shell .workspace-topbar-actions .engine-status {
+  pointer-events: auto !important;
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+/* 2026-06-27 titlebar placeholder is layout-only, never a native hit-test region. */
+.app-shell .workspace-topbar-placeholder,
+.app-shell.theme-dark .workspace-topbar-placeholder,
+.workbench-shell > .workspace-topbar-placeholder {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+/* 2026-06-27 full-screen/zoomed titlebar leading edge: when macOS window
+   controls no longer reserve the leading inset, place the sidebar toggle at
+   the true window edge. */
+.app-shell.is-window-edge-to-edge .desktop-titlebar-shell .left-sidebar-fixed-toggle,
+.app-shell.is-window-fullscreen .desktop-titlebar-shell .left-sidebar-fixed-toggle,
+.app-shell.is-window-maximized .desktop-titlebar-shell .left-sidebar-fixed-toggle {
+  left: 12px !important;
+}
+
+.app-shell.is-window-edge-to-edge.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs,
+.app-shell.is-window-fullscreen.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs,
+.app-shell.is-window-maximized.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
+  left: 58px !important;
 }

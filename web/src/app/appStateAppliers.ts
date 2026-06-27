@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react"
-import type { CanvasViewport, FlowBarrier, FlowEdge, FlowNode, ProjectSummary, SourceFile } from "../domain/projectPackages"
+import type { CanvasAnnotation, CanvasViewport, FlowBarrier, FlowEdge, FlowNode, ProjectSummary, SourceFile } from "../domain/projectPackages"
 import { restoreCanvasEditInteractionTransition, type CanvasDragState, type CanvasSelectionIds } from "./canvasEditState"
 import type { BarrierDraft, ConnectionDraft } from "./CanvasWorkspace"
 import type { CandidateReviewState } from "./importRegistration"
@@ -37,6 +37,7 @@ export type ProjectWorkspaceStateSetters = CanvasSelectionSetters & {
   setNodes: Setter<FlowNode[]>
   setEdges: Setter<FlowEdge[]>
   setBarriers: Setter<FlowBarrier[]>
+  setAnnotations?: Setter<CanvasAnnotation[]>
   setViewport: Setter<CanvasViewport>
   setSelectedFileId: Setter<string | null>
   setSelectedFileIds: Setter<string[]>
@@ -64,9 +65,13 @@ export function applyCanvasSelectionState(
   setters: CanvasSelectionSetters,
   selection: CanvasSelectionIds,
 ): void {
-  setters.setSelectedNodeIds(selection.nodeIds)
-  setters.setSelectedEdgeIds(selection.edgeIds)
-  setters.setSelectedBarrierIds(selection.barrierIds)
+  setters.setSelectedNodeIds((current) => sameOrderedIds(current, selection.nodeIds) ? current : selection.nodeIds)
+  setters.setSelectedEdgeIds((current) => sameOrderedIds(current, selection.edgeIds) ? current : selection.edgeIds)
+  setters.setSelectedBarrierIds((current) => sameOrderedIds(current, selection.barrierIds) ? current : selection.barrierIds)
+}
+
+function sameOrderedIds(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index])
 }
 
 
@@ -107,6 +112,7 @@ export function applyProjectWorkspaceApplyTransitionState(
   setters.setNodes(activeCanvas.nodes)
   setters.setEdges(activeCanvas.edges)
   setters.setBarriers(activeCanvas.barriers)
+  setters.setAnnotations?.(activeCanvas.annotations ?? [])
   setters.setViewport(activeCanvas.viewport)
   applyCanvasSelectionState(setters, {
     nodeIds: activeCanvas.selectedNodeIds,
@@ -158,6 +164,7 @@ export function applyCanvasEditSnapshotRestoreState(
   setters.setNodes(restored.nodes)
   setters.setEdges(restored.edges)
   setters.setBarriers(restored.barriers)
+  setters.setAnnotations?.(restored.annotations ?? [])
   applyCanvasSelectionState(setters, {
     nodeIds: restored.selectedNodeIds,
     edgeIds: restored.selectedEdgeIds,

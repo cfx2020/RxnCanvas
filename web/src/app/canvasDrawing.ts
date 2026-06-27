@@ -5,7 +5,7 @@ import {
   relativeEnergyValueFromKcal,
   type EnergyDisplayOptions,
 } from "./energyDisplay"
-import { clamp, nodeHeight, nodeWidth } from "./canvasGeometry"
+import { clamp, flowNodeSize } from "./canvasGeometry"
 
 export type EdgeSegment = {
   path: string
@@ -45,9 +45,10 @@ export function createConnectionPreviewPath(source: FlowNode, current: Point): s
 }
 
 export function createBarrierDraftPreviewPath(source: FlowNode, current: Point): string {
+  const sourceSize = flowNodeSize(source)
   const start = {
-    x: source.position.x + nodeWidth * 0.5,
-    y: source.position.y + nodeHeight + 8,
+    x: source.position.x + sourceSize.width * 0.5,
+    y: source.position.y + sourceSize.height + 8,
   }
   const vertical = current.y - start.y
   const bend = clamp(Math.max(40, Math.abs(vertical) * 0.36), 40, 130)
@@ -63,11 +64,13 @@ export function createBarrierSegment(
   const source = nodeMap.get(barrier.sourceId)
   const target = nodeMap.get(barrier.targetId)
   if (!source || !target) return null
-  const sourceAnchor = { x: source.position.x + nodeWidth * 0.5, y: source.position.y + nodeHeight + 12 }
-  const targetOnRight = target.position.x + nodeWidth * 0.5 >= sourceAnchor.x
+  const sourceSize = flowNodeSize(source)
+  const targetSize = flowNodeSize(target)
+  const sourceAnchor = { x: source.position.x + sourceSize.width * 0.5, y: source.position.y + sourceSize.height + 12 }
+  const targetOnRight = target.position.x + targetSize.width * 0.5 >= sourceAnchor.x
   const targetAnchor = {
-    x: target.position.x + (targetOnRight ? 0 : nodeWidth),
-    y: target.position.y + nodeHeight * 0.5,
+    x: target.position.x + (targetOnRight ? 0 : targetSize.width),
+    y: target.position.y + targetSize.height * 0.5,
   }
   const arrowX = sourceAnchor.x
   const sourceY = sourceAnchor.y + 10
@@ -81,6 +84,7 @@ export function createBarrierSegment(
   const sourceGuideY = compact ? compactCenterY : sourceY
   const targetGuideY = compact ? compactCenterY : sourceY > targetY ? arrowTop : arrowBottom
   const defaultLabel = defaultBarrierLabel(source, target, energyDisplayOptions)
+  const label = barrier.label?.trim() || defaultLabel
 
   return {
     id: barrier.id,
@@ -91,9 +95,9 @@ export function createBarrierSegment(
       `M ${roundPathCoordinate(targetAnchor.x)} ${roundPathCoordinate(targetAnchor.y)}`,
       `L ${roundPathCoordinate(arrowX)} ${roundPathCoordinate(targetGuideY)}`,
     ].join(" "),
-    label: defaultLabel,
+    label,
     defaultLabel,
-    labelPoint: { x: arrowX + (targetOnRight ? 22 : -22), y: (arrowTop + arrowBottom) / 2 },
+    labelPoint: { x: arrowX, y: (arrowTop + arrowBottom) / 2 },
     sourceLabel: source.label,
     targetLabel: target.label,
   }
@@ -132,11 +136,13 @@ export function roundPathCoordinate(value: number): number {
 }
 
 function edgeSourceAnchor(source: FlowNode): Point {
-  return { x: source.position.x + nodeWidth, y: source.position.y + nodeHeight * 0.5 }
+  const size = flowNodeSize(source)
+  return { x: source.position.x + size.width, y: source.position.y + size.height * 0.5 }
 }
 
 function edgeTargetAnchor(target: FlowNode): Point {
-  return { x: target.position.x, y: target.position.y + nodeHeight * 0.5 }
+  const size = flowNodeSize(target)
+  return { x: target.position.x, y: target.position.y + size.height * 0.5 }
 }
 
 function cubicPath(start: Point, end: Point, bend: number): string {

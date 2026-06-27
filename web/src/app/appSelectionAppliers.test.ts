@@ -18,6 +18,12 @@ function setters() {
   }
 }
 
+function expectSelectionSetterToProduce(setter: ReturnType<typeof vi.fn>, current: string[], expected: string[]) {
+  expect(setter).toHaveBeenCalled()
+  const argument = setter.mock.calls.at(-1)?.[0]
+  expect(typeof argument === "function" ? argument(current) : argument).toEqual(expected)
+}
+
 describe("appSelectionAppliers", () => {
   it("applies source file selection", () => {
     const bag = setters()
@@ -32,8 +38,8 @@ describe("appSelectionAppliers", () => {
       inspectorMode: "inspector",
     })
     expect(bag.setSelectedFileId).toHaveBeenCalledWith("file-a")
-    expect(bag.setSelectedNodeIds).toHaveBeenCalledWith([])
-    expect(bag.setSelectedEdgeIds).toHaveBeenCalledWith([])
+    expectSelectionSetterToProduce(bag.setSelectedNodeIds, ["node-a"], [])
+    expectSelectionSetterToProduce(bag.setSelectedEdgeIds, ["edge-a"], [])
     expect(bag.setKeyboardEdgeSourceId).toHaveBeenCalledWith(null)
     expect(bag.setInspectorMode).toHaveBeenCalledWith("inspector")
   })
@@ -64,7 +70,7 @@ describe("appSelectionAppliers", () => {
       keyboardEdgeSourceId: null,
       inspectorMode: "inspector",
     })
-    expect(bag.setSelectedNodeIds).toHaveBeenCalledWith(["node-a"])
+    expectSelectionSetterToProduce(bag.setSelectedNodeIds, [], ["node-a"])
     expect(bag.setSelectedFileId).toHaveBeenCalledWith("file-a")
   })
 
@@ -75,7 +81,7 @@ describe("appSelectionAppliers", () => {
       keyboardEdgeSourceId: null,
       inspectorMode: "inspector",
     })
-    expect(bag.setSelectedEdgeIds).toHaveBeenCalledWith(["edge-a"])
+    expectSelectionSetterToProduce(bag.setSelectedEdgeIds, [], ["edge-a"])
 
     const edges = [{ id: "edge-a", sourceId: "n1", targetId: "n2", label: "new" }]
     applyFlowEdgeCollectionUpdateState(bag, {

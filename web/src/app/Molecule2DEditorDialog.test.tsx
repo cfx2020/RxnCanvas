@@ -45,6 +45,6 @@ describe("Molecule2DEditorDialog", () => {
 
     expect(screen.getByRole("dialog", { name: /edit 2d structure/i })).toBeInTheDocument()
     expect(await screen.findByRole("alert")).toHaveTextContent(/Ketcher editor could not load/i)
-    expect(screen.getByRole("button", { name: /save 2d structure/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled()
   })
 })

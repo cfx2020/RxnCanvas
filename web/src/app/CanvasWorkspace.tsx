@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useMemo,
   useRef,
@@ -8,18 +9,17 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react"
-import { ChevronDown, Maximize2, MoreHorizontal, UploadCloud, ZoomIn, ZoomOut } from "lucide-react"
-import type { CanvasViewport, FlowBarrier, FlowEdge, FlowNode, Point, SourceFile } from "../domain/projectPackages"
+import { ChevronDown, Maximize2, UploadCloud, ZoomIn, ZoomOut } from "lucide-react"
+import type { CanvasAnnotation, CanvasViewport, FlowBarrier, FlowEdge, FlowNode, Point, SourceFile } from "../domain/projectPackages"
 import type { CoordinatePreview } from "../domain/sourceParsers"
 import {
   clamp,
   collapsedNodeHeight,
   createMinimapGeometry,
   fallbackCanvasSize,
+  flowNodeSize,
   minimapRectStyle,
   minimapSize,
-  nodeHeight,
-  nodeWidth,
   viewportFromCanvasWheel,
   viewportFromMinimapPoint,
   type CanvasSelectionRect,
@@ -63,6 +63,7 @@ export type ConnectionDraft = {
   pointerId: number
   sourceId: string
   current: Point
+  snapTargetId?: string
 }
 
 export type BarrierDraft = {
@@ -74,6 +75,26 @@ export type BarrierDraft = {
 export type CanvasRawFileDrop =
   | { kind: "external-files"; files: File[]; position: Point }
   | { kind: "project-files"; fileIds: string[]; position: Point }
+
+export type CanvasContextSelection = {
+  nodeIds: string[]
+  edgeIds: string[]
+  barrierIds: string[]
+}
+
+export type CanvasContextMenuTarget =
+  | { kind: "selection"; selection: CanvasContextSelection }
+  | { kind: "node"; nodeId: string; selection: CanvasContextSelection }
+  | { kind: "edge"; edgeId: string; selection: CanvasContextSelection }
+  | { kind: "barrier"; barrierId: string; selection: CanvasContextSelection }
+
+export type CanvasContextMenuRequest = {
+  x: number
+  y: number
+  target: CanvasContextMenuTarget
+}
+
+export type CanvasTool = "select" | "pan" | "text"
 
 export function normalizedSelectionRect(start: Point, current: Point): CanvasSelectionRect {
   const x = Math.min(start.x, current.x)
@@ -96,12 +117,51 @@ export function selectionModeFromKeyboardOrPointer(
   return event.shiftKey ? "toggle" : "replace"
 }
 
+function capsuleWidthForLabel(
+  label: string,
+  options: { min: number; max: number; padding: number } = { min: 58, max: 220, padding: 28 },
+) {
+  const text = label.trim() || "Add label"
+  return clamp(Math.ceil(estimatedInlineTextWidth(text) + options.padding), options.min, options.max)
+}
+
+function estimatedInlineTextWidth(text: string): number {
+  const textWidth = Array.from(text).reduce((width, char) => {
+    if (/\s/.test(char)) return width + 4
+    if (/[\u3400-\u9fff]/.test(char)) return width + 12
+    if (/[A-Z0-9Δ‡+=./()[\]{}–—-]/.test(char)) return width + 8.2
+    return width + 6.8
+  }, 0)
+  return textWidth
+}
+
+function autoTextBoxWidthForValue(
+  value: string,
+  options: { placeholder: string; min: number; max: number; padding: number },
+) {
+  const text = value.length > 0 ? value : options.placeholder
+  const longestLine = text.split(/\r?\n/).reduce((longest, line) => (
+    estimatedInlineTextWidth(line) > estimatedInlineTextWidth(longest) ? line : longest
+  ), "")
+  return clamp(Math.ceil(estimatedInlineTextWidth(longestLine || options.placeholder) + options.padding), options.min, options.max)
+}
+
+function canvasTextAnnotationWidth(text: string) {
+  return autoTextBoxWidthForValue(text, {
+    placeholder: "Text",
+    min: 72,
+    max: 420,
+    padding: 26,
+  })
+}
+
 export function CanvasSurface({
   canvasRef,
   nodes,
   files,
   edges,
   barriers,
+  annotations = [],
   nodeMap,
   selectedNodeIds,
   selectedEdgeIds,
@@ -120,6 +180,7 @@ export function CanvasSurface({
   onPointerMove,
   onPointerEnd,
   onNodePointerDown,
+  onNodeResizePointerDown,
   onNodePointerUp,
   onStartConnection,
   onStartBarrierAnnotation,
@@ -134,19 +195,27 @@ export function CanvasSurface({
   onOpenStructure,
   onShowNodeSource,
   onRenameNode,
+  renameEditingNodeId,
+  onRenameRequestHandled,
+  onOpenContextMenu,
   onRawFileDrop,
+  editingAnnotationId = null,
+  onBeginEditAnnotation = () => undefined,
+  onUpdateTextAnnotation = () => undefined,
+  onDeleteAnnotation = () => undefined,
 }: {
   canvasRef: React.RefObject<HTMLDivElement | null>
   nodes: FlowNode[]
   files: SourceFile[]
   edges: FlowEdge[]
   barriers: FlowBarrier[]
+  annotations?: CanvasAnnotation[]
   nodeMap: Map<string, FlowNode>
   selectedNodeIds: string[]
   selectedEdgeIds: string[]
   selectedBarrierIds: string[]
   keyboardEdgeSourceId: string | null
-  tool: "select" | "pan"
+  tool: CanvasTool
   viewport: CanvasViewport
   rubberBandDraft: Extract<DragState, { kind: "rubber" }> | null
   connectionDraft: ConnectionDraft | null
@@ -159,6 +228,7 @@ export function CanvasSurface({
   onPointerMove: (event: PointerEvent<HTMLDivElement>) => void
   onPointerEnd: (event: PointerEvent<HTMLDivElement>) => void
   onNodePointerDown: (event: PointerEvent<HTMLElement>, node: FlowNode) => void
+  onNodeResizePointerDown: (event: PointerEvent<HTMLElement>, node: FlowNode) => void
   onNodePointerUp: (event: PointerEvent<HTMLElement>, targetId: string) => void
   onStartConnection: (event: PointerEvent<HTMLElement>, sourceId: string) => void
   onStartBarrierAnnotation: (event: PointerEvent<HTMLElement>, sourceId: string) => void
@@ -173,7 +243,14 @@ export function CanvasSurface({
   onOpenStructure: (nodeId: string) => void
   onShowNodeSource: (nodeId: string) => void
   onRenameNode: (nodeId: string, label: string) => void
+  renameEditingNodeId: string | null
+  onRenameRequestHandled: (nodeId: string) => void
+  onOpenContextMenu: (request: CanvasContextMenuRequest) => void
   onRawFileDrop: (drop: CanvasRawFileDrop) => void
+  editingAnnotationId?: string | null
+  onBeginEditAnnotation?: (annotationId: string) => void
+  onUpdateTextAnnotation?: (annotationId: string, text: string) => void
+  onDeleteAnnotation?: (annotationId: string) => void
 }) {
   const energyRowByNodeId = useMemo(
     () => new Map(energyRows.map((row) => [row.nodeId, row])),
@@ -193,6 +270,60 @@ export function CanvasSurface({
     })
     return groups
   }, [files])
+
+  const connectionSnapTargetId = connectionDraft?.snapTargetId ?? null
+  const stableOnNodePointerDown = useLatestCallback(onNodePointerDown)
+  const stableOnNodeResizePointerDown = useLatestCallback(onNodeResizePointerDown)
+  const stableOnNodePointerUp = useLatestCallback(onNodePointerUp)
+  const stableOnStartConnection = useLatestCallback(onStartConnection)
+  const stableOnStartBarrierAnnotation = useLatestCallback(onStartBarrierAnnotation)
+  const stableOnStartKeyboardConnection = useLatestCallback(onStartKeyboardConnection)
+  const stableOnSelectNode = useLatestCallback(onSelectNode)
+  const stableOnSelectEdge = useLatestCallback(onSelectEdge)
+  const stableOnSelectBarrier = useLatestCallback(onSelectBarrier)
+  const stableOnUpdateEdgeLabel = useLatestCallback(onUpdateEdgeLabel)
+  const stableOnUpdateBarrierLabel = useLatestCallback(onUpdateBarrierLabel)
+  const stableOnSetNodeCoefficient = useLatestCallback(onSetNodeCoefficient)
+  const stableOnSetRelativeEnergyZero = useLatestCallback(onSetRelativeEnergyZero)
+  const stableOnOpenStructure = useLatestCallback(onOpenStructure)
+  const stableOnShowNodeSource = useLatestCallback(onShowNodeSource)
+  const stableOnRenameNode = useLatestCallback(onRenameNode)
+  const stableOnRenameRequestHandled = useLatestCallback(onRenameRequestHandled)
+  const stableOnOpenContextMenu = useLatestCallback(onOpenContextMenu)
+  const currentSelection = (): CanvasContextSelection => ({
+    nodeIds: selectedNodeIds,
+    edgeIds: selectedEdgeIds,
+    barrierIds: selectedBarrierIds,
+  })
+
+  const openSelectionContextMenu = (event: Pick<MouseEvent<HTMLElement>, "clientX" | "clientY" | "preventDefault" | "stopPropagation">) => {
+    const selection = currentSelection()
+    if (selection.nodeIds.length + selection.edgeIds.length + selection.barrierIds.length === 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    stableOnOpenContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      target: { kind: "selection", selection },
+    })
+  }
+
+  const handleSurfaceKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      const selection = currentSelection()
+      if (selection.nodeIds.length + selection.edgeIds.length + selection.barrierIds.length > 0) {
+        event.preventDefault()
+        const rect = event.currentTarget.getBoundingClientRect()
+        stableOnOpenContextMenu({
+          x: rect.left + 42,
+          y: rect.top + 42,
+          target: { kind: "selection", selection },
+        })
+      }
+      return
+    }
+    onCanvasKeyDown(event)
+  }
 
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     if (!hasCanvasRawFileDrop(event.dataTransfer)) return
@@ -219,22 +350,23 @@ export function CanvasSurface({
   return (
     <div
       ref={canvasRef}
-      className={`canvas-surface ${tool === "pan" ? "is-panning" : "is-selecting"}${rubberBandDraft ? " has-rubber-band" : ""}${connectionDraft ? " is-connecting" : ""}`}
+      className={`canvas-surface ${tool === "pan" ? "is-panning" : tool === "text" ? "is-text-tool" : "is-selecting"}${rubberBandDraft ? " has-rubber-band" : ""}${connectionDraft ? " is-connecting" : ""}${connectionSnapTargetId ? " is-connection-snapped" : ""}`}
       aria-label="Graph canvas surface"
       aria-keyshortcuts="Delete Backspace Escape ArrowUp ArrowDown ArrowLeft ArrowRight Meta+Z Control+Z Control+Y"
       tabIndex={0}
       onPointerDown={onCanvasPointerDown}
-      onKeyDown={onCanvasKeyDown}
+      onKeyDown={handleSurfaceKeyDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
       onPointerCancel={onPointerEnd}
+      onContextMenu={openSelectionContextMenu}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
       <div
         className="canvas-world"
         style={{
-          transform: `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.zoom})`,
+          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
         }}
       >
         <svg className="edge-layer" width="1600" height="1000" viewBox="0 0 1600 1000">
@@ -252,8 +384,17 @@ export function CanvasSurface({
               edge={edge}
               nodeMap={nodeMap}
               selected={selectedEdgeIdSet.has(edge.id)}
-              onSelect={onSelectEdge}
-              onUpdateLabel={onUpdateEdgeLabel}
+              onSelect={stableOnSelectEdge}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                stableOnSelectEdge(edge.id, "replace")
+                stableOnOpenContextMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  target: { kind: "edge", edgeId: edge.id, selection: { nodeIds: [], edgeIds: [edge.id], barrierIds: [] } },
+                })
+              }}
             />
           ))}
           {connectionDraft ? <ConnectionPreview draft={connectionDraft} nodeMap={nodeMap} /> : null}
@@ -265,8 +406,17 @@ export function CanvasSurface({
               nodeMap={nodeMap}
               energyDisplayOptions={energyDisplayOptions}
               selected={selectedBarrierIdSet.has(barrier.id)}
-              onSelect={onSelectBarrier}
-              onUpdateLabel={onUpdateBarrierLabel}
+              onSelect={stableOnSelectBarrier}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                stableOnSelectBarrier(barrier.id, "replace")
+                stableOnOpenContextMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  target: { kind: "barrier", barrierId: barrier.id, selection: { nodeIds: [], edgeIds: [], barrierIds: [barrier.id] } },
+                })
+              }}
             />
           ))}
         </svg>
@@ -277,6 +427,7 @@ export function CanvasSurface({
             node={node}
             coordinatePreview={coordinatePreviewForNode(node, fileById)}
             selected={selectedNodeIdSet.has(node.id)}
+            connectionSnapTarget={connectionSnapTargetId === node.id}
             keyboardConnectionActive={node.id === keyboardEdgeSourceId}
             inputConnected={connectedInputNodeIds.has(node.id)}
             outputConnected={connectedOutputNodeIds.has(node.id)}
@@ -285,17 +436,59 @@ export function CanvasSurface({
             energySource={energyDisplayOptions.energySource}
             outputUnit={energyDisplayOptions.outputUnit}
             energyBaseline={node.id === relativeZeroNodeId}
-            onPointerDown={onNodePointerDown}
-            onPointerUp={onNodePointerUp}
-            onStartConnection={onStartConnection}
-            onStartBarrierAnnotation={onStartBarrierAnnotation}
-            onStartKeyboardConnection={onStartKeyboardConnection}
-            onSelectNode={onSelectNode}
-            onSetCoefficient={onSetNodeCoefficient}
-            onSetRelativeEnergyZero={onSetRelativeEnergyZero}
-            onOpenStructure={onOpenStructure}
-            onShowNodeSource={onShowNodeSource}
-            onRenameNode={onRenameNode}
+            onPointerDown={stableOnNodePointerDown}
+            onResizePointerDown={stableOnNodeResizePointerDown}
+            onPointerUp={stableOnNodePointerUp}
+            onStartConnection={stableOnStartConnection}
+            onStartBarrierAnnotation={stableOnStartBarrierAnnotation}
+            onStartKeyboardConnection={stableOnStartKeyboardConnection}
+            onSelectNode={stableOnSelectNode}
+            onSetCoefficient={stableOnSetNodeCoefficient}
+            onSetRelativeEnergyZero={stableOnSetRelativeEnergyZero}
+            onOpenStructure={stableOnOpenStructure}
+            onShowNodeSource={stableOnShowNodeSource}
+            onRenameNode={stableOnRenameNode}
+            renameRequested={renameEditingNodeId === node.id}
+            onRenameRequestHandled={stableOnRenameRequestHandled}
+            onOpenContextMenu={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              stableOnSelectNode(node.id, "replace")
+              stableOnOpenContextMenu({
+                x: event.clientX,
+                y: event.clientY,
+                target: { kind: "node", nodeId: node.id, selection: { nodeIds: [node.id], edgeIds: [], barrierIds: [] } },
+              })
+            }}
+          />
+        ))}
+        {edges.map((edge) => (
+          <ReactionEdgeLabel
+            key={`${edge.id}-label`}
+            edge={edge}
+            nodeMap={nodeMap}
+            selected={selectedEdgeIdSet.has(edge.id)}
+            onUpdateLabel={stableOnUpdateEdgeLabel}
+          />
+        ))}
+        {barriers.map((barrier) => (
+          <BarrierAnnotationLabel
+            key={`${barrier.id}-label`}
+            barrier={barrier}
+            nodeMap={nodeMap}
+            energyDisplayOptions={energyDisplayOptions}
+            selected={selectedBarrierIdSet.has(barrier.id)}
+            onUpdateLabel={stableOnUpdateBarrierLabel}
+          />
+        ))}
+        {annotations.map((annotation) => (
+          <CanvasAnnotationView
+            key={annotation.id}
+            annotation={annotation}
+            editing={annotation.id === editingAnnotationId}
+            onBeginEdit={onBeginEditAnnotation}
+            onUpdateText={onUpdateTextAnnotation}
+            onDelete={onDeleteAnnotation}
           />
         ))}
         {rubberBandDraft ? <CanvasRubberBand draft={rubberBandDraft} /> : null}
@@ -319,7 +512,7 @@ function CanvasRubberBand({ draft }: { draft: Extract<DragState, { kind: "rubber
       className="canvas-rubber-band"
       aria-hidden="true"
       style={{
-        transform: `translate3d(${rect.x}px, ${rect.y}px, 0)`,
+        transform: `translate(${rect.x}px, ${rect.y}px)`,
         width: rect.width,
         height: rect.height,
       }}
@@ -327,10 +520,146 @@ function CanvasRubberBand({ draft }: { draft: Extract<DragState, { kind: "rubber
   )
 }
 
-function ReactionNodeCard({
+function CanvasAnnotationView({
+  annotation,
+  editing,
+  onBeginEdit,
+  onUpdateText,
+  onDelete,
+}: {
+  annotation: CanvasAnnotation
+  editing: boolean
+  onBeginEdit: (annotationId: string) => void
+  onUpdateText: (annotationId: string, text: string) => void
+  onDelete: (annotationId: string) => void
+}) {
+  const annotationText = annotation.type === "text" ? annotation.text : ""
+  const [textDraft, setTextDraft] = useState(annotationText)
+  useEffect(() => {
+    if (annotation.type === "text" && !editing) setTextDraft(annotation.text)
+  }, [annotation, editing])
+
+  if (annotation.type === "image") {
+    return (
+      <div
+        className="canvas-annotation canvas-image-annotation"
+        style={{
+          transform: `translate(${annotation.position.x}px, ${annotation.position.y}px)`,
+          width: annotation.width,
+          height: annotation.height,
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <img src={annotation.dataUrl} alt={annotation.name ?? "Pasted canvas image"} draggable={false} />
+      </div>
+    )
+  }
+
+  const textWidth = canvasTextAnnotationWidth(editing ? textDraft : annotation.text)
+
+  return (
+    <div
+      className={`canvas-annotation canvas-text-annotation${editing ? " is-editing" : ""}`}
+      style={{
+        transform: `translate(${annotation.position.x}px, ${annotation.position.y}px)`,
+        width: textWidth,
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => {
+        event.stopPropagation()
+        onBeginEdit(annotation.id)
+      }}
+    >
+      {editing ? (
+        <CanvasTextAnnotationEditor
+          annotation={annotation}
+          onUpdateText={onUpdateText}
+          onDelete={onDelete}
+          onDraftChange={setTextDraft}
+        />
+      ) : (
+        <button
+          type="button"
+          className="canvas-text-annotation-button"
+          aria-label={`Edit canvas text ${annotation.text || "empty"}`}
+          onClick={(event) => {
+            event.stopPropagation()
+            onBeginEdit(annotation.id)
+          }}
+        >
+          {annotation.text || "Text"}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function CanvasTextAnnotationEditor({
+  annotation,
+  onUpdateText,
+  onDelete,
+  onDraftChange,
+}: {
+  annotation: Extract<CanvasAnnotation, { type: "text" }>
+  onUpdateText: (annotationId: string, text: string) => void
+  onDelete: (annotationId: string) => void
+  onDraftChange: (text: string) => void
+}) {
+  const [value, setValue] = useState(annotation.text)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const finishedRef = useRef(false)
+
+  useEffect(() => {
+    setValue(annotation.text)
+    onDraftChange(annotation.text)
+  }, [annotation.text, onDraftChange])
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  const finish = (apply: boolean) => {
+    if (finishedRef.current) return
+    finishedRef.current = true
+    const next = apply ? value.trim() : annotation.text.trim()
+    if (next) onUpdateText(annotation.id, next)
+    else onDelete(annotation.id)
+  }
+
+  return (
+    <textarea
+      ref={inputRef}
+      className="canvas-text-annotation-input"
+      aria-label="Canvas text"
+      value={value}
+      placeholder="Type…"
+      rows={1}
+      onChange={(event) => {
+        setValue(event.currentTarget.value)
+        onDraftChange(event.currentTarget.value)
+      }}
+      onBlur={() => finish(true)}
+      onKeyDown={(event) => {
+        event.stopPropagation()
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault()
+          finish(true)
+        }
+        if (event.key === "Escape") {
+          event.preventDefault()
+          finish(false)
+        }
+      }}
+    />
+  )
+}
+
+const ReactionNodeCard = memo(function ReactionNodeCard({
   node,
   coordinatePreview,
   selected,
+  connectionSnapTarget,
   keyboardConnectionActive,
   inputConnected,
   outputConnected,
@@ -340,6 +669,7 @@ function ReactionNodeCard({
   outputUnit,
   energyBaseline,
   onPointerDown,
+  onResizePointerDown,
   onPointerUp,
   onStartConnection,
   onStartBarrierAnnotation,
@@ -350,10 +680,14 @@ function ReactionNodeCard({
   onOpenStructure,
   onShowNodeSource,
   onRenameNode,
+  renameRequested,
+  onRenameRequestHandled,
+  onOpenContextMenu,
 }: {
   node: FlowNode
   coordinatePreview: CoordinatePreview | null
   selected: boolean
+  connectionSnapTarget: boolean
   keyboardConnectionActive: boolean
   inputConnected: boolean
   outputConnected: boolean
@@ -363,6 +697,7 @@ function ReactionNodeCard({
   outputUnit: EnergyDisplayOptions["outputUnit"]
   energyBaseline: boolean
   onPointerDown: (event: PointerEvent<HTMLElement>, node: FlowNode) => void
+  onResizePointerDown: (event: PointerEvent<HTMLElement>, node: FlowNode) => void
   onPointerUp: (event: PointerEvent<HTMLElement>, targetId: string) => void
   onStartConnection: (event: PointerEvent<HTMLElement>, sourceId: string) => void
   onStartBarrierAnnotation: (event: PointerEvent<HTMLElement>, sourceId: string) => void
@@ -373,24 +708,43 @@ function ReactionNodeCard({
   onOpenStructure: (nodeId: string) => void
   onShowNodeSource: (nodeId: string) => void
   onRenameNode: (nodeId: string, label: string) => void
+  renameRequested: boolean
+  onRenameRequestHandled: (nodeId: string) => void
+  onOpenContextMenu: (event: Pick<MouseEvent<HTMLElement>, "clientX" | "clientY" | "preventDefault" | "stopPropagation">) => void
 }) {
   const coefficientValue = nodeCoefficient(node)
   const [coefficientEditing, setCoefficientEditing] = useState(false)
   const [coefficientDraft, setCoefficientDraft] = useState(formatCoefficientValue(coefficientValue))
   const [structureCollapsed, setStructureCollapsed] = useState(false)
-  const [actionsOpen, setActionsOpen] = useState(false)
   const [renameEditing, setRenameEditing] = useState(false)
   const [renameDraft, setRenameDraft] = useState(node.label)
   const coefficientInputRef = useRef<HTMLInputElement | null>(null)
-  const nodeActionsRef = useRef<HTMLSpanElement | null>(null)
   const sourceStatusLabel = nodeFooterText(node)
   const solvationStatusLabel = solvationPairStatusLabel(solvationStatus)
   const nodeStatusLight = solvationStatus === "missing" ? "missing" : (node.sourceStatus ?? solvationStatus)
   const relativeEnergySymbol = energySource === "solution" ? "ΔG" : "ΔE"
+  const cardSize = flowNodeSize(node)
+  const cardHeight = structureCollapsed ? collapsedNodeHeight : cardSize.height
+  const previewSize = {
+    width: Math.max(128, cardSize.width - 28),
+    height: Math.max(72, cardSize.height - 110),
+  }
+  const titleLabelWidth = autoTextBoxWidthForValue(renameEditing ? renameDraft : node.label, {
+    placeholder: node.label || "Node",
+    min: 24,
+    max: Math.max(24, cardSize.width - 78),
+    padding: renameEditing ? 18 : 6,
+  })
 
   useEffect(() => {
     if (!coefficientEditing) setCoefficientDraft(formatCoefficientValue(coefficientValue))
   }, [coefficientEditing, coefficientValue])
+
+  useEffect(() => {
+    if (!renameRequested) return
+    setRenameEditing(true)
+    onRenameRequestHandled(node.id)
+  }, [node.id, onRenameRequestHandled, renameRequested])
 
   useEffect(() => {
     if (!renameEditing) setRenameDraft(node.label)
@@ -402,28 +756,18 @@ function ReactionNodeCard({
     coefficientInputRef.current?.select()
   }, [coefficientEditing])
 
-  useEffect(() => {
-    if (!actionsOpen) return
-
-    const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) return
-      if (nodeActionsRef.current?.contains(target)) return
-      setActionsOpen(false)
-    }
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setActionsOpen(false)
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsidePointer, true)
-    document.addEventListener("keydown", closeOnEscape)
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer, true)
-      document.removeEventListener("keydown", closeOnEscape)
-    }
-  }, [actionsOpen])
-
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault()
+      const rect = event.currentTarget.getBoundingClientRect()
+      onOpenContextMenu({
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + 34,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      })
+      return
+    }
     if (event.key !== "Enter" && event.key !== " ") return
     event.preventDefault()
     onSelectNode(node.id, selectionModeFromKeyboardOrPointer(event))
@@ -454,16 +798,17 @@ function ReactionNodeCard({
     <div
       role="button"
       tabIndex={0}
-      className={`reaction-node node-${node.kind}${selected ? " is-selected" : ""}${structureCollapsed ? " is-structure-collapsed" : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
+      className={`reaction-node node-${node.kind}${selected ? " is-selected" : ""}${connectionSnapTarget ? " is-connection-snap-target" : ""}${structureCollapsed ? " is-structure-collapsed" : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
       aria-label={`Node ${node.label}`}
       data-flow-node-id={node.id}
       style={{
-        transform: `translate3d(${node.position.x}px, ${node.position.y}px, 0)`,
-        width: nodeWidth,
-        height: structureCollapsed ? collapsedNodeHeight : nodeHeight,
+        transform: `translate(${node.position.x}px, ${node.position.y}px)`,
+        width: cardSize.width,
+        height: cardHeight,
       }}
       onPointerDown={(event) => onPointerDown(event, node)}
       onPointerUp={(event) => onPointerUp(event, node.id)}
+      onContextMenu={onOpenContextMenu}
       onKeyDown={handleKeyDown}
     >
       <span
@@ -477,6 +822,7 @@ function ReactionNodeCard({
               className="node-title-input"
               aria-label={`Rename ${node.label}`}
               value={renameDraft}
+              style={{ width: titleLabelWidth }}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
               onChange={(event) => setRenameDraft(event.currentTarget.value)}
@@ -502,6 +848,7 @@ function ReactionNodeCard({
               className="node-title-button"
               aria-label={`Rename ${node.label}`}
               title="Rename node label"
+              style={{ width: titleLabelWidth }}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation()
@@ -568,59 +915,13 @@ function ReactionNodeCard({
           >
             <ChevronDown size={13} aria-hidden="true" />
           </button>
-          <span className="node-more-actions" ref={nodeActionsRef}>
-            <button
-              type="button"
-              className="node-more-button"
-              aria-label={`More actions for ${node.label}`}
-              aria-haspopup="menu"
-              aria-expanded={actionsOpen}
-              title={`More actions for ${node.label}`}
-              onClick={() => setActionsOpen((current) => !current)}
-            >
-              <MoreHorizontal size={14} aria-hidden="true" />
-            </button>
-            {actionsOpen ? (
-              <span className="node-action-menu" role="menu" aria-label={`Actions for ${node.label}`}>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsOpen(false)
-                    setRenameEditing(true)
-                  }}
-                >
-                  Rename
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsOpen(false)
-                    onSetRelativeEnergyZero(node.id)
-                  }}
-                >
-                  Set zero
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsOpen(false)
-                    onShowNodeSource(node.id)
-                  }}
-                >
-                  Source details
-                </button>
-              </span>
-            ) : null}
-          </span>
         </span>
       </div>
       {structureCollapsed ? null : (
         <NodeStructurePreview
           node={node}
           coordinatePreview={coordinatePreview}
+          previewSize={previewSize}
           onOpenStructure={onOpenStructure}
         />
       )}
@@ -660,9 +961,18 @@ function ReactionNodeCard({
           <path className="barrier-activation-icon" d="M4.2 16.7 C7.2 16.7 7.4 7.1 11.8 7.1 C16.1 7.1 16.5 16.7 19.8 16.7" />
         </svg>
       </button>
+      <button
+        type="button"
+        className="node-resize-handle"
+        aria-label={`Resize node ${node.label}`}
+        title={`Resize node ${node.label}`}
+        onPointerDown={(event) => onResizePointerDown(event, node)}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      />
     </div>
   )
-}
+}, areReactionNodeCardPropsEqual)
 
 function formatNodeCardRelativeEnergy(value: number | null, unit: EnergyDisplayOptions["outputUnit"]): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "pending"
@@ -672,10 +982,12 @@ function formatNodeCardRelativeEnergy(value: number | null, unit: EnergyDisplayO
 function NodeStructurePreview({
   node,
   coordinatePreview,
+  previewSize,
   onOpenStructure,
 }: {
   node: FlowNode
   coordinatePreview: CoordinatePreview | null
+  previewSize: { width: number; height: number }
   onOpenStructure: (nodeId: string) => void
 }) {
   const atoms = coordinatePreview?.atoms ?? []
@@ -696,7 +1008,12 @@ function NodeStructurePreview({
   )
   if (atoms.length === 0 && !node.manualStructureMolfile && !node.manualStructureSvg) {
     return (
-      <div className="node-structure-preview node-structure-preview-empty" role="group" aria-label={`${node.label} formula-only structure preview`}>
+      <div
+        className="node-structure-preview node-structure-preview-empty"
+        role="group"
+        aria-label={`${node.label} formula-only structure preview`}
+        style={{ height: previewSize.height }}
+      >
         {openStructureButton}
         <strong>2D pending</strong>
         <span>No layout</span>
@@ -706,15 +1023,15 @@ function NodeStructurePreview({
   }
 
   return (
-    <div className="node-structure-preview node-structure-preview-shell">
+    <div className="node-structure-preview node-structure-preview-shell" style={{ height: previewSize.height }}>
       <Molecule2DDepiction
         atoms={atoms}
         formula={node.formula}
         manualMolfile={node.manualStructureMolfile}
         manualSvg={node.manualStructureSvg}
         label={node.label}
-        width={176}
-        height={104}
+        width={previewSize.width}
+        height={previewSize.height}
         className="node-structure-preview-art node-structure-2d"
         emptyText="2D depiction pending"
       />
@@ -734,32 +1051,105 @@ function coordinatePreviewForNode(node: FlowNode, fileById: Map<string, SourceFi
   return candidate?.coordinatePreview ?? parse.coordinatePreview
 }
 
-function ReactionEdge({
+type ReactionNodeCardComparableProps = {
+  node: FlowNode
+  coordinatePreview: CoordinatePreview | null
+  selected: boolean
+  connectionSnapTarget: boolean
+  keyboardConnectionActive: boolean
+  inputConnected: boolean
+  outputConnected: boolean
+  relativeEnergy: number | null
+  solvationStatus: NodeSolvationStatus
+  energySource: EnergyDisplayOptions["energySource"]
+  outputUnit: EnergyDisplayOptions["outputUnit"]
+  energyBaseline: boolean
+  renameRequested: boolean
+}
+
+function areReactionNodeCardPropsEqual(
+  previous: ReactionNodeCardComparableProps,
+  next: ReactionNodeCardComparableProps,
+): boolean {
+  return previous.node === next.node
+    && previous.coordinatePreview === next.coordinatePreview
+    && previous.selected === next.selected
+    && previous.connectionSnapTarget === next.connectionSnapTarget
+    && previous.keyboardConnectionActive === next.keyboardConnectionActive
+    && previous.inputConnected === next.inputConnected
+    && previous.outputConnected === next.outputConnected
+    && Object.is(previous.relativeEnergy, next.relativeEnergy)
+    && previous.solvationStatus === next.solvationStatus
+    && previous.energySource === next.energySource
+    && previous.outputUnit === next.outputUnit
+    && previous.energyBaseline === next.energyBaseline
+    && previous.renameRequested === next.renameRequested
+}
+
+type EdgeComparableProps = {
+  edge: FlowEdge
+  nodeMap: Map<string, FlowNode>
+  selected: boolean
+}
+
+function areReactionEdgePropsEqual(previous: EdgeComparableProps, next: EdgeComparableProps): boolean {
+  return previous.edge === next.edge
+    && previous.selected === next.selected
+    && previous.nodeMap.get(previous.edge.sourceId) === next.nodeMap.get(next.edge.sourceId)
+    && previous.nodeMap.get(previous.edge.targetId) === next.nodeMap.get(next.edge.targetId)
+}
+
+function areReactionEdgeLabelPropsEqual(previous: EdgeComparableProps, next: EdgeComparableProps): boolean {
+  return areReactionEdgePropsEqual(previous, next)
+}
+
+type BarrierComparableProps = {
+  barrier: FlowBarrier
+  nodeMap: Map<string, FlowNode>
+  energyDisplayOptions: EnergyDisplayOptions
+  selected: boolean
+}
+
+function areBarrierAnnotationPropsEqual(previous: BarrierComparableProps, next: BarrierComparableProps): boolean {
+  return previous.barrier === next.barrier
+    && previous.selected === next.selected
+    && previous.energyDisplayOptions === next.energyDisplayOptions
+    && previous.nodeMap.get(previous.barrier.sourceId) === next.nodeMap.get(next.barrier.sourceId)
+    && previous.nodeMap.get(previous.barrier.targetId) === next.nodeMap.get(next.barrier.targetId)
+}
+
+function areBarrierAnnotationLabelPropsEqual(previous: BarrierComparableProps, next: BarrierComparableProps): boolean {
+  return areBarrierAnnotationPropsEqual(previous, next)
+}
+
+const ReactionEdge = memo(function ReactionEdge({
   edge,
   nodeMap,
   selected,
   onSelect,
-  onUpdateLabel,
+  onContextMenu,
 }: {
   edge: FlowEdge
   nodeMap: Map<string, FlowNode>
   selected: boolean
   onSelect: (edgeId: string, mode?: GraphSelectionMode) => void
-  onUpdateLabel: (edgeId: string, label: string) => void
+  onContextMenu: (event: MouseEvent<SVGGElement>) => void
 }) {
   const source = nodeMap.get(edge.sourceId)
   const target = nodeMap.get(edge.targetId)
   if (!source || !target) return null
   const segment = createEdgeSegment(source, target)
-  const displayLabel = edge.label.trim() === "path" ? "" : edge.label.trim()
-  const applyLabel = (label: string) => onUpdateLabel(edge.id, label.trim() || "path")
 
   return (
     <g
       className={`${edge.id === "edge-4" ? "edge is-soft" : "edge"}${selected ? " is-selected" : ""}`}
+      data-flow-edge-id={edge.id}
+      data-flow-edge-source-id={edge.sourceId}
+      data-flow-edge-target-id={edge.targetId}
       role="button"
       tabIndex={0}
       aria-label={`Edge ${source.label} to ${target.label}: ${edge.label}`}
+      onContextMenu={onContextMenu}
       onPointerDown={(event) => {
         event.stopPropagation()
         onSelect(edge.id, selectionModeFromKeyboardOrPointer(event))
@@ -770,66 +1160,131 @@ function ReactionEdge({
         onSelect(edge.id, selectionModeFromKeyboardOrPointer(event))
       }}
     >
-      <path className="edge-hit-path" d={segment.path} />
+      <path
+        className="edge-hit-path"
+        d={segment.path}
+        onPointerDown={(event) => {
+          event.stopPropagation()
+          onSelect(edge.id, selectionModeFromKeyboardOrPointer(event))
+        }}
+      />
       <path className="edge-visible-path" d={segment.path} markerEnd="url(#arrow)" />
-      <foreignObject x={segment.labelPoint.x - 58} y={segment.labelPoint.y - 16} width="116" height="32">
-        {selected ? (
-          <EdgeInlineLabelEditor label={displayLabel} onApply={applyLabel} />
-        ) : displayLabel ? (
-          <button
-            type="button"
-            className="edge-label"
-            aria-label={`Edit path label ${displayLabel}`}
-            onPointerDown={(event) => {
-              event.stopPropagation()
-              onSelect(edge.id)
-            }}
-            onClick={(event) => {
-              event.stopPropagation()
-              onSelect(edge.id)
-            }}
-          >
-            {displayLabel}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="edge-label edge-label-add"
-            aria-label={`Add path label from ${source.label} to ${target.label}`}
-            onPointerDown={(event) => {
-              event.stopPropagation()
-              onSelect(edge.id)
-            }}
-            onClick={(event) => {
-              event.stopPropagation()
-              onSelect(edge.id)
-            }}
-          >
-            Add label
-          </button>
-        )}
-      </foreignObject>
     </g>
   )
-}
+}, areReactionEdgePropsEqual)
 
-function EdgeInlineLabelEditor({ label, onApply }: {
+const ReactionEdgeLabel = memo(function ReactionEdgeLabel({
+  edge,
+  nodeMap,
+  selected,
+  onUpdateLabel,
+}: {
+  edge: FlowEdge
+  nodeMap: Map<string, FlowNode>
+  selected: boolean
+  onUpdateLabel: (edgeId: string, label: string) => void
+}) {
+  const [editingLabel, setEditingLabel] = useState(false)
+  const [draftLabel, setDraftLabel] = useState("")
+  const displayLabel = edge.label.trim() === "path" ? "" : edge.label.trim()
+  const labelText = displayLabel || "Add label"
+  const widthHasLabel = editingLabel ? draftLabel.trim().length > 0 : Boolean(displayLabel)
+  const widthText = editingLabel ? draftLabel : labelText
+  const labelWidth = autoTextBoxWidthForValue(widthText, {
+    placeholder: "Add label",
+    min: widthHasLabel ? 54 : 78,
+    max: 190,
+    padding: widthHasLabel ? 26 : 30,
+  })
+  const applyLabel = (label: string) => onUpdateLabel(edge.id, label.trim() || "path")
+
+  useEffect(() => {
+    if (!editingLabel) setDraftLabel(displayLabel)
+  }, [displayLabel, editingLabel])
+
+  const source = nodeMap.get(edge.sourceId)
+  const target = nodeMap.get(edge.targetId)
+  if (!source || !target) return null
+  const segment = createEdgeSegment(source, target)
+
+  return (
+    <div
+      className={`canvas-label-anchor edge-label-anchor${selected ? " is-selected" : ""}${displayLabel ? "" : " is-empty"}`}
+      data-flow-edge-label-id={edge.id}
+      style={{
+        transform: `translate(${segment.labelPoint.x - labelWidth / 2}px, ${segment.labelPoint.y - 16}px)`,
+        width: labelWidth,
+        height: 32,
+      }}
+    >
+      {editingLabel ? (
+        <EdgeInlineLabelEditor
+          label={displayLabel}
+          onValueChange={setDraftLabel}
+          onApply={applyLabel}
+          onDone={() => setEditingLabel(false)}
+        />
+      ) : displayLabel ? (
+        <button
+          type="button"
+          className="edge-label"
+          aria-label={`Edit path label ${displayLabel}`}
+          onPointerDown={(event) => {
+            event.stopPropagation()
+          }}
+          onClick={(event) => {
+            event.stopPropagation()
+            setEditingLabel(true)
+          }}
+        >
+          {displayLabel}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="edge-label edge-label-add"
+          aria-label={`Add path label from ${source.label} to ${target.label}`}
+          onPointerDown={(event) => {
+            event.stopPropagation()
+          }}
+          onClick={(event) => {
+            event.stopPropagation()
+            setEditingLabel(true)
+          }}
+        >
+          Add label
+        </button>
+      )}
+    </div>
+  )
+}, areReactionEdgeLabelPropsEqual)
+
+function EdgeInlineLabelEditor({ label, onValueChange, onApply, onDone }: {
   label: string
+  onValueChange: (label: string) => void
   onApply: (label: string) => void
+  onDone: () => void
 }) {
   const [value, setValue] = useState(label)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const finishedRef = useRef(false)
 
   useEffect(() => {
     setValue(label)
-  }, [label])
+    onValueChange(label)
+  }, [label, onValueChange])
 
   useEffect(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
   }, [])
 
-  const submitLabel = () => onApply(value)
+  const finish = (apply: boolean) => {
+    if (finishedRef.current) return
+    finishedRef.current = true
+    if (apply) onApply(value)
+    onDone()
+  }
 
   return (
     <form
@@ -839,7 +1294,7 @@ function EdgeInlineLabelEditor({ label, onApply }: {
       onClick={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault()
-        submitLabel()
+        finish(true)
       }}
     >
       <input
@@ -847,18 +1302,20 @@ function EdgeInlineLabelEditor({ label, onApply }: {
         aria-label="Path label"
         value={value}
         placeholder="Add label"
-        onChange={(event) => setValue(event.currentTarget.value)}
-        onBlur={submitLabel}
+        onChange={(event) => {
+          setValue(event.currentTarget.value)
+          onValueChange(event.currentTarget.value)
+        }}
+        onBlur={() => finish(true)}
         onKeyDown={(event) => {
           event.stopPropagation()
           if (event.key === "Enter") {
             event.preventDefault()
-            event.currentTarget.blur()
+            finish(true)
           }
           if (event.key === "Escape") {
             event.preventDefault()
-            setValue(label)
-            event.currentTarget.blur()
+            finish(false)
           }
         }}
       />
@@ -869,7 +1326,22 @@ function EdgeInlineLabelEditor({ label, onApply }: {
 function ConnectionPreview({ draft, nodeMap }: { draft: ConnectionDraft; nodeMap: Map<string, FlowNode> }) {
   const source = nodeMap.get(draft.sourceId)
   if (!source) return null
-  return <path className="connection-preview-path" d={createConnectionPreviewPath(source, draft.current)} />
+  return (
+    <>
+      <path
+        className={`connection-preview-path${draft.snapTargetId ? " is-snapped" : ""}`}
+        d={createConnectionPreviewPath(source, draft.current)}
+      />
+      {draft.snapTargetId ? (
+        <circle
+          className="connection-preview-snap-halo"
+          cx={draft.current.x}
+          cy={draft.current.y}
+          r="17"
+        />
+      ) : null}
+    </>
+  )
 }
 
 function BarrierDraftPreview({ draft, nodeMap }: { draft: BarrierDraft; nodeMap: Map<string, FlowNode> }) {
@@ -878,20 +1350,20 @@ function BarrierDraftPreview({ draft, nodeMap }: { draft: BarrierDraft; nodeMap:
   return <path className="barrier-preview-path" d={createBarrierDraftPreviewPath(source, draft.current)} />
 }
 
-function BarrierAnnotation({
+const BarrierAnnotation = memo(function BarrierAnnotation({
   barrier,
   nodeMap,
   energyDisplayOptions,
   selected,
   onSelect,
-  onUpdateLabel,
+  onContextMenu,
 }: {
   barrier: FlowBarrier
   nodeMap: Map<string, FlowNode>
   energyDisplayOptions: EnergyDisplayOptions
   selected: boolean
   onSelect: (barrierId: string, mode?: GraphSelectionMode) => void
-  onUpdateLabel: (barrierId: string, label: string | null) => void
+  onContextMenu: (event: MouseEvent<SVGGElement>) => void
 }) {
   const segment = createBarrierSegment(barrier, nodeMap, energyDisplayOptions)
   if (!segment) return null
@@ -900,9 +1372,13 @@ function BarrierAnnotation({
   return (
     <g
       className={`barrier-annotation${selected ? " is-selected" : ""}`}
+      data-flow-barrier-id={barrier.id}
+      data-flow-barrier-source-id={barrier.sourceId}
+      data-flow-barrier-target-id={barrier.targetId}
       role="button"
       tabIndex={0}
       aria-label={`Barrier annotation from ${segment.sourceLabel} to ${segment.targetLabel}: ${segment.label}`}
+      onContextMenu={onContextMenu}
       onPointerDown={(event) => {
         event.stopPropagation()
         selectBarrier(selectionModeFromKeyboardOrPointer(event))
@@ -913,49 +1389,119 @@ function BarrierAnnotation({
         selectBarrier(selectionModeFromKeyboardOrPointer(event))
       }}
     >
-      <path className="barrier-hit-path" d={segment.arrowPath} />
+      <path
+        className="barrier-hit-path"
+        d={segment.arrowPath}
+        onPointerDown={(event) => {
+          event.stopPropagation()
+          selectBarrier(selectionModeFromKeyboardOrPointer(event))
+        }}
+      />
       <path className="barrier-guide" d={segment.guidePath} />
       <path className="barrier-arrow" d={segment.arrowPath} markerStart="url(#barrier-arrow)" markerEnd="url(#barrier-arrow)" />
-      <foreignObject x={segment.labelPoint.x - 82} y={segment.labelPoint.y - 20} width="164" height="40">
+    </g>
+  )
+}, areBarrierAnnotationPropsEqual)
+
+const BarrierAnnotationLabel = memo(function BarrierAnnotationLabel({
+  barrier,
+  nodeMap,
+  energyDisplayOptions,
+  selected,
+  onUpdateLabel,
+}: {
+  barrier: FlowBarrier
+  nodeMap: Map<string, FlowNode>
+  energyDisplayOptions: EnergyDisplayOptions
+  selected: boolean
+  onUpdateLabel: (barrierId: string, label: string | null) => void
+}) {
+  const [editingLabel, setEditingLabel] = useState(false)
+  const [draftLabel, setDraftLabel] = useState("")
+  const segment = createBarrierSegment(barrier, nodeMap, energyDisplayOptions)
+  const displayLabel = segment?.label ?? ""
+  const widthText = editingLabel ? draftLabel : displayLabel
+  const labelWidth = autoTextBoxWidthForValue(widthText, {
+    placeholder: segment?.defaultLabel ?? "Barrier",
+    min: 86,
+    max: 220,
+    padding: 34,
+  })
+
+  useEffect(() => {
+    if (!editingLabel) setDraftLabel(displayLabel)
+  }, [displayLabel, editingLabel])
+
+  if (!segment) return null
+
+  const applyLabel = (label: string | null) => onUpdateLabel(barrier.id, label)
+  return (
+    <div
+      className={`canvas-label-anchor barrier-label-anchor${selected ? " is-selected" : ""}`}
+      data-flow-barrier-label-id={barrier.id}
+      style={{
+        transform: `translate(${segment.labelPoint.x - labelWidth / 2}px, ${segment.labelPoint.y - 20}px)`,
+        width: labelWidth,
+        height: 40,
+      }}
+    >
+      {editingLabel ? (
+        <BarrierInlineLabelEditor
+          segment={segment}
+          onValueChange={setDraftLabel}
+          onApply={applyLabel}
+          onDone={() => setEditingLabel(false)}
+        />
+      ) : (
         <button
           type="button"
           className="barrier-label-button"
-          aria-label={`Barrier from ${segment.sourceLabel} to ${segment.targetLabel}`}
+          aria-label={`Edit barrier label from ${segment.sourceLabel} to ${segment.targetLabel}`}
           onPointerDown={(event) => {
             event.stopPropagation()
-            selectBarrier()
           }}
           onClick={(event) => {
             event.stopPropagation()
-            selectBarrier()
+            setEditingLabel(true)
           }}
         >
           {segment.label}
         </button>
-      </foreignObject>
-    </g>
+      )}
+    </div>
   )
-}
+}, areBarrierAnnotationLabelPropsEqual)
 
-function BarrierInlineLabelEditor({ segment, onApply }: {
+function BarrierInlineLabelEditor({ segment, onValueChange, onApply, onDone }: {
   segment: BarrierSegment
+  onValueChange: (label: string) => void
   onApply: (label: string | null) => void
+  onDone: () => void
 }) {
   const [value, setValue] = useState(segment.label)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const finishedRef = useRef(false)
 
   useEffect(() => {
     setValue(segment.label)
-  }, [segment.id, segment.label])
+    onValueChange(segment.label)
+  }, [onValueChange, segment.id, segment.label])
 
   useEffect(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
   }, [segment.id])
 
-  const submitLabel = () => {
+  const finish = (apply: boolean) => {
+    if (finishedRef.current) return
+    finishedRef.current = true
+    if (!apply) {
+      onDone()
+      return
+    }
     const trimmed = value.trim()
     onApply(trimmed && trimmed !== segment.defaultLabel ? trimmed : null)
+    onDone()
   }
 
   return (
@@ -966,7 +1512,7 @@ function BarrierInlineLabelEditor({ segment, onApply }: {
       onClick={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault()
-        submitLabel()
+        finish(true)
       }}
     >
       <input
@@ -974,18 +1520,20 @@ function BarrierInlineLabelEditor({ segment, onApply }: {
         aria-label="Barrier label"
         value={value}
         placeholder={segment.defaultLabel}
-        onChange={(event) => setValue(event.currentTarget.value)}
-        onBlur={submitLabel}
+        onChange={(event) => {
+          setValue(event.currentTarget.value)
+          onValueChange(event.currentTarget.value)
+        }}
+        onBlur={() => finish(true)}
         onKeyDown={(event) => {
           event.stopPropagation()
           if (event.key === "Enter") {
             event.preventDefault()
-            event.currentTarget.blur()
+            finish(true)
           }
           if (event.key === "Escape") {
             event.preventDefault()
-            setValue(segment.label)
-            event.currentTarget.blur()
+            finish(false)
           }
         }}
       />
@@ -999,12 +1547,18 @@ export function MiniMap({
   viewport,
   canvasRef,
   onViewportChange,
+  onZoomIn,
+  onZoomOut,
+  onReset,
 }: {
   nodes: FlowNode[]
   selectedNodeIds: string[]
   viewport: CanvasViewport
   canvasRef: React.RefObject<HTMLDivElement | null>
   onViewportChange: (viewport: CanvasViewport) => void
+  onZoomIn: () => void
+  onZoomOut: () => void
+  onReset: () => void
 }) {
   const [canvasSize, setCanvasSize] = useState<SurfaceSize>(fallbackCanvasSize)
   const [draftViewport, setDraftViewport] = useState<CanvasViewport | null>(null)
@@ -1142,37 +1696,40 @@ export function MiniMap({
     setDraftViewport(null)
   }
   return (
-    <button
-      ref={minimapRef}
-      type="button"
-      className="minimap"
-      aria-label="Navigate graph minimap"
-      title="Navigate graph minimap"
-      onPointerDown={beginDrag}
-      onPointerMove={updateDrag}
-      onPointerUp={commitDrag}
-      onPointerCancel={cancelDrag}
-    >
-      <span className="minimap-bounds" aria-hidden="true" />
-      {geometry.nodes.map((node) => (
+    <div className="minimap-stack">
+      <button
+        ref={minimapRef}
+        type="button"
+        className="minimap"
+        aria-label="Navigate graph minimap"
+        title="Navigate graph minimap"
+        onPointerDown={beginDrag}
+        onPointerMove={updateDrag}
+        onPointerUp={commitDrag}
+        onPointerCancel={cancelDrag}
+      >
+        <span className="minimap-bounds" aria-hidden="true" />
+        {geometry.nodes.map((node) => (
+          <span
+            key={node.id}
+            className={selectedNodeIdSet.has(node.id) ? "minimap-node is-selected" : "minimap-node"}
+            style={{
+              left: `${node.left}px`,
+              top: `${node.top}px`,
+              width: `${node.width}px`,
+              height: `${node.height}px`,
+            }}
+            aria-hidden="true"
+          />
+        ))}
         <span
-          key={node.id}
-          className={selectedNodeIdSet.has(node.id) ? "minimap-node is-selected" : "minimap-node"}
-          style={{
-            left: `${node.left}px`,
-            top: `${node.top}px`,
-            width: `${node.width}px`,
-            height: `${node.height}px`,
-          }}
+          className={draftGeometry ? "minimap-window is-draft" : "minimap-window"}
+          style={minimapRectStyle((draftGeometry ?? geometry).viewportWindow)}
           aria-hidden="true"
         />
-      ))}
-      <span
-        className={draftGeometry ? "minimap-window is-draft" : "minimap-window"}
-        style={minimapRectStyle((draftGeometry ?? geometry).viewportWindow)}
-        aria-hidden="true"
-      />
-    </button>
+      </button>
+      <ZoomControls zoom={viewport.zoom} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onReset={onReset} />
+    </div>
   )
 }
 
@@ -1255,6 +1812,15 @@ function canvasWorldPointFromClient(
     x: (clientX - (rect?.left ?? 0) - viewport.x) / viewport.zoom,
     y: (clientY - (rect?.top ?? 0) - viewport.y) / viewport.zoom,
   }
+}
+
+function useLatestCallback<TCallback extends (...args: never[]) => unknown>(callback: TCallback): TCallback {
+  const callbackRef = useRef(callback)
+  callbackRef.current = callback
+  return useMemo(
+    () => ((...args: Parameters<TCallback>) => callbackRef.current(...args)) as TCallback,
+    [],
+  )
 }
 
 function hasCanvasRawFileDrop(dataTransfer: DataTransfer): boolean {
