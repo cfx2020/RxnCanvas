@@ -630,6 +630,34 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "dropped-nickel.out ORCA" })).not.toBeInTheDocument()
   })
 
+  it("imports dropped local files into the active file list without adding canvas nodes", async () => {
+    render(<App />)
+
+    const initialNodeCount = document.querySelectorAll(".reaction-node").length
+    const rail = screen.getByRole("complementary", { name: "Project rail" })
+    const filesSection = within(rail).getByText("Files").closest(".rail-section") as HTMLElement
+    const file = new File(["FINAL SINGLE POINT ENERGY -18.75"], "files-drop.out", { type: "text/plain" })
+    const dataTransfer = new TestDataTransfer([file])
+
+    fireEvent.dragOver(filesSection, { dataTransfer })
+    expect(dataTransfer.dropEffect).toBe("copy")
+
+    await act(async () => {
+      fireEvent.drop(filesSection, { dataTransfer })
+      await Promise.resolve()
+    })
+
+    const droppedButton = await within(rail).findByRole("button", { name: "files-drop.out ORCA" })
+    expect(droppedButton).toBeInTheDocument()
+    expect(droppedButton).toHaveAttribute("title", "No paired solvation log")
+    expect(screen.queryByRole("button", { name: "Node files-drop" })).not.toBeInTheDocument()
+    expect(document.querySelectorAll(".reaction-node")).toHaveLength(initialNodeCount)
+    const droppedRow = droppedButton.closest(".project-file-card") as HTMLElement
+    const missingBadges = droppedRow.querySelector(".project-file-phase-badges.has-missing-solution") as HTMLElement | null
+    expect(missingBadges).toBeInTheDocument()
+    expect(missingBadges).toHaveTextContent("")
+  })
+
   it("groups gas and solution logs into one draggable structure row", async () => {
     render(<App />)
 
@@ -1231,9 +1259,44 @@ describe("App", () => {
       const node = Array.from(container.querySelectorAll(".reaction-node[data-flow-node-id]"))
         .find((element) => element.getAttribute("data-flow-node-id")?.startsWith("imported-file-") && element.getAttribute("data-flow-node-id")?.includes("-drop-")) as HTMLElement | undefined
       expect(node).toBeDefined()
-      expect(node?.querySelector(".status-light-node.status-light-missing")).toBeInTheDocument()
       expect(node?.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
+      expect(node?.querySelector(".status-light-node.status-light-missing")).toBeInTheDocument()
     })
+  })
+
+  it("drops external images onto the canvas at graph-space position without importing source files", async () => {
+    const restoreImage = mockImageNaturalSize(120, 80)
+    try {
+      const { container } = render(<App />)
+
+      const surface = screen.getByLabelText("Graph canvas surface")
+      mockSurfaceRect(surface)
+      const world = container.querySelector(".canvas-world") as HTMLElement
+      const scale = transformScale(world.style.transform)
+      const translate = transformTranslate(world.style.transform)
+      const clientX = 580
+      const clientY = 420
+      const expectedX = Math.round((clientX - translate.x) / scale) - 60
+      const expectedY = Math.round((clientY - translate.y) / scale) - 40
+      const image = new File(["image-bytes"], "scheme-drop.png", { type: "image/png" })
+      const dataTransfer = new TestDataTransfer([image])
+
+      fireEvent.dragOver(surface, { dataTransfer })
+      expect(dataTransfer.dropEffect).toBe("copy")
+
+      await act(async () => {
+        dispatchDrop(surface, dataTransfer, clientX, clientY)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      const annotationImage = await screen.findByAltText("scheme-drop.png")
+      const annotation = annotationImage.closest(".canvas-image-annotation") as HTMLElement
+      expect(annotation?.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
+      expect(screen.queryByRole("button", { name: "scheme-drop.png Raw" })).not.toBeInTheDocument()
+    } finally {
+      restoreImage()
+    }
   })
 
   it("reviews multi-candidate source previews before registering nodes", async () => {

@@ -1721,14 +1721,6 @@ export function App() {
     await importFilesForProjectAction({ fileList, projectId, stageSourceFilesForProject })
   }, [activeProjectId, stageSourceFilesForProject])
 
-  const handleCanvasRawFileDrop = useCallback(async (drop: CanvasRawFileDrop) => {
-    await handleCanvasRawFileDropAction({
-      drop,
-      files,
-      stageCurrentProjectSourceFiles: stageSourceFiles,
-    })
-  }, [files, stageSourceFiles])
-
   const updateTextAnnotation = useCallback((annotationId: string, text: string) => {
     const nextText = text.trim()
     setAnnotations((current) => current.map((annotation) => (
@@ -1744,12 +1736,12 @@ export function App() {
     setEditingAnnotationId((current) => current === annotationId ? null : current)
   }, [])
 
-  const addImageAnnotations = useCallback(async (imageFiles: File[]) => {
-    const filesToInsert = imageFiles.filter((file) => file.type.startsWith("image/"))
+  const addImageAnnotations = useCallback(async (imageFiles: File[], center?: Point) => {
+    const filesToInsert = imageFiles.filter(isCanvasImageFile)
     if (filesToInsert.length === 0) return false
     const canvas = canvasRef.current
     const rect = canvas?.getBoundingClientRect()
-    const viewportCenter = screenToWorld({
+    const viewportCenter = center ?? screenToWorld({
       x: (rect?.left ?? 0) + (rect?.width ?? fallbackCanvasSize.width) / 2,
       y: (rect?.top ?? 0) + (rect?.height ?? fallbackCanvasSize.height) / 2,
     })
@@ -1763,6 +1755,26 @@ export function App() {
     lastImagePasteAtRef.current = Date.now()
     return true
   }, [pushEditHistory, screenToWorld])
+
+  const handleCanvasRawFileDrop = useCallback(async (drop: CanvasRawFileDrop) => {
+    if (drop.kind === "external-files") {
+      const imageFiles = drop.files.filter(isCanvasImageFile)
+      const sourceFiles = drop.files.filter((file) => !isCanvasImageFile(file))
+      if (imageFiles.length > 0) await addImageAnnotations(imageFiles, drop.position)
+      if (sourceFiles.length === 0) return
+      await handleCanvasRawFileDropAction({
+        drop: { ...drop, files: sourceFiles },
+        files,
+        stageCurrentProjectSourceFiles: stageSourceFiles,
+      })
+      return
+    }
+    await handleCanvasRawFileDropAction({
+      drop,
+      files,
+      stageCurrentProjectSourceFiles: stageSourceFiles,
+    })
+  }, [addImageAnnotations, files, stageSourceFiles])
 
   const pasteImagesFromSystemClipboard = useCallback(async () => {
     const imageFiles = await imageFilesFromSystemClipboard()
@@ -3050,6 +3062,16 @@ async function imageFilesFromSystemClipboard(): Promise<File[]> {
 function createCanvasAnnotationId(prefix: string): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return `${prefix}-${globalThis.crypto.randomUUID()}`
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function isCanvasImageFile(file: File): boolean {
+  const lowerName = file.name.toLowerCase()
+  return file.type.startsWith("image/")
+    || lowerName.endsWith(".png")
+    || lowerName.endsWith(".jpg")
+    || lowerName.endsWith(".jpeg")
+    || lowerName.endsWith(".webp")
+    || lowerName.endsWith(".gif")
 }
 
 async function imageAnnotationFromFile(

@@ -310,7 +310,13 @@ export const ProjectRail = memo(function ProjectRail({
         })}
       </RailSection>
 
-      <RailSection title="Files" actionLabel="Import files" actionIcon={<UploadCloud size={16} />} onAction={() => onImportFiles(activeProjectId)}>
+      <RailSection
+        title="Files"
+        actionLabel="Import files"
+        actionIcon={<UploadCloud size={16} />}
+        onAction={() => onImportFiles(activeProjectId)}
+        onDropFiles={(droppedFiles) => onDropProjectFiles(activeProjectId, droppedFiles)}
+      >
         {files.length === 0 ? (
           <p className="rail-empty">No local files</p>
         ) : fileGroups.map((group) => (
@@ -624,6 +630,7 @@ function RailSection({
   secondaryActionLabel,
   secondaryActionIcon,
   onSecondaryAction,
+  onDropFiles,
   children,
 }: {
   title: string
@@ -634,10 +641,31 @@ function RailSection({
   secondaryActionLabel?: string
   secondaryActionIcon?: ReactNode
   onSecondaryAction?: () => void | Promise<void>
+  onDropFiles?: (files: File[]) => void
   children: ReactNode
 }) {
+  const acceptDroppedFiles = (event: DragEvent<HTMLElement>) => {
+    if (!onDropFiles) return
+    const droppedFiles = filesFromDataTransfer(event.dataTransfer)
+    if (droppedFiles.length === 0) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "copy"
+  }
+
+  const importDroppedFiles = (event: DragEvent<HTMLElement>) => {
+    if (!onDropFiles) return
+    const droppedFiles = filesFromDataTransfer(event.dataTransfer)
+    if (droppedFiles.length === 0) return
+    event.preventDefault()
+    onDropFiles(droppedFiles)
+  }
+
   return (
-    <section className="rail-section">
+    <section
+      className={`rail-section${onDropFiles ? " rail-section--drop-target" : ""}`}
+      onDragOver={acceptDroppedFiles}
+      onDrop={importDroppedFiles}
+    >
       <div className="rail-heading">
         <span>{title}</span>
         <div className="rail-heading-actions">
