@@ -67,7 +67,7 @@ describe("appCanvasEffects", () => {
     dispose()
   })
 
-  it("tracks connection draft pointer movement and completion", () => {
+  it("tracks connection draft pointer movement and completion", async () => {
     let draft = { pointerId: 7, sourceId: "source", current: { x: 0, y: 0 } }
     const setConnectionDraft = vi.fn((updater) => {
       draft = updater(draft)
@@ -80,6 +80,7 @@ describe("appCanvasEffects", () => {
       finishConnectionDraftAtClientPoint,
     })
     window.dispatchEvent(new PointerEvent("pointermove", { pointerId: 7, clientX: 10, clientY: 20 }))
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
     expect(setConnectionDraft).toHaveBeenCalledTimes(1)
     expect(draft.current).toEqual({ x: 11, y: 22 })
     window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 7, clientX: 30, clientY: 40 }))
@@ -87,7 +88,7 @@ describe("appCanvasEffects", () => {
     dispose()
   })
 
-  it("snaps connection draft movement to nearby input ports", () => {
+  it("snaps connection draft movement to nearby input ports", async () => {
     let draft = { pointerId: 7, sourceId: "source", current: { x: 0, y: 0 } }
     const setConnectionDraft = vi.fn((updater) => {
       draft = updater(draft)
@@ -105,6 +106,7 @@ describe("appCanvasEffects", () => {
     })
 
     window.dispatchEvent(new PointerEvent("pointermove", { pointerId: 7, clientX: 330, clientY: 190 }))
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
 
     expect(draft).toEqual({
       pointerId: 7,

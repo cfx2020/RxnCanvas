@@ -151,6 +151,7 @@ import {
   type ToolbarMetrics,
   type ToolbarPlacement,
 } from "./toolbarPlacement"
+import type { SurfaceSize } from "./canvasGeometry"
 import {
   applyCanvasSelectionState,
   applyProjectTransitionState,
@@ -272,6 +273,10 @@ type NodeDragPreviewCache = {
   element: HTMLElement | null
   edges: CachedEdgeDragPreview[]
   barriers: CachedBarrierDragPreview[]
+}
+
+type NodeResizePreviewCache = NodeDragPreviewCache & {
+  originSize: SurfaceSize
 }
 
 const energyUnitStorageKey = "rxnflow-energy-output-unit"
@@ -525,6 +530,7 @@ export function App() {
   const pointerMoveFrameRef = useRef<number | null>(null)
   const pendingPointerMoveRef = useRef<{ pointerId: number; clientX: number; clientY: number } | null>(null)
   const liveViewportRef = useRef<CanvasViewport>(viewport)
+  const resizePreviewGeometryRef = useRef<NodeResizePreviewCache | null>(null)
 
   useLayoutEffect(() => {
     liveViewportRef.current = viewport
@@ -636,11 +642,68 @@ export function App() {
   }, [buildNodeDragPreviewCache, energyDisplayOptions])
 
   const clearDragPreview = useCallback(() => {
-    canvasRef.current?.classList.remove("is-live-pan", "is-live-node-drag")
-    dragPreviewNodeRef.current?.element?.classList.remove("is-live-dragging")
+    canvasRef.current?.classList.remove("is-live-pan", "is-live-node-drag", "is-live-node-resize")
+    dragPreviewNodeRef.current?.element?.classList.remove("is-live-dragging", "is-live-resizing")
     dragPreviewNodeRef.current = null
     dragPreviewGeometryRef.current = null
+    resizePreviewGeometryRef.current = null
   }, [])
+
+  const startNodeResizePreview = useCallback((nodeId: string, originSize: SurfaceSize, element?: HTMLElement | null) => {
+    const dragCache = buildNodeDragPreviewCache(nodeId, element)
+    if (!dragCache) return null
+    const resizeCache: NodeResizePreviewCache = {
+      ...dragCache,
+      originSize,
+    }
+    resizePreviewGeometryRef.current = resizeCache
+    canvasRef.current?.classList.add("is-live-node-drag", "is-live-node-resize")
+    dragCache.element?.classList.add("is-live-dragging", "is-live-resizing")
+    return resizeCache
+  }, [buildNodeDragPreviewCache])
+
+  const previewNodeSize = useCallback((nodeId: string, size: SurfaceSize) => {
+    let cache = resizePreviewGeometryRef.current?.nodeId === nodeId
+      ? resizePreviewGeometryRef.current
+      : null
+    if (!cache || !cache.element?.isConnected) {
+      const node = nodeMap.get(nodeId)
+      cache = node ? startNodeResizePreview(nodeId, flowNodeSize(node)) : null
+    }
+    const element = cache?.element ?? null
+    if (!cache || !element) return
+    canvasRef.current?.classList.add("is-live-node-drag", "is-live-node-resize")
+    element.classList.add("is-live-dragging", "is-live-resizing")
+    element.style.width = `${size.width}px`
+    element.style.height = `${size.height}px`
+
+    const previewNode = { ...cache.node, size }
+    for (const edgePreview of cache.edges) {
+      const source = edgePreview.edge.sourceId === nodeId ? previewNode : edgePreview.source
+      const targetNode = edgePreview.edge.targetId === nodeId ? previewNode : edgePreview.target
+      const segment = createEdgeSegment(source, targetNode)
+      edgePreview.hitPath?.setAttribute("d", segment.path)
+      edgePreview.visiblePath?.setAttribute("d", segment.path)
+      if (edgePreview.labelElement) {
+        edgePreview.labelElement.style.transform = `translate(${segment.labelPoint.x - edgePreview.labelWidth / 2}px, ${segment.labelPoint.y - 16}px)`
+      }
+    }
+
+    if (cache.barriers.length > 0) {
+      const previewNodeMap = new Map(cache.nodeMap)
+      previewNodeMap.set(nodeId, previewNode)
+      for (const barrierPreview of cache.barriers) {
+        const segment = createBarrierSegment(barrierPreview.barrier, previewNodeMap, energyDisplayOptions)
+        if (!segment) continue
+        barrierPreview.hitPath?.setAttribute("d", segment.arrowPath)
+        barrierPreview.guidePath?.setAttribute("d", segment.guidePath)
+        barrierPreview.arrowPath?.setAttribute("d", segment.arrowPath)
+        if (barrierPreview.labelElement) {
+          barrierPreview.labelElement.style.transform = `translate(${segment.labelPoint.x - barrierPreview.labelWidth / 2}px, ${segment.labelPoint.y - 20}px)`
+        }
+      }
+    }
+  }, [energyDisplayOptions, nodeMap, startNodeResizePreview])
 
   useLayoutEffect(() => {
     const updateToolbarMetrics = () => {
@@ -1233,6 +1296,7 @@ export function App() {
     const pointerId = event.pointerId
     const startWorld = screenToWorld({ x: event.clientX, y: event.clientY })
     const originSize = flowNodeSize(node)
+    startNodeResizePreview(node.id, originSize, event.currentTarget.closest<HTMLElement>("[data-flow-node-id]"))
     const snapshot: CanvasEditSnapshot = {
       ...currentEditSnapshot(),
       selectedNodeIds: [node.id],
@@ -1250,7 +1314,7 @@ export function App() {
     const updateSizeFromPointer = (pointerEvent: globalThis.PointerEvent, snap = false) => {
       const currentWorld = screenToWorld({ x: pointerEvent.clientX, y: pointerEvent.clientY })
       const nextSize = resizedNodeSize(originSize, startWorld, currentWorld, snap)
-      setNodes((current) => applyNodeSize(current, node.id, nextSize))
+      previewNodeSize(node.id, nextSize)
       return nextSize
     }
 
@@ -1258,6 +1322,7 @@ export function App() {
       window.removeEventListener("pointermove", handlePointerMove)
       window.removeEventListener("pointerup", handlePointerUp)
       window.removeEventListener("pointercancel", handlePointerCancel)
+      clearDragPreview()
     }
 
     const handlePointerMove = (pointerEvent: globalThis.PointerEvent) => {
@@ -1269,13 +1334,15 @@ export function App() {
     const handlePointerUp = (pointerEvent: globalThis.PointerEvent) => {
       if (pointerEvent.pointerId !== pointerId) return
       pointerEvent.preventDefault()
-      cleanup()
       const finalSize = updateSizeFromPointer(pointerEvent, true)
       if (nodeSizeChanged(snapshot, node.id, finalSize)) pushEditHistory(snapshot)
+      setNodes((current) => applyNodeSize(current, node.id, finalSize))
+      cleanup()
     }
 
     const handlePointerCancel = (pointerEvent: globalThis.PointerEvent) => {
       if (pointerEvent.pointerId !== pointerId) return
+      previewNodeSize(node.id, originSize)
       cleanup()
       setNodes((current) => applyNodeSize(current, node.id, originSize))
     }
@@ -1283,7 +1350,7 @@ export function App() {
     window.addEventListener("pointermove", handlePointerMove)
     window.addEventListener("pointerup", handlePointerUp)
     window.addEventListener("pointercancel", handlePointerCancel)
-  }, [appStateSetters, currentEditSnapshot, pushEditHistory, screenToWorld])
+  }, [appStateSetters, clearDragPreview, currentEditSnapshot, previewNodeSize, pushEditHistory, screenToWorld, startNodeResizePreview])
 
   const applyPointerMovePayload = useCallback((payload: { pointerId: number; clientX: number; clientY: number }) => {
     handlePointerMoveAction({

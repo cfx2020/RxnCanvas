@@ -156,9 +156,14 @@ export function subscribeConnectionDraftPointer({
   finishConnectionDraftAtClientPoint: (pointerId: number, clientX: number, clientY: number) => boolean
 }): () => void {
   if (!draft) return () => undefined
+  let pendingPointerMove: globalThis.PointerEvent | null = null
+  let pointerMoveFrame: number | null = null
 
-  const handleWindowPointerMove = (event: globalThis.PointerEvent) => {
-    if (event.pointerId !== draft.pointerId) return
+  const applyPendingPointerMove = () => {
+    pointerMoveFrame = null
+    const event = pendingPointerMove
+    pendingPointerMove = null
+    if (!event || event.pointerId !== draft.pointerId) return
     const current = screenToWorld({ x: event.clientX, y: event.clientY })
     setConnectionDraft((currentDraft) => (
       nodes.length > 0
@@ -172,7 +177,18 @@ export function subscribeConnectionDraftPointer({
         : updateDraftCurrentForPointer(currentDraft, event.pointerId, current)
     ))
   }
+
+  const handleWindowPointerMove = (event: globalThis.PointerEvent) => {
+    if (event.pointerId !== draft.pointerId) return
+    pendingPointerMove = event
+    if (pointerMoveFrame !== null) return
+    pointerMoveFrame = window.requestAnimationFrame(applyPendingPointerMove)
+  }
   const handleWindowPointerEnd = (event: globalThis.PointerEvent) => {
+    if (event.pointerId !== draft.pointerId) return
+    if (pointerMoveFrame !== null) window.cancelAnimationFrame(pointerMoveFrame)
+    pointerMoveFrame = null
+    pendingPointerMove = null
     finishConnectionDraftAtClientPoint(event.pointerId, event.clientX, event.clientY)
   }
 
@@ -183,5 +199,8 @@ export function subscribeConnectionDraftPointer({
     window.removeEventListener("pointermove", handleWindowPointerMove)
     window.removeEventListener("pointerup", handleWindowPointerEnd)
     window.removeEventListener("pointercancel", handleWindowPointerEnd)
+    if (pointerMoveFrame !== null) window.cancelAnimationFrame(pointerMoveFrame)
+    pointerMoveFrame = null
+    pendingPointerMove = null
   }
 }
