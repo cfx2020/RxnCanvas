@@ -13947,3 +13947,173 @@ select,
   border-color: rgba(112, 140, 158, 0.28) !important;
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.26) !important;
 }
+
+/* 2026-06-28 narrow project rail fallback:
+   The previous responsive mode compressed the full project/file rail into a
+   64px icon column, which made project and file rows unreadable. On narrow
+   windows, the canvas keeps the width and the project rail becomes a hover
+   drawer: a slim edge target remains visible, and the full rail slides out on
+   hover or keyboard focus. */
+@media (max-width: 1180px) {
+  .app-shell {
+    --rxnflow-narrow-rail-peek: 16px;
+    --rxnflow-narrow-rail-panel: min(286px, calc(100vw - 28px));
+  }
+
+  .workspace,
+  .workspace:not(.is-left-collapsed),
+  .workspace:not(.is-left-collapsed).is-right-collapsed {
+    grid-template-columns:
+      0
+      minmax(0, 1fr)
+      var(--rxnflow-responsive-inspector-width, var(--rxnflow-inspector-width, 288px)) !important;
+  }
+
+  .workspace.is-right-collapsed,
+  .workspace.is-left-collapsed,
+  .workspace.is-left-collapsed.is-right-collapsed {
+    grid-template-columns:
+      0
+      minmax(0, 1fr)
+      0 !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail {
+    position: fixed !important;
+    top: var(--rxnflow-titlebar-height, 48px) !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    z-index: 1400 !important;
+    width: var(--rxnflow-narrow-rail-panel) !important;
+    min-width: var(--rxnflow-narrow-rail-panel) !important;
+    max-width: var(--rxnflow-narrow-rail-panel) !important;
+    height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
+    max-height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+    padding: 14px 12px 18px !important;
+    overflow: visible !important;
+    border-right: 1px solid rgba(118, 144, 160, 0.22) !important;
+    border-radius: 0 18px 18px 0 !important;
+    box-shadow: 24px 0 70px rgba(24, 43, 55, 0.18) !important;
+    transform: translateX(calc(-1 * (var(--rxnflow-narrow-rail-panel) - var(--rxnflow-narrow-rail-peek)))) !important;
+    transition:
+      transform 180ms ease,
+      box-shadow 180ms ease !important;
+    -webkit-app-region: no-drag !important;
+    app-region: no-drag !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail::after {
+    content: "" !important;
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: var(--rxnflow-narrow-rail-peek) !important;
+    border-left: 1px solid rgba(118, 144, 160, 0.18) !important;
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(227, 241, 246, 0.72)),
+      rgba(247, 252, 253, 0.74) !important;
+    pointer-events: none !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail:hover,
+  .workspace:not(.is-left-collapsed) > .project-rail:focus-within {
+    transform: translateX(0) !important;
+    box-shadow: 30px 0 82px rgba(24, 43, 55, 0.24) !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .brand-block,
+  .workspace:not(.is-left-collapsed) > .project-rail .rail-heading,
+  .workspace:not(.is-left-collapsed) > .project-rail .rail-heading-actions,
+  .workspace:not(.is-left-collapsed) > .project-rail .rail-section,
+  .workspace:not(.is-left-collapsed) > .project-rail .rail-list,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-project-group,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-canvas-list {
+    width: 100% !important;
+    justify-content: initial !important;
+    justify-items: stretch !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .brand-block div:not(.brand-mark),
+  .workspace:not(.is-left-collapsed) > .project-rail .rail-heading > span,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-main span,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-main em,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main span,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main em,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-phase-badges,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-remove,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-settings span {
+    display: initial !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-item,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-main,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-card,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-settings,
+  .workspace:not(.is-left-collapsed) > .project-rail .rail-heading button {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-item,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-main,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-card,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main {
+    place-items: stretch !important;
+    padding: initial !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-main,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    justify-content: start !important;
+    gap: 10px !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-card {
+    min-height: 44px !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-kind-icon,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-main svg {
+    margin: 0 !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-resize-handle {
+    display: none !important;
+  }
+
+  .app-shell:not(.is-left-collapsed) .desktop-titlebar-shell .desktop-titlebar-tabs {
+    left: var(--rxnflow-left-collapsed-workbench-reserve, 58px) !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .workspace,
+  .workspace:not(.is-left-collapsed),
+  .workspace:not(.is-left-collapsed).is-right-collapsed,
+  .workspace.is-left-collapsed,
+  .workspace.is-right-collapsed,
+  .workspace.is-left-collapsed.is-right-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail {
+    top: var(--rxnflow-titlebar-height, 48px) !important;
+    height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
+  }
+
+  .workspace-topbar-left {
+    padding-left: 0 !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace:not(.is-left-collapsed) > .project-rail {
+    transition: none !important;
+  }
+}
