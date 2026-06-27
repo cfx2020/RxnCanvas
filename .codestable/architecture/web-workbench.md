@@ -2,12 +2,12 @@
 doc_type: architecture
 slug: web-workbench
 scope: Electron/Vite renderer 当前桌面工作台的项目栏、画布/表格、Inspector、导入导出与工作区持久化表面
-summary: 当前桌面工作台采用“项目级共享 source files + active canvas 投影编辑”模型，并已同步到紧凑 toolbar、悬浮侧栏预览、可重命名节点卡和统一 node inspector/structure dialog 这套 UI 现状
+summary: 当前桌面工作台采用“项目级共享 source files + active canvas 投影编辑”模型，并已同步到 Settings 偏好、右键菜单、紧凑 toolbar、悬浮侧栏预览、可重命名节点卡和支持振动/量测的统一 structure dialog 这套 UI 现状
 status: current
 created: 2026-05-16
-last_reviewed: 2026-06-23
+last_reviewed: 2026-06-26
 depends_on: [core-platform]
-implements: [project-content-persistence]
+implements: [project-content-persistence, structure-vibration-inspection, desktop-preferences]
 tags: [web, react, vite, desktop-renderer, local-first, canvas, multi-canvas, inspector, import, export, project-schema]
 ---
 
@@ -18,6 +18,8 @@ tags: [web, react, vite, desktop-renderer, local-first, canvas, multi-canvas, in
 - **Project workspace snapshot**：某个项目的完整 renderer 快照，包含共享 `files`、全部 `canvases[]`、`activeCanvasId`，以及当前视图/Inspector 相关 UI 状态；定义在 `web/src/app/projectWorkspace.ts` 的 `ProjectWorkspaceSnapshot`。（`web/src/app/projectWorkspace.ts:27-44`）
 - **Active canvas projection**：React 当前直接编辑的 `nodes` / `edges` / `barriers` / `viewport` / selection。切换 canvas 或保存项目时，这层投影要写回项目快照中的 `canvases[]`。（`web/src/app/projectCanvasState.ts:35-122`; `web/src/app/projectWorkspace.ts:276-330`）
 - **Source file group**：Project Rail 里用于展示的文件分组；Gaussian / ORCA / MAPLE 的 gas / solution 对会按结构名合并成一行显示。（`web/src/app/fileDisplay.ts:105-119, 234-316`）
+- **DesktopPreferences**：桌面端用户偏好，包含外观三态、能量显示单位和 Gaussian/Text source opener；Electron 中保存到 `userData/rxnflow-preferences.json`，renderer 中由 `web/src/app/desktopPreferences.ts` 归一化。
+- **VibrationalMode**：导入 source candidate 的结构化 normal mode，挂在 `CoordinatePreview.vibrationModes` 上；3Dmol 结构视图消费它做振动播放，项目保存/恢复不依赖重新读取原始 log。
 
 ## 1. 定位与受众
 
@@ -47,12 +49,14 @@ Project Rail 当前承载三层信息：
 
 1. 项目列表；
 2. active project 下的 canvas 列表（仅当 canvas 数量大于 1 时显示）；
-3. 项目共享文件列表。（`web/src/app/ProjectRail.tsx:188-245`）
+3. 项目共享文件列表；
+4. 左下角 Settings 入口。（`web/src/app/ProjectRail.tsx:188-245`）
 
 当前交互现状：
 
 - 项目行保留三点菜单，只提供 `Import files into project` 与 `Remove from sidebar`；删除项目只移除 renderer / recent 列表，不删除磁盘工作区文件夹。（`web/src/app/ProjectRail.tsx:300-345`）
 - 左侧栏折叠后，不是完全失去入口；`App.tsx` 会渲染一个固定在左侧的 hover preview trigger，hover / focus 时弹出半悬浮的 Project Rail 预览层。（`web/src/app/App.tsx:1382-1412`; `web/src/app/workbench.css:5341-5395`）
+- Settings 按钮打开轻量设置面板，当前承载 Appearance（system / dark / light）、Energy unit、Gaussian opener 和 Text opener；浏览器 fallback 中 opener controls 标为 `Desktop only`，不伪造外部 app 打开。（`web/src/app/SettingsPanel.tsx`; `web/src/app/App.tsx:1771-1807`）
 - 文件列表仍按 gas / solution 对分组，但不再显示单独的 gas / sol 文本 badge；分组名直接回到结构名，三点菜单收敛为 `Delete file and nodes`。（`web/src/app/fileDisplay.ts:234-316`; `web/src/app/ProjectRail.tsx:351-465`）
 - 点击文件行时，如果当前 active canvas 里存在 `sourceFileId` 对应节点，UI 会优先切到该节点的 node selection / inspector，而不是停在 source-only 面板；如果当前 active canvas 没有对应节点，才回落到普通文件选择。（`web/src/app/App.tsx:1139-1156`; `web/src/app/fileDisplay.ts:209-232`）
 - `Delete file and nodes` 当前会先删除文件，再级联移除 **当前 active canvas 投影态** 中 `sourceFileId` 匹配的 nodes / edges / barriers，并修复当前文件选择状态。（`web/src/app/App.tsx:1158-1183`; `web/src/app/fileDisplay.ts:184-206`）
@@ -77,8 +81,11 @@ Canvas / Table 切换不再是硬切，`workbench-view-track` 通过 opacity + t
 - minimap、fit view、zoom controls；
 - Delete / Escape / 方向键 / Undo / Redo；
 - 节点拖拽、边连接、过渡态能垒拖拽创建、框选；
+- canvas / node / edge / barrier 右键菜单；
 - Auto layout 轻量布局；
 - edge path label 直接在画布上编辑。（`web/src/app/App.tsx:558-561, 1504-1566`; `web/src/app/CanvasWorkspace.tsx:752-835, 879-935`; `web/src/app/WorkbenchToolbar.tsx:19-158`）
+
+右键菜单是当前低频操作入口：选中内容右键可 Delete；节点右键可 Rename、Set zero、Source details。键盘 Delete / Backspace 保留；节点卡用户可见三点菜单已移出，不再作为主操作入口。（`web/src/app/CanvasWorkspace.tsx:78-93`; `web/src/app/App.tsx:1833-1995`）
 
 关于标签与能垒的当前 contract：
 
@@ -99,7 +106,8 @@ Canvas / Table 切换不再是硬切，`workbench-view-track` 通过 opacity + t
 Floating toolbar 现在是紧凑胶囊样式：
 
 - 能量源选择只有 `ΔEgas` / `ΔGsol`；
-- 单位选择只有 `Eh` / `kcal` / `kJ`；
+- 单位选择已经迁移到 Settings 的 Energy unit；toolbar DOM 不再渲染 Unit select；
+- Delete selection 已迁移到右键菜单和键盘快捷键；
 - 按钮间距、segmented 控件和 zoom readout 都做了压缩；
 - toolbar 自身仍是当前画布命令条，不承载项目管理或 source inspector 操作。（`web/src/app/WorkbenchToolbar.tsx:19-158`; `web/src/app/workbench.css:6025-6087`）
 
@@ -108,8 +116,8 @@ Floating toolbar 现在是紧凑胶囊样式：
 节点卡 `ReactionNodeCard` 已不再沿用旧 overview/debug 风格，而是当前这套紧凑卡片：
 
 - 标题支持 inline rename；
-- 右上角只有结构折叠按钮和三点菜单；
-- 结构区默认显示 2D preview，hover / focus 时出现全屏按钮，点击后打开结构对话框；
+- 右上角保留结构折叠/尺寸相关控件，不再显示用户可见三点更多菜单；Rename / Set zero / Source details 迁移到节点右键菜单；
+- 结构区默认显示 2D preview，hover / focus 时出现结构预览按钮，点击后打开结构对话框；
 - 底部 meta row 固定为“相对能量 + 状态灯 + 系数 + 种类 badge”；卡片上不再显示相对能量单位，也不再显示旧 `0` 角标；
 - barrier handle 图标已经换成活化能“驼峰曲线”样式，而不是旧折线/箭头感图标。（`web/src/app/CanvasWorkspace.tsx:330-663, 670-723`）
 
@@ -118,13 +126,15 @@ Floating toolbar 现在是紧凑胶囊样式：
 - `Node` summary 卡里展示 type、formula（带下标与分子量）、method、basis、charge/spin、solvent、energy、free energy、job CPU、elapsed、相对能量和 atom count；（`web/src/app/InspectorPanels.tsx:268-332, 413-486`）
 - termination pill 现在只走 `normal / error / unknown` 这一层语义，依据 source text 末尾的正常结束或错误结束特征判断；（`web/src/app/InspectorPanels.tsx:277-280, 516-537`）
 - structure 区不再把 2D / 3D 挤在 inspector 里，而是收敛成一个 `Open structure` 按钮，下面跟 optimization sparkline；（`web/src/app/InspectorPanels.tsx:335-357, 540-579`）
-- node source brief 只保留 source 名称、kind/status、candidate review 入口和 `Open raw log`，不再把 stored path 直接堆在 node 面板里。（`web/src/app/InspectorPanels.tsx:620-665`）
+- node source brief 只保留 source 名称、kind/status、candidate review 入口和 `Open with external app`，不再把 stored path 直接堆在 node 面板里。点击外部打开时 renderer 传 `sourceKind` / `parserId`，Electron 按 Gaussian/Text profile 用用户偏好或默认探测路径打开 source 文件。（`web/src/app/InspectorPanels.tsx:620-665`; `web/src/app/appRuntimeEffects.ts:63-71`; `web/electron/source-openers.cjs`）
 
 结构对话框当前 contract：
 
 - 打开后是单个 dialog；
-- 左侧显示 2D structure，右侧显示 3D structure；
+- 左侧显示 2D preview，右侧显示 3Dmol structure；
 - 2D 侧可继续进入手动编辑或 reset manual structure；
+- 有合法 `CoordinatePreview.vibrationModes` 时普通态提供 Play vibration 图标，默认优先 imaginary/负频 mode，没有负频则选第一个 mode；无振动时按钮 disabled 且不显示大段解释文案；
+- 普通 3D 视图内联提供原子选择检查：选 1 个显示元素编号，选 2/3/4 个在左下角显示 distance / angle / dihedral；量测点击只作用于 viewer，不冒泡触发画布选择或 dialog 关闭；
 - 对话框支持点击遮罩关闭与 `Escape` 关闭。（`web/src/app/InspectorPanels.tsx:872-997`）
 
 当没有节点、只有文件被选中时，Inspector 会回落到 source summary，而不是旧 source tab / node tab 的分裂语义。（`web/src/app/InspectorPanels.tsx:222-266, 667-780`）
@@ -138,6 +148,8 @@ Floating toolbar 现在是紧凑胶囊样式：
 - `RxnFlowProjectCanvas`：持久化层单个画布结构，包含图元、viewport 与 selection。（`web/src/domain/projectPackages.ts:118-128`）
 - `RxnFlowProjectPackage`：当前持久化 envelope，`schemaVersion` 为 2，authority 是 `files + canvases[] + activeCanvasId + importLedger`；同时仍写出 active canvas 的 `nodes / edges / barriers / viewport` 作为兼容字段。（`web/src/domain/projectPackages.ts:130-143, 186-252`）
 - `ImportLedger`：保存 candidate / parser provenance 的轻量来源账本；序列化时由项目共享 `files` 和 **全部 canvases 的 nodes** 派生，而不是只看当前 active canvas。（`web/src/domain/projectPackages.ts:97-116, 268-343`）
+- `CoordinatePreview.vibrationModes`：随 `SourceFile.parse` 保存/恢复，project package normalization 会保留合法 mode，并清理非数值、长度不匹配或 atomIndex 越界 payload。（`web/src/domain/sourceParsers.ts`; `web/src/domain/projectPackages.ts`; `web/src/domain/vibrations.ts`）
+- `DesktopPreferences`：只属于本机运行时偏好，不进入 `RxnFlowProjectPackage`；Electron 存 userData，浏览器 fallback 使用 localStorage 保存外观/单位。（`web/src/app/desktopPreferences.ts`; `web/electron/preferences-store.cjs`）
 
 当前持久化 / 恢复状态流：
 
@@ -151,6 +163,8 @@ Floating toolbar 现在是紧凑胶囊样式：
 - **active canvas 投影转换留在纯 helper，不重新塞回容器组件**：见 `.codestable/compound/2026-06-19-decision-active-canvas-projection-helper.md`。这直接决定了当前 `projectCanvasState.ts` / `projectWorkspace.ts` 的存在方式，也约束后续 canvas 功能继续先扩 helper contract 再接 UI。
 - **startup restore 视为 one-shot IPC**：见 `.codestable/compound/2026-06-19-learning-startup-restore-one-shot-ipc.md`。这就是为什么恢复逻辑放在稳定 effect 入口，并在恢复后主动回写 active project directory runtime binding。
 - **原始 log/out/xyz 不是长期 authority，项目权威数据是结构化 project data**：见 `.codestable/compound/2026-06-06-decision-canonical-import-data.md`。当前桌面工作区虽然会复制 source 到 `sources/`，但保存/恢复权威仍是 `rxnflow-project` 结构、节点 provenance 和轻量 `importLedger`，而不是重新把 raw 文件当主数据模型。
+- **振动模式跟随 source parse 结构化保存**：3D 播放和内联量测消费 `CoordinatePreview` / `VibrationalMode`，不在 `FlowNode` 上复制坐标或振动字段，也不要求恢复项目时重新读取 raw log/out。
+- **桌面偏好属于本机，不属于项目**：外部应用路径、appearance 和默认 energy unit 通过 Electron userData / browser fallback 保存，不能写入项目 JSON、source metadata 或导出包。
 
 ## 5. 代码锚点
 
@@ -159,20 +173,29 @@ Floating toolbar 现在是紧凑胶囊样式：
 - `web/src/app/App.tsx:1139-1183` — 文件点击优先选中关联节点，以及 `Delete file and nodes` 的当前实现。
 - `web/src/app/App.tsx:1371-1412` — fixed right sidebar toggle 与 collapsed left rail hover preview。
 - `web/src/app/App.tsx:1504-1566` — canvas/table 双 pane 渲染与切换动画入口。
+- `web/src/app/App.tsx:1771-1807` — Settings 面板偏好更新、appearance / energy unit / opener 选择接线。
+- `web/src/app/App.tsx:1833-1995` — canvas/node context menu 状态与 Rename / Set zero / Source details / Delete 动作。
 - `web/src/app/ProjectRail.tsx:188-245` — active project canvas 列表和文件列表装配。
+- `web/src/app/SettingsPanel.tsx` — Appearance、Energy unit、Gaussian opener、Text opener 设置面板。
 - `web/src/app/ProjectRail.tsx:300-465` — 项目三点菜单、文件三点菜单和文件行交互。
 - `web/src/app/fileDisplay.ts:105-119, 234-316` — source file grouping、gas/solution 对展示名规则。
 - `web/src/app/projectCanvasState.ts:35-122` — active canvas 投影切换、创建、重命名、关闭的纯状态 contract。
 - `web/src/app/projectWorkspace.ts:27-44, 188-330` — project workspace snapshot shape、空项目、restore/apply 流程。
 - `web/src/domain/projectPackages.ts:118-143, 186-343` — schema v2 持久化格式、legacy normalize 和 `importLedger` 派生。
-- `web/src/app/CanvasWorkspace.tsx:330-723` — 节点卡、2D preview、全屏结构入口、barrier hump icon。
+- `web/src/app/CanvasWorkspace.tsx:78-93, 330-723` — 右键菜单 target contract、节点卡、2D preview、结构预览入口、barrier hump icon。
 - `web/src/app/CanvasWorkspace.tsx:752-935` — path label 画布编辑与 barrier annotation 画布按钮。
 - `web/src/app/InspectorPanels.tsx:68-145` — Barrier inspector 与 barrier label 编辑。
-- `web/src/app/InspectorPanels.tsx:222-357, 620-780, 872-997` — unified node inspector、source summary/source brief、structure dialog。
-- `web/src/app/WorkbenchToolbar.tsx:19-158` — 紧凑 toolbar 的命令和能量/单位切换。
+- `web/src/app/InspectorPanels.tsx:222-357, 620-780, 872-997` — unified node inspector、source summary/source brief、structure dialog、默认 vibration mode 选择。
+- `web/src/app/Molecule3DmolViewer.tsx` — 3Dmol rendering、vibration animation、inline atom selection、atom labels / measurement overlay。
+- `web/src/app/structureMeasurements.ts` — distance / angle / dihedral 数值计算与 element-index label。
+- `web/src/domain/vibrations.ts` — renderer vibration payload extraction / normalization helper。
+- `web/src/app/desktopPreferences.ts` — renderer DesktopPreferences contract / normalization / effective theme。
+- `web/src/app/WorkbenchToolbar.tsx:19-158` — 紧凑 toolbar 的画布命令和能量源切换；单位和删除不在 toolbar 中。
 - `web/src/app/appRuntimeEffects.ts:220-264` — startup restore 与 `setActiveProject` runtime 绑定。
 - `web/src/app/desktopRuntime.ts:1-37` — browser preview / engine failure 的 runtime status payload。
 - `web/electron/main.cjs:35-56` — Electron 主窗口 title bar 与 macOS traffic lights 恢复。
+- `web/electron/preferences-store.cjs` — Electron userData preference store。
+- `web/electron/source-openers.cjs` — Gaussian/Text opener classification、默认路径探测和无 shell app 启动。
 - `web/src/app/workbench.css:5330-5395, 6025-6167, 5859-5875` — fixed sidebar toggle、hover rail、紧凑 toolbar、view track 动画和 drag/no-drag chrome 规则。
 
 ## 6. 已知约束 / 边界情况
@@ -180,6 +203,9 @@ Floating toolbar 现在是紧凑胶囊样式：
 - 当前 workbench 仍是本地优先桌面 renderer；不恢复 local-http bridge、云同步、旧 Object Registry/correction surface 或完整 parser/registry workflow。（`web/src/app/App.tsx:1382-1566`; `/Users/linsay/Desktop/code/rxnflow/.codestable/architecture/ARCHITECTURE.md`）
 - `Delete file and nodes` 的级联删除当前只覆盖 active canvas 投影态；如果未来要扩成“删文件即全项目所有画布同步清理”，那会是新的实现与验收动作，而不是当前现状。（`web/src/app/App.tsx:1158-1183`; `web/src/app/projectWorkspace.ts:27-44`）
 - barrier 默认标签受当前 energy source 影响；因此 UI 切换 `ΔEgas` / `ΔGsol` 会同时影响 barrier 默认文案与相对能量表达。（`web/src/app/InspectorPanels.tsx:81-97`; `web/src/app/WorkbenchToolbar.tsx:58-87`）
+- 相对能量输出单位受 Settings 中 `energyOutputUnit` 偏好控制；source 原始能量单位不被改写。（`web/src/app/desktopPreferences.ts`; `web/src/app/energyDisplay.ts`）
+- vibration modes 只在 payload shape 与同一 candidate atom count 对齐时进入 UI；解析失败必须降级为 warning / disabled Play，不得阻断普通结构查看。（`web/src/domain/vibrations.ts`; `web/src/app/InspectorPanels.tsx:548-650`）
+- Source 外部打开只能使用 userData preference、默认候选探测或用户选择应用，不允许从项目文件读取 opener path，也不允许拼 shell 命令字符串。（`web/electron/preferences-store.cjs`; `web/electron/source-openers.cjs`）
 - startup restore / recent project payload 仍按 one-shot IPC 设计，不能绑到会频繁重建的 effect/callback 上。（`web/src/app/appRuntimeEffects.ts:220-249`; `.codestable/attention.md`）
 - 桌面 chrome 依赖 drag / no-drag CSS 边界；后续如果改 toolbar、tab bar 或 topbar，需要特别检查窗口拖拽是否仍成立。（`web/src/app/workbench.css:3436-3447, 5859-5875`）
 
@@ -188,6 +214,8 @@ Floating toolbar 现在是紧凑胶囊样式：
 - `/Users/linsay/Desktop/code/rxnflow/.codestable/architecture/ARCHITECTURE.md`
 - `/Users/linsay/Desktop/code/rxnflow/.codestable/architecture/core-platform.md`
 - `/Users/linsay/Desktop/code/rxnflow/.codestable/requirements/project-content-persistence.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/requirements/structure-vibration-inspection.md`
+- `/Users/linsay/Desktop/code/rxnflow/.codestable/requirements/desktop-preferences.md`
 - `/Users/linsay/Desktop/code/rxnflow/.codestable/compound/2026-06-19-decision-active-canvas-projection-helper.md`
 - `/Users/linsay/Desktop/code/rxnflow/.codestable/compound/2026-06-19-learning-startup-restore-one-shot-ipc.md`
 - `/Users/linsay/Desktop/code/rxnflow/.codestable/compound/2026-06-06-decision-canonical-import-data.md`
@@ -198,3 +226,4 @@ Floating toolbar 现在是紧凑胶囊样式：
 ## 变更日志
 
 - 2026-06-23：按当前实现回写多画布 tab rename/close、collapsed rail hover preview、fixed right sidebar toggle、紧凑 toolbar、节点卡新 meta row、统一 node inspector / structure dialog，以及当前文件点击/删除语义。
+- 2026-06-26：回写结构化 vibration modes、3Dmol 振动播放/内联量测、Settings 偏好、桌面 source opener、工具栏瘦身与 canvas/node 右键菜单现状。
