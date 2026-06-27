@@ -391,7 +391,7 @@ function computationMetadataFromSource(sourceText: string): ComputationMetadata 
   }
 }
 
-function classifyComputationTermination(sourceText: string): { label: string; status: ComputationTerminationStatus } {
+export function classifyComputationTermination(sourceText: string): { label: string; status: ComputationTerminationStatus } {
   const normal = lastRegexMatchWithIndex(sourceText, /normal termination of gaussian[^\n]*/gi)
     ?? lastRegexMatchWithIndex(sourceText, /ORCA TERMINATED NORMALLY[^\n]*/gi)
   const normalEnd = normal ? normal.index + normal.text.length : -1
@@ -406,9 +406,16 @@ function classifyComputationTermination(sourceText: string): { label: string; st
     .sort((left, right) => right.index - left.index)
   const latestError = errors[0]
   if (latestError && latestError.index > normalEnd) return { label: "error", status: "error" }
+  if (normal && gaussianJobContinuesAfter(sourceText, normalEnd)) return { label: "running", status: "running" }
   if (normal) return { label: "normal", status: "normal" }
   if (latestError) return { label: "error", status: "error" }
   return { label: "unknown", status: "unknown" }
+}
+
+function gaussianJobContinuesAfter(sourceText: string, offset: number): boolean {
+  if (offset < 0) return false
+  const tail = sourceText.slice(offset)
+  return /(?:^|\n)\s*(?:Link1:|Entering Link|#\s*[A-Za-z]|Charge\s*=\s*-?\d+\s+Multiplicity\s*=|Input orientation:|Standard orientation:|SCF Done:|Frequencies\s+--)/i.test(tail)
 }
 
 function jobCpuTimeFromSource(sourceText: string): string | null {

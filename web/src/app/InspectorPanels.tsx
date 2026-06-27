@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { ChevronDown, ExternalLink, FilePlus2, Maximize2, PanelRight, Pause, PencilLine, Play, RotateCcw, X } from "lucide-react"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
-import type { ParseCandidate, SourceParseResult, VibrationalMode } from "../domain/sourceParsers"
+import { classifyComputationTermination, type ParseCandidate, type SourceParseResult, type VibrationalMode } from "../domain/sourceParsers"
 import { type EnergyDisplayOptions, type EnergyTableRow, formatEnergy, formatRelativeEnergy } from "./energyDisplay"
 import { Molecule3DmolViewer } from "./Molecule3DmolViewer"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
@@ -242,7 +242,7 @@ function nodeComputationOverview(node: FlowNode, file: SourceFile | null): NodeC
         label: file.parse.terminationLabel ?? file.parse.terminationStatus,
         status: file.parse.terminationStatus,
       }
-    : classifySourceTermination(sourceText)
+    : classifyComputationTermination(sourceText)
   const energyHartree = node.energyTable?.egasHartree
     ?? (node.energyUnit === "hartree" ? node.energyGas : null)
   const freeEnergyHartree = node.energyTable?.gsolHartree
@@ -381,29 +381,6 @@ function elapsedTimeFromGaussianFooter(sourceText: string): string | null {
   return `${match[1]}d ${match[2]}h ${match[3]}m ${match[4]}s`
 }
 
-function classifySourceTermination(sourceText: string): { label: string; status: NodeComputationOverview["terminationStatus"] } {
-  const normal = lastRegexMatch(sourceText, /normal termination of gaussian[^\n]*/gi)
-    ?? lastRegexMatch(sourceText, /ORCA TERMINATED NORMALLY[^\n]*/gi)
-  const normalEnd = normal ? normal.index + normal.text.length : -1
-  const errors = [
-    lastRegexMatch(sourceText, /error termination via lnk1e in .*?\bl(\d+)\.exe\b/gi, (match) => `L${match[1]}`),
-    lastRegexMatch(sourceText, /error termination request processed by link\s+(\d+)/gi, (match) => `L${match[1]}`),
-    lastRegexMatch(sourceText, /segmentation fault/gi, () => "Segmentation fault"),
-    lastRegexMatch(sourceText, /(?:ORCA finished by error|aborting the run|error termination)/gi, () => "Error termination"),
-    lastRegexMatch(sourceText, /(?:killed|signal)/gi, () => "Killed"),
-  ]
-    .filter((item): item is { index: number; text: string; label: string } => Boolean(item))
-    .sort((left, right) => right.index - left.index)
-  const latestError = errors[0]
-
-  if (latestError && latestError.index > normalEnd) {
-    return { label: "error", status: "error" }
-  }
-  if (normal) return { label: "normal", status: "normal" }
-  if (latestError) return { label: "error", status: "error" }
-  return { label: "unknown", status: "unknown" }
-}
-
 function firstTrimmedMatch(sourceText: string, pattern: RegExp): string | null {
   const match = Array.from(sourceText.matchAll(pattern)).at(-1)
   return match?.[1]?.trim() || null
@@ -414,17 +391,6 @@ function numberFromLastMatch(sourceText: string, pattern: RegExp): number | null
   if (!value) return null
   const parsed = parseGaussianFloat(value)
   return Number.isFinite(parsed) ? parsed : null
-}
-
-function lastRegexMatch(
-  sourceText: string,
-  pattern: RegExp,
-  label?: (match: RegExpMatchArray) => string,
-): { index: number; text: string; label: string } | null {
-  const matches = Array.from(sourceText.matchAll(pattern))
-  const match = matches.at(-1)
-  if (!match || typeof match.index !== "number") return null
-  return { index: match.index, text: match[0], label: label?.(match) ?? match[0] }
 }
 
 function parseGaussianFloat(value: string): number {

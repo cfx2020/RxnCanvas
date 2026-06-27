@@ -365,4 +365,29 @@ describe("parseSourcePreview", () => {
     expect(parsed.jobCpuTime).toBe("0d 1h 2m 3.4s")
     expect(parsed.elapsedTime).toBe("0d 1h 3m 4.5s")
   })
+
+  it("does not treat an earlier Gaussian normal termination as final when a later freq step is incomplete", () => {
+    const parsed = parseSourcePreview({
+      name: "opt-freq-truncated.log",
+      preview: [
+        "SCF Done: E(RwB97XD) = -7149.383937 A.U.",
+        "Job cpu time:      51 days  2 hours 12 minutes  3.0 seconds.",
+        "Elapsed time:       1 days 20 hours 42 minutes  7.6 seconds.",
+        "Normal termination of Gaussian 16",
+        "Link1:  Proceeding to internal job step number  2.",
+        "# wb97xd/genecp freq",
+        "Charge =  1 Multiplicity = 1",
+        "Standard orientation:",
+        "SCF Done: E(RwB97XD) = -7149.383937 A.U.",
+      ].join("\n"),
+    })
+
+    expect(parsed.parsed).toBe(true)
+    expect(parsed.energyGas).toBeCloseTo(-7149.383937)
+    expect(parsed.energySolution).toBeNull()
+    expect(parsed.terminationStatus).toBe("running")
+    expect(parsed.terminationLabel).toBe("running")
+    expect(parsed.jobCpuTime).toBe("51d 2h 12m 3.0s")
+    expect(parsed.elapsedTime).toBe("1d 20h 42m 7.6s")
+  })
 })
