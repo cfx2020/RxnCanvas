@@ -1,4 +1,4 @@
-import type { FlowNode, Point, SourceFile } from "../domain/projectPackages"
+import { normalizeSourceFileForPersistence, type FlowNode, type Point, type SourceFile } from "../domain/projectPackages"
 import { parseSourcePreview, type ParsedEnergyTableData, type SourceParseResult } from "../domain/sourceParsers"
 import { candidateReviewEntries, candidateReviewStateFromPlan } from "./candidateReview"
 import { automaticImportNodesFromPlan } from "./desktopImportRegistration"
@@ -364,18 +364,22 @@ export async function prepareProjectWorkspaceImport({
 }
 
 export function parsedImportFiles(importedFiles: ImportSourceFile[]): ImportPlan["parsedImports"] {
-  return importedFiles.map((file, index) => ({
-    file,
-    index,
-    parsed: file.parse ?? parseSourcePreview({ name: file.name, preview: file.preview }),
-  }))
+  return importedFiles.map((file, index) => {
+    const parsed = file.parse ?? parseSourcePreview({ name: file.name, preview: file.preview })
+    const stagedFile = stagedSourceFile(file, parsed)
+    return {
+      file: stagedFile,
+      index,
+      parsed: stagedFile.parse ?? parsed,
+    }
+  })
 }
 
 export function stagedSourceFile(file: ImportSourceFile, parsed: SourceParseResult): SourceFile {
-  return {
+  return normalizeSourceFileForPersistence({
     ...file,
     parse: parsed,
     kind: parsed.sourceKind,
     status: parsed.parsed ? "parsed" : "staged",
-  }
+  })
 }

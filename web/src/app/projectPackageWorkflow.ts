@@ -1,5 +1,6 @@
 import {
   buildProjectPackage,
+  normalizeProjectFilesForPersistence,
   parseProjectPackage,
   safeProjectFileStem,
   type ProjectSummary,
@@ -87,8 +88,12 @@ export function serializeProjectPackage(
   )
   return {
     defaultName: projectPackageDefaultName(input.project.label, runtime),
-    content: JSON.stringify(projectPackage, null, 2),
+    content: `${JSON.stringify(projectPackage)}\n`,
   }
+}
+
+export function projectPackageFilesForPersistence(files: SourceFile[]): SourceFile[] {
+  return normalizeProjectFilesForPersistence(files)
 }
 
 export function projectPackageDefaultName(projectLabel: string, runtime: ProjectPackageRuntime): string {

@@ -3,6 +3,7 @@ import type {
   RxnFlowProjectCanvas,
   SourceFile,
 } from "../domain/projectPackages"
+import type { SourceParseResult } from "../domain/sourceParsers"
 import { downloadText } from "./browserDownloads"
 import {
   browserPreviewEngineStatus,
@@ -31,6 +32,14 @@ export type RxnflowDesktopApi = {
   chooseFiles: () => Promise<{ canceled: boolean; files: DesktopSourceFile[] }>
   getEngineStatus: () => Promise<DesktopEngineStatus>
   registerImportCandidates?: (payload: DesktopImportRegistrationPayload) => Promise<DesktopImportRegistrationResponse>
+  parseSourcePreview?: (payload: {
+    projectId?: string
+    name: string
+    size?: number
+    preview?: string
+    storedPath?: string
+    sourcePath?: string
+  }) => Promise<{ ok: boolean; data?: { parse?: SourceParseResult | null }; error?: { code: string; message: string } }>
   saveJsonSnapshot: (payload: { defaultName: string; content: string }) => Promise<{ canceled: boolean; filePath?: string }>
   saveReportArtifact: (payload: {
     defaultName: string
@@ -253,16 +262,15 @@ export function restoreStartupProjectFromRuntime({
 
   void desktopApi.getStartupProjectContent().then((result) => {
     if (canceled || !result || result.canceled) return
-    const payloads = Array.isArray(result.projectContents) && result.projectContents.length > 0
-      ? result.projectContents
-      : result.content
-        ? [result as ProjectPackageOpenPayload]
-        : []
-    payloads.forEach((payload) => {
-      restoreProjectPackage(payload.content, payload.validation, {
-        replaceProjects: payload.replaceProjects ?? true,
-        projectDirectory: payload.projectDirectory,
-      })
+    const payload = result.content
+      ? result as ProjectPackageOpenPayload
+      : Array.isArray(result.projectContents) && result.projectContents.length > 0
+        ? result.projectContents[result.projectContents.length - 1]
+        : null
+    if (!payload?.content) return
+    restoreProjectPackage(payload.content, payload.validation, {
+      replaceProjects: payload.replaceProjects ?? true,
+      projectDirectory: payload.projectDirectory,
     })
   }).catch(() => {
     // Startup restore is best-effort. Invalid recent workspaces are pruned by the main process.

@@ -1,5 +1,5 @@
 import type { CoordinatePreview, ParseCandidate, ParsedEnergyTableData, ParsedEnergyUnit, SourceParseResult } from "./sourceParsers"
-import { normalizeVibrationalModes } from "./vibrations"
+import { normalizeVibrationalModes, stripVibrationalModeDisplacements } from "./vibrations"
 
 export type NodeKind = "reactant" | "transition" | "intermediate" | "product"
 
@@ -235,20 +235,30 @@ export function buildProjectPackage(
         ? resolvedOptions.activeCanvasId
         : (normalizedCanvases[0]?.id ?? "canvas-1")
   const activeCanvas = normalizedCanvases.find((canvas) => canvas.id === activeCanvasId) ?? normalizedCanvases[0] ?? defaultProjectCanvas()
+  const persistedFiles = normalizeProjectFilesForPersistence(files)
   return {
     schemaVersion: 2,
     packageKind: "rxnflow-project",
     project,
-    files,
+    files: persistedFiles,
     canvases: normalizedCanvases,
     activeCanvasId: resolveActiveCanvasId(activeCanvasId, normalizedCanvases),
     nodes: activeCanvas.nodes,
     edges: activeCanvas.edges,
     barriers: activeCanvas.barriers,
     viewport: activeCanvas.viewport,
-    importLedger: buildImportLedger(files, normalizedCanvases.flatMap((canvas) => canvas.nodes)),
+    importLedger: buildImportLedger(persistedFiles, normalizedCanvases.flatMap((canvas) => canvas.nodes)),
     savedAt,
   }
+}
+
+
+export function normalizeProjectFilesForPersistence(files: SourceFile[]): SourceFile[] {
+  return files.map((file, index) => normalizeProjectFile(file, index))
+}
+
+export function normalizeSourceFileForPersistence(file: SourceFile): SourceFile {
+  return normalizeProjectFile(file, 0)
 }
 
 export function parseProjectPackage(content: string): RxnFlowProjectPackage | null {
@@ -711,14 +721,14 @@ function normalizeCoordinatePreview(value: CoordinatePreview | null | undefined,
   if (!isObject(value)) return null
   const atomCount = finiteNumberOrUndefined(value.atomCount)
   if (atomCount === undefined) return null
-  const normalized = normalizeVibrationalModes(value.vibrationModes, atomCount, "project")
+  const normalized = normalizeVibrationalModes(value.vibrationModes, atomCount, "project", { allowMissingDisplacements: true })
   warnings.push(...normalized.warnings)
   return {
     ...value,
     atomCount,
     has3d: Boolean(value.has3d) || Boolean(value.atoms?.length),
     elements: Array.isArray(value.elements) ? value.elements.filter((element) => typeof element === "string") : [],
-    ...(normalized.modes.length > 0 ? { vibrationModes: normalized.modes } : { vibrationModes: undefined }),
+    ...(normalized.modes.length > 0 ? { vibrationModes: stripVibrationalModeDisplacements(normalized.modes) } : { vibrationModes: undefined }),
   }
 }
 

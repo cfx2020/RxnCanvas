@@ -81,6 +81,7 @@ export function normalizeVibrationalModes(
   value: unknown,
   atomCount: number,
   target = "vibration",
+  options: { allowMissingDisplacements?: boolean } = {},
 ): { modes: VibrationalMode[]; warnings: ParseWarning[] } {
   if (!Array.isArray(value) || atomCount <= 0) return { modes: [], warnings: [] }
   const warnings: ParseWarning[] = []
@@ -93,7 +94,15 @@ export function normalizeVibrationalModes(
     const displacements = rawDisplacements
       .map((item) => normalizeDisplacement(item, atomCount))
       .filter((item): item is VibrationDisplacement => Boolean(item))
-    if (frequencyCm1 === null || displacements.length !== atomCount) {
+    if (frequencyCm1 === null || (!options.allowMissingDisplacements && displacements.length !== atomCount)) {
+      warnings.push({
+        code: "vibration_shape_mismatch",
+        message: `Vibration mode ${rawIndex + 1} does not match the coordinate payload shape.`,
+        target,
+      })
+      return
+    }
+    if (options.allowMissingDisplacements && rawDisplacements.length > 0 && displacements.length !== atomCount) {
       warnings.push({
         code: "vibration_shape_mismatch",
         message: `Vibration mode ${rawIndex + 1} does not match the coordinate payload shape.`,
@@ -118,6 +127,17 @@ export function normalizeVibrationalModes(
     })
   })
   return { modes, warnings }
+}
+
+export function stripVibrationalModeDisplacements(modes: VibrationalMode[]): VibrationalMode[] {
+  return modes.map((mode) => ({
+    ...mode,
+    displacements: [],
+  }))
+}
+
+export function vibrationalModeHasDisplacements(mode: VibrationalMode | null | undefined, atomCount: number): boolean {
+  return Array.isArray(mode?.displacements) && mode.displacements.length === atomCount
 }
 
 function nearbyNumbers(lines: string[], start: number, pattern: RegExp, expected: number): number[] {

@@ -8,6 +8,7 @@ const {
   resolveProjectStatePath,
   saveProjectContent,
   saveProjectReportArtifact,
+  slimProjectPackageForPersistence,
 } = require("./project-store.cjs")
 const {
   loadRecentProjectsState,
@@ -141,8 +142,6 @@ function prepareStartupProjectRestore() {
 }
 
 async function restoreRecentProjectPayloads() {
-  const payloads = []
-  const validRecentPaths = []
   for (const filePath of startupRestoreProjectPaths()) {
     try {
       const startupDirectory = await projectDirectoryForStartupRestore(filePath)
@@ -152,27 +151,28 @@ async function restoreRecentProjectPayloads() {
       }
       const projectPackage = await readProjectPackageWithValidation(filePath)
       activateProjectDirectory(projectPackage.content, projectPackage.projectDirectory)
-      validRecentPaths.push(projectPackage.projectDirectory ?? filePath)
-      payloads.push({
+      const restoredPath = projectPackage.projectDirectory ?? filePath
+      const state = recordRecentProjectState(
+        { projectPaths: recentProjectPaths, activeProjectPath },
+        restoredPath,
+      )
+      recentProjectPaths = state.projectPaths
+      activeProjectPath = state.activeProjectPath
+      await persistRecentProjects()
+      return [{
         filePath,
         projectDirectory: projectPackage.projectDirectory,
         content: projectPackage.content,
         validation: projectPackage.validation,
         replaceProjects: true,
         source: "startup",
-      })
+      }]
     } catch (error) {
       await forgetRecentProject(filePath)
       console.warn(`Could not restore recent RxnFlow project ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  if (validRecentPaths.length > 0) {
-    const newestValidPaths = validRecentPaths.reverse()
-    recentProjectPaths = uniqueRuntimeProjectPaths(newestValidPaths)
-    activeProjectPath = newestValidPaths[0] ?? activeProjectPath
-    await persistRecentProjects()
-  }
-  return payloads
+  return []
 }
 
 function startupRestoreProjectPaths() {
@@ -181,8 +181,9 @@ function startupRestoreProjectPaths() {
   const withoutActive = activeKey
     ? paths.filter((filePath) => runtimeProjectComparisonKey(filePath) !== activeKey)
     : paths
-  const ordered = withoutActive.reverse()
+  const ordered = []
   if (activeProjectPath) ordered.push(activeProjectPath)
+  ordered.push(...withoutActive)
   return uniqueRuntimeProjectPaths(ordered)
 }
 
@@ -332,7 +333,7 @@ function installRuntimeSmokeExit(window) {
                   return
                 }
                 if (startupRestoreSmoke) {
-                  const stillShowingDemoProjects = ["Diels-Alder Study", "Nickel catalysis", "Ir screening"]
+                  const stillShowingDemoProjects = ["Diels-Alder Study", "Nickel catalysis", "Ir screening", "Older Restore Smoke"]
                     .filter((label) => text.includes(label))
                   if (!text.includes("Startup Restore Smoke") || stillShowingDemoProjects.length > 0) {
                     if (Date.now() <= deadline) {
@@ -692,6 +693,32 @@ ipcMain.handle("rxnflow:register-import-candidates", async (_event, payload) => 
   return runEngineRequest(request)
 })
 
+
+ipcMain.handle("rxnflow:parse-source-preview", async (_event, payload) => {
+  const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
+  const projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
+  const candidates = []
+  const storedPath = typeof payload?.storedPath === "string" ? payload.storedPath : null
+  if (projectDirectory && storedPath && isSafeProjectRelativePath(storedPath)) {
+    candidates.push(path.join(projectDirectory, storedPath))
+  }
+  const sourcePath = typeof payload?.sourcePath === "string" ? payload.sourcePath : null
+  if (sourcePath && path.isAbsolute(sourcePath)) candidates.push(sourcePath)
+  const sourceFilePath = candidates[0] ?? null
+  const response = await runEngineRequest({
+    command: "import.preview",
+    files: [{
+      name: typeof payload?.name === "string" && payload.name ? payload.name : (sourceFilePath ? path.basename(sourceFilePath) : "source"),
+      size: Number.isFinite(payload?.size) ? payload.size : 0,
+      preview: typeof payload?.preview === "string" ? payload.preview : "",
+      ...(sourceFilePath ? { sourcePath: sourceFilePath } : {}),
+    }],
+  }, { timeoutMs: 20000, preferEmbedded: true })
+  if (!response.ok) return response
+  const parse = response.data?.files?.[0]?.parse ?? null
+  return { ok: true, data: { parse } }
+})
+
 function registerFilePayload(file) {
   if (!file || typeof file !== "object") return null
   const id = typeof file.id === "string" && file.id ? file.id : null
@@ -817,7 +844,6 @@ ipcMain.handle("rxnflow:get-startup-project-content", async () => {
   return {
     canceled: false,
     ...lastPayload,
-    projectContents: payloads,
   }
 })
 
@@ -1052,7 +1078,6 @@ async function readProjectPackageWithValidation(filePath) {
 }
 
 async function enrichProjectContentWithStoredSourceCoordinates(content, projectDirectory) {
-  if (!projectDirectory) return content
   let projectPackage
   try {
     projectPackage = JSON.parse(content)
@@ -1060,6 +1085,8 @@ async function enrichProjectContentWithStoredSourceCoordinates(content, projectD
     return content
   }
   const files = Array.isArray(projectPackage?.files) ? projectPackage.files : []
+  const slimContent = () => `${JSON.stringify(slimProjectPackageForPersistence(projectPackage))}\n`
+  if (!projectDirectory) return slimContent()
   const targets = files.flatMap((file, index) => {
     if (!shouldHydrateStoredSourceFile(file)) return []
     const sourcePath = path.join(projectDirectory, file.storedPath)
@@ -1069,7 +1096,7 @@ async function enrichProjectContentWithStoredSourceCoordinates(content, projectD
       sourcePath,
     }]
   })
-  if (targets.length === 0) return content
+  if (targets.length === 0) return slimContent()
 
   const preview = await runEngineRequest({
     command: "import.preview",
@@ -1080,7 +1107,7 @@ async function enrichProjectContentWithStoredSourceCoordinates(content, projectD
       sourcePath: target.sourcePath,
     })),
   }, { timeoutMs: 20000, preferEmbedded: true })
-  if (!preview.ok || !Array.isArray(preview.data?.files)) return content
+  if (!preview.ok || !Array.isArray(preview.data?.files)) return slimContent()
 
   let changed = false
   const nextFiles = [...files]
@@ -1096,8 +1123,8 @@ async function enrichProjectContentWithStoredSourceCoordinates(content, projectD
     changed = true
   })
 
-  if (!changed) return content
-  return `${JSON.stringify({ ...projectPackage, files: nextFiles }, null, 2)}\n`
+  const nextProjectPackage = slimProjectPackageForPersistence({ ...projectPackage, files: changed ? nextFiles : files })
+  return `${JSON.stringify(nextProjectPackage)}\n`
 }
 
 function shouldHydrateStoredSourceFile(file) {

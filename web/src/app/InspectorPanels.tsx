@@ -1,7 +1,7 @@
-import { memo, useEffect, useMemo, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { ChevronDown, ExternalLink, FilePlus2, Maximize2, PanelRight, Pause, PencilLine, Play, RotateCcw, X } from "lucide-react"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
-import type { ParseCandidate } from "../domain/sourceParsers"
+import type { ParseCandidate, SourceParseResult, VibrationalMode } from "../domain/sourceParsers"
 import { type EnergyDisplayOptions, type EnergyTableRow, formatEnergy, formatRelativeEnergy } from "./energyDisplay"
 import { Molecule3DmolViewer } from "./Molecule3DmolViewer"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
@@ -573,6 +573,7 @@ export function StructurePreviewDialog({
   onClose,
   onEdit2DStructure,
   onReset2DStructure,
+  onHydrateSourceParse,
 }: {
   node: FlowNode
   file: SourceFile | null
@@ -581,20 +582,48 @@ export function StructurePreviewDialog({
   onClose: () => void
   onEdit2DStructure?: (nodeId: string) => void
   onReset2DStructure?: (nodeId: string) => void
+  onHydrateSourceParse?: (file: SourceFile) => Promise<SourceParseResult | null>
 }) {
   const coordinatePreview = sourceCoordinatePreview(node, file)
   const coordinateAtoms = coordinatePreview?.atoms?.length ? coordinatePreview.atoms : []
+  const [hydratedParse, setHydratedParse] = useState<SourceParseResult | null>(null)
+  const [hydratingVibration, setHydratingVibration] = useState(false)
+  const hydratedCoordinatePreview = hydratedParse ? sourceCoordinatePreview(node, { ...(file ?? fallbackSourceFile(node)), parse: hydratedParse }) : null
+  const vibrationPreview = hydratedCoordinatePreview ?? coordinatePreview
   const defaultVibrationMode = useMemo(() => {
-    const modes = coordinatePreview?.vibrationModes ?? []
+    const modes = vibrationPreview?.vibrationModes ?? []
     return modes.find((mode) => mode.kind === "imaginary" || mode.frequencyCm1 < 0) ?? modes[0] ?? null
-  }, [coordinatePreview?.vibrationModes])
+  }, [vibrationPreview?.vibrationModes])
   const [vibrationPlaying, setVibrationPlaying] = useState(false)
   const hasManualStructure = Boolean(node.manualStructureKet || node.manualStructureMolfile || node.manualStructureCdxml || node.manualStructureSvg)
+  const canAttemptVibrationHydration = Boolean(file && onHydrateSourceParse && defaultVibrationMode && !vibrationalModeHasFullDisplacements(defaultVibrationMode, coordinateAtoms.length))
+  const playableVibrationMode = defaultVibrationMode && vibrationalModeHasFullDisplacements(defaultVibrationMode, coordinateAtoms.length) ? defaultVibrationMode : null
+
+  const toggleVibration = useCallback(async () => {
+    if (!defaultVibrationMode) return
+    if (playableVibrationMode) {
+      setVibrationPlaying((playing) => !playing)
+      return
+    }
+    if (!file || !onHydrateSourceParse || hydratingVibration) return
+    setHydratingVibration(true)
+    try {
+      const parse = await onHydrateSourceParse(file)
+      if (parse) setHydratedParse(parse)
+    } finally {
+      setHydratingVibration(false)
+    }
+  }, [defaultVibrationMode, file, hydratingVibration, onHydrateSourceParse, playableVibrationMode])
 
   const edit2DStructure = () => {
     onEdit2DStructure?.(node.id)
     onClose()
   }
+
+  useEffect(() => {
+    setHydratedParse(null)
+    setVibrationPlaying(false)
+  }, [file?.id, node.id])
 
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
@@ -605,8 +634,8 @@ export function StructurePreviewDialog({
   }, [onClose])
 
   useEffect(() => {
-    if (!defaultVibrationMode) setVibrationPlaying(false)
-  }, [defaultVibrationMode])
+    if (!playableVibrationMode) setVibrationPlaying(false)
+  }, [playableVibrationMode])
 
   return (
     <div
@@ -668,7 +697,7 @@ export function StructurePreviewDialog({
               atoms={coordinateAtoms}
               formula={node.formula}
               sourceName={file?.name ?? node.label}
-              vibrationMode={defaultVibrationMode}
+              vibrationMode={playableVibrationMode}
               vibrationPlaying={vibrationPlaying}
             />
             <span className="structure-dialog-preview-actions structure-dialog-preview-actions-3d">
@@ -676,9 +705,9 @@ export function StructurePreviewDialog({
                 type="button"
                 className={`structure-dialog-action structure-dialog-vibration-action${vibrationPlaying ? " is-active" : ""}`}
                 aria-label={vibrationPlaying ? "Pause vibration" : "Play vibration"}
-                title={defaultVibrationMode ? (vibrationPlaying ? "暂停振动" : "播放振动") : "没有振动数据，请重新导入频率输出文件"}
-                disabled={!defaultVibrationMode}
-                onClick={() => setVibrationPlaying((playing) => !playing)}
+                title={vibrationActionTitle(defaultVibrationMode, playableVibrationMode, canAttemptVibrationHydration, hydratingVibration, vibrationPlaying)}
+                disabled={!defaultVibrationMode || hydratingVibration || (!playableVibrationMode && !canAttemptVibrationHydration)}
+                onClick={toggleVibration}
               >
                 {vibrationPlaying ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
               </button>
@@ -688,6 +717,36 @@ export function StructurePreviewDialog({
       </section>
     </div>
   )
+}
+
+
+function vibrationalModeHasFullDisplacements(mode: VibrationalMode | null | undefined, atomCount: number): boolean {
+  return atomCount > 0 && Array.isArray(mode?.displacements) && mode.displacements.length === atomCount
+}
+
+function vibrationActionTitle(
+  mode: VibrationalMode | null,
+  playableMode: VibrationalMode | null,
+  canHydrate: boolean,
+  hydrating: boolean,
+  playing: boolean,
+): string {
+  if (!mode) return "没有振动数据，请重新导入频率输出文件"
+  if (hydrating) return "正在读取完整振动数据…"
+  if (playableMode) return playing ? "暂停振动" : "播放振动"
+  if (canHydrate) return "读取并播放振动"
+  return "振动位移未载入；请重新导入频率输出文件"
+}
+
+function fallbackSourceFile(node: FlowNode): SourceFile {
+  return {
+    id: node.sourceFileId ?? "source",
+    name: node.label,
+    kind: "Raw",
+    size: 0,
+    status: "staged",
+    preview: "",
+  }
 }
 
 export function sourceFileForNode(node: FlowNode, files: SourceFile[]): SourceFile | null {

@@ -41,7 +41,7 @@ async function resolveProjectStatePath(projectDirectory) {
 async function saveProjectContent(targetPath, content, options = {}) {
   if (targetPath.toLowerCase().endsWith(".json")) {
     const projectPackage = parseProjectPackageContent(content)
-    const savedContent = `${JSON.stringify(stripSessionSourcePaths(projectPackage), null, 2)}\n`
+    const savedContent = `${JSON.stringify(slimProjectPackageForPersistence(projectPackage))}\n`
     await fs.writeFile(targetPath, savedContent, "utf8")
     return { filePath: targetPath, projectDirectory: null, content: savedContent }
   }
@@ -68,11 +68,11 @@ async function saveProjectDirectory(projectPath, content, options = {}) {
     }))
   }
 
-  const savedPackage = {
+  const savedPackage = slimProjectPackageForPersistence({
     ...projectPackage,
     files: persistedFiles,
-  }
-  const savedContent = `${JSON.stringify(savedPackage, null, 2)}\n`
+  })
+  const savedContent = `${JSON.stringify(savedPackage)}\n`
 
   await fs.writeFile(path.join(projectDirectory, projectStateFile), savedContent, "utf8")
   await writeProjectManifest(projectDirectory, savedPackage)
@@ -248,6 +248,60 @@ async function resolveSourcePath(projectDirectory, file, previousProjectDirector
   return null
 }
 
+
+function slimProjectPackageForPersistence(projectPackage) {
+  const stripped = stripSessionSourcePaths(projectPackage)
+  return {
+    ...stripped,
+    files: Array.isArray(stripped.files) ? stripped.files.map(slimSourceFileForPersistence) : [],
+  }
+}
+
+function slimSourceFileForPersistence(file) {
+  if (!file || typeof file !== "object") return file
+  return {
+    ...file,
+    parse: slimParseForPersistence(file.parse),
+  }
+}
+
+function slimParseForPersistence(parse) {
+  if (!parse || typeof parse !== "object") return parse
+  return {
+    ...parse,
+    coordinatePreview: slimCoordinatePreviewForPersistence(parse.coordinatePreview),
+    candidates: Array.isArray(parse.candidates)
+      ? parse.candidates.map((candidate) => ({
+          ...candidate,
+          coordinatePreview: slimCoordinatePreviewForPersistence(candidate?.coordinatePreview),
+        }))
+      : [],
+  }
+}
+
+function slimCoordinatePreviewForPersistence(preview) {
+  if (!preview || typeof preview !== "object") return preview ?? null
+  const modes = Array.isArray(preview.vibrationModes)
+    ? preview.vibrationModes.map((mode) => slimVibrationModeForPersistence(mode)).filter(Boolean)
+    : []
+  return {
+    ...preview,
+    ...(modes.length > 0 ? { vibrationModes: modes } : { vibrationModes: undefined }),
+  }
+}
+
+function slimVibrationModeForPersistence(mode) {
+  if (!mode || typeof mode !== "object") return null
+  const {
+    displacements: _displacements,
+    ...rest
+  } = mode
+  return {
+    ...rest,
+    displacements: [],
+  }
+}
+
 function stripSessionSourcePaths(projectPackage) {
   return {
     ...projectPackage,
@@ -281,7 +335,7 @@ async function writeProjectManifest(projectDirectory, projectPackage) {
     })),
   }
   await fs.mkdir(path.join(projectDirectory, projectMetadataDirectory), { recursive: true })
-  await fs.writeFile(path.join(projectDirectory, projectManifestFile), `${JSON.stringify(manifest, null, 2)}\n`, "utf8")
+  await fs.writeFile(path.join(projectDirectory, projectManifestFile), `${JSON.stringify(manifest)}\n`, "utf8")
 }
 
 async function ensureExportManifest(projectDirectory, projectPackage) {
@@ -294,7 +348,7 @@ async function ensureExportManifest(projectDirectory, projectPackage) {
     artifacts: existingArtifacts,
   }
   await fs.mkdir(path.dirname(manifestPath), { recursive: true })
-  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8")
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest)}\n`, "utf8")
 }
 
 async function upsertExportArtifactRecord(projectDirectory, record) {
@@ -310,7 +364,7 @@ async function upsertExportArtifactRecord(projectDirectory, record) {
     artifacts: nextArtifacts,
   }
   await fs.mkdir(path.dirname(manifestPath), { recursive: true })
-  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8")
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest)}\n`, "utf8")
 }
 
 async function readExportArtifactRecords(projectDirectory) {
@@ -516,5 +570,6 @@ module.exports = {
   saveProjectContent,
   saveProjectDirectory,
   saveProjectReportArtifact,
+  slimProjectPackageForPersistence,
   sourcesDirectory,
 }

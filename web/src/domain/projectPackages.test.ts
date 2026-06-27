@@ -347,7 +347,12 @@ describe("project packages", () => {
 
     const modes = parsed?.files[0]?.parse?.candidates[0]?.coordinatePreview?.vibrationModes ?? []
     expect(modes).toHaveLength(1)
-    expect(modes[0]?.displacements).toHaveLength(2)
+    expect(modes[0]).toMatchObject({
+      modeId: "mode-1-imaginary-42.00",
+      frequencyCm1: -42,
+      kind: "imaginary",
+      displacements: [],
+    })
     expect(parsed?.files[0]?.parse?.warnings.map((warning) => warning.code)).toContain("vibration_shape_mismatch")
   })
 

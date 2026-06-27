@@ -18,6 +18,7 @@ import {
   type ReportExportOptions,
 } from "../domain/reportExports"
 import {
+  normalizeSourceFileForPersistence,
   parseProjectPackage,
   type CanvasAnnotation,
   type CanvasViewport,
@@ -29,7 +30,7 @@ import {
   type ProjectSummary,
   type SourceFile,
 } from "../domain/projectPackages"
-import type { ParsedEnergyUnit } from "../domain/sourceParsers"
+import { parseSourcePreview, type ParsedEnergyUnit, type SourceParseResult } from "../domain/sourceParsers"
 import {
   autoLayoutFlowNodes,
   clamp,
@@ -2116,6 +2117,40 @@ export function App() {
     }
   }, [activeProjectId, files])
 
+
+  const hydrateSourceParseForStructure = useCallback(async (file: SourceFile): Promise<SourceParseResult | null> => {
+    const desktopParser = window.rxnflowDesktop?.parseSourcePreview
+    if (desktopParser) {
+      try {
+        const result = await desktopParser({
+          projectId: activeProjectId,
+          name: file.name,
+          size: file.size,
+          preview: file.preview,
+          storedPath: file.storedPath,
+          sourcePath: file.sourcePath,
+        })
+        const parse = result.ok ? result.data?.parse ?? null : null
+        if (parse) {
+          setFiles((current) => current.map((item) => item.id === file.id
+            ? normalizeSourceFileForPersistence({ ...item, parse, kind: parse.sourceKind, status: parse.parsed ? "parsed" : item.status })
+            : item,
+          ))
+          return parse
+        }
+      } catch {
+        // Browser fallback below can still parse the in-memory preview sample.
+      }
+    }
+    if (!file.preview) return null
+    const parse = parseSourcePreview({ name: file.name, preview: file.preview })
+    setFiles((current) => current.map((item) => item.id === file.id
+      ? normalizeSourceFileForPersistence({ ...item, parse, kind: parse.sourceKind, status: parse.parsed ? "parsed" : item.status })
+      : item,
+    ))
+    return parse
+  }, [activeProjectId])
+
   const setRelativeEnergyZeroFromNode = useCallback((nodeId: string) => {
     const transition = relativeEnergyZeroSelectionTransition(energyDisplayOptions, nodeId)
     setEnergyDisplayOptions(transition.energyDisplayOptions)
@@ -2560,6 +2595,7 @@ export function App() {
             setStructureEditorNodeId(nodeId)
           }}
           onReset2DStructure={resetNodeManualStructure}
+          onHydrateSourceParse={hydrateSourceParseForStructure}
         />
       ) : null}
       {structureEditorNode ? (
@@ -2587,10 +2623,101 @@ export function App() {
 function projectAutosaveKey(input: ProjectAutosaveInput): string {
   return JSON.stringify({
     project: input.project,
-    files: input.files,
-    canvases: input.canvases,
+    files: input.files.map(sourceFileAutosaveSignature),
+    canvases: input.canvases.map(canvasAutosaveSignature),
     activeCanvasId: input.activeCanvasId,
   })
+}
+
+function sourceFileAutosaveSignature(file: SourceFile) {
+  const parse = file.parse
+  return {
+    id: file.id,
+    name: file.name,
+    kind: file.kind,
+    size: file.size,
+    status: file.status,
+    previewLength: file.preview.length,
+    previewHead: file.preview.slice(0, 96),
+    previewTail: file.preview.slice(-96),
+    sourcePath: file.sourcePath,
+    storedPath: file.storedPath,
+    checksum: file.checksum,
+    parse: parse ? {
+      parserId: parse.parserId,
+      parserVersion: parse.parserVersion,
+      parsed: parse.parsed,
+      objectCount: parse.objectCount,
+      parseScope: parse.parseScope,
+      confidence: parse.confidence,
+      sourceKind: parse.sourceKind,
+      terminationStatus: parse.terminationStatus,
+      warnings: parse.warnings.map((warning) => `${warning.code}:${warning.target ?? ""}`),
+      candidates: parse.candidates.map((candidate) => ({
+        candidateId: candidate.candidateId,
+        objectIndex: candidate.objectIndex,
+        label: candidate.label,
+        formula: candidate.formula,
+        roleHint: candidate.roleHint,
+        atoms: candidate.coordinatePreview?.atomCount ?? 0,
+        modes: candidate.coordinatePreview?.vibrationModes?.length ?? 0,
+      })),
+    } : null,
+  }
+}
+
+function canvasAutosaveSignature(canvas: ProjectAutosaveInput["canvases"][number]) {
+  return {
+    id: canvas.id,
+    label: canvas.label,
+    nodes: canvas.nodes.map((node) => ({
+      id: node.id,
+      label: node.label,
+      formula: node.formula,
+      kind: node.kind,
+      coefficient: node.coefficient,
+      method: node.method,
+      solvent: node.solvent,
+      energyGas: node.energyGas,
+      energySolution: node.energySolution,
+      energyUnit: node.energyUnit,
+      sourceStatus: node.sourceStatus,
+      sourceFileId: node.sourceFileId,
+      sourceCandidateId: node.sourceCandidateId,
+      sourceObjectIndex: node.sourceObjectIndex,
+      parserId: node.parserId,
+      parserVersion: node.parserVersion,
+      roleHint: node.roleHint,
+      charge: node.charge,
+      spinMultiplicity: node.spinMultiplicity,
+      energyTable: node.energyTable,
+      corrections: node.corrections,
+      manualStructureKet: node.manualStructureKet,
+      manualStructureMolfile: node.manualStructureMolfile,
+      manualStructureCdxml: node.manualStructureCdxml,
+      manualStructureSvg: node.manualStructureSvg,
+      position: node.position,
+      size: node.size,
+    })),
+    edges: canvas.edges,
+    barriers: canvas.barriers,
+    annotations: (canvas.annotations ?? []).map((annotation) => annotation.type === "image"
+      ? {
+          id: annotation.id,
+          type: annotation.type,
+          position: annotation.position,
+          width: annotation.width,
+          height: annotation.height,
+          name: annotation.name,
+          dataUrlLength: annotation.dataUrl.length,
+        }
+      : annotation,
+    ),
+    viewport: canvas.viewport,
+    selectedNodeIds: canvas.selectedNodeIds,
+    selectedEdgeIds: canvas.selectedEdgeIds,
+    selectedBarrierIds: canvas.selectedBarrierIds,
+  }
 }
 
 function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: string): SourceFile[] {
@@ -2611,10 +2738,55 @@ function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: str
       sourcePath: savedFile.sourcePath,
       parse: savedFile.parse ?? file.parse,
     }
-    if (JSON.stringify(nextFile) !== JSON.stringify(file)) changed = true
+    if (!sourceFileMetadataMatches(file, nextFile)) changed = true
     return nextFile
   })
   return changed ? nextFiles : files
+}
+
+function sourceFileMetadataMatches(left: SourceFile, right: SourceFile): boolean {
+  return left.size === right.size
+    && left.status === right.status
+    && left.preview === right.preview
+    && left.storedPath === right.storedPath
+    && left.checksum === right.checksum
+    && left.sourcePath === right.sourcePath
+    && sourceParseAutosaveSignatureMatches(left.parse, right.parse)
+}
+
+function sourceParseAutosaveSignatureMatches(left: SourceParseResult | undefined, right: SourceParseResult | undefined): boolean {
+  if (!left || !right) return left === right
+  if (left.parserId !== right.parserId
+    || left.parserVersion !== right.parserVersion
+    || left.parsed !== right.parsed
+    || left.objectCount !== right.objectCount
+    || left.parseScope !== right.parseScope
+    || left.confidence !== right.confidence
+    || left.sourceKind !== right.sourceKind
+    || left.terminationStatus !== right.terminationStatus
+    || left.warnings.length !== right.warnings.length
+    || left.candidates.length !== right.candidates.length) {
+    return false
+  }
+  for (let index = 0; index < left.warnings.length; index += 1) {
+    const leftWarning = left.warnings[index]
+    const rightWarning = right.warnings[index]
+    if (leftWarning.code !== rightWarning.code || leftWarning.target !== rightWarning.target) return false
+  }
+  for (let index = 0; index < left.candidates.length; index += 1) {
+    const leftCandidate = left.candidates[index]
+    const rightCandidate = right.candidates[index]
+    if (leftCandidate.candidateId !== rightCandidate.candidateId
+      || leftCandidate.objectIndex !== rightCandidate.objectIndex
+      || leftCandidate.label !== rightCandidate.label
+      || leftCandidate.formula !== rightCandidate.formula
+      || leftCandidate.roleHint !== rightCandidate.roleHint
+      || (leftCandidate.coordinatePreview?.atomCount ?? 0) !== (rightCandidate.coordinatePreview?.atomCount ?? 0)
+      || (leftCandidate.coordinatePreview?.vibrationModes?.length ?? 0) !== (rightCandidate.coordinatePreview?.vibrationModes?.length ?? 0)) {
+      return false
+    }
+  }
+  return true
 }
 
 function projectAutosaveFailureValidation(error: unknown): ProjectValidationPayload {
