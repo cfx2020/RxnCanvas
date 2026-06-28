@@ -24,10 +24,12 @@ class TestDataTransfer {
   dropEffect = "none"
   effectAllowed = "none"
   files: File[] = []
+  private explicitTypes: string[] = []
   private values = new Map<string, string>()
 
-  constructor(files: File[] = []) {
+  constructor(files: File[] = [], options: { types?: string[] } = {}) {
     this.files = files
+    this.explicitTypes = options.types ?? []
   }
 
   setData(type: string, value: string) {
@@ -39,10 +41,19 @@ class TestDataTransfer {
   }
 
   get types() {
-    return [
+    return Array.from(new Set([
       ...Array.from(this.values.keys()),
+      ...this.explicitTypes,
       ...(this.files.length > 0 ? ["Files"] : []),
-    ]
+    ]))
+  }
+
+  get items() {
+    return this.files.map((file) => ({
+      kind: "file",
+      type: file.type,
+      getAsFile: () => file,
+    }))
   }
 }
 
@@ -613,9 +624,10 @@ describe("App", () => {
     const nickelProjectRow = nickelProjectButton.closest(".project-rail-item") as HTMLElement
     const file = new File(["FINAL SINGLE POINT ENERGY -22.5"], "dropped-nickel.out", { type: "text/plain" })
     const dataTransfer = new TestDataTransfer([file])
+    const dragOverTransfer = new TestDataTransfer([], { types: ["Files"] })
 
-    fireEvent.dragOver(nickelProjectRow, { dataTransfer })
-    expect(dataTransfer.dropEffect).toBe("copy")
+    fireEvent.dragOver(nickelProjectRow, { dataTransfer: dragOverTransfer })
+    expect(dragOverTransfer.dropEffect).toBe("copy")
 
     await act(async () => {
       fireEvent.drop(nickelProjectRow, { dataTransfer })
@@ -638,9 +650,10 @@ describe("App", () => {
     const filesSection = within(rail).getByText("Files").closest(".rail-section") as HTMLElement
     const file = new File(["FINAL SINGLE POINT ENERGY -18.75"], "files-drop.out", { type: "text/plain" })
     const dataTransfer = new TestDataTransfer([file])
+    const dragOverTransfer = new TestDataTransfer([], { types: ["Files"] })
 
-    fireEvent.dragOver(filesSection, { dataTransfer })
-    expect(dataTransfer.dropEffect).toBe("copy")
+    fireEvent.dragOver(filesSection, { dataTransfer: dragOverTransfer })
+    expect(dragOverTransfer.dropEffect).toBe("copy")
 
     await act(async () => {
       fireEvent.drop(filesSection, { dataTransfer })
@@ -689,6 +702,30 @@ describe("App", () => {
       expect.stringContaining("Bfix6-ts.log"),
       expect.stringContaining("Bfix6-ts-sol.log"),
     ])
+  })
+
+  it("pairs separately imported solution logs by filename even when the solution preview is unparsed", async () => {
+    render(<App />)
+
+    const input = screen.getByLabelText("Import calculation files")
+    const gasLog = new File(["SCF Done: E(RwB97XD) = -101.0"], "i1p6.log", { type: "text/plain" })
+    const solutionLog = new File(["solvent output without enough parser markers"], "i1p6-sol.log", { type: "text/plain" })
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [gasLog] } })
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [solutionLog] } })
+      await Promise.resolve()
+    })
+
+    const rail = screen.getByRole("complementary", { name: "Project rail" })
+    const groupedRowButton = await within(rail).findByRole("button", { name: "i1p6 Gaussian" })
+    expect(groupedRowButton).toBeInTheDocument()
+    expect(groupedRowButton).toHaveAttribute("title", "Solvation log paired")
+    expect(within(rail).queryByRole("button", { name: "i1p6.log Gaussian" })).not.toBeInTheDocument()
+    expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Raw" })).not.toBeInTheDocument()
   })
 
   it("keeps object registry correction out of the main UI while preserving structure preview", () => {
@@ -1294,6 +1331,16 @@ describe("App", () => {
       const annotation = annotationImage.closest(".canvas-image-annotation") as HTMLElement
       expect(annotation?.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
       expect(screen.queryByRole("button", { name: "scheme-drop.png Raw" })).not.toBeInTheDocument()
+
+      dispatchPointer(annotation, "pointerDown", { clientX: clientX, clientY: clientY, pointerId: 91 })
+      dispatchPointer(annotation, "pointerMove", { clientX: clientX + 40, clientY: clientY + 20, pointerId: 91 })
+      dispatchPointer(annotation, "pointerUp", { clientX: clientX + 40, clientY: clientY + 20, pointerId: 91 })
+
+      expect(annotation.style.transform).toContain(`translate(${expectedX + 40 / scale}px, ${expectedY + 20 / scale}px)`)
+
+      fireEvent.contextMenu(annotation, { clientX: 620, clientY: 460 })
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }))
+      expect(screen.queryByAltText("scheme-drop.png")).not.toBeInTheDocument()
     } finally {
       restoreImage()
     }

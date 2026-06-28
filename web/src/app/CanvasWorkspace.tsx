@@ -44,6 +44,7 @@ import {
   type EnergyTableRow,
 } from "./energyDisplay"
 import {
+  dataTransferHasFiles,
   dataTransferTypes,
   filesFromDataTransfer,
   projectFileDragMimeType,
@@ -85,6 +86,7 @@ export type CanvasContextSelection = {
 
 export type CanvasContextMenuTarget =
   | { kind: "selection"; selection: CanvasContextSelection }
+  | { kind: "annotation"; annotationId: string }
   | { kind: "node"; nodeId: string; selection: CanvasContextSelection }
   | { kind: "edge"; edgeId: string; selection: CanvasContextSelection }
   | { kind: "barrier"; barrierId: string; selection: CanvasContextSelection }
@@ -202,6 +204,8 @@ export function CanvasSurface({
   onRawFileDrop,
   editingAnnotationId = null,
   onBeginEditAnnotation = () => undefined,
+  onBeginMoveAnnotation = () => undefined,
+  onMoveAnnotation = () => undefined,
   onUpdateTextAnnotation = () => undefined,
   onDeleteAnnotation = () => undefined,
 }: {
@@ -250,6 +254,8 @@ export function CanvasSurface({
   onRawFileDrop: (drop: CanvasRawFileDrop) => void
   editingAnnotationId?: string | null
   onBeginEditAnnotation?: (annotationId: string) => void
+  onBeginMoveAnnotation?: (annotationId: string) => void
+  onMoveAnnotation?: (annotationId: string, position: Point) => void
   onUpdateTextAnnotation?: (annotationId: string, text: string) => void
   onDeleteAnnotation?: (annotationId: string) => void
 }) {
@@ -537,9 +543,13 @@ export function CanvasSurface({
             key={annotation.id}
             annotation={annotation}
             editing={annotation.id === editingAnnotationId}
+            viewport={viewport}
             onBeginEdit={onBeginEditAnnotation}
+            onBeginMove={onBeginMoveAnnotation}
+            onMove={onMoveAnnotation}
             onUpdateText={onUpdateTextAnnotation}
             onDelete={onDeleteAnnotation}
+            onOpenContextMenu={onOpenContextMenu}
           />
         ))}
         {rubberBandDraft ? <CanvasRubberBand draft={rubberBandDraft} /> : null}
@@ -574,32 +584,103 @@ function CanvasRubberBand({ draft }: { draft: Extract<DragState, { kind: "rubber
 function CanvasAnnotationView({
   annotation,
   editing,
+  viewport,
   onBeginEdit,
+  onBeginMove,
+  onMove,
   onUpdateText,
   onDelete,
+  onOpenContextMenu,
 }: {
   annotation: CanvasAnnotation
   editing: boolean
+  viewport: CanvasViewport
   onBeginEdit: (annotationId: string) => void
+  onBeginMove: (annotationId: string) => void
+  onMove: (annotationId: string, position: Point) => void
   onUpdateText: (annotationId: string, text: string) => void
   onDelete: (annotationId: string) => void
+  onOpenContextMenu: (request: CanvasContextMenuRequest) => void
 }) {
   const annotationText = annotation.type === "text" ? annotation.text : ""
   const [textDraft, setTextDraft] = useState(annotationText)
+  const [dragging, setDragging] = useState(false)
+  const imageDragRef = useRef<{
+    pointerId: number
+    start: Point
+    origin: Point
+    moved: boolean
+  } | null>(null)
   useEffect(() => {
     if (annotation.type === "text" && !editing) setTextDraft(annotation.text)
   }, [annotation, editing])
 
+  const openAnnotationContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    onOpenContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      target: { kind: "annotation", annotationId: annotation.id },
+    })
+  }
+
   if (annotation.type === "image") {
+    const startImageDrag = (event: PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+      imageDragRef.current = {
+        pointerId: event.pointerId,
+        start: { x: event.clientX, y: event.clientY },
+        origin: annotation.position,
+        moved: false,
+      }
+    }
+
+    const moveImageDrag = (event: PointerEvent<HTMLDivElement>) => {
+      const drag = imageDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      event.preventDefault()
+      event.stopPropagation()
+      const dx = event.clientX - drag.start.x
+      const dy = event.clientY - drag.start.y
+      if (!drag.moved) {
+        if (Math.hypot(dx, dy) < 2) return
+        drag.moved = true
+        setDragging(true)
+        onBeginMove(annotation.id)
+      }
+      onMove(annotation.id, {
+        x: drag.origin.x + dx / viewport.zoom,
+        y: drag.origin.y + dy / viewport.zoom,
+      })
+    }
+
+    const endImageDrag = (event: PointerEvent<HTMLDivElement>) => {
+      const drag = imageDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      event.preventDefault()
+      event.stopPropagation()
+      event.currentTarget.releasePointerCapture?.(event.pointerId)
+      imageDragRef.current = null
+      setDragging(false)
+    }
+
     return (
       <div
-        className="canvas-annotation canvas-image-annotation"
+        className={`canvas-annotation canvas-image-annotation${dragging ? " is-dragging" : ""}`}
         style={{
           transform: `translate(${annotation.position.x}px, ${annotation.position.y}px)`,
           width: annotation.width,
           height: annotation.height,
         }}
-        onPointerDown={(event) => event.stopPropagation()}
+        onPointerDown={startImageDrag}
+        onPointerMove={moveImageDrag}
+        onPointerUp={endImageDrag}
+        onPointerCancel={endImageDrag}
+        onContextMenu={openAnnotationContextMenu}
       >
         <img src={annotation.dataUrl} alt={annotation.name ?? "Pasted canvas image"} draggable={false} />
       </div>
@@ -616,6 +697,7 @@ function CanvasAnnotationView({
         width: textWidth,
       }}
       onPointerDown={(event) => event.stopPropagation()}
+      onContextMenu={openAnnotationContextMenu}
       onDoubleClick={(event) => {
         event.stopPropagation()
         onBeginEdit(annotation.id)
@@ -1930,7 +2012,7 @@ function useLatestCallback<TCallback extends (...args: never[]) => unknown>(call
 
 function hasCanvasRawFileDrop(dataTransfer: DataTransfer): boolean {
   const types = dataTransferTypes(dataTransfer)
-  return types.includes(projectFileDragMimeType) || types.includes("Files") || filesFromDataTransfer(dataTransfer).length > 0
+  return types.includes(projectFileDragMimeType) || dataTransferHasFiles(dataTransfer) || filesFromDataTransfer(dataTransfer).length > 0
 }
 
 export function ZoomControls({

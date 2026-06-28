@@ -2303,11 +2303,26 @@ export function App() {
   }, [])
 
   const contextMenuNodeId = canvasContextMenu?.target.kind === "node" ? canvasContextMenu.target.nodeId : null
+  const contextMenuAnnotationId = canvasContextMenu?.target.kind === "annotation" ? canvasContextMenu.target.annotationId : null
+  const beginMoveAnnotation = useCallback(() => {
+    pushEditHistory()
+  }, [pushEditHistory])
+  const moveAnnotation = useCallback((annotationId: string, position: Point) => {
+    setAnnotations((current) => current.map((annotation) => (
+      annotation.id === annotationId ? { ...annotation, position } : annotation
+    )))
+  }, [])
   const deleteContextMenuSelection = useCallback(() => {
     if (!canvasContextMenu) return
+    if (canvasContextMenu.target.kind === "annotation") {
+      pushEditHistory()
+      deleteAnnotation(canvasContextMenu.target.annotationId)
+      setCanvasContextMenu(null)
+      return
+    }
     deleteSelection(canvasContextMenu.target.selection)
     setCanvasContextMenu(null)
-  }, [canvasContextMenu, deleteSelection])
+  }, [canvasContextMenu, deleteAnnotation, deleteSelection, pushEditHistory])
 
   const renameContextMenuNode = useCallback(() => {
     if (!contextMenuNodeId) return
@@ -2497,7 +2512,7 @@ export function App() {
           ref={contextMenuRef}
           className="canvas-context-menu"
           role="menu"
-          aria-label={contextMenuNodeId ? "Node context menu" : "Canvas context menu"}
+          aria-label={contextMenuNodeId ? "Node context menu" : contextMenuAnnotationId ? "Canvas annotation context menu" : "Canvas context menu"}
           style={{ left: canvasContextMenu.x, top: canvasContextMenu.y }}
         >
           {contextMenuNodeId ? (
@@ -2600,6 +2615,8 @@ export function App() {
                   onRawFileDrop={handleCanvasRawFileDrop}
                   editingAnnotationId={editingAnnotationId}
                   onBeginEditAnnotation={setEditingAnnotationId}
+                  onBeginMoveAnnotation={beginMoveAnnotation}
+                  onMoveAnnotation={moveAnnotation}
                   onUpdateTextAnnotation={updateTextAnnotation}
                   onDeleteAnnotation={deleteAnnotation}
                 />
