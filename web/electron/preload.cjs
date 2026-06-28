@@ -1,9 +1,17 @@
-const { contextBridge, ipcRenderer } = require("electron")
+const { contextBridge, ipcRenderer, webUtils } = require("electron")
 
 contextBridge.exposeInMainWorld("rxnflowDesktop", {
   platform: process.platform,
   chooseFiles: () => ipcRenderer.invoke("rxnflow:choose-files"),
   getEngineStatus: () => ipcRenderer.invoke("rxnflow:engine-status"),
+  importSourceFiles: (payload) => ipcRenderer.invoke("rxnflow:import-source-files", payload),
+  filePathForFile: (file) => {
+    try {
+      return typeof webUtils?.getPathForFile === "function" ? webUtils.getPathForFile(file) : ""
+    } catch {
+      return ""
+    }
+  },
   registerImportCandidates: (payload) => ipcRenderer.invoke("rxnflow:register-import-candidates", payload),
   parseSourcePreview: (payload) => ipcRenderer.invoke("rxnflow:parse-source-preview", payload),
   saveJsonSnapshot: (payload) => ipcRenderer.invoke("rxnflow:save-json-snapshot", payload),

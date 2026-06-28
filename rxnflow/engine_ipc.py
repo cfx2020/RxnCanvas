@@ -6,11 +6,13 @@ health checks without bringing back the archived local HTTP bridge.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import platform
 import sys
 from dataclasses import asdict
+from importlib import metadata
 from typing import Any
 
 from .engine import (
@@ -36,8 +38,12 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
             "data": {
                 "status": "ready",
                 "engineVersion": ENGINE_VERSION,
+                "runtime": runtime_name(),
                 "pythonVersion": platform.python_version(),
                 "pid": os.getpid(),
+                "dependencies": {
+                    "cclib": dependency_status("cclib"),
+                },
                 "capabilities": [
                     "engine.status",
                     "flow.demo",
@@ -161,6 +167,28 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
             "code": "unknown_command",
             "message": f"Unsupported engine command: {command!r}",
         },
+    }
+
+
+def runtime_name() -> str:
+    return "bundled-python" if getattr(sys, "frozen", False) else "python"
+
+
+def dependency_status(package_name: str) -> dict[str, Any]:
+    try:
+        version = metadata.version(package_name)
+    except metadata.PackageNotFoundError:
+        try:
+            module = importlib.import_module(package_name)
+        except (ImportError, ModuleNotFoundError):
+            return {
+                "available": False,
+                "version": None,
+            }
+        version = getattr(module, "__version__", None)
+    return {
+        "available": True,
+        "version": version,
     }
 
 

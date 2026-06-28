@@ -27,7 +27,6 @@ const requiredFiles = [
   path.join(__dirname, "main.cjs"),
   path.join(__dirname, "preload.cjs"),
   path.join(__dirname, "engine-bridge.cjs"),
-  path.join(__dirname, "embedded-engine.cjs"),
   path.join(__dirname, "project-store.cjs"),
   path.join(__dirname, "..", "dist", "index.html"),
 ]
@@ -41,8 +40,8 @@ async function main() {
 
   await verifyRecentProjectsStore()
   await verifyProjectDirectoryStore()
-  await verifyEmbeddedEngineFallback()
-  await verifyEngineWriteFailureFallback()
+  await verifyLocalEngineFailureMode()
+  await verifyLocalEngineParserCoverage()
 
   const status = await getEngineStatus({ timeoutMs: 5000 })
   if (!status.ok || status.data?.status !== "ready") {
@@ -109,28 +108,23 @@ async function main() {
   console.log("Electron desktop smoke files present")
   console.log("Electron recent projects store ready")
   console.log("Electron project directory store ready")
-  console.log("RxnFlow embedded desktop engine ready")
-  console.log("RxnFlow engine write failure fallback ready")
+  console.log("RxnFlow local engine failure path ready")
+  console.log("RxnFlow local parser coverage ready")
   console.log("RxnFlow project engine commands ready")
   console.log("RxnFlow import.preview ready")
   console.log("RxnFlow import.register ready")
   console.log(`RxnFlow local engine ready: ${status.data.engineVersion}`)
 }
 
-async function verifyEngineWriteFailureFallback() {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-engine-write-failure-"))
-  const enginePath = path.join(tempDir, "exit-engine.cjs")
+async function verifyLocalEngineFailureMode() {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-engine-unavailable-"))
+  const enginePath = path.join(tempDir, "missing-engine")
   const previousCommand = process.env.RXNFLOW_ENGINE_COMMAND
   try {
-    fs.writeFileSync(enginePath, "process.exit(0)\n", "utf8")
-    process.env.RXNFLOW_ENGINE_COMMAND = `node ${enginePath}`
-    const response = await runEngineRequest({
-      command: "project.validate",
-      content: "x".repeat(2 * 1024 * 1024),
-    }, { timeoutMs: 5000 })
-    const warningCodes = new Set(response.warnings?.map((warning) => warning.code) || [])
-    if (!response.ok || response.data?.valid !== false || !warningCodes.has("python_engine_unavailable")) {
-      throw new Error(`RxnFlow engine write failure fallback smoke failed: ${JSON.stringify(response)}`)
+    process.env.RXNFLOW_ENGINE_COMMAND = enginePath
+    const response = await runEngineRequest({ command: "engine.status" }, { timeoutMs: 1000 })
+    if (response.ok || response.error?.code !== "engine_unavailable") {
+      throw new Error(`RxnFlow local engine unavailable smoke failed: ${JSON.stringify(response)}`)
     }
   } finally {
     if (previousCommand === undefined) {
@@ -142,38 +136,28 @@ async function verifyEngineWriteFailureFallback() {
   }
 }
 
-async function verifyEmbeddedEngineFallback() {
-  const status = await runEngineRequest({ command: "engine.status" }, { preferEmbedded: true })
-  if (!status.ok || status.data?.runtime !== "embedded-node") {
-    throw new Error(`RxnFlow embedded engine status smoke failed: ${JSON.stringify(status)}`)
-  }
-  for (const capability of ["import.preview", "import.register_selection", "import.register_all", "project.validate", "project.open", "project.save"]) {
-    if (!status.data.capabilities?.includes(capability)) {
-      throw new Error(`RxnFlow embedded engine missing ${capability}: ${JSON.stringify(status)}`)
-    }
-  }
-
+async function verifyLocalEngineParserCoverage() {
   const sourceFile = {
-    id: "embedded-log",
-    name: "embedded.log",
+    id: "local-log",
+    name: "local.log",
     preview: "SCF Done: E(RwB97XD) = -100.0",
   }
   const preview = await runEngineRequest({
     command: "import.preview",
     files: [sourceFile],
-  }, { preferEmbedded: true })
+  }, { timeoutMs: 5000 })
   if (
     !preview.ok
     || preview.data?.files?.[0]?.parse?.sourceKind !== "Gaussian"
     || preview.data.files[0].parse?.parserId !== "gaussian-log-text-preview"
   ) {
-    throw new Error(`RxnFlow embedded import.preview smoke failed: ${JSON.stringify(preview)}`)
+    throw new Error(`RxnFlow local import.preview smoke failed: ${JSON.stringify(preview)}`)
   }
 
   const extxyzPreview = await runEngineRequest({
     command: "import.preview",
     files: [{
-      id: "embedded-extxyz",
+      id: "local-extxyz",
       name: "h2.xyz",
       preview: [
         "2",
@@ -182,7 +166,7 @@ async function verifyEmbeddedEngineFallback() {
         "H 0.0 0.0 0.74",
       ].join("\n"),
     }],
-  }, { preferEmbedded: true })
+  }, { timeoutMs: 5000 })
   const extxyzParse = extxyzPreview.data?.files?.[0]?.parse
   if (
     !extxyzPreview.ok
@@ -193,13 +177,13 @@ async function verifyEmbeddedEngineFallback() {
     || Math.abs((extxyzParse?.energyGas ?? 0) - -0.05512398326348249) > 1e-12
     || !extxyzParse?.warnings?.some((warning) => warning.code === "unit_assumed")
   ) {
-    throw new Error(`RxnFlow embedded extxyz import.preview smoke failed: ${JSON.stringify(extxyzPreview)}`)
+    throw new Error(`RxnFlow local extxyz import.preview smoke failed: ${JSON.stringify(extxyzPreview)}`)
   }
 
   const xyzPreview = await runEngineRequest({
     command: "import.preview",
     files: [{
-      id: "embedded-xyz",
+      id: "local-xyz",
       name: "h2.xyz",
       preview: [
         "2",
@@ -208,7 +192,7 @@ async function verifyEmbeddedEngineFallback() {
         "H 0.0 0.0 0.74",
       ].join("\n"),
     }],
-  }, { preferEmbedded: true })
+  }, { timeoutMs: 5000 })
   const xyzParse = xyzPreview.data?.files?.[0]?.parse
   if (
     !xyzPreview.ok
@@ -216,13 +200,13 @@ async function verifyEmbeddedEngineFallback() {
     || Math.abs((xyzParse?.energyGas ?? 0) - -0.05512398326348249) > 1e-12
     || xyzParse?.warnings?.some((warning) => warning.code === "unit_assumed")
   ) {
-    throw new Error(`RxnFlow embedded XYZ energy-unit smoke failed: ${JSON.stringify(xyzPreview)}`)
+    throw new Error(`RxnFlow local XYZ energy-unit smoke failed: ${JSON.stringify(xyzPreview)}`)
   }
 
   const badXyzPreview = await runEngineRequest({
     command: "import.preview",
     files: [{
-      id: "embedded-bad-xyz",
+      id: "local-bad-xyz",
       name: "xyz-bad-atom-count.xyz",
       preview: [
         "3",
@@ -230,7 +214,7 @@ async function verifyEmbeddedEngineFallback() {
         "H 0.0 0.0 0.0",
       ].join("\n"),
     }],
-  }, { preferEmbedded: true })
+  }, { timeoutMs: 5000 })
   const badXyzParse = badXyzPreview.data?.files?.[0]?.parse
   if (
     !badXyzPreview.ok
@@ -239,13 +223,13 @@ async function verifyEmbeddedEngineFallback() {
     || badXyzParse?.parserId !== "xyz-text-preview"
     || badXyzParse?.warnings?.[0]?.code !== "parse_failed"
   ) {
-    throw new Error(`RxnFlow embedded bad XYZ parse-failed smoke failed: ${JSON.stringify(badXyzPreview)}`)
+    throw new Error(`RxnFlow local bad XYZ parse-failed smoke failed: ${JSON.stringify(badXyzPreview)}`)
   }
 
   const maplePreview = await runEngineRequest({
     command: "import.preview",
     files: [{
-      id: "embedded-maple-xyz",
+      id: "local-maple-xyz",
       name: "path.xyz",
       preview: [
         "2",
@@ -258,7 +242,7 @@ async function verifyEmbeddedEngineFallback() {
         "H 0.0 0.0 0.8",
       ].join("\n"),
     }],
-  }, { preferEmbedded: true })
+  }, { timeoutMs: 5000 })
   const mapleParse = maplePreview.data?.files?.[0]?.parse
   if (
     !maplePreview.ok
@@ -267,13 +251,13 @@ async function verifyEmbeddedEngineFallback() {
     || mapleParse?.candidates?.[1]?.label !== "Image 2"
     || mapleParse?.warnings?.some((warning) => warning.code === "unit_assumed")
   ) {
-    throw new Error(`RxnFlow embedded MAPLE trajectory label smoke failed: ${JSON.stringify(maplePreview)}`)
+    throw new Error(`RxnFlow local MAPLE trajectory label smoke failed: ${JSON.stringify(maplePreview)}`)
   }
 
   const orcaPreview = await runEngineRequest({
     command: "import.preview",
     files: [{
-      id: "embedded-orca",
+      id: "local-orca",
       name: "water.out",
       preview: [
         "! B3LYP def2-SVP Opt",
@@ -294,7 +278,7 @@ async function verifyEmbeddedEngineFallback() {
         "Total Energy       :          -76.34567890 Eh           -2077.47334 eV",
       ].join("\n"),
     }],
-  }, { preferEmbedded: true })
+  }, { timeoutMs: 5000 })
   const orcaParse = orcaPreview.data?.files?.[0]?.parse
   if (
     !orcaPreview.ok
@@ -307,13 +291,13 @@ async function verifyEmbeddedEngineFallback() {
     || orcaParse?.candidates?.[0]?.charge !== 0
     || orcaParse?.candidates?.[0]?.spinMultiplicity !== 1
   ) {
-    throw new Error(`RxnFlow embedded ORCA geometry smoke failed: ${JSON.stringify(orcaPreview)}`)
+    throw new Error(`RxnFlow local ORCA geometry smoke failed: ${JSON.stringify(orcaPreview)}`)
   }
 
   const irPreview = await runEngineRequest({
     command: "import.preview",
     files: [{
-      id: "embedded-ir",
+      id: "local-ir",
       name: "ir-complex.log",
       preview: [
         "Stoichiometry C2H6IrN",
@@ -329,14 +313,14 @@ async function verifyEmbeddedEngineFallback() {
         "SCF Done: E(RwB97XD) = -4749.26415609 A.U.",
       ].join("\n"),
     }],
-  }, { preferEmbedded: true })
+  }, { timeoutMs: 5000 })
   const irParse = irPreview.data?.files?.[0]?.parse
   if (
     !irPreview.ok
     || irParse?.coordinatePreview?.elements?.join("|") !== "C|Ir|N"
     || irParse?.coordinatePreview?.atoms?.[0]?.element !== "Ir"
   ) {
-    throw new Error(`RxnFlow embedded Gaussian Ir coordinate smoke failed: ${JSON.stringify(irPreview)}`)
+    throw new Error(`RxnFlow local Gaussian Ir coordinate smoke failed: ${JSON.stringify(irPreview)}`)
   }
 
   const registered = await runEngineRequest({
@@ -345,20 +329,20 @@ async function verifyEmbeddedEngineFallback() {
       ...sourceFile,
       parse: preview.data.files[0].parse,
     }],
-  }, { preferEmbedded: true })
+  }, { timeoutMs: 5000 })
   if (
     !registered.ok
     || registered.data?.registeredObjects?.length !== 1
     || registered.data.registeredObjects[0]?.parserId !== "gaussian-log-text-preview"
   ) {
-    throw new Error(`RxnFlow embedded import.register_all smoke failed: ${JSON.stringify(registered)}`)
+    throw new Error(`RxnFlow local import.register_all smoke failed: ${JSON.stringify(registered)}`)
   }
 
   const invalidProject = await runEngineRequest({
     command: "project.validate",
     content: badProjectReferenceContent(),
-  }, { preferEmbedded: true })
-  assertProjectReferenceValidation(invalidProject, "RxnFlow embedded project reference validation smoke failed")
+  }, { timeoutMs: 5000 })
+  assertProjectReferenceValidation(invalidProject, "RxnFlow local project reference validation smoke failed")
 }
 
 async function verifyRecentProjectsStore() {

@@ -4,6 +4,7 @@ const path = require("node:path")
 const { getEngineStatus, runEngineRequest } = require("./engine-bridge.cjs")
 const {
   exportProjectWorkspaceArchive,
+  materializeImportSourceFile,
   readProjectContent,
   resolveProjectStatePath,
   saveProjectContent,
@@ -34,7 +35,6 @@ const runtimeSmokeExit = process.argv.includes("--rxnflow-smoke-exit")
 const runtimeStartupRestoreSmoke = process.env.RXNFLOW_DESKTOP_SMOKE_STARTUP_RESTORE === "1"
 const runtimeSmokeTimeoutMs = Number.parseInt(process.env.RXNFLOW_DESKTOP_SMOKE_TIMEOUT_MS || "12000", 10)
 const userDataDirectoryOverride = process.env.RXNFLOW_DESKTOP_USER_DATA_DIR
-const projectValidationEmbeddedThresholdBytes = 1024 * 1024
 const macTrafficLightPosition = { x: 18, y: 12 }
 let recentProjectPaths = []
 let activeProjectPath = null
@@ -375,6 +375,11 @@ function installRuntimeSmokeExit(window) {
                   reject(new Error("desktop engine status is not ready"))
                   return
                 }
+                const cclib = status.data.dependencies?.cclib
+                if (status.data.runtime !== "bundled-python" || cclib?.available !== true) {
+                  reject(new Error("desktop packaged runtime must use bundled Python engine with cclib"))
+                  return
+                }
                 const registered = await desktop.registerImportCandidates({
                   mode: "all",
                   files: [{
@@ -426,6 +431,7 @@ function installRuntimeSmokeExit(window) {
                 resolve({
                   engineVersion: status.data.engineVersion,
                   runtime: status.data.runtime || "python",
+                  cclibVersion: cclib.version || "unknown",
                 })
               } catch (error) {
                 reject(error)
@@ -441,7 +447,7 @@ function installRuntimeSmokeExit(window) {
           poll()
         })
       `)
-      finish(0, `RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK ${result.engineVersion} ${result.runtime}`)
+      finish(0, `RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK ${result.engineVersion} ${result.runtime} cclib=${result.cclibVersion}`)
     } catch (error) {
       finish(1, `RXNFLOW_DESKTOP_RUNTIME_SMOKE_FAILED: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -645,27 +651,85 @@ ipcMain.handle("rxnflow:choose-files", async () => {
   const files = await Promise.all(result.filePaths.map(readDesktopSourceFile))
   return {
     canceled: false,
-    files: await attachEngineImportPreview(files),
+    files,
   }
 })
 
-async function attachEngineImportPreview(files) {
+ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
+  const files = Array.isArray(payload?.files)
+    ? payload.files.map(importSourceFilePayload).filter(Boolean)
+    : []
+  if (files.length === 0) {
+    return invalidEngineInput("Source import requires at least one file.")
+  }
+
+  const projectId = typeof payload?.projectId === "string" && payload.projectId ? payload.projectId : null
+  const projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
+  const warnings = []
+  if (!projectDirectory) {
+    warnings.push({
+      code: "project_folder_required",
+      message: "No project folder is bound, so imported sources could not be copied into sources/ before parsing.",
+    })
+  }
+
+  const usedStoredPaths = new Set()
+  const stagedFiles = await Promise.all(files.map(async (file, index) => {
+    if (!projectDirectory) return importSourceFileForPreview(file)
+    try {
+      const materialized = await materializeImportSourceFile(projectDirectory, file, index, { usedStoredPaths })
+      return {
+        ...materialized,
+        parseSourcePath: materialized.sourcePath,
+      }
+    } catch (error) {
+      return {
+        ...importSourceFileForPreview(file),
+        error: {
+          code: "source_materialize_failed",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      }
+    }
+  }))
+
   const preview = await runEngineRequest({
     command: "import.preview",
-    files: files.map((file) => ({
+    files: stagedFiles.map((file) => ({
       name: file.name,
       size: file.size,
       preview: file.preview,
-      sourcePath: file.sourcePath,
+      ...(file.parseSourcePath ? { sourcePath: file.parseSourcePath } : {}),
     })),
-  })
-  if (!preview.ok || !Array.isArray(preview.data?.files)) return files
+  }, { timeoutMs: 60000 })
 
-  return files.map((file, index) => ({
-    ...file,
-    parse: preview.data.files[index]?.parse,
-  }))
-}
+  if (!preview.ok || !Array.isArray(preview.data?.files)) {
+    return {
+      ok: true,
+      data: {
+        files: stagedFiles.map(importSourceFileRendererPayload),
+      },
+      warnings: [
+        ...warnings,
+        {
+          code: preview.error?.code || "import_preview_failed",
+          message: preview.error?.message || "The local parser did not return import preview data.",
+        },
+      ],
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      files: stagedFiles.map((file, index) => ({
+        ...importSourceFileRendererPayload(file),
+        parse: preview.data.files[index]?.parse,
+      })),
+    },
+    ...(warnings.length > 0 ? { warnings } : {}),
+  }
+})
 
 ipcMain.handle("rxnflow:register-import-candidates", async (_event, payload) => {
   const mode = payload?.mode === "all" ? "all" : "selected"
@@ -713,11 +777,54 @@ ipcMain.handle("rxnflow:parse-source-preview", async (_event, payload) => {
       preview: typeof payload?.preview === "string" ? payload.preview : "",
       ...(sourceFilePath ? { sourcePath: sourceFilePath } : {}),
     }],
-  }, { timeoutMs: 20000, preferEmbedded: true })
+  }, { timeoutMs: 20000 })
   if (!response.ok) return response
   const parse = response.data?.files?.[0]?.parse ?? null
   return { ok: true, data: { parse } }
 })
+
+function importSourceFilePayload(file) {
+  if (!file || typeof file !== "object") return null
+  const id = typeof file.id === "string" && file.id ? file.id : null
+  const name = typeof file.name === "string" && file.name ? file.name : null
+  if (!id || !name) return null
+  const size = Number.isFinite(file.size) ? file.size : 0
+  const preview = typeof file.preview === "string" ? file.preview : ""
+  const sourcePath = typeof file.sourcePath === "string" && path.isAbsolute(file.sourcePath) ? file.sourcePath : undefined
+  const storedPath = typeof file.storedPath === "string" && isSafeProjectRelativePath(file.storedPath) ? file.storedPath : undefined
+  const contentBase64 = typeof file.contentBase64 === "string" && file.contentBase64 ? file.contentBase64 : undefined
+  return {
+    id,
+    name,
+    size,
+    preview,
+    ...(sourcePath ? { sourcePath } : {}),
+    ...(storedPath ? { storedPath } : {}),
+    ...(contentBase64 ? { contentBase64 } : {}),
+  }
+}
+
+function importSourceFileForPreview(file) {
+  const sourcePath = typeof file.sourcePath === "string" && path.isAbsolute(file.sourcePath) ? file.sourcePath : null
+  return {
+    id: file.id,
+    name: file.name,
+    size: Number.isFinite(file.size) ? file.size : 0,
+    preview: typeof file.preview === "string" ? file.preview : "",
+    ...(typeof file.storedPath === "string" ? { storedPath: file.storedPath } : {}),
+    ...(sourcePath ? { sourcePath, parseSourcePath: sourcePath } : {}),
+  }
+}
+
+function importSourceFileRendererPayload(file) {
+  const {
+    contentBase64: _contentBase64,
+    parseSourcePath: _parseSourcePath,
+    ...rest
+  } = file
+  if (rest.storedPath) delete rest.sourcePath
+  return rest
+}
 
 function registerFilePayload(file) {
   if (!file || typeof file !== "object") return null
@@ -730,6 +837,8 @@ function registerFilePayload(file) {
     size: Number.isFinite(file.size) ? file.size : 0,
     preview: typeof file.preview === "string" ? file.preview : "",
     ...(typeof file.sourcePath === "string" && file.sourcePath ? { sourcePath: file.sourcePath } : {}),
+    ...(typeof file.storedPath === "string" && file.storedPath ? { storedPath: file.storedPath } : {}),
+    ...(typeof file.checksum === "string" && file.checksum ? { checksum: file.checksum } : {}),
     ...(file.parse && typeof file.parse === "object" ? { parse: file.parse } : {}),
   }
 }
@@ -1106,7 +1215,7 @@ async function enrichProjectContentWithStoredSourceCoordinates(content, projectD
       preview: typeof target.file.preview === "string" ? target.file.preview : "",
       sourcePath: target.sourcePath,
     })),
-  }, { timeoutMs: 20000, preferEmbedded: true })
+  }, { timeoutMs: 20000 })
   if (!preview.ok || !Array.isArray(preview.data?.files)) return slimContent()
 
   let changed = false
@@ -1172,10 +1281,7 @@ async function validateProjectPackageContent(content, projectDirectory) {
       command: "project.validate",
       content,
       ...(projectDirectory ? { projectPath: projectDirectory } : {}),
-    }, {
-      timeoutMs: 5000,
-      preferEmbedded: Buffer.byteLength(content, "utf8") > projectValidationEmbeddedThresholdBytes,
-    })
+    }, { timeoutMs: 5000 })
     return response.ok ? response.data : null
   } catch {
     return null
@@ -1184,19 +1290,11 @@ async function validateProjectPackageContent(content, projectDirectory) {
 
 async function readDesktopSourceFile(filePath) {
   const stats = await fs.stat(filePath)
-  const handle = await fs.open(filePath, "r")
-  try {
-    const length = Math.min(stats.size, 64 * 1024)
-    const buffer = Buffer.alloc(length)
-    await handle.read(buffer, 0, length, 0)
-    return {
-      name: path.basename(filePath),
-      size: stats.size,
-      preview: buffer.toString("utf8"),
-      sourcePath: filePath,
-    }
-  } finally {
-    await handle.close()
+  return {
+    name: path.basename(filePath),
+    size: stats.size,
+    preview: "",
+    sourcePath: filePath,
   }
 }
 

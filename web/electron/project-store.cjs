@@ -188,6 +188,77 @@ async function persistSourceFile(projectDirectory, file, index, options) {
   }
 }
 
+async function materializeImportSourceFile(projectDirectory, file, index, options = {}) {
+  const usedStoredPaths = options.usedStoredPaths
+  const storedPath = await importStoredPathForFile(projectDirectory, file, index, usedStoredPaths)
+  usedStoredPaths?.add(storedPath)
+  const targetPath = path.join(projectDirectory, storedPath)
+  const sourcePath = typeof file?.sourcePath === "string" && path.isAbsolute(file.sourcePath)
+    ? file.sourcePath
+    : null
+  const inlineBuffer = importSourceBuffer(file)
+
+  await fs.mkdir(path.dirname(targetPath), { recursive: true })
+  if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
+    await fs.copyFile(sourcePath, targetPath)
+  } else if (inlineBuffer) {
+    await fs.writeFile(targetPath, inlineBuffer)
+  } else if (sourcePath && path.resolve(sourcePath) === path.resolve(targetPath)) {
+    // The source is already materialized in the project folder.
+  } else {
+    await fs.writeFile(targetPath, typeof file?.preview === "string" ? file.preview : "", "utf8")
+  }
+
+  const stats = await fs.stat(targetPath)
+  const buffer = await fs.readFile(targetPath)
+  return {
+    id: typeof file?.id === "string" ? file.id : undefined,
+    name: typeof file?.name === "string" && file.name ? file.name : safeSourceFileName(file, index),
+    preview: typeof file?.preview === "string" ? file.preview : "",
+    size: stats.size,
+    checksum: `sha256:${crypto.createHash("sha256").update(buffer).digest("hex")}`,
+    storedPath,
+    sourcePath: targetPath,
+  }
+}
+
+async function importStoredPathForFile(projectDirectory, file, index, usedStoredPaths) {
+  if (typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)) {
+    const storedPath = toProjectPath(file.storedPath)
+    if (!usedStoredPaths?.has(storedPath)) return storedPath
+  }
+
+  const baseName = safeSourceFileName(file, index)
+  let storedPath = toProjectPath(path.join(sourcesDirectory, baseName))
+  let suffix = 2
+  while (usedStoredPaths?.has(storedPath) || await projectSourcePathExists(projectDirectory, storedPath)) {
+    storedPath = toProjectPath(path.join(sourcesDirectory, withFileNameSuffix(baseName, suffix)))
+    suffix += 1
+  }
+  return storedPath
+}
+
+async function projectSourcePathExists(projectDirectory, storedPath) {
+  try {
+    const stats = await fs.stat(path.join(projectDirectory, storedPath))
+    return stats.isFile()
+  } catch {
+    return false
+  }
+}
+
+function importSourceBuffer(file) {
+  if (typeof file?.contentBase64 === "string" && file.contentBase64.length > 0) {
+    try {
+      return Buffer.from(file.contentBase64, "base64")
+    } catch {
+      return null
+    }
+  }
+  if (typeof file?.content === "string") return Buffer.from(file.content, "utf8")
+  return null
+}
+
 function sourceStoredPathForFile(file, index, usedStoredPaths) {
   if (typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)) {
     const storedPath = toProjectPath(file.storedPath)
@@ -561,6 +632,7 @@ module.exports = {
   isProjectDirectoryPath,
   legacyProjectManifestFile,
   legacyProjectStateFile,
+  materializeImportSourceFile,
   projectDirectoryExtension,
   projectManifestFile,
   projectMetadataDirectory,

@@ -1,6 +1,6 @@
 const { spawn } = require("node:child_process")
+const fs = require("node:fs")
 const path = require("node:path")
-const { runEmbeddedEngineRequest } = require("./embedded-engine.cjs")
 
 const defaultRepoRoot = path.resolve(__dirname, "..", "..")
 const defaultTimeoutMs = 5000
@@ -10,23 +10,7 @@ function getEngineStatus(options = {}) {
 }
 
 async function runEngineRequest(request, options = {}) {
-  if (options.preferEmbedded || process.env.RXNFLOW_ENGINE_RUNTIME === "embedded") {
-    return runEmbeddedEngineRequest(request)
-  }
-  const response = await runPythonEngineRequest(request, options)
-  if (!shouldFallbackToEmbedded(response)) return response
-  const embeddedResponse = await runEmbeddedEngineRequest(request)
-  if (!embeddedResponse.ok) return embeddedResponse
-  return {
-    ...embeddedResponse,
-    warnings: [
-      ...(Array.isArray(embeddedResponse.warnings) ? embeddedResponse.warnings : []),
-      {
-        code: "python_engine_unavailable",
-        message: response.error?.message || "Python engine unavailable; using embedded desktop engine.",
-      },
-    ],
-  }
+  return runPythonEngineRequest(request, options)
 }
 
 function runPythonEngineRequest(request, options = {}) {
@@ -107,11 +91,6 @@ function runPythonEngineRequest(request, options = {}) {
   })
 }
 
-function shouldFallbackToEmbedded(response) {
-  if (response?.ok) return false
-  return ["engine_unavailable", "engine_timeout", "engine_bad_response", "engine_write_failed"].includes(response?.error?.code)
-}
-
 function parseEngineResponse(output) {
   const line = output.trim().split(/\r?\n/).filter(Boolean).at(-1)
   if (!line) return null
@@ -127,7 +106,37 @@ function resolveEngineCommand() {
     const parts = process.env.RXNFLOW_ENGINE_COMMAND.split(" ").filter(Boolean)
     return [parts[0], parts.slice(1)]
   }
+  const executableName = engineExecutableName()
+  if (isPackagedAppRuntime() && process.resourcesPath) {
+    return [path.join(process.resourcesPath, "engine", executableName), []]
+  }
+  const bundledEngine = bundledEngineCommand()
+  if (bundledEngine) return bundledEngine
   return [process.env.RXNFLOW_PYTHON || "python3", ["-m", "rxnflow.engine_ipc"]]
+}
+
+function bundledEngineCommand() {
+  const executableName = engineExecutableName()
+  const candidates = [
+    process.resourcesPath ? path.join(process.resourcesPath, "engine", executableName) : null,
+    path.join(__dirname, "..", "engine", executableName),
+  ].filter(Boolean)
+  const enginePath = candidates.find((candidate) => {
+    try {
+      return fs.statSync(candidate).isFile()
+    } catch {
+      return false
+    }
+  })
+  return enginePath ? [enginePath, []] : null
+}
+
+function engineExecutableName() {
+  return process.platform === "win32" ? "rxnflow-engine.exe" : "rxnflow-engine"
+}
+
+function isPackagedAppRuntime() {
+  return __dirname.split(path.sep).includes("app.asar")
 }
 
 function engineEnvironment(repoRoot) {

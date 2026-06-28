@@ -4,6 +4,9 @@ __pycache__/
 node_modules/
 web/dist/
 web/release/
+web/.engine-build/
+web/engine/rxnflow-engine
+web/engine/rxnflow-engine.exe
 web/.vite/
 web/playwright-report/
 web/test-results/

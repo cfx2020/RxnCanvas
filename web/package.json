@@ -10,16 +10,17 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "desktop": "npm run desktop:icons && npm run build && electron electron/main.cjs",
+    "desktop:engine": "node scripts/build-engine.cjs",
     "desktop:icons": "node scripts/generate-icons.cjs",
     "desktop:smoke": "node electron/smoke.cjs",
     "desktop:release:smoke": "npm run desktop:icons && node electron/release-smoke.cjs",
     "desktop:runtime:smoke": "node electron/runtime-smoke.cjs",
     "desktop:installer:smoke:win": "node electron/windows-installer-smoke.cjs",
-    "desktop:pack": "npm run desktop:icons && npm run build && electron-builder --mac dir --publish never --config.mac.identity=null",
-    "desktop:pack:win": "npm run desktop:icons && npm run build && electron-builder --win --x64 --dir --publish never",
-    "desktop:dist:mac": "npm run desktop:icons && npm run build && electron-builder --mac --publish never",
+    "desktop:pack": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --mac dir --publish never --config.mac.identity=null",
+    "desktop:pack:win": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --win --x64 --dir --publish never",
+    "desktop:dist:mac": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --mac --publish never",
     "desktop:notarize:mac": "node scripts/notarize-mac.cjs",
-    "desktop:dist:win": "npm run desktop:icons && npm run build && electron-builder --win --x64 --publish never",
+    "desktop:dist:win": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --win --x64 --publish never",
     "test": "vitest run"
   },
   "dependencies": {
@@ -60,6 +61,15 @@
       "electron/**/*",
       "build/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "engine",
+        "to": "engine",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "mac": {
       "category": "public.app-category.developer-tools",

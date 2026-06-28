@@ -11,7 +11,7 @@ function main() {
   verifyBuilderConfiguration()
   verifyReleaseScripts()
   verifyRendererAssetBase()
-  verifyEmbeddedEngineConfiguration()
+  verifyBundledEngineConfiguration()
   verifyRuntimeSmokeScript()
   verifyWindowsInstallerSmokeScript()
   verifyMacSigningConfiguration()
@@ -22,7 +22,7 @@ function main() {
 
   console.log("RxnFlow release configuration ready")
   console.log("RxnFlow packaged renderer asset paths ready")
-  console.log("RxnFlow embedded desktop engine ready")
+  console.log("RxnFlow bundled Python engine configuration ready")
   console.log("RxnFlow desktop icon assets ready")
   console.log("RxnFlow desktop runtime smoke ready")
   console.log("RxnFlow Windows installer smoke ready")
@@ -30,18 +30,25 @@ function main() {
   console.log("Windows x64 artifacts checked when present")
 }
 
-function verifyEmbeddedEngineConfiguration() {
-  const embeddedEnginePath = path.join(projectRoot, "electron", "embedded-engine.cjs")
-  assert(fs.existsSync(embeddedEnginePath), "missing electron/embedded-engine.cjs")
-  const buildFiles = packageJson.build?.files ?? []
-  assert(buildFiles.includes("electron/**/*"), "build.files must package Electron engine files")
+function verifyBundledEngineConfiguration() {
+  const removedEnginePath = path.join(projectRoot, "electron", "embedded-engine.cjs")
+  const buildScriptPath = path.join(projectRoot, "scripts", "build-engine.cjs")
+  const entryPath = path.join(projectRoot, "scripts", "engine-entry.py")
   const bridgeSource = fs.readFileSync(path.join(projectRoot, "electron", "engine-bridge.cjs"), "utf8")
-  const embeddedSource = fs.readFileSync(embeddedEnginePath, "utf8")
-  assert(bridgeSource.includes("runEmbeddedEngineRequest"), "engine bridge must call embedded engine fallback")
-  assert(bridgeSource.includes("shouldFallbackToEmbedded"), "engine bridge must restrict fallback to unavailable Python engine failures")
-  assert(embeddedSource.includes("rxnflow-embedded-engine-v1"), "embedded engine version missing")
-  assert(embeddedSource.includes("import.register_all"), "embedded engine must support import.register_all")
-  assert(embeddedSource.includes("project.validate"), "embedded engine must support project.validate")
+  const buildScript = fs.readFileSync(buildScriptPath, "utf8")
+  const extraResources = packageJson.build?.extraResources ?? []
+  const engineResource = extraResources.find((resource) => resource?.from === "engine" && resource?.to === "engine")
+
+  assert(!fs.existsSync(removedEnginePath), "electron/embedded-engine.cjs must be removed")
+  assert(fs.existsSync(buildScriptPath), "missing scripts/build-engine.cjs")
+  assert(fs.existsSync(entryPath), "missing scripts/engine-entry.py")
+  assert(engineResource, "build.extraResources must copy engine/ into app resources")
+  assert(buildScript.includes("--collect-all") && buildScript.includes("cclib"), "engine build must collect bundled cclib")
+  assert(bridgeSource.includes("bundledEngineCommand"), "engine bridge must prefer the bundled engine executable")
+  assert(bridgeSource.includes("isPackagedAppRuntime"), "packaged app must require the bundled engine executable")
+  assert(bridgeSource.includes("rxnflow.engine_ipc"), "engine bridge must keep the development Python IPC entry")
+  assert(!bridgeSource.includes("runEmbeddedEngineRequest"), "engine bridge must not call embedded engine fallback")
+  assert(!bridgeSource.includes("shouldFallbackToEmbedded"), "engine bridge must not keep embedded fallback routing")
 }
 
 function verifyRendererAssetBase() {
@@ -92,6 +99,9 @@ function verifyBuilderConfiguration() {
   for (const requiredPattern of ["dist/**/*", "electron/**/*", "build/**/*", "package.json"]) {
     assert(buildFiles.includes(requiredPattern), `build.files missing ${requiredPattern}`)
   }
+  assert(!buildFiles.includes("engine/**/*"), "engine executable must be copied as extraResources, not packed into app.asar")
+  const extraResources = packageJson.build?.extraResources ?? []
+  assert(extraResources.some((resource) => resource?.from === "engine" && resource?.to === "engine"), "build.extraResources must include engine/")
   assert(packageJson.build?.directories?.buildResources === "build", "buildResources must point to build")
   assert(packageJson.build?.icon === "build/icon.png", "build.icon must point to build/icon.png")
 
@@ -111,16 +121,21 @@ function verifyBuilderConfiguration() {
 
 function verifyReleaseScripts() {
   const scripts = packageJson.scripts ?? {}
+  assert(scripts["desktop:engine"] === "node scripts/build-engine.cjs", "desktop:engine must build the bundled Python engine")
+  assert(scripts["desktop:pack"]?.includes("npm run desktop:engine"), "desktop:pack must build the bundled Python engine")
   assert(scripts["desktop:pack"]?.includes("electron-builder --mac dir"), "desktop:pack must build macOS unpacked app")
   assert(scripts["desktop:pack"]?.includes("--publish never"), "desktop:pack must not publish local unpacked app")
   assert(scripts["desktop:pack"]?.includes("--config.mac.identity=null"), "desktop:pack must skip macOS signing for local validation")
+  assert(scripts["desktop:dist:mac"]?.includes("npm run desktop:engine"), "desktop:dist:mac must build the bundled Python engine")
   assert(scripts["desktop:dist:mac"]?.includes("electron-builder --mac"), "desktop:dist:mac missing")
   assert(scripts["desktop:dist:mac"]?.includes("--publish never"), "desktop:dist:mac must not publish local artifacts")
   assert(scripts["desktop:notarize:mac"] === "node scripts/notarize-mac.cjs", "desktop:notarize:mac missing")
   assert(scripts["desktop:runtime:smoke"] === "node electron/runtime-smoke.cjs", "desktop:runtime:smoke missing")
   assert(scripts["desktop:installer:smoke:win"] === "node electron/windows-installer-smoke.cjs", "desktop:installer:smoke:win missing")
+  assert(scripts["desktop:dist:win"]?.includes("npm run desktop:engine"), "desktop:dist:win must build the bundled Python engine")
   assert(scripts["desktop:dist:win"]?.includes("electron-builder --win --x64"), "desktop:dist:win must target Windows x64")
   assert(scripts["desktop:dist:win"]?.includes("--publish never"), "desktop:dist:win must not publish local artifacts")
+  assert(scripts["desktop:pack:win"]?.includes("npm run desktop:engine"), "desktop:pack:win must build the bundled Python engine")
   assert(scripts["desktop:pack:win"]?.includes("electron-builder --win --x64 --dir"), "desktop:pack:win must target Windows x64 unpacked")
   assert(scripts["desktop:pack:win"]?.includes("--publish never"), "desktop:pack:win must not publish local unpacked app")
 }
@@ -148,6 +163,7 @@ function verifyRuntimeSmokeScript() {
   const smokeSource = fs.readFileSync(runtimeSmokePath, "utf8")
   assert(mainSource.includes("--rxnflow-smoke-exit"), "Electron main must support --rxnflow-smoke-exit")
   assert(mainSource.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK"), "Electron main must emit runtime smoke success marker")
+  assert(mainSource.includes("desktop packaged runtime must use bundled Python engine with cclib"), "runtime smoke must verify bundled Python+cclib")
   assert(mainSource.includes("forbiddenRuntimeUiTerms"), "Electron runtime smoke must guard inactive UI terms")
   assert(mainSource.includes("node inspector and floating export trigger"), "Electron runtime smoke must verify active node inspector/export trigger")
   assert(mainSource.includes("PNG|XLSX|CDXML"), "Electron runtime smoke must verify active export menu formats")
@@ -184,6 +200,8 @@ function verifyReleaseWorkflow() {
   for (const requiredText of [
     "macos-14",
     "windows-latest",
+    "actions/setup-python@v5",
+    "python-version: \"3.12\"",
     "npm run desktop:pack",
     "npm run desktop:pack:win",
     "npm run desktop:runtime:smoke",
@@ -207,6 +225,7 @@ function verifyCurrentPlatformUnpackedApp() {
   const executablePath = path.join(appPath, "Contents", "MacOS", "RxnFlow")
   const asarPath = path.join(appPath, "Contents", "Resources", "app.asar")
   const resourcesIconPath = path.join(appPath, "Contents", "Resources", "icon.icns")
+  const enginePath = path.join(appPath, "Contents", "Resources", "engine", "rxnflow-engine")
 
   assert(fs.existsSync(infoPlistPath), "mac unpacked app missing Info.plist")
   assert(fs.existsSync(executablePath), "mac unpacked app missing executable")
@@ -225,6 +244,8 @@ function verifyCurrentPlatformUnpackedApp() {
   }
   assert(fs.existsSync(resourcesIconPath), "mac unpacked app missing icon.icns")
   assert(infoPlist.includes("icon.icns"), "Info.plist missing app icon reference")
+  assert(fs.existsSync(enginePath), "mac unpacked app missing bundled rxnflow-engine")
+  assert(fs.statSync(enginePath).mode & 0o111, "bundled rxnflow-engine is not executable")
 }
 
 function verifyWindowsUnpackedApp() {
@@ -233,9 +254,15 @@ function verifyWindowsUnpackedApp() {
 
   const executablePath = path.join(appPath, "RxnFlow.exe")
   const asarPath = path.join(appPath, "resources", "app.asar")
+  const enginePath = path.join(appPath, "resources", "engine", "rxnflow-engine.exe")
+  if (!fs.existsSync(enginePath) && process.platform !== "win32") {
+    console.warn("Existing Windows unpacked app predates bundled engine config; rebuild on Windows to refresh it.")
+    return
+  }
   const requiredFiles = [
     executablePath,
     asarPath,
+    enginePath,
     path.join(appPath, "resources.pak"),
     path.join(appPath, "icudtl.dat"),
     path.join(appPath, "ffmpeg.dll"),
@@ -249,7 +276,9 @@ function verifyWindowsUnpackedApp() {
   }
   assert(fs.statSync(executablePath).size > 50 * 1024 * 1024, "RxnFlow.exe is unexpectedly small")
   assert(fs.statSync(asarPath).size > 1024 * 1024, "Windows app.asar is unexpectedly small")
+  assert(fs.statSync(enginePath).size > 1024 * 1024, "Windows bundled rxnflow-engine.exe is unexpectedly small")
   assertWindowsX64Executable(executablePath)
+  assertWindowsExecutable(enginePath, "Windows bundled rxnflow-engine.exe")
 }
 
 function assertWindowsX64Executable(executablePath) {
