@@ -11715,6 +11715,12 @@ select,
   background: rgba(255, 255, 255, 0.72);
   box-shadow: 0 18px 44px rgba(55, 78, 96, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.68);
   backdrop-filter: blur(16px);
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvas-image-annotation.is-dragging {
+  cursor: grabbing;
 }
 
 .canvas-image-annotation img {
@@ -14134,9 +14140,11 @@ select,
   height: 6px !important;
   min-width: 6px !important;
   display: inline-block !important;
+  overflow: visible !important;
   border-radius: 999px !important;
   background: #ef8f35 !important;
   box-shadow: 0 0 0 3px rgba(239, 143, 53, 0.16) !important;
+  animation: missing-solvation-pulse 1.6s ease-in-out infinite !important;
 }
 
 .app-shell.theme-dark .project-rail .project-file-phase-badges.has-missing-solution {
@@ -14160,7 +14168,7 @@ select,
 
 .reaction-node .node-energy-strip.node-card-meta-row {
   display: grid !important;
-  grid-template-columns: 14px minmax(0, 1fr) auto !important;
+  grid-template-columns: 32px minmax(0, 1fr) auto !important;
   align-items: center !important;
   justify-content: stretch !important;
   gap: 6px !important;
@@ -14200,4 +14208,32 @@ select,
 .app-shell.theme-dark .reaction-node .node-energy-strip.node-card-meta-row .status-light-node.status-light-missing {
   background: #f6a04e !important;
   box-shadow: 0 0 0 4px rgba(246, 160, 78, 0.18), 0 0 18px rgba(246, 160, 78, 0.3) !important;
+}
+
+/* 2026-06-28 macOS zoomed-window chrome guard:
+   A double-click zoom keeps the native traffic lights visible, so the sidebar
+   toggle must keep the same leading reserve instead of moving to x=12. The
+   maximized app can also extend visually under the Dock; lift the minimap only
+   for zoomed non-fullscreen windows. */
+.app-shell.is-macos-desktop.is-window-edge-to-edge,
+.app-shell.is-macos-desktop.is-window-fullscreen,
+.app-shell.is-macos-desktop.is-window-maximized {
+  --rxnflow-titlebar-left-button-left: 104px !important;
+  --rxnflow-left-collapsed-workbench-reserve: 150px !important;
+}
+
+.app-shell.is-macos-desktop.is-window-edge-to-edge .desktop-titlebar-shell .left-sidebar-fixed-toggle,
+.app-shell.is-macos-desktop.is-window-fullscreen .desktop-titlebar-shell .left-sidebar-fixed-toggle,
+.app-shell.is-macos-desktop.is-window-maximized .desktop-titlebar-shell .left-sidebar-fixed-toggle {
+  left: var(--rxnflow-titlebar-left-button-left, 104px) !important;
+}
+
+.app-shell.is-macos-desktop.is-window-edge-to-edge.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs,
+.app-shell.is-macos-desktop.is-window-fullscreen.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs,
+.app-shell.is-macos-desktop.is-window-maximized.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
+  left: var(--rxnflow-left-collapsed-workbench-reserve, 150px) !important;
+}
+
+.app-shell.is-macos-desktop.is-window-maximized:not(.is-window-fullscreen) .minimap-stack {
+  bottom: max(18px, calc(env(safe-area-inset-bottom, 0px) + 72px)) !important;
 }
