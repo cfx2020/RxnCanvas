@@ -123,7 +123,7 @@ export function normalizeVibrationalModes(
       forceConstant: optionalFiniteNumber(mode.forceConstant),
       irIntensityKmMol: optionalFiniteNumber(mode.irIntensityKmMol),
       ramanActivity: optionalFiniteNumber(mode.ramanActivity),
-      source: mode.source === "cclib" || mode.source === "embedded-text" ? mode.source : "rxnflow-text",
+      source: mode.source === "cclib" ? "cclib" : "rxnflow-text",
     })
   })
   return { modes, warnings }

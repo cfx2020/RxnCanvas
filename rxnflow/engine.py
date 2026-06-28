@@ -207,7 +207,7 @@ class VibrationalMode:
     forceConstant: float | None = None
     irIntensityKmMol: float | None = None
     ramanActivity: float | None = None
-    source: Literal["cclib", "rxnflow-text", "embedded-text"] = "rxnflow-text"
+    source: Literal["cclib", "rxnflow-text"] = "rxnflow-text"
 
 
 @dataclass(frozen=True)
@@ -342,12 +342,51 @@ def parse_source_file(name: str, preview: str, source_path: str | None = None) -
         return text_result
     cclib_result, cclib_warning = parse_cclib_full_file(name, source_path, full_text, text_result)
     if cclib_result is None:
-        return append_parse_warning(text_result, cclib_warning) if cclib_warning is not None else text_result
+        return cclib_required_failed_source_result(name, text_result, cclib_warning)
     return merge_cclib_text_result(cclib_result, text_result)
 
 
 def append_parse_warning(result: SourceParseResult, warning: ParseWarning) -> SourceParseResult:
     return replace(result, warnings=(*result.warnings, warning))
+
+
+def cclib_required_failed_source_result(
+    name: str,
+    text_result: SourceParseResult,
+    warning: ParseWarning | None,
+) -> SourceParseResult:
+    source_kind = "Computational"
+    parser_base = cclib_parser_base(source_kind)
+    warnings = (
+        warning
+        if warning is not None
+        else ParseWarning("cclib_parse_empty", "cclib did not return parsed data; standard fields were left empty.", name),
+    )
+    return SourceParseResult(
+        label=basename_without_extension(name),
+        sourceKind=source_kind,
+        formula="pending",
+        kind=text_result.kind,
+        method="unparsed source",
+        solvent=text_result.solvent,
+        energyGas=None,
+        energySolution=None,
+        energyUnit="kcal/mol",
+        parsed=False,
+        parserId=parser_id_for_scope(parser_base, "full-file"),
+        parserVersion=PARSER_VERSION,
+        objectCount=0,
+        warnings=(warnings,),
+        candidates=(),
+        coordinatePreview=None,
+        energyTable=None,
+        parseScope="full-file",
+        confidence="high",
+        terminationStatus=text_result.terminationStatus,
+        terminationLabel=text_result.terminationLabel,
+        jobCpuTime=text_result.jobCpuTime,
+        elapsedTime=text_result.elapsedTime,
+    )
 
 
 def should_try_cclib(name: str, full_text: str) -> bool:
@@ -370,6 +409,39 @@ def should_try_cclib(name: str, full_text: str) -> bool:
     )
 
 
+def cclib_read_full_file(cclib_module: Any, source_path: str) -> tuple[Any | None, str]:
+    path = str(Path(source_path).expanduser())
+    parser = cclib_module.io.ccopen(path, quiet=True)
+    if parser is None:
+        return None, "Computational"
+    data = parser.parse()
+    return data, cclib_source_kind_from_parser(parser, data)
+
+
+def cclib_source_kind_from_parser(parser: Any, data: Any) -> str:
+    parser_name = parser.__class__.__name__
+    metadata = getattr(data, "metadata", None)
+    metadata_package = metadata.get("package") if isinstance(metadata, dict) else None
+    candidates = [parser_name, metadata_package]
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+        lower = candidate.lower()
+        if "gaussian" in lower:
+            return "Gaussian"
+        if "orca" in lower:
+            return "ORCA"
+    return "Computational"
+
+
+def cclib_parser_base(source_kind: str) -> str:
+    if source_kind == "Gaussian":
+        return "gaussian-log-cclib"
+    if source_kind == "ORCA":
+        return "orca-output-cclib"
+    return "computational-output-cclib"
+
+
 def parse_cclib_full_file(
     name: str,
     source_path: str,
@@ -379,8 +451,8 @@ def parse_cclib_full_file(
     """Parse a complete computational output with cclib when available.
 
     cclib is intentionally used behind the Python engine boundary. The renderer
-    still receives structured fields only, and the custom text parser remains
-    the fallback/overlay for RxnFlow-specific Gaussian workbook columns.
+    still receives structured fields only; RxnFlow text parsing is used for
+    app-specific metadata, not to fill cclib-owned standard fields.
     """
 
     try:
@@ -388,23 +460,23 @@ def parse_cclib_full_file(
     except (ImportError, ModuleNotFoundError) as exc:
         return None, ParseWarning(
             "cclib_unavailable",
-            f"cclib is not available; parser used RxnFlow text extraction only. {exc}",
+            f"cclib is not available; standard cclib fields were left empty. {exc}",
             name,
         )
 
     try:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            data = cclib.io.ccread(str(Path(source_path).expanduser()))
+            data, source_kind = cclib_read_full_file(cclib, source_path)
     except Exception as exc:  # pragma: no cover - cclib exception types vary by version/parser
         return None, ParseWarning(
             "cclib_parse_failed",
-            f"cclib could not parse this full output; parser used RxnFlow text extraction only. {exc}",
+            f"cclib could not parse this full output; standard cclib fields were left empty. {exc}",
             name,
         )
     if data is None:
         return None, ParseWarning(
             "cclib_parse_empty",
-            "cclib did not return parsed data; parser used RxnFlow text extraction only.",
+            "cclib did not return parsed data; standard cclib fields were left empty.",
             name,
         )
 
@@ -418,17 +490,14 @@ def parse_cclib_full_file(
     charge = optional_int_from_any(getattr(data, "charge", None))
     spin = optional_int_from_any(getattr(data, "mult", None))
     method = cclib_method_from_data(data) or text_result.method
-    energy_table = cclib_energy_table_from_data(name, data, full_text)
+    energy_table = cclib_energy_table_from_data(name, data)
     energy_gas = energy_table.egasHartree if energy_table is not None else None
-    if energy_gas is None:
-        energy_gas = text_result.energyGas
     energy_solution = (
         energy_table.ggasHartree
         if energy_table is not None and energy_table.ggasHartree is not None
-        else text_result.energySolution
+        else None
     )
-    source_kind = text_result.sourceKind if text_result.sourceKind in {"Gaussian", "ORCA"} else cclib_source_kind(name, full_text)
-    parser_base = "gaussian-log-cclib" if source_kind == "Gaussian" else "orca-output-cclib"
+    parser_base = cclib_parser_base(source_kind)
     candidate = parse_candidate(
         object_index=0,
         label=basename_without_extension(name),
@@ -437,7 +506,7 @@ def parse_cclib_full_file(
         energy_gas=energy_gas,
         energy_solution=energy_solution,
         energy_unit="hartree" if energy_gas is not None or energy_solution is not None else "kcal/mol",
-        coordinate_preview=coordinate_preview_from_atoms(atoms, vibration_modes) or text_result.coordinatePreview,
+        coordinate_preview=coordinate_preview_from_atoms(atoms, vibration_modes),
         role_hint=role_hint_from_name(name),
         charge=charge,
         spin_multiplicity=spin,
@@ -463,23 +532,23 @@ def parse_cclib_full_file(
 def merge_cclib_text_result(cclib_result: SourceParseResult, text_result: SourceParseResult) -> SourceParseResult:
     """Merge cclib standard fields with RxnFlow-specific text fields.
 
-    cclib is the primary source for standard computational fields such as
-    energies, atom-derived formula, method, charge/multiplicity, and
-    coordinates. The RxnFlow text parser fills gaps and contributes
-    app-specific metadata such as source kind, solvent, role hints, and labels.
+    cclib is the only source for cclib-owned standard fields such as package
+    kind, energies, free energies, basis counts, and coordinates. The RxnFlow text parser
+    contributes app-specific metadata such as solvent, role hints, labels, and
+    termination diagnostics.
     """
 
     cclib_primary = cclib_result.candidates[0] if cclib_result.candidates else None
     text_primary = text_result.candidates[0] if text_result.candidates else None
-    merged_table = merge_energy_tables(cclib_primary.energyTable if cclib_primary else cclib_result.energyTable, text_result.energyTable)
-    merged_coordinate_preview = cclib_result.coordinatePreview or text_result.coordinatePreview
+    merged_table = cclib_primary.energyTable if cclib_primary else cclib_result.energyTable
+    merged_coordinate_preview = cclib_result.coordinatePreview
     merged_candidate = parse_candidate(
         object_index=0,
         label=text_primary.label if text_primary is not None else cclib_result.label,
         formula=prefer_parsed_text(cclib_result.formula, text_result.formula, "pending"),
         method=prefer_parsed_text(cclib_result.method, text_result.method, "unassigned"),
-        energy_gas=coalesce_float(cclib_result.energyGas, text_result.energyGas),
-        energy_solution=coalesce_float(cclib_result.energySolution, text_result.energySolution),
+        energy_gas=cclib_result.energyGas,
+        energy_solution=cclib_result.energySolution,
         energy_unit="hartree",
         coordinate_preview=merged_coordinate_preview,
         role_hint=text_primary.roleHint if text_primary is not None else (cclib_primary.roleHint if cclib_primary else role_hint_from_name(cclib_result.label)),
@@ -490,11 +559,11 @@ def merge_cclib_text_result(cclib_result: SourceParseResult, text_result: Source
     )
     return source_result_from_candidates(
         label=merged_candidate.label,
-        source_kind=text_result.sourceKind if text_result.parsed else cclib_result.sourceKind,
+        source_kind=cclib_result.sourceKind,
         kind=text_result.kind,
         solvent=text_result.solvent,
         parser_id=parser_id_for_scope(
-            "gaussian-log-cclib+rxnflow-text" if (text_result.sourceKind if text_result.parsed else cclib_result.sourceKind) == "Gaussian" else "orca-output-cclib+rxnflow-text",
+            f"{cclib_parser_base(cclib_result.sourceKind)}+rxnflow-text",
             "full-file",
         ),
         parser_version=PARSER_VERSION,
@@ -561,7 +630,7 @@ def gaussian_vibrational_modes_from_text(
     source_text: str,
     atom_count: int,
     target: str,
-    source: Literal["rxnflow-text", "embedded-text"] = "rxnflow-text",
+    source: Literal["rxnflow-text"] = "rxnflow-text",
 ) -> tuple[tuple[VibrationalMode, ...], tuple[ParseWarning, ...]]:
     if atom_count <= 0:
         return (), ()
@@ -687,7 +756,7 @@ def optional_list_float(values: list[float], index: int) -> float | None:
     return values[index] if index < len(values) else None
 
 
-def cclib_energy_table_from_data(name: str, data: Any, full_text: str) -> ParsedEnergyTableData | None:
+def cclib_energy_table_from_data(name: str, data: Any) -> ParsedEnergyTableData | None:
     scf_hartree = cclib_last_scf_hartree(data)
     free_energy = cclib_free_energy_hartree(data)
     basis_functions = optional_int_from_any(getattr(data, "nbasis", None))
@@ -701,8 +770,6 @@ def cclib_energy_table_from_data(name: str, data: Any, full_text: str) -> Parsed
         solBasisFunctions=basis_functions if is_solution else None,
         standardStateCorrectionHartree=ONE_M_STANDARD_STATE_CORRECTION_HARTREE if free_energy is not None else None,
     )
-    exact_text_table = gaussian_energy_table(full_text) if "scf done:" in full_text.lower() else orca_energy_table(full_text)
-    table = merge_energy_tables(table, exact_text_table)
     if is_solution and table is not None:
         table = replace(
             table,
@@ -731,13 +798,6 @@ def cclib_free_energy_hartree(data: Any) -> float | None:
         return parsed if math.isfinite(parsed) else None
     except (TypeError, ValueError):
         return None
-
-
-def cclib_source_kind(name: str, full_text: str) -> str:
-    lower = f"{name}\n{full_text[:12000]}".lower()
-    if "o   r   c   a" in lower or "orca terminated" in lower or name.lower().endswith(".orca"):
-        return "ORCA"
-    return "Gaussian"
 
 
 def cclib_method_from_data(data: Any) -> str | None:
@@ -1061,7 +1121,7 @@ def vibrational_modes_from_payload(payload: Any, atom_count: int, target: str) -
         if kind not in {"imaginary", "real", "unknown"}:
             kind = "imaginary" if frequency < 0 else "real"
         source = raw_mode.get("source")
-        if source not in {"cclib", "rxnflow-text", "embedded-text"}:
+        if source not in {"cclib", "rxnflow-text"}:
             source = "rxnflow-text"
         modes.append(VibrationalMode(
             modeId=string_or_default(raw_mode.get("modeId"), vibration_mode_id(mode_index, frequency)),
@@ -1859,11 +1919,24 @@ def classify_computation_termination(source_text: str) -> dict[str, ComputationT
     latest_error = errors[0] if errors else None
     if latest_error and int(latest_error["index"]) > normal_end:
         return {"label": "error", "status": "error"}
+    if normal and gaussian_job_continues_after(source_text, normal_end):
+        return {"label": "running", "status": "running"}
     if normal:
         return {"label": "normal", "status": "normal"}
     if latest_error:
         return {"label": "error", "status": "error"}
     return {"label": "unknown", "status": "unknown"}
+
+
+def gaussian_job_continues_after(source_text: str, offset: int) -> bool:
+    if offset < 0:
+        return False
+    tail = source_text[offset:]
+    return bool(re.search(
+        r"(?:^|\n)\s*(?:Link1:|Entering Link|#\s*[A-Za-z]|Charge\s*=\s*-?\d+\s+Multiplicity\s*=|Input orientation:|Standard orientation:|SCF Done:|Frequencies\s+--)",
+        tail,
+        re.IGNORECASE,
+    ))
 
 
 def job_cpu_time_from_source(source_text: str) -> str | None:

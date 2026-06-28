@@ -38,7 +38,7 @@ export type VibrationalMode = {
   forceConstant?: number | null
   irIntensityKmMol?: number | null
   ramanActivity?: number | null
-  source: "cclib" | "rxnflow-text" | "embedded-text"
+  source: "cclib" | "rxnflow-text"
 }
 
 export type CoordinatePreview = {

@@ -13,6 +13,11 @@ from rxnflow.engine import EV_TO_HARTREE, parse_source_file, parse_source_previe
 from rxnflow.engine_ipc import ENGINE_VERSION, handle_request
 
 
+def fake_cclib_module(data: SimpleNamespace, parser_name: str = "Gaussian") -> SimpleNamespace:
+    parser_type = type(parser_name, (), {"parse": lambda self: data})
+    return SimpleNamespace(io=SimpleNamespace(ccopen=lambda _path, quiet=True: parser_type()))
+
+
 class EngineSmokeTest(unittest.TestCase):
     def test_demo_flow_exports_to_json(self) -> None:
         flow = demo_flow()
@@ -28,6 +33,9 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertTrue(status["ok"])
         self.assertEqual(status["data"]["status"], "ready")
         self.assertEqual(status["data"]["engineVersion"], ENGINE_VERSION)
+        self.assertIn(status["data"]["runtime"], {"python", "bundled-python"})
+        self.assertIn("cclib", status["data"]["dependencies"])
+        self.assertIn("available", status["data"]["dependencies"]["cclib"])
         self.assertIn("flow.demo", status["data"]["capabilities"])
         self.assertIn("import.preview", status["data"]["capabilities"])
         self.assertIn("import.register_all", status["data"]["capabilities"])
@@ -133,6 +141,25 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertAlmostEqual(parse["energyTable"]["ggasHartree"], -76.4)
         self.assertAlmostEqual(parse["energyTable"]["ggas1mHartree"], -76.396981)
 
+    def test_engine_import_preview_does_not_mark_intermediate_gaussian_normal_as_final(self) -> None:
+        parsed = parse_source_preview(
+            "opt-freq.log",
+            "\n".join([
+                "Entering Gaussian System",
+                "Stoichiometry H2O",
+                "SCF Done: E(RB3LYP) = -76.431 A.U.",
+                "Normal termination of Gaussian 16 at Tue Jun 23 10:00:00 2026.",
+                "Link1:",
+                "#p rb3lyp/6-31g(d) freq",
+                "Charge = 0 Multiplicity = 1",
+                "SCF Done: E(RB3LYP) = -76.432 A.U.",
+            ]),
+        )
+
+        self.assertTrue(parsed.parsed)
+        self.assertEqual(parsed.terminationStatus, "running")
+        self.assertEqual(parsed.terminationLabel, "running")
+
     def test_engine_import_preview_extracts_gaussian_vibration_modes(self) -> None:
         parsed = parse_source_preview(
             "ts-vibration.log",
@@ -167,7 +194,7 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(len(modes[0].displacements), 3)
         self.assertEqual(modes[0].displacements[0].atomIndex, 0)
 
-    def test_engine_import_preview_uses_cclib_standard_fields_before_text_fallback(self) -> None:
+    def test_engine_import_preview_uses_cclib_standard_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source_path = Path(directory) / "cclib-gaussian.log"
             source_path.write_text(
@@ -202,7 +229,7 @@ class EngineSmokeTest(unittest.TestCase):
                 nbasis=7,
                 metadata={"methods": ["B3LYP"]},
             )
-            fake_cclib = SimpleNamespace(io=SimpleNamespace(ccread=lambda _path: fake_data))
+            fake_cclib = fake_cclib_module(fake_data)
             sentinel = object()
             previous = sys.modules.get("cclib", sentinel)
             sys.modules["cclib"] = fake_cclib
@@ -225,6 +252,124 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(parsed.coordinatePreview.vibrationModes[0].source if parsed.coordinatePreview else "", "cclib")
         self.assertAlmostEqual(parsed.energyTable.egasHartree if parsed.energyTable else 0, -76.5)
         self.assertAlmostEqual(parsed.energyTable.ggasHartree if parsed.energyTable else 0, -76.39)
+
+    def test_engine_import_preview_does_not_fill_cclib_standard_fields_from_text(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "cclib-missing-energy.log"
+            source_path.write_text(
+                "\n".join([
+                    "Entering Gaussian System",
+                    "Stoichiometry H2O",
+                    "NBasis=    7 RedAO= T",
+                    "SCF Done: E(RB3LYP) = -76.431000 A.U.",
+                    "Sum of electronic and thermal Free Energies= -76.400000",
+                ]),
+                encoding="utf8",
+            )
+            fake_data = SimpleNamespace(
+                atomnos=[8, 1, 1],
+                atomcoords=[[
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.96],
+                    [0.92, 0.0, -0.24],
+                ]],
+                charge=0,
+                mult=1,
+                metadata={"methods": ["B3LYP"]},
+            )
+            fake_cclib = fake_cclib_module(fake_data)
+            sentinel = object()
+            previous = sys.modules.get("cclib", sentinel)
+            sys.modules["cclib"] = fake_cclib
+            try:
+                parsed = parse_source_file("cclib-missing-energy.log", "", str(source_path))
+            finally:
+                if previous is sentinel:
+                    sys.modules.pop("cclib", None)
+                else:
+                    sys.modules["cclib"] = previous
+
+        self.assertTrue(parsed.parsed)
+        self.assertEqual(parsed.sourceKind, "Gaussian")
+        self.assertIsNone(parsed.energyGas)
+        self.assertIsNone(parsed.energySolution)
+        self.assertIsNone(parsed.energyTable)
+        self.assertIsNone(parsed.candidates[0].energyGas)
+        self.assertIsNone(parsed.candidates[0].energySolution)
+
+    def test_engine_import_preview_does_not_fill_cclib_coordinates_from_text(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "cclib-missing-coordinates.log"
+            source_path.write_text(
+                "\n".join([
+                    "Entering Gaussian System",
+                    "Stoichiometry H2O",
+                    "Standard orientation:",
+                    " ---------------------------------------------------------------------",
+                    " Center     Atomic      Atomic             Coordinates (Angstroms)",
+                    " Number     Number       Type             X           Y           Z",
+                    " ---------------------------------------------------------------------",
+                    "      1          8           0        0.000000    0.000000    0.000000",
+                    "      2          1           0        0.000000    0.000000    0.960000",
+                    "      3          1           0        0.920000    0.000000   -0.240000",
+                    " ---------------------------------------------------------------------",
+                    "SCF Done: E(RB3LYP) = -76.431000 A.U.",
+                    "Sum of electronic and thermal Free Energies= -76.400000",
+                ]),
+                encoding="utf8",
+            )
+            fake_data = SimpleNamespace(
+                scfenergies=[-76.5 / EV_TO_HARTREE],
+                freeenergy=-76.39,
+                nbasis=7,
+                metadata={"methods": ["B3LYP"]},
+            )
+            fake_cclib = fake_cclib_module(fake_data)
+            sentinel = object()
+            previous = sys.modules.get("cclib", sentinel)
+            sys.modules["cclib"] = fake_cclib
+            try:
+                parsed = parse_source_file("cclib-missing-coordinates.log", "", str(source_path))
+            finally:
+                if previous is sentinel:
+                    sys.modules.pop("cclib", None)
+                else:
+                    sys.modules["cclib"] = previous
+
+        self.assertTrue(parsed.parsed)
+        self.assertEqual(parsed.sourceKind, "Gaussian")
+        self.assertIsNone(parsed.coordinatePreview)
+        self.assertIsNone(parsed.candidates[0].coordinatePreview)
+        self.assertAlmostEqual(parsed.energyGas or 0, -76.5)
+
+    def test_engine_import_preview_does_not_use_text_source_kind_when_cclib_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "failed-gaussian.log"
+            source_path.write_text(
+                "\n".join([
+                    "Entering Gaussian System",
+                    "SCF Done: E(RB3LYP) = -76.431000 A.U.",
+                ]),
+                encoding="utf8",
+            )
+            fake_cclib = SimpleNamespace(io=SimpleNamespace(ccopen=lambda _path, quiet=True: None))
+            sentinel = object()
+            previous = sys.modules.get("cclib", sentinel)
+            sys.modules["cclib"] = fake_cclib
+            try:
+                parsed = parse_source_file("failed-gaussian.log", "", str(source_path))
+            finally:
+                if previous is sentinel:
+                    sys.modules.pop("cclib", None)
+                else:
+                    sys.modules["cclib"] = previous
+
+        self.assertFalse(parsed.parsed)
+        self.assertEqual(parsed.sourceKind, "Computational")
+        self.assertEqual(parsed.parserId, "computational-output-cclib-full-file")
+        self.assertIsNone(parsed.energyGas)
+        self.assertIsNone(parsed.energySolution)
+        self.assertIsNone(parsed.energyTable)
 
     def test_engine_import_preview_converts_explicit_xyz_energy_units(self) -> None:
         ev_xyz = parse_source_preview(
