@@ -127,6 +127,20 @@ describe("fileDisplay", () => {
     expect(groups[0].files.map((file) => file.id)).toEqual(["gas", "solution"])
   })
 
+  it("marks solution-only groups as missing their gas counterpart", () => {
+    const solution = sourceFile("solution", "i1p6-sol.log", "Gaussian")
+
+    const groups = sourceFileGroupsForDisplay([solution])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({
+      id: "solution",
+      displayName: "i1p6-sol.log",
+      hasGasLog: false,
+      hasSolutionLog: true,
+    })
+  })
+
   it("derives additive, range, and replacement file selections", () => {
     const gas = sourceFile("gas", "TS1.log", "Gaussian")
     const solution = sourceFile("solution", "TS1-sol.log", "Gaussian")

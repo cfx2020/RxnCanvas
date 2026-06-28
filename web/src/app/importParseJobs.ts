@@ -95,8 +95,17 @@ async function desktopParsedImportSourceFile({
     }
 
     const merged = mergeDesktopImportResult(source, file)
-    if (file.error && !file.parse) {
+    if (file.error) {
       return desktopImportFailureResult(merged, file.error.message, file.error.code)
+    }
+    if (!file.parse) {
+      const warning = file.error
+        ?? response.warnings?.[0]
+        ?? {
+          code: "import_preview_missing",
+          message: "The desktop parser did not return import data for this file.",
+        }
+      return desktopImportFailureResult(merged, warning.message, warning.code)
     }
     return merged
   } catch (error) {

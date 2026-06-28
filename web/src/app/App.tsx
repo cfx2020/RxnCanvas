@@ -11,7 +11,7 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react"
-import { Download, Moon, PanelLeft, PanelRight, Plus, Sun } from "lucide-react"
+import { Download, Moon, PanelLeft, PanelRight, Plus, Sun, X } from "lucide-react"
 import {
   defaultReportExportOptions,
   type ReportExportFormat,
@@ -301,6 +301,15 @@ type ProjectRestoreRuntimeState = {
   activeSnapshot: ProjectWorkspaceSnapshot
 }
 
+type ImportIssueDialogState = {
+  title: string
+  entries: Array<{
+    fileName: string
+    code: string
+    message: string
+  }>
+}
+
 function initialDesktopPreferences(): DesktopPreferences {
   if (typeof window === "undefined" || typeof window.localStorage?.getItem !== "function") {
     return defaultDesktopPreferences
@@ -419,6 +428,7 @@ export function App() {
   const [energyDisplayOptions, setEnergyDisplayOptions] = useState<EnergyDisplayOptions>(() => initialEnergyDisplayOptions())
   const [engineStatus, setEngineStatus] = useState<DesktopEngineStatus | null>(null)
   const [projectValidation, setProjectValidation] = useState<ProjectValidationPayload | null>(null)
+  const [importIssueDialog, setImportIssueDialog] = useState<ImportIssueDialogState | null>(null)
   const [candidateReview, setCandidateReview] = useState<CandidateReviewState | null>(null)
   const [candidateRegisterBusy, setCandidateRegisterBusy] = useState(false)
   const [structurePreviewNodeId, setStructurePreviewNodeId] = useState<string | null>(null)
@@ -1707,6 +1717,14 @@ export function App() {
           parseMode: "defer",
         })
       },
+    }).then((parsedFiles) => {
+      const entries = importIssueDialogEntries(parsedFiles)
+      if (entries.length > 0) {
+        setImportIssueDialog({
+          title: entries.some((entry) => entry.code === "unsupported_format") ? "Unsupported import format" : "Import failed",
+          entries,
+        })
+      }
     }).catch((error: unknown) => {
       setProjectValidation({
         valid: true,
@@ -2765,6 +2783,12 @@ export function App() {
           onSave={saveNodeManualStructure}
         />
       ) : null}
+      {importIssueDialog ? (
+        <ImportIssueDialog
+          issue={importIssueDialog}
+          onClose={() => setImportIssueDialog(null)}
+        />
+      ) : null}
       {candidateReview ? (
         <CandidateReviewSheet
           review={candidateReview}
@@ -2775,6 +2799,50 @@ export function App() {
           onRegisterAll={() => registerCandidateReview("all")}
         />
       ) : null}
+    </div>
+  )
+}
+
+function ImportIssueDialog({ issue, onClose }: { issue: ImportIssueDialogState; onClose: () => void }) {
+  return (
+    <div
+      className="structure-preview-scrim import-issue-scrim"
+      role="presentation"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section
+        className="structure-preview-dialog import-issue-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={issue.title}
+      >
+        <header className="structure-preview-header">
+          <div>
+            <span>Import Report</span>
+            <strong>{issue.title}</strong>
+          </div>
+          <button type="button" className="structure-preview-close-button" aria-label="Close import error" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="structure-preview-body import-issue-body">
+          <article className="structure-dialog-pane import-issue-pane" aria-label="Import errors">
+            <ul>
+              {issue.entries.slice(0, 6).map((entry) => (
+                <li key={`${entry.fileName}-${entry.code}`}>
+                  <span>{entry.fileName}</span>
+                  <em>{entry.message}</em>
+                </li>
+              ))}
+            </ul>
+            {issue.entries.length > 6 ? (
+              <small>{issue.entries.length - 6} more files failed.</small>
+            ) : null}
+          </article>
+        </div>
+      </section>
     </div>
   )
 }
@@ -2877,6 +2945,26 @@ function canvasAutosaveSignature(canvas: ProjectAutosaveInput["canvases"][number
     selectedEdgeIds: canvas.selectedEdgeIds,
     selectedBarrierIds: canvas.selectedBarrierIds,
   }
+}
+
+function importIssueDialogEntries(files: ImportSourceFile[]): ImportIssueDialogState["entries"] {
+  return files.flatMap((file) => {
+    const warning = file.parse?.warnings.find((item) => shouldShowImportIssueDialog(item.code))
+    if (!warning) return []
+    return [{
+      fileName: file.name,
+      code: warning.code,
+      message: warning.message,
+    }]
+  })
+}
+
+function shouldShowImportIssueDialog(code: string): boolean {
+  return code === "unsupported_format"
+    || code === "source_materialize_failed"
+    || code === "full_file_read_failed"
+    || code === "import_preview_missing"
+    || code === "import_preview_failed"
 }
 
 function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: string): SourceFile[] {

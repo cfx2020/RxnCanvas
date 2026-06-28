@@ -160,4 +160,101 @@ describe("importParseJobs", () => {
       target: "failed.log",
     }])
   })
+
+  it("stops pending progress when the backend materializes a file but returns no parse", async () => {
+    const source = {
+      ...importSourceFile("missing-parse"),
+      parse: {
+        ...parseResult("missing-parse"),
+        parsed: false,
+        objectCount: 0,
+        parserId: null,
+        warnings: [{ code: "parse_deferred", message: "waiting" }],
+        candidates: [],
+      },
+    } satisfies ImportSourceFile
+    const importSourceFiles = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        files: [{
+          id: "missing-parse",
+          name: "missing-parse.log",
+          size: 10,
+          preview: "",
+          storedPath: "sources/missing-parse.log",
+          checksum: `sha256:${"a".repeat(64)}`,
+        }],
+      },
+      warnings: [{
+        code: "import_preview_failed",
+        message: "The local parser did not return import preview data.",
+      }],
+    }))
+
+    const [parsedFile] = await desktopParsedImportSourceFiles({
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      projectId: "p1",
+      importedFiles: [source],
+    })
+
+    expect(parsedFile.storedPath).toBe("sources/missing-parse.log")
+    expect(parsedFile.checksum).toBe(`sha256:${"a".repeat(64)}`)
+    expect(parsedFile.status).toBe("staged")
+    expect(parsedFile.parse?.warnings).toEqual([{
+      code: "import_preview_failed",
+      message: "The local parser did not return import preview data.",
+      target: "missing-parse.log",
+    }])
+  })
+
+  it("keeps materialization failures ahead of parser fallback warnings", async () => {
+    const source = {
+      ...importSourceFile("missing-payload"),
+      parse: {
+        ...parseResult("missing-payload"),
+        parsed: false,
+        objectCount: 0,
+        parserId: null,
+        warnings: [{ code: "parse_deferred", message: "waiting" }],
+        candidates: [],
+      },
+    } satisfies ImportSourceFile
+    const fallbackParse = {
+      ...parseResult("missing-payload"),
+      parsed: false,
+      sourceKind: "Raw",
+      objectCount: 0,
+      parserId: null,
+      warnings: [{ code: "unsupported_format", message: "No supported parser recognized this source full-file." }],
+      candidates: [],
+    } satisfies SourceParseResult
+    const importSourceFiles = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        files: [{
+          id: "missing-payload",
+          name: "missing-payload.log",
+          size: 0,
+          preview: "",
+          error: {
+            code: "source_materialize_failed",
+            message: "Could not copy source file because the import payload did not include a readable file path or file content.",
+          },
+          parse: fallbackParse,
+        }],
+      },
+    }))
+
+    const [parsedFile] = await desktopParsedImportSourceFiles({
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      projectId: "p1",
+      importedFiles: [source],
+    })
+
+    expect(parsedFile.parse?.warnings).toEqual([{
+      code: "source_materialize_failed",
+      message: "Could not copy source file because the import payload did not include a readable file path or file content.",
+      target: "missing-payload.log",
+    }])
+  })
 })

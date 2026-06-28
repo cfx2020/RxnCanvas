@@ -493,13 +493,18 @@ function ProjectFileRow({
   const { primaryFile } = group
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
   const reviewFile = group.files.find((file) => (file.parse?.objectCount ?? file.parse?.candidates?.length ?? 0) > 1)
-  const missingSolutionLog = group.hasGasLog && !group.hasSolutionLog
+  const missingPairLog = group.hasGasLog !== group.hasSolutionLog
   const parsing = group.files.some(sourceFileHasPendingDesktopParse)
-  const solvationPairTitle = missingSolutionLog
-    ? "No paired solvation log"
+  const parseIssue = group.files.map(sourceFileParseIssue).find((issue) => issue !== null) ?? null
+  const parseIssueTitle = parseIssue ? `${parseIssue.file.name}: ${parseIssue.message}` : undefined
+  const solvationPairTitle = missingPairLog
+    ? group.hasSolutionLog
+      ? "No paired gas log"
+      : "No paired solvation log"
     : group.hasSolutionLog
       ? "Solvation log paired"
       : undefined
+  const fileStatusTitle = [solvationPairTitle, parseIssueTitle].filter(Boolean).join(" - ") || undefined
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLSpanElement | null>(null)
 
@@ -561,17 +566,23 @@ function ProjectFileRow({
         className="project-file-main"
         aria-pressed={selected}
         aria-label={`${group.displayName} ${group.displayKind}`}
-        title={solvationPairTitle}
+        title={fileStatusTitle}
         onClick={selectFromEvent}
       >
         <span className={`project-file-kind-icon kind-${group.displayKind.toLowerCase()}`} aria-hidden="true">
           <FilePlus2 size={14} />
         </span>
         <span>{group.displayName}</span>
-        {missingSolutionLog ? (
+        {parseIssue ? (
+          <span
+            className="project-file-phase-badges has-parse-error"
+            title={parseIssueTitle}
+            aria-hidden="true"
+          />
+        ) : missingPairLog ? (
           <span
             className="project-file-phase-badges has-missing-solution"
-            title="No paired solvation log"
+            title={solvationPairTitle}
             aria-hidden="true"
           />
         ) : null}
@@ -638,6 +649,19 @@ function sourceFileHasPendingDesktopParse(file: SourceFile): boolean {
     || warning.code === "parse_queued"
     || warning.code === "parse_running"
   ))
+}
+
+function sourceFileParseIssue(file: SourceFile): { file: SourceFile; message: string } | null {
+  if (!file.parse || file.parse.parsed || sourceFileHasPendingDesktopParse(file)) return null
+  const warning = file.parse.warnings.find((item) => !isPendingParseWarning(item.code))
+  return {
+    file,
+    message: warning?.message || "This source could not be parsed.",
+  }
+}
+
+function isPendingParseWarning(code: string): boolean {
+  return code === "parse_deferred" || code === "parse_queued" || code === "parse_running"
 }
 
 function RailSection({

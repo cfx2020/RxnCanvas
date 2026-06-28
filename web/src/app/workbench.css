@@ -14147,6 +14147,18 @@ select,
   animation: missing-solvation-pulse 1.6s ease-in-out infinite !important;
 }
 
+.project-rail .project-file-phase-badges.has-parse-error {
+  width: 6px !important;
+  height: 6px !important;
+  min-width: 6px !important;
+  display: inline-block !important;
+  overflow: visible !important;
+  border-radius: 999px !important;
+  background: #d94a40 !important;
+  box-shadow: 0 0 0 3px rgba(217, 74, 64, 0.16) !important;
+  animation: missing-solvation-pulse 1.6s ease-in-out infinite !important;
+}
+
 .project-rail .project-file-card {
   position: relative !important;
 }
@@ -14191,12 +14203,83 @@ select,
   box-shadow: 0 0 0 3px rgba(246, 160, 78, 0.18) !important;
 }
 
+.app-shell.theme-dark .project-rail .project-file-phase-badges.has-parse-error {
+  background: #ff6b5e !important;
+  box-shadow: 0 0 0 3px rgba(255, 107, 94, 0.2) !important;
+}
+
 .app-shell.theme-dark .project-rail .project-file-progress {
   background: rgba(63, 196, 164, 0.18) !important;
 }
 
 .app-shell.theme-dark .project-rail .project-file-progress > span {
   background: #55d2b0 !important;
+}
+
+.import-issue-dialog {
+  width: min(620px, calc(100vw - var(--structure-left-rail, 0px) - var(--structure-right-rail, 0px) - 44px)) !important;
+  max-height: min(520px, calc(100vh - var(--structure-top-chrome, 48px) - 44px)) !important;
+}
+
+.import-issue-body {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.import-issue-pane {
+  min-height: 0 !important;
+  padding: 0 !important;
+}
+
+.import-issue-dialog ul {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.import-issue-dialog li {
+  display: grid;
+  gap: 5px;
+  padding: 13px 14px;
+  border: 1px solid rgba(217, 74, 64, 0.15);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 249, 247, 0.94), rgba(254, 242, 239, 0.76));
+}
+
+.import-issue-dialog li span,
+.import-issue-dialog li em {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.import-issue-dialog li span {
+  color: #263744;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.import-issue-dialog li em,
+.import-issue-dialog small {
+  color: #7c4b45;
+  font-size: 0.8rem;
+  font-style: normal;
+}
+
+.app-shell.theme-dark .import-issue-dialog li span {
+  color: #e8f2f7;
+}
+
+.app-shell.theme-dark .import-issue-dialog li {
+  border-color: rgba(255, 107, 94, 0.18);
+  background: linear-gradient(180deg, rgba(87, 38, 43, 0.52), rgba(70, 31, 37, 0.42));
+}
+
+.app-shell.theme-dark .import-issue-dialog li em,
+.app-shell.theme-dark .import-issue-dialog small {
+  color: #f2b6af;
 }
 
 @media (max-width: 1180px) {
@@ -14208,7 +14291,8 @@ select,
     display: none !important;
   }
 
-  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main .project-file-phase-badges.has-missing-solution {
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main .project-file-phase-badges.has-missing-solution,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main .project-file-phase-badges.has-parse-error {
     display: inline-block !important;
   }
 }

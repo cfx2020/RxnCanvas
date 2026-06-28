@@ -181,6 +181,38 @@ function parsedOrcaSource(label: string) {
   } as const
 }
 
+function unsupportedSource(label: string, message = "No supported parser recognized this source full-file.") {
+  return {
+    label,
+    sourceKind: "Raw",
+    formula: "pending",
+    kind: "intermediate",
+    method: "unparsed source",
+    solvent: "unassigned",
+    energyGas: null,
+    energySolution: null,
+    energyUnit: "kcal/mol",
+    parsed: false,
+    parserId: null,
+    parserVersion: null,
+    objectCount: 0,
+    warnings: [{
+      code: "unsupported_format",
+      message,
+      target: `${label}.dat`,
+    }],
+    candidates: [],
+    coordinatePreview: null,
+    energyTable: null,
+    parseScope: "full-file",
+    confidence: "high",
+    terminationStatus: "unknown",
+    terminationLabel: "unknown",
+    jobCpuTime: null,
+    elapsedTime: null,
+  } as const
+}
+
 describe("App", () => {
   afterEach(() => {
     Reflect.deleteProperty(window, "rxnflowDesktop")
@@ -721,6 +753,70 @@ describe("App", () => {
     expect(missingBadges).toHaveTextContent("")
   })
 
+  it("sends file bytes for Electron file-list drops when native paths are unavailable", async () => {
+    const importJob = deferred<any>()
+    const importSourceFiles = vi.fn(() => importJob.promise)
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles: vi.fn(),
+        importSourceFiles,
+        filePathForFile: vi.fn(() => ""),
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+    render(<App />)
+
+    const rail = screen.getByRole("complementary", { name: "Project rail" })
+    const filesSection = within(rail).getByText("Files").closest(".rail-section") as HTMLElement
+    const file = new File(["SCF Done: E(RwB97XD) = -201.0"], "rail-bytes.log", { type: "text/plain" })
+    dispatchDrop(filesSection, new TestDataTransfer([file]), 80, 420)
+
+    expect(await within(rail).findByRole("button", { name: "rail-bytes.log Gaussian" })).toBeInTheDocument()
+    expect(importSourceFiles).toHaveBeenCalledTimes(1)
+    const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
+    expect(payload.files[0]).toMatchObject({
+      name: "rail-bytes.log",
+      preview: "",
+      contentBase64: btoa("SCF Done: E(RwB97XD) = -201.0"),
+    })
+    expect(payload.files[0].sourcePath).toBeUndefined()
+
+    await act(async () => {
+      importJob.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: payload.files[0].id,
+            name: "rail-bytes.log",
+            size: file.size,
+            preview: "",
+            storedPath: "sources/rail-bytes.log",
+            checksum: `sha256:${"9".repeat(64)}`,
+            parse: parsedOrcaSource("rail-bytes"),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    expect(await within(rail).findByRole("button", { name: "rail-bytes.log ORCA" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Node rail-bytes" })).not.toBeInTheDocument()
+  })
+
   it("groups gas and solution logs into one draggable structure row", async () => {
     render(<App />)
 
@@ -773,9 +869,41 @@ describe("App", () => {
     const rail = screen.getByRole("complementary", { name: "Project rail" })
     const groupedRowButton = await within(rail).findByRole("button", { name: "i1p6 Gaussian" })
     expect(groupedRowButton).toBeInTheDocument()
-    expect(groupedRowButton).toHaveAttribute("title", "Solvation log paired")
+    expect(groupedRowButton.getAttribute("title")).toContain("Solvation log paired")
+    expect(groupedRowButton.getAttribute("title")).toContain("No supported parser recognized this source preview.")
+    const groupedRow = groupedRowButton.closest(".project-file-card") as HTMLElement
+    expect(groupedRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
     expect(within(rail).queryByRole("button", { name: "i1p6.log Gaussian" })).not.toBeInTheDocument()
     expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Raw" })).not.toBeInTheDocument()
+  })
+
+  it("shows a missing gas indicator for solution logs and clears it after the gas log arrives", async () => {
+    render(<App />)
+
+    const input = screen.getByLabelText("Import calculation files")
+    const solutionLog = new File(["SCF Done: E(RwB97XD) = -102.0"], "i1p6-sol.log", { type: "text/plain" })
+    const gasLog = new File(["SCF Done: E(RwB97XD) = -101.0"], "i1p6.log", { type: "text/plain" })
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [solutionLog] } })
+      await Promise.resolve()
+    })
+
+    const rail = screen.getByRole("complementary", { name: "Project rail" })
+    const solutionButton = await within(rail).findByRole("button", { name: "i1p6-sol.log Gaussian" })
+    expect(solutionButton).toHaveAttribute("title", "No paired gas log")
+    const solutionRow = solutionButton.closest(".project-file-card") as HTMLElement
+    expect(solutionRow.querySelector(".project-file-phase-badges.has-missing-solution")).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [gasLog] } })
+      await Promise.resolve()
+    })
+
+    const groupedButton = await within(rail).findByRole("button", { name: "i1p6 Gaussian" })
+    expect(groupedButton).toHaveAttribute("title", "Solvation log paired")
+    const groupedRow = groupedButton.closest(".project-file-card") as HTMLElement
+    expect(groupedRow.querySelector(".project-file-phase-badges.has-missing-solution")).not.toBeInTheDocument()
   })
 
   it("keeps object registry correction out of the main UI while preserving structure preview", () => {
@@ -1719,6 +1847,69 @@ describe("App", () => {
     const node = await screen.findByRole("button", { name: "Node canvas-drop" })
     expect(node).toHaveTextContent("ΔG")
     expect(node.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
+  })
+
+  it("sends dropped file bytes when Electron cannot provide a native file path", async () => {
+    const importJob = deferred<any>()
+    const importSourceFiles = vi.fn(() => importJob.promise)
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles: vi.fn(),
+        importSourceFiles,
+        filePathForFile: vi.fn(() => ""),
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+
+    render(<App />)
+    const surface = screen.getByLabelText("Graph canvas surface")
+    mockSurfaceRect(surface)
+    const file = new File(["SCF Done: E(Test) = -1.0"], "bytes-only.log", { type: "text/plain" })
+    dispatchDrop(surface, new TestDataTransfer([file]), 640, 360)
+
+    expect(await screen.findByRole("button", { name: "bytes-only.log Gaussian" })).toBeInTheDocument()
+    expect(importSourceFiles).toHaveBeenCalledTimes(1)
+    const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
+    expect(payload.files[0]).toMatchObject({
+      name: "bytes-only.log",
+      preview: "",
+      contentBase64: btoa("SCF Done: E(Test) = -1.0"),
+    })
+    expect(payload.files[0].sourcePath).toBeUndefined()
+
+    await act(async () => {
+      importJob.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: payload.files[0].id,
+            name: "bytes-only.log",
+            size: file.size,
+            preview: "",
+            storedPath: "sources/bytes-only.log",
+            checksum: `sha256:${"f".repeat(64)}`,
+            parse: parsedOrcaSource("bytes-only"),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole("button", { name: "Node bytes-only" })).toBeInTheDocument()
   })
 
   it("uses Electron desktop APIs for native import and report export", async () => {

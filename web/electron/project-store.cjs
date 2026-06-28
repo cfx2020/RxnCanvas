@@ -173,8 +173,16 @@ async function persistSourceFile(projectDirectory, file, index, options) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true })
   if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
     await fs.copyFile(sourcePath, targetPath)
+  } else if (!sourcePath && hasNonEmptyPreview(file)) {
+    await fs.writeFile(targetPath, file.preview, "utf8")
   } else if (!sourcePath) {
-    await fs.writeFile(targetPath, typeof file?.preview === "string" ? file.preview : "", "utf8")
+    const { sourcePath: _sourcePath, storedPath: _computedStoredPath, checksum: _checksum, ...rest } = file
+    return {
+      ...rest,
+      ...(typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)
+        ? { storedPath: toProjectPath(file.storedPath) }
+        : {}),
+    }
   }
 
   const stats = await fs.stat(targetPath)
@@ -206,7 +214,7 @@ async function materializeImportSourceFile(projectDirectory, file, index, option
   } else if (sourcePath && path.resolve(sourcePath) === path.resolve(targetPath)) {
     // The source is already materialized in the project folder.
   } else {
-    await fs.writeFile(targetPath, typeof file?.preview === "string" ? file.preview : "", "utf8")
+    throw new Error("Could not copy source file because the import payload did not include a readable file path or file content.")
   }
 
   const stats = await fs.stat(targetPath)
@@ -257,6 +265,10 @@ function importSourceBuffer(file) {
   }
   if (typeof file?.content === "string") return Buffer.from(file.content, "utf8")
   return null
+}
+
+function hasNonEmptyPreview(file) {
+  return typeof file?.preview === "string" && file.preview.length > 0
 }
 
 function sourceStoredPathForFile(file, index, usedStoredPaths) {

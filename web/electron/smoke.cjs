@@ -5,6 +5,7 @@ const { getEngineStatus, runEngineRequest } = require("./engine-bridge.cjs")
 const {
   exportManifestFile,
   exportProjectWorkspaceArchive,
+  materializeImportSourceFile,
   projectManifestFile,
   projectStateFile,
   readProjectContent,
@@ -460,6 +461,46 @@ async function verifyProjectDirectoryStore() {
     const storedRaw = fs.readFileSync(path.join(projectPath, storedPath), "utf8")
     if (!storedRaw.includes("SCF Done")) {
       throw new Error(`Project source copy failed: ${storedRaw}`)
+    }
+
+    let missingPayloadFailed = false
+    try {
+      await materializeImportSourceFile(projectPath, {
+        id: "missing-source-payload",
+        name: "missing-source-payload.log",
+        size: 0,
+        preview: "",
+      }, 99, { usedStoredPaths: new Set() })
+    } catch (error) {
+      missingPayloadFailed = /readable file path or file content/.test(error instanceof Error ? error.message : String(error))
+    }
+    if (!missingPayloadFailed) {
+      throw new Error("Project source import without file path or content did not fail")
+    }
+    if (fs.existsSync(path.join(projectPath, "sources", "missing-source-payload.log"))) {
+      throw new Error("Project source import wrote an empty source file for a missing payload")
+    }
+
+    const emptyPreviewSavePath = path.join(tempDir, "Empty Preview Study")
+    const emptyPreviewProject = {
+      ...JSON.parse(projectContent),
+      project: { id: "empty-preview-study", label: "Empty Preview Study", meta: "open" },
+      files: [{
+        id: "empty-preview-source",
+        name: "empty-preview.log",
+        kind: "Gaussian",
+        size: 0,
+        status: "staged",
+        preview: "",
+      }],
+    }
+    const savedEmptyPreview = await saveProjectContent(emptyPreviewSavePath, JSON.stringify(emptyPreviewProject))
+    const restoredEmptyPreview = JSON.parse(savedEmptyPreview.content)
+    if (restoredEmptyPreview.files?.[0]?.storedPath || restoredEmptyPreview.files?.[0]?.checksum) {
+      throw new Error(`Project save persisted metadata for an empty source payload: ${savedEmptyPreview.content}`)
+    }
+    if (fs.existsSync(path.join(emptyPreviewSavePath, "sources", "empty-preview.log"))) {
+      throw new Error("Project save wrote an empty source file for an empty preview payload")
     }
 
     const rawFilePathB = path.join(tempDir, "4b.log")
