@@ -3,6 +3,7 @@ import { FilePlus2, Folder, FolderOpen, FolderPlus, MoreHorizontal, Plus, Settin
 import type { ProjectSummary, SourceFile } from "../domain/projectPackages"
 import type { CanvasTabState } from "./projectCanvasState"
 import {
+  dataTransferHasFiles,
   filesFromDataTransfer,
   projectFileDragMimeType,
   projectFileDragPath,
@@ -395,8 +396,7 @@ function ProjectRailItem({
   onConfirmDelete: () => void
 }) {
   const acceptDroppedFiles = (event: DragEvent<HTMLDivElement>) => {
-    const droppedFiles = filesFromDataTransfer(event.dataTransfer)
-    if (droppedFiles.length === 0) return
+    if (!dataTransferHasFiles(event.dataTransfer)) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "copy"
   }
@@ -646,8 +646,7 @@ function RailSection({
 }) {
   const acceptDroppedFiles = (event: DragEvent<HTMLElement>) => {
     if (!onDropFiles) return
-    const droppedFiles = filesFromDataTransfer(event.dataTransfer)
-    if (droppedFiles.length === 0) return
+    if (!dataTransferHasFiles(event.dataTransfer)) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "copy"
   }

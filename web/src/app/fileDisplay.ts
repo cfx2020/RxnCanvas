@@ -102,6 +102,12 @@ export function dataTransferTypes(dataTransfer: DataTransfer): string[] {
   return Array.from(dataTransfer.types ?? [])
 }
 
+export function dataTransferHasFiles(dataTransfer: DataTransfer): boolean {
+  if (filesFromDataTransfer(dataTransfer).length > 0) return true
+  if (dataTransferTypes(dataTransfer).includes("Files")) return true
+  return Array.from(dataTransfer.items ?? []).some((item) => item.kind === "file")
+}
+
 export function sourceFileGroupsForDisplay(files: SourceFile[]): SourceFileGroup[] {
   const groupsByKey = new Map<string, SourceFile[]>()
   const orderedKeys: string[] = []
@@ -282,7 +288,10 @@ function sourceFileStructureName(file: SourceFile, key: string): string {
 }
 
 function isRawLogSourceFile(file: SourceFile): boolean {
-  return file.kind === "Gaussian" || file.kind === "ORCA" || file.kind === "MAPLE"
+  return file.kind === "Gaussian"
+    || file.kind === "ORCA"
+    || file.kind === "MAPLE"
+    || /\.(log|out)$/i.test(baseName(file.name))
 }
 
 function solutionLogSuffixForStem(stem: string): string | null {

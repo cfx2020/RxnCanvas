@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
 import {
+  dataTransferHasFiles,
   dataTransferTypes,
   deleteSourceFileTransition,
   displayExportDestination,
@@ -107,6 +108,23 @@ describe("fileDisplay", () => {
       hasGasLog: false,
       hasSolutionLog: false,
     })
+  })
+
+  it("groups solution logs by filename even when the parser cannot classify the source kind", () => {
+    const gas = sourceFile("gas", "i1p6.log", "Gaussian")
+    const solution = sourceFile("solution", "i1p6-sol.log", "Raw")
+
+    const groups = sourceFileGroupsForDisplay([solution, gas])
+
+    expect(sourceFileDisplayGroupKey(solution)).toBe("i1p6")
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({
+      id: "gas",
+      displayName: "i1p6",
+      hasGasLog: true,
+      hasSolutionLog: true,
+    })
+    expect(groups[0].files.map((file) => file.id)).toEqual(["gas", "solution"])
   })
 
   it("derives additive, range, and replacement file selections", () => {
@@ -301,5 +319,11 @@ describe("fileDisplay", () => {
     expect(projectFileIdsFromDataTransfer(transfer)).toEqual([])
     expect(filesFromDataTransfer(transfer)).toEqual([rawFile])
     expect(dataTransferTypes(transfer)).toEqual([projectFileDragMimeType, "Files"])
+  })
+
+  it("detects external file drags before the File objects are readable", () => {
+    expect(dataTransferHasFiles(mockDataTransfer({ types: ["Files"] }))).toBe(true)
+    expect(dataTransferHasFiles(mockDataTransfer({ files: [new File(["energy"], "energy.log")] }))).toBe(true)
+    expect(dataTransferHasFiles(mockDataTransfer({ types: ["text/plain"] }))).toBe(false)
   })
 })
