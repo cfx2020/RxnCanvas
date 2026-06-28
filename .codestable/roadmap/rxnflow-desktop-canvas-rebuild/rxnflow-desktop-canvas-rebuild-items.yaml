@@ -10,13 +10,13 @@ items:
     depends_on: [canvas-workbench-rebuild]
     status: in-progress
     feature: null
-    notes: 已新增 Electron main/preload/smoke、release-smoke、runtime-smoke、windows-installer-smoke、embedded-engine fallback、原生文件导入 IPC、PNG/CDXML/XLSX artifact 保存 IPC、.rxnflow 项目目录打开/保存 IPC、legacy .rxnflow.json 打开兼容、desktop 启动脚本、可复现 desktop:icons、PNG/ICNS/ICO 图标资产、electron-builder mac/win icon 配置、macOS hardened runtime entitlements、macOS notarization 辅助脚本和 desktop-release GitHub Actions workflow；desktop:pack 已改用明确的 electron-builder --mac dir target，2026-06-15 本机重跑可完成 Vite build、刷新 mac-arm64 unpacked app 并正常退出；desktop:runtime:smoke 可启动当前平台 packaged unpacked app，并验证 renderer 工作台渲染、Inspector 只暴露 Node / Source / Export、Export 面板只暴露 PNG/CDXML/XLSX、inactive UI 文案缺席、preload engine status 和 candidate registration；2026-06-15 本机重跑 desktop:pack:win 已刷新 Windows x64 win-unpacked 并通过 release 结构 smoke，仓库中保留此前 desktop:dist:win 生成并通过结构验证的 NSIS setup 和 portable artifacts，最新 installer/portable 和 Windows .exe runtime 需 Windows CI 或 Windows 机器重新产出/运行验证；desktop:installer:smoke:win 已接入 Windows CI，对 NSIS 安装器执行安装、启动、卸载 smoke；真实 Apple Developer ID 签名/公证成功证据、auto-update 和 Windows 安装器真实用户机器/发布渠道验证仍待 release 流程
+    notes: 已新增 Electron main/preload/smoke、release-smoke、runtime-smoke、windows-installer-smoke、bundled Python engine+cclib extraResource、原生文件导入 IPC、PNG/CDXML/XLSX artifact 保存 IPC、.rxnflow 项目目录打开/保存 IPC、legacy .rxnflow.json 打开兼容、desktop 启动脚本、可复现 desktop:icons、PNG/ICNS/ICO 图标资产、electron-builder mac/win icon 配置、macOS hardened runtime entitlements、macOS notarization 辅助脚本和 desktop-release GitHub Actions workflow；desktop:pack 已改用明确的 electron-builder --mac dir target，并在打包前运行 desktop:engine 生成 web/engine/rxnflow-engine；desktop:runtime:smoke 可启动当前平台 packaged unpacked app，并验证 renderer 工作台渲染、Inspector 只暴露 Node / Source / Export、Export 面板只暴露 PNG/CDXML/XLSX、inactive UI 文案缺席、preload engine status、bundled-python runtime、cclib dependency 和 candidate registration；desktop:pack:win 已刷新 Windows x64 win-unpacked 并通过 release 结构 smoke，仓库中保留此前 desktop:dist:win 生成并通过结构验证的 NSIS setup 和 portable artifacts，最新 installer/portable 和 Windows .exe runtime 需 Windows CI 或 Windows 机器重新产出/运行验证；desktop:installer:smoke:win 已接入 Windows CI，对 NSIS 安装器执行安装、启动、卸载 smoke；真实 Apple Developer ID 签名/公证成功证据、auto-update 和 Windows 安装器真实用户机器/发布渠道验证仍待 release 流程
   - slug: local-engine-ipc
     description: 设计桌面壳与本地 engine 的 IPC，替代用户手动启动 local bridge 的产品形态
     depends_on: [desktop-shell-electron]
     status: in-progress
     feature: null
-    notes: 已落地 stdin/stdout Python engine IPC、Electron engine-bridge、packaged embedded Node engine fallback、preload registerImportCandidates、renderer runtime status、lightweight import.preview candidates/provenance/warnings、lightweight stateless import.register_selection/import.register_all、renderer-derived lightweight importLedger、轻量 project.validate/open/save，以及 .rxnflow file/node/edge/barrier/importLedger 基础引用、node 能量/position/可选 coefficient 形状、source/export 文件存在性和 sha256 校验 warning；完整 cclib/ASE parser、旧持久化 registry workflow 和 ProjectContent command contract 尚未完成
+    notes: 已落地 stdin/stdout Python engine IPC、Electron engine-bridge、packaged bundled Python engine+cclib、preload registerImportCandidates、renderer runtime status、cclib-backed full-file import.preview candidates/provenance/warnings、lightweight stateless import.register_selection/import.register_all、renderer-derived lightweight importLedger、轻量 project.validate/open/save，以及 .rxnflow file/node/edge/barrier/importLedger 基础引用、node 能量/position/可选 coefficient 形状、source/export 文件存在性和 sha256 校验 warning；旧持久化 registry workflow 和 ProjectContent command contract 尚未完成
   - slug: desktop-project-store
     description: 重新设计桌面项目保存、打开、recent projects、raw files、exports 和项目目录
     depends_on: [desktop-shell-electron]
@@ -28,7 +28,7 @@ items:
     depends_on: [local-engine-ipc, desktop-project-store]
     status: in-progress
     feature: null
-    notes: Python local-engine、Electron embedded-engine 与 renderer fallback lightweight parser 覆盖 Gaussian SCF/Gibbs/free-energy fallback、Gaussian orientation/charge/multiplicity summary、ORCA final energy/Total SCF Energy fallback、ORCA implicit solvation/Cartesian coordinate/charge/multiplicity summary、MAPLE IRC/MAPLE banner output/MAPLE XYZ trajectory（无单位 Energy comment 按 Hartree）、普通 XYZ formula/comment energy（无单位按 Hartree、显式 Hartree/Ha 保留、eV 转 Hartree）和坏 XYZ parse_failed 投影、ASE extxyz metadata label/charge/spin/eV energy 转 Hartree，并返回 candidates/objectCount/warnings/provenance；parser warning codes 已按原 fixture snapshot 口径稳定排序，当前 UI 的多候选提示追加在 parser warning 之后；local-engine 已支持 lightweight stateless import.register_selection/import.register_all；Electron renderer 已通过 preload registerImportCandidates 接入 selected/all register，浏览器与 engine failure path 保留 renderer fallback；当前 UI 承载的 lightweight importLedger 已保存/校验；完整 cclib/ASE parser engine 与旧持久化 import registry workflow 尚未完成
+    notes: Python local-engine 与 renderer fallback parser 覆盖 Gaussian/ORCA/MAPLE/XYZ/extxyz 当前 UI 路径；Gaussian/ORCA full-file 的 sourceKind、energy/free energy、basis count 和 coordinates 由 cclib authoritative 回填，text parser 只补 termination/job time/opt+freq continuation、solvent/role labels 和 browser/non-cclib fallback；MAPLE IRC/MAPLE banner output/MAPLE XYZ trajectory（无单位 Energy comment 按 Hartree）、普通 XYZ formula/comment energy（无单位按 Hartree、显式 Hartree/Ha 保留、eV 转 Hartree）和坏 XYZ parse_failed 投影、ASE extxyz metadata label/charge/spin/eV energy 转 Hartree 仍由 text parser 覆盖，并返回 candidates/objectCount/warnings/provenance；parser warning codes 已按原 fixture snapshot 口径稳定排序，当前 UI 的多候选提示追加在 parser warning 之后；local-engine 已支持 lightweight stateless import.register_selection/import.register_all；Electron renderer 已通过 preload registerImportCandidates 接入 selected/all register，浏览器 fallback 保留 renderer register；当前 UI 承载的 lightweight importLedger 已保存/校验；旧持久化 import registry workflow 尚未完成
   - slug: report-export-reintroduction
     description: 按 Export UI 重新引入原报告导出的 PNG/CDXML/XLSX；CSV/SVG/JSON 需重新确认后再评估，PDF/PPTX/CDX 继续保持后续规划
     depends_on: [canvas-workbench-rebuild, desktop-shell-electron]
@@ -38,5 +38,10 @@ items:
   - slug: advanced-persistence-backlog
     description: 重新评估 project bundle、content validation、migration、artifact index 是否需要恢复
     depends_on: [desktop-project-store]
+    status: planned
+    feature: null
+  - slug: desktop-import-engine-pool
+    description: 若真实批量导入大 log 仍明显卡顿，在现有入栏占位 + 限并发 parse queue 之后，引入长驻 Python engine service 或进程池，复用 Python/cclib 启动成本；Web Worker 仅保留给浏览器 fallback parser，Electron utilityProcess 只在 main process materialize/checksum 调度成为瓶颈时再评估
+    depends_on: [local-engine-ipc, parser-engine-reintroduction]
     status: planned
     feature: null
