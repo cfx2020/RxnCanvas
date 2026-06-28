@@ -13,6 +13,47 @@ export type DesktopSourceFile = {
   parse?: SourceParseResult
 }
 
+export type DesktopImportSourceFilesPayload = {
+  projectId?: string
+  files: Array<{
+    id: string
+    name: string
+    size: number
+    preview: string
+    sourcePath?: string
+    storedPath?: string
+    contentBase64?: string
+  }>
+}
+
+export type DesktopImportSourceFilesResponse =
+  | {
+      ok: true
+      data: {
+        files: Array<{
+          id: string
+          name: string
+          size: number
+          preview: string
+          storedPath?: string
+          checksum?: string
+          parse?: SourceParseResult | null
+          error?: {
+            code: string
+            message: string
+          }
+        }>
+      }
+      warnings?: Array<{ code: string; message: string }>
+    }
+  | {
+      ok: false
+      error: {
+        code: string
+        message: string
+      }
+    }
+
 export type DesktopImportRegistrationPayload = {
   mode: "selected" | "all"
   files: Array<{
@@ -125,6 +166,7 @@ export type StageSourceFilesOptions = {
   layout?: ImportNodeLayout
   fileMode?: "prepend" | "update"
   autoRegister?: boolean
+  parseMode?: "fallback" | "defer"
 }
 
 export type PendingImportProjectTransition = {
@@ -192,6 +234,7 @@ export type ProjectWorkspaceImportOptions = {
   fileMode?: "prepend" | "update"
   viewMode?: ProjectWorkspaceSnapshot["viewMode"]
   autoRegister?: boolean
+  parseMode?: "fallback" | "defer"
 }
 
 export type PrepareProjectWorkspaceImportOptions = ProjectWorkspaceImportOptions & {

@@ -14147,9 +14147,56 @@ select,
   animation: missing-solvation-pulse 1.6s ease-in-out infinite !important;
 }
 
+.project-rail .project-file-card {
+  position: relative !important;
+}
+
+.project-rail .project-file-progress {
+  position: absolute !important;
+  left: 12px !important;
+  right: 42px !important;
+  bottom: 3px !important;
+  height: 2px !important;
+  overflow: hidden !important;
+  border-radius: 999px !important;
+  background: rgba(31, 162, 131, 0.13) !important;
+  pointer-events: none !important;
+}
+
+.project-rail .project-file-progress > span {
+  display: block !important;
+  width: 38% !important;
+  height: 100% !important;
+  border-radius: inherit !important;
+  background: #1fa283 !important;
+  animation: project-file-progress-slide 1.05s ease-in-out infinite !important;
+}
+
+@keyframes project-file-progress-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  50% {
+    transform: translateX(92%);
+  }
+
+  100% {
+    transform: translateX(285%);
+  }
+}
+
 .app-shell.theme-dark .project-rail .project-file-phase-badges.has-missing-solution {
   background: #f6a04e !important;
   box-shadow: 0 0 0 3px rgba(246, 160, 78, 0.18) !important;
+}
+
+.app-shell.theme-dark .project-rail .project-file-progress {
+  background: rgba(63, 196, 164, 0.18) !important;
+}
+
+.app-shell.theme-dark .project-rail .project-file-progress > span {
+  background: #55d2b0 !important;
 }
 
 @media (max-width: 1180px) {
@@ -14163,6 +14210,14 @@ select,
 
   .workspace:not(.is-left-collapsed) > .project-rail .project-file-main .project-file-phase-badges.has-missing-solution {
     display: inline-block !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-rail .project-file-progress > span {
+    animation: none !important;
+    transform: translateX(0) !important;
+    width: 100% !important;
   }
 }
 

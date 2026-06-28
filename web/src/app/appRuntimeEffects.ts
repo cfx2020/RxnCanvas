@@ -15,6 +15,8 @@ import type {
   SourceOpenerProfile,
 } from "./desktopPreferences"
 import type {
+  DesktopImportSourceFilesPayload,
+  DesktopImportSourceFilesResponse,
   DesktopImportRegistrationPayload,
   DesktopImportRegistrationResponse,
   DesktopSourceFile,
@@ -31,6 +33,8 @@ export type RxnflowDesktopApi = {
   platform: string
   chooseFiles: () => Promise<{ canceled: boolean; files: DesktopSourceFile[] }>
   getEngineStatus: () => Promise<DesktopEngineStatus>
+  importSourceFiles?: (payload: DesktopImportSourceFilesPayload) => Promise<DesktopImportSourceFilesResponse>
+  filePathForFile?: (file: File) => string
   registerImportCandidates?: (payload: DesktopImportRegistrationPayload) => Promise<DesktopImportRegistrationResponse>
   parseSourcePreview?: (payload: {
     projectId?: string

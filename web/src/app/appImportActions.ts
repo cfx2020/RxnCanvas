@@ -61,7 +61,7 @@ export async function stageCurrentProjectSourceFilesAction({
     targetSnapshot: currentSnapshot,
     importedFiles,
     layout: importLayout,
-    options: { fileMode, viewMode, registerImportCandidates, autoRegister },
+    options: { fileMode, viewMode, registerImportCandidates, autoRegister, parseMode: options.parseMode },
   })
   if (!prepared) return
   const transition = projectWorkspaceImportApplyTransition(prepared)
@@ -116,7 +116,12 @@ export async function stageSourceFilesForProjectAction({
     targetSnapshot,
     importedFiles,
     layout: importLayoutFromCanvas(canvas, targetCanvas.viewport),
-    options: { registerImportCandidates, autoRegister: options.autoRegister ?? true },
+    options: {
+      registerImportCandidates,
+      autoRegister: options.autoRegister ?? true,
+      fileMode: options.fileMode,
+      parseMode: options.parseMode,
+    },
   })
   if (!prepared) return
   const transition = saveAndActivateProjectWorkspaceTransition({
@@ -211,13 +216,18 @@ export async function importFilesForProjectAction({
   fileList,
   projectId,
   stageSourceFilesForProject,
+  previewMode = "full",
+  stageOptions = { autoRegister: false },
 }: {
   fileList: FileList | File[]
   projectId: string
   stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
-}): Promise<void> {
-  const importedFiles = await browserImportSourceFilesFromFiles(fileList)
-  await stageSourceFilesForProject(projectId, importedFiles, { autoRegister: false })
+  previewMode?: "full" | "head" | "none"
+  stageOptions?: StageSourceFilesOptions
+}): Promise<ImportSourceFile[]> {
+  const importedFiles = await browserImportSourceFilesFromFiles(fileList, "file", { previewMode })
+  await stageSourceFilesForProject(projectId, importedFiles, stageOptions)
+  return importedFiles
 }
 
 export async function handleCanvasRawFileDropAction({
@@ -243,14 +253,17 @@ export async function importDesktopFilesAction({
   projectId,
   chooseFiles,
   stageSourceFilesForProject,
+  stageOptions = { autoRegister: false },
 }: {
   projectId: string
   chooseFiles: (() => Promise<Parameters<typeof desktopImportFilesTransition>[0]>) | undefined
   stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
-}): Promise<void> {
+  stageOptions?: StageSourceFilesOptions
+}): Promise<ImportSourceFile[]> {
   const transition = desktopImportFilesTransition(await chooseFiles?.())
-  if (!transition) return
-  await stageSourceFilesForProject(projectId, transition.importedFiles, { autoRegister: false })
+  if (!transition) return []
+  await stageSourceFilesForProject(projectId, transition.importedFiles, stageOptions)
+  return transition.importedFiles
 }
 
 export function openImportPickerAction({

@@ -67,6 +67,8 @@ import {
   type EnergyDisplayOptions,
 } from "./energyDisplay"
 import {
+  browserImportSourceFilesFromFiles,
+  canvasRawFileDropImportTransition,
   pendingImportProjectTransition,
   type CandidateReviewState,
   type ImportSourceFile,
@@ -217,6 +219,7 @@ import {
   stageSourceFilesForProjectAction,
   toggleCandidateReviewSelectionAction,
 } from "./appImportActions"
+import { desktopParsedImportSourceFiles } from "./importParseJobs"
 
 
 function defaultCanvasViewport(canvas: HTMLDivElement | null): CanvasViewport {
@@ -375,6 +378,7 @@ export function App() {
   const autosaveQueuedRef = useRef(false)
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
   const restoreProjectPackageRef = useRef<RestoreProjectPackageHandler | null>(null)
+  const stageSourceFilesForProjectRef = useRef<((projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>) | null>(null)
   const exportPanelRef = useRef<HTMLElement | null>(null)
   const exportTriggerRef = useRef<HTMLButtonElement | null>(null)
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
@@ -1678,6 +1682,43 @@ export function App() {
     projects,
     stageSourceFiles,
   ])
+  useEffect(() => {
+    stageSourceFilesForProjectRef.current = stageSourceFilesForProject
+  }, [stageSourceFilesForProject])
+
+  const runDesktopImportParseJob = useCallback((
+    projectId: string,
+    importedFiles: ImportSourceFile[],
+    options: StageSourceFilesOptions = {},
+    rawFiles: File[] = [],
+  ) => {
+    const desktopApi = window.rxnflowDesktop
+    if (!desktopApi?.importSourceFiles || importedFiles.length === 0) return
+    void desktopParsedImportSourceFiles({
+      desktopApi,
+      projectId,
+      importedFiles,
+      rawFiles,
+      onFileParsed: async (parsedFile) => {
+        await (stageSourceFilesForProjectRef.current ?? stageSourceFilesForProject)(projectId, [parsedFile], {
+          ...options,
+          fileMode: "update",
+          autoRegister: options.autoRegister ?? false,
+          parseMode: "defer",
+        })
+      },
+    }).catch((error: unknown) => {
+      setProjectValidation({
+        valid: true,
+        summary: {},
+        issues: [{
+          severity: "warning",
+          code: "import_parse_failed",
+          message: error instanceof Error ? error.message : "The desktop parser could not finish this import job.",
+        }],
+      })
+    })
+  }, [stageSourceFilesForProject])
 
   const reviewCandidatesForFile = useCallback((fileId: string) => {
     reviewCandidatesForFileAction({
@@ -1718,8 +1759,20 @@ export function App() {
   }, [appStateSetters, candidateRegisterBusy, candidateReview, currentProjectWorkspaceSnapshot, pushEditHistory])
 
   const importFiles = useCallback(async (fileList: FileList | File[], projectId = activeProjectId) => {
-    await importFilesForProjectAction({ fileList, projectId, stageSourceFilesForProject })
-  }, [activeProjectId, stageSourceFilesForProject])
+    const rawFiles = Array.from(fileList)
+    const useDesktopImportJob = Boolean(window.rxnflowDesktop?.importSourceFiles)
+    const importedFiles = await importFilesForProjectAction({
+      fileList: rawFiles,
+      projectId,
+      stageSourceFilesForProject,
+      previewMode: useDesktopImportJob ? "none" : "full",
+      stageOptions: {
+        autoRegister: false,
+        parseMode: useDesktopImportJob ? "defer" : "fallback",
+      },
+    })
+    if (useDesktopImportJob) runDesktopImportParseJob(projectId, importedFiles, { autoRegister: false }, rawFiles)
+  }, [activeProjectId, runDesktopImportParseJob, stageSourceFilesForProject])
 
   const updateTextAnnotation = useCallback((annotationId: string, text: string) => {
     const nextText = text.trim()
@@ -1762,6 +1815,18 @@ export function App() {
       const sourceFiles = drop.files.filter((file) => !isCanvasImageFile(file))
       if (imageFiles.length > 0) await addImageAnnotations(imageFiles, drop.position)
       if (sourceFiles.length === 0) return
+      if (window.rxnflowDesktop?.importSourceFiles) {
+        const transition = canvasRawFileDropImportTransition({ ...drop, files: sourceFiles }, files)
+        if (!transition || transition.kind !== "external-files") return
+        const importedFiles = await browserImportSourceFilesFromFiles(transition.files, transition.idPrefix, { previewMode: "none" })
+        await stageSourceFiles(importedFiles, {
+          ...transition.options,
+          autoRegister: false,
+          parseMode: "defer",
+        })
+        runDesktopImportParseJob(activeProjectId, importedFiles, transition.options, sourceFiles)
+        return
+      }
       await handleCanvasRawFileDropAction({
         drop: { ...drop, files: sourceFiles },
         files,
@@ -1774,7 +1839,7 @@ export function App() {
       files,
       stageCurrentProjectSourceFiles: stageSourceFiles,
     })
-  }, [addImageAnnotations, files, stageSourceFiles])
+  }, [activeProjectId, addImageAnnotations, files, runDesktopImportParseJob, stageSourceFiles])
 
   const pasteImagesFromSystemClipboard = useCallback(async () => {
     const imageFiles = await imageFilesFromSystemClipboard()
@@ -1835,12 +1900,18 @@ export function App() {
   }, [])
 
   const importDesktopFiles = useCallback(async (projectId = activeProjectId) => {
-    await importDesktopFilesAction({
+    const useDesktopImportJob = Boolean(window.rxnflowDesktop?.importSourceFiles)
+    const importedFiles = await importDesktopFilesAction({
       projectId,
       chooseFiles: window.rxnflowDesktop?.chooseFiles,
       stageSourceFilesForProject,
+      stageOptions: {
+        autoRegister: false,
+        parseMode: useDesktopImportJob ? "defer" : "fallback",
+      },
     })
-  }, [activeProjectId, stageSourceFilesForProject])
+    if (useDesktopImportJob) runDesktopImportParseJob(projectId, importedFiles, { autoRegister: false })
+  }, [activeProjectId, runDesktopImportParseJob, stageSourceFilesForProject])
 
   const openImportPicker = useCallback((projectId = activeProjectId) => {
     openImportPickerAction({

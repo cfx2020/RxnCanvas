@@ -18,7 +18,7 @@ import type {
   ProjectWorkspaceImportOptions,
 } from "./importRegistrationTypes"
 import { desktopImportSourceFilesFromFiles, sourceFilesFromIds } from "./importSources"
-import { sourceFileDisplayGroupKey, sourceFileLooksLikeSolutionLog } from "./fileDisplay"
+import { sourceFileDisplayGroupKey, sourceFileLooksLikeSolutionLog, sourceKindFromName } from "./fileDisplay"
 import { importLayoutFromPoint } from "./importLayout"
 import {
   activeCanvasSnapshot,
@@ -89,8 +89,12 @@ export function canvasRawFileDropImportTransition(
   }
 }
 
-export function buildImportPlan(importedFiles: ImportSourceFile[], layout: ImportPlan["layout"]): ImportPlan {
-  const parsedImports = parsedImportFiles(importedFiles)
+export function buildImportPlan(
+  importedFiles: ImportSourceFile[],
+  layout: ImportPlan["layout"],
+  options: { parseMode?: "fallback" | "defer" } = {},
+): ImportPlan {
+  const parsedImports = parsedImportFiles(importedFiles, options.parseMode)
   const stagedFiles = parsedImports.map(({ file, parsed }) => stagedSourceFile(file, parsed))
   const importGroups = parsedImportGroups(parsedImports)
   const autoEntries = importGroups.flatMap((group) => automaticEntriesForParsedGroup(group))
@@ -141,17 +145,23 @@ function fallbackNodesForParsedGroup(
   groupIndex: number,
   layout: ImportPlan["layout"],
 ): FlowNode[] {
+  if (group.every(({ parsed }) => parseWasDeferred(parsed))) return []
   if (shouldPairParsedGroup(group)) {
     const pairedNode = pairedGasSolutionNode(group, groupIndex, layout)
     return pairedNode ? [pairedNode] : []
   }
 
   return group.flatMap(({ file, index, parsed }) => {
+    if (parseWasDeferred(parsed)) return []
     const candidates = parsed.candidates ?? []
     if (candidates.length > 1) return []
     if (candidates.length === 1) return [nodeFromCandidate(stagedSourceFile(file, parsed), parsed, candidates[0], index, layout)]
     return [nodeFromParsedFallback(file, parsed, index, layout)]
   })
+}
+
+function parseWasDeferred(parsed: SourceParseResult): boolean {
+  return parsed.warnings.some((warning) => warning.code === "parse_deferred")
 }
 
 function shouldPairParsedGroup(group: ImportPlan["parsedImports"]): boolean {
@@ -341,7 +351,7 @@ export async function prepareProjectWorkspaceImport({
 }): Promise<PreparedProjectWorkspaceImport | null> {
   if (importedFiles.length === 0) return null
 
-  const importPlan = buildImportPlan(importedFiles, layout)
+  const importPlan = buildImportPlan(importedFiles, layout, { parseMode: options.parseMode })
   const autoRegister = options.autoRegister ?? true
   const reviewState = autoRegister ? candidateReviewStateFromPlan(importPlan) : null
   const autoNodes = autoRegister
@@ -363,9 +373,16 @@ export async function prepareProjectWorkspaceImport({
   }
 }
 
-export function parsedImportFiles(importedFiles: ImportSourceFile[]): ImportPlan["parsedImports"] {
+export function parsedImportFiles(
+  importedFiles: ImportSourceFile[],
+  parseMode: "fallback" | "defer" = "fallback",
+): ImportPlan["parsedImports"] {
   return importedFiles.map((file, index) => {
-    const parsed = file.parse ?? parseSourcePreview({ name: file.name, preview: file.preview })
+    const parsed = file.parse ?? (
+      parseMode === "defer"
+        ? deferredSourceParseResult(file)
+        : parseSourcePreview({ name: file.name, preview: file.preview })
+    )
     const stagedFile = stagedSourceFile(file, parsed)
     return {
       file: stagedFile,
@@ -382,4 +399,39 @@ export function stagedSourceFile(file: ImportSourceFile, parsed: SourceParseResu
     kind: parsed.sourceKind,
     status: parsed.parsed ? "parsed" : "staged",
   })
+}
+
+function deferredSourceParseResult(file: ImportSourceFile): SourceParseResult {
+  return {
+    label: fileLabelFromName(file.name),
+    sourceKind: file.kind || sourceKindFromName(file.name),
+    formula: "pending",
+    kind: "intermediate",
+    method: "unassigned",
+    solvent: "unassigned",
+    energyGas: null,
+    energySolution: null,
+    energyUnit: "hartree",
+    parsed: false,
+    parserId: null,
+    parserVersion: null,
+    objectCount: 0,
+    warnings: [{
+      code: "parse_deferred",
+      message: "Source file is waiting for the desktop parser job.",
+      target: file.name,
+    }],
+    candidates: [],
+    coordinatePreview: null,
+    parseScope: "preview",
+    confidence: "low",
+    terminationStatus: "unknown",
+    terminationLabel: "unknown",
+    jobCpuTime: null,
+    elapsedTime: null,
+  }
+}
+
+function fileLabelFromName(name: string): string {
+  return String(name || "source").replace(/\.[^.\\/]+$/, "") || "source"
 }

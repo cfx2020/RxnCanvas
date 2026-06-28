@@ -2,7 +2,11 @@ import type { SourceFile } from "../domain/projectPackages"
 import { sourceKindFromName } from "./fileDisplay"
 import type { DesktopSourceFile, ImportSourceFile } from "./importRegistrationTypes"
 
-export async function browserImportSourceFilesFromFiles(fileList: FileList | File[], idPrefix = "file"): Promise<ImportSourceFile[]> {
+export async function browserImportSourceFilesFromFiles(
+  fileList: FileList | File[],
+  idPrefix = "file",
+  options: { previewMode?: "full" | "head" | "none" } = {},
+): Promise<ImportSourceFile[]> {
   const selectedFiles = Array.from(fileList)
   const timestamp = Date.now()
   return Promise.all(selectedFiles.map(async (file, index): Promise<ImportSourceFile> => ({
@@ -11,7 +15,7 @@ export async function browserImportSourceFilesFromFiles(fileList: FileList | Fil
     kind: sourceKindFromName(file.name),
     size: file.size,
     status: "staged",
-    preview: await readFilePreview(file),
+    preview: await readFilePreview(file, options.previewMode ?? "full"),
   })))
 }
 
@@ -38,9 +42,12 @@ export function sourceFilesFromIds(files: SourceFile[], fileIds: string[]): Sour
     .filter((file): file is SourceFile => Boolean(file))
 }
 
-async function readFilePreview(file: File): Promise<string> {
+async function readFilePreview(file: File, mode: "full" | "head" | "none"): Promise<string> {
+  if (mode === "none") return ""
   try {
-    const text = await file.text()
+    const text = mode === "head"
+      ? await file.slice(0, 64 * 1024).text()
+      : await file.text()
     return sourcePreviewSample(text)
   } catch {
     return "Preview unavailable."

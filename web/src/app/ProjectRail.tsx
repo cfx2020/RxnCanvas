@@ -494,6 +494,7 @@ function ProjectFileRow({
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
   const reviewFile = group.files.find((file) => (file.parse?.objectCount ?? file.parse?.candidates?.length ?? 0) > 1)
   const missingSolutionLog = group.hasGasLog && !group.hasSolutionLog
+  const parsing = group.files.some(sourceFileHasPendingDesktopParse)
   const solvationPairTitle = missingSolutionLog
     ? "No paired solvation log"
     : group.hasSolutionLog
@@ -551,7 +552,7 @@ function ProjectFileRow({
 
   return (
     <div
-      className={`project-file-card${active ? " is-active" : ""}${selected ? " project-file-card--selected" : ""}`}
+      className={`project-file-card${active ? " is-active" : ""}${selected ? " project-file-card--selected" : ""}${parsing ? " is-parsing" : ""}`}
       draggable
       onDragStart={startDrag}
     >
@@ -575,6 +576,15 @@ function ProjectFileRow({
           />
         ) : null}
       </button>
+      {parsing ? (
+        <span
+          className="project-file-progress"
+          role="progressbar"
+          aria-label={`Parsing ${group.displayName}`}
+        >
+          <span aria-hidden="true" />
+        </span>
+      ) : null}
       <span className="project-file-menu" ref={menuRef}>
         <button
           type="button"
@@ -619,6 +629,15 @@ function ProjectFileRow({
       </span>
     </div>
   )
+}
+
+function sourceFileHasPendingDesktopParse(file: SourceFile): boolean {
+  if (file.status !== "staged") return false
+  return (file.parse?.warnings ?? []).some((warning) => (
+    warning.code === "parse_deferred"
+    || warning.code === "parse_queued"
+    || warning.code === "parse_running"
+  ))
 }
 
 function RailSection({

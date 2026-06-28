@@ -131,6 +131,56 @@ function mockImageNaturalSize(width = 120, height = 80) {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
+}
+
+function parsedOrcaSource(label: string) {
+  return {
+    label,
+    sourceKind: "ORCA",
+    formula: "C2H4",
+    kind: "product",
+    method: "ORCA single point",
+    solvent: "implicit solvent",
+    energyGas: -42.25,
+    energySolution: -42.5,
+    energyUnit: "hartree",
+    parsed: true,
+    parserId: "orca-output-cclib+rxnflow-text-full-file",
+    parserVersion: "0.2.1",
+    objectCount: 1,
+    warnings: [],
+    coordinatePreview: null,
+    candidates: [{
+      candidateId: "candidate-1",
+      objectIndex: 0,
+      label,
+      formula: "C2H4",
+      charge: null,
+      spinMultiplicity: null,
+      method: "ORCA single point",
+      energyGas: -42.25,
+      energySolution: -42.5,
+      energyUnit: "hartree",
+      coordinatePreview: null,
+      roleHint: "final",
+      warnings: [],
+    }],
+    energyTable: { egasHartree: -42.25, gsolHartree: -42.5 },
+    parseScope: "full-file",
+    confidence: "high",
+    terminationStatus: "normal",
+    terminationLabel: "normal",
+    jobCpuTime: null,
+    elapsedTime: null,
+  } as const
+}
+
 describe("App", () => {
   afterEach(() => {
     Reflect.deleteProperty(window, "rxnflowDesktop")
@@ -1520,6 +1570,155 @@ describe("App", () => {
     })
     expect(payload.selections[0].fileId).toBe(payload.files[0].id)
     expect(await screen.findByRole("button", { name: "Node Engine registered frame 2" })).toHaveTextContent("ΔG")
+  })
+
+  it("stages Electron dialog imports before the desktop parser job resolves", async () => {
+    const importJob = deferred<any>()
+    const chooseFiles = vi.fn().mockResolvedValue({
+      canceled: false,
+      files: [{
+        name: "desktop.calc",
+        size: 1234,
+        preview: "",
+        sourcePath: "/tmp/desktop.calc",
+      }],
+    })
+    const importSourceFiles = vi.fn(() => importJob.promise)
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles,
+        importSourceFiles,
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+
+    expect(await screen.findByRole("button", { name: "desktop.calc Raw" })).toBeInTheDocument()
+    expect(screen.getByRole("progressbar", { name: "Parsing desktop.calc" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Node desktop" })).not.toBeInTheDocument()
+    expect(importSourceFiles).toHaveBeenCalledTimes(1)
+    const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
+    expect(payload).toMatchObject({
+      projectId: "diels-alder",
+      files: [expect.objectContaining({
+        name: "desktop.calc",
+        preview: "",
+        sourcePath: "/tmp/desktop.calc",
+      })],
+    })
+
+    await act(async () => {
+      importJob.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: payload.files[0].id,
+            name: "desktop.calc",
+            size: 1234,
+            preview: "",
+            storedPath: "sources/desktop.calc",
+            checksum: `sha256:${"b".repeat(64)}`,
+            parse: parsedOrcaSource("engine-preview"),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole("button", { name: "desktop.calc ORCA" })).toBeInTheDocument()
+    expect(screen.queryByRole("progressbar", { name: "Parsing desktop.calc" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "desktop.calc ORCA" }))
+    expect(screen.getByRole("complementary", { name: "Inspector" })).toHaveTextContent("engine-preview")
+  })
+
+  it("stages Electron canvas drops before creating parsed nodes at the drop point", async () => {
+    const importJob = deferred<any>()
+    const importSourceFiles = vi.fn(() => importJob.promise)
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles: vi.fn(),
+        importSourceFiles,
+        filePathForFile: vi.fn(() => "/tmp/canvas-drop.calc"),
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+
+    const { container } = render(<App />)
+    const surface = screen.getByLabelText("Graph canvas surface")
+    mockSurfaceRect(surface)
+    const world = container.querySelector(".canvas-world") as HTMLElement
+    const scale = transformScale(world.style.transform)
+    const translate = transformTranslate(world.style.transform)
+    const clientX = 640
+    const clientY = 360
+    const expectedX = Math.round((clientX - translate.x) / scale)
+    const expectedY = Math.round((clientY - translate.y) / scale)
+    const file = new File(["parser job reads from sourcePath"], "canvas-drop.calc", { type: "text/plain" })
+    const dataTransfer = new TestDataTransfer([file])
+
+    dispatchDrop(surface, dataTransfer, clientX, clientY)
+
+    expect(await screen.findByRole("button", { name: "canvas-drop.calc Raw" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Node canvas-drop" })).not.toBeInTheDocument()
+    expect(importSourceFiles).toHaveBeenCalledTimes(1)
+    const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
+    expect(payload.files[0]).toMatchObject({
+      name: "canvas-drop.calc",
+      preview: "",
+      sourcePath: "/tmp/canvas-drop.calc",
+    })
+
+    await act(async () => {
+      importJob.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: payload.files[0].id,
+            name: "canvas-drop.calc",
+            size: file.size,
+            preview: "",
+            storedPath: "sources/canvas-drop.calc",
+            checksum: `sha256:${"c".repeat(64)}`,
+            parse: parsedOrcaSource("canvas-drop"),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    const node = await screen.findByRole("button", { name: "Node canvas-drop" })
+    expect(node).toHaveTextContent("ΔG")
+    expect(node.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
   })
 
   it("uses Electron desktop APIs for native import and report export", async () => {

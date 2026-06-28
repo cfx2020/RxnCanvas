@@ -713,9 +713,14 @@ describe("importRegistration", () => {
   it("converts browser and desktop files into staged import sources", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1234)
     const browserFiles = await browserImportSourceFilesFromFiles([new File(["abc"], "orca.out")])
+    const noPreviewFile = new File(["should not be read"], "queued.log")
+    const textSpy = vi.spyOn(noPreviewFile, "text")
+    const noPreviewFiles = await browserImportSourceFilesFromFiles([noPreviewFile], "file", { previewMode: "none" })
     const desktopFiles = desktopImportSourceFilesFromFiles([{ name: "scan.xyz", size: 3, preview: "2\nenergy=-1\nH 0 0 0\nH 0 0 1" }])
 
     expect(browserFiles[0]).toMatchObject({ id: "file-1234-0", kind: "ORCA", preview: "abc" })
+    expect(noPreviewFiles[0]).toMatchObject({ id: "file-1234-0", kind: "Gaussian", preview: "" })
+    expect(textSpy).not.toHaveBeenCalled()
     expect(desktopFiles[0]).toMatchObject({ id: "desktop-file-1234-0", kind: "XYZ", status: "staged" })
     expect(desktopImportFilesTransition({ canceled: true, files: [] })).toBeNull()
     expect(desktopImportFilesTransition({ canceled: false, files: [{ name: "ts.log", size: 3, preview: "SCF Done" }] })?.importedFiles[0]).toMatchObject({
