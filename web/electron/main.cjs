@@ -1222,11 +1222,11 @@ async function enrichProjectContentWithStoredSourceCoordinates(content, projectD
   const nextFiles = [...files]
   targets.forEach((target, resultIndex) => {
     const parse = preview.data.files[resultIndex]?.parse
-    if (!parse || (!parseHasCoordinateAtoms(parse) && target.file.parse)) return
+    if (!shouldReplaceStoredSourceParse(target.file.parse, parse)) return
     nextFiles[target.index] = {
       ...target.file,
       kind: typeof parse.sourceKind === "string" && parse.sourceKind ? parse.sourceKind : target.file.kind,
-      status: target.file.status === "ready" ? "parsed" : target.file.status,
+      status: parse.parsed ? "parsed" : target.file.status === "ready" ? "parsed" : target.file.status,
       parse,
     }
     changed = true
@@ -1244,6 +1244,25 @@ function shouldHydrateStoredSourceFile(file) {
   const missingFullFileMetadata = !parseHasComputationMetadata(file.parse) || !parseHasBasisFunctionCount(file.parse)
   if (!likelyCoordinateSource && file.parse && !missingFullFileMetadata) return false
   return !parseHasCoordinateAtoms(file.parse) || missingFullFileMetadata
+}
+
+function shouldReplaceStoredSourceParse(currentParse, nextParse) {
+  if (!nextParse) return false
+  if (!currentParse) return true
+  if (sourceParseHasPendingDesktopJob(currentParse)) return true
+  if (parseHasCoordinateAtoms(nextParse) && !parseHasCoordinateAtoms(currentParse)) return true
+  if (parseHasComputationMetadata(nextParse) && !parseHasComputationMetadata(currentParse)) return true
+  if (parseHasBasisFunctionCount(nextParse) && !parseHasBasisFunctionCount(currentParse)) return true
+  return false
+}
+
+function sourceParseHasPendingDesktopJob(parse) {
+  if (!parse || typeof parse !== "object" || !Array.isArray(parse.warnings)) return false
+  return parse.warnings.some((warning) => (
+    warning?.code === "parse_deferred"
+    || warning?.code === "parse_queued"
+    || warning?.code === "parse_running"
+  ))
 }
 
 function parseHasCoordinateAtoms(parse) {

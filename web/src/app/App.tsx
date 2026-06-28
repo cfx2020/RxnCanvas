@@ -2975,20 +2975,52 @@ function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: str
   const nextFiles = files.map((file) => {
     const savedFile = savedFiles.get(file.id)
     if (!savedFile) return file
+    const parse = preferredAutosavedSourceParse(file.parse, savedFile.parse)
+    const status = parse === savedFile.parse && parse !== file.parse
+      ? savedFile.status
+      : file.status
     const nextFile: SourceFile = {
       ...file,
       size: savedFile.size,
-      status: savedFile.status,
+      status,
       preview: savedFile.preview,
       storedPath: savedFile.storedPath,
       checksum: savedFile.checksum,
       sourcePath: savedFile.sourcePath,
-      parse: savedFile.parse ?? file.parse,
+      parse,
     }
     if (!sourceFileMetadataMatches(file, nextFile)) changed = true
     return nextFile
   })
   return changed ? nextFiles : files
+}
+
+function preferredAutosavedSourceParse(
+  currentParse: SourceParseResult | undefined,
+  savedParse: SourceParseResult | undefined,
+): SourceParseResult | undefined {
+  if (!savedParse) return currentParse
+  if (!currentParse) return savedParse
+  const currentRank = sourceParseResolutionRank(currentParse)
+  const savedRank = sourceParseResolutionRank(savedParse)
+  return savedRank > currentRank ? savedParse : currentParse
+}
+
+function sourceParseResolutionRank(parse: SourceParseResult): number {
+  if (sourceParseHasPendingDesktopJob(parse)) return 1
+  if (!parse.parsed) return 2
+  const hasResolvedObjects = parse.objectCount > 0
+    || parse.candidates.length > 0
+    || Boolean(parse.coordinatePreview)
+  return hasResolvedObjects ? 4 : 3
+}
+
+function sourceParseHasPendingDesktopJob(parse: SourceParseResult): boolean {
+  return parse.warnings.some((warning) => (
+    warning.code === "parse_deferred"
+    || warning.code === "parse_queued"
+    || warning.code === "parse_running"
+  ))
 }
 
 function sourceFileMetadataMatches(left: SourceFile, right: SourceFile): boolean {

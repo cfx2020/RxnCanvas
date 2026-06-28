@@ -1775,6 +1775,232 @@ describe("App", () => {
     expect(screen.getByRole("complementary", { name: "Inspector" })).toHaveTextContent("engine-preview")
   })
 
+  it("keeps parsed desktop imports when a stale autosave response returns later", async () => {
+    const importJob = deferred<any>()
+    const autosaveJob = deferred<void>()
+    const chooseFiles = vi.fn().mockResolvedValue({
+      canceled: false,
+      files: [{
+        name: "race.log",
+        size: 1234,
+        preview: "",
+        sourcePath: "/tmp/race.log",
+      }],
+    })
+    const importSourceFiles = vi.fn(() => importJob.promise)
+    const autosaveProjectPackage = vi.fn((payload: { content: string }) => {
+      const projectPackage = JSON.parse(payload.content)
+      projectPackage.files = projectPackage.files.map((file: Record<string, unknown>) => {
+        const { sourcePath: _sourcePath, ...rest } = file
+        return {
+          ...rest,
+          storedPath: "sources/race.log",
+          checksum: `sha256:${"7".repeat(64)}`,
+        }
+      })
+      const staleContent = JSON.stringify(projectPackage)
+      return autosaveJob.promise.then(() => ({
+        canceled: false,
+        projectDirectory: "/tmp/race-project",
+        content: staleContent,
+        validation: null,
+      }))
+    })
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles,
+        importSourceFiles,
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        autosaveProjectPackage,
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+
+    expect(await screen.findByRole("button", { name: "race.log Gaussian" })).toBeInTheDocument()
+    expect(screen.getByRole("progressbar", { name: "Parsing race.log" })).toBeInTheDocument()
+    await waitFor(() => expect(autosaveProjectPackage).toHaveBeenCalled(), { timeout: 2500 })
+    expect(JSON.parse(autosaveProjectPackage.mock.calls[0][0].content).files[0].parse.warnings[0].code).toBe("parse_deferred")
+
+    const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
+    await act(async () => {
+      importJob.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: payload.files[0].id,
+            name: "race.log",
+            size: 1234,
+            preview: "",
+            storedPath: "sources/race.log",
+            checksum: `sha256:${"8".repeat(64)}`,
+            parse: parsedOrcaSource("race"),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole("button", { name: "race.log ORCA" })).toBeInTheDocument()
+    expect(screen.queryByRole("progressbar", { name: "Parsing race.log" })).not.toBeInTheDocument()
+
+    await act(async () => {
+      autosaveJob.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole("button", { name: "race.log ORCA" })).toBeInTheDocument()
+    expect(screen.queryByRole("progressbar", { name: "Parsing race.log" })).not.toBeInTheDocument()
+  })
+
+  it("clears Electron import progress when a parser job returns without parse data", async () => {
+    const importJob = deferred<any>()
+    const chooseFiles = vi.fn().mockResolvedValue({
+      canceled: false,
+      files: [{
+        name: "no-parse.log",
+        size: 1234,
+        preview: "",
+        sourcePath: "/tmp/no-parse.log",
+      }],
+    })
+    const importSourceFiles = vi.fn(() => importJob.promise)
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles,
+        importSourceFiles,
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+
+    expect(await screen.findByRole("button", { name: "no-parse.log Gaussian" })).toBeInTheDocument()
+    expect(screen.getByRole("progressbar", { name: "Parsing no-parse.log" })).toBeInTheDocument()
+    const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
+
+    await act(async () => {
+      importJob.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: payload.files[0].id,
+            name: "no-parse.log",
+            size: 1234,
+            preview: "",
+            storedPath: "sources/no-parse.log",
+            checksum: `sha256:${"d".repeat(64)}`,
+          }],
+        },
+        warnings: [{
+          code: "import_preview_failed",
+          message: "The local parser did not return import preview data.",
+        }],
+      })
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole("button", { name: "no-parse.log Gaussian" })).toBeInTheDocument()
+    expect(screen.queryByRole("progressbar", { name: "Parsing no-parse.log" })).not.toBeInTheDocument()
+  })
+
+  it("shows an import error dialog and red file status for unsupported desktop parser results", async () => {
+    const importJob = deferred<any>()
+    const chooseFiles = vi.fn().mockResolvedValue({
+      canceled: false,
+      files: [{
+        name: "unsupported.dat",
+        size: 1234,
+        preview: "",
+        sourcePath: "/tmp/unsupported.dat",
+      }],
+    })
+    const importSourceFiles = vi.fn(() => importJob.promise)
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles,
+        importSourceFiles,
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+
+    expect(await screen.findByRole("button", { name: "unsupported.dat Raw" })).toBeInTheDocument()
+    const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
+
+    await act(async () => {
+      importJob.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: payload.files[0].id,
+            name: "unsupported.dat",
+            size: 1234,
+            preview: "",
+            storedPath: "sources/unsupported.dat",
+            checksum: `sha256:${"e".repeat(64)}`,
+            parse: unsupportedSource("unsupported", "No supported parser recognized this source full-file."),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    const rowButton = await screen.findByRole("button", { name: "unsupported.dat Raw" })
+    const sourceRow = rowButton.closest(".project-file-card") as HTMLElement
+    expect(sourceRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
+    const dialog = await screen.findByRole("alertdialog", { name: "Unsupported import format" })
+    expect(dialog).toHaveTextContent("unsupported.dat")
+    expect(dialog).toHaveTextContent("No supported parser recognized this source full-file.")
+  })
+
   it("stages Electron canvas drops before creating parsed nodes at the drop point", async () => {
     const importJob = deferred<any>()
     const importSourceFiles = vi.fn(() => importJob.promise)
