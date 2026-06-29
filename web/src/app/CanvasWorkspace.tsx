@@ -866,7 +866,6 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   const cardWidth = Math.max(cardSize.width, nodeCardMinimumWidth({
     symbol: relativeEnergySymbol,
     value: relativeEnergyLabel,
-    coefficientLabel,
     roleLabel,
     kindLabel: nodeKindAbbreviation(node.kind),
   }))
@@ -877,7 +876,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   const titleLabelWidth = autoTextBoxWidthForValue(renameEditing ? renameDraft : node.label, {
     placeholder: node.label || "Node",
     min: 24,
-    max: Math.max(24, cardSize.width - 78),
+    max: Math.max(24, cardWidth - 72),
     padding: renameEditing ? 18 : 6,
   })
 
@@ -1004,6 +1003,45 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
               {node.label}
             </button>
           )}
+          <span
+            className="node-coefficient-control node-coefficient-control-header"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {coefficientEditing ? (
+              <input
+                ref={coefficientInputRef}
+                aria-label={`Stoichiometric coefficient for ${node.label}`}
+                value={coefficientDraft}
+                inputMode="decimal"
+                onChange={(event) => setCoefficientDraft(event.currentTarget.value)}
+                onBlur={applyCoefficient}
+                onKeyDown={(event) => {
+                  event.stopPropagation()
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    event.currentTarget.blur()
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault()
+                    cancelCoefficientEdit()
+                  }
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                aria-label={`Stoichiometric coefficient for ${node.label}`}
+                title={`Stoichiometric coefficient for ${node.label}`}
+                onClick={() => setCoefficientEditing(true)}
+              >
+                <span className="node-coefficient-label" aria-hidden="true">
+                  <span className="node-coefficient-multiply">×</span>
+                  <span className="node-coefficient-value">{formatCoefficientValue(coefficientValue)}</span>
+                </span>
+              </button>
+            )}
+          </span>
         </div>
         <span
           className="node-header-actions"
@@ -1039,45 +1077,6 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
             </strong>
           </span>
         )}
-        <span
-          className="node-coefficient-control node-coefficient-control-meta"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        >
-          {coefficientEditing ? (
-            <input
-              ref={coefficientInputRef}
-              aria-label={`Stoichiometric coefficient for ${node.label}`}
-              value={coefficientDraft}
-              inputMode="decimal"
-              onChange={(event) => setCoefficientDraft(event.currentTarget.value)}
-              onBlur={applyCoefficient}
-              onKeyDown={(event) => {
-                event.stopPropagation()
-                if (event.key === "Enter") {
-                  event.preventDefault()
-                  event.currentTarget.blur()
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault()
-                  cancelCoefficientEdit()
-                }
-              }}
-            />
-          ) : (
-            <button
-              type="button"
-              aria-label={`Stoichiometric coefficient for ${node.label}`}
-              title={`Stoichiometric coefficient for ${node.label}`}
-              onClick={() => setCoefficientEditing(true)}
-            >
-              <span className="node-coefficient-label" aria-hidden="true">
-                <span className="node-coefficient-multiply">×</span>
-                <span className="node-coefficient-value">{formatCoefficientValue(coefficientValue)}</span>
-              </span>
-            </button>
-          )}
-        </span>
         <em className="node-kind-badge">{nodeKindAbbreviation(node.kind)}</em>
       </div>
       <span
@@ -1124,21 +1123,18 @@ function formatNodeCardRelativeEnergy(value: number | null, unit: EnergyDisplayO
 function nodeCardMinimumWidth({
   symbol,
   value,
-  coefficientLabel,
   roleLabel,
   kindLabel,
 }: {
   symbol: string
   value: string
-  coefficientLabel: string
   roleLabel: string | null
   kindLabel: string
 }): number {
   const energyLabel = roleLabel ?? `${symbol} = ${value}`
   const energyPillWidth = Math.ceil(estimatedInlineTextWidth(energyLabel) + 22)
-  const coefficientPillWidth = Math.max(34, Math.ceil(estimatedInlineTextWidth(coefficientLabel) + 18))
   const kindPillWidth = Math.max(34, Math.ceil(estimatedInlineTextWidth(kindLabel) + 18))
-  return clamp(30 + energyPillWidth + 6 + coefficientPillWidth + 6 + kindPillWidth, minNodeWidth, maxNodeWidth)
+  return clamp(30 + energyPillWidth + 6 + kindPillWidth, minNodeWidth, maxNodeWidth)
 }
 
 function nodeEnergyStripTitle(symbol: string, role: EnergyTableRow["relativeRole"]): string {

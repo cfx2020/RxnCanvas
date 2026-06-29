@@ -14299,39 +14299,34 @@ select,
 
 .reaction-node .node-energy-strip.node-card-meta-row {
   display: grid !important;
-  grid-template-columns: 32px minmax(0, 1fr) auto !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
   align-items: center !important;
   justify-content: stretch !important;
   gap: 6px !important;
 }
 
 .reaction-node .node-energy-strip.node-card-meta-row .status-light-node {
-  grid-column: 1 !important;
-  grid-row: 1 !important;
-  justify-self: center !important;
-  align-self: center !important;
-  width: 8px !important;
-  height: 8px !important;
-  display: inline-block !important;
+  display: none !important;
   visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
   margin: 0 !important;
   position: static !important;
 }
 
 .reaction-node .node-energy-strip.node-card-meta-row .status-light-node.status-light-missing {
-  visibility: visible !important;
-  background: #ef8f35 !important;
-  box-shadow: 0 0 0 4px rgba(239, 143, 53, 0.16), 0 0 18px rgba(239, 143, 53, 0.28) !important;
+  display: none !important;
+  visibility: hidden !important;
 }
 
 .reaction-node .node-energy-strip.node-card-meta-row .node-card-energy-value {
-  grid-column: 2 !important;
+  grid-column: 1 !important;
   grid-row: 1 !important;
-  justify-self: end !important;
+  justify-self: stretch !important;
 }
 
 .reaction-node .node-energy-strip.node-card-meta-row .node-kind-badge {
-  grid-column: 3 !important;
+  grid-column: 2 !important;
   grid-row: 1 !important;
   justify-self: end !important;
 }
@@ -14363,13 +14358,59 @@ select,
   left: var(--rxnflow-left-collapsed-workbench-reserve, 150px) !important;
 }
 
-/* 2026-06-28 node card meta cleanup:
+/* 2026-06-29 node card meta cleanup:
    The solvation status light belongs in the top-right node chrome. Keep the
-   energy/type row compact and let the card width grow instead of ellipsizing
-   the relative-energy number. */
+   coefficient next to the title, so the bottom row can keep energy + type
+   readable on narrow cards. */
+.reaction-node .node-header {
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+
+.reaction-node .node-header-main {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: calc(100% - 20px) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding-right: 22px !important;
+}
+
+.reaction-node .node-title-button,
+.reaction-node .node-title-input {
+  flex: 0 1 auto !important;
+  min-width: 24px !important;
+  max-width: 100% !important;
+}
+
 .reaction-node .node-header-actions {
   align-items: center !important;
   gap: 6px !important;
+}
+
+.reaction-node .node-coefficient-control-header {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 34px !important;
+  max-width: none !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+}
+
+.reaction-node .node-coefficient-control-header button,
+.reaction-node .node-coefficient-control-header input {
+  width: auto !important;
+  min-width: 34px !important;
+  max-width: 54px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  border-radius: 11px !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
 }
 
 .reaction-node .node-status-light-corner.status-light-missing {
@@ -14390,63 +14431,45 @@ select,
 }
 
 .reaction-node .node-energy-strip.node-card-meta-row {
-  width: max-content !important;
+  width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
-  display: flex !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
   align-items: center !important;
-  justify-content: flex-start !important;
   gap: 6px !important;
-  overflow: visible !important;
+  overflow: hidden !important;
 }
 
 .reaction-node .node-card-energy-value {
-  flex: 0 0 auto !important;
+  flex: 0 1 auto !important;
   width: auto !important;
-  max-width: none !important;
-  min-width: max-content !important;
-  justify-self: auto !important;
-  overflow: visible !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  justify-self: stretch !important;
+  overflow: hidden !important;
   white-space: nowrap !important;
 }
 
 .reaction-node .node-card-energy-value > span,
 .reaction-node .node-card-energy-value strong {
   min-width: 0 !important;
-  overflow: visible !important;
-  text-overflow: clip !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
   white-space: nowrap !important;
 }
 
 .reaction-node .node-energy-strip.node-card-meta-row .node-coefficient-control-meta {
-  flex: 0 0 auto !important;
-  width: auto !important;
-  min-width: 34px !important;
-  min-height: 30px !important;
-  margin: 0 !important;
-  display: inline-grid !important;
-  place-items: center !important;
-}
-
-.reaction-node .node-energy-strip.node-card-meta-row .node-coefficient-control-meta button,
-.reaction-node .node-energy-strip.node-card-meta-row .node-coefficient-control-meta input {
-  width: auto !important;
-  min-width: 34px !important;
-  max-width: 54px !important;
-  height: 30px !important;
-  min-height: 30px !important;
-  border-radius: 11px !important;
-  padding: 0 8px !important;
-  font-size: 11px !important;
-  line-height: 30px !important;
+  display: none !important;
 }
 
 .reaction-node .node-kind-badge {
   flex: 0 0 auto !important;
   width: auto !important;
   min-width: 34px !important;
-  max-width: none !important;
-  justify-self: auto !important;
+  max-width: 42px !important;
+  justify-self: end !important;
+  overflow: hidden !important;
 }
 
 .app-shell.theme-dark .reaction-node .node-status-light-corner.status-light-missing {

@@ -1575,9 +1575,10 @@ describe("App", () => {
       expect(node?.querySelector(".status-light-node.status-light-missing")).toBeInTheDocument()
       expect(node?.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
       expect(node?.querySelector(".node-card-meta-row .status-light-node")).not.toBeInTheDocument()
-      expect(node?.querySelector(".node-header-actions .node-coefficient-control")).not.toBeInTheDocument()
-      expect(node?.querySelector(".node-card-meta-row .node-coefficient-control-meta")).toBeInTheDocument()
-      expect(node?.querySelector(".node-card-meta-row")?.textContent).toMatch(/ΔG.*×1.*INT/)
+      expect(node?.querySelector(".node-header-main .node-coefficient-control-header")).toBeInTheDocument()
+      expect(node?.querySelector(".node-card-meta-row .node-coefficient-control-meta")).not.toBeInTheDocument()
+      expect(node?.querySelector(".node-card-meta-row")?.textContent).toMatch(/ΔG.*INT/)
+      expect(node?.querySelector(".node-card-meta-row")?.textContent).not.toContain("×1")
     })
   })
 
