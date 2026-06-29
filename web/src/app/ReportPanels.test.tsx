@@ -24,6 +24,40 @@ function row(nodeId: string, label: string, absolute: number, relative: number):
 }
 
 describe("EnergyTableView", () => {
+  it("keeps compact headers and places kcal columns next to their Hartree source", () => {
+    render(
+      <EnergyTableView
+        rows={[row("a", "A", -10, 1)]}
+        outputUnit="kcal/mol"
+        onSelectNode={vi.fn()}
+      />,
+    )
+
+    const table = screen.getByRole("table")
+    const headers = Array.from(table.querySelectorAll("thead th"))
+      .map((cell) => cell.textContent?.replace(/\s+/g, "").trim())
+
+    expect(headers).toEqual([
+      "Structure",
+      "Charge/Mult.",
+      "Egas(Eh)",
+      "Egas(kcal/mol)",
+      "Basisgas",
+      "Ggas(Eh)",
+      "Ggas(kcal/mol)",
+      "Ggas+1M(Eh)",
+      "Ggas+1M(kcal/mol)",
+      "Esol(Eh)",
+      "Esol(kcal/mol)",
+      "Basissol",
+      "Gsol(kcal/mol)",
+    ])
+    expect(headers.join(" ")).not.toContain("Formula")
+    expect(headers.join(" ")).not.toContain("627.5095")
+    expect(headers.join(" ").toLowerCase()).not.toContain("shermo")
+    expect(headers.join(" ").toLowerCase()).not.toContain("whit")
+  })
+
   it("uses shared row-level relative tables instead of recomputing first-row baselines", () => {
     render(
       <EnergyTableView

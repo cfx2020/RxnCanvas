@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-report-export-quality
 status: active
 created: 2026-05-21
-last_reviewed: 2026-06-09
+last_reviewed: 2026-06-29
 tags: [rxnflow, report-export, energy-table, energy-diagram, cdxml, xlsx, png]
 related_requirements: [web-workbench-shell, project-content-persistence]
 related_architecture: [ARCHITECTURE, core-platform, web-workbench]
@@ -23,7 +23,7 @@ RxnFlow 已经有 `ReportExportService` baseline：它能从已加载的 `Energy
 
 ### 本 roadmap 覆盖
 
-- Energy table schema：以结构名称为第一列，覆盖 gas/solution energy、Hartree/kcal/mol 成对列、basis function、Ggas + 1M、shermo/Whitesides 修正、relative profile 和 warnings。
+- Energy table schema：以结构名称为第一列，覆盖 gas/solution energy、Hartree/kcal/mol 成对列、basis function、Ggas + 1M、relative profile 和 warnings；Shermo/Whitesides 修正作为后续新特性接入。
 - XLSX/CSV 取舍：XLSX 作为首选 artifact，CSV 作为可选后续格式，先通过 table intermediate 保证两者不会各自发明字段。
 - Energy diagram route：把 profile points 转成 PNG/CDXML 共用的 `EnergyDiagramRoute`，统一 y-axis、state line、连接线、missing point、label/value 和 warning 语义。
 - CDXML compatibility：生成可由 ChemDraw 打开的 XML 文档，固定 `fonttable`、`colortable`、`page`、`graphic`、`arrow`、`t/s` 文本节点和 ID/BoundingBox 规则。
@@ -38,6 +38,7 @@ RxnFlow 已经有 `ReportExportService` baseline：它能从已加载的 `Energy
 - 不生成 PDF、PPTX、SVG、DOCX、HTML report 或完整组合报告模板。
 - 不在 Web 前端生成 PNG/CDXML/XLSX bytes；前端只展示和持久化 ShellResponse artifact projection。
 - 不重新计算能量、校正项、单位换算或反应路径；导出层消费已经存在的 profile/object/table rows。
+- 不在 Shermo/Whitesides correction model 落地前，于 Web Energy Table 视图展示 Shermo/Whitesides 校正列或占位表头；XLSX/CSV 的正式导出列由后续 planned item 统一接入。
 - 不引入云存储、账号、自动保存或跨设备同步。
 - 不把用户提供的私有 workbook 原文件复制进仓库；只沉淀字段口径和可复现测试 fixture。
 
@@ -123,7 +124,7 @@ class EnergyTableRow:
 
 - Structure：`structure_name`，来自对象 label、profile point label 或显式 row。
 - Gas：`egas_hartree`、`egas_kcal_mol`、`gas_basis_functions`、`ggas_hartree`、`ggas_kcal_mol`、`ggas_1m_hartree`、`ggas_1m_kcal_mol`。
-- Shermo / Whitesides：`ggas_shermo_hartree`、`ggas_shermo_kcal_mol`、`ggas_shermo_1m_hartree`、`ggas_shermo_1m_kcal_mol`。
+- Shermo / Whitesides 后续扩展：`ggas_shermo_hartree`、`ggas_shermo_kcal_mol`、`ggas_shermo_1m_hartree`、`ggas_shermo_1m_kcal_mol`，仅在 correction model feature 落地后加入显示和导出。
 - Solution：`esol_hartree`、`esol_kcal_mol`、`solution_basis_functions`、`gsol_hartree`、`gsol_kcal_mol`。
 - Profile：`relative_energy`、`relative_unit`、`missing_reason`。
 
@@ -264,7 +265,7 @@ type ShellArtifact = {
 5. `web-report-export-verification`：补 Web fixture/local-http 导出回归，覆盖 inline download、persisted checksum、warnings 和窄屏布局。**状态：done**，已落地 PNG/CDXML/XLSX download MIME、writer metadata、`energy-table-v1` schema metadata、browser-local persisted checksum、unsupported `cdx` persistence guard、include-bytes-off、persistence failure、local-http 真实 writer ids 和窄屏 E2E；Web 仍不生成导出 bytes。
 6. `report-export-guides`：补开发者/用户指南，同步 acceptance 后的现状文档。**状态：done**，已补 `docs/dev/report-export-artifacts.md` 和 `docs/user/report-export-artifacts.md`，覆盖 core/Shell/Web artifact contract、Energy Table 字段口径、Web 操作、PNG/CDXML/XLSX 用途、CDXML/CDX 边界、Download/Persisted/Checksum/Metadata/Warnings 语义和 `exports/...` 保存路径。
 7. `ir-gas-solution-workbook-template`：用 Ir 文件夹的真实 Gaussian gas/solution log 和 `Shermo_New` 样表补通用 XLSX 模板页，确保 `Gsol` 公式和 cached value 可验证。**状态：done**，已以 `rxnflow.solution_pairs` 和 `_write_shermo_template_sheet()` 落地，真实 Ir 导出验证通过；Shermo/Whitesides 仍不计算。
-8. `shermo-whitesides-export-columns`：后续把 Shermo 与 Whitesides 校正数据接入表格显示和导出。**状态：planned**，依赖 energy chemistry semantics 中的校正模型；参考资料：`https://831447.xyz/p/2025/shermo`、`https://831447.xyz/p/2025/whitesides`。
+8. `shermo-whitesides-export-columns`：后续把 Shermo 与 Whitesides 校正数据接入表格显示和导出。**状态：planned**，依赖 energy chemistry semantics 中的校正模型；参考资料：`https://831447.xyz/p/2025/shermo`、`https://831447.xyz/p/2025/whitesides`。2026-06-29 口径：当前 Web Energy Table 先隐藏这些校正列，不保留占位表头。
 
 ## 6. 排期 / 推进顺序
 

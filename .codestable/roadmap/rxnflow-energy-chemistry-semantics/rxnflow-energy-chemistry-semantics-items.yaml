@@ -72,4 +72,4 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: 用户允许先不实现；参考 https://831447.xyz/p/2025/shermo 与 https://831447.xyz/p/2025/whitesides，后续实现必须显式记录温度、标准态、熵项来源、单位换算和适用范围
+    notes: 用户允许先不实现；参考 https://831447.xyz/p/2025/shermo 与 https://831447.xyz/p/2025/whitesides，后续实现必须显式记录温度、标准态、熵项来源、单位换算和适用范围；2026-06-29 确认当前 Web Energy Table 先隐藏 Shermo/Whitesides 校正表头，等模型落地后再接入显示和导出

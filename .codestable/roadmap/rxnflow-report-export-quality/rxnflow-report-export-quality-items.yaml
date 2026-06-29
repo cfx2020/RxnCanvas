@@ -64,4 +64,4 @@ items:
     status: planned
     feature: null
     minimal_loop: false
-    notes: 用户允许先不实现；参考 https://831447.xyz/p/2025/shermo 与 https://831447.xyz/p/2025/whitesides，需先在 energy chemistry semantics 中建立校正模型，再接入导出列
+    notes: 用户允许先不实现；参考 https://831447.xyz/p/2025/shermo 与 https://831447.xyz/p/2025/whitesides，需先在 energy chemistry semantics 中建立校正模型，再接入导出列；2026-06-29 确认当前 Web Energy Table 先隐藏 Shermo/Whitesides 校正列，不保留占位表头

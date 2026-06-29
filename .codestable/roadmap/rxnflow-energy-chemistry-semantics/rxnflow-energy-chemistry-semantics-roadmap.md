@@ -3,7 +3,7 @@ doc_type: roadmap
 slug: rxnflow-energy-chemistry-semantics
 status: active
 created: 2026-05-22
-last_reviewed: 2026-06-09
+last_reviewed: 2026-06-29
 tags: [rxnflow, energy, chemistry-semantics, stoichiometry, corrections, thermochemistry]
 related_requirements: [project-content-persistence, web-workbench-shell]
 related_architecture: [ARCHITECTURE, core-platform, web-workbench]
@@ -25,7 +25,7 @@ RxnFlow 当前已经能导入计算输出、登记对象、搭建反应图、计
 - 节点能量表达式：用 composition terms 计算节点绝对能量，保留旧 `chemical_object_ids` 的兼容读写路径。
 - Energy channel selection：把 `energies` 与 `thermochemistry` 中的可用 key 统一为可选择的 energy channel，并记录来源 section。
 - Correction selection policy：从整体 include corrections 过渡到可解释的 correction inclusion / kind filter 语义。
-- Shermo / Whitesides correction model：后续把 Shermo 和 Whitesides 熵校正建成可追踪校正项，支持显示、profile 计算和导出；当前只记录 roadmap，不在本轮实现。
+- Shermo / Whitesides correction model：后续把 Shermo 和 Whitesides 熵校正建成可追踪校正项，支持显示、profile 计算和导出；当前只记录 roadmap，不在本轮实现，也不在 Web Energy Table 中保留占位表头。
 - Energy profile provenance：在 profile point 中输出节点组成、每项贡献、校正项贡献、单位换算、baseline 和 missing reason 细节。
 - Platform Shell / Web DTO：让 agent 和 UI 可以通过结构化命令设置节点组成、添加校正项、选择能量通道并显示表达式。
 - Project Content 迁移：保存/加载新 composition 和 profile provenance，同时兼容已有 `reaction-graphs-v1` / `energy-profiles-v1` 数据。
@@ -434,7 +434,7 @@ energy-profiles-v1 point:
    - 依赖：`energy-expression-engine`、`energy-profile-provenance-details`
    - 状态：planned
    - 对应 feature：无
-   - 备注：2026-06-09 用户明确 Shermo 和 Whitesides 可以先不实现，但必须写入 roadmap。参考资料：`https://831447.xyz/p/2025/shermo`、`https://831447.xyz/p/2025/whitesides`。后续实现时要显式记录温度、标准态、熵项来源、单位换算和适用范围，不允许把普通 `Ggas+1M` 冒充校正后自由能。
+   - 备注：2026-06-09 用户明确 Shermo 和 Whitesides 可以先不实现，但必须写入 roadmap。参考资料：`https://831447.xyz/p/2025/shermo`、`https://831447.xyz/p/2025/whitesides`。后续实现时要显式记录温度、标准态、熵项来源、单位换算和适用范围，不允许把普通 `Ggas+1M` 冒充校正后自由能。2026-06-29 用户确认当前 Web Energy Table 先隐藏 Shermo/Whitesides 校正表头，等本模型落地后再作为新特性接入显示和导出。
 
 **最小闭环**：第 1 条 `reaction-node-stoichiometry-contract` 做完后，用户/agent 能在一个 reaction node 中表达 `A + 2B`，保存并重新打开后仍能看到 composition，旧单对象节点仍按 coefficient 1 计算。
 
@@ -450,4 +450,4 @@ energy-profiles-v1 point:
 - Parser support matrix 中 Gaussian/ORCA/MAPLE thermochemistry 多数仍是 unsupported/reference-only；energy channel catalog 只定义选择机制，不代表 parser 已能稳定产出这些字段。
 - Report Export 的 Energy Table 已有 `ggas/gsol` 等列口径；本 roadmap 后续需要检查 profile expression 与 workbook 字段口径是否一致。
 - Web Object Registry 的 Correction Entry Form 已可追加 manual/solvation/resonance correction；`web-energy-semantics-controls` 已把 correction policy options、energy channel selector 和 selected-node composition editor 接入 Web Workbench，但对象面板仍不是完整对象编辑器。
-- Shermo / Whitesides 后续需要先做模型与 provenance，再接入 `EnergyTableColumn`、`Shermo_New` 模板页和 Web energy selector；不能只在 XLSX writer 里硬塞公式。
+- Shermo / Whitesides 后续需要先做模型与 provenance，再接入 `EnergyTableColumn`、`Shermo_New` 模板页、Web Energy Table 和 Web energy selector；不能只在 XLSX writer 里硬塞公式。当前 UI 不保留 Shermo/Whitesides 占位列。

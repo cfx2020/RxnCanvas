@@ -123,26 +123,16 @@ export const EnergyTableView = memo(function EnergyTableView({
                     <button type="button" onClick={() => onSelectNode(row.nodeId)}>{row.label}</button>
                   </th>
                   <td>{chargeMultiplicity(row)}</td>
-                  <td>{row.formula || "-"}</td>
                   <td>{formatHartreeTableCell(row, "egasHartree", tableMode)}</td>
-                  <td>{formatIntegerCell(tableNumberValue(row, "gasBasisFunctions", tableMode))}</td>
                   <td>{formatKcalFromHartreeCell(row, "egasHartree", tableMode)}</td>
+                  <td>{formatIntegerCell(tableNumberValue(row, "gasBasisFunctions", tableMode))}</td>
                   <td>{formatHartreeTableCell(row, "ggasHartree", tableMode)}</td>
                   <td>{formatKcalFromHartreeCell(row, "ggasHartree", tableMode)}</td>
                   <td>{formatHartreeTableCell(row, "ggas1mHartree", tableMode)}</td>
                   <td>{formatKcalFromHartreeCell(row, "ggas1mHartree", tableMode)}</td>
-                  <td>{formatHartreeTableCell(row, "ggasShermoHartree", tableMode)}</td>
-                  <td>{formatKcalFromHartreeCell(row, "ggasShermoHartree", tableMode)}</td>
-                  <td>{formatHartreeTableCell(row, "ggasShermo1mHartree", tableMode)}</td>
-                  <td>{formatKcalFromHartreeCell(row, "ggasShermo1mHartree", tableMode)}</td>
                   <td>{formatHartreeTableCell(row, "esolHartree", tableMode)}</td>
-                  <td>{formatIntegerCell(tableNumberValue(row, "solBasisFunctions", tableMode))}</td>
                   <td>{formatKcalFromHartreeCell(row, "esolHartree", tableMode)}</td>
-                  <td>{formatNumberCell(tableNumberValue(row, "sgauTran", tableMode))}</td>
-                  <td>{formatNumberCell(tableNumberValue(row, "swhitTran", tableMode))}</td>
-                  <td>{formatNumberCell(tableNumberValue(row, "entropyDelta", tableMode))}</td>
-                  <td>{formatHartreeTableCell(row, "entropyCorrectionHartree", tableMode)}</td>
-                  <td>{formatHartreeTableCell(row, "standardStateCorrectionHartree", tableMode)}</td>
+                  <td>{formatIntegerCell(tableNumberValue(row, "solBasisFunctions", tableMode))}</td>
                   <td>{formatKcalFromHartreeCell(row, "gsolHartree", tableMode)}</td>
                 </tr>
               ))}
@@ -158,28 +148,18 @@ function energyTableHeaders(relative: boolean): ReactNode[] {
   const prefix = relative ? "Δ" : ""
   return [
     "Structure",
-    "Charge / Multiplicity",
-    "Formula",
-    <span>{prefix}E<sub>gas</sub></span>,
-    <span>Basis functions <sub>gas</sub></span>,
-    <span>{prefix}E<sub>gas</sub> × 627.5095</span>,
-    <span>{prefix}G<sub>gas</sub></span>,
-    <span>{prefix}G<sub>gas</sub> × 627.5095</span>,
-    <span>{prefix}G<sub>gas</sub>+1M</span>,
-    <span>{prefix}G<sub>gas</sub>+1M × 627.5095</span>,
-    <span>{prefix}G<sub>gas</sub>(shermo)</span>,
-    <span>{prefix}G<sub>gas</sub>(shermo) × 627.5095</span>,
-    <span>{prefix}G<sub>gas</sub>(shermo+1M)</span>,
-    <span>{prefix}G<sub>gas</sub>(shermo+1M) × 627.5095</span>,
-    <span>{prefix}E<sub>sol</sub></span>,
-    <span>Basis functions <sub>sol</sub></span>,
-    <span>{prefix}E<sub>sol</sub> × 627.5095</span>,
-    <span>{prefix}S<sub>gau,tran</sub></span>,
-    <span>{prefix}S<sub>whit,tran</sub></span>,
-    <span>{prefix}S<sub>gau,tran</sub> - {prefix}S<sub>whit,tran</sub></span>,
-    <span>T*({prefix}S<sub>gau,tran</sub> - {prefix}S<sub>whit,tran</sub>)/1000</span>,
-    "RT*0.239006/1000",
-    <span>{prefix}G<sub>sol</sub></span>,
+    "Charge / Mult.",
+    <span>{prefix}E<sub>gas</sub>(Eh)</span>,
+    <span>{prefix}E<sub>gas</sub>(kcal/mol)</span>,
+    <span>Basis<sub>gas</sub></span>,
+    <span>{prefix}G<sub>gas</sub>(Eh)</span>,
+    <span>{prefix}G<sub>gas</sub>(kcal/mol)</span>,
+    <span>{prefix}G<sub>gas</sub>+1M(Eh)</span>,
+    <span>{prefix}G<sub>gas</sub>+1M(kcal/mol)</span>,
+    <span>{prefix}E<sub>sol</sub>(Eh)</span>,
+    <span>{prefix}E<sub>sol</sub>(kcal/mol)</span>,
+    <span>Basis<sub>sol</sub></span>,
+    <span>{prefix}G<sub>sol</sub>(kcal/mol)</span>,
   ]
 }
 
@@ -187,20 +167,13 @@ type HartreeEnergyTableKey =
   | "egasHartree"
   | "ggasHartree"
   | "ggas1mHartree"
-  | "ggasShermoHartree"
-  | "ggasShermo1mHartree"
   | "esolHartree"
-  | "entropyCorrectionHartree"
-  | "standardStateCorrectionHartree"
   | "gsolHartree"
 
 type NumericEnergyTableKey =
   | HartreeEnergyTableKey
   | "gasBasisFunctions"
   | "solBasisFunctions"
-  | "sgauTran"
-  | "swhitTran"
-  | "entropyDelta"
 
 function chargeMultiplicity(row: EnergyTableRow): string {
   if (typeof row.charge !== "number" && typeof row.spinMultiplicity !== "number") return "-"
@@ -238,10 +211,6 @@ function tableNumberValue(row: EnergyTableRow, key: NumericEnergyTableKey, mode:
 
 function formatIntegerCell(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? String(Math.trunc(value)) : "-"
-}
-
-function formatNumberCell(value: number | null | undefined): string {
-  return typeof value === "number" && Number.isFinite(value) ? Number(value.toFixed(6)).toString() : "-"
 }
 
 function formatHartreeNumber(value: number): string {
