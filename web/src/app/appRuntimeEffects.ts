@@ -34,6 +34,14 @@ export type RxnflowDesktopApi = {
   chooseFiles: () => Promise<{ canceled: boolean; files: DesktopSourceFile[] }>
   getEngineStatus: () => Promise<DesktopEngineStatus>
   importSourceFiles?: (payload: DesktopImportSourceFilesPayload) => Promise<DesktopImportSourceFilesResponse>
+  showImportIssues?: (payload: {
+    title: string
+    entries: Array<{
+      fileName: string
+      code: string
+      message: string
+    }>
+  }) => Promise<{ ok: boolean; shown?: boolean }>
   filePathForFile?: (file: File) => string
   registerImportCandidates?: (payload: DesktopImportRegistrationPayload) => Promise<DesktopImportRegistrationResponse>
   parseSourcePreview?: (payload: {
@@ -179,7 +187,7 @@ export async function saveProjectPackageToRuntime({
   canvases: RxnFlowProjectCanvas[]
   activeCanvasId: string
   setProjectValidation: (validation: ProjectValidationPayload | null) => void
-}): Promise<void> {
+}): Promise<ProjectPackageSaveResult | null> {
   const transition = projectPackageSaveRuntimeTransition(Boolean(desktopApi))
   const { content, defaultName } = serializeProjectPackage({
     project,
@@ -193,10 +201,11 @@ export async function saveProjectPackageToRuntime({
       content,
     })
     if (result && !result.canceled) setProjectValidation(result.validation ?? null)
-    return
+    return result ?? null
   }
   if (transition.shouldDownloadBrowser) downloadText(defaultName, content, "application/json")
   setProjectValidation(null)
+  return null
 }
 
 export async function autosaveProjectPackageToRuntime({
@@ -255,11 +264,16 @@ export function subscribeProjectPackageRuntimeMenus({
 export function restoreStartupProjectFromRuntime({
   desktopApi,
   restoreProjectPackage,
+  onSettled,
 }: {
   desktopApi: RxnflowDesktopApi | undefined
   restoreProjectPackage: RestoreProjectPackageHandler
+  onSettled?: () => void
 }): () => void {
   let canceled = false
+  const settle = () => {
+    if (!canceled) onSettled?.()
+  }
   if (!desktopApi?.getStartupProjectContent) return () => {
     canceled = true
   }
@@ -278,6 +292,8 @@ export function restoreStartupProjectFromRuntime({
     })
   }).catch(() => {
     // Startup restore is best-effort. Invalid recent workspaces are pruned by the main process.
+  }).finally(() => {
+    settle()
   })
 
   return () => {

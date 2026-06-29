@@ -9,15 +9,16 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react"
-import { ChevronDown, Maximize2, UploadCloud, ZoomIn, ZoomOut } from "lucide-react"
+import { Maximize2, UploadCloud, ZoomIn, ZoomOut } from "lucide-react"
 import type { CanvasAnnotation, CanvasViewport, FlowBarrier, FlowEdge, FlowNode, Point, SourceFile } from "../domain/projectPackages"
 import type { CoordinatePreview } from "../domain/sourceParsers"
 import {
   clamp,
-  collapsedNodeHeight,
   createMinimapGeometry,
   fallbackCanvasSize,
   flowNodeSize,
+  maxNodeWidth,
+  minNodeWidth,
   minimapRectStyle,
   minimapSize,
   viewportFromCanvasWheel,
@@ -850,7 +851,6 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   const coefficientValue = nodeCoefficient(node)
   const [coefficientEditing, setCoefficientEditing] = useState(false)
   const [coefficientDraft, setCoefficientDraft] = useState(formatCoefficientValue(coefficientValue))
-  const [structureCollapsed, setStructureCollapsed] = useState(false)
   const [renameEditing, setRenameEditing] = useState(false)
   const [renameDraft, setRenameDraft] = useState(node.label)
   const coefficientInputRef = useRef<HTMLInputElement | null>(null)
@@ -859,9 +859,18 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   const nodeStatusLight = solvationStatus === "missing" ? "missing" : (node.sourceStatus ?? solvationStatus)
   const relativeEnergySymbol = energySource === "solution" ? "ΔG" : "ΔE"
   const cardSize = flowNodeSize(node)
-  const cardHeight = structureCollapsed ? collapsedNodeHeight : cardSize.height
+  const relativeEnergyLabel = formatNodeCardRelativeEnergy(relativeEnergy, outputUnit)
+  const coefficientLabel = `×${formatCoefficientValue(coefficientValue)}`
+  const roleLabel = nodeTermRoleLabel(relativeRole)
+  const cardWidth = Math.max(cardSize.width, nodeCardMinimumWidth({
+    symbol: relativeEnergySymbol,
+    value: relativeEnergyLabel,
+    coefficientLabel,
+    roleLabel,
+    kindLabel: nodeKindAbbreviation(node.kind),
+  }))
   const previewSize = {
-    width: Math.max(128, cardSize.width - 28),
+    width: Math.max(128, cardWidth - 28),
     height: Math.max(72, cardSize.height - 110),
   }
   const titleLabelWidth = autoTextBoxWidthForValue(renameEditing ? renameDraft : node.label, {
@@ -933,13 +942,13 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
     <div
       role="button"
       tabIndex={0}
-      className={`reaction-node node-${node.kind}${selected ? " is-selected" : ""}${connectionSnapTarget ? " is-connection-snap-target" : ""}${structureCollapsed ? " is-structure-collapsed" : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
+      className={`reaction-node node-${node.kind}${selected ? " is-selected" : ""}${connectionSnapTarget ? " is-connection-snap-target" : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
       aria-label={`Node ${node.label}`}
       data-flow-node-id={node.id}
       style={{
         transform: `translate(${node.position.x}px, ${node.position.y}px)`,
-        width: cardSize.width,
-        height: cardHeight,
+        width: cardWidth,
+        height: cardSize.height,
       }}
       onPointerDown={(event) => onPointerDown(event, node)}
       onPointerUp={(event) => onPointerUp(event, node.id)}
@@ -1001,83 +1010,73 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
-          <span
-            className="node-coefficient-control node-coefficient-control-header"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-          >
-            {coefficientEditing ? (
-              <input
-                ref={coefficientInputRef}
-                aria-label={`Stoichiometric coefficient for ${node.label}`}
-                value={coefficientDraft}
-                inputMode="decimal"
-                onChange={(event) => setCoefficientDraft(event.currentTarget.value)}
-                onBlur={applyCoefficient}
-                onKeyDown={(event) => {
-                  event.stopPropagation()
-                  if (event.key === "Enter") {
-                    event.preventDefault()
-                    event.currentTarget.blur()
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault()
-                    cancelCoefficientEdit()
-                  }
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                aria-label={`Stoichiometric coefficient for ${node.label}`}
-                title={`Stoichiometric coefficient for ${node.label}`}
-                onClick={() => setCoefficientEditing(true)}
-              >
-                <span className="node-coefficient-label" aria-hidden="true">
-                  <span className="node-coefficient-multiply">×</span>
-                  <span className="node-coefficient-value">{formatCoefficientValue(coefficientValue)}</span>
-                </span>
-              </button>
-            )}
-          </span>
-          <button
-            type="button"
-            className={structureCollapsed ? "node-preview-toggle is-collapsed" : "node-preview-toggle"}
-            aria-label={structureCollapsed ? `Show structure preview for ${node.label}` : `Collapse structure preview for ${node.label}`}
-            aria-expanded={!structureCollapsed}
-            title={structureCollapsed ? `Show structure preview for ${node.label}` : `Collapse structure preview for ${node.label}`}
-            onClick={() => setStructureCollapsed((current) => !current)}
-          >
-            <ChevronDown size={13} aria-hidden="true" />
-          </button>
+          {nodeStatusLight === "missing" ? (
+            <span
+              className="status-light status-light-node status-light-missing node-status-light-corner"
+              title={`${sourceStatusLabel}. ${solvationStatusLabel}`}
+              aria-label={`${sourceStatusLabel}. ${solvationStatusLabel}`}
+            />
+          ) : null}
         </span>
       </div>
-      {structureCollapsed ? null : (
-        <NodeStructurePreview
-          node={node}
-          coordinatePreview={coordinatePreview}
-          previewSize={previewSize}
-          onOpenStructure={onOpenStructure}
-        />
-      )}
+      <NodeStructurePreview
+        node={node}
+        coordinatePreview={coordinatePreview}
+        previewSize={previewSize}
+        onOpenStructure={onOpenStructure}
+      />
       <div className="node-energy-strip node-card-meta-row" title={nodeEnergyStripTitle(relativeEnergySymbol, relativeRole)}>
-        <span
-          className={`status-light status-light-node status-light-${nodeStatusLight}`}
-          title={`${sourceStatusLabel}. ${solvationStatusLabel}`}
-          aria-label={`${sourceStatusLabel}. ${solvationStatusLabel}`}
-        />
-        {nodeTermRoleLabel(relativeRole) ? (
+        {roleLabel ? (
           <span className="node-card-energy-value node-card-energy-term" title={nodeEnergyStripTitle(relativeEnergySymbol, relativeRole)}>
-            <strong>{nodeTermRoleLabel(relativeRole)}</strong>
+            <strong>{roleLabel}</strong>
           </span>
         ) : (
           <span className="node-card-energy-value">
             <span>{relativeEnergySymbol}</span>
             <strong className={energyBaseline ? "node-relative-energy is-zero" : "node-relative-energy"}>
-              {formatNodeCardRelativeEnergy(relativeEnergy, outputUnit)}
+              {relativeEnergyLabel}
             </strong>
           </span>
         )}
+        <span
+          className="node-coefficient-control node-coefficient-control-meta"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {coefficientEditing ? (
+            <input
+              ref={coefficientInputRef}
+              aria-label={`Stoichiometric coefficient for ${node.label}`}
+              value={coefficientDraft}
+              inputMode="decimal"
+              onChange={(event) => setCoefficientDraft(event.currentTarget.value)}
+              onBlur={applyCoefficient}
+              onKeyDown={(event) => {
+                event.stopPropagation()
+                if (event.key === "Enter") {
+                  event.preventDefault()
+                  event.currentTarget.blur()
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault()
+                  cancelCoefficientEdit()
+                }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              aria-label={`Stoichiometric coefficient for ${node.label}`}
+              title={`Stoichiometric coefficient for ${node.label}`}
+              onClick={() => setCoefficientEditing(true)}
+            >
+              <span className="node-coefficient-label" aria-hidden="true">
+                <span className="node-coefficient-multiply">×</span>
+                <span className="node-coefficient-value">{formatCoefficientValue(coefficientValue)}</span>
+              </span>
+            </button>
+          )}
+        </span>
         <em className="node-kind-badge">{nodeKindAbbreviation(node.kind)}</em>
       </div>
       <span
@@ -1119,6 +1118,26 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
 function formatNodeCardRelativeEnergy(value: number | null, unit: EnergyDisplayOptions["outputUnit"]): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "pending"
   return formatRelativeEnergyValue(relativeEnergyValueFromKcal(value, unit), unit)
+}
+
+function nodeCardMinimumWidth({
+  symbol,
+  value,
+  coefficientLabel,
+  roleLabel,
+  kindLabel,
+}: {
+  symbol: string
+  value: string
+  coefficientLabel: string
+  roleLabel: string | null
+  kindLabel: string
+}): number {
+  const energyLabel = roleLabel ?? `${symbol} = ${value}`
+  const energyPillWidth = Math.ceil(estimatedInlineTextWidth(energyLabel) + 22)
+  const coefficientPillWidth = Math.max(34, Math.ceil(estimatedInlineTextWidth(coefficientLabel) + 18))
+  const kindPillWidth = Math.max(34, Math.ceil(estimatedInlineTextWidth(kindLabel) + 18))
+  return clamp(30 + energyPillWidth + 6 + coefficientPillWidth + 6 + kindPillWidth, minNodeWidth, maxNodeWidth)
 }
 
 function nodeEnergyStripTitle(symbol: string, role: EnergyTableRow["relativeRole"]): string {

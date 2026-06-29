@@ -472,7 +472,7 @@ async function verifyProjectDirectoryStore() {
         preview: "",
       }, 99, { usedStoredPaths: new Set() })
     } catch (error) {
-      missingPayloadFailed = /readable file path or file content/.test(error instanceof Error ? error.message : String(error))
+      missingPayloadFailed = /readable native file path/.test(error instanceof Error ? error.message : String(error))
     }
     if (!missingPayloadFailed) {
       throw new Error("Project source import without file path or content did not fail")

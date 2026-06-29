@@ -68,6 +68,25 @@ describe("appImportActions", () => {
     expect(stageSourceFilesForProject.mock.calls[0][2]).toEqual({ autoRegister: false })
   })
 
+  it("lets desktop file drops attach native paths to staged placeholders", async () => {
+    const stageSourceFilesForProject = vi.fn()
+    await importFilesForProjectAction({
+      fileList: [new File([""], "finder.log")],
+      projectId: "p5",
+      stageSourceFilesForProject,
+      previewMode: "none",
+      prepareFile: () => ({ sourcePath: "/Users/linsay/Gaussian/finder.log" }),
+      stageOptions: { autoRegister: false, parseMode: "defer" },
+    })
+
+    expect(stageSourceFilesForProject).toHaveBeenCalledTimes(1)
+    expect(stageSourceFilesForProject.mock.calls[0][1][0]).toMatchObject({
+      name: "finder.log",
+      preview: "",
+      sourcePath: "/Users/linsay/Gaussian/finder.log",
+    })
+  })
+
   it("stages project-file drops with update mode", async () => {
     const stageCurrentProjectSourceFiles = vi.fn()
     await handleCanvasRawFileDropAction({

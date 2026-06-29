@@ -5,18 +5,25 @@ import type { DesktopSourceFile, ImportSourceFile } from "./importRegistrationTy
 export async function browserImportSourceFilesFromFiles(
   fileList: FileList | File[],
   idPrefix = "file",
-  options: { previewMode?: "full" | "head" | "none" } = {},
+  options: {
+    previewMode?: "full" | "head" | "none"
+    prepareFile?: (file: File, index: number) => Partial<ImportSourceFile> | undefined
+  } = {},
 ): Promise<ImportSourceFile[]> {
   const selectedFiles = Array.from(fileList)
   const timestamp = Date.now()
-  return Promise.all(selectedFiles.map(async (file, index): Promise<ImportSourceFile> => ({
-    id: `${idPrefix}-${timestamp}-${index}`,
-    name: file.name,
-    kind: sourceKindFromName(file.name),
-    size: file.size,
-    status: "staged",
-    preview: await readFilePreview(file, options.previewMode ?? "full"),
-  })))
+  return Promise.all(selectedFiles.map(async (file, index): Promise<ImportSourceFile> => {
+    const prepared = options.prepareFile?.(file, index) ?? {}
+    return {
+      id: `${idPrefix}-${timestamp}-${index}`,
+      name: file.name,
+      kind: sourceKindFromName(file.name),
+      size: file.size,
+      status: "staged",
+      preview: await readFilePreview(file, options.previewMode ?? "full"),
+      ...prepared,
+    }
+  }))
 }
 
 export function desktopImportSourceFilesFromFiles(files: DesktopSourceFile[], idPrefix = "desktop-file"): ImportSourceFile[] {

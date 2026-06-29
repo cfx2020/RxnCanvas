@@ -3909,12 +3909,6 @@ select,
 .status-light-node.status-light-missing {
   background: #ef4444;
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14), 0 0 18px rgba(239, 68, 68, 0.36);
-  animation: missing-solvation-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes missing-solvation-pulse {
-  0%, 100% { transform: scale(0.96); opacity: 0.82; }
-  50% { transform: scale(1.12); opacity: 1; }
 }
 
 .node-zero-indicator {
@@ -14144,7 +14138,6 @@ select,
   border-radius: 999px !important;
   background: #ef8f35 !important;
   box-shadow: 0 0 0 3px rgba(239, 143, 53, 0.16) !important;
-  animation: missing-solvation-pulse 1.6s ease-in-out infinite !important;
 }
 
 .project-rail .project-file-phase-badges.has-parse-error {
@@ -14156,7 +14149,6 @@ select,
   border-radius: 999px !important;
   background: #d94a40 !important;
   box-shadow: 0 0 0 3px rgba(217, 74, 64, 0.16) !important;
-  animation: missing-solvation-pulse 1.6s ease-in-out infinite !important;
 }
 
 .project-rail .project-file-card {
@@ -14351,9 +14343,7 @@ select,
 
 /* 2026-06-28 macOS zoomed-window chrome guard:
    A double-click zoom keeps the native traffic lights visible, so the sidebar
-   toggle must keep the same leading reserve instead of moving to x=12. The
-   maximized app can also extend visually under the Dock; lift the minimap only
-   for zoomed non-fullscreen windows. */
+   toggle must keep the same leading reserve instead of moving to x=12. */
 .app-shell.is-macos-desktop.is-window-edge-to-edge,
 .app-shell.is-macos-desktop.is-window-fullscreen,
 .app-shell.is-macos-desktop.is-window-maximized {
@@ -14373,6 +14363,196 @@ select,
   left: var(--rxnflow-left-collapsed-workbench-reserve, 150px) !important;
 }
 
-.app-shell.is-macos-desktop.is-window-maximized:not(.is-window-fullscreen) .minimap-stack {
-  bottom: max(18px, calc(env(safe-area-inset-bottom, 0px) + 72px)) !important;
+/* 2026-06-28 node card meta cleanup:
+   The solvation status light belongs in the top-right node chrome. Keep the
+   energy/type row compact and let the card width grow instead of ellipsizing
+   the relative-energy number. */
+.reaction-node .node-header-actions {
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.reaction-node .node-status-light-corner.status-light-missing {
+  --rxnflow-node-status-light-inset: 12px;
+  position: absolute !important;
+  top: var(--rxnflow-node-status-light-inset) !important;
+  right: var(--rxnflow-node-status-light-inset) !important;
+  z-index: 4 !important;
+  width: 8px !important;
+  min-width: 8px !important;
+  height: 8px !important;
+  min-height: 8px !important;
+  margin: 0 !important;
+  display: inline-block !important;
+  visibility: visible !important;
+  background: #ef8f35 !important;
+  box-shadow: 0 0 0 4px rgba(239, 143, 53, 0.16), 0 0 18px rgba(239, 143, 53, 0.28) !important;
+}
+
+.reaction-node .node-energy-strip.node-card-meta-row {
+  width: max-content !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  overflow: visible !important;
+}
+
+.reaction-node .node-card-energy-value {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  max-width: none !important;
+  min-width: max-content !important;
+  justify-self: auto !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+
+.reaction-node .node-card-energy-value > span,
+.reaction-node .node-card-energy-value strong {
+  min-width: 0 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+.reaction-node .node-energy-strip.node-card-meta-row .node-coefficient-control-meta {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 34px !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+}
+
+.reaction-node .node-energy-strip.node-card-meta-row .node-coefficient-control-meta button,
+.reaction-node .node-energy-strip.node-card-meta-row .node-coefficient-control-meta input {
+  width: auto !important;
+  min-width: 34px !important;
+  max-width: 54px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  border-radius: 11px !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+  line-height: 30px !important;
+}
+
+.reaction-node .node-kind-badge {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 34px !important;
+  max-width: none !important;
+  justify-self: auto !important;
+}
+
+.app-shell.theme-dark .reaction-node .node-status-light-corner.status-light-missing {
+  background: #f6a04e !important;
+  box-shadow: 0 0 0 4px rgba(246, 160, 78, 0.18), 0 0 18px rgba(246, 160, 78, 0.3) !important;
+}
+
+/* 2026-06-28 startup restore and minimap containment:
+   Desktop startup restore is asynchronous; keep demo workspace data off the
+   first frame while the recent project payload is being restored. Minimap and
+   zoom chrome must anchor to the visible canvas pane, not an old min-height
+   floor that can sit below a short or Dock-covered window. */
+.app-shell,
+.workspace,
+.canvas-stage {
+  min-height: 0 !important;
+}
+
+.workspace {
+  grid-auto-rows: minmax(0, 1fr) !important;
+  align-items: stretch !important;
+}
+
+.workbench-shell {
+  height: 100% !important;
+  max-height: 100% !important;
+}
+
+.app-shell.is-startup-restoring {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.startup-restore-view {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  min-width: 220px;
+  padding: 18px 20px;
+  border: 1px solid rgba(126, 152, 169, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.68);
+  color: #2c4154;
+  box-shadow: 0 20px 58px rgba(54, 74, 88, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px);
+}
+
+.startup-restore-view strong {
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.startup-restore-view span:not(.startup-restore-spinner) {
+  color: #6b7e8e;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.startup-restore-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(77, 178, 153, 0.2);
+  border-top-color: #28a889;
+  border-radius: 999px;
+  animation: rxnflow-startup-spin 820ms linear infinite;
+}
+
+@keyframes rxnflow-startup-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.app-shell.theme-dark .startup-restore-view {
+  border-color: rgba(145, 180, 199, 0.16);
+  background: rgba(18, 30, 40, 0.72);
+  color: #dceaf4;
+  box-shadow: 0 22px 62px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.app-shell.theme-dark .startup-restore-view span:not(.startup-restore-spinner) {
+  color: #9db2bf;
+}
+
+.canvas-view-pane {
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.canvas-view-pane .minimap-stack {
+  position: absolute !important;
+  right: max(18px, env(safe-area-inset-right, 0px)) !important;
+  bottom: max(18px, env(safe-area-inset-bottom, 0px)) !important;
+  flex-direction: column-reverse !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+  z-index: 8 !important;
+  max-height: calc(100% - 36px) !important;
+  transform: none !important;
+}
+
+.canvas-view-pane .minimap-stack .minimap {
+  flex: 0 0 auto !important;
+}
+
+.canvas-view-pane .minimap-stack .zoom-controls {
+  flex: 0 0 auto !important;
 }

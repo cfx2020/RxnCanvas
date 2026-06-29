@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("rxnflowDesktop", {
   chooseFiles: () => ipcRenderer.invoke("rxnflow:choose-files"),
   getEngineStatus: () => ipcRenderer.invoke("rxnflow:engine-status"),
   importSourceFiles: (payload) => ipcRenderer.invoke("rxnflow:import-source-files", payload),
+  showImportIssues: (payload) => ipcRenderer.invoke("rxnflow:show-import-issues", payload),
   filePathForFile: (file) => {
     try {
       return typeof webUtils?.getPathForFile === "function" ? webUtils.getPathForFile(file) : ""

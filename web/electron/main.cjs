@@ -655,6 +655,27 @@ ipcMain.handle("rxnflow:choose-files", async () => {
   }
 })
 
+ipcMain.handle("rxnflow:show-import-issues", async (event, payload) => {
+  const issue = importIssueMessagePayload(payload)
+  if (issue.entries.length === 0) return { ok: true, shown: false }
+  const window = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow()
+  const options = {
+    type: issue.type,
+    buttons: ["OK"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    message: issue.title,
+    detail: importIssueMessageDetail(issue.entries),
+  }
+  if (window) {
+    await dialog.showMessageBox(window, options)
+  } else {
+    await dialog.showMessageBox(options)
+  }
+  return { ok: true, shown: true }
+})
+
 ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
   const files = Array.isArray(payload?.files)
     ? payload.files.map(importSourceFilePayload).filter(Boolean)
@@ -664,7 +685,10 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
   }
 
   const projectId = typeof payload?.projectId === "string" && payload.projectId ? payload.projectId : null
-  const projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
+  let projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
+  if (!projectDirectory && projectId) {
+    projectDirectory = await projectDirectoryFromActiveProjectPayload(projectId, payload)
+  }
   const warnings = []
   if (!projectDirectory) {
     warnings.push({
@@ -693,9 +717,20 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
     }
   }))
 
+  const parseTargets = stagedFiles.filter((file) => !file.error)
+  if (parseTargets.length === 0) {
+    return {
+      ok: true,
+      data: {
+        files: stagedFiles.map(importSourceFileRendererPayload),
+      },
+      ...(warnings.length > 0 ? { warnings } : {}),
+    }
+  }
+
   const preview = await runEngineRequest({
     command: "import.preview",
-    files: stagedFiles.map((file) => ({
+    files: parseTargets.map((file) => ({
       name: file.name,
       size: file.size,
       preview: file.preview,
@@ -722,10 +757,14 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
   return {
     ok: true,
     data: {
-      files: stagedFiles.map((file, index) => ({
-        ...importSourceFileRendererPayload(file),
-        parse: preview.data.files[index]?.parse,
-      })),
+      files: stagedFiles.map((file) => {
+        if (file.error) return importSourceFileRendererPayload(file)
+        const parseIndex = parseTargets.indexOf(file)
+        return {
+          ...importSourceFileRendererPayload(file),
+          parse: preview.data.files[parseIndex]?.parse,
+        }
+      }),
     },
     ...(warnings.length > 0 ? { warnings } : {}),
   }
@@ -792,7 +831,6 @@ function importSourceFilePayload(file) {
   const preview = typeof file.preview === "string" ? file.preview : ""
   const sourcePath = typeof file.sourcePath === "string" && path.isAbsolute(file.sourcePath) ? file.sourcePath : undefined
   const storedPath = typeof file.storedPath === "string" && isSafeProjectRelativePath(file.storedPath) ? file.storedPath : undefined
-  const contentBase64 = typeof file.contentBase64 === "string" && file.contentBase64 ? file.contentBase64 : undefined
   return {
     id,
     name,
@@ -800,7 +838,6 @@ function importSourceFilePayload(file) {
     preview,
     ...(sourcePath ? { sourcePath } : {}),
     ...(storedPath ? { storedPath } : {}),
-    ...(contentBase64 ? { contentBase64 } : {}),
   }
 }
 
@@ -818,12 +855,53 @@ function importSourceFileForPreview(file) {
 
 function importSourceFileRendererPayload(file) {
   const {
-    contentBase64: _contentBase64,
     parseSourcePath: _parseSourcePath,
     ...rest
   } = file
   if (rest.storedPath) delete rest.sourcePath
   return rest
+}
+
+function importIssueMessagePayload(payload) {
+  const entries = Array.isArray(payload?.entries)
+    ? payload.entries.map(importIssueEntryPayload).filter(Boolean)
+    : []
+  const hasUnsupported = entries.some((entry) => entry.code === "unsupported_format")
+  const title = typeof payload?.title === "string" && payload.title.trim()
+    ? payload.title.trim()
+    : hasUnsupported
+      ? "Unsupported import format"
+      : "Import failed"
+  return {
+    title,
+    type: hasUnsupported ? "warning" : "error",
+    entries,
+  }
+}
+
+function importIssueEntryPayload(entry) {
+  if (!entry || typeof entry !== "object") return null
+  const fileName = typeof entry.fileName === "string" && entry.fileName.trim()
+    ? entry.fileName.trim()
+    : "Source file"
+  const code = typeof entry.code === "string" ? entry.code : ""
+  const message = typeof entry.message === "string" && entry.message.trim()
+    ? entry.message.trim()
+    : "This source could not be imported."
+  return { fileName, code, message }
+}
+
+function importIssueMessageDetail(entries) {
+  const visibleEntries = entries.slice(0, 8)
+  const lines = visibleEntries.flatMap((entry) => [
+    entry.fileName,
+    entry.message,
+    "",
+  ])
+  if (entries.length > visibleEntries.length) {
+    lines.push(`${entries.length - visibleEntries.length} more files failed.`)
+  }
+  return lines.join("\n").trim()
 }
 
 function registerFilePayload(file) {

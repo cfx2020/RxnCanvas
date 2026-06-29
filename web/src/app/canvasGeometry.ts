@@ -38,7 +38,6 @@ export type MinimapGeometry = {
 
 export const nodeWidth = 210
 export const nodeHeight = 214
-export const collapsedNodeHeight = 104
 export const minNodeWidth = 168
 export const minNodeHeight = 148
 export const maxNodeWidth = 380

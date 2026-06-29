@@ -266,10 +266,47 @@ export function sourceFilesWithImportPlan(
   importPlan: ImportPlan,
   fileMode: "prepend" | "update" = "prepend",
 ): SourceFile[] {
-  if (fileMode === "prepend") return [...importPlan.stagedFiles, ...currentFiles]
-
   const stagedById = new Map(importPlan.stagedFiles.map((file) => [file.id, file]))
-  return currentFiles.map((file) => stagedById.get(file.id) ?? file)
+  const replacementKeys = new Set(importPlan.stagedFiles.map(sourceFileReplacementKey))
+  const withoutStaleReplacedFiles = currentFiles.filter((file) => {
+    if (stagedById.has(file.id)) return true
+    if (!replacementKeys.has(sourceFileReplacementKey(file))) return true
+    return !sourceFileIsFailedImportPlaceholder(file)
+  })
+
+  if (fileMode === "prepend") {
+    return [
+      ...importPlan.stagedFiles,
+      ...withoutStaleReplacedFiles.filter((file) => !stagedById.has(file.id)),
+    ]
+  }
+
+  const seen = new Set<string>()
+  const updatedFiles = withoutStaleReplacedFiles.map((file) => {
+    const staged = stagedById.get(file.id)
+    if (staged) seen.add(file.id)
+    return staged ?? file
+  })
+  const missingStagedFiles = importPlan.stagedFiles.filter((file) => !seen.has(file.id))
+  return [...missingStagedFiles, ...updatedFiles]
+}
+
+function sourceFileReplacementKey(file: SourceFile): string {
+  const role = sourceFileLooksLikeSolutionLog(file) ? "solution" : "primary"
+  return [
+    sourceFileDisplayGroupKey(file),
+    role,
+    file.name.trim().toLowerCase(),
+  ].join("\u0000")
+}
+
+function sourceFileIsFailedImportPlaceholder(file: SourceFile): boolean {
+  if (file.storedPath) return false
+  if (file.status !== "staged") return false
+  const parse = file.parse
+  if (!parse) return true
+  if (parse.parsed) return false
+  return !parseWasDeferred(parse)
 }
 
 export function projectWorkspaceWithImportPlan(

@@ -204,17 +204,14 @@ async function materializeImportSourceFile(projectDirectory, file, index, option
   const sourcePath = typeof file?.sourcePath === "string" && path.isAbsolute(file.sourcePath)
     ? file.sourcePath
     : null
-  const inlineBuffer = importSourceBuffer(file)
 
   await fs.mkdir(path.dirname(targetPath), { recursive: true })
   if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
     await fs.copyFile(sourcePath, targetPath)
-  } else if (inlineBuffer) {
-    await fs.writeFile(targetPath, inlineBuffer)
   } else if (sourcePath && path.resolve(sourcePath) === path.resolve(targetPath)) {
     // The source is already materialized in the project folder.
   } else {
-    throw new Error("Could not copy source file because the import payload did not include a readable file path or file content.")
+    throw new Error("Could not copy source file because the import payload did not include a readable native file path.")
   }
 
   const stats = await fs.stat(targetPath)
@@ -253,18 +250,6 @@ async function projectSourcePathExists(projectDirectory, storedPath) {
   } catch {
     return false
   }
-}
-
-function importSourceBuffer(file) {
-  if (typeof file?.contentBase64 === "string" && file.contentBase64.length > 0) {
-    try {
-      return Buffer.from(file.contentBase64, "base64")
-    } catch {
-      return null
-    }
-  }
-  if (typeof file?.content === "string") return Buffer.from(file.content, "utf8")
-  return null
 }
 
 function hasNonEmptyPreview(file) {

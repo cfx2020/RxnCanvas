@@ -357,10 +357,10 @@ def cclib_required_failed_source_result(
 ) -> SourceParseResult:
     source_kind = "Computational"
     parser_base = cclib_parser_base(source_kind)
-    warnings = (
+    parse_warning = (
         warning
         if warning is not None
-        else ParseWarning("cclib_parse_empty", "cclib did not return parsed data; standard fields were left empty.", name),
+        else ParseWarning("cclib_parse_empty", "cclib did not return parsed data; standard fields were left empty.", name)
     )
     return SourceParseResult(
         label=basename_without_extension(name),
@@ -376,7 +376,7 @@ def cclib_required_failed_source_result(
         parserId=parser_id_for_scope(parser_base, "full-file"),
         parserVersion=PARSER_VERSION,
         objectCount=0,
-        warnings=(warnings,),
+        warnings=(parse_warning,),
         candidates=(),
         coordinatePreview=None,
         energyTable=None,

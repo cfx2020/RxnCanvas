@@ -18,15 +18,14 @@ confidence: high
 
 这次样本不是 cclib 不能解析 sol log。实际项目目录 `/Users/linsay/Documents/chemistry/Ir/sources/` 里的 `i1fix8p6-tsr-sol.log` 和 `i1fix8p6-tsf-sol.log` 是 0B，所以 engine 读完整文件时只能得到空文本，返回 `Raw / unsupported_format`。同名 OneDrive 原始文件分别约 312K / 310K，用同一个 `web/engine/rxnflow-engine` 可以正常解析为 `gaussian-log-cclib+rxnflow-text-full-file`。
 
-桌面导入链路允许在既没有 `sourcePath` 也没有 `contentBase64` 时把空 `preview` 写入 `sources/`，这是后续需要修的导入 materialization 边界。
+桌面导入链路曾允许在没有 `sourcePath` 时走 inline bytes / preview 兜底；这会在大 log 场景制造明显性能风险，空 preview 还会写出 0B source。当前决策是桌面导入必须拿到 native `sourcePath`，否则明确失败并提示 native file path 不可用。
 
 ## 关键证据
 
 - `rxnflow/engine.py:325`：`parse_source_file()` 有 `sourcePath` 时会读完整文件，再判断是否交给 cclib；因此桌面导入解析的是 `sources/` 里的实际副本，不只是 renderer preview。
 - `web/electron/main.cjs:696`：Electron `rxnflow:import-source-files` 会把 materialized 文件的 `parseSourcePath` 作为 `sourcePath` 传给 `import.preview`。
-- `web/electron/project-store.cjs:202`：materialization 优先用 `sourcePath` 执行 `fs.copyFile()`；有 inline bytes 时写 `contentBase64`。
-- `web/electron/project-store.cjs:208`：如果没有 `sourcePath` / `contentBase64`，当前会把 `preview` 写进目标文件；桌面后台导入的 preview 可能是空字符串，于是可生成 0B source。
-- `web/src/app/importParseJobs.ts:127`：外部拖入会尝试通过 Electron `filePathForFile()` 获取真实路径，失败时才用 `contentBase64` 兜底。
+- `web/electron/project-store.cjs:202`：materialization 用 `sourcePath` 执行 `fs.copyFile()`；没有 native path 时返回 `source_materialize_failed`，不写 source 文件。
+- `web/src/app/importParseJobs.ts:127`：外部拖入会尝试通过 Electron `filePathForFile()` 获取真实路径；失败时不读取大文件 bytes，不传 `contentBase64`。
 
 ## 细节展开
 
@@ -43,11 +42,11 @@ confidence: high
 ## 未决问题
 
 - 0B 文件最初来自外部拖入、窗口导入，还是重复导入时选中了已经损坏的 `sources/` 副本，需要用运行时日志或 UI 复现再确认。
-- 导入修复应禁止空 fallback 写入，还是允许但标成 `source_materialize_failed`，需要按产品体验确定。
+- 如果 Finder drop 在真实 app 中仍拿不到 native path，需要继续调查 Electron `webUtils.getPathForFile(file)` 的运行环境、sandbox/entitlement/TCC 权限或 drop 来源类型。
 
 ## 后续建议
 
-已在 `.codestable/issues/2026-06-28-desktop-import-empty-source-files/desktop-import-empty-source-files-fix-note.md` 落地修复：文件型导入必须有可复制的 `sourcePath` 或非空 `contentBase64`，否则返回明确失败，不写 0B source。
+已在 `.codestable/issues/2026-06-28-desktop-import-empty-source-files/desktop-import-empty-source-files-fix-note.md` 落地修复：桌面文件型导入必须有可复制的 native `sourcePath`，否则返回明确失败，不写 0B source，也不把大 log 转成 inline bytes。
 
 ## 相关文档
 

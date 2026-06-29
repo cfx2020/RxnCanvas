@@ -7,6 +7,7 @@ const defaultDesktopImportConcurrency = 3
 export async function desktopParsedImportSourceFiles({
   desktopApi,
   projectId,
+  projectDirectory,
   importedFiles,
   rawFiles = [],
   concurrency = defaultDesktopImportConcurrency,
@@ -14,6 +15,7 @@ export async function desktopParsedImportSourceFiles({
 }: {
   desktopApi: RxnflowDesktopApi | undefined
   projectId: string
+  projectDirectory?: string | null
   importedFiles: ImportSourceFile[]
   rawFiles?: File[]
   concurrency?: number
@@ -49,6 +51,7 @@ export async function desktopParsedImportSourceFiles({
         desktopApi,
         importSourceFiles,
         projectId,
+        projectDirectory,
         source,
         rawFile: rawFiles[index],
       })
@@ -62,22 +65,35 @@ export async function desktopParsedImportSourceFiles({
   return results.filter((file): file is ImportSourceFile => Boolean(file))
 }
 
+export function desktopSourceFilePathForRawFile(
+  desktopApi: Pick<RxnflowDesktopApi, "filePathForFile"> | undefined,
+  rawFile: File | undefined,
+): string {
+  if (!desktopApi || !rawFile) return ""
+  const fromDesktop = desktopApi.filePathForFile?.(rawFile)
+  if (fromDesktop) return fromDesktop
+  const legacyPath = (rawFile as File & { path?: unknown }).path
+  return typeof legacyPath === "string" ? legacyPath : ""
+}
+
 async function desktopParsedImportSourceFile({
   desktopApi,
   importSourceFiles,
   projectId,
+  projectDirectory,
   source,
   rawFile,
 }: {
   desktopApi: RxnflowDesktopApi
   importSourceFiles: NonNullable<RxnflowDesktopApi["importSourceFiles"]>
   projectId: string
+  projectDirectory?: string | null
   source: ImportSourceFile
   rawFile: File | undefined
 }): Promise<ImportSourceFile> {
   try {
     const payloadFile = await desktopImportPayloadFile(desktopApi, source, rawFile)
-    const response = await importSourceFiles({ projectId, files: [payloadFile] })
+    const response = await importSourceFiles({ projectId, projectDirectory, files: [payloadFile] })
     if (!response.ok) {
       return desktopImportFailureResult(
         source,
@@ -127,7 +143,7 @@ async function desktopImportPayloadFile(
   source: ImportSourceFile,
   rawFile: File | undefined,
 ) {
-  const sourcePath = source.sourcePath || desktopFilePath(desktopApi, rawFile)
+  const sourcePath = source.sourcePath || desktopSourceFilePathForRawFile(desktopApi, rawFile)
   return {
     id: source.id,
     name: source.name,
@@ -135,26 +151,7 @@ async function desktopImportPayloadFile(
     preview: source.preview,
     ...(sourcePath ? { sourcePath } : {}),
     ...(source.storedPath ? { storedPath: source.storedPath } : {}),
-    ...(!sourcePath && rawFile ? { contentBase64: await fileContentBase64(rawFile) } : {}),
   }
-}
-
-function desktopFilePath(desktopApi: RxnflowDesktopApi, rawFile: File | undefined): string {
-  if (!rawFile) return ""
-  const fromDesktop = desktopApi.filePathForFile?.(rawFile)
-  if (fromDesktop) return fromDesktop
-  const legacyPath = (rawFile as File & { path?: unknown }).path
-  return typeof legacyPath === "string" ? legacyPath : ""
-}
-
-async function fileContentBase64(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  let binary = ""
-  const chunkSize = 0x8000
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
-  }
-  return btoa(binary)
 }
 
 function desktopImportFailureResult(

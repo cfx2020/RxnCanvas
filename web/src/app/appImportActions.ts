@@ -217,15 +217,17 @@ export async function importFilesForProjectAction({
   projectId,
   stageSourceFilesForProject,
   previewMode = "full",
+  prepareFile,
   stageOptions = { autoRegister: false },
 }: {
   fileList: FileList | File[]
   projectId: string
   stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
   previewMode?: "full" | "head" | "none"
+  prepareFile?: (file: File, index: number) => Partial<ImportSourceFile> | undefined
   stageOptions?: StageSourceFilesOptions
 }): Promise<ImportSourceFile[]> {
-  const importedFiles = await browserImportSourceFilesFromFiles(fileList, "file", { previewMode })
+  const importedFiles = await browserImportSourceFilesFromFiles(fileList, "file", { previewMode, prepareFile })
   await stageSourceFilesForProject(projectId, importedFiles, stageOptions)
   return importedFiles
 }

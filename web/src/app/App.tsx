@@ -219,7 +219,7 @@ import {
   stageSourceFilesForProjectAction,
   toggleCandidateReviewSelectionAction,
 } from "./appImportActions"
-import { desktopParsedImportSourceFiles } from "./importParseJobs"
+import { desktopParsedImportSourceFiles, desktopSourceFilePathForRawFile } from "./importParseJobs"
 
 
 function defaultCanvasViewport(canvas: HTMLDivElement | null): CanvasViewport {
@@ -388,6 +388,7 @@ export function App() {
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
   const restoreProjectPackageRef = useRef<RestoreProjectPackageHandler | null>(null)
   const stageSourceFilesForProjectRef = useRef<((projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>) | null>(null)
+  const projectDirectoriesRef = useRef<Record<string, string>>({})
   const exportPanelRef = useRef<HTMLElement | null>(null)
   const exportTriggerRef = useRef<HTMLButtonElement | null>(null)
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
@@ -446,6 +447,16 @@ export function App() {
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null)
   const [toolbarPlacement, setToolbarPlacement] = useState<ToolbarPlacement>(() => initialToolbarPlacement())
   const [toolbarMetrics, setToolbarMetrics] = useState<ToolbarMetrics | null>(null)
+  const [startupRestorePending, setStartupRestorePending] = useState(() => Boolean(window.rxnflowDesktop?.getStartupProjectContent))
+
+  const rememberProjectDirectory = useCallback((projectId: string, projectDirectory?: string | null) => {
+    if (!projectId) return
+    if (projectDirectory) {
+      projectDirectoriesRef.current[projectId] = projectDirectory
+      return
+    }
+    if (projectDirectory === null) delete projectDirectoriesRef.current[projectId]
+  }, [])
   const toolbarDragOffsetRef = useRef<Point | null>(null)
   const toolbarDragMetricsRef = useRef<ToolbarMetrics | null>(null)
   const toolbarDragPlacementRef = useRef<{ x: number; y: number } | null>(null)
@@ -1588,6 +1599,7 @@ export function App() {
     }).then((result) => {
       if (!result || result.canceled) return false
       if (!result.content) {
+        rememberProjectDirectory(transition.activeProjectId, result.projectDirectory)
         applyProjectTransition({
           ...transition,
           validation: result.validation ?? null,
@@ -1607,13 +1619,14 @@ export function App() {
         setProjectValidation(restored.validation)
         return false
       }
+      rememberProjectDirectory(restored.activeProjectId, result.projectDirectory)
       applyProjectTransition(restored)
       return true
     }).catch((error: unknown) => {
       setProjectValidation(projectFolderCreationFailureValidation(error))
       return false
     })
-  }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects])
+  }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects, rememberProjectDirectory])
 
   const openProject = useCallback((projectId: string) => {
     const transition = openProjectAction({
@@ -1707,6 +1720,7 @@ export function App() {
     void desktopParsedImportSourceFiles({
       desktopApi,
       projectId,
+      projectDirectory: projectDirectoriesRef.current[projectId] ?? null,
       importedFiles,
       rawFiles,
       onFileParsed: async (parsedFile) => {
@@ -1720,10 +1734,17 @@ export function App() {
     }).then((parsedFiles) => {
       const entries = importIssueDialogEntries(parsedFiles)
       if (entries.length > 0) {
-        setImportIssueDialog({
+        const issue = {
           title: entries.some((entry) => entry.code === "unsupported_format") ? "Unsupported import format" : "Import failed",
           entries,
-        })
+        }
+        if (desktopApi.showImportIssues) {
+          void desktopApi.showImportIssues(issue).catch(() => {
+            setImportIssueDialog(issue)
+          })
+          return
+        }
+        setImportIssueDialog(issue)
       }
     }).catch((error: unknown) => {
       setProjectValidation({
@@ -1779,11 +1800,18 @@ export function App() {
   const importFiles = useCallback(async (fileList: FileList | File[], projectId = activeProjectId) => {
     const rawFiles = Array.from(fileList)
     const useDesktopImportJob = Boolean(window.rxnflowDesktop?.importSourceFiles)
+    const desktopApi = window.rxnflowDesktop
     const importedFiles = await importFilesForProjectAction({
       fileList: rawFiles,
       projectId,
       stageSourceFilesForProject,
       previewMode: useDesktopImportJob ? "none" : "full",
+      prepareFile: useDesktopImportJob
+        ? (file) => {
+            const sourcePath = desktopSourceFilePathForRawFile(desktopApi, file)
+            return sourcePath ? { sourcePath } : undefined
+          }
+        : undefined,
       stageOptions: {
         autoRegister: false,
         parseMode: useDesktopImportJob ? "defer" : "fallback",
@@ -1836,7 +1864,14 @@ export function App() {
       if (window.rxnflowDesktop?.importSourceFiles) {
         const transition = canvasRawFileDropImportTransition({ ...drop, files: sourceFiles }, files)
         if (!transition || transition.kind !== "external-files") return
-        const importedFiles = await browserImportSourceFilesFromFiles(transition.files, transition.idPrefix, { previewMode: "none" })
+        const desktopApi = window.rxnflowDesktop
+        const importedFiles = await browserImportSourceFilesFromFiles(transition.files, transition.idPrefix, {
+          previewMode: "none",
+          prepareFile: (file) => {
+            const sourcePath = desktopSourceFilePathForRawFile(desktopApi, file)
+            return sourcePath ? { sourcePath } : undefined
+          },
+        })
         await stageSourceFiles(importedFiles, {
           ...transition.options,
           autoRegister: false,
@@ -1948,7 +1983,11 @@ export function App() {
   }, [openImportPicker])
 
   useEffect(() => {
-    setActiveProjectInRuntime({ desktopApi: window.rxnflowDesktop, projectId: activeProjectId })
+    setActiveProjectInRuntime({
+      desktopApi: window.rxnflowDesktop,
+      projectId: activeProjectId,
+      projectDirectory: projectDirectoriesRef.current[activeProjectId] ?? null,
+    })
   }, [activeProjectId])
 
   const restoreProjectPackage = useCallback((
@@ -1975,6 +2014,7 @@ export function App() {
       setProjectValidation(transition.validation)
       return
     }
+    rememberProjectDirectory(transition.activeProjectId, options?.projectDirectory)
     projectRestoreStateRef.current = {
       projects: transition.projects,
       workspaces: transition.workspaces,
@@ -1987,7 +2027,7 @@ export function App() {
       projectDirectory: options?.projectDirectory,
     })
     applyProjectTransition(transition)
-  }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects])
+  }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects, rememberProjectDirectory])
   restoreProjectPackageRef.current = restoreProjectPackage
 
   const handleProjectInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
@@ -2010,7 +2050,7 @@ export function App() {
   }, [restoreProjectPackage])
 
   const saveProjectPackage = useCallback(async () => {
-    await saveProjectPackageToRuntime({
+    const result = await saveProjectPackageToRuntime({
       desktopApi: window.rxnflowDesktop,
       project: activeProject,
       files,
@@ -2018,7 +2058,8 @@ export function App() {
       activeCanvasId: activeCanvasTabId,
       setProjectValidation,
     })
-  }, [activeCanvasTabId, activeProject, files, projectCanvases])
+    rememberProjectDirectory(activeProject.id, result?.projectDirectory)
+  }, [activeCanvasTabId, activeProject, files, projectCanvases, rememberProjectDirectory])
 
   useEffect(() => {
     autosaveInputRef.current = autosaveInput
@@ -2044,6 +2085,7 @@ export function App() {
         ...input,
         setProjectValidation,
       })
+      rememberProjectDirectory(input.project.id, result?.projectDirectory)
       if (result?.content) {
         setFiles((current) => sourceFilesWithAutosavedMetadata(current, result.content ?? ""))
       }
@@ -2057,10 +2099,11 @@ export function App() {
         void runAutosaveProject()
       }
     }
-  }, [])
+  }, [rememberProjectDirectory])
 
   useEffect(() => {
     if (!window.rxnflowDesktop?.autosaveProjectPackage) return
+    if (startupRestorePending) return
 
     const autosaveKey = projectAutosaveKey(autosaveInput)
     if (!autosaveHydratedRef.current) {
@@ -2074,7 +2117,7 @@ export function App() {
       void runAutosaveProject()
     }, 900)
     return () => window.clearTimeout(timer)
-  }, [autosaveInput, dragState, runAutosaveProject])
+  }, [autosaveInput, dragState, runAutosaveProject, startupRestorePending])
 
   useEffect(() => subscribeProjectPackageRuntimeMenus({
     desktopApi: window.rxnflowDesktop,
@@ -2088,6 +2131,7 @@ export function App() {
     restoreProjectPackage: (content, validation, options) => {
       restoreProjectPackageRef.current?.(content, validation, options)
     },
+    onSettled: () => setStartupRestorePending(false),
   }), [])
 
   useEffect(() => watchDesktopEngineStatus({
@@ -2493,9 +2537,23 @@ export function App() {
     />
   )
 
+  const appShellClassName = `app-shell theme-${theme}${isMacDesktop ? " is-macos-desktop" : ""}${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}${desktopWindowState.isFullScreen ? " is-window-fullscreen" : ""}${desktopWindowState.isMaximized ? " is-window-maximized" : ""}${desktopWindowState.isFullScreen || desktopWindowState.isMaximized ? " is-window-edge-to-edge" : ""}${tableDrawerOpen || structurePreviewNode || structureEditorNode ? " has-overlay-view" : ""}`
+
+  if (startupRestorePending) {
+    return (
+      <div className={`${appShellClassName} is-startup-restoring`} style={appShellStyle}>
+        <div className="startup-restore-view" role="status" aria-live="polite">
+          <span className="startup-restore-spinner" aria-hidden="true" />
+          <strong>Opening workspace</strong>
+          <span>Loading your recent RxnFlow project...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
-      className={`app-shell theme-${theme}${isMacDesktop ? " is-macos-desktop" : ""}${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}${desktopWindowState.isFullScreen ? " is-window-fullscreen" : ""}${desktopWindowState.isMaximized ? " is-window-maximized" : ""}${desktopWindowState.isFullScreen || desktopWindowState.isMaximized ? " is-window-edge-to-edge" : ""}${tableDrawerOpen || structurePreviewNode || structureEditorNode ? " has-overlay-view" : ""}`}
+      className={appShellClassName}
       style={appShellStyle}
     >
       <input

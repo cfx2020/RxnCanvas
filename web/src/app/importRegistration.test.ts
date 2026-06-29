@@ -83,6 +83,34 @@ function parseResult(candidates: ParseCandidate[]): SourceParseResult {
   }
 }
 
+function failedParseResult(code = "cclib_parse_empty"): SourceParseResult {
+  return {
+    ...parseResult([]),
+    parsed: false,
+    parserId: null,
+    parserVersion: null,
+    objectCount: 0,
+    candidates: [],
+    coordinatePreview: null,
+    warnings: [{
+      code,
+      message: "cclib did not return parsed data; standard cclib fields were left empty.",
+      target: "source.log",
+    }],
+  }
+}
+
+function deferredParseResult(): SourceParseResult {
+  return {
+    ...failedParseResult("parse_deferred"),
+    warnings: [{
+      code: "parse_deferred",
+      message: "Source file is waiting for the desktop parser job.",
+      target: "source.log",
+    }],
+  }
+}
+
 function sourceFile(id: string, parse?: SourceParseResult): SourceFile {
   return {
     id,
@@ -441,6 +469,64 @@ describe("importRegistration", () => {
 
     next.nodes[0].position.x = 999
     expect(targetSnapshot.nodes[0].position.x).toBe(1)
+  })
+
+  it("replaces a failed same-name staged placeholder when a source is reimported", () => {
+    const staleSol = {
+      ...sourceFile("old-sol", failedParseResult()),
+      name: "i1fix8p6-tsf-sol.log",
+    }
+    const gas = {
+      ...sourceFile("gas", parseResult([candidate({ label: "i1fix8p6-tsf" })])),
+      name: "i1fix8p6-tsf.log",
+      status: "parsed" as const,
+      storedPath: "sources/i1fix8p6-tsf.log",
+    }
+    const freshSol = {
+      ...sourceFile("fresh-sol", parseResult([candidate({ label: "i1fix8p6-tsf-sol" })])),
+      name: "i1fix8p6-tsf-sol.log",
+      storedPath: "sources/i1fix8p6-tsf-sol.log",
+      checksum: `sha256:${"1".repeat(64)}`,
+    }
+    const plan = buildImportPlan([freshSol], layout)
+
+    const next = sourceFilesWithImportPlan([staleSol, gas], plan, "prepend")
+
+    expect(next.map((file) => [file.id, file.name, file.storedPath])).toEqual([
+      ["fresh-sol", "i1fix8p6-tsf-sol.log", "sources/i1fix8p6-tsf-sol.log"],
+      ["gas", "i1fix8p6-tsf.log", "sources/i1fix8p6-tsf.log"],
+    ])
+  })
+
+  it("removes a failed same-name placeholder when a deferred desktop import finishes", () => {
+    const pendingSol = {
+      ...sourceFile("fresh-sol", deferredParseResult()),
+      name: "i1fix8p6-tsf-sol.log",
+    }
+    const staleSol = {
+      ...sourceFile("old-sol", failedParseResult()),
+      name: "i1fix8p6-tsf-sol.log",
+    }
+    const gas = {
+      ...sourceFile("gas", parseResult([candidate({ label: "i1fix8p6-tsf" })])),
+      name: "i1fix8p6-tsf.log",
+      status: "parsed" as const,
+      storedPath: "sources/i1fix8p6-tsf.log",
+    }
+    const parsedSol = {
+      ...sourceFile("fresh-sol", parseResult([candidate({ label: "i1fix8p6-tsf-sol" })])),
+      name: "i1fix8p6-tsf-sol.log",
+      storedPath: "sources/i1fix8p6-tsf-sol.log",
+      checksum: `sha256:${"2".repeat(64)}`,
+    }
+    const plan = buildImportPlan([parsedSol], layout)
+
+    const next = sourceFilesWithImportPlan([pendingSol, staleSol, gas], plan, "update")
+
+    expect(next.map((file) => [file.id, file.name, file.status, file.storedPath])).toEqual([
+      ["fresh-sol", "i1fix8p6-tsf-sol.log", "parsed", "sources/i1fix8p6-tsf-sol.log"],
+      ["gas", "i1fix8p6-tsf.log", "parsed", "sources/i1fix8p6-tsf.log"],
+    ])
   })
 
   it("applies import plans with update file mode while preserving requested view mode", () => {

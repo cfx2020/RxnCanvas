@@ -15,6 +15,7 @@ export type DesktopSourceFile = {
 
 export type DesktopImportSourceFilesPayload = {
   projectId?: string
+  projectDirectory?: string | null
   files: Array<{
     id: string
     name: string
@@ -22,7 +23,6 @@ export type DesktopImportSourceFilesPayload = {
     preview: string
     sourcePath?: string
     storedPath?: string
-    contentBase64?: string
   }>
 }
 

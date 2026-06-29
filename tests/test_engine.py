@@ -370,6 +370,7 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertIsNone(parsed.energyGas)
         self.assertIsNone(parsed.energySolution)
         self.assertIsNone(parsed.energyTable)
+        self.assertEqual([warning.code for warning in parsed.warnings], ["cclib_parse_empty"])
 
     def test_engine_import_preview_converts_explicit_xyz_energy_units(self) -> None:
         ev_xyz = parse_source_preview(

@@ -87,6 +87,7 @@ describe("importParseJobs", () => {
     const job = desktopParsedImportSourceFiles({
       desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
       projectId: "p1",
+      projectDirectory: "/tmp/p1.rxnflow",
       importedFiles,
       concurrency: 2,
       onFileParsed,
@@ -98,6 +99,10 @@ describe("importParseJobs", () => {
     expect(pending.map((entry) => entry.payload.files)).toEqual([
       [expect.objectContaining({ id: "a", preview: "" })],
       [expect.objectContaining({ id: "b", preview: "" })],
+    ])
+    expect(pending.map((entry) => entry.payload.projectDirectory)).toEqual([
+      "/tmp/p1.rxnflow",
+      "/tmp/p1.rxnflow",
     ])
 
     pending.shift()?.resolve({
@@ -114,6 +119,10 @@ describe("importParseJobs", () => {
     expect(pending.map((entry) => entry.payload.files)).toEqual([
       [expect.objectContaining({ id: "c", preview: "" })],
       [expect.objectContaining({ id: "d", preview: "" })],
+    ])
+    expect(pending.map((entry) => entry.payload.projectDirectory)).toEqual([
+      "/tmp/p1.rxnflow",
+      "/tmp/p1.rxnflow",
     ])
 
     pending.shift()?.resolve({
@@ -238,7 +247,7 @@ describe("importParseJobs", () => {
           preview: "",
           error: {
             code: "source_materialize_failed",
-            message: "Could not copy source file because the import payload did not include a readable file path or file content.",
+            message: "Could not copy source file because the import payload did not include a readable native file path.",
           },
           parse: fallbackParse,
         }],
@@ -253,7 +262,7 @@ describe("importParseJobs", () => {
 
     expect(parsedFile.parse?.warnings).toEqual([{
       code: "source_materialize_failed",
-      message: "Could not copy source file because the import payload did not include a readable file path or file content.",
+      message: "Could not copy source file because the import payload did not include a readable native file path.",
       target: "missing-payload.log",
     }])
   })
