@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { FilePlus2, Folder, FolderOpen, FolderPlus, MoreHorizontal, Plus, Settings2, Trash2, UploadCloud } from "lucide-react"
 import type { ProjectSummary, SourceFile } from "../domain/projectPackages"
 import type { CanvasTabState } from "./projectCanvasState"
@@ -11,6 +12,9 @@ import {
   sourceFileGroupsForDisplay,
   type SourceFileGroup,
 } from "./fileDisplay"
+
+const FILE_CONTEXT_MENU_WIDTH = 212
+const FILE_CONTEXT_MENU_HEIGHT = 68
 
 export type FileSelectionOptions = {
   additive?: boolean
@@ -30,6 +34,7 @@ export const ProjectRail = memo(function ProjectRail({
   onImportFiles,
   onDropProjectFiles,
   onSelectFile,
+  onDeleteFiles,
   canvases = [],
   activeCanvasId,
   onSelectCanvas,
@@ -54,6 +59,7 @@ export const ProjectRail = memo(function ProjectRail({
   onImportFiles: (projectId?: string) => void
   onDropProjectFiles: (projectId: string, files: File[]) => void
   onSelectFile: (fileId: string, options?: FileSelectionOptions) => void
+  onDeleteFiles: (fileIds: string[]) => void
   canvases?: CanvasTabState[]
   activeCanvasId?: string
   onSelectCanvas?: (canvasId: string) => void
@@ -73,7 +79,9 @@ export const ProjectRail = memo(function ProjectRail({
   const [projectActionId, setProjectActionId] = useState<string | null>(null)
   const [canvasActionId, setCanvasActionId] = useState<string | null>(null)
   const [deleteConfirmProjectId, setDeleteConfirmProjectId] = useState<string | null>(null)
+  const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null)
   const railRef = useRef<HTMLElement | null>(null)
+  const fileContextMenuRef = useRef<HTMLDivElement | null>(null)
   const selectedFileSet = useMemo(() => new Set(selectedFileIds), [selectedFileIds])
   const selectedFiles = useMemo(
     () => selectedFileIds
@@ -82,6 +90,9 @@ export const ProjectRail = memo(function ProjectRail({
     [files, selectedFileIds],
   )
   const fileGroups = useMemo(() => sourceFileGroupsForDisplay(files), [files])
+  const selectedFileGroupFiles = useMemo(() => fileGroups
+    .filter((group) => group.files.some((file) => selectedFileSet.has(file.id)))
+    .flatMap((group) => group.files), [fileGroups, selectedFileSet])
 
   useEffect(() => {
     const projectIds = new Set(projects.map((project) => project.id))
@@ -89,21 +100,27 @@ export const ProjectRail = memo(function ProjectRail({
     if (projectActionId && !projectIds.has(projectActionId)) setProjectActionId(null)
     if (canvasActionId && !canvasIds.has(canvasActionId)) setCanvasActionId(null)
     if (deleteConfirmProjectId && !projectIds.has(deleteConfirmProjectId)) setDeleteConfirmProjectId(null)
-  }, [canvasActionId, canvases, deleteConfirmProjectId, projectActionId, projects])
+    if (fileContextMenu && !fileContextMenu.fileIds.some((fileId) => files.some((file) => file.id === fileId))) {
+      setFileContextMenu(null)
+    }
+  }, [canvasActionId, canvases, deleteConfirmProjectId, fileContextMenu, files, projectActionId, projects])
 
   useEffect(() => {
-    if (!workspaceMenuOpen && !projectCreatorOpen && !projectActionId && !canvasActionId && !deleteConfirmProjectId) return
+    if (!workspaceMenuOpen && !projectCreatorOpen && !projectActionId && !canvasActionId && !deleteConfirmProjectId && !fileContextMenu) return
 
     const closeTransientUi = () => {
       setWorkspaceMenuOpen(false)
       setProjectActionId(null)
       setCanvasActionId(null)
       setDeleteConfirmProjectId(null)
+      setFileContextMenu(null)
       if (projectCreatorOpen) closeProjectCreator()
     }
     const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
       const target = event.target
       if (!(target instanceof Node)) return
+      if (fileContextMenuRef.current?.contains(target)) return
+      if (fileContextMenu) setFileContextMenu(null)
       if (railRef.current?.contains(target)) return
       closeTransientUi()
     }
@@ -117,7 +134,32 @@ export const ProjectRail = memo(function ProjectRail({
       document.removeEventListener("pointerdown", closeOnOutsidePointer, true)
       document.removeEventListener("keydown", closeOnEscape)
     }
-  }, [canvasActionId, deleteConfirmProjectId, projectActionId, projectCreatorOpen, workspaceMenuOpen])
+  }, [canvasActionId, deleteConfirmProjectId, fileContextMenu, projectActionId, projectCreatorOpen, workspaceMenuOpen])
+
+  const openFileContextMenu = (group: SourceFileGroup, event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setWorkspaceMenuOpen(false)
+    setProjectActionId(null)
+    setCanvasActionId(null)
+    setDeleteConfirmProjectId(null)
+
+    const groupIsSelected = group.files.some((file) => selectedFileSet.has(file.id))
+    const actionFiles = groupIsSelected && selectedFileGroupFiles.length > 0 ? selectedFileGroupFiles : group.files
+    if (!groupIsSelected) onSelectFile(group.primaryFile.id)
+
+    const width = typeof window === "undefined" ? 1024 : window.innerWidth
+    const height = typeof window === "undefined" ? 768 : window.innerHeight
+    const x = Math.max(8, Math.min(event.clientX, width - FILE_CONTEXT_MENU_WIDTH - 8))
+    const y = Math.max(8, Math.min(event.clientY, height - FILE_CONTEXT_MENU_HEIGHT - 8))
+    const fileIds = Array.from(new Set(actionFiles.map((file) => file.id)))
+    setFileContextMenu({
+      x,
+      y,
+      fileIds,
+      label: fileIds.length === 1 ? group.displayName : `${fileIds.length} files`,
+    })
+  }
 
   const submitProject = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -150,209 +192,236 @@ export const ProjectRail = memo(function ProjectRail({
   }
 
   return (
-    <aside className="project-rail" aria-label="Project rail" ref={railRef}>
-      <RailSection
-        title="Projects"
-        actionLabel="Workspace actions"
-        actionIcon={<Plus size={16} />}
-        actionExpanded={workspaceMenuOpen}
-        onAction={() => setWorkspaceMenuOpen((current) => !current)}
-      >
-        {workspaceMenuOpen ? (
-          <div className="workspace-action-menu" role="menu" aria-label="Workspace actions">
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setWorkspaceMenuOpen(false)
-                setProjectCreatorOpen(true)
-              }}
-            >
-              <FolderPlus size={15} />
-              <span>New blank project</span>
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setWorkspaceMenuOpen(false)
-                void onOpenProjectPackage()
-              }}
-            >
-              <FolderOpen size={15} />
-              <span>Use existing folder</span>
+    <>
+      <aside className="project-rail" aria-label="Project rail" ref={railRef}>
+        <RailSection
+          title="Projects"
+          actionLabel="Workspace actions"
+          actionIcon={<Plus size={16} />}
+          actionExpanded={workspaceMenuOpen}
+          onAction={() => setWorkspaceMenuOpen((current) => !current)}
+        >
+          {workspaceMenuOpen ? (
+            <div className="workspace-action-menu" role="menu" aria-label="Workspace actions">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setWorkspaceMenuOpen(false)
+                  setProjectCreatorOpen(true)
+                }}
+              >
+                <FolderPlus size={15} />
+                <span>New blank project</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setWorkspaceMenuOpen(false)
+                  void onOpenProjectPackage()
+                }}
+              >
+                <FolderOpen size={15} />
+                <span>Use existing folder</span>
+              </button>
+            </div>
+          ) : null}
+          {projectCreatorOpen ? (
+            <form className="project-create-form" aria-label="Create project" onSubmit={submitProject}>
+              <label>
+                <span>Project folder name</span>
+                <input
+                  aria-label="Project name"
+                  value={projectNameDraft}
+                  placeholder="Catalyst Screen"
+                  onChange={(event) => setProjectNameDraft(event.target.value)}
+                />
+              </label>
+              <div>
+                <button type="submit" disabled={projectCreateBusy}>{projectCreateBusy ? "Creating…" : "Create Folder"}</button>
+                <button type="button" onClick={() => {
+                  closeProjectCreator()
+                }} disabled={projectCreateBusy}>
+                  Cancel
+                </button>
+              </div>
+              <p>Defaults to Documents in the desktop folder picker.</p>
+            </form>
+          ) : null}
+          {projects.map((project) => {
+            const active = project.id === activeProjectId
+            return (
+              <div key={project.id} className="project-rail-project-group">
+                <ProjectRailItem
+                  project={project}
+                  active={active}
+                  menuOpen={projectActionId === project.id}
+                  confirmOpen={deleteConfirmProjectId === project.id}
+                  onOpen={() => {
+                    setProjectActionId(null)
+                    setCanvasActionId(null)
+                    setDeleteConfirmProjectId(null)
+                    onOpenProject(project.id)
+                  }}
+                  onToggleMenu={() => {
+                    setCanvasActionId(null)
+                    setDeleteConfirmProjectId(null)
+                    setProjectActionId((current) => current === project.id ? null : project.id)
+                  }}
+                  onCreateCanvas={() => {
+                    setProjectActionId(null)
+                    setCanvasActionId(null)
+                    setDeleteConfirmProjectId(null)
+                    onCreateCanvas?.(project.id)
+                  }}
+                  onDropFiles={(droppedFiles) => {
+                    setProjectActionId(null)
+                    setCanvasActionId(null)
+                    setDeleteConfirmProjectId(null)
+                    onDropProjectFiles(project.id, droppedFiles)
+                  }}
+                  onRequestDelete={() => {
+                    setProjectActionId(null)
+                    setCanvasActionId(null)
+                    setDeleteConfirmProjectId(project.id)
+                  }}
+                  onCancelDelete={() => setDeleteConfirmProjectId(null)}
+                  onConfirmDelete={() => {
+                    setDeleteConfirmProjectId(null)
+                    onDeleteProject(project.id)
+                  }}
+                />
+                {active && canvases.length > 1 ? (
+                  <div className="project-canvas-list" aria-label={`${project.label} canvases`}>
+                    {canvases.map((canvas) => (
+                      <span
+                        key={canvas.id}
+                        className={`project-canvas-row-shell${canvas.id === activeCanvasId ? " is-active" : ""}${canvasActionId === canvas.id ? " has-open-actions" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          className="project-canvas-row"
+                          aria-current={canvas.id === activeCanvasId ? "true" : undefined}
+                          onClick={() => {
+                            setProjectActionId(null)
+                            setCanvasActionId(null)
+                            setDeleteConfirmProjectId(null)
+                            onSelectCanvas?.(canvas.id)
+                          }}
+                        >
+                          <span>{canvas.label}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="project-canvas-more"
+                          aria-label={`Canvas actions for ${canvas.label}`}
+                          aria-haspopup="menu"
+                          aria-expanded={canvasActionId === canvas.id}
+                          title={`Canvas actions for ${canvas.label}`}
+                          onClick={() => {
+                            setProjectActionId(null)
+                            setDeleteConfirmProjectId(null)
+                            setCanvasActionId((current) => current === canvas.id ? null : canvas.id)
+                          }}
+                        >
+                          <MoreHorizontal size={14} />
+                        </button>
+                        {canvasActionId === canvas.id ? (
+                          <span className="project-canvas-action-menu" role="menu" aria-label={`Actions for ${canvas.label}`}>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setCanvasActionId(null)
+                                onDeleteCanvas?.(canvas.id)
+                              }}
+                            >
+                              <Trash2 size={14} />
+                              <span>Delete canvas</span>
+                            </button>
+                          </span>
+                        ) : null}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </RailSection>
+
+        <RailSection
+          title="Files"
+          actionLabel="Import files"
+          actionIcon={<UploadCloud size={16} />}
+          onAction={() => onImportFiles(activeProjectId)}
+          onDropFiles={(droppedFiles) => onDropProjectFiles(activeProjectId, droppedFiles)}
+        >
+          {files.length === 0 ? (
+            <p className="rail-empty">No local files</p>
+          ) : fileGroups.map((group) => (
+            <ProjectFileRow
+              key={group.id}
+              group={group}
+              active={group.files.some((file) => file.id === selectedFileId)}
+              selected={group.files.some((file) => selectedFileSet.has(file.id))}
+              selectedFiles={selectedFiles}
+              onSelect={onSelectFile}
+              onOpenContextMenu={openFileContextMenu}
+            />
+          ))}
+        </RailSection>
+
+        {onOpenSettings ? (
+          <div className="project-rail-footer">
+            <button type="button" className="project-rail-settings" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
+              <Settings2 size={15} aria-hidden="true" />
+              <span>Settings</span>
             </button>
           </div>
         ) : null}
-        {projectCreatorOpen ? (
-          <form className="project-create-form" aria-label="Create project" onSubmit={submitProject}>
-            <label>
-              <span>Project folder name</span>
-              <input
-                aria-label="Project name"
-                value={projectNameDraft}
-                placeholder="Catalyst Screen"
-                onChange={(event) => setProjectNameDraft(event.target.value)}
-              />
-            </label>
-            <div>
-              <button type="submit" disabled={projectCreateBusy}>{projectCreateBusy ? "Creating…" : "Create Folder"}</button>
-              <button type="button" onClick={() => {
-                closeProjectCreator()
-              }} disabled={projectCreateBusy}>
-                Cancel
-              </button>
-            </div>
-            <p>Defaults to Documents in the desktop folder picker.</p>
-          </form>
-        ) : null}
-        {projects.map((project) => {
-          const active = project.id === activeProjectId
-          return (
-            <div key={project.id} className="project-rail-project-group">
-              <ProjectRailItem
-                project={project}
-                active={active}
-                menuOpen={projectActionId === project.id}
-                confirmOpen={deleteConfirmProjectId === project.id}
-                onOpen={() => {
-                  setProjectActionId(null)
-                  setCanvasActionId(null)
-                  setDeleteConfirmProjectId(null)
-                  onOpenProject(project.id)
-                }}
-                onToggleMenu={() => {
-                  setCanvasActionId(null)
-                  setDeleteConfirmProjectId(null)
-                  setProjectActionId((current) => current === project.id ? null : project.id)
-                }}
-                onCreateCanvas={() => {
-                  setProjectActionId(null)
-                  setCanvasActionId(null)
-                  setDeleteConfirmProjectId(null)
-                  onCreateCanvas?.(project.id)
-                }}
-                onDropFiles={(droppedFiles) => {
-                  setProjectActionId(null)
-                  setCanvasActionId(null)
-                  setDeleteConfirmProjectId(null)
-                  onDropProjectFiles(project.id, droppedFiles)
-                }}
-                onRequestDelete={() => {
-                  setProjectActionId(null)
-                  setCanvasActionId(null)
-                  setDeleteConfirmProjectId(project.id)
-                }}
-                onCancelDelete={() => setDeleteConfirmProjectId(null)}
-                onConfirmDelete={() => {
-                  setDeleteConfirmProjectId(null)
-                  onDeleteProject(project.id)
-                }}
-              />
-              {active && canvases.length > 1 ? (
-                <div className="project-canvas-list" aria-label={`${project.label} canvases`}>
-                  {canvases.map((canvas) => (
-                    <span
-                      key={canvas.id}
-                      className={`project-canvas-row-shell${canvas.id === activeCanvasId ? " is-active" : ""}${canvasActionId === canvas.id ? " has-open-actions" : ""}`}
-                    >
-                      <button
-                        type="button"
-                        className="project-canvas-row"
-                        aria-current={canvas.id === activeCanvasId ? "true" : undefined}
-                        onClick={() => {
-                          setProjectActionId(null)
-                          setCanvasActionId(null)
-                          setDeleteConfirmProjectId(null)
-                          onSelectCanvas?.(canvas.id)
-                        }}
-                      >
-                        <span>{canvas.label}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="project-canvas-more"
-                        aria-label={`Canvas actions for ${canvas.label}`}
-                        aria-haspopup="menu"
-                        aria-expanded={canvasActionId === canvas.id}
-                        title={`Canvas actions for ${canvas.label}`}
-                        onClick={() => {
-                          setProjectActionId(null)
-                          setDeleteConfirmProjectId(null)
-                          setCanvasActionId((current) => current === canvas.id ? null : canvas.id)
-                        }}
-                      >
-                        <MoreHorizontal size={14} />
-                      </button>
-                      {canvasActionId === canvas.id ? (
-                        <span className="project-canvas-action-menu" role="menu" aria-label={`Actions for ${canvas.label}`}>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setCanvasActionId(null)
-                              onDeleteCanvas?.(canvas.id)
-                            }}
-                          >
-                            <Trash2 size={14} />
-                            <span>Delete canvas</span>
-                          </button>
-                        </span>
-                      ) : null}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          )
-        })}
-      </RailSection>
-
-      <RailSection
-        title="Files"
-        actionLabel="Import files"
-        actionIcon={<UploadCloud size={16} />}
-        onAction={() => onImportFiles(activeProjectId)}
-        onDropFiles={(droppedFiles) => onDropProjectFiles(activeProjectId, droppedFiles)}
-      >
-        {files.length === 0 ? (
-          <p className="rail-empty">No local files</p>
-        ) : fileGroups.map((group) => (
-          <ProjectFileRow
-            key={group.id}
-            group={group}
-            active={group.files.some((file) => file.id === selectedFileId)}
-            selected={group.files.some((file) => selectedFileSet.has(file.id))}
-            selectedFiles={selectedFiles}
-            onSelect={onSelectFile}
+        {onResizePointerDown ? (
+          <div
+            className="project-rail-resize-handle"
+            role="separator"
+            aria-label="Resize project sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={minWidth}
+            aria-valuemax={maxWidth}
+            aria-valuenow={width}
+            tabIndex={0}
+            title="Drag to resize project sidebar"
+            onPointerDown={onResizePointerDown}
+            onKeyDown={resizeSidebarFromKeyboard}
           />
-        ))}
-      </RailSection>
-
-      {onOpenSettings ? (
-        <div className="project-rail-footer">
-          <button type="button" className="project-rail-settings" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
-            <Settings2 size={15} aria-hidden="true" />
-            <span>Settings</span>
-          </button>
-        </div>
-      ) : null}
-      {onResizePointerDown ? (
+        ) : null}
+      </aside>
+      {fileContextMenu && typeof document !== "undefined" ? createPortal(
         <div
-          className="project-rail-resize-handle"
-          role="separator"
-          aria-label="Resize project sidebar"
-          aria-orientation="vertical"
-          aria-valuemin={minWidth}
-          aria-valuemax={maxWidth}
-          aria-valuenow={width}
-          tabIndex={0}
-          title="Drag to resize project sidebar"
-          onPointerDown={onResizePointerDown}
-          onKeyDown={resizeSidebarFromKeyboard}
-        />
+          ref={fileContextMenuRef}
+          className="canvas-context-menu project-file-context-menu"
+          role="menu"
+          aria-label={`File actions for ${fileContextMenu.label}`}
+          style={{ left: fileContextMenu.x, top: fileContextMenu.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="is-danger"
+            onClick={() => {
+              const fileIds = fileContextMenu.fileIds
+              setFileContextMenu(null)
+              onDeleteFiles(fileIds)
+            }}
+          >
+            <Trash2 size={14} aria-hidden="true" />
+            <span>Delete file and nodes</span>
+          </button>
+        </div>,
+        document.body,
       ) : null}
-    </aside>
+    </>
   )
 
   function closeProjectCreator() {
@@ -360,6 +429,13 @@ export const ProjectRail = memo(function ProjectRail({
     setProjectCreatorOpen(false)
   }
 })
+
+type FileContextMenuState = {
+  x: number
+  y: number
+  fileIds: string[]
+  label: string
+}
 
 function isPromiseLike(value: unknown): value is Promise<boolean | void> {
   return Boolean(value && typeof (value as Promise<boolean | void>).then === "function")
@@ -474,12 +550,14 @@ function ProjectFileRow({
   selected,
   selectedFiles,
   onSelect,
+  onOpenContextMenu,
 }: {
   group: SourceFileGroup
   active: boolean
   selected: boolean
   selectedFiles: SourceFile[]
   onSelect: (fileId: string, options?: FileSelectionOptions) => void
+  onOpenContextMenu: (group: SourceFileGroup, event: MouseEvent<HTMLDivElement>) => void
 }) {
   const { primaryFile } = group
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
@@ -529,6 +607,7 @@ function ProjectFileRow({
     <div
       className={`project-file-card${active ? " is-active" : ""}${selected ? " project-file-card--selected" : ""}${parsing ? " is-parsing" : ""}`}
       draggable
+      onContextMenu={(event) => onOpenContextMenu(group, event)}
       onDragStart={startDrag}
     >
       <button

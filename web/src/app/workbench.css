@@ -11576,6 +11576,15 @@ select,
   text-align: left;
 }
 
+.project-file-context-menu {
+  z-index: 1810;
+  min-width: 194px;
+}
+
+.project-file-context-menu button {
+  gap: 8px;
+}
+
 .canvas-context-menu button:hover,
 .canvas-context-menu button:focus-visible {
   outline: none;
@@ -14578,4 +14587,47 @@ select,
 
 .canvas-view-pane .minimap-stack .zoom-controls {
   flex: 0 0 auto !important;
+}
+
+/* 2026-06-30 project rail scrolling:
+   Many source files can exceed the rail height; keep the rail itself
+   scrollable while fixed context menus remain outside this clipping area. */
+.project-rail,
+.workspace:not(.is-left-collapsed) > .project-rail {
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.project-rail::-webkit-scrollbar {
+  width: 8px;
+}
+
+.project-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.project-rail::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(99, 132, 146, 0.34);
+  background-clip: padding-box;
+}
+
+.project-rail::-webkit-scrollbar-thumb:hover {
+  background: rgba(55, 114, 124, 0.5);
+  background-clip: padding-box;
+}
+
+.app-shell.theme-dark .project-rail::-webkit-scrollbar-thumb {
+  background: rgba(139, 172, 188, 0.36);
+  background-clip: padding-box;
+}
+
+.app-shell.theme-dark .project-rail::-webkit-scrollbar-thumb:hover {
+  background: rgba(171, 204, 218, 0.52);
+  background-clip: padding-box;
 }

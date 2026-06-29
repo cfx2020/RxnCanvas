@@ -75,7 +75,6 @@ import {
   type StageSourceFilesOptions,
 } from "./importRegistration"
 import {
-  deleteSourceFileTransition,
   nodeSourceDetailsSelection,
   selectSourceFileTransition,
 } from "./fileDisplay"
@@ -175,7 +174,6 @@ import {
 import {
   applyCanvasSelectionTransitionState,
   applyNodeSourceDetailsSelectionState,
-  applySourceFileDeletionState,
   applySourceFileSelectionState,
 } from "./appSelectionAppliers"
 import {
@@ -2174,8 +2172,11 @@ export function App() {
     applySourceFileSelectionState(appStateSetters, transition)
   }, [appStateSetters, files, lastSelectedFileId, nodes, selectedFileIds])
 
-  const deleteProjectFile = useCallback((fileId: string) => {
-    const deletedNodeIds = new Set(nodes.filter((node) => node.sourceFileId === fileId).map((node) => node.id))
+  const deleteProjectFiles = useCallback((fileIds: string[]) => {
+    const deletedFileIds = new Set(fileIds)
+    if (deletedFileIds.size === 0) return
+
+    const deletedNodeIds = new Set(nodes.filter((node) => node.sourceFileId && deletedFileIds.has(node.sourceFileId)).map((node) => node.id))
     if (deletedNodeIds.size > 0) {
       pushEditHistory()
       setNodes((current) => current.filter((node) => !deletedNodeIds.has(node.id)))
@@ -2191,15 +2192,15 @@ export function App() {
         return barrier ? !deletedNodeIds.has(barrier.sourceId) && !deletedNodeIds.has(barrier.targetId) : true
       }))
     }
-    const transition = deleteSourceFileTransition({
-      files,
-      selectedFileId,
-      selectedFileIds,
-      lastSelectedFileId,
-      deletedFileId: fileId,
-    })
-    applySourceFileDeletionState(appStateSetters, transition)
-  }, [appStateSetters, barriers, edges, files, lastSelectedFileId, nodes, pushEditHistory, selectedFileId, selectedFileIds])
+    const nextFiles = files.filter((file) => !deletedFileIds.has(file.id))
+    const fallbackFileId = nextFiles[0]?.id ?? null
+    const nextSelectedFileIds = selectedFileIds.filter((fileId) => !deletedFileIds.has(fileId))
+    setFiles(nextFiles)
+    setSelectedFileIds(nextSelectedFileIds.length > 0 ? nextSelectedFileIds : fallbackFileId ? [fallbackFileId] : [])
+    setSelectedFileId(selectedFileId && !deletedFileIds.has(selectedFileId) ? selectedFileId : fallbackFileId)
+    setLastSelectedFileId(lastSelectedFileId && !deletedFileIds.has(lastSelectedFileId) ? lastSelectedFileId : fallbackFileId)
+    setInspectorMode("inspector")
+  }, [barriers, edges, files, lastSelectedFileId, nodes, pushEditHistory, selectedFileId, selectedFileIds])
 
   const selectNode = useCallback((nodeId: string, mode: GraphSelectionMode = "replace") => {
     if (keyboardEdgeSourceId && keyboardEdgeSourceId !== nodeId) {
@@ -2436,9 +2437,6 @@ export function App() {
   }, [])
 
   const contextMenuNodeId = canvasContextMenu?.target.kind === "node" ? canvasContextMenu.target.nodeId : null
-  const contextMenuNodeSourceFileId = contextMenuNodeId
-    ? nodes.find((node) => node.id === contextMenuNodeId)?.sourceFileId ?? null
-    : null
   const contextMenuAnnotationId = canvasContextMenu?.target.kind === "annotation" ? canvasContextMenu.target.annotationId : null
   const beginMoveAnnotation = useCallback(() => {
     pushEditHistory()
@@ -2477,12 +2475,6 @@ export function App() {
     showNodeSourceDetails(contextMenuNodeId)
     setCanvasContextMenu(null)
   }, [contextMenuNodeId, showNodeSourceDetails])
-
-  const deleteSourceFromContextMenuNode = useCallback(() => {
-    if (!contextMenuNodeSourceFileId) return
-    deleteProjectFile(contextMenuNodeSourceFileId)
-    setCanvasContextMenu(null)
-  }, [contextMenuNodeSourceFileId, deleteProjectFile])
 
   const handleCanvasKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     handleCanvasKeyboardEvent(event, hasCanvasSelection, {
@@ -2530,6 +2522,7 @@ export function App() {
       onImportFiles={openImportPicker}
       onDropProjectFiles={(projectId, droppedFiles) => void importFiles(droppedFiles, projectId)}
       onSelectFile={selectFile}
+      onDeleteFiles={deleteProjectFiles}
       canvases={canvasTabs}
       activeCanvasId={activeCanvasTabId}
       onSelectCanvas={switchCanvasTab}
@@ -2674,11 +2667,6 @@ export function App() {
               <button type="button" role="menuitem" onClick={renameContextMenuNode}>Rename</button>
               <button type="button" role="menuitem" onClick={setZeroFromContextMenuNode}>Set zero</button>
               <button type="button" role="menuitem" onClick={showSourceFromContextMenuNode}>Source details</button>
-              {contextMenuNodeSourceFileId ? (
-                <button type="button" role="menuitem" className="is-danger" onClick={deleteSourceFromContextMenuNode}>
-                  Delete file and nodes
-                </button>
-              ) : null}
               <span className="canvas-context-menu-divider" aria-hidden="true" />
             </>
           ) : null}

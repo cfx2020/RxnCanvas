@@ -1477,7 +1477,7 @@ describe("App", () => {
     expect(within(dialog).getByRole("button", { name: "Play vibration" })).toBeInTheDocument()
   })
 
-  it("selects and drags project file rows while deleting source files from node context menus", () => {
+  it("selects and drags project file rows while deleting source files from the file context menu", () => {
     render(<App />)
 
     const initialNodeCount = document.querySelectorAll(".reaction-node").length
@@ -1512,6 +1512,13 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "More actions for orca.out" })).not.toBeInTheDocument()
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "Node Maleic Anhydride" }), { clientX: 420, clientY: 520 })
+    expect(screen.queryByRole("menuitem", { name: "Delete file and nodes" })).not.toBeInTheDocument()
+    fireEvent.keyDown(document, { key: "Escape" })
+
+    fireEvent.click(orcaButton)
+    expect(orcaRow).toHaveClass("project-file-card--selected")
+    fireEvent.contextMenu(orcaRow, { clientX: 240, clientY: 360 })
+    expect(screen.getByRole("menu", { name: "File actions for orca.out" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete file and nodes" }))
     expect(screen.queryByRole("button", { name: "orca.out ORCA" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node Maleic Anhydride" })).not.toBeInTheDocument()
