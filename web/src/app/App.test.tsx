@@ -1473,7 +1473,7 @@ describe("App", () => {
     expect(within(dialog).getByRole("button", { name: "Play vibration" })).toBeInTheDocument()
   })
 
-  it("selects, drags, and deletes project file rows without adding canvas nodes", () => {
+  it("selects and drags project file rows while deleting source files from node context menus", () => {
     render(<App />)
 
     const initialNodeCount = document.querySelectorAll(".reaction-node").length
@@ -1505,8 +1505,9 @@ describe("App", () => {
     expect(gaussianRow).toHaveClass("project-file-card--selected")
     expect(orcaRow).toHaveClass("project-file-card--selected")
     expect(mapleRow).toHaveClass("project-file-card--selected")
+    expect(screen.queryByRole("button", { name: "More actions for orca.out" })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for orca.out" }))
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Node Maleic Anhydride" }), { clientX: 420, clientY: 520 })
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete file and nodes" }))
     expect(screen.queryByRole("button", { name: "orca.out ORCA" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node Maleic Anhydride" })).not.toBeInTheDocument()
@@ -1653,8 +1654,8 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Node Frame 1" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node Frame 2" })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for path.xyz" }))
-    fireEvent.click(screen.getByRole("menuitem", { name: "Review candidates" }))
+    fireEvent.click(sourceButton)
+    fireEvent.click(screen.getByRole("button", { name: "Review candidates" }))
 
     const reopenedDialog = await screen.findByRole("dialog", { name: "Import candidates" })
     fireEvent.click(within(reopenedDialog).getByRole("button", { name: "Register all" }))
@@ -1784,8 +1785,8 @@ describe("App", () => {
     expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
     expect(registerImportCandidates).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for native-path.xyz" }))
-    fireEvent.click(screen.getByRole("menuitem", { name: "Review candidates" }))
+    fireEvent.click(screen.getByRole("button", { name: "native-path.xyz XYZ" }))
+    fireEvent.click(screen.getByRole("button", { name: "Review candidates" }))
     const dialog = await screen.findByRole("dialog", { name: "Import candidates" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Register selected" }))
 

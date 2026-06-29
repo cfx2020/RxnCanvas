@@ -2436,6 +2436,9 @@ export function App() {
   }, [])
 
   const contextMenuNodeId = canvasContextMenu?.target.kind === "node" ? canvasContextMenu.target.nodeId : null
+  const contextMenuNodeSourceFileId = contextMenuNodeId
+    ? nodes.find((node) => node.id === contextMenuNodeId)?.sourceFileId ?? null
+    : null
   const contextMenuAnnotationId = canvasContextMenu?.target.kind === "annotation" ? canvasContextMenu.target.annotationId : null
   const beginMoveAnnotation = useCallback(() => {
     pushEditHistory()
@@ -2474,6 +2477,12 @@ export function App() {
     showNodeSourceDetails(contextMenuNodeId)
     setCanvasContextMenu(null)
   }, [contextMenuNodeId, showNodeSourceDetails])
+
+  const deleteSourceFromContextMenuNode = useCallback(() => {
+    if (!contextMenuNodeSourceFileId) return
+    deleteProjectFile(contextMenuNodeSourceFileId)
+    setCanvasContextMenu(null)
+  }, [contextMenuNodeSourceFileId, deleteProjectFile])
 
   const handleCanvasKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     handleCanvasKeyboardEvent(event, hasCanvasSelection, {
@@ -2521,8 +2530,6 @@ export function App() {
       onImportFiles={openImportPicker}
       onDropProjectFiles={(projectId, droppedFiles) => void importFiles(droppedFiles, projectId)}
       onSelectFile={selectFile}
-      onDeleteFile={deleteProjectFile}
-      onReviewCandidates={reviewCandidatesForFile}
       canvases={canvasTabs}
       activeCanvasId={activeCanvasTabId}
       onSelectCanvas={switchCanvasTab}
@@ -2667,6 +2674,11 @@ export function App() {
               <button type="button" role="menuitem" onClick={renameContextMenuNode}>Rename</button>
               <button type="button" role="menuitem" onClick={setZeroFromContextMenuNode}>Set zero</button>
               <button type="button" role="menuitem" onClick={showSourceFromContextMenuNode}>Source details</button>
+              {contextMenuNodeSourceFileId ? (
+                <button type="button" role="menuitem" className="is-danger" onClick={deleteSourceFromContextMenuNode}>
+                  Delete file and nodes
+                </button>
+              ) : null}
               <span className="canvas-context-menu-divider" aria-hidden="true" />
             </>
           ) : null}

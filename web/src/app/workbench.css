@@ -556,7 +556,7 @@ input:focus-visible,
 .project-file-card {
   min-height: 44px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 4px;
   border: 1px solid transparent;
@@ -5974,7 +5974,7 @@ select,
   color: #0f7965;
 }
 .project-file-card {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
 }
 .project-file-main {
   min-width: 0;
@@ -14158,7 +14158,7 @@ select,
 .project-rail .project-file-progress {
   position: absolute !important;
   left: 12px !important;
-  right: 42px !important;
+  right: 12px !important;
   bottom: 3px !important;
   height: 2px !important;
   overflow: hidden !important;

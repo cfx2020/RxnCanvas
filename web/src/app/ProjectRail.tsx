@@ -30,8 +30,6 @@ export const ProjectRail = memo(function ProjectRail({
   onImportFiles,
   onDropProjectFiles,
   onSelectFile,
-  onDeleteFile,
-  onReviewCandidates,
   canvases = [],
   activeCanvasId,
   onSelectCanvas,
@@ -56,8 +54,6 @@ export const ProjectRail = memo(function ProjectRail({
   onImportFiles: (projectId?: string) => void
   onDropProjectFiles: (projectId: string, files: File[]) => void
   onSelectFile: (fileId: string, options?: FileSelectionOptions) => void
-  onDeleteFile: (fileId: string) => void
-  onReviewCandidates?: (fileId: string) => void
   canvases?: CanvasTabState[]
   activeCanvasId?: string
   onSelectCanvas?: (canvasId: string) => void
@@ -329,8 +325,6 @@ export const ProjectRail = memo(function ProjectRail({
             selected={group.files.some((file) => selectedFileSet.has(file.id))}
             selectedFiles={selectedFiles}
             onSelect={onSelectFile}
-            onDelete={onDeleteFile}
-            onReviewCandidates={onReviewCandidates}
           />
         ))}
       </RailSection>
@@ -480,20 +474,15 @@ function ProjectFileRow({
   selected,
   selectedFiles,
   onSelect,
-  onDelete,
-  onReviewCandidates,
 }: {
   group: SourceFileGroup
   active: boolean
   selected: boolean
   selectedFiles: SourceFile[]
   onSelect: (fileId: string, options?: FileSelectionOptions) => void
-  onDelete: (fileId: string) => void
-  onReviewCandidates?: (fileId: string) => void
 }) {
   const { primaryFile } = group
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
-  const reviewFile = group.files.find((file) => (file.parse?.objectCount ?? file.parse?.candidates?.length ?? 0) > 1)
   const hasParsedSolutionLog = group.files.some(sourceFileLooksLikeParsedSolutionLog)
   const missingPairLog = group.hasGasLog !== hasParsedSolutionLog
   const parsing = group.files.some(sourceFileHasPendingDesktopParse)
@@ -507,27 +496,6 @@ function ProjectFileRow({
       ? "Solvation log paired"
       : undefined
   const fileStatusTitle = [solvationPairTitle, parseIssueTitle].filter(Boolean).join(" - ") || undefined
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLSpanElement | null>(null)
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) return
-      if (menuRef.current?.contains(target)) return
-      setMenuOpen(false)
-    }
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false)
-    }
-    document.addEventListener("pointerdown", closeOnOutsidePointer, true)
-    document.addEventListener("keydown", closeOnEscape)
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer, true)
-      document.removeEventListener("keydown", closeOnEscape)
-    }
-  }, [menuOpen])
 
   const selectFromEvent = (event: MouseEvent<HTMLButtonElement>) => {
     onSelect(primaryFile.id, {
@@ -598,48 +566,6 @@ function ProjectFileRow({
           <span aria-hidden="true" />
         </span>
       ) : null}
-      <span className="project-file-menu" ref={menuRef}>
-        <button
-          type="button"
-          className="project-file-more"
-          aria-label={`More actions for ${group.displayName}`}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          title={`More actions for ${group.displayName}`}
-          onClick={() => setMenuOpen((current) => !current)}
-        >
-          <MoreHorizontal size={14} />
-        </button>
-        {menuOpen ? (
-          <span className="project-file-action-menu" role="menu" aria-label={`Actions for ${group.displayName}`}>
-            {reviewFile && onReviewCandidates ? (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false)
-                  onReviewCandidates(reviewFile.id)
-                }}
-              >
-                <FilePlus2 size={14} />
-                <span>Review candidates</span>
-              </button>
-            ) : null}
-            <button
-              type="button"
-              role="menuitem"
-              className="is-danger"
-              onClick={() => {
-                setMenuOpen(false)
-                group.files.forEach((file) => onDelete(file.id))
-              }}
-            >
-              <Trash2 size={14} />
-              <span>Delete file and nodes</span>
-            </button>
-          </span>
-        ) : null}
-      </span>
     </div>
   )
 }
