@@ -263,6 +263,26 @@ describe("importRegistration", () => {
     })
   })
 
+  it("does not pair failed solution logs with parsed gas imports", () => {
+    const gas = { ...sourceFile("i1p6-gas", parseResult([candidate({ candidateId: "gas", label: "i1p6", energyGas: -6665.3 })])), name: "i1p6.log" }
+    const sol = { ...sourceFile("i1p6-sol", failedParseResult()), name: "i1p6-sol.log", storedPath: "sources/i1p6-sol.log" }
+
+    const plan = buildImportPlan([gas, sol], layout)
+
+    expect(plan.stagedFiles.map((file) => [file.id, file.status, file.parse?.parsed])).toEqual([
+      ["i1p6-gas", "parsed", true],
+      ["i1p6-sol", "staged", false],
+    ])
+    expect(plan.fallbackNodes).toHaveLength(1)
+    expect(plan.fallbackNodes[0]).toMatchObject({
+      label: "i1p6",
+      sourceFileId: "i1p6-gas",
+      solvent: "SMD",
+      energyGas: -6665.3,
+      energySolution: -2,
+    })
+  })
+
   it("prepares desktop registration payloads without duplicating source files", () => {
     const parsed = parseResult([
       candidate({ candidateId: "a", objectIndex: 4 }),

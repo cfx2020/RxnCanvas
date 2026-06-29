@@ -939,31 +939,47 @@ describe("App", () => {
     ])
   })
 
-  it("pairs separately imported solution logs by filename even when the solution preview is unparsed", async () => {
+  it("keeps failed solution logs grouped but unavailable for solvation pairing", async () => {
     render(<App />)
 
     const input = screen.getByLabelText("Import calculation files")
-    const gasLog = new File(["SCF Done: E(RwB97XD) = -101.0"], "i1p6.log", { type: "text/plain" })
+    const gasLog = new File(["SCF Done: E(RwB97XD) = -101.0\nSMD"], "i1p6.log", { type: "text/plain" })
     const solutionLog = new File(["solvent output without enough parser markers"], "i1p6-sol.log", { type: "text/plain" })
 
     await act(async () => {
       fireEvent.change(input, { target: { files: [gasLog] } })
       await Promise.resolve()
     })
+
+    const rail = screen.getByRole("complementary", { name: "Project rail" })
+    const gasButton = await within(rail).findByRole("button", { name: "i1p6.log Gaussian" })
+    const gasRow = gasButton.closest(".project-file-card") as HTMLElement
+    const dataTransfer = new TestDataTransfer()
+    fireEvent.dragStart(gasRow, { dataTransfer })
+    dispatchDrop(screen.getByLabelText("Graph canvas surface"), dataTransfer, 640, 360)
+    const node = await screen.findByRole("button", { name: "Node i1p6" })
+    expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
+
     await act(async () => {
       fireEvent.change(input, { target: { files: [solutionLog] } })
       await Promise.resolve()
     })
 
-    const rail = screen.getByRole("complementary", { name: "Project rail" })
     const groupedRowButton = await within(rail).findByRole("button", { name: "i1p6 Gaussian" })
     expect(groupedRowButton).toBeInTheDocument()
-    expect(groupedRowButton.getAttribute("title")).toContain("Solvation log paired")
+    expect(groupedRowButton.getAttribute("title")).toContain("No paired solvation log")
     expect(groupedRowButton.getAttribute("title")).toContain("No supported parser recognized this source preview.")
     const groupedRow = groupedRowButton.closest(".project-file-card") as HTMLElement
     expect(groupedRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
     expect(within(rail).queryByRole("button", { name: "i1p6.log Gaussian" })).not.toBeInTheDocument()
     expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Raw" })).not.toBeInTheDocument()
+    expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
+    dispatchPointer(node, "pointerDown", { button: 0, clientX: 640, clientY: 360, pointerId: 84 })
+    dispatchPointer(node, "pointerUp", { button: 0, clientX: 640, clientY: 360, pointerId: 84 })
+    const inspector = screen.getByRole("complementary", { name: "Inspector" })
+    const solventField = await within(inspector).findByText("Solvent").then((label) => label.closest("div"))
+    expect(solventField).toHaveTextContent("implicit solvent")
+    expect(solventField).not.toHaveTextContent("unassigned")
   })
 
   it("shows a missing gas indicator for solution logs and clears it after the gas log arrives", async () => {
@@ -2070,9 +2086,11 @@ describe("App", () => {
             name: "unsupported.dat",
             size: 1234,
             preview: "",
-            storedPath: "sources/unsupported.dat",
-            checksum: `sha256:${"e".repeat(64)}`,
             parse: unsupportedSource("unsupported", "No supported parser recognized this source full-file."),
+            error: {
+              code: "unsupported_format",
+              message: "No supported parser recognized this source full-file.",
+            },
           }],
         },
       })
@@ -2138,9 +2156,11 @@ describe("App", () => {
             name: "native-unsupported.dat",
             size: 1234,
             preview: "",
-            storedPath: "sources/native-unsupported.dat",
-            checksum: `sha256:${"a".repeat(64)}`,
             parse: unsupportedSource("native-unsupported", "No supported parser recognized this source full-file."),
+            error: {
+              code: "unsupported_format",
+              message: "No supported parser recognized this source full-file.",
+            },
           }],
         },
       })
@@ -2293,8 +2313,10 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await screen.findByRole("button", { name: "Node path-missing" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Node path-missing" })).not.toBeInTheDocument()
     expect(screen.queryByRole("progressbar", { name: "Parsing path-missing.log" })).not.toBeInTheDocument()
+    const sourceRow = (await screen.findByRole("button", { name: "path-missing.log Gaussian" })).closest(".project-file-card") as HTMLElement
+    expect(sourceRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
   })
 
   it("uses Electron desktop APIs for native import and report export", async () => {

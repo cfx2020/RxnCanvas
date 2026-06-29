@@ -51,6 +51,7 @@ import {
   projectFileDragMimeType,
   projectFileIdsFromDataTransfer,
   sourceFileDisplayGroupKey,
+  sourceFileLooksLikeParsedSolutionLog,
   sourceFileLooksLikeSolutionLog,
 } from "./fileDisplay"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
@@ -281,7 +282,7 @@ export function CanvasSurface({
     const groups = new Map<string, boolean>()
     files.forEach((file) => {
       const key = sourceFileDisplayGroupKey(file)
-      groups.set(key, (groups.get(key) ?? false) || sourceFileLooksLikeSolutionLog(file))
+      groups.set(key, (groups.get(key) ?? false) || sourceFileLooksLikeParsedSolutionLog(file))
     })
     return groups
   }, [files])
@@ -1959,7 +1960,8 @@ function solvationPairStatusForNode(
   if (!node.sourceFileId) return "unknown"
   const file = fileById.get(node.sourceFileId)
   if (!file) return "unknown"
-  if (sourceFileLooksLikeSolutionLog(file)) return "paired"
+  if (sourceFileLooksLikeParsedSolutionLog(file)) return "paired"
+  if (sourceFileLooksLikeSolutionLog(file)) return "unknown"
   if (file.kind !== "Gaussian" && file.kind !== "ORCA" && file.kind !== "MAPLE") return "unknown"
   return solutionLogPresenceByGroup.get(sourceFileDisplayGroupKey(file)) ? "paired" : "missing"
 }

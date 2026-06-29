@@ -18,7 +18,12 @@ import type {
   ProjectWorkspaceImportOptions,
 } from "./importRegistrationTypes"
 import { desktopImportSourceFilesFromFiles, sourceFilesFromIds } from "./importSources"
-import { sourceFileDisplayGroupKey, sourceFileLooksLikeSolutionLog, sourceKindFromName } from "./fileDisplay"
+import {
+  sourceFileDisplayGroupKey,
+  sourceFileLooksLikeParsedSolutionLog,
+  sourceFileLooksLikeSolutionLog,
+  sourceKindFromName,
+} from "./fileDisplay"
 import { importLayoutFromPoint } from "./importLayout"
 import {
   activeCanvasSnapshot,
@@ -152,7 +157,7 @@ function fallbackNodesForParsedGroup(
   }
 
   return group.flatMap(({ file, index, parsed }) => {
-    if (parseWasDeferred(parsed)) return []
+    if (!parsed.parsed || parseWasDeferred(parsed)) return []
     const candidates = parsed.candidates ?? []
     if (candidates.length > 1) return []
     if (candidates.length === 1) return [nodeFromCandidate(stagedSourceFile(file, parsed), parsed, candidates[0], index, layout)]
@@ -167,7 +172,7 @@ function parseWasDeferred(parsed: SourceParseResult): boolean {
 function shouldPairParsedGroup(group: ImportPlan["parsedImports"]): boolean {
   if (group.length < 2) return false
   const stagedFiles = group.map(({ file, parsed }) => stagedSourceFile(file, parsed))
-  const hasSolution = stagedFiles.some(sourceFileLooksLikeSolutionLog)
+  const hasSolution = stagedFiles.some(sourceFileLooksLikeParsedSolutionLog)
   const hasGas = stagedFiles.some((file) => !sourceFileLooksLikeSolutionLog(file))
   const hasReviewCandidates = group.some(({ parsed }) => (parsed.candidates ?? []).length > 1)
   return hasSolution && hasGas && !hasReviewCandidates
@@ -179,7 +184,7 @@ function pairedGasSolutionNode(
   layout: ImportPlan["layout"],
 ): FlowNode | null {
   const gasImport = group.find(({ file, parsed }) => !sourceFileLooksLikeSolutionLog(stagedSourceFile(file, parsed))) ?? group[0]
-  const solutionImport = group.find(({ file, parsed }) => sourceFileLooksLikeSolutionLog(stagedSourceFile(file, parsed)))
+  const solutionImport = group.find(({ file, parsed }) => sourceFileLooksLikeParsedSolutionLog(stagedSourceFile(file, parsed)))
   const primaryImport = gasImport ?? solutionImport
   if (!primaryImport) return null
 

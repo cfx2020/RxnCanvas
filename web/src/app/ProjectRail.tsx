@@ -7,6 +7,7 @@ import {
   filesFromDataTransfer,
   projectFileDragMimeType,
   projectFileDragPath,
+  sourceFileLooksLikeParsedSolutionLog,
   sourceFileGroupsForDisplay,
   type SourceFileGroup,
 } from "./fileDisplay"
@@ -493,15 +494,16 @@ function ProjectFileRow({
   const { primaryFile } = group
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
   const reviewFile = group.files.find((file) => (file.parse?.objectCount ?? file.parse?.candidates?.length ?? 0) > 1)
-  const missingPairLog = group.hasGasLog !== group.hasSolutionLog
+  const hasParsedSolutionLog = group.files.some(sourceFileLooksLikeParsedSolutionLog)
+  const missingPairLog = group.hasGasLog !== hasParsedSolutionLog
   const parsing = group.files.some(sourceFileHasPendingDesktopParse)
   const parseIssue = group.files.map(sourceFileParseIssue).find((issue) => issue !== null) ?? null
   const parseIssueTitle = parseIssue ? `${parseIssue.file.name}: ${parseIssue.message}` : undefined
   const solvationPairTitle = missingPairLog
-    ? group.hasSolutionLog
+    ? !group.hasGasLog && group.hasSolutionLog
       ? "No paired gas log"
       : "No paired solvation log"
-    : group.hasSolutionLog
+    : hasParsedSolutionLog
       ? "Solvation log paired"
       : undefined
   const fileStatusTitle = [solvationPairTitle, parseIssueTitle].filter(Boolean).join(" - ") || undefined

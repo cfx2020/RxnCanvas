@@ -266,6 +266,20 @@ export function sourceFileLooksLikeSolutionLog(file: SourceFile): boolean {
   return Boolean(solutionLogSuffixForStem(stripKnownRawExtension(stripChecksumPrefix(baseName(file.name)))))
 }
 
+export function sourceFileHasUsableParsedData(file: SourceFile): boolean {
+  const parse = file.parse
+  if (!parse) return file.status === "parsed"
+  if (!parse.parsed) return false
+  if ((parse.candidates?.length ?? 0) > 0) return true
+  if (typeof parse.energyGas === "number" || typeof parse.energySolution === "number") return true
+  if (parse.energyTable && Object.values(parse.energyTable).some((value) => typeof value === "number" && Number.isFinite(value))) return true
+  return Boolean(parse.coordinatePreview)
+}
+
+export function sourceFileLooksLikeParsedSolutionLog(file: SourceFile): boolean {
+  return sourceFileLooksLikeSolutionLog(file) && sourceFileHasUsableParsedData(file)
+}
+
 export function safeRawFileName(value: string): string {
   return value
     .trim()

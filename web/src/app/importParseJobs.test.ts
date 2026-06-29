@@ -170,7 +170,7 @@ describe("importParseJobs", () => {
     }])
   })
 
-  it("stops pending progress when the backend materializes a file but returns no parse", async () => {
+  it("stops pending progress without keeping successful import metadata when the backend returns no parse", async () => {
     const source = {
       ...importSourceFile("missing-parse"),
       parse: {
@@ -206,8 +206,9 @@ describe("importParseJobs", () => {
       importedFiles: [source],
     })
 
-    expect(parsedFile.storedPath).toBe("sources/missing-parse.log")
-    expect(parsedFile.checksum).toBe(`sha256:${"a".repeat(64)}`)
+    expect(parsedFile.sourcePath).toBeUndefined()
+    expect(parsedFile.storedPath).toBeUndefined()
+    expect(parsedFile.checksum).toBeUndefined()
     expect(parsedFile.status).toBe("staged")
     expect(parsedFile.parse?.warnings).toEqual([{
       code: "import_preview_failed",

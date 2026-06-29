@@ -159,8 +159,12 @@ function desktopImportFailureResult(
   message: string,
   code: string,
 ): ImportSourceFile {
+  const failedSource = { ...source }
+  delete failedSource.sourcePath
+  delete failedSource.storedPath
+  delete failedSource.checksum
   return {
-    ...source,
+    ...failedSource,
     status: "staged",
     parse: failedDesktopParseResult(source, message, code),
   }

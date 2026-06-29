@@ -697,32 +697,13 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
     })
   }
 
-  const usedStoredPaths = new Set()
-  const stagedFiles = await Promise.all(files.map(async (file, index) => {
-    if (!projectDirectory) return importSourceFileForPreview(file)
-    try {
-      const materialized = await materializeImportSourceFile(projectDirectory, file, index, { usedStoredPaths })
-      return {
-        ...materialized,
-        parseSourcePath: materialized.sourcePath,
-      }
-    } catch (error) {
-      return {
-        ...importSourceFileForPreview(file),
-        error: {
-          code: "source_materialize_failed",
-          message: error instanceof Error ? error.message : String(error),
-        },
-      }
-    }
-  }))
-
-  const parseTargets = stagedFiles.filter((file) => !file.error)
+  const previewFiles = files.map(importSourceFileForPreview)
+  const parseTargets = previewFiles.filter((file) => !file.error)
   if (parseTargets.length === 0) {
     return {
       ok: true,
       data: {
-        files: stagedFiles.map(importSourceFileRendererPayload),
+        files: previewFiles.map(importSourceFileRendererPayload),
       },
       ...(warnings.length > 0 ? { warnings } : {}),
     }
@@ -742,7 +723,7 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
     return {
       ok: true,
       data: {
-        files: stagedFiles.map(importSourceFileRendererPayload),
+        files: previewFiles.map(importSourceFileRendererPayload),
       },
       warnings: [
         ...warnings,
@@ -757,18 +738,68 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
   return {
     ok: true,
     data: {
-      files: stagedFiles.map((file) => {
-        if (file.error) return importSourceFileRendererPayload(file)
-        const parseIndex = parseTargets.indexOf(file)
-        return {
-          ...importSourceFileRendererPayload(file),
-          parse: preview.data.files[parseIndex]?.parse,
-        }
+      files: await parsedImportSourceFilePayloads({
+        files: previewFiles,
+        parseTargets,
+        previewFiles: preview.data.files,
+        projectDirectory,
       }),
     },
     ...(warnings.length > 0 ? { warnings } : {}),
   }
 })
+
+async function parsedImportSourceFilePayloads({
+  files,
+  parseTargets,
+  previewFiles,
+  projectDirectory,
+}) {
+  const usedStoredPaths = new Set()
+  const parseResultsByFile = new Map()
+  parseTargets.forEach((file, index) => {
+    parseResultsByFile.set(file.id, previewFiles[index] ?? null)
+  })
+
+  return Promise.all(files.map(async (file, index) => {
+    if (file.error) return importSourceFileRendererPayload(file)
+    const previewFile = parseResultsByFile.get(file.id)
+    const parse = previewFile?.parse
+    if (!parse?.parsed) {
+      return {
+        ...importSourceFileRendererPayload(file),
+        parse,
+        error: {
+          code: parse?.warnings?.[0]?.code || "import_preview_failed",
+          message: parse?.warnings?.[0]?.message || "The local parser did not return parsed source data.",
+        },
+      }
+    }
+    if (!projectDirectory) {
+      return {
+        ...importSourceFileRendererPayload(file),
+        parse,
+      }
+    }
+
+    try {
+      const materialized = await materializeImportSourceFile(projectDirectory, file, index, { usedStoredPaths })
+      return {
+        ...importSourceFileRendererPayload(materialized),
+        parse,
+      }
+    } catch (error) {
+      return {
+        ...importSourceFileRendererPayload(file),
+        parse,
+        error: {
+          code: "source_materialize_failed",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      }
+    }
+  }))
+}
 
 ipcMain.handle("rxnflow:register-import-candidates", async (_event, payload) => {
   const mode = payload?.mode === "all" ? "all" : "selected"
@@ -795,7 +826,6 @@ ipcMain.handle("rxnflow:register-import-candidates", async (_event, payload) => 
 
   return runEngineRequest(request)
 })
-
 
 ipcMain.handle("rxnflow:parse-source-preview", async (_event, payload) => {
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
