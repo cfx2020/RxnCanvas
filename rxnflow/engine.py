@@ -489,7 +489,7 @@ def parse_cclib_full_file(
     formula = formula_from_atoms(atoms) if atoms else text_result.formula
     charge = optional_int_from_any(getattr(data, "charge", None))
     spin = optional_int_from_any(getattr(data, "mult", None))
-    method = cclib_method_from_data(data) or text_result.method
+    method = method_basis_label_from_text(source_kind, full_text) or cclib_method_from_data(data) or text_result.method
     energy_table = cclib_energy_table_from_data(name, data)
     energy_gas = energy_table.egasHartree if energy_table is not None else None
     energy_solution = (
@@ -2754,6 +2754,28 @@ def gaussian_method_from_text(preview: str) -> str | None:
     for token in route.split():
         if "/" in token:
             return token.split("/", 1)[0].strip()
+    return None
+
+
+def method_basis_label_from_text(source_kind: str, text: str) -> str | None:
+    if source_kind == "Gaussian":
+        return gaussian_method_basis_from_text(text)
+    return None
+
+
+def gaussian_method_basis_from_text(text: str) -> str | None:
+    match = GAUSSIAN_ROUTE_PATTERN.search(text)
+    if match is None:
+        return None
+    route = match.group(1).strip()
+    for token in route.split():
+        if "/" not in token:
+            continue
+        method, basis = token.split("/", 1)
+        method = method.strip()
+        basis = basis.strip()
+        if method and basis:
+            return f"{method}/{basis}"
     return None
 
 

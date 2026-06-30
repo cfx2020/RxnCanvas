@@ -253,6 +253,50 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertAlmostEqual(parsed.energyTable.egasHartree if parsed.energyTable else 0, -76.5)
         self.assertAlmostEqual(parsed.energyTable.ggasHartree if parsed.energyTable else 0, -76.39)
 
+    def test_cclib_full_file_uses_gaussian_route_for_method_basis_label(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "generic-dft.log"
+            source_path.write_text(
+                "\n".join([
+                    "Entering Gaussian System",
+                    "#p wb97xd/genecp opt freq scrf=(smd,solvent=water)",
+                    "Stoichiometry H2O",
+                    "NBasis=    3957 RedAO= T",
+                    "Charge = 0 Multiplicity = 1",
+                    "SCF Done: E(RwB97XD) = -76.431000 A.U.",
+                ]),
+                encoding="utf8",
+            )
+            fake_data = SimpleNamespace(
+                atomnos=[8, 1, 1],
+                atomcoords=[[
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.96],
+                    [0.92, 0.0, -0.24],
+                ]],
+                scfenergies=[-76.5 / EV_TO_HARTREE],
+                charge=0,
+                mult=1,
+                nbasis=3957,
+                metadata={"methods": ["DFT", "DFT", "DFT"]},
+            )
+            fake_cclib = fake_cclib_module(fake_data)
+            sentinel = object()
+            previous = sys.modules.get("cclib", sentinel)
+            sys.modules["cclib"] = fake_cclib
+            try:
+                parsed = parse_source_file("generic-dft.log", "", str(source_path))
+            finally:
+                if previous is sentinel:
+                    sys.modules.pop("cclib", None)
+                else:
+                    sys.modules["cclib"] = previous
+
+        self.assertTrue(parsed.parsed)
+        self.assertEqual(parsed.method, "wb97xd/genecp")
+        self.assertEqual(parsed.candidates[0].method, "wb97xd/genecp")
+        self.assertEqual(parsed.energyTable.gasBasisFunctions if parsed.energyTable else None, 3957)
+
     def test_engine_import_preview_does_not_fill_cclib_standard_fields_from_text(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source_path = Path(directory) / "cclib-missing-energy.log"
