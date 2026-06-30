@@ -382,7 +382,7 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
     }
     const terms = compactExpressionTerms([
       ...nodeSelfTerms(nodeById, nodeId),
-      ...termIdsThroughPathIndex(index, releasesByPathIndex, nodeOrder).flatMap((id) => nodeSelfTerms(nodeById, id)),
+      ...termIdsBeforePathIndex(index, releasesByPathIndex, nodeOrder).flatMap((id) => nodeSelfTerms(nodeById, id)),
       ...[...baselineSubtractIds, ...termIdsThroughPathIndex(index, additionsByPathIndex, nodeOrder)]
         .flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
     ])
@@ -399,7 +399,7 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
       const upstreamPathIndex = pathIndexFromStart.get(nodeId) ?? (distance <= 1 ? 1 : Math.max(mainPath.length - 1, 0))
       const terms = compactExpressionTerms([
         ...nodeSelfTerms(nodeById, nodeId),
-        ...termIdsThroughPathIndex(upstreamPathIndex, releasesByPathIndex, nodeOrder).flatMap((id) => nodeSelfTerms(nodeById, id)),
+        ...termIdsBeforePathIndex(upstreamPathIndex, releasesByPathIndex, nodeOrder).flatMap((id) => nodeSelfTerms(nodeById, id)),
         ...[...baselineSubtractIds, ...termIdsThroughPathIndex(upstreamPathIndex, additionsByPathIndex, nodeOrder)]
           .flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
       ])
@@ -444,6 +444,14 @@ function termIdsThroughPathIndex(
     terms.push(...(termsByPathIndex.get(index) ?? []))
   }
   return uniqueNodeIds(terms, nodeOrder)
+}
+
+function termIdsBeforePathIndex(
+  pathIndex: number,
+  termsByPathIndex: Map<number, string[]>,
+  nodeOrder: Map<string, number>,
+): string[] {
+  return termIdsThroughPathIndex(pathIndex - 1, termsByPathIndex, nodeOrder)
 }
 
 function defaultEnergyGraphModel(nodes: FlowNode[]): EnergyGraphModel {

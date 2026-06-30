@@ -80,6 +80,7 @@ describe("energyDisplay", () => {
       irNode("four-b", "4b+", -4749.27926427, -4748.79778908),
       irNode("one", "1", -2025.48052593, -2025.64916099, "intermediate", "participant"),
       irNode("cl", "Cl", -460.232419976, -460.391177522, "intermediate", "participant"),
+      irNode("n2", "N2", -109.478913, -109.521554, "intermediate", "participant"),
     ]
     const explicitEdges: FlowEdge[] = [
       edge("base", "four-b"),
@@ -88,6 +89,7 @@ describe("energyDisplay", () => {
       edge("ts", "tsr"),
       edge("base", "cl", "release"),
       edge("one", "tsf", "addition"),
+      edge("tsr", "n2", "release"),
     ]
 
     const gasRows = energyTableRows(nodes, { ...defaultEnergyDisplayOptions, energySource: "gas" }, explicitEdges)
@@ -96,9 +98,12 @@ describe("energyDisplay", () => {
     expect(gasRows.find((row) => row.nodeId === "base")?.relative).toBeCloseTo(0)
     expect(gasRows.find((row) => row.nodeId === "one")?.relativeRole).toBe("addition-term")
     expect(gasRows.find((row) => row.nodeId === "cl")?.relativeRole).toBe("release-term")
+    expect(gasRows.find((row) => row.nodeId === "n2")?.relativeRole).toBe("release-term")
     expect(gasRows.find((row) => row.nodeId === "cl")?.relative).toBeNull()
+    expect(gasRows.find((row) => row.nodeId === "n2")?.relative).toBeNull()
     expect(expressionSignature(rowById(gasRows, "four-b"))).toEqual(["1:4b+", "1:Cl", "-1:4b-1"])
     expect(expressionSignature(rowById(gasRows, "tsf"))).toEqual(["1:i1N2fix14-tsf", "1:Cl", "-1:4b-1", "-1:1"])
+    expect(expressionSignature(rowById(gasRows, "tsr"))).toEqual(["1:i1N2fix14-tsr", "1:Cl", "-1:4b-1", "-1:1"])
     expect(gasRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(128.3218, 3)
     expect(gasRows.find((row) => row.nodeId === "tsf")?.relative).toBeCloseTo(83.9137, 3)
     expect(gasRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(92.2552, 3)

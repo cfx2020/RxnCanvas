@@ -142,7 +142,7 @@ export function handleNodePointerDownAction({
     const copyResult = pasteCanvasClipboardPayload(
       { nodes, edges, barriers },
       payload,
-      { pasteIndex: 1, offsetStep: { x: 0, y: 0 } },
+      { pasteIndex: 1, offsetStep: { x: 0, y: 0 }, preserveLabels: true },
     )
     if (copyResult) {
       pushEditHistory()

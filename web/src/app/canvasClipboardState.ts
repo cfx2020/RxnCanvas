@@ -22,6 +22,7 @@ export type PasteCanvasClipboardResult = {
 export type PasteCanvasClipboardOptions = {
   pasteIndex?: number
   offsetStep?: Point
+  preserveLabels?: boolean
 }
 
 const defaultOffsetStep: Point = { x: 48, y: 48 }
@@ -89,7 +90,7 @@ export function pasteCanvasClipboard(
     return {
       ...cloneNode(node),
       id: nextId,
-      label: nextCopiedLabel(node.label),
+      label: options.preserveLabels ? node.label : nextCopiedLabel(node.label),
       position: {
         x: node.position.x + offset.x,
         y: node.position.y + offset.y,

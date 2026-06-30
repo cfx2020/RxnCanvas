@@ -118,8 +118,8 @@ describe("appCanvasPointerActions", () => {
     expect(copiedNodes.map((node) => [node.id, node.label, node.position])).toEqual([
       ["node-a", "A", { x: 10, y: 20 }],
       ["node-b", "B", { x: 80, y: 120 }],
-      ["node-a-copy", "A copy", { x: 10, y: 20 }],
-      ["node-b-copy", "B copy", { x: 80, y: 120 }],
+      ["node-a-copy", "A", { x: 10, y: 20 }],
+      ["node-b-copy", "B", { x: 80, y: 120 }],
     ])
     expect(setEdges).toHaveBeenCalledWith([
       ...edges,
