@@ -148,6 +148,7 @@ describe("project packages", () => {
           id: "node-a",
           label: "Imported node",
           kind: "bad-kind",
+          pathRole: "participant",
           coefficient: 0,
           energyGas: Number.NaN,
           energyUnit: "kcal/mol",
@@ -202,6 +203,7 @@ describe("project packages", () => {
       id: "node-a",
       formula: "pending",
       kind: "intermediate",
+      pathRole: "participant",
       coefficient: undefined,
       method: "unassigned",
       energyGas: null,
@@ -241,6 +243,46 @@ describe("project packages", () => {
       targetId: "",
       label: undefined,
     }])
+    expect(parsed?.edges?.[0]).toMatchObject({
+      id: "edge-reactant-ts",
+      stepRole: undefined,
+    })
+  })
+
+  it("normalizes reaction path semantics on nodes and edges", () => {
+    const content = JSON.stringify({
+      schemaVersion: 2,
+      packageKind: "rxnflow-project",
+      project,
+      files,
+      canvases: [{
+        id: "canvas-a",
+        label: "Path A",
+        nodes: [
+          { ...nodes[0], pathRole: "participant" },
+          { ...nodes[1], pathRole: "bad-role" },
+        ],
+        edges: [
+          { ...edges[0], stepRole: "addition" },
+          { ...edges[0], id: "edge-bad", stepRole: "bad-step" },
+        ],
+        barriers,
+        viewport,
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+        selectedBarrierIds: [],
+      }],
+      activeCanvasId: "canvas-a",
+      importLedger: { schemaVersion: 1, entries: [] },
+      savedAt: "2026-06-14T00:00:00.000Z",
+    })
+
+    const parsed = parseProjectPackage(content)
+
+    expect(parsed?.nodes?.[0].pathRole).toBe("participant")
+    expect(parsed?.nodes?.[1].pathRole).toBeUndefined()
+    expect(parsed?.edges?.[0].stepRole).toBe("addition")
+    expect(parsed?.edges?.[1].stepRole).toBeUndefined()
   })
 
   it("derives a lightweight import ledger from files and nodes", () => {

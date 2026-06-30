@@ -2,6 +2,8 @@ import type { CoordinatePreview, ParseCandidate, ParsedEnergyTableData, ParsedEn
 import { normalizeVibrationalModes, stripVibrationalModeDisplacements } from "./vibrations"
 
 export type NodeKind = "reactant" | "transition" | "intermediate" | "product"
+export type NodePathRole = "state" | "participant"
+export type EdgeStepRole = "path" | "addition" | "release" | "branch"
 
 export type Point = {
   x: number
@@ -43,6 +45,7 @@ export type FlowNode = {
   label: string
   formula: string
   kind: NodeKind
+  pathRole?: NodePathRole
   coefficient?: number
   method: string
   solvent: string
@@ -73,6 +76,7 @@ export type FlowEdge = {
   sourceId: string
   targetId: string
   label: string
+  stepRole?: EdgeStepRole
 }
 
 export type FlowBarrier = {
@@ -410,6 +414,7 @@ function normalizeProjectNode(node: FlowNode | Partial<FlowNode>, index: number)
     label: stringOrFallback(node.label, "Imported node"),
     formula: stringOrFallback(node.formula, "pending"),
     kind: isNodeKind(node.kind) ? node.kind : "intermediate",
+    pathRole: isNodePathRole(node.pathRole) ? node.pathRole : undefined,
     coefficient: finiteNonZeroNumberOrUndefined(node.coefficient),
     method: stringOrFallback(node.method, "unassigned"),
     solvent: stringOrFallback(node.solvent, "unassigned"),
@@ -442,6 +447,7 @@ function normalizeProjectEdge(edge: FlowEdge | Partial<FlowEdge>, index: number)
     sourceId: stringOrFallback(edge.sourceId, ""),
     targetId: stringOrFallback(edge.targetId, ""),
     label: stringOrFallback(edge.label, "step"),
+    stepRole: isEdgeStepRole(edge.stepRole) ? edge.stepRole : undefined,
   }
 }
 
@@ -734,6 +740,14 @@ function normalizeCoordinatePreview(value: CoordinatePreview | null | undefined,
 
 function isNodeKind(value: unknown): value is NodeKind {
   return value === "reactant" || value === "transition" || value === "intermediate" || value === "product"
+}
+
+function isNodePathRole(value: unknown): value is NodePathRole {
+  return value === "state" || value === "participant"
+}
+
+function isEdgeStepRole(value: unknown): value is EdgeStepRole {
+  return value === "path" || value === "addition" || value === "release" || value === "branch"
 }
 
 function isNodeSourceStatus(value: unknown): value is FlowNode["sourceStatus"] {

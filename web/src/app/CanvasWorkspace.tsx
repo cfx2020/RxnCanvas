@@ -51,6 +51,7 @@ import {
   projectFileDragMimeType,
   projectFileIdsFromDataTransfer,
   sourceFileDisplayGroupKey,
+  sourceFileHasUsableParsedData,
   sourceFileLooksLikeParsedSolutionLog,
   sourceFileLooksLikeSolutionLog,
 } from "./fileDisplay"
@@ -278,11 +279,17 @@ export function CanvasSurface({
   const connectedInputNodeIds = useMemo(() => new Set(edges.map((edge) => edge.targetId)), [edges])
   const connectedOutputNodeIds = useMemo(() => new Set(edges.map((edge) => edge.sourceId)), [edges])
   const fileById = useMemo(() => new Map(files.map((file) => [file.id, file])), [files])
-  const solutionLogPresenceByGroup = useMemo(() => {
-    const groups = new Map<string, boolean>()
+  const solvationPairPresenceByGroup = useMemo(() => {
+    const groups = new Map<string, SolvationPairPresence>()
     files.forEach((file) => {
       const key = sourceFileDisplayGroupKey(file)
-      groups.set(key, (groups.get(key) ?? false) || sourceFileLooksLikeParsedSolutionLog(file))
+      const presence = groups.get(key) ?? { hasGas: false, hasSolution: false }
+      if (sourceFileLooksLikeParsedSolutionLog(file)) {
+        presence.hasSolution = true
+      } else if (!sourceFileLooksLikeSolutionLog(file) && sourceFileHasUsableParsedData(file)) {
+        presence.hasGas = true
+      }
+      groups.set(key, presence)
     })
     return groups
   }, [files])
@@ -488,7 +495,7 @@ export function CanvasSurface({
             outputConnected={connectedOutputNodeIds.has(node.id)}
             relativeEnergy={energyRowByNodeId.get(node.id)?.relative ?? null}
             relativeRole={energyRowByNodeId.get(node.id)?.relativeRole ?? "standalone"}
-            solvationStatus={solvationPairStatusForNode(node, fileById, solutionLogPresenceByGroup)}
+            solvationStatus={solvationPairStatusForNode(node, fileById, solvationPairPresenceByGroup)}
             energySource={energyDisplayOptions.energySource}
             outputUnit={energyDisplayOptions.outputUnit}
             energyBaseline={node.id === relativeZeroNodeId}
@@ -861,7 +868,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   const coefficientInputRef = useRef<HTMLInputElement | null>(null)
   const sourceStatusLabel = nodeFooterText(node)
   const solvationStatusLabel = solvationPairStatusLabel(solvationStatus)
-  const nodeStatusLight = solvationStatus === "missing" ? "missing" : (node.sourceStatus ?? solvationStatus)
+  const nodeStatusLight = solvationStatus === "missing-solution" || solvationStatus === "missing-gas" ? "missing" : (node.sourceStatus ?? solvationStatus)
   const relativeEnergySymbol = energySource === "solution" ? "ΔG" : "ΔE"
   const cardSize = flowNodeSize(node)
   const relativeEnergyLabel = formatNodeCardRelativeEnergy(relativeEnergy, outputUnit)
@@ -871,7 +878,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
     symbol: relativeEnergySymbol,
     value: relativeEnergyLabel,
     roleLabel,
-    kindLabel: nodeKindAbbreviation(node.kind),
+    kindLabel: nodeKindAbbreviation(node),
   }))
   const previewSize = {
     width: Math.max(128, cardWidth - 28),
@@ -946,7 +953,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
     <div
       role="button"
       tabIndex={0}
-      className={`reaction-node node-${node.kind}${selected ? " is-selected" : ""}${connectionSnapTarget ? " is-connection-snap-target" : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
+      className={`reaction-node node-${node.kind}${node.pathRole === "participant" ? " node-participant" : ""}${selected ? " is-selected" : ""}${connectionSnapTarget ? " is-connection-snap-target" : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
       aria-label={`Node ${node.label}`}
       data-flow-node-id={node.id}
       style={{
@@ -1081,7 +1088,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
             </strong>
           </span>
         )}
-        <em className="node-kind-badge">{nodeKindAbbreviation(node.kind)}</em>
+        <em className="node-kind-badge">{nodeKindAbbreviation(node)}</em>
       </div>
       <span
         role="button"
@@ -1324,16 +1331,17 @@ const ReactionEdge = memo(function ReactionEdge({
   const target = nodeMap.get(edge.targetId)
   if (!source || !target) return null
   const segment = createEdgeSegment(source, target)
+  const roleLabel = edge.stepRole && edge.stepRole !== "path" ? `${edge.stepRole} ` : ""
 
   return (
     <g
-      className={`edge${selected ? " is-selected" : ""}`}
+      className={`edge edge-role-${edge.stepRole ?? "path"}${selected ? " is-selected" : ""}`}
       data-flow-edge-id={edge.id}
       data-flow-edge-source-id={edge.sourceId}
       data-flow-edge-target-id={edge.targetId}
       role="button"
       tabIndex={0}
-      aria-label={`Edge ${source.label} to ${target.label}: ${edge.label}`}
+      aria-label={`Edge ${source.label} to ${target.label}: ${roleLabel}${edge.label}`}
       onPointerEnter={() => onHover(edge.id)}
       onPointerLeave={() => onHover(null)}
       onMouseEnter={() => onHover(edge.id)}
@@ -1379,7 +1387,7 @@ const ReactionEdgeLabel = memo(function ReactionEdgeLabel({
 }) {
   const [editingLabel, setEditingLabel] = useState(false)
   const [draftLabel, setDraftLabel] = useState("")
-  const displayLabel = edge.label.trim() === "path" ? "" : edge.label.trim()
+  const displayLabel = edge.label.trim() === "path" ? edgeStepRoleVisibleLabel(edge.stepRole) : edge.label.trim()
   const labelText = displayLabel || "Add label"
   const widthHasLabel = editingLabel ? draftLabel.trim().length > 0 : Boolean(displayLabel)
   const widthText = editingLabel ? draftLabel : labelText
@@ -1935,13 +1943,26 @@ export function MiniMap({
   )
 }
 
-type NodeSolvationStatus = "paired" | "missing" | "unknown"
+type NodeSolvationStatus = "paired" | "missing-solution" | "missing-gas" | "unknown"
 
-function nodeKindAbbreviation(kind: FlowNode["kind"]): string {
-  if (kind === "transition") return "TS"
-  if (kind === "intermediate") return "INT"
-  if (kind === "reactant") return "R"
+type SolvationPairPresence = {
+  hasGas: boolean
+  hasSolution: boolean
+}
+
+function nodeKindAbbreviation(node: FlowNode): string {
+  if (node.pathRole === "participant") return "PART"
+  if (node.kind === "transition") return "TS"
+  if (node.kind === "intermediate") return "INT"
+  if (node.kind === "reactant") return "R"
   return "P"
+}
+
+function edgeStepRoleVisibleLabel(role: FlowEdge["stepRole"]): string {
+  if (role === "addition") return "Addition"
+  if (role === "release") return "Release"
+  if (role === "branch") return "Branch"
+  return ""
 }
 
 function formatChargeMultiplicityBadge(node: FlowNode): string {
@@ -1953,22 +1974,22 @@ function formatChargeMultiplicityBadge(node: FlowNode): string {
 function solvationPairStatusForNode(
   node: FlowNode,
   fileById: Map<string, SourceFile>,
-  solutionLogPresenceByGroup: Map<string, boolean>,
+  solvationPairPresenceByGroup: Map<string, SolvationPairPresence>,
 ): NodeSolvationStatus {
-  const table = node.energyTable
-  if (typeof table?.gsolHartree === "number" || typeof table?.esolHartree === "number") return "paired"
   if (!node.sourceFileId) return "unknown"
   const file = fileById.get(node.sourceFileId)
   if (!file) return "unknown"
-  if (sourceFileLooksLikeParsedSolutionLog(file)) return "paired"
+  const presence = solvationPairPresenceByGroup.get(sourceFileDisplayGroupKey(file)) ?? { hasGas: false, hasSolution: false }
+  if (sourceFileLooksLikeParsedSolutionLog(file)) return presence.hasGas ? "paired" : "missing-gas"
   if (sourceFileLooksLikeSolutionLog(file)) return "unknown"
   if (file.kind !== "Gaussian" && file.kind !== "ORCA" && file.kind !== "MAPLE") return "unknown"
-  return solutionLogPresenceByGroup.get(sourceFileDisplayGroupKey(file)) ? "paired" : "missing"
+  return presence.hasSolution ? "paired" : "missing-solution"
 }
 
 function solvationPairStatusLabel(status: NodeSolvationStatus): string {
   if (status === "paired") return "Solvation log paired"
-  if (status === "missing") return "No paired solvation log"
+  if (status === "missing-gas") return "No paired gas log"
+  if (status === "missing-solution") return "No paired solvation log"
   return "Solvation pairing not available"
 }
 

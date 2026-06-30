@@ -291,7 +291,7 @@ export function autoLayoutFlowNodes(nodes: FlowNode[], options: EnergyDisplayOpt
       }
     }
 
-    const anchorIndex = sideAnchorIndex(node.id, layoutGraph, mainIndexById, mainPathIds.length, index)
+    const anchorIndex = sideAnchorIndex(node.id, layoutGraph, edges, mainIndexById, mainPathIds.length, index)
     const laneIndex = sideLaneCountByAnchor.get(anchorIndex) ?? 0
     sideLaneCountByAnchor.set(anchorIndex, laneIndex + 1)
     const x = leftX + anchorIndex * stepX
@@ -331,6 +331,7 @@ function createLayoutGraph(
   sourceIndexById: Map<string, number>,
 ): LayoutGraph {
   const ids = new Set(nodes.map((node) => node.id))
+  const participantIds = new Set(nodes.filter((node) => node.pathRole === "participant").map((node) => node.id))
   const incoming = new Map<string, string[]>()
   const outgoing = new Map<string, string[]>()
   for (const node of nodes) {
@@ -339,6 +340,8 @@ function createLayoutGraph(
   }
   for (const edge of edges) {
     if (!ids.has(edge.sourceId) || !ids.has(edge.targetId)) continue
+    if (edge.stepRole === "addition" || edge.stepRole === "release") continue
+    if (participantIds.has(edge.sourceId) || participantIds.has(edge.targetId)) continue
     outgoing.get(edge.sourceId)?.push(edge.targetId)
     incoming.get(edge.targetId)?.push(edge.sourceId)
   }
@@ -458,10 +461,13 @@ function compareLayoutPaths(
 function sideAnchorIndex(
   nodeId: string,
   graph: LayoutGraph,
+  edges: FlowEdge[],
   mainIndexById: Map<string, number>,
   mainPathLength: number,
   fallbackIndex: number,
 ): number {
+  const semanticAnchor = semanticSideAnchorIndex(nodeId, edges, mainIndexById)
+  if (typeof semanticAnchor === "number") return semanticAnchor
   const incomingMain = (graph.incoming.get(nodeId) ?? [])
     .map((id) => mainIndexById.get(id))
     .filter((index): index is number => typeof index === "number")
@@ -473,13 +479,30 @@ function sideAnchorIndex(
   return Math.min(Math.max(fallbackIndex, 0), Math.max(mainPathLength - 1, 0))
 }
 
+function semanticSideAnchorIndex(
+  nodeId: string,
+  edges: FlowEdge[],
+  mainIndexById: Map<string, number>,
+): number | null {
+  const anchors = edges
+    .filter((edge) => edge.stepRole === "addition" || edge.stepRole === "release")
+    .filter((edge) => edge.sourceId === nodeId || edge.targetId === nodeId)
+    .map((edge) => edge.sourceId === nodeId ? edge.targetId : edge.sourceId)
+    .map((id) => mainIndexById.get(id))
+    .filter((index): index is number => typeof index === "number")
+  return anchors.length > 0 ? Math.min(...anchors) : null
+}
+
 function graphDepthsFromBaseline(nodes: FlowNode[], edges: FlowEdge[], baselineId: string | null): Map<string, number> {
   const ids = new Set(nodes.map((node) => node.id))
+  const participantIds = new Set(nodes.filter((node) => node.pathRole === "participant").map((node) => node.id))
   if (!baselineId || !ids.has(baselineId)) return new Map()
   const outgoing = new Map<string, string[]>()
   const undirected = new Map<string, string[]>()
   edges.forEach((edge) => {
     if (!ids.has(edge.sourceId) || !ids.has(edge.targetId)) return
+    if (edge.stepRole === "addition" || edge.stepRole === "release") return
+    if (participantIds.has(edge.sourceId) || participantIds.has(edge.targetId)) return
     outgoing.set(edge.sourceId, [...(outgoing.get(edge.sourceId) ?? []), edge.targetId])
     undirected.set(edge.sourceId, [...(undirected.get(edge.sourceId) ?? []), edge.targetId])
     undirected.set(edge.targetId, [...(undirected.get(edge.targetId) ?? []), edge.sourceId])

@@ -1,4 +1,4 @@
-import type { FlowEdge, FlowNode, NodeKind } from "../domain/projectPackages"
+import type { EdgeStepRole, FlowEdge, FlowNode, NodeKind } from "../domain/projectPackages"
 import type { ParsedEnergyTableData, ParsedEnergyUnit } from "../domain/sourceParsers"
 
 export type EnergyDisplayOptions = {
@@ -7,7 +7,7 @@ export type EnergyDisplayOptions = {
   outputUnit: "hartree" | "kcal/mol" | "kj/mol"
 }
 
-export type RelativeEnergyRole = "standalone" | "baseline" | "path-point" | "addition-term" | "release-term"
+export type RelativeEnergyRole = "standalone" | "baseline" | "path-point" | "addition-term" | "release-term" | "participant-term"
 
 export type EnergyExpressionTerm = {
   nodeId: string
@@ -62,6 +62,7 @@ type EnergyTableNumericKey = (typeof energyTableNumericKeys)[number]
 
 type EnergyGraphModel = {
   defaultBaselineNodeId: string | null
+  baselineTerms: EnergyExpressionTerm[] | null
   termsByNodeId: Map<string, EnergyExpressionTerm[]>
   roleByNodeId: Map<string, RelativeEnergyRole>
   relativeTableVisibilityByNodeId: Map<string, boolean>
@@ -139,8 +140,14 @@ export function energyTableRows(
     expressionKcalByNodeId.set(node.id, evaluateExpressionKcal(terms, nodeById, options))
   }
 
-  const baselineTable = baselineNode ? expressionTableByNodeId.get(baselineNode.id) ?? null : null
-  const baselineKcal = baselineNode ? expressionKcalByNodeId.get(baselineNode.id) ?? null : null
+  const useModelBaselineTerms = !options.baselineNodeId && model.baselineTerms !== null
+  const modelBaselineTerms = useModelBaselineTerms ? model.baselineTerms ?? [] : null
+  const baselineTable = useModelBaselineTerms
+    ? evaluateExpressionEnergyTable(modelBaselineTerms ?? [], nodeById)
+    : baselineNode ? expressionTableByNodeId.get(baselineNode.id) ?? null : null
+  const baselineKcal = useModelBaselineTerms
+    ? evaluateExpressionKcal(modelBaselineTerms ?? [], nodeById, options)
+    : baselineNode ? expressionKcalByNodeId.get(baselineNode.id) ?? null : null
 
   return nodes.map((node) => {
     const role = model.roleByNodeId.get(node.id) ?? "standalone"
@@ -172,7 +179,7 @@ export function energyTableRows(
 
 
 function relativeEnergyRoleIsTerm(role: RelativeEnergyRole): boolean {
-  return role === "addition-term" || role === "release-term"
+  return role === "addition-term" || role === "release-term" || role === "participant-term"
 }
 
 export function normalizedNodeEnergyTable(node: FlowNode): ParsedEnergyTableData | null {
@@ -291,106 +298,158 @@ export function nodeFooterText(node: FlowNode): string {
 }
 
 function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGraphModel {
-  const fallback = fallbackEnergyGraphModel(nodes)
+  const defaultModel = defaultEnergyGraphModel(nodes)
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]))
+  const participantIds = new Set(nodes.filter((node) => node.pathRole === "participant").map((node) => node.id))
+  const pathNodes = nodes.filter((node) => !participantIds.has(node.id))
+  const pathEdges = edges.filter((edge) => {
+    const role = edgeStepRole(edge)
+    return role !== "addition"
+      && role !== "release"
+      && !participantIds.has(edge.sourceId)
+      && !participantIds.has(edge.targetId)
+      && nodeById.has(edge.sourceId)
+      && nodeById.has(edge.targetId)
+  })
   const successors = new Map<string, string[]>()
   const predecessors = new Map<string, string[]>()
 
-  for (const edge of edges) {
-    if (!nodeById.has(edge.sourceId) || !nodeById.has(edge.targetId)) continue
+  for (const node of pathNodes) {
+    successors.set(node.id, [])
+    predecessors.set(node.id, [])
+  }
+  for (const edge of pathEdges) {
     successors.set(edge.sourceId, [...(successors.get(edge.sourceId) ?? []), edge.targetId])
     predecessors.set(edge.targetId, [...(predecessors.get(edge.targetId) ?? []), edge.sourceId])
   }
-  if (successors.size === 0) return fallback
-
   for (const list of successors.values()) list.sort((a, b) => (nodeOrder.get(a) ?? 0) - (nodeOrder.get(b) ?? 0))
-  const mainPath = longestDirectedPath(nodes, successors, predecessors)
-  if (mainPath.length < 2) return fallback
 
-  const pathSet = new Set(mainPath)
-  const startId = mainPath[0]
-  const firstPathPointId = mainPath[1]
+  const hasPathConnectivity = pathEdges.length > 0
+  const mainPath = hasPathConnectivity && pathNodes.length > 0 ? longestDirectedPath(pathNodes, successors, predecessors) : []
+  const baselineId = mainPath[0]
+    ?? pathNodes.find((node) => nodeEnergyForRelative(node, defaultEnergyDisplayOptions.energySource) !== null)?.id
+    ?? defaultModel.defaultBaselineNodeId
   const pathIndexById = new Map(mainPath.map((nodeId, index) => [nodeId, index]))
-  const sideProducts = (successors.get(startId) ?? []).filter((nodeId) => nodeId !== firstPathPointId && !pathSet.has(nodeId))
-  const externalReactantsByPathIndex = new Map<number, string[]>()
-  mainPath.forEach((nodeId, index) => {
-    if (index === 0) return
-    const previousPathNodeId = mainPath[index - 1]
-    const externalReactants = (predecessors.get(nodeId) ?? [])
-      .filter((predecessorId) => predecessorId !== previousPathNodeId && !pathSet.has(predecessorId))
-      .sort((a, b) => (nodeOrder.get(a) ?? 0) - (nodeOrder.get(b) ?? 0))
-    externalReactantsByPathIndex.set(index, externalReactants)
-  })
-  const allExternalReactants = uniqueNodeIds(Array.from(externalReactantsByPathIndex.values()).flat(), nodeOrder)
+  const additionsByPathIndex = new Map<number, string[]>()
+  const releasesByPathIndex = new Map<number, string[]>()
   const roleByNodeId = new Map<string, RelativeEnergyRole>()
   const termsByNodeId = new Map<string, EnergyExpressionTerm[]>()
   const relativeTableVisibilityByNodeId = new Map<string, boolean>()
 
   for (const node of nodes) {
-    roleByNodeId.set(node.id, "standalone")
-    termsByNodeId.set(node.id, nodeSelfTerms(nodeById, node.id))
-    relativeTableVisibilityByNodeId.set(node.id, true)
+    const participant = participantIds.has(node.id)
+    roleByNodeId.set(node.id, participant ? "participant-term" : "standalone")
+    termsByNodeId.set(node.id, participant ? [] : nodeSelfTerms(nodeById, node.id))
+    relativeTableVisibilityByNodeId.set(node.id, !participant)
   }
 
-  const auxiliaryTermIds = new Set([...sideProducts, ...allExternalReactants])
-  for (const nodeId of sideProducts) {
-    roleByNodeId.set(nodeId, "release-term")
-    termsByNodeId.set(nodeId, [])
-    relativeTableVisibilityByNodeId.set(nodeId, false)
+  if (!hasPathConnectivity) {
+    if (baselineId && !participantIds.has(baselineId)) roleByNodeId.set(baselineId, "baseline")
+    return {
+      defaultBaselineNodeId: baselineId,
+      baselineTerms: defaultModel.baselineTerms,
+      termsByNodeId,
+      roleByNodeId,
+      relativeTableVisibilityByNodeId,
+    }
   }
-  for (const nodeId of allExternalReactants) {
-    roleByNodeId.set(nodeId, "addition-term")
-    termsByNodeId.set(nodeId, [])
-    relativeTableVisibilityByNodeId.set(nodeId, false)
+
+  for (const edge of edges) {
+    const role = edgeStepRole(edge)
+    if (role !== "addition" && role !== "release") continue
+    const participantId = participantEndpoint(edge, participantIds)
+    const pathId = pathEndpoint(edge, participantId)
+    if (!participantId || !pathId || !nodeById.has(participantId)) continue
+    const index = pathIndexById.get(pathId)
+    if (typeof index !== "number") continue
+    const map = role === "addition" ? additionsByPathIndex : releasesByPathIndex
+    map.set(index, uniqueNodeIds([...(map.get(index) ?? []), participantId], nodeOrder))
+    roleByNodeId.set(participantId, role === "addition" ? "addition-term" : "release-term")
+    termsByNodeId.set(participantId, [])
+    relativeTableVisibilityByNodeId.set(participantId, false)
   }
+
+  const pathStartsWithParticipantAddition = (additionsByPathIndex.get(0) ?? []).length > 0
+  const baselineSubtractIds = pathStartsWithParticipantAddition ? [] : [baselineId].filter((id): id is string => Boolean(id))
 
   mainPath.forEach((nodeId, index) => {
-    if (index === 0) {
+    if (index === 0 && !pathStartsWithParticipantAddition) {
       roleByNodeId.set(nodeId, "baseline")
       termsByNodeId.set(nodeId, [])
       relativeTableVisibilityByNodeId.set(nodeId, true)
       return
     }
-
-    const termIds = [nodeId, ...sideProducts]
-    const negativeTermIds = [startId, ...externalReactantsThroughPathIndex(index, externalReactantsByPathIndex, nodeOrder)]
     const terms = compactExpressionTerms([
-      ...termIds.flatMap((id) => nodeSelfTerms(nodeById, id)),
-      ...negativeTermIds.flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
+      ...nodeSelfTerms(nodeById, nodeId),
+      ...termIdsThroughPathIndex(index, releasesByPathIndex, nodeOrder).flatMap((id) => nodeSelfTerms(nodeById, id)),
+      ...[...baselineSubtractIds, ...termIdsThroughPathIndex(index, additionsByPathIndex, nodeOrder)]
+        .flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
     ])
     roleByNodeId.set(nodeId, "path-point")
     termsByNodeId.set(nodeId, terms)
     relativeTableVisibilityByNodeId.set(nodeId, true)
   })
 
-  const distanceFromStart = reachableNodeDistances(startId, successors)
-  const pathIndexFromStart = reachablePathIndexes(startId, successors, pathIndexById)
-  for (const [nodeId, distance] of distanceFromStart) {
-    if (distance === 0 || auxiliaryTermIds.has(nodeId) || roleByNodeId.get(nodeId) === "path-point") continue
-    const upstreamPathIndex = pathIndexFromStart.get(nodeId) ?? (distance <= 1 ? 1 : mainPath.length - 1)
-    const negativeTermIds = [startId, ...externalReactantsThroughPathIndex(upstreamPathIndex, externalReactantsByPathIndex, nodeOrder)]
-    const terms = compactExpressionTerms([
-      ...nodeSelfTerms(nodeById, nodeId),
-      ...sideProducts.flatMap((id) => nodeSelfTerms(nodeById, id)),
-      ...negativeTermIds.flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
-    ])
-    roleByNodeId.set(nodeId, "path-point")
-    termsByNodeId.set(nodeId, terms)
-    relativeTableVisibilityByNodeId.set(nodeId, true)
+  if (baselineId) {
+    const distanceFromStart = reachableNodeDistances(baselineId, successors)
+    const pathIndexFromStart = reachablePathIndexes(baselineId, successors, pathIndexById)
+    for (const [nodeId, distance] of distanceFromStart) {
+      if (distance === 0 || participantIds.has(nodeId) || roleByNodeId.get(nodeId) === "path-point") continue
+      const upstreamPathIndex = pathIndexFromStart.get(nodeId) ?? (distance <= 1 ? 1 : Math.max(mainPath.length - 1, 0))
+      const terms = compactExpressionTerms([
+        ...nodeSelfTerms(nodeById, nodeId),
+        ...termIdsThroughPathIndex(upstreamPathIndex, releasesByPathIndex, nodeOrder).flatMap((id) => nodeSelfTerms(nodeById, id)),
+        ...[...baselineSubtractIds, ...termIdsThroughPathIndex(upstreamPathIndex, additionsByPathIndex, nodeOrder)]
+          .flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
+      ])
+      roleByNodeId.set(nodeId, "path-point")
+      termsByNodeId.set(nodeId, terms)
+      relativeTableVisibilityByNodeId.set(nodeId, true)
+    }
   }
 
   return {
-    defaultBaselineNodeId: startId,
+    defaultBaselineNodeId: baselineId,
+    baselineTerms: [],
     termsByNodeId,
     roleByNodeId,
     relativeTableVisibilityByNodeId,
   }
 }
 
-function fallbackEnergyGraphModel(nodes: FlowNode[]): EnergyGraphModel {
+function edgeStepRole(edge: FlowEdge): EdgeStepRole {
+  return edge.stepRole ?? "path"
+}
+
+function participantEndpoint(edge: FlowEdge, participantIds: Set<string>): string | null {
+  if (participantIds.has(edge.sourceId)) return edge.sourceId
+  if (participantIds.has(edge.targetId)) return edge.targetId
+  return null
+}
+
+function pathEndpoint(edge: FlowEdge, participantId: string | null): string | null {
+  if (!participantId) return null
+  return edge.sourceId === participantId ? edge.targetId : edge.sourceId
+}
+
+function termIdsThroughPathIndex(
+  pathIndex: number,
+  termsByPathIndex: Map<number, string[]>,
+  nodeOrder: Map<string, number>,
+): string[] {
+  if (pathIndex < 0) return []
+  const terms: string[] = []
+  for (let index = 0; index <= pathIndex; index += 1) {
+    terms.push(...(termsByPathIndex.get(index) ?? []))
+  }
+  return uniqueNodeIds(terms, nodeOrder)
+}
+
+function defaultEnergyGraphModel(nodes: FlowNode[]): EnergyGraphModel {
   return {
     defaultBaselineNodeId: nodes.find((node) => nodeEnergyForRelative(node, defaultEnergyDisplayOptions.energySource) !== null)?.id ?? null,
+    baselineTerms: null,
     termsByNodeId: new Map(nodes.map((node) => [node.id, [{ nodeId: node.id, label: node.label, coefficient: nodeCoefficient(node) }]])),
     roleByNodeId: new Map(nodes.map((node) => [node.id, "standalone" as const])),
     relativeTableVisibilityByNodeId: new Map(nodes.map((node) => [node.id, true])),
@@ -428,19 +487,6 @@ function longestDirectedPath(
     if (betterPath(candidate, best)) best = candidate
   }
   return best
-}
-
-function externalReactantsThroughPathIndex(
-  pathIndex: number,
-  externalReactantsByPathIndex: Map<number, string[]>,
-  nodeOrder: Map<string, number>,
-): string[] {
-  if (pathIndex < 1) return []
-  const reactants: string[] = []
-  for (let index = 1; index <= pathIndex; index += 1) {
-    reactants.push(...(externalReactantsByPathIndex.get(index) ?? []))
-  }
-  return uniqueNodeIds(reactants, nodeOrder)
 }
 
 function uniqueNodeIds(nodeIds: string[], nodeOrder: Map<string, number>): string[] {

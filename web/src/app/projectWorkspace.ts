@@ -97,6 +97,7 @@ export const initialNodes: FlowNode[] = [
     label: "1,3-Butadiene",
     formula: "C4H6",
     kind: "reactant",
+    pathRole: "participant",
     method: "wB97X-D / def2-TZVP",
     solvent: "SMD / Toluene",
     energyGas: -0.88,
@@ -111,6 +112,7 @@ export const initialNodes: FlowNode[] = [
     label: "Maleic Anhydride",
     formula: "C4H2O3",
     kind: "reactant",
+    pathRole: "participant",
     method: "wB97X-D / def2-TZVP",
     solvent: "SMD / Toluene",
     energyGas: -29.11,
@@ -179,8 +181,8 @@ export const initialNodes: FlowNode[] = [
 ]
 
 export const initialEdges: FlowEdge[] = [
-  { id: "edge-1", sourceId: "butadiene", targetId: "ts-endo", label: "+ Diene" },
-  { id: "edge-2", sourceId: "maleic", targetId: "ts-endo", label: "+ Dienophile" },
+  { id: "edge-1", sourceId: "butadiene", targetId: "ts-endo", label: "+ Diene", stepRole: "addition" },
+  { id: "edge-2", sourceId: "maleic", targetId: "ts-endo", label: "+ Dienophile", stepRole: "addition" },
   { id: "edge-3", sourceId: "ts-endo", targetId: "endo", label: "-18.53" },
   { id: "edge-5", sourceId: "ts-exo", targetId: "exo", label: "-11.98" },
 ]

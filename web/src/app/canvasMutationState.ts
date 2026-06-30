@@ -1,4 +1,4 @@
-import type { FlowBarrier, FlowEdge, FlowNode, ManualStructurePayload } from "../domain/projectPackages"
+import type { EdgeStepRole, FlowBarrier, FlowEdge, FlowNode, ManualStructurePayload, NodeKind, NodePathRole } from "../domain/projectPackages"
 import type { CanvasSelectionIds } from "./canvasSelectionState"
 
 export type CanvasCollectionUpdate<TItem> = {
@@ -21,6 +21,21 @@ export function updateEdgeLabelTransition(
   if (!edge || edge.label === normalizedLabel) return null
   return {
     items: edges.map((item) => item.id === edgeId ? { ...item, label: normalizedLabel } : item),
+    selection: edgeOnlySelection(edgeId),
+    inspectorMode: "inspector",
+  }
+}
+
+export function updateEdgeStepRoleTransition(
+  edges: FlowEdge[],
+  edgeId: string,
+  stepRole: EdgeStepRole,
+): CanvasCollectionUpdate<FlowEdge> | null {
+  const normalized = stepRole === "path" ? undefined : stepRole
+  const edge = edges.find((item) => item.id === edgeId)
+  if (!edge || edge.stepRole === normalized) return null
+  return {
+    items: edges.map((item) => item.id === edgeId ? { ...item, stepRole: normalized } : item),
     selection: edgeOnlySelection(edgeId),
     inspectorMode: "inspector",
   }
@@ -65,6 +80,35 @@ export function updateNodeCoefficientTransition(
   if (!node || flowNodeCoefficient(node) === normalized) return null
   return {
     items: nodes.map((item) => item.id === nodeId ? { ...item, coefficient: normalized } : item),
+    selection: nodeOnlySelection(nodeId),
+    inspectorMode: "inspector",
+  }
+}
+
+export function updateNodePathRoleTransition(
+  nodes: FlowNode[],
+  nodeId: string,
+  pathRole: NodePathRole,
+): CanvasCollectionUpdate<FlowNode> | null {
+  const normalized = pathRole === "state" ? undefined : pathRole
+  const node = nodes.find((item) => item.id === nodeId)
+  if (!node || node.pathRole === normalized) return null
+  return {
+    items: nodes.map((item) => item.id === nodeId ? { ...item, pathRole: normalized } : item),
+    selection: nodeOnlySelection(nodeId),
+    inspectorMode: "inspector",
+  }
+}
+
+export function updateNodeKindTransition(
+  nodes: FlowNode[],
+  nodeId: string,
+  kind: NodeKind,
+): CanvasCollectionUpdate<FlowNode> | null {
+  const node = nodes.find((item) => item.id === nodeId)
+  if (!node || node.kind === kind) return null
+  return {
+    items: nodes.map((item) => item.id === nodeId ? { ...item, kind, pathRole: kind === "transition" ? undefined : item.pathRole } : item),
     selection: nodeOnlySelection(nodeId),
     inspectorMode: "inspector",
   }

@@ -490,7 +490,7 @@ describe("App", () => {
 
     const node = screen.getByRole("button", { name: "Node TS1 (Endo)" })
     const start = transformTranslate(node.style.transform)
-    const connectedEdge = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): + Diene" })
+    const connectedEdge = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): addition + Diene" })
     const connectedPath = connectedEdge.querySelector(".edge-visible-path") as SVGPathElement
     const connectedPathBefore = connectedPath.getAttribute("d")
 
@@ -1292,6 +1292,23 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Open with external app" })).toBeInTheDocument()
   })
 
+  it("updates explicit reaction path semantics from canvas context menus", () => {
+    render(<App />)
+
+    const productNode = screen.getByRole("button", { name: "Node Endo Adduct" })
+    fireEvent.contextMenu(productNode, { clientX: 840, clientY: 320 })
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark as participant" }))
+
+    expect(productNode).toHaveClass("node-participant")
+    expect(within(productNode).getByText("PART")).toBeInTheDocument()
+
+    const edge = screen.getByRole("button", { name: "Edge TS1 (Endo) to Endo Adduct: -18.53" })
+    fireEvent.contextMenu(edge, { clientX: 720, clientY: 320 })
+    fireEvent.click(screen.getByRole("menuitem", { name: "Step role: branch" }))
+
+    expect(screen.getByRole("button", { name: "Edge TS1 (Endo) to Endo Adduct: branch -18.53" })).toHaveClass("edge-role-branch")
+  })
+
   it("creates a reaction edge from node handles without showing edge editors in the inspector", () => {
     render(<App />)
 
@@ -1395,7 +1412,7 @@ describe("App", () => {
   it("opens path label editing from the capsule without selecting the curve", () => {
     render(<App />)
 
-    const edgeCurve = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): + Diene" })
+    const edgeCurve = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): addition + Diene" })
     const edgeLabel = screen.getByRole("button", { name: "Edit path label + Diene" })
 
     fireEvent.pointerDown(edgeLabel, { button: 0, pointerId: 11 })

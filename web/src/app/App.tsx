@@ -22,11 +22,14 @@ import {
   parseProjectPackage,
   type CanvasAnnotation,
   type CanvasViewport,
-  type FlowBarrier,
-  type FlowEdge,
-  type FlowNode,
-  type ManualStructurePayload,
-  type Point,
+	  type FlowBarrier,
+	  type FlowEdge,
+	  type FlowNode,
+	  type ManualStructurePayload,
+	  type EdgeStepRole,
+	  type NodeKind,
+	  type NodePathRole,
+	  type Point,
   type ProjectSummary,
   type SourceFile,
 } from "../domain/projectPackages"
@@ -199,11 +202,14 @@ import {
   nudgeSelectedNodesAction,
   pushCanvasEditHistoryState,
   redoCanvasEditAction,
-  undoCanvasEditAction,
-  updateNodeCoefficientAction,
-  updateNodeManualStructureAction,
-  type CanvasEditHistorySetters,
-} from "./appCanvasEditActions"
+	  undoCanvasEditAction,
+	  updateEdgeStepRoleAction,
+	  updateNodeCoefficientAction,
+	  updateNodeKindAction,
+	  updateNodeManualStructureAction,
+	  updateNodePathRoleAction,
+	  type CanvasEditHistorySetters,
+	} from "./appCanvasEditActions"
 import {
   completeConnectionToNodeAction,
   endCanvasPointerAction,
@@ -2568,6 +2574,7 @@ export function App() {
   }, [])
 
   const contextMenuNodeId = canvasContextMenu?.target.kind === "node" ? canvasContextMenu.target.nodeId : null
+  const contextMenuEdgeId = canvasContextMenu?.target.kind === "edge" ? canvasContextMenu.target.edgeId : null
   const contextMenuAnnotationId = canvasContextMenu?.target.kind === "annotation" ? canvasContextMenu.target.annotationId : null
   const beginMoveAnnotation = useCallback(() => {
     pushEditHistory()
@@ -2606,6 +2613,24 @@ export function App() {
     showNodeSourceDetails(contextMenuNodeId)
     setCanvasContextMenu(null)
   }, [contextMenuNodeId, showNodeSourceDetails])
+
+  const setContextMenuNodePathRole = useCallback((pathRole: NodePathRole) => {
+    if (!contextMenuNodeId) return
+    updateNodePathRoleAction({ nodes, nodeId: contextMenuNodeId, pathRole, appStateSetters, pushEditHistory })
+    setCanvasContextMenu(null)
+  }, [appStateSetters, contextMenuNodeId, nodes, pushEditHistory])
+
+  const setContextMenuNodeKind = useCallback((kind: NodeKind) => {
+    if (!contextMenuNodeId) return
+    updateNodeKindAction({ nodes, nodeId: contextMenuNodeId, kind, appStateSetters, pushEditHistory })
+    setCanvasContextMenu(null)
+  }, [appStateSetters, contextMenuNodeId, nodes, pushEditHistory])
+
+  const setContextMenuEdgeStepRole = useCallback((stepRole: EdgeStepRole) => {
+    if (!contextMenuEdgeId) return
+    updateEdgeStepRoleAction({ edges, edgeId: contextMenuEdgeId, stepRole, appStateSetters, pushEditHistory })
+    setCanvasContextMenu(null)
+  }, [appStateSetters, contextMenuEdgeId, edges, pushEditHistory])
 
   const handleCanvasKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     handleCanvasKeyboardEvent(event, hasCanvasSelection, {
@@ -2805,7 +2830,7 @@ export function App() {
           ref={contextMenuRef}
           className="canvas-context-menu"
           role="menu"
-          aria-label={contextMenuNodeId ? "Node context menu" : contextMenuAnnotationId ? "Canvas annotation context menu" : "Canvas context menu"}
+          aria-label={contextMenuNodeId ? "Node context menu" : contextMenuEdgeId ? "Edge context menu" : contextMenuAnnotationId ? "Canvas annotation context menu" : "Canvas context menu"}
           style={{ left: canvasContextMenu.x, top: canvasContextMenu.y }}
         >
           {contextMenuNodeId ? (
@@ -2813,6 +2838,19 @@ export function App() {
               <button type="button" role="menuitem" onClick={renameContextMenuNode}>Rename</button>
               <button type="button" role="menuitem" onClick={setZeroFromContextMenuNode}>Set zero</button>
               <button type="button" role="menuitem" onClick={showSourceFromContextMenuNode}>Source details</button>
+              <span className="canvas-context-menu-divider" aria-hidden="true" />
+              <button type="button" role="menuitem" onClick={() => setContextMenuNodePathRole("state")}>Mark as path state</button>
+              <button type="button" role="menuitem" onClick={() => setContextMenuNodePathRole("participant")}>Mark as participant</button>
+              <button type="button" role="menuitem" onClick={() => setContextMenuNodeKind("transition")}>Mark as transition state</button>
+              <span className="canvas-context-menu-divider" aria-hidden="true" />
+            </>
+          ) : null}
+          {contextMenuEdgeId ? (
+            <>
+              <button type="button" role="menuitem" onClick={() => setContextMenuEdgeStepRole("path")}>Step role: path</button>
+              <button type="button" role="menuitem" onClick={() => setContextMenuEdgeStepRole("branch")}>Step role: branch</button>
+              <button type="button" role="menuitem" onClick={() => setContextMenuEdgeStepRole("addition")}>Step role: addition</button>
+              <button type="button" role="menuitem" onClick={() => setContextMenuEdgeStepRole("release")}>Step role: release</button>
               <span className="canvas-context-menu-divider" aria-hidden="true" />
             </>
           ) : null}
@@ -3582,11 +3620,12 @@ function buildEnergyRowsSignature(
   edges: FlowEdge[],
   options: EnergyDisplayOptions,
 ): string {
-  const edgeSignature = edges.map((edge) => `${edge.id}:${edge.sourceId}:${edge.targetId}:${edge.label}`).join("|")
+  const edgeSignature = edges.map((edge) => `${edge.id}:${edge.sourceId}:${edge.targetId}:${edge.label}:${edge.stepRole ?? ""}`).join("|")
   const nodeSignature = nodes.map((node) => [
     node.id,
     node.label,
     node.kind,
+    node.pathRole ?? "",
     node.formula,
     node.energyGas ?? "",
     node.energySolution ?? "",

@@ -117,7 +117,9 @@ export function defaultBarrierLabel(
     const peakRelative = relativeEnergyByNodeId.get(endpoints.peak.id)
     const delta = typeof referenceRelative === "number" && typeof peakRelative === "number"
       ? peakRelative - referenceRelative
-      : null
+      : endpoints.reference.pathRole === "participant" && typeof peakRelative === "number"
+        ? peakRelative
+        : null
     if (typeof delta !== "number") return `${preferredSymbol} pending`
     const value = relativeEnergyValueFromKcal(delta, energyDisplayOptions.outputUnit)
     return `${preferredSymbol} ${formatBarrierValue(value, energyDisplayOptions.outputUnit)}`

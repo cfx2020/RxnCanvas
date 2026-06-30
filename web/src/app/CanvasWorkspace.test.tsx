@@ -40,6 +40,156 @@ describe("CanvasWorkspace", () => {
     expect(onReset).toHaveBeenCalledOnce()
   })
 
+  it("keeps the missing-solvation light when a gas node has free energy but no parsed sol file", () => {
+    const node: FlowNode = {
+      id: "i1p6-node",
+      label: "i1p6",
+      formula: "C10H10",
+      kind: "intermediate",
+      method: "wB97X-D",
+      solvent: "SMD",
+      energyGas: -100,
+      energySolution: -99.5,
+      energyUnit: "hartree",
+      sourceStatus: "parsed",
+      sourceFileId: "i1p6-gas",
+      energyTable: { egasHartree: -100, gsolHartree: -99.5 },
+      position: { x: 120, y: 160 },
+    }
+
+    render(
+      <CanvasSurface
+        canvasRef={{ current: null }}
+        nodes={[node]}
+        files={[{
+          id: "i1p6-gas",
+          name: "i1p6.log",
+          kind: "Gaussian",
+          size: 100,
+          status: "parsed",
+          preview: "",
+        }]}
+        edges={[]}
+        barriers={[]}
+        nodeMap={new Map([[node.id, node]])}
+        selectedNodeIds={[]}
+        selectedEdgeIds={[]}
+        selectedBarrierIds={[]}
+        keyboardEdgeSourceId={null}
+        tool="select"
+        viewport={{ x: 0, y: 0, zoom: 1 }}
+        rubberBandDraft={null}
+        connectionDraft={null}
+        barrierDraft={null}
+        energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
+        energyRows={[]}
+        relativeZeroNodeId={null}
+        onCanvasPointerDown={vi.fn()}
+        onCanvasKeyDown={vi.fn()}
+        onPointerMove={vi.fn()}
+        onPointerEnd={vi.fn()}
+        onNodePointerDown={vi.fn()}
+        onNodeResizePointerDown={vi.fn()}
+        onNodePointerUp={vi.fn()}
+        onStartConnection={vi.fn()}
+        onStartBarrierAnnotation={vi.fn()}
+        onStartKeyboardConnection={vi.fn()}
+        onSelectNode={vi.fn()}
+        onSelectEdge={vi.fn()}
+        onSelectBarrier={vi.fn()}
+        onUpdateEdgeLabel={vi.fn()}
+        onUpdateBarrierLabel={vi.fn()}
+        onSetNodeCoefficient={vi.fn()}
+        onSetRelativeEnergyZero={vi.fn()}
+        onOpenStructure={vi.fn()}
+        onShowNodeSource={vi.fn()}
+        onRenameNode={vi.fn()}
+        renameEditingNodeId={null}
+        onRenameRequestHandled={vi.fn()}
+        onOpenContextMenu={vi.fn()}
+        onRawFileDrop={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole("button", { name: "Node i1p6" }).querySelector(".status-light-missing")).toBeInTheDocument()
+  })
+
+  it("keeps the missing-gas light when a sol node has no parsed gas file", () => {
+    const node: FlowNode = {
+      id: "i1p6-sol-node",
+      label: "i1p6",
+      formula: "C10H10",
+      kind: "intermediate",
+      method: "wB97X-D",
+      solvent: "SMD",
+      energyGas: -100,
+      energySolution: -99.5,
+      energyUnit: "hartree",
+      sourceStatus: "parsed",
+      sourceFileId: "i1p6-sol",
+      energyTable: { esolHartree: -100, gsolHartree: -99.5 },
+      position: { x: 120, y: 160 },
+    }
+
+    render(
+      <CanvasSurface
+        canvasRef={{ current: null }}
+        nodes={[node]}
+        files={[{
+          id: "i1p6-sol",
+          name: "i1p6-sol.log",
+          kind: "Gaussian",
+          size: 100,
+          status: "parsed",
+          preview: "",
+        }]}
+        edges={[]}
+        barriers={[]}
+        nodeMap={new Map([[node.id, node]])}
+        selectedNodeIds={[]}
+        selectedEdgeIds={[]}
+        selectedBarrierIds={[]}
+        keyboardEdgeSourceId={null}
+        tool="select"
+        viewport={{ x: 0, y: 0, zoom: 1 }}
+        rubberBandDraft={null}
+        connectionDraft={null}
+        barrierDraft={null}
+        energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
+        energyRows={[]}
+        relativeZeroNodeId={null}
+        onCanvasPointerDown={vi.fn()}
+        onCanvasKeyDown={vi.fn()}
+        onPointerMove={vi.fn()}
+        onPointerEnd={vi.fn()}
+        onNodePointerDown={vi.fn()}
+        onNodeResizePointerDown={vi.fn()}
+        onNodePointerUp={vi.fn()}
+        onStartConnection={vi.fn()}
+        onStartBarrierAnnotation={vi.fn()}
+        onStartKeyboardConnection={vi.fn()}
+        onSelectNode={vi.fn()}
+        onSelectEdge={vi.fn()}
+        onSelectBarrier={vi.fn()}
+        onUpdateEdgeLabel={vi.fn()}
+        onUpdateBarrierLabel={vi.fn()}
+        onSetNodeCoefficient={vi.fn()}
+        onSetRelativeEnergyZero={vi.fn()}
+        onOpenStructure={vi.fn()}
+        onShowNodeSource={vi.fn()}
+        onRenameNode={vi.fn()}
+        renameEditingNodeId={null}
+        onRenameRequestHandled={vi.fn()}
+        onOpenContextMenu={vi.fn()}
+        onRawFileDrop={vi.fn()}
+      />,
+    )
+
+    const statusLight = screen.getByRole("button", { name: "Node i1p6" }).querySelector(".status-light-missing")
+    expect(statusLight).toBeInTheDocument()
+    expect(statusLight).toHaveAttribute("aria-label", expect.stringContaining("No paired gas log"))
+  })
+
 
   it("renders addition and release terms without a pending relative energy", () => {
     const node: FlowNode = {

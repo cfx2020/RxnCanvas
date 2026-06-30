@@ -58,7 +58,10 @@ import {
   updateBarrierLabelTransition,
   updateDraftCurrentForPointer,
   updateEdgeLabelTransition,
+  updateEdgeStepRoleTransition,
   updateNodeCoefficientTransition,
+  updateNodeKindTransition,
+  updateNodePathRoleTransition,
   updateNodeManualStructureTransition,
   validLinkTarget,
 } from "./canvasEditState"
@@ -615,6 +618,61 @@ describe("canvasEditState", () => {
         barriers[1],
       ],
       selection: { nodeIds: [], edgeIds: [], barrierIds: ["barrier-a"] },
+      inspectorMode: "inspector",
+    })
+  })
+
+  it("applies reaction path semantics to nodes and edges", () => {
+    expect(updateNodePathRoleTransition(nodes, "missing", "participant")).toBeNull()
+    expect(updateNodePathRoleTransition(nodes, "node-a", "state")).toBeNull()
+    expect(updateNodePathRoleTransition(nodes, "node-a", "participant")).toEqual({
+      items: [
+        { ...nodes[0], pathRole: "participant" },
+        nodes[1],
+      ],
+      selection: { nodeIds: ["node-a"], edgeIds: [], barrierIds: [] },
+      inspectorMode: "inspector",
+    })
+
+    const participantNodes = [{ ...nodes[0], pathRole: "participant" as const }, nodes[1]]
+    expect(updateNodePathRoleTransition(participantNodes, "node-a", "state")).toEqual({
+      items: [
+        { ...nodes[0], pathRole: undefined },
+        nodes[1],
+      ],
+      selection: { nodeIds: ["node-a"], edgeIds: [], barrierIds: [] },
+      inspectorMode: "inspector",
+    })
+
+    expect(updateNodeKindTransition(nodes, "missing", "transition")).toBeNull()
+    expect(updateNodeKindTransition(nodes, "node-a", "reactant")).toBeNull()
+    expect(updateNodeKindTransition(participantNodes, "node-a", "transition")).toEqual({
+      items: [
+        { ...nodes[0], kind: "transition", pathRole: undefined },
+        nodes[1],
+      ],
+      selection: { nodeIds: ["node-a"], edgeIds: [], barrierIds: [] },
+      inspectorMode: "inspector",
+    })
+
+    expect(updateEdgeStepRoleTransition(edges, "missing", "addition")).toBeNull()
+    expect(updateEdgeStepRoleTransition(edges, "edge-a", "path")).toBeNull()
+    expect(updateEdgeStepRoleTransition(edges, "edge-a", "release")).toEqual({
+      items: [
+        { ...edges[0], stepRole: "release" },
+        edges[1],
+      ],
+      selection: { nodeIds: [], edgeIds: ["edge-a"], barrierIds: [] },
+      inspectorMode: "inspector",
+    })
+
+    const releaseEdges = [{ ...edges[0], stepRole: "release" as const }, edges[1]]
+    expect(updateEdgeStepRoleTransition(releaseEdges, "edge-a", "path")).toEqual({
+      items: [
+        { ...edges[0], stepRole: undefined },
+        edges[1],
+      ],
+      selection: { nodeIds: [], edgeIds: ["edge-a"], barrierIds: [] },
       inspectorMode: "inspector",
     })
   })

@@ -130,18 +130,18 @@ describe("canvasGeometry", () => {
       flowNode("reactant", 0),
       flowNode("ts", 12),
       flowNode("product", 3),
-      flowNode("added-1", null),
-      flowNode("added-2", null),
-      flowNode("released", null),
+      { ...flowNode("added-1", null), pathRole: "participant" },
+      { ...flowNode("added-2", null), pathRole: "participant" },
+      { ...flowNode("released", null), pathRole: "participant" },
     ], {
       ...defaultEnergyDisplayOptions,
       baselineNodeId: "reactant",
     }, [
       { id: "e-reactant-ts", sourceId: "reactant", targetId: "ts", label: "" },
       { id: "e-ts-product", sourceId: "ts", targetId: "product", label: "" },
-      { id: "e-reactant-added-1", sourceId: "reactant", targetId: "added-1", label: "" },
-      { id: "e-reactant-added-2", sourceId: "reactant", targetId: "added-2", label: "" },
-      { id: "e-product-released", sourceId: "product", targetId: "released", label: "" },
+      { id: "e-added-1-ts", sourceId: "added-1", targetId: "ts", label: "", stepRole: "addition" },
+      { id: "e-added-2-ts", sourceId: "added-2", targetId: "ts", label: "", stepRole: "addition" },
+      { id: "e-product-released", sourceId: "product", targetId: "released", label: "", stepRole: "release" },
     ])
 
     const byId = new Map(laidOut.map((node) => [node.id, node]))

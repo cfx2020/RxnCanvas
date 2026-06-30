@@ -14637,3 +14637,59 @@ select,
   background: rgba(171, 204, 218, 0.52);
   background-clip: padding-box;
 }
+
+/* 2026-06-30 explicit reaction path semantics:
+   Semantic roles are manual project data. Visuals distinguish them without
+   implying any automatic addition/release inference. */
+.reaction-node.node-participant {
+  border-color: rgba(92, 117, 139, 0.34) !important;
+  background:
+    linear-gradient(180deg, rgba(248, 251, 252, 0.96), rgba(241, 247, 249, 0.92)) !important;
+}
+
+.reaction-node.node-participant .node-kind-badge {
+  min-width: 42px;
+  border: 1px solid rgba(92, 117, 139, 0.18);
+  background: rgba(238, 244, 247, 0.9);
+  color: #40566b;
+}
+
+.edge.edge-role-addition .edge-visible-path {
+  stroke: rgba(23, 133, 119, 0.72) !important;
+  stroke-dasharray: 8 6;
+}
+
+.edge.edge-role-release .edge-visible-path {
+  stroke: rgba(180, 88, 72, 0.72) !important;
+  stroke-dasharray: 4 7;
+}
+
+.edge.edge-role-branch .edge-visible-path {
+  stroke: rgba(70, 105, 168, 0.7) !important;
+  stroke-width: 2.4 !important;
+}
+
+.edge.edge-role-addition.is-selected .edge-visible-path,
+.edge.edge-role-addition:focus-visible .edge-visible-path,
+.edge.edge-role-release.is-selected .edge-visible-path,
+.edge.edge-role-release:focus-visible .edge-visible-path,
+.edge.edge-role-branch.is-selected .edge-visible-path,
+.edge.edge-role-branch:focus-visible .edge-visible-path {
+  stroke-width: 3.2 !important;
+}
+
+.edge-label-anchor:not(.is-empty) .edge-label {
+  border-color: rgba(126, 152, 169, 0.22);
+}
+
+.app-shell.theme-dark .reaction-node.node-participant {
+  border-color: rgba(146, 173, 190, 0.24) !important;
+  background:
+    linear-gradient(180deg, rgba(29, 43, 55, 0.96), rgba(24, 37, 49, 0.92)) !important;
+}
+
+.app-shell.theme-dark .reaction-node.node-participant .node-kind-badge {
+  border-color: rgba(166, 194, 210, 0.16);
+  background: rgba(61, 78, 92, 0.72);
+  color: #dbe7ef;
+}

@@ -1,4 +1,4 @@
-import type { FlowBarrier, FlowEdge, FlowNode, ManualStructurePayload, Point } from "../domain/projectPackages"
+import type { EdgeStepRole, FlowBarrier, FlowEdge, FlowNode, ManualStructurePayload, NodeKind, NodePathRole, Point } from "../domain/projectPackages"
 import {
   appendCanvasEditHistory,
   redoCanvasEditHistory,
@@ -10,8 +10,11 @@ import {
   nudgeSelectedNodesTransition,
   updateBarrierLabelTransition,
   updateEdgeLabelTransition,
+  updateEdgeStepRoleTransition,
   updateNodeCoefficientTransition,
+  updateNodeKindTransition,
   updateNodeManualStructureTransition,
+  updateNodePathRoleTransition,
   type CanvasSelectionIds,
 } from "./canvasEditState"
 import type { CanvasEditSnapshot } from "./projectWorkspace"
@@ -106,6 +109,25 @@ export function updateEdgeLabelAction({
   applyFlowEdgeCollectionUpdateState(appStateSetters, transition)
 }
 
+export function updateEdgeStepRoleAction({
+  edges,
+  edgeId,
+  stepRole,
+  appStateSetters,
+  pushEditHistory,
+}: {
+  edges: FlowEdge[]
+  edgeId: string
+  stepRole: EdgeStepRole
+  appStateSetters: ProjectWorkspaceStateSetters
+  pushEditHistory: PushCanvasEditHistory
+}): void {
+  const transition = updateEdgeStepRoleTransition(edges, edgeId, stepRole)
+  if (!transition) return
+  pushEditHistory()
+  applyFlowEdgeCollectionUpdateState(appStateSetters, transition)
+}
+
 export function updateBarrierLabelAction({
   barriers,
   barrierId,
@@ -139,6 +161,44 @@ export function updateNodeCoefficientAction({
   pushEditHistory: PushCanvasEditHistory
 }): void {
   const transition = updateNodeCoefficientTransition(nodes, nodeId, coefficient)
+  if (!transition) return
+  pushEditHistory()
+  applyFlowNodeCollectionUpdateState(appStateSetters, transition)
+}
+
+export function updateNodePathRoleAction({
+  nodes,
+  nodeId,
+  pathRole,
+  appStateSetters,
+  pushEditHistory,
+}: {
+  nodes: FlowNode[]
+  nodeId: string
+  pathRole: NodePathRole
+  appStateSetters: ProjectWorkspaceStateSetters
+  pushEditHistory: PushCanvasEditHistory
+}): void {
+  const transition = updateNodePathRoleTransition(nodes, nodeId, pathRole)
+  if (!transition) return
+  pushEditHistory()
+  applyFlowNodeCollectionUpdateState(appStateSetters, transition)
+}
+
+export function updateNodeKindAction({
+  nodes,
+  nodeId,
+  kind,
+  appStateSetters,
+  pushEditHistory,
+}: {
+  nodes: FlowNode[]
+  nodeId: string
+  kind: NodeKind
+  appStateSetters: ProjectWorkspaceStateSetters
+  pushEditHistory: PushCanvasEditHistory
+}): void {
+  const transition = updateNodeKindTransition(nodes, nodeId, kind)
   if (!transition) return
   pushEditHistory()
   applyFlowNodeCollectionUpdateState(appStateSetters, transition)
