@@ -4,6 +4,7 @@ import {
   appendBarrierAnnotation,
   appendConnectionEdge,
   applyNodePosition,
+  applyNodePositions,
   barrierOnlySelection,
   canvasBarrierSelectionTransition,
   canvasDragMoveForPointer,
@@ -199,7 +200,8 @@ describe("canvasEditState", () => {
       pointerId: 7,
       nodeId: "node-b",
       start: { x: 30, y: 40 },
-      origin: { x: 30, y: 40 },
+      subjects: [{ nodeId: "node-b", origin: { x: 30, y: 40 } }],
+      mode: "move" as const,
       snapshot: { nodes },
     }
 
@@ -212,8 +214,8 @@ describe("canvasEditState", () => {
     expect(canvasDragMoveForPointer(panDrag, 99, { x: 130, y: 150 }, { x: 0, y: 0 })).toEqual({ kind: "none" })
     expect(canvasDragMoveForPointer(nodeDrag, 7, { x: 0, y: 0 }, { x: 34, y: 48 })).toEqual({
       kind: "node",
-      nodeId: "node-b",
-      position: { x: 34, y: 48 },
+      positions: [{ nodeId: "node-b", position: { x: 34, y: 48 } }],
+      mode: "move",
     })
   })
 
@@ -225,7 +227,8 @@ describe("canvasEditState", () => {
       pointerId: 7,
       nodeId: "node-b",
       start: { x: 30, y: 40 },
-      origin: { x: 30, y: 40 },
+      subjects: [{ nodeId: "node-b", origin: { x: 30, y: 40 } }],
+      mode: "move" as const,
       snapshot: { nodes },
     }
 
@@ -397,7 +400,7 @@ describe("canvasEditState", () => {
     })
   })
 
-  it("derives node drag start selection while preserving peers only for additive selection", () => {
+  it("derives node drag start selection while preserving selected-node peers", () => {
     const currentSelection = {
       nodeIds: ["node-a"],
       edgeIds: ["edge-a"],
@@ -408,6 +411,11 @@ describe("canvasEditState", () => {
       nodeIds: ["node-b"],
       edgeIds: [],
       barrierIds: [],
+    })
+    expect(nodeDragStartSelection(currentSelection, "node-a", false)).toEqual({
+      nodeIds: ["node-a"],
+      edgeIds: ["edge-a"],
+      barrierIds: ["barrier-a"],
     })
     expect(nodeDragStartSelection(currentSelection, "node-b", true)).toEqual({
       nodeIds: ["node-a", "node-b"],
@@ -449,7 +457,8 @@ describe("canvasEditState", () => {
         pointerId: 7,
         nodeId: "node-b",
         start: { x: 31, y: 42 },
-        origin: { x: 30, y: 40 },
+        subjects: [{ nodeId: "node-b", origin: { x: 30, y: 40 } }],
+        mode: "move",
         snapshot: {
           nodes,
           selectedNodeIds: ["node-b"],
@@ -457,6 +466,43 @@ describe("canvasEditState", () => {
           selectedBarrierIds: [],
         },
       },
+    })
+  })
+
+  it("builds group node drag subjects from an existing node selection", () => {
+    const currentSelection = {
+      nodeIds: ["node-a", "node-b"],
+      edgeIds: ["edge-a"],
+      barrierIds: ["barrier-a"],
+    }
+    const snapshotForSelection = (selection: { nodeIds: string[]; edgeIds: string[]; barrierIds: string[] }) => ({
+      nodes,
+      selectedNodeIds: selection.nodeIds,
+      selectedEdgeIds: selection.edgeIds,
+      selectedBarrierIds: selection.barrierIds,
+    })
+
+    const transition = canvasNodePointerDownTransition({
+      currentSelection,
+      node: nodes[1],
+      pointerId: 7,
+      worldPoint: { x: 30, y: 40 },
+      additive: false,
+      snapshotForSelection,
+    })
+
+    expect(transition.selection).toEqual(currentSelection)
+    expect(transition.dragState.subjects).toEqual([
+      { nodeId: "node-a", origin: { x: 10, y: 20 } },
+      { nodeId: "node-b", origin: { x: 30, y: 40 } },
+    ])
+    expect(canvasDragMoveForPointer(transition.dragState, 7, { x: 0, y: 0 }, { x: 34, y: 48 })).toEqual({
+      kind: "node",
+      positions: [
+        { nodeId: "node-a", position: { x: 14, y: 28 } },
+        { nodeId: "node-b", position: { x: 34, y: 48 } },
+      ],
+      mode: "move",
     })
   })
 
@@ -480,6 +526,12 @@ describe("canvasEditState", () => {
 
     expect(canvasKeyboardActionForInput({ ...base, editableTarget: true, key: "Delete" })).toEqual({ kind: "none" })
     expect(canvasKeyboardActionForInput({ ...base, altKey: true, key: "ArrowUp" })).toEqual({ kind: "none" })
+    expect(canvasKeyboardActionForInput({ ...base, metaKey: true, key: "a" })).toEqual({ kind: "select-all" })
+    expect(canvasKeyboardActionForInput({ ...base, metaKey: true, key: "c" })).toEqual({ kind: "copy" })
+    expect(canvasKeyboardActionForInput({ ...base, metaKey: true, key: "v", hasSelection: false })).toEqual({ kind: "paste" })
+    expect(canvasKeyboardActionForInput({ ...base, metaKey: true, key: "x" })).toEqual({ kind: "cut" })
+    expect(canvasKeyboardActionForInput({ ...base, metaKey: true, key: "c", hasSelection: false })).toEqual({ kind: "none" })
+    expect(canvasKeyboardActionForInput({ ...base, metaKey: true, key: "x", hasSelection: false })).toEqual({ kind: "none" })
     expect(canvasKeyboardActionForInput({ ...base, metaKey: true, key: "z" })).toEqual({ kind: "undo" })
     expect(canvasKeyboardActionForInput({ ...base, metaKey: true, shiftKey: true, key: "z" })).toEqual({ kind: "redo" })
     expect(canvasKeyboardActionForInput({ ...base, ctrlKey: true, key: "y" })).toEqual({ kind: "redo" })
@@ -525,9 +577,14 @@ describe("canvasEditState", () => {
 
   it("applies and detects node drag changes", () => {
     const nextNodes = applyNodePosition(nodes, "node-b", { x: 72, y: 88 })
+    const movedNodes = applyNodePositions(nodes, [
+      { nodeId: "node-a", position: { x: 12, y: 24 } },
+      { nodeId: "node-b", position: { x: 72, y: 88 } },
+    ])
 
     expect(nextNodes[0]).toBe(nodes[0])
     expect(nextNodes[1].position).toEqual({ x: 72, y: 88 })
+    expect(movedNodes.map((node) => node.position)).toEqual([{ x: 12, y: 24 }, { x: 72, y: 88 }])
     expect(nodeDragMoved({ nodes }, "node-b", { x: 30, y: 40 })).toBe(false)
     expect(nodeDragMoved({ nodes }, "node-b", { x: 72, y: 88 })).toBe(true)
     expect(nodeDragMoved({ nodes }, "missing", { x: 72, y: 88 })).toBe(true)
@@ -584,14 +641,15 @@ describe("canvasEditState", () => {
       pointerId: 7,
       nodeId: "node-b",
       start: { x: 30, y: 40 },
-      origin: { x: 30, y: 40 },
+      subjects: [{ nodeId: "node-b", origin: { x: 30, y: 40 } }],
+      mode: "move" as const,
       snapshot: { nodes },
     }
 
     expect(finishNodeDragForPointer(drag, 8, { x: 33, y: 45 })).toBeNull()
     expect(finishNodeDragForPointer(drag, 7, { x: 33, y: 45 })).toEqual({
-      nodeId: "node-b",
-      finalPosition: { x: 32, y: 48 },
+      positions: [{ nodeId: "node-b", position: { x: 32, y: 48 } }],
+      mode: "move",
       snapshot: { nodes },
       moved: true,
     })
@@ -657,7 +715,8 @@ describe("canvasEditState", () => {
       pointerId: 7,
       nodeId: "node-b",
       start: { x: 30, y: 40 },
-      origin: { x: 30, y: 40 },
+      subjects: [{ nodeId: "node-b", origin: { x: 30, y: 40 } }],
+      mode: "move" as const,
       snapshot: { nodes },
     }
     const rubberDrag = {
@@ -682,8 +741,8 @@ describe("canvasEditState", () => {
     })
     expect(finishCanvasDragTransition(nodeDrag, 7, { x: 33, y: 45 }, nodes, currentSelection)).toEqual({
       nodeDrag: {
-        nodeId: "node-b",
-        finalPosition: { x: 32, y: 48 },
+        positions: [{ nodeId: "node-b", position: { x: 32, y: 48 } }],
+        mode: "move",
         snapshot: { nodes },
         moved: true,
       },

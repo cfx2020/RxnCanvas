@@ -8,7 +8,7 @@ import {
 import { pannedViewportFromDrag } from "./canvasGeometry"
 import { flowNodeIdAtClientPoint } from "./canvasHitTesting"
 import {
-  applyNodePosition,
+  applyNodePositions,
   canvasNodePointerDownTransition,
   canvasPointerMoveTransition,
   canvasSurfacePointerDownTransition,
@@ -21,6 +21,10 @@ import {
   type CanvasDragState,
   type CanvasSelectionIds,
 } from "./canvasEditState"
+import {
+  copyCanvasSelection as copyCanvasSelectionPayload,
+  pasteCanvasClipboard as pasteCanvasClipboardPayload,
+} from "./canvasClipboardState"
 import type { BarrierDraft, ConnectionDraft } from "./CanvasWorkspace"
 import type { CanvasEditSnapshot } from "./projectWorkspace"
 import {
@@ -100,6 +104,8 @@ export function handleNodePointerDownAction({
   barriers,
   screenToWorld,
   appStateSetters,
+  pushEditHistory,
+  copyModifier,
 }: {
   event: PointerEvent<HTMLElement>
   node: FlowNode
@@ -109,6 +115,8 @@ export function handleNodePointerDownAction({
   barriers: FlowBarrier[]
   screenToWorld: ScreenToWorld
   appStateSetters: ProjectWorkspaceStateSetters
+  pushEditHistory: PushCanvasEditHistory
+  copyModifier: boolean
 }): void {
   if (event.button !== 0) return
   event.preventDefault()
@@ -129,6 +137,40 @@ export function handleNodePointerDownAction({
       selectedBarrierIds: selection.barrierIds,
     }),
   })
+  if (copyModifier) {
+    const payload = copyCanvasSelectionPayload({ nodes, edges, barriers }, transition.selection)
+    const copyResult = pasteCanvasClipboardPayload(
+      { nodes, edges, barriers },
+      payload,
+      { pasteIndex: 1, offsetStep: { x: 0, y: 0 } },
+    )
+    if (copyResult) {
+      pushEditHistory()
+      appStateSetters.setNodes(copyResult.collections.nodes)
+      appStateSetters.setEdges(copyResult.collections.edges)
+      appStateSetters.setBarriers(copyResult.collections.barriers)
+      applyCanvasSelectionState(appStateSetters, copyResult.selection)
+      appStateSetters.setInspectorMode(transition.inspectorMode)
+      appStateSetters.setDragState({
+        ...transition.dragState,
+        nodeId: copyResult.selection.nodeIds[0] ?? transition.dragState.nodeId,
+        subjects: copyResult.selection.nodeIds.flatMap((nodeId) => {
+          const copiedNode = copyResult.collections.nodes.find((item) => item.id === nodeId)
+          return copiedNode ? [{ nodeId, origin: copiedNode.position }] : []
+        }),
+        mode: "copy",
+        snapshot: {
+          nodes,
+          edges,
+          barriers,
+          selectedNodeIds: currentSelection.nodeIds,
+          selectedEdgeIds: currentSelection.edgeIds,
+          selectedBarrierIds: currentSelection.barrierIds,
+        },
+      })
+      return
+    }
+  }
   applyCanvasSelectionState(appStateSetters, transition.selection)
   appStateSetters.setInspectorMode(transition.inspectorMode)
   appStateSetters.setDragState(transition.dragState)
@@ -201,11 +243,12 @@ export function handlePointerMoveAction({
     return
   }
 
-  if (dragPreview?.previewNodePosition) {
-    dragPreview.previewNodePosition(move.nodeId, move.position)
+  if (dragPreview?.previewNodePosition && move.mode !== "copy" && move.positions.length === 1) {
+    const [position] = move.positions
+    dragPreview.previewNodePosition(position.nodeId, position.position)
     return
   }
-  appStateSetters.setNodes((current) => applyNodePosition(current, move.nodeId, move.position))
+  appStateSetters.setNodes((current) => applyNodePositions(current, move.positions))
 }
 
 export function createConnectionEdgeAction({
@@ -327,8 +370,8 @@ export function endCanvasPointerAction({
     )
     const finishedNodeDrag = transition?.nodeDrag
     if (finishedNodeDrag) {
-      if (finishedNodeDrag.moved) pushEditHistory(finishedNodeDrag.snapshot)
-      appStateSetters.setNodes((current) => applyNodePosition(current, finishedNodeDrag.nodeId, finishedNodeDrag.finalPosition))
+      if (finishedNodeDrag.moved && finishedNodeDrag.mode !== "copy") pushEditHistory(finishedNodeDrag.snapshot)
+      appStateSetters.setNodes((current) => applyNodePositions(current, finishedNodeDrag.positions))
     }
     if (transition?.rubberBand) {
       applyCanvasSelectionState(appStateSetters, transition.rubberBand.selection)

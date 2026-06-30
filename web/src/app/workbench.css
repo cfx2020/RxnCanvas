@@ -1262,7 +1262,13 @@ input:focus-visible,
   text-align: left;
   backdrop-filter: blur(18px);
   touch-action: none;
+  cursor: grab;
   transition: box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.reaction-node:active,
+.reaction-node.is-live-dragging {
+  cursor: grabbing;
 }
 
 .reaction-node > * {

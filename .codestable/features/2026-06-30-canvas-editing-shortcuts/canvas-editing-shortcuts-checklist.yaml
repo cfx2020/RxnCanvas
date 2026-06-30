@@ -1,0 +1,81 @@
+feature: 2026-06-30-canvas-editing-shortcuts
+created: 2026-06-30
+
+steps:
+  - action: "Clipboard helper 契约：新增纯 helper 处理 copy payload、paste id 映射、offset、selection 和 collision guard"
+    exit_signal: "单测覆盖 selected 子图复制、悬空 edge/barrier 过滤、连续 paste 偏移、id 不冲突"
+    status: done
+  - action: "Keyboard intent 扩展：扩展 canvas keyboard transition 和 App handler，接入 select all / copy / paste / cut"
+    exit_signal: "快捷键 scoped 生效，输入控件内不触发，undo/redo/delete/arrow 旧行为不回退"
+    status: done
+  - action: "Group node drag：扩展 node drag state，让 selected node group 可整体 move，并让右键 selected node 保留 multi-selection"
+    exit_signal: "框选多个节点后拖动其中一个，所有 selected nodes 同步移动；批量 Delete 仍可用"
+    status: done
+  - action: "Modifier copy drag：在 node drag start 加平台复制修饰键分支，复制 selected 子图后拖动副本"
+    exit_signal: "macOS Option / Windows Ctrl 复制拖动节点；普通 Ctrl/Cmd 快捷键不被误当作拖动复制"
+    status: done
+  - action: "UI 验证与范围守护：跑测试/build，并用浏览器验证桌面/窄屏手势"
+    exit_signal: "画布快捷键和拖动路径可用，console clean；scope grep 未出现系统剪贴板/globalShortcut/schema/engine 改动"
+    status: done
+
+checks:
+  - item: "框选多个节点后，拖动其中一个 selected node，所有 selected nodes 按同一 delta 移动"
+    source: 验收场景
+    status: pending
+  - item: "右键 selected node 不丢失 multi-selection；右键 unselected node 替换为单节点 selection"
+    source: 验收场景
+    status: pending
+  - item: "框选多个节点后按 Delete / Backspace，selected nodes 及相关 edge/barrier 被删除"
+    source: 验收场景
+    status: pending
+  - item: "Ctrl/Cmd+A 选中当前 active canvas 全部 nodes / edges / barriers"
+    source: 验收场景
+    status: pending
+  - item: "Ctrl/Cmd+C 在有 selection 时写入 app 内 clipboard；无 selection 时 no-op"
+    source: 验收场景
+    status: pending
+  - item: "Ctrl/Cmd+V 粘贴 clipboard 副本，新节点/edge/barrier id 不与现有图元冲突，并选中新副本"
+    source: 验收场景
+    status: pending
+  - item: "Ctrl/Cmd+X 剪切 selection：clipboard 可再次粘贴，原 selection 被删除"
+    source: 验收场景
+    status: pending
+  - item: "连续 paste 同一 payload 时，新副本位置有递进偏移，不完全重叠"
+    source: 验收场景
+    status: pending
+  - item: "只选中 edge/barrier 时 copy/paste 不生成悬空 edge/barrier；没有两端节点的 edge/barrier 被过滤"
+    source: 验收场景
+    status: pending
+  - item: "macOS Option + drag node 复制拖动；Windows/Linux Ctrl + drag node 复制拖动"
+    source: 验收场景
+    status: pending
+  - item: "普通拖动 selected node group 是移动，不复制"
+    source: 验收场景
+    status: pending
+  - item: "输入框、textarea、select、contenteditable 内的 A/C/V/X/Delete/Escape/Arrow 不触发画布快捷键"
+    source: 验收场景
+    status: pending
+  - item: "既有 Ctrl/Cmd+Z、redo、Escape clear、方向键微移继续可用"
+    source: 验收场景
+    status: pending
+  - item: "node resize、edge connector drag、barrier handle drag、image annotation drag、pan/zoom/minimap 和 raw file drop 不回退"
+    source: 验收场景
+    status: pending
+  - item: "Undo 能撤销 paste / cut / group move / copy drag 造成的画布改动"
+    source: 验收场景
+    status: pending
+  - item: "不新增 Electron globalShortcut、系统剪贴板 API、project schema、Python engine、import parser 或 report export 改动"
+    source: 范围守护
+    status: pending
+  - item: "代码中不新增 globalShortcut、navigator.clipboard.write / read 作为本 feature 的必需路径"
+    source: 范围守护
+    status: pending
+  - item: "Project package schema 不新增 clipboard / draft / drag state 字段"
+    source: 范围守护
+    status: pending
+  - item: "Python engine / Electron IPC 不新增 canvas clipboard command"
+    source: 范围守护
+    status: pending
+  - item: "图片 annotation 不被本 feature 的 copy/paste helper 复制"
+    source: 范围守护
+    status: pending

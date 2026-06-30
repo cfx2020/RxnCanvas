@@ -59,6 +59,12 @@ import {
   type CanvasSelectionIds,
 } from "./canvasEditState"
 import {
+  copyCanvasSelection as copyCanvasSelectionPayload,
+  pasteCanvasClipboard as pasteCanvasClipboardPayload,
+  selectAllCanvasItems as selectAllCanvasGraphItems,
+  type CanvasClipboardPayload,
+} from "./canvasClipboardState"
+import {
   defaultEnergyDisplayOptions,
   energyTableNodeSelectionTransition,
   energyTableRows,
@@ -393,6 +399,8 @@ export function App() {
   const dragPreviewNodeRef = useRef<{ nodeId: string; element: HTMLElement | null } | null>(null)
   const dragPreviewGeometryRef = useRef<NodeDragPreviewCache | null>(null)
   const lastImagePasteAtRef = useRef(0)
+  const canvasClipboardRef = useRef<CanvasClipboardPayload | null>(null)
+  const canvasClipboardPasteIndexRef = useRef(0)
   const [projects, setProjects] = useState(initialProjects)
   const [projectWorkspaces, setProjectWorkspaces] = useState<Record<string, ProjectWorkspaceSnapshot>>(() => initialProjectWorkspaces(defaultCanvasViewport(null)))
   const [activeProjectId, setActiveProjectId] = useState(initialProjects[0].id)
@@ -527,6 +535,7 @@ export function App() {
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const activeProjectLabel = activeProject?.label ?? "Untitled Study"
   const isMacDesktop = window.rxnflowDesktop?.platform === "darwin"
+  const isMacCopyDragPlatform = isMacDesktop || /Mac|iPhone|iPad|iPod/.test(window.navigator.platform)
   const theme = effectiveThemeFromAppearance(desktopPreferences.appearance, systemPrefersDark)
   const [desktopWindowState, setDesktopWindowState] = useState({ isFullScreen: false, isMaximized: false })
   const appShellStyle = useMemo(() => ({
@@ -1309,9 +1318,23 @@ export function App() {
         barriers,
         screenToWorld,
         appStateSetters,
+        pushEditHistory,
+        copyModifier: isMacCopyDragPlatform ? event.altKey : event.ctrlKey,
       })
     },
-    [appStateSetters, barriers, buildNodeDragPreviewCache, edges, nodes, screenToWorld, selectedBarrierIds, selectedEdgeIds, selectedNodeIds],
+    [
+      appStateSetters,
+      barriers,
+      buildNodeDragPreviewCache,
+      edges,
+      isMacCopyDragPlatform,
+      nodes,
+      pushEditHistory,
+      screenToWorld,
+      selectedBarrierIds,
+      selectedEdgeIds,
+      selectedNodeIds,
+    ],
   )
 
   const handleNodeResizePointerDown = useCallback((event: PointerEvent<HTMLElement>, node: FlowNode) => {
@@ -1929,6 +1952,7 @@ export function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return
       if (viewMode !== "canvas") return
       if (isEditablePasteTarget(event.target)) return
       if (event.key.toLowerCase() !== "v" || (!event.metaKey && !event.ctrlKey)) return
@@ -2426,6 +2450,55 @@ export function App() {
     })
   }, [appStateSetters, barriers, edges, nodes, pushEditHistory, selectedBarrierIds, selectedEdgeIds, selectedNodeIds])
 
+  const selectAllCanvasItems = useCallback(() => {
+    applyCanvasSelectionState(appStateSetters, selectAllCanvasGraphItems({ nodes, edges, barriers }))
+    appStateSetters.setInspectorMode("inspector")
+  }, [appStateSetters, barriers, edges, nodes])
+
+  const copyCanvasSelection = useCallback(() => {
+    const payload = copyCanvasSelectionPayload({ nodes, edges, barriers }, {
+      nodeIds: selectedNodeIds,
+      edgeIds: selectedEdgeIds,
+      barrierIds: selectedBarrierIds,
+    })
+    if (!payload) return
+    canvasClipboardRef.current = payload
+    canvasClipboardPasteIndexRef.current = 0
+  }, [barriers, edges, nodes, selectedBarrierIds, selectedEdgeIds, selectedNodeIds])
+
+  const pasteCanvasClipboard = useCallback(() => {
+    const pasteIndex = canvasClipboardPasteIndexRef.current + 1
+    const result = pasteCanvasClipboardPayload(
+      { nodes, edges, barriers },
+      canvasClipboardRef.current,
+      { pasteIndex },
+    )
+    if (!result) {
+      void pasteImagesFromSystemClipboard()
+      return
+    }
+    pushEditHistory()
+    setNodes(result.collections.nodes)
+    setEdges(result.collections.edges)
+    setBarriers(result.collections.barriers)
+    applyCanvasSelectionState(appStateSetters, result.selection)
+    appStateSetters.setInspectorMode("inspector")
+    canvasClipboardPasteIndexRef.current = pasteIndex
+  }, [appStateSetters, barriers, edges, nodes, pasteImagesFromSystemClipboard, pushEditHistory])
+
+  const cutCanvasSelection = useCallback(() => {
+    const selection = {
+      nodeIds: selectedNodeIds,
+      edgeIds: selectedEdgeIds,
+      barrierIds: selectedBarrierIds,
+    }
+    const payload = copyCanvasSelectionPayload({ nodes, edges, barriers }, selection)
+    if (!payload) return
+    canvasClipboardRef.current = payload
+    canvasClipboardPasteIndexRef.current = 0
+    deleteSelection(selection)
+  }, [barriers, deleteSelection, edges, nodes, selectedBarrierIds, selectedEdgeIds, selectedNodeIds])
+
   const openCanvasContextMenu = useCallback((request: CanvasContextMenuRequest) => {
     const width = typeof window === "undefined" ? 220 : window.innerWidth
     const height = typeof window === "undefined" ? 260 : window.innerHeight
@@ -2480,11 +2553,26 @@ export function App() {
     handleCanvasKeyboardEvent(event, hasCanvasSelection, {
       undoEdit,
       redoEdit,
+      selectAllCanvasItems,
+      copyCanvasSelection,
+      pasteCanvasClipboard,
+      cutCanvasSelection,
       deleteSelection,
       clearCanvasSelection,
       nudgeSelectedNodes,
     })
-  }, [clearCanvasSelection, deleteSelection, hasCanvasSelection, nudgeSelectedNodes, redoEdit, undoEdit])
+  }, [
+    clearCanvasSelection,
+    copyCanvasSelection,
+    cutCanvasSelection,
+    deleteSelection,
+    hasCanvasSelection,
+    nudgeSelectedNodes,
+    pasteCanvasClipboard,
+    redoEdit,
+    selectAllCanvasItems,
+    undoEdit,
+  ])
 
   const setClampedProjectRailWidth = useCallback((nextWidth: number) => {
     setProjectRailWidth(clamp(nextWidth, projectRailMinWidth, projectRailMaxWidth))

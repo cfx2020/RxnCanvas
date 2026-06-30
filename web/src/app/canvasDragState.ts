@@ -21,9 +21,29 @@ export type CanvasPointerDraft = {
   snapTargetId?: string
 }
 
+export type CanvasNodeDragSubject = {
+  nodeId: string
+  origin: Point
+}
+
+export type CanvasNodeDragPosition = {
+  nodeId: string
+  position: Point
+}
+
+export type CanvasNodeDragMode = "move" | "copy"
+
 export type CanvasDragState<TSnapshot = unknown> =
   | { kind: "pan"; pointerId: number; start: Point; origin: Point }
-  | { kind: "node"; pointerId: number; nodeId: string; start: Point; origin: Point; snapshot: TSnapshot }
+  | {
+    kind: "node"
+    pointerId: number
+    nodeId: string
+    start: Point
+    subjects: CanvasNodeDragSubject[]
+    mode: CanvasNodeDragMode
+    snapshot: TSnapshot
+  }
   | { kind: "rubber"; pointerId: number; start: Point; current: Point; additive: boolean }
 
 export type CanvasSurfaceDragState = Extract<CanvasDragState, { kind: "pan" | "rubber" }>
@@ -32,7 +52,7 @@ export type CanvasDragMove<TSnapshot = unknown> =
   | { kind: "none" }
   | { kind: "pan"; drag: Extract<CanvasDragState<TSnapshot>, { kind: "pan" }>; clientPoint: Point }
   | { kind: "rubber"; drag: Extract<CanvasDragState<TSnapshot>, { kind: "rubber" }> }
-  | { kind: "node"; nodeId: string; position: Point }
+  | { kind: "node"; positions: CanvasNodeDragPosition[]; mode: CanvasNodeDragMode }
 
 export type CanvasPointerMove<TSnapshot = unknown> =
   | CanvasDragMove<TSnapshot>
@@ -51,8 +71,8 @@ export type CanvasNodePointerDown<TSnapshot extends Pick<CanvasEditSnapshot, "no
 }
 
 export type FinishedNodeDrag<TSnapshot extends Pick<CanvasEditSnapshot, "nodes">> = {
-  nodeId: string
-  finalPosition: Point
+  positions: CanvasNodeDragPosition[]
+  mode: CanvasNodeDragMode
   snapshot: TSnapshot
   moved: boolean
 }
@@ -157,6 +177,7 @@ export function canvasNodePointerDownTransition<TSnapshot extends Pick<CanvasEdi
   snapshotForSelection: (selection: CanvasSelectionIds) => TSnapshot
 }): CanvasNodePointerDown<TSnapshot> {
   const selection = nodeDragStartSelection(currentSelection, node.id, additive)
+  const snapshot = snapshotForSelection(selection)
   return {
     selection,
     inspectorMode: "inspector",
@@ -165,8 +186,9 @@ export function canvasNodePointerDownTransition<TSnapshot extends Pick<CanvasEdi
       pointerId,
       nodeId: node.id,
       start: worldPoint,
-      origin: node.position,
-      snapshot: snapshotForSelection(selection),
+      subjects: nodeDragSubjects(snapshot.nodes, selection, node),
+      mode: "move",
+      snapshot,
     },
   }
 }
@@ -176,11 +198,15 @@ export function nodeDragStartSelection(
   nodeId: string,
   additive: boolean,
 ): CanvasSelectionIds {
-  const nodeIds = additive ? toggleIdSelection(currentSelection.nodeIds, nodeId) : [nodeId]
+  const nodeIds = additive
+    ? toggleIdSelection(currentSelection.nodeIds, nodeId)
+    : currentSelection.nodeIds.includes(nodeId)
+      ? currentSelection.nodeIds
+      : [nodeId]
   return {
     nodeIds,
-    edgeIds: additive ? currentSelection.edgeIds : [],
-    barrierIds: additive ? currentSelection.barrierIds : [],
+    edgeIds: additive || currentSelection.nodeIds.includes(nodeId) ? currentSelection.edgeIds : [],
+    barrierIds: additive || currentSelection.nodeIds.includes(nodeId) ? currentSelection.barrierIds : [],
   }
 }
 
@@ -195,8 +221,8 @@ export function canvasDragMoveForPointer<TSnapshot>(
   if (drag.kind === "rubber") return { kind: "rubber", drag: { ...drag, current: worldPoint } }
   return {
     kind: "node",
-    nodeId: drag.nodeId,
-    position: nodeDragPosition(drag, worldPoint),
+    positions: nodeDragPositions(drag, worldPoint),
+    mode: drag.mode,
   }
 }
 
@@ -236,12 +262,12 @@ export function finishNodeDragForPointer<TSnapshot extends Pick<CanvasEditSnapsh
   worldPoint: Point,
 ): FinishedNodeDrag<TSnapshot> | null {
   if (!drag || drag.pointerId !== pointerId || drag.kind !== "node") return null
-  const finalPosition = nodeDragPosition(drag, worldPoint, true)
+  const positions = nodeDragPositions(drag, worldPoint, true)
   return {
-    nodeId: drag.nodeId,
-    finalPosition,
+    positions,
+    mode: drag.mode,
     snapshot: drag.snapshot,
-    moved: nodeDragMoved(drag.snapshot, drag.nodeId, finalPosition),
+    moved: nodeDragPositionsMoved(drag.snapshot, positions),
   }
 }
 
@@ -339,6 +365,15 @@ export function applyNodePosition(nodes: FlowNode[], nodeId: string, position: P
   ))
 }
 
+export function applyNodePositions(nodes: FlowNode[], positions: CanvasNodeDragPosition[]): FlowNode[] {
+  if (positions.length === 0) return nodes
+  const positionByNodeId = new Map(positions.map((item) => [item.nodeId, item.position]))
+  return nodes.map((node) => {
+    const position = positionByNodeId.get(node.id)
+    return position ? { ...node, position } : node
+  })
+}
+
 export function applyNodeSize(nodes: FlowNode[], nodeId: string, size: NodeSize): FlowNode[] {
   return nodes.map((node) => (
     node.id === nodeId
@@ -356,6 +391,39 @@ export function nodeDragMoved(
   return !previousPosition
     || previousPosition.x !== finalPosition.x
     || previousPosition.y !== finalPosition.y
+}
+
+export function nodeDragPositions(
+  drag: Extract<CanvasDragState, { kind: "node" }>,
+  worldPoint: Point,
+  snap = false,
+): CanvasNodeDragPosition[] {
+  return drag.subjects.map((subject) => ({
+    nodeId: subject.nodeId,
+    position: nodeDragPosition({ start: drag.start, origin: subject.origin }, worldPoint, snap),
+  }))
+}
+
+export function nodeDragPositionsMoved(
+  snapshot: Pick<CanvasEditSnapshot, "nodes">,
+  positions: CanvasNodeDragPosition[],
+): boolean {
+  if (positions.length === 0) return false
+  return positions.some(({ nodeId, position }) => nodeDragMoved(snapshot, nodeId, position))
+}
+
+export function nodeDragSubjects(
+  nodes: Pick<FlowNode, "id" | "position">[],
+  selection: CanvasSelectionIds,
+  node: Pick<FlowNode, "id" | "position">,
+): CanvasNodeDragSubject[] {
+  const nodeById = new Map(nodes.map((item) => [item.id, item]))
+  const subjectIds = selection.nodeIds.includes(node.id) ? selection.nodeIds : [node.id]
+  const subjects = subjectIds.flatMap((nodeId) => {
+    const subjectNode = nodeById.get(nodeId)
+    return subjectNode ? [{ nodeId, origin: subjectNode.position }] : []
+  })
+  return subjects.length > 0 ? subjects : [{ nodeId: node.id, origin: node.position }]
 }
 
 export function nodeSizeChanged(

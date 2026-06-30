@@ -14,6 +14,10 @@ export type CanvasKeyboardAction =
   | { kind: "none" }
   | { kind: "undo" }
   | { kind: "redo" }
+  | { kind: "select-all" }
+  | { kind: "copy" }
+  | { kind: "paste" }
+  | { kind: "cut" }
   | { kind: "delete" }
   | { kind: "clear" }
   | { kind: "nudge"; delta: Point }
@@ -42,6 +46,10 @@ export function canvasKeyboardActionForInput(input: CanvasKeyboardInput): Canvas
 
   if (input.metaKey || input.ctrlKey) {
     const key = input.key.toLowerCase()
+    if (key === "a") return { kind: "select-all" }
+    if (key === "c") return input.hasSelection ? { kind: "copy" } : { kind: "none" }
+    if (key === "v") return { kind: "paste" }
+    if (key === "x") return input.hasSelection ? { kind: "cut" } : { kind: "none" }
     if (key === "z" && input.shiftKey) return { kind: "redo" }
     if (key === "z") return { kind: "undo" }
     if (key === "y" && input.ctrlKey) return { kind: "redo" }

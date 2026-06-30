@@ -280,4 +280,89 @@ describe("CanvasWorkspace", () => {
     expect(screen.getByText("No nodes in this project")).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/Add Node|Compute|Object Registry/i)
   })
+
+  it("preserves multi-selection when opening the context menu on a selected node", () => {
+    const nodeA: FlowNode = {
+      id: "node-a",
+      label: "A",
+      formula: "H2",
+      kind: "reactant",
+      method: "demo",
+      solvent: "none",
+      energyGas: null,
+      energySolution: null,
+      energyUnit: "hartree",
+      position: { x: 120, y: 160 },
+    }
+    const nodeB: FlowNode = {
+      ...nodeA,
+      id: "node-b",
+      label: "B",
+      position: { x: 340, y: 160 },
+    }
+    const onSelectNode = vi.fn()
+    const onOpenContextMenu = vi.fn()
+
+    render(
+      <CanvasSurface
+        canvasRef={{ current: null }}
+        nodes={[nodeA, nodeB]}
+        files={[]}
+        edges={[]}
+        barriers={[]}
+        nodeMap={new Map([[nodeA.id, nodeA], [nodeB.id, nodeB]])}
+        selectedNodeIds={["node-a", "node-b"]}
+        selectedEdgeIds={["edge-a"]}
+        selectedBarrierIds={["barrier-a"]}
+        keyboardEdgeSourceId={null}
+        tool="select"
+        viewport={{ x: 0, y: 0, zoom: 1 }}
+        rubberBandDraft={null}
+        connectionDraft={null}
+        barrierDraft={null}
+        energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
+        energyRows={[]}
+        relativeZeroNodeId={null}
+        onCanvasPointerDown={vi.fn()}
+        onCanvasKeyDown={vi.fn()}
+        onPointerMove={vi.fn()}
+        onPointerEnd={vi.fn()}
+        onNodePointerDown={vi.fn()}
+        onNodeResizePointerDown={vi.fn()}
+        onNodePointerUp={vi.fn()}
+        onStartConnection={vi.fn()}
+        onStartBarrierAnnotation={vi.fn()}
+        onStartKeyboardConnection={vi.fn()}
+        onSelectNode={onSelectNode}
+        onSelectEdge={vi.fn()}
+        onSelectBarrier={vi.fn()}
+        onUpdateEdgeLabel={vi.fn()}
+        onUpdateBarrierLabel={vi.fn()}
+        onSetNodeCoefficient={vi.fn()}
+        onSetRelativeEnergyZero={vi.fn()}
+        onOpenStructure={vi.fn()}
+        onShowNodeSource={vi.fn()}
+        onRenameNode={vi.fn()}
+        renameEditingNodeId={null}
+        onRenameRequestHandled={vi.fn()}
+        onOpenContextMenu={onOpenContextMenu}
+        onRawFileDrop={vi.fn()}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Node B" }))
+
+    expect(onSelectNode).not.toHaveBeenCalled()
+    expect(onOpenContextMenu).toHaveBeenCalledWith(expect.objectContaining({
+      target: {
+        kind: "node",
+        nodeId: "node-b",
+        selection: {
+          nodeIds: ["node-a", "node-b"],
+          edgeIds: ["edge-a"],
+          barrierIds: ["barrier-a"],
+        },
+      },
+    }))
+  })
 })

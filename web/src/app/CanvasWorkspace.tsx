@@ -509,11 +509,15 @@ export function CanvasSurface({
             onOpenContextMenu={(event) => {
               event.preventDefault()
               event.stopPropagation()
-              stableOnSelectNode(node.id, "replace")
+              const nodeSelected = selectedNodeIdSet.has(node.id)
+              const selection = nodeSelected
+                ? currentSelection()
+                : { nodeIds: [node.id], edgeIds: [], barrierIds: [] }
+              if (!nodeSelected) stableOnSelectNode(node.id, "replace")
               stableOnOpenContextMenu({
                 x: event.clientX,
                 y: event.clientY,
-                target: { kind: "node", nodeId: node.id, selection: { nodeIds: [node.id], edgeIds: [], barrierIds: [] } },
+                target: { kind: "node", nodeId: node.id, selection },
               })
             }}
           />
