@@ -68,6 +68,11 @@ type EnergyGraphModel = {
   relativeTableVisibilityByNodeId: Map<string, boolean>
 }
 
+type PathParticipantContext = {
+  additions: string[]
+  releases: string[]
+}
+
 export type RelativeEnergyZeroSelectionTransition = {
   energyDisplayOptions: EnergyDisplayOptions
   selection: {
@@ -330,9 +335,8 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
   const baselineId = mainPath[0]
     ?? pathNodes.find((node) => nodeEnergyForRelative(node, defaultEnergyDisplayOptions.energySource) !== null)?.id
     ?? defaultModel.defaultBaselineNodeId
-  const pathIndexById = new Map(mainPath.map((nodeId, index) => [nodeId, index]))
-  const additionsByPathIndex = new Map<number, string[]>()
-  const releasesByPathIndex = new Map<number, string[]>()
+  const additionsByPathNodeId = new Map<string, string[]>()
+  const releasesAfterPathNodeId = new Map<string, string[]>()
   const roleByNodeId = new Map<string, RelativeEnergyRole>()
   const termsByNodeId = new Map<string, EnergyExpressionTerm[]>()
   const relativeTableVisibilityByNodeId = new Map<string, boolean>()
@@ -361,57 +365,63 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
     const participantId = participantEndpoint(edge, participantIds)
     const pathId = pathEndpoint(edge, participantId)
     if (!participantId || !pathId || !nodeById.has(participantId)) continue
-    const index = pathIndexById.get(pathId)
-    if (typeof index !== "number") continue
-    const map = role === "addition" ? additionsByPathIndex : releasesByPathIndex
-    map.set(index, uniqueNodeIds([...(map.get(index) ?? []), participantId], nodeOrder))
+    const map = role === "addition" ? additionsByPathNodeId : releasesAfterPathNodeId
+    map.set(pathId, uniqueParticipantNodeIds([...(map.get(pathId) ?? []), participantId], nodeById, nodeOrder))
     roleByNodeId.set(participantId, role === "addition" ? "addition-term" : "release-term")
     termsByNodeId.set(participantId, [])
     relativeTableVisibilityByNodeId.set(participantId, false)
   }
 
-  const pathStartsWithParticipantAddition = (additionsByPathIndex.get(0) ?? []).length > 0
+  const pathStartsWithParticipantAddition = baselineId ? (additionsByPathNodeId.get(baselineId) ?? []).length > 0 : false
   const baselineSubtractIds = pathStartsWithParticipantAddition ? [] : [baselineId].filter((id): id is string => Boolean(id))
-
-  mainPath.forEach((nodeId, index) => {
-    if (index === 0 && !pathStartsWithParticipantAddition) {
-      roleByNodeId.set(nodeId, "baseline")
-      termsByNodeId.set(nodeId, [])
-      relativeTableVisibilityByNodeId.set(nodeId, true)
-      return
-    }
-    const terms = compactExpressionTerms([
-      ...nodeSelfTerms(nodeById, nodeId),
-      ...termIdsBeforePathIndex(index, releasesByPathIndex, nodeOrder).flatMap((id) => nodeSelfTerms(nodeById, id)),
-      ...[...baselineSubtractIds, ...termIdsThroughPathIndex(index, additionsByPathIndex, nodeOrder)]
-        .flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
-    ])
-    roleByNodeId.set(nodeId, "path-point")
-    termsByNodeId.set(nodeId, terms)
-    relativeTableVisibilityByNodeId.set(nodeId, true)
-  })
-
+  const contextByNodeId = new Map<string, PathParticipantContext>()
   if (baselineId) {
-    const distanceFromStart = reachableNodeDistances(baselineId, successors)
-    const pathIndexFromStart = reachablePathIndexes(baselineId, successors, pathIndexById)
-    for (const [nodeId, distance] of distanceFromStart) {
-      if (distance === 0 || participantIds.has(nodeId) || roleByNodeId.get(nodeId) === "path-point") continue
-      const upstreamPathIndex = pathIndexFromStart.get(nodeId) ?? (distance <= 1 ? 1 : Math.max(mainPath.length - 1, 0))
-      const terms = compactExpressionTerms([
-        ...nodeSelfTerms(nodeById, nodeId),
-        ...termIdsBeforePathIndex(upstreamPathIndex, releasesByPathIndex, nodeOrder).flatMap((id) => nodeSelfTerms(nodeById, id)),
-        ...[...baselineSubtractIds, ...termIdsThroughPathIndex(upstreamPathIndex, additionsByPathIndex, nodeOrder)]
-          .flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
-      ])
-      roleByNodeId.set(nodeId, "path-point")
-      termsByNodeId.set(nodeId, terms)
-      relativeTableVisibilityByNodeId.set(nodeId, true)
+    contextByNodeId.set(baselineId, normalizeParticipantContext({
+      additions: additionsByPathNodeId.get(baselineId) ?? [],
+      releases: [],
+    }, nodeById, nodeOrder))
+    const queue = [baselineId]
+    for (let index = 0; index < queue.length; index += 1) {
+      const nodeId = queue[index]
+      const context = contextByNodeId.get(nodeId)
+      if (!context) continue
+      for (const nextId of successors.get(nodeId) ?? []) {
+        const candidate = normalizeParticipantContext({
+          additions: [...context.additions, ...(additionsByPathNodeId.get(nextId) ?? [])],
+          releases: [...context.releases, ...(releasesAfterPathNodeId.get(nodeId) ?? [])],
+        }, nodeById, nodeOrder)
+        const current = contextByNodeId.get(nextId)
+        if (current && !participantContextIsBetter({
+          candidate,
+          current,
+          nodeId: nextId,
+          nodeById,
+          baselineSubtractIds,
+          nodeOrder,
+        })) continue
+        contextByNodeId.set(nextId, candidate)
+        queue.push(nextId)
+      }
     }
+  }
+
+  for (const node of pathNodes) {
+    const context = contextByNodeId.get(node.id)
+    if (!context) continue
+    if (node.id === baselineId && !pathStartsWithParticipantAddition) {
+      roleByNodeId.set(node.id, "baseline")
+      termsByNodeId.set(node.id, [])
+      relativeTableVisibilityByNodeId.set(node.id, true)
+      continue
+    }
+    roleByNodeId.set(node.id, "path-point")
+    termsByNodeId.set(node.id, expressionTermsForPathContext(nodeById, node.id, context, baselineSubtractIds))
+    relativeTableVisibilityByNodeId.set(node.id, true)
   }
 
   return {
     defaultBaselineNodeId: baselineId,
-    baselineTerms: [],
+    baselineTerms: baselineId ? termsByNodeId.get(baselineId) ?? [] : [],
     termsByNodeId,
     roleByNodeId,
     relativeTableVisibilityByNodeId,
@@ -433,25 +443,104 @@ function pathEndpoint(edge: FlowEdge, participantId: string | null): string | nu
   return edge.sourceId === participantId ? edge.targetId : edge.sourceId
 }
 
-function termIdsThroughPathIndex(
-  pathIndex: number,
-  termsByPathIndex: Map<number, string[]>,
-  nodeOrder: Map<string, number>,
-): string[] {
-  if (pathIndex < 0) return []
-  const terms: string[] = []
-  for (let index = 0; index <= pathIndex; index += 1) {
-    terms.push(...(termsByPathIndex.get(index) ?? []))
-  }
-  return uniqueNodeIds(terms, nodeOrder)
+function expressionTermsForPathContext(
+  nodeById: Map<string, FlowNode>,
+  nodeId: string,
+  context: PathParticipantContext,
+  baselineSubtractIds: string[],
+): EnergyExpressionTerm[] {
+  return compactExpressionTerms([
+    ...nodeSelfTerms(nodeById, nodeId),
+    ...context.releases.flatMap((id) => nodeSelfTerms(nodeById, id)),
+    ...[...baselineSubtractIds, ...context.additions].flatMap((id) => nodeSelfTerms(nodeById, id, -1)),
+  ])
 }
 
-function termIdsBeforePathIndex(
-  pathIndex: number,
-  termsByPathIndex: Map<number, string[]>,
+function normalizeParticipantContext(
+  context: PathParticipantContext,
+  nodeById: Map<string, FlowNode>,
+  nodeOrder: Map<string, number>,
+): PathParticipantContext {
+  return {
+    additions: uniqueParticipantNodeIds(context.additions, nodeById, nodeOrder),
+    releases: uniqueParticipantNodeIds(context.releases, nodeById, nodeOrder),
+  }
+}
+
+function participantContextIsBetter({
+  candidate,
+  current,
+  nodeId,
+  nodeById,
+  baselineSubtractIds,
+  nodeOrder,
+}: {
+  candidate: PathParticipantContext
+  current: PathParticipantContext
+  nodeId: string
+  nodeById: Map<string, FlowNode>
+  baselineSubtractIds: string[]
+  nodeOrder: Map<string, number>
+}): boolean {
+  const candidateTerms = expressionTermsForPathContext(nodeById, nodeId, candidate, baselineSubtractIds)
+  const currentTerms = expressionTermsForPathContext(nodeById, nodeId, current, baselineSubtractIds)
+  const candidateScore = expressionCompletenessScore(candidateTerms, nodeById)
+  const currentScore = expressionCompletenessScore(currentTerms, nodeById)
+  if (candidateScore !== currentScore) return candidateScore > currentScore
+  const candidateSize = expressionTermSize(candidateTerms)
+  const currentSize = expressionTermSize(currentTerms)
+  if (candidateSize !== currentSize) return candidateSize < currentSize
+  return firstTermOrder(candidateTerms, nodeOrder) < firstTermOrder(currentTerms, nodeOrder)
+}
+
+function expressionCompletenessScore(terms: EnergyExpressionTerm[], nodeById: Map<string, FlowNode>): number {
+  const solution = evaluateExpressionKcal(terms, nodeById, defaultEnergyDisplayOptions)
+  const gas = evaluateExpressionKcal(terms, nodeById, { ...defaultEnergyDisplayOptions, energySource: "gas" })
+  return (typeof solution === "number" ? 2 : 0) + (typeof gas === "number" ? 1 : 0)
+}
+
+function expressionTermSize(terms: EnergyExpressionTerm[]): number {
+  return terms.reduce((sum, term) => sum + Math.abs(term.coefficient), 0)
+}
+
+function firstTermOrder(terms: EnergyExpressionTerm[], nodeOrder: Map<string, number>): number {
+  return Math.min(...terms.map((term) => nodeOrder.get(term.nodeId) ?? Number.MAX_SAFE_INTEGER))
+}
+
+function uniqueParticipantNodeIds(
+  nodeIds: string[],
+  nodeById: Map<string, FlowNode>,
   nodeOrder: Map<string, number>,
 ): string[] {
-  return termIdsThroughPathIndex(pathIndex - 1, termsByPathIndex, nodeOrder)
+  const selectedBySpecies = new Map<string, string>()
+  for (const nodeId of uniqueNodeIds(nodeIds, nodeOrder)) {
+    const node = nodeById.get(nodeId)
+    const key = participantSpeciesKey(node)
+    const currentId = selectedBySpecies.get(key)
+    if (!currentId) {
+      selectedBySpecies.set(key, nodeId)
+      continue
+    }
+    const current = nodeById.get(currentId)
+    if (participantEnergyScore(node) > participantEnergyScore(current)) selectedBySpecies.set(key, nodeId)
+  }
+  return uniqueNodeIds([...selectedBySpecies.values()], nodeOrder)
+}
+
+function participantSpeciesKey(node: FlowNode | undefined): string {
+  if (!node) return "missing"
+  return [
+    node.label.trim().toLowerCase(),
+    node.formula.trim().toLowerCase(),
+    node.charge ?? "",
+    node.spinMultiplicity ?? "",
+  ].join("|")
+}
+
+function participantEnergyScore(node: FlowNode | undefined): number {
+  if (!node) return 0
+  return (typeof nodeEnergyForRelativeKcal(node, defaultEnergyDisplayOptions) === "number" ? 2 : 0)
+    + (typeof nodeEnergyForRelativeKcal(node, { ...defaultEnergyDisplayOptions, energySource: "gas" }) === "number" ? 1 : 0)
 }
 
 function defaultEnergyGraphModel(nodes: FlowNode[]): EnergyGraphModel {

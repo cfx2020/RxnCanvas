@@ -144,6 +144,35 @@ describe("energyDisplay", () => {
     expect(rowsWithOrphan.find((row) => row.nodeId === "orphan")?.showInRelativeTable).toBe(true)
     expect(rowsWithOrphan.find((row) => row.nodeId === "orphan")?.relative).not.toBeNull()
   })
+
+  it("keeps participant terms path-local when branch alternatives converge", () => {
+    const nodes: FlowNode[] = [
+      kcalNode("base", "base", 0),
+      kcalNode("lower", "lower branch", 20),
+      kcalNode("upper", "upper branch", 10),
+      kcalNode("product", "4b-1", 100),
+      kcalNode("released-upper", "3", 5, "participant"),
+      kcalNode("released-lower", "3 copy", null, "participant"),
+      kcalNode("cl-upper", "Cl", 2, "participant"),
+      kcalNode("cl-lower", "Cl", 3, "participant"),
+    ]
+    const edges: FlowEdge[] = [
+      edge("base", "lower", "branch"),
+      edge("lower", "product", "branch"),
+      edge("base", "upper", "branch"),
+      edge("upper", "product", "branch"),
+      edge("upper", "released-upper", "release"),
+      edge("lower", "released-lower", "release"),
+      edge("cl-upper", "product", "addition"),
+      edge("cl-lower", "product", "addition"),
+    ]
+
+    const rows = energyTableRows(nodes, defaultEnergyDisplayOptions, edges)
+    const product = rowById(rows, "product")
+
+    expect(expressionSignature(product)).toEqual(["1:4b-1", "1:3", "-1:base", "-1:Cl"])
+    expect(product.relative).toBeCloseTo(103)
+  })
 })
 
 function irNode(
@@ -173,6 +202,28 @@ function irNode(
 
 function edge(sourceId: string, targetId: string, stepRole?: FlowEdge["stepRole"]): FlowEdge {
   return { id: `${sourceId}-${targetId}`, sourceId, targetId, label: "path", stepRole }
+}
+
+function kcalNode(
+  id: string,
+  label: string,
+  energy: number | null,
+  pathRole?: FlowNode["pathRole"],
+): FlowNode {
+  return {
+    id,
+    label,
+    formula: label.replace(/\s+branch$/, ""),
+    kind: "intermediate",
+    pathRole,
+    method: "demo",
+    solvent: "implicit",
+    energyGas: energy,
+    energySolution: energy,
+    energyUnit: "kcal/mol",
+    sourceStatus: energy === null ? "staged" : "parsed",
+    position: { x: 0, y: 0 },
+  }
 }
 
 function rowById(rows: ReturnType<typeof energyTableRows>, nodeId: string) {
