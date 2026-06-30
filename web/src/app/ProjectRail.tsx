@@ -561,16 +561,15 @@ function ProjectFileRow({
 }) {
   const { primaryFile } = group
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
-  const hasParsedSolutionLog = group.files.some(sourceFileLooksLikeParsedSolutionLog)
-  const missingPairLog = group.hasGasLog !== hasParsedSolutionLog
+  const missingPairLog = group.hasParsedGasLog !== group.hasParsedSolutionLog
   const parsing = group.files.some(sourceFileHasPendingDesktopParse)
   const parseIssue = group.files.map(sourceFileParseIssue).find((issue) => issue !== null) ?? null
   const parseIssueTitle = parseIssue ? `${parseIssue.file.name}: ${parseIssue.message}` : undefined
   const solvationPairTitle = missingPairLog
-    ? !group.hasGasLog && group.hasSolutionLog
+    ? !group.hasParsedGasLog && group.hasSolutionLog
       ? "No paired gas log"
       : "No paired solvation log"
-    : hasParsedSolutionLog
+    : group.hasParsedSolutionLog
       ? "Solvation log paired"
       : undefined
   const fileStatusTitle = [solvationPairTitle, parseIssueTitle].filter(Boolean).join(" - ") || undefined
@@ -623,13 +622,13 @@ function ProjectFileRow({
         </span>
         <span>{group.displayName}</span>
         {parseIssue ? (
-          <span
+          <i
             className="project-file-phase-badges has-parse-error"
             title={parseIssueTitle}
             aria-hidden="true"
           />
         ) : missingPairLog ? (
-          <span
+          <i
             className="project-file-phase-badges has-missing-solution"
             title={solvationPairTitle}
             aria-hidden="true"

@@ -30,6 +30,20 @@ const {
   sourceOpenerProfile,
 } = require("./source-openers.cjs")
 
+const sourceParsePendingWarningCodes = new Set(["parse_deferred", "parse_queued", "parse_running"])
+const desktopImportRejectedWarningCodes = new Set([
+  "unsupported_format",
+  "parse_failed",
+  "import_parse_failed",
+  "cclib_parse_empty",
+  "cclib_parse_failed",
+  "cclib_unavailable",
+  "full_file_read_failed",
+  "source_materialize_failed",
+  "import_preview_missing",
+  "import_preview_failed",
+])
+
 const devServerUrl = process.env.RXNFLOW_DESKTOP_DEV_SERVER
 const runtimeSmokeExit = process.argv.includes("--rxnflow-smoke-exit")
 const runtimeStartupRestoreSmoke = process.env.RXNFLOW_DESKTOP_SMOKE_STARTUP_RESTORE === "1"
@@ -696,6 +710,7 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
       message: "No project folder is bound, so imported sources could not be copied into sources/ before parsing.",
     })
   }
+  const referencedStoredPaths = importReferencedStoredPaths(payload)
 
   const previewFiles = files.map(importSourceFileForPreview)
   const parseTargets = previewFiles.filter((file) => !file.error)
@@ -743,6 +758,7 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
         parseTargets,
         previewFiles: preview.data.files,
         projectDirectory,
+        referencedStoredPaths,
       }),
     },
     ...(warnings.length > 0 ? { warnings } : {}),
@@ -754,6 +770,7 @@ async function parsedImportSourceFilePayloads({
   parseTargets,
   previewFiles,
   projectDirectory,
+  referencedStoredPaths,
 }) {
   const usedStoredPaths = new Set()
   const parseResultsByFile = new Map()
@@ -765,14 +782,12 @@ async function parsedImportSourceFilePayloads({
     if (file.error) return importSourceFileRendererPayload(file)
     const previewFile = parseResultsByFile.get(file.id)
     const parse = previewFile?.parse
-    if (!parse?.parsed) {
+    const rejection = desktopImportParseRejection(parse)
+    if (rejection) {
       return {
         ...importSourceFileRendererPayload(file),
         parse,
-        error: {
-          code: parse?.warnings?.[0]?.code || "import_preview_failed",
-          message: parse?.warnings?.[0]?.message || "The local parser did not return parsed source data.",
-        },
+        error: rejection,
       }
     }
     if (!projectDirectory) {
@@ -783,7 +798,7 @@ async function parsedImportSourceFilePayloads({
     }
 
     try {
-      const materialized = await materializeImportSourceFile(projectDirectory, file, index, { usedStoredPaths })
+      const materialized = await materializeImportSourceFile(projectDirectory, file, index, { usedStoredPaths, referencedStoredPaths })
       return {
         ...importSourceFileRendererPayload(materialized),
         parse,
@@ -799,6 +814,51 @@ async function parsedImportSourceFilePayloads({
       }
     }
   }))
+}
+
+function desktopImportParseRejection(parse) {
+  if (!parse) {
+    return {
+      code: "import_preview_failed",
+      message: "The local parser did not return parsed source data.",
+    }
+  }
+  const warnings = Array.isArray(parse.warnings) ? parse.warnings : []
+  const rejectedWarning = warnings.find((warning) => desktopImportRejectedWarningCodes.has(warning?.code))
+  if (rejectedWarning) {
+    return {
+      code: rejectedWarning.code || "import_preview_failed",
+      message: rejectedWarning.message || "This source could not be imported.",
+    }
+  }
+  if (parse.terminationStatus === "error") {
+    return {
+      code: "calculation_error_termination",
+      message: parse.terminationLabel && parse.terminationLabel !== "error"
+        ? `Calculation ended with ${parse.terminationLabel}.`
+        : "Calculation output ended with error termination.",
+    }
+  }
+  if (parse.terminationStatus === "running") {
+    return {
+      code: "calculation_incomplete",
+      message: "Calculation output is incomplete or still running.",
+    }
+  }
+  if (parse.parsed !== true) {
+    const warning = warnings.find((item) => !sourceParsePendingWarningCodes.has(item?.code)) ?? warnings[0]
+    return {
+      code: warning?.code || "import_preview_failed",
+      message: warning?.message || "The local parser did not return parsed source data.",
+    }
+  }
+  return null
+}
+
+function importReferencedStoredPaths(payload) {
+  return Array.isArray(payload?.referencedStoredPaths)
+    ? payload.referencedStoredPaths.filter((storedPath) => typeof storedPath === "string" && isSafeProjectRelativePath(storedPath))
+    : []
 }
 
 ipcMain.handle("rxnflow:register-import-candidates", async (_event, payload) => {

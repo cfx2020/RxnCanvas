@@ -83,6 +83,8 @@ import {
 import {
   nodeSourceDetailsSelection,
   selectSourceFileTransition,
+  sourceFileDisplayGroupKey,
+  sourceFileLooksLikeSolutionLog,
 } from "./fileDisplay"
 import {
   canvasEditSnapshot,
@@ -213,6 +215,7 @@ import {
   startConnectionAction,
 } from "./appCanvasPointerActions"
 import {
+  deferredDesktopImportPlaceholder,
   handleCanvasRawFileDropAction,
   importDesktopFilesAction,
   importFilesForProjectAction,
@@ -313,6 +316,20 @@ type ImportIssueDialogState = {
     message: string
   }>
 }
+
+const sourceParsePendingWarningCodes = new Set(["parse_deferred", "parse_queued", "parse_running"])
+const desktopImportRejectedWarningCodes = new Set([
+  "unsupported_format",
+  "parse_failed",
+  "import_parse_failed",
+  "cclib_parse_empty",
+  "cclib_parse_failed",
+  "cclib_unavailable",
+  "full_file_read_failed",
+  "source_materialize_failed",
+  "import_preview_missing",
+  "import_preview_failed",
+])
 
 function initialDesktopPreferences(): DesktopPreferences {
   if (typeof window === "undefined" || typeof window.localStorage?.getItem !== "function") {
@@ -1730,6 +1747,37 @@ export function App() {
     stageSourceFilesForProjectRef.current = stageSourceFilesForProject
   }, [stageSourceFilesForProject])
 
+  const removePendingImportFile = useCallback((projectId: string, ...removedFiles: ImportSourceFile[]) => {
+    const rollbackTargets = removedFiles.filter(Boolean)
+    if (rollbackTargets.length === 0) return
+    const shouldRemove = (file: SourceFile) => rollbackTargets.some((target) => shouldRemoveFailedDesktopImportFile(file, target))
+    if (projectId === activeProjectId) {
+      setFiles((current) => {
+        const next = current.filter((file) => !shouldRemove(file))
+        return next.length === current.length ? current : next
+      })
+    } else {
+      setProjectWorkspaces((current) => {
+        const workspace = current[projectId]
+        if (!workspace) return current
+        const nextFiles = workspace.files.filter((file) => !shouldRemove(file))
+        if (nextFiles.length === workspace.files.length) return current
+        return {
+          ...current,
+          [projectId]: {
+            ...workspace,
+            files: nextFiles,
+          },
+        }
+      })
+    }
+    const rollbackIds = new Set(rollbackTargets.map((file) => file.id))
+    setSelectedFileIds((current) => current.filter((id) => !rollbackIds.has(id)))
+    setSelectedFileId((current) => current && rollbackIds.has(current) ? null : current)
+    setLastSelectedFileId((current) => current && rollbackIds.has(current) ? null : current)
+    setInspectorMode("inspector")
+  }, [activeProjectId])
+
   const runDesktopImportParseJob = useCallback((
     projectId: string,
     importedFiles: ImportSourceFile[],
@@ -1744,7 +1792,17 @@ export function App() {
       projectDirectory: projectDirectoriesRef.current[projectId] ?? null,
       importedFiles,
       rawFiles,
-      onFileParsed: async (parsedFile) => {
+      referencedStoredPaths: referencedStoredPathsForProject({
+        projectId,
+        activeProjectId,
+        currentSnapshot: currentProjectWorkspaceSnapshot(),
+        workspaces: projectWorkspaces,
+      }),
+      onFileParsed: async (parsedFile, index) => {
+        if (desktopImportFailureShouldRemovePlaceholder(parsedFile)) {
+          removePendingImportFile(projectId, parsedFile, importedFiles[index] ?? parsedFile)
+          return
+        }
         await (stageSourceFilesForProjectRef.current ?? stageSourceFilesForProject)(projectId, [parsedFile], {
           ...options,
           fileMode: "update",
@@ -1778,7 +1836,7 @@ export function App() {
         }],
       })
     })
-  }, [stageSourceFilesForProject])
+  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, removePendingImportFile, stageSourceFilesForProject])
 
   const reviewCandidatesForFile = useCallback((fileId: string) => {
     reviewCandidatesForFileAction({
@@ -1893,7 +1951,7 @@ export function App() {
             return sourcePath ? { sourcePath } : undefined
           },
         })
-        await stageSourceFiles(importedFiles, {
+        await stageSourceFiles(importedFiles.map(deferredDesktopImportPlaceholder), {
           ...transition.options,
           autoRegister: false,
           parseMode: "defer",
@@ -3096,6 +3154,7 @@ function canvasAutosaveSignature(canvas: ProjectAutosaveInput["canvases"][number
 function importIssueDialogEntries(files: ImportSourceFile[]): ImportIssueDialogState["entries"] {
   return files.flatMap((file) => {
     const warning = file.parse?.warnings.find((item) => shouldShowImportIssueDialog(item.code))
+      ?? desktopImportParseRejectionWarning(file)
     if (!warning) return []
     return [{
       fileName: file.name,
@@ -3111,6 +3170,50 @@ function shouldShowImportIssueDialog(code: string): boolean {
     || code === "full_file_read_failed"
     || code === "import_preview_missing"
     || code === "import_preview_failed"
+}
+
+function firstImportParseFailureWarning(file: ImportSourceFile): { code: string; message: string } | undefined {
+  const warning = file.parse?.warnings.find((item) => !sourceParsePendingWarningCodes.has(item.code))
+    ?? file.parse?.warnings[0]
+  if (warning) return warning
+  if (!file.parse) {
+    return {
+      code: "import_preview_missing",
+      message: "The desktop parser did not return import data for this file.",
+    }
+  }
+  return {
+    code: "import_parse_failed",
+    message: "The desktop parser could not parse this file.",
+  }
+}
+
+function desktopImportParseRejectionWarning(file: ImportSourceFile): { code: string; message: string } | undefined {
+  const parse = file.parse
+  if (!parse) {
+    return {
+      code: "import_preview_missing",
+      message: "The desktop parser did not return import data for this file.",
+    }
+  }
+  const rejectedWarning = parse.warnings.find((warning) => desktopImportRejectedWarningCodes.has(warning.code))
+  if (rejectedWarning) return rejectedWarning
+  if (parse.terminationStatus === "error") {
+    return {
+      code: "calculation_error_termination",
+      message: parse.terminationLabel && parse.terminationLabel !== "error"
+        ? `Calculation ended with ${parse.terminationLabel}.`
+        : "Calculation output ended with error termination.",
+    }
+  }
+  if (parse.terminationStatus === "running") {
+    return {
+      code: "calculation_incomplete",
+      message: "Calculation output is incomplete or still running.",
+    }
+  }
+  if (!parse.parsed) return firstImportParseFailureWarning(file)
+  return undefined
 }
 
 function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: string): SourceFile[] {
@@ -3504,6 +3607,60 @@ function buildEnergyRowsSignature(
     JSON.stringify(node.corrections ?? []),
   ].join("~")).join("||")
   return `${options.baselineNodeId ?? ""}#${options.energySource}#${options.outputUnit}#${edgeSignature}#${nodeSignature}`
+}
+
+function referencedStoredPathsForProject({
+  projectId,
+  activeProjectId,
+  currentSnapshot,
+  workspaces,
+}: {
+  projectId: string
+  activeProjectId: string
+  currentSnapshot: ProjectWorkspaceSnapshot
+  workspaces: Record<string, ProjectWorkspaceSnapshot>
+}): string[] {
+  const files = projectId === activeProjectId
+    ? currentSnapshot.files
+    : workspaces[projectId]?.files ?? []
+  return Array.from(new Set(files
+    .map((file) => file.storedPath)
+    .filter((storedPath): storedPath is string => Boolean(storedPath))))
+}
+
+function desktopImportFailureShouldRemovePlaceholder(file: ImportSourceFile): boolean {
+  return Boolean(desktopImportParseRejectionWarning(file))
+}
+
+function shouldRemoveFailedDesktopImportFile(file: SourceFile, failedImport: ImportSourceFile): boolean {
+  if (file.id === failedImport.id) return true
+  if (file.storedPath || file.status !== "staged") return false
+  if (!sameSourceFileReplacementTarget(file, failedImport)) return false
+  const parse = file.parse
+  if (!parse) return true
+  if (parse.parsed) return false
+  return parse.warnings.some((warning) => (
+    warning.code === "parse_deferred"
+    || warning.code === "unsupported_format"
+    || warning.code === "import_preview_failed"
+    || warning.code === "import_preview_missing"
+    || warning.code === "import_parse_failed"
+    || warning.code === "parse_failed"
+    || warning.code === "cclib_parse_empty"
+    || warning.code === "cclib_parse_failed"
+    || warning.code === "source_materialize_failed"
+    || warning.code === "full_file_read_failed"
+  ))
+}
+
+function sameSourceFileReplacementTarget(file: SourceFile, importedFile: ImportSourceFile): boolean {
+  return sourceFileDisplayGroupKey(file) === sourceFileDisplayGroupKey(importedFile)
+    && sourceFileLooksLikeSolutionLog(file) === sourceFileLooksLikeSolutionLog(importedFile)
+    && normalizedSourceFileName(file.name) === normalizedSourceFileName(importedFile.name)
+}
+
+function normalizedSourceFileName(name: string): string {
+  return name.trim().toLowerCase()
 }
 
 function EngineStatusPill({ status }: { status: DesktopEngineStatus | null }) {

@@ -99,6 +99,8 @@ describe("fileDisplay", () => {
       displayKind: "Gaussian",
       hasGasLog: true,
       hasSolutionLog: true,
+      hasParsedGasLog: true,
+      hasParsedSolutionLog: true,
     })
     expect(groups[0].files.map((file) => file.id)).toEqual(["gas", "solution"])
     expect(groups[1]).toMatchObject({
@@ -107,6 +109,8 @@ describe("fileDisplay", () => {
       displayKind: "XYZ",
       hasGasLog: false,
       hasSolutionLog: false,
+      hasParsedGasLog: false,
+      hasParsedSolutionLog: false,
     })
   })
 
@@ -123,6 +127,8 @@ describe("fileDisplay", () => {
       displayName: "i1p6",
       hasGasLog: true,
       hasSolutionLog: true,
+      hasParsedGasLog: true,
+      hasParsedSolutionLog: true,
     })
     expect(groups[0].files.map((file) => file.id)).toEqual(["gas", "solution"])
   })
@@ -138,6 +144,8 @@ describe("fileDisplay", () => {
       displayName: "i1p6-sol.log",
       hasGasLog: false,
       hasSolutionLog: true,
+      hasParsedGasLog: false,
+      hasParsedSolutionLog: true,
     })
   })
 

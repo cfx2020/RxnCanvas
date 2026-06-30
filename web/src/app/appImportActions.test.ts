@@ -68,9 +68,9 @@ describe("appImportActions", () => {
     expect(stageSourceFilesForProject.mock.calls[0][2]).toEqual({ autoRegister: false })
   })
 
-  it("lets desktop file drops attach native paths to staged placeholders", async () => {
+  it("keeps native paths out of deferred staged placeholders", async () => {
     const stageSourceFilesForProject = vi.fn()
-    await importFilesForProjectAction({
+    const importedFiles = await importFilesForProjectAction({
       fileList: [new File([""], "finder.log")],
       projectId: "p5",
       stageSourceFilesForProject,
@@ -83,8 +83,30 @@ describe("appImportActions", () => {
     expect(stageSourceFilesForProject.mock.calls[0][1][0]).toMatchObject({
       name: "finder.log",
       preview: "",
-      sourcePath: "/Users/linsay/Gaussian/finder.log",
     })
+    expect(stageSourceFilesForProject.mock.calls[0][1][0].sourcePath).toBeUndefined()
+    expect(importedFiles[0].sourcePath).toBe("/Users/linsay/Gaussian/finder.log")
+  })
+
+  it("keeps native paths out of deferred desktop dialog placeholders", async () => {
+    const stageSourceFilesForProject = vi.fn()
+    const importedFiles = await importDesktopFilesAction({
+      projectId: "p6",
+      chooseFiles: vi.fn(async () => ({
+        canceled: false,
+        files: [{ name: "dialog.log", size: 5, preview: "", sourcePath: "/Users/linsay/Gaussian/dialog.log" }],
+      })),
+      stageSourceFilesForProject,
+      stageOptions: { autoRegister: false, parseMode: "defer" },
+    })
+
+    expect(stageSourceFilesForProject).toHaveBeenCalledTimes(1)
+    expect(stageSourceFilesForProject.mock.calls[0][1][0]).toMatchObject({
+      name: "dialog.log",
+      preview: "",
+    })
+    expect(stageSourceFilesForProject.mock.calls[0][1][0].sourcePath).toBeUndefined()
+    expect(importedFiles[0].sourcePath).toBe("/Users/linsay/Gaussian/dialog.log")
   })
 
   it("stages project-file drops with update mode", async () => {

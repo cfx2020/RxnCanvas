@@ -90,6 +90,7 @@ describe("importParseJobs", () => {
       projectDirectory: "/tmp/p1.rxnflow",
       importedFiles,
       concurrency: 2,
+      referencedStoredPaths: ["sources/existing.log"],
       onFileParsed,
     })
 
@@ -103,6 +104,10 @@ describe("importParseJobs", () => {
     expect(pending.map((entry) => entry.payload.projectDirectory)).toEqual([
       "/tmp/p1.rxnflow",
       "/tmp/p1.rxnflow",
+    ])
+    expect(pending.map((entry) => entry.payload.referencedStoredPaths)).toEqual([
+      ["sources/existing.log"],
+      ["sources/existing.log"],
     ])
 
     pending.shift()?.resolve({
@@ -265,6 +270,60 @@ describe("importParseJobs", () => {
       code: "source_materialize_failed",
       message: "Could not copy source file because the import payload did not include a readable native file path.",
       target: "missing-payload.log",
+    }])
+  })
+
+  it("drops stored source metadata when the backend rejects a parsed calculation output", async () => {
+    const source = {
+      ...importSourceFile("error-terminated"),
+      parse: {
+        ...parseResult("error-terminated"),
+        parsed: false,
+        objectCount: 0,
+        parserId: null,
+        warnings: [{ code: "parse_deferred", message: "waiting" }],
+        candidates: [],
+      },
+    } satisfies ImportSourceFile
+    const rejectedParse = {
+      ...parseResult("error-terminated"),
+      terminationStatus: "error",
+      terminationLabel: "error",
+    } satisfies SourceParseResult
+    const importSourceFiles = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        files: [{
+          id: "error-terminated",
+          name: "error-terminated.log",
+          size: 10,
+          preview: "",
+          storedPath: "sources/error-terminated.log",
+          checksum: `sha256:${"b".repeat(64)}`,
+          parse: rejectedParse,
+          error: {
+            code: "calculation_error_termination",
+            message: "Calculation output ended with error termination.",
+          },
+        }],
+      },
+    }))
+
+    const [parsedFile] = await desktopParsedImportSourceFiles({
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      projectId: "p1",
+      importedFiles: [source],
+    })
+
+    expect(parsedFile.sourcePath).toBeUndefined()
+    expect(parsedFile.storedPath).toBeUndefined()
+    expect(parsedFile.checksum).toBeUndefined()
+    expect(parsedFile.status).toBe("staged")
+    expect(parsedFile.parse?.parsed).toBe(false)
+    expect(parsedFile.parse?.warnings).toEqual([{
+      code: "calculation_error_termination",
+      message: "Calculation output ended with error termination.",
+      target: "error-terminated.log",
     }])
   })
 })

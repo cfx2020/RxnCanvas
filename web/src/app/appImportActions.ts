@@ -228,7 +228,10 @@ export async function importFilesForProjectAction({
   stageOptions?: StageSourceFilesOptions
 }): Promise<ImportSourceFile[]> {
   const importedFiles = await browserImportSourceFilesFromFiles(fileList, "file", { previewMode, prepareFile })
-  await stageSourceFilesForProject(projectId, importedFiles, stageOptions)
+  const stagedFiles = stageOptions.parseMode === "defer"
+    ? importedFiles.map(deferredDesktopImportPlaceholder)
+    : importedFiles
+  await stageSourceFilesForProject(projectId, stagedFiles, stageOptions)
   return importedFiles
 }
 
@@ -264,8 +267,21 @@ export async function importDesktopFilesAction({
 }): Promise<ImportSourceFile[]> {
   const transition = desktopImportFilesTransition(await chooseFiles?.())
   if (!transition) return []
-  await stageSourceFilesForProject(projectId, transition.importedFiles, stageOptions)
+  const stagedFiles = stageOptions.parseMode === "defer"
+    ? transition.importedFiles.map(deferredDesktopImportPlaceholder)
+    : transition.importedFiles
+  await stageSourceFilesForProject(projectId, stagedFiles, stageOptions)
   return transition.importedFiles
+}
+
+export function deferredDesktopImportPlaceholder(file: ImportSourceFile): ImportSourceFile {
+  const {
+    sourcePath: _sourcePath,
+    storedPath: _storedPath,
+    checksum: _checksum,
+    ...placeholder
+  } = file
+  return placeholder
 }
 
 export function openImportPickerAction({

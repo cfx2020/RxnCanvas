@@ -10,6 +10,8 @@ export type SourceFileGroup = {
   displayKind: string
   hasGasLog: boolean
   hasSolutionLog: boolean
+  hasParsedGasLog: boolean
+  hasParsedSolutionLog: boolean
 }
 
 export type SourceFileSelectionOptions = {
@@ -243,6 +245,10 @@ export function sourceFileGroupFromFiles(key: string, files: SourceFile[]): Sour
   const primaryFile = sortedFiles.find((file) => !sourceFileLooksLikeSolutionLog(file)) ?? sortedFiles[0]
   const hasSolutionLog = sortedFiles.some(sourceFileLooksLikeSolutionLog)
   const hasGasLog = sortedFiles.some((file) => isRawLogSourceFile(file) && !sourceFileLooksLikeSolutionLog(file))
+  const hasParsedSolutionLog = sortedFiles.some(sourceFileLooksLikeParsedSolutionLog)
+  const hasParsedGasLog = sortedFiles.some((file) => isRawLogSourceFile(file)
+    && !sourceFileLooksLikeSolutionLog(file)
+    && sourceFileHasUsableParsedData(file))
   const groupedStructure = hasSolutionLog && sortedFiles.length > 1
   return {
     id: primaryFile.id,
@@ -252,6 +258,8 @@ export function sourceFileGroupFromFiles(key: string, files: SourceFile[]): Sour
     displayKind: primaryFile.kind,
     hasGasLog,
     hasSolutionLog,
+    hasParsedGasLog,
+    hasParsedSolutionLog,
   }
 }
 

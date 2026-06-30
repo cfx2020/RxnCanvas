@@ -198,7 +198,8 @@ async function persistSourceFile(projectDirectory, file, index, options) {
 
 async function materializeImportSourceFile(projectDirectory, file, index, options = {}) {
   const usedStoredPaths = options.usedStoredPaths
-  const storedPath = await importStoredPathForFile(projectDirectory, file, index, usedStoredPaths)
+  const referencedStoredPaths = normalizedStoredPathSet(options.referencedStoredPaths)
+  const storedPath = await importStoredPathForFile(projectDirectory, file, index, usedStoredPaths, referencedStoredPaths)
   usedStoredPaths?.add(storedPath)
   const targetPath = path.join(projectDirectory, storedPath)
   const sourcePath = typeof file?.sourcePath === "string" && path.isAbsolute(file.sourcePath)
@@ -227,7 +228,7 @@ async function materializeImportSourceFile(projectDirectory, file, index, option
   }
 }
 
-async function importStoredPathForFile(projectDirectory, file, index, usedStoredPaths) {
+async function importStoredPathForFile(projectDirectory, file, index, usedStoredPaths, referencedStoredPaths) {
   if (typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)) {
     const storedPath = toProjectPath(file.storedPath)
     if (!usedStoredPaths?.has(storedPath)) return storedPath
@@ -236,11 +237,23 @@ async function importStoredPathForFile(projectDirectory, file, index, usedStored
   const baseName = safeSourceFileName(file, index)
   let storedPath = toProjectPath(path.join(sourcesDirectory, baseName))
   let suffix = 2
-  while (usedStoredPaths?.has(storedPath) || await projectSourcePathExists(projectDirectory, storedPath)) {
+  while (usedStoredPaths?.has(storedPath) || await projectSourcePathConflicts(projectDirectory, storedPath, referencedStoredPaths)) {
     storedPath = toProjectPath(path.join(sourcesDirectory, withFileNameSuffix(baseName, suffix)))
     suffix += 1
   }
   return storedPath
+}
+
+function normalizedStoredPathSet(paths) {
+  if (!Array.isArray(paths)) return null
+  return new Set(paths
+    .filter(isSafeStoredSourcePath)
+    .map(toProjectPath))
+}
+
+async function projectSourcePathConflicts(projectDirectory, storedPath, referencedStoredPaths) {
+  if (referencedStoredPaths && !referencedStoredPaths.has(storedPath)) return false
+  return projectSourcePathExists(projectDirectory, storedPath)
 }
 
 async function projectSourcePathExists(projectDirectory, storedPath) {

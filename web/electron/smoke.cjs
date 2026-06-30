@@ -481,6 +481,37 @@ async function verifyProjectDirectoryStore() {
       throw new Error("Project source import wrote an empty source file for a missing payload")
     }
 
+    const orphanRawPath = path.join(tempDir, "orphan-name.log")
+    fs.writeFileSync(orphanRawPath, "SCF Done: E(RwB97XD) = -111.0", "utf8")
+    fs.writeFileSync(path.join(projectPath, "sources", "orphan-name.log"), "old orphan bytes", "utf8")
+    const rematerializedOrphan = await materializeImportSourceFile(projectPath, {
+      id: "orphan-name",
+      name: "orphan-name.log",
+      size: 31,
+      preview: "",
+      sourcePath: orphanRawPath,
+    }, 0, { usedStoredPaths: new Set(), referencedStoredPaths: [storedPath] })
+    if (rematerializedOrphan.storedPath !== "sources/orphan-name.log") {
+      throw new Error(`Project source import did not reuse an unreferenced orphan path: ${JSON.stringify(rematerializedOrphan)}`)
+    }
+    if (!fs.readFileSync(path.join(projectPath, "sources", "orphan-name.log"), "utf8").includes("-111.0")) {
+      throw new Error("Project source import did not overwrite unreferenced orphan bytes")
+    }
+
+    const referencedRawPath = path.join(tempDir, "referenced-name.log")
+    fs.writeFileSync(referencedRawPath, "SCF Done: E(RwB97XD) = -112.0", "utf8")
+    fs.writeFileSync(path.join(projectPath, "sources", "referenced-name.log"), "referenced bytes", "utf8")
+    const materializedReferenced = await materializeImportSourceFile(projectPath, {
+      id: "referenced-name",
+      name: "referenced-name.log",
+      size: 31,
+      preview: "",
+      sourcePath: referencedRawPath,
+    }, 0, { usedStoredPaths: new Set(), referencedStoredPaths: [storedPath, "sources/referenced-name.log"] })
+    if (materializedReferenced.storedPath !== "sources/referenced-name-2.log") {
+      throw new Error(`Project source import overwrote a referenced source path: ${JSON.stringify(materializedReferenced)}`)
+    }
+
     const emptyPreviewSavePath = path.join(tempDir, "Empty Preview Study")
     const emptyPreviewProject = {
       ...JSON.parse(projectContent),

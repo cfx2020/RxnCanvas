@@ -181,6 +181,19 @@ function parsedOrcaSource(label: string) {
   } as const
 }
 
+function parsedGaussianSource(label: string) {
+  return {
+    ...parsedOrcaSource(label),
+    sourceKind: "Gaussian",
+    method: "wB97X-D",
+    parserId: "gaussian-output-cclib+rxnflow-text-full-file",
+    candidates: parsedOrcaSource(label).candidates.map((candidate) => ({
+      ...candidate,
+      method: "wB97X-D",
+    })),
+  } as const
+}
+
 function unsupportedSource(label: string, message = "No supported parser recognized this source full-file.") {
   return {
     label,
@@ -210,6 +223,37 @@ function unsupportedSource(label: string, message = "No supported parser recogni
     terminationLabel: "unknown",
     jobCpuTime: null,
     elapsedTime: null,
+  } as const
+}
+
+function failedGaussianSource(label: string, code = "parse_failed", message = "The desktop parser could not parse this Gaussian log.") {
+  return {
+    ...unsupportedSource(label, message),
+    sourceKind: "Gaussian",
+    method: "unassigned",
+    energyUnit: "hartree",
+    warnings: [{
+      code,
+      message,
+      target: `${label}.log`,
+    }],
+  } as const
+}
+
+function errorTerminatedGaussianSource(
+  label: string,
+  code = "calculation_error_termination",
+  message = "Calculation output ended with error termination.",
+) {
+  return {
+    ...parsedGaussianSource(label),
+    warnings: [{
+      code,
+      message,
+      target: `${label}.log`,
+    }],
+    terminationStatus: "error",
+    terminationLabel: "error",
   } as const
 }
 
@@ -818,9 +862,191 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await within(rail).findByRole("button", { name: "rail-path-missing.log Gaussian" })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Node rail-path-missing" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("progressbar", { name: "Parsing rail-path-missing.log" })).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(within(rail).queryByRole("button", { name: "rail-path-missing.log Gaussian" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Node rail-path-missing" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("progressbar", { name: "Parsing rail-path-missing.log" })).not.toBeInTheDocument()
+    })
+    expect(await screen.findByRole("alertdialog", { name: "Import failed" })).toHaveTextContent("rail-path-missing.log")
+  })
+
+  it("keeps missing-sol lights after a failed Electron sol drop is rolled back", async () => {
+    const pending: Array<{
+      payload: any
+      resolve: (value: any) => void
+    }> = []
+    const importSourceFiles = vi.fn((payload: any) => new Promise<any>((resolve) => pending.push({ payload, resolve })))
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles: vi.fn(),
+        importSourceFiles,
+        filePathForFile: vi.fn((file: File) => `/tmp/${file.name}`),
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+    render(<App />)
+
+    const rail = screen.getByRole("complementary", { name: "Project rail" })
+    const filesSection = within(rail).getByText("Files").closest(".rail-section") as HTMLElement
+    const gasFile = new File(["SCF Done: E(RwB97XD) = -101.0"], "i1p6.log", { type: "text/plain" })
+    await act(async () => {
+      dispatchDrop(filesSection, new TestDataTransfer([gasFile]), 80, 420)
+      await Promise.resolve()
+    })
+
+    expect(await within(rail).findByRole("button", { name: "i1p6.log Gaussian" })).toBeInTheDocument()
+    await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(1))
+    const gasJob = pending.shift()
+    expect(gasJob).toBeDefined()
+    await act(async () => {
+      gasJob!.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: gasJob!.payload.files[0].id,
+            name: "i1p6.log",
+            size: gasFile.size,
+            preview: "",
+            storedPath: "sources/i1p6.log",
+            checksum: `sha256:${"1".repeat(64)}`,
+            parse: parsedGaussianSource("i1p6"),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    const gasButton = await within(rail).findByRole("button", { name: "i1p6.log Gaussian" })
+    expect(gasButton).toHaveAttribute("title", "No paired solvation log")
+    const gasRow = gasButton.closest(".project-file-card") as HTMLElement
+    expect(gasRow.querySelector(".project-file-phase-badges.has-missing-solution")).toBeInTheDocument()
+
+    const dragData = new TestDataTransfer()
+    fireEvent.dragStart(gasRow, { dataTransfer: dragData })
+    dispatchDrop(screen.getByLabelText("Graph canvas surface"), dragData, 640, 360)
+    const node = await screen.findByRole("button", { name: "Node i1p6" })
+    expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
+
+    const solFile = new File(["bad sol file"], "i1p6-sol.log", { type: "text/plain" })
+    await act(async () => {
+      dispatchDrop(filesSection, new TestDataTransfer([solFile]), 80, 420)
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(2))
+    const solJob = pending.shift()
+    expect(solJob).toBeDefined()
+    await act(async () => {
+      solJob!.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: solJob!.payload.files[0].id,
+            name: "i1p6-sol.log",
+            size: solFile.size,
+            preview: "",
+            storedPath: "sources/i1p6-sol.log",
+            checksum: `sha256:${"2".repeat(64)}`,
+            parse: errorTerminatedGaussianSource(
+              "i1p6-sol",
+              "unsupported_format",
+              "No supported parser recognized this source full-file.",
+            ),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Gaussian" })).not.toBeInTheDocument()
+      expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Raw" })).not.toBeInTheDocument()
+    })
+    const finalGasButton = await within(rail).findByRole("button", { name: "i1p6.log Gaussian" })
+    expect(finalGasButton).toHaveAttribute("title", "No paired solvation log")
+    const finalGasRow = finalGasButton.closest(".project-file-card") as HTMLElement
+    expect(finalGasRow.querySelector(".project-file-phase-badges.has-missing-solution")).toBeInTheDocument()
+    expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
+    const dialog = await screen.findByRole("alertdialog", { name: "Unsupported import format" })
+    expect(dialog).toHaveTextContent("i1p6-sol.log")
+    expect(dialog).toHaveTextContent("No supported parser recognized this source full-file.")
+  })
+
+  it("removes unsupported Electron sol placeholders when no gas file exists yet", async () => {
+    const importJob = deferred<any>()
+    const importSourceFiles = vi.fn(() => importJob.promise)
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles: vi.fn(),
+        importSourceFiles,
+        filePathForFile: vi.fn((file: File) => `/tmp/${file.name}`),
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+    render(<App />)
+
+    const rail = screen.getByRole("complementary", { name: "Project rail" })
+    const filesSection = within(rail).getByText("Files").closest(".rail-section") as HTMLElement
+    const solFile = new File(["bad sol file"], "i1p6-sol.log", { type: "text/plain" })
+    await act(async () => {
+      dispatchDrop(filesSection, new TestDataTransfer([solFile]), 80, 420)
+      await Promise.resolve()
+    })
+
+    expect(await within(rail).findByRole("button", { name: "i1p6-sol.log Gaussian" })).toBeInTheDocument()
+    const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
+    await act(async () => {
+      importJob.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: payload.files[0].id,
+            name: "i1p6-sol.log",
+            size: solFile.size,
+            preview: "",
+            parse: unsupportedSource("i1p6-sol", "No supported parser recognized this source full-file."),
+            error: {
+              code: "unsupported_format",
+              message: "No supported parser recognized this source full-file.",
+            },
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Gaussian" })).not.toBeInTheDocument()
+      expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Raw" })).not.toBeInTheDocument()
+    })
+    expect(await screen.findByRole("alertdialog", { name: "Unsupported import format" })).toHaveTextContent("i1p6-sol.log")
   })
 
   it("passes the restored project directory to Electron file-list drop imports", async () => {
@@ -943,7 +1169,7 @@ describe("App", () => {
     ])
   })
 
-  it("keeps failed solution logs grouped but unavailable for solvation pairing", async () => {
+  it("keeps failed browser-preview solution logs grouped but unavailable for solvation pairing", async () => {
     render(<App />)
 
     const input = screen.getByLabelText("Import calculation files")
@@ -1984,7 +2210,7 @@ describe("App", () => {
     expect(screen.queryByRole("progressbar", { name: "Parsing race.log" })).not.toBeInTheDocument()
   })
 
-  it("clears Electron import progress when a parser job returns without parse data", async () => {
+  it("rolls back Electron import placeholders when a parser job returns without parse data", async () => {
     const importJob = deferred<any>()
     const chooseFiles = vi.fn().mockResolvedValue({
       canceled: false,
@@ -2046,11 +2272,14 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await screen.findByRole("button", { name: "no-parse.log Gaussian" })).toBeInTheDocument()
-    expect(screen.queryByRole("progressbar", { name: "Parsing no-parse.log" })).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "no-parse.log Gaussian" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("progressbar", { name: "Parsing no-parse.log" })).not.toBeInTheDocument()
+    })
+    expect(await screen.findByRole("alertdialog", { name: "Import failed" })).toHaveTextContent("no-parse.log")
   })
 
-  it("shows an import error dialog and red file status for unsupported desktop parser results", async () => {
+  it("shows an import error dialog and removes unsupported desktop parser placeholders", async () => {
     const importJob = deferred<any>()
     const chooseFiles = vi.fn().mockResolvedValue({
       canceled: false,
@@ -2110,9 +2339,9 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    const rowButton = await screen.findByRole("button", { name: "unsupported.dat Raw" })
-    const sourceRow = rowButton.closest(".project-file-card") as HTMLElement
-    expect(sourceRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "unsupported.dat Raw" })).not.toBeInTheDocument()
+    })
     const dialog = await screen.findByRole("alertdialog", { name: "Unsupported import format" })
     expect(dialog).toHaveTextContent("unsupported.dat")
     expect(dialog).toHaveTextContent("No supported parser recognized this source full-file.")
@@ -2169,11 +2398,13 @@ describe("App", () => {
             name: "native-unsupported.dat",
             size: 1234,
             preview: "",
-            parse: unsupportedSource("native-unsupported", "No supported parser recognized this source full-file."),
-            error: {
-              code: "unsupported_format",
-              message: "No supported parser recognized this source full-file.",
-            },
+            storedPath: "sources/native-unsupported.dat",
+            checksum: `sha256:${"3".repeat(64)}`,
+            parse: errorTerminatedGaussianSource(
+              "native-unsupported",
+              "unsupported_format",
+              "No supported parser recognized this source full-file.",
+            ),
           }],
         },
       })
@@ -2187,6 +2418,9 @@ describe("App", () => {
         code: "unsupported_format",
         message: "No supported parser recognized this source full-file.",
       }],
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "native-unsupported.dat Raw" })).not.toBeInTheDocument()
     })
     expect(screen.queryByRole("alertdialog", { name: "Unsupported import format" })).not.toBeInTheDocument()
   })
@@ -2326,10 +2560,12 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(screen.queryByRole("button", { name: "Node path-missing" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("progressbar", { name: "Parsing path-missing.log" })).not.toBeInTheDocument()
-    const sourceRow = (await screen.findByRole("button", { name: "path-missing.log Gaussian" })).closest(".project-file-card") as HTMLElement
-    expect(sourceRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Node path-missing" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "path-missing.log Gaussian" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("progressbar", { name: "Parsing path-missing.log" })).not.toBeInTheDocument()
+    })
+    expect(await screen.findByRole("alertdialog", { name: "Import failed" })).toHaveTextContent("path-missing.log")
   })
 
   it("uses Electron desktop APIs for native import and report export", async () => {

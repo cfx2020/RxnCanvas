@@ -11,6 +11,7 @@ export async function desktopParsedImportSourceFiles({
   importedFiles,
   rawFiles = [],
   concurrency = defaultDesktopImportConcurrency,
+  referencedStoredPaths = [],
   onFileParsed,
 }: {
   desktopApi: RxnflowDesktopApi | undefined
@@ -19,6 +20,7 @@ export async function desktopParsedImportSourceFiles({
   importedFiles: ImportSourceFile[]
   rawFiles?: File[]
   concurrency?: number
+  referencedStoredPaths?: string[]
   onFileParsed?: (parsedFile: ImportSourceFile, index: number) => void | Promise<void>
 }): Promise<ImportSourceFile[]> {
   const importSourceFiles = desktopApi?.importSourceFiles
@@ -52,6 +54,7 @@ export async function desktopParsedImportSourceFiles({
         importSourceFiles,
         projectId,
         projectDirectory,
+        referencedStoredPaths,
         source,
         rawFile: rawFiles[index],
       })
@@ -81,6 +84,7 @@ async function desktopParsedImportSourceFile({
   importSourceFiles,
   projectId,
   projectDirectory,
+  referencedStoredPaths,
   source,
   rawFile,
 }: {
@@ -88,12 +92,13 @@ async function desktopParsedImportSourceFile({
   importSourceFiles: NonNullable<RxnflowDesktopApi["importSourceFiles"]>
   projectId: string
   projectDirectory?: string | null
+  referencedStoredPaths: string[]
   source: ImportSourceFile
   rawFile: File | undefined
 }): Promise<ImportSourceFile> {
   try {
     const payloadFile = await desktopImportPayloadFile(desktopApi, source, rawFile)
-    const response = await importSourceFiles({ projectId, projectDirectory, files: [payloadFile] })
+    const response = await importSourceFiles({ projectId, projectDirectory, referencedStoredPaths, files: [payloadFile] })
     if (!response.ok) {
       return desktopImportFailureResult(
         source,
