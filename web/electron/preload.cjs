@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld("rxnflowDesktop", {
   setPreferences: (payload) => ipcRenderer.invoke("rxnflow:set-preferences", payload),
   chooseExternalApp: (payload) => ipcRenderer.invoke("rxnflow:choose-external-app", payload),
   readChemicalClipboard: () => ipcRenderer.invoke("rxnflow:read-chemical-clipboard"),
+  writeChemicalClipboard: (payload) => ipcRenderer.invoke("rxnflow:write-chemical-clipboard", payload),
   getWindowState: () => ipcRenderer.invoke("rxnflow:get-window-state"),
   onWindowStateChanged: (callback) => {
     const listener = (_event, state) => callback(state)

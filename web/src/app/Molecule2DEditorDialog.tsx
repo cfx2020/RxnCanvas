@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { ClipboardEvent as ReactClipboardEvent, ErrorInfo, ReactNode } from "react"
+import type { ClipboardEvent as ReactClipboardEvent, ErrorInfo, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react"
 import type { Ketcher } from "ketcher-core"
 import type { FlowNode, ManualStructurePayload } from "../domain/projectPackages"
 import type { CoordinateAtom } from "../domain/sourceParsers"
@@ -17,13 +17,28 @@ type Molecule2DEditorDialogProps = {
 export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecule2DEditorDialogProps) {
   const ketcherRef = useRef<Ketcher | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const toastTimerRef = useRef<number | null>(null)
   const [status, setStatus] = useState<"loading" | "ready" | "saving" | "error">("loading")
   const [message, setMessage] = useState("Loading Ketcher editor…")
+  const [toast, setToast] = useState<{ message: string; tone: "info" | "error" } | null>(null)
   const initialStructure = useMemo(() => (
     node.manualStructureKet
     || node.manualStructureMolfile
     || (atoms.length > 0 ? molfileFromAtoms(atoms) : "")
   ), [atoms, node.manualStructureKet, node.manualStructureMolfile])
+
+  const showClipboardToast = useCallback((nextMessage: string, tone: "info" | "error" = "info", duration = 2600) => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
+    setToast({ message: nextMessage, tone })
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null)
+      toastTimerRef.current = null
+    }, duration)
+  }, [])
+
+  useEffect(() => () => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
+  }, [])
 
   const pasteStructureIntoKetcher = useCallback(async (candidate: ClipboardStructureCandidate) => {
     const ketcher = ketcherRef.current
@@ -31,21 +46,35 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
     try {
       await ketcher.setMolecule(candidate.text, { needZoom: true })
       setStatus("ready")
-      setMessage(`Pasted ${candidate.label} structure.`)
+      showClipboardToast(`Pasted ${candidate.label} structure.`)
       return true
     } catch (error) {
-      console.warn("RxnFlow Ketcher paste fallback failed", candidate.label, error)
+      console.warn("RxnFlow Ketcher paste failed", candidate.label, error)
       setStatus("ready")
-      setMessage("Ketcher could not read the pasted structure.")
+      showClipboardToast("Ketcher could not read the pasted structure.", "error", 4200)
       return false
     }
-  }, [])
+  }, [showClipboardToast])
 
   const pasteFromDesktopClipboard = useCallback(async () => {
     const result = await window.rxnflowDesktop?.readChemicalClipboard?.()
+    if (!result?.ok) {
+      setStatus("ready")
+      showClipboardToast(result?.error ? `Could not read clipboard: ${result.error}` : "Could not read the system clipboard.", "error", 4200)
+      return false
+    }
     const candidate = structureCandidateFromDesktopClipboard(result)
-    if (candidate) void pasteStructureIntoKetcher(candidate)
-  }, [pasteStructureIntoKetcher])
+    if (!candidate) {
+      setStatus("ready")
+      console.warn("RxnFlow Ketcher paste found no supported chemical clipboard payload", {
+        formats: result.formats,
+        payloadFormats: result.payloads?.map((payload) => payload.format) ?? [],
+      })
+      showClipboardToast(`Clipboard has no supported structure.${clipboardFormatsSummary(result.formats)}`, "error", 5200)
+      return false
+    }
+    return pasteStructureIntoKetcher(candidate)
+  }, [pasteStructureIntoKetcher, showClipboardToast])
 
   const handlePasteCapture = useCallback((event: ReactClipboardEvent<HTMLElement>) => {
     const candidate = structureCandidateFromClipboardData(event.clipboardData)
@@ -55,9 +84,88 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
       return
     }
     if (window.rxnflowDesktop?.readChemicalClipboard) {
+      event.preventDefault()
+      event.stopPropagation()
       void pasteFromDesktopClipboard()
     }
   }, [pasteFromDesktopClipboard, pasteStructureIntoKetcher])
+
+  const copyToDesktopClipboard = useCallback(async () => {
+    const ketcher = ketcherRef.current
+    if (!ketcher) return false
+    setStatus("ready")
+    showClipboardToast("Copying structure to ChemDraw clipboard...", "info", 1400)
+    try {
+      const [ket, molfile, cdxml, cdx] = await Promise.all([
+        ketcher.getKet().catch(() => ""),
+        ketcher.getMolfile("v3000").catch(() => ""),
+        ketcher.getCDXml().catch(() => ""),
+        ketcher.getCDX().catch(() => ""),
+      ])
+      const text = cdxml || molfile || ket || cdx
+      if (!text.trim()) {
+        showClipboardToast("There is no structure to copy.", "error", 3200)
+        return false
+      }
+      const result = await window.rxnflowDesktop?.writeChemicalClipboard?.({
+        cdxml,
+        cdx,
+        molfile,
+        ket,
+        text,
+      })
+      if (!result?.ok) {
+        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text)
+        showClipboardToast(result?.error ? `Copied plain text only: ${result.error}` : "Copied plain text only.", "error", 4200)
+        return false
+      }
+      console.info("RxnFlow wrote chemical clipboard formats", result.formats)
+      showClipboardToast("Copied structure for ChemDraw.")
+      return true
+    } catch (error) {
+      console.error("RxnFlow Ketcher native copy failed", error)
+      showClipboardToast("Ketcher could not copy the current structure.", "error", 4200)
+      return false
+    }
+  }, [showClipboardToast])
+
+  const handleKetcherClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    const target = event.target instanceof Element ? event.target : null
+    const pasteButton = target?.closest("[data-testid='paste-from-clipboard-button'], button[title*='Paste'], [aria-label*='Paste']")
+    if (pasteButton) {
+      event.preventDefault()
+      event.stopPropagation()
+      void pasteFromDesktopClipboard()
+      return
+    }
+    const copyButton = target?.closest("[data-testid='copy-to-clipboard'], button[title*='Copy'], [aria-label*='Copy']")
+    if (copyButton) {
+      event.preventDefault()
+      event.stopPropagation()
+      void copyToDesktopClipboard()
+    }
+  }, [copyToDesktopClipboard, pasteFromDesktopClipboard])
+
+  const handleClipboardShortcut = useCallback((event: ClipboardShortcutEvent) => {
+    if (isEditableTarget(event.target)) return
+    const commandKey = event.metaKey || event.ctrlKey
+    if (!commandKey || event.altKey || event.shiftKey) return
+    const key = event.key.toLowerCase()
+    if (key === "v" && window.rxnflowDesktop?.readChemicalClipboard) {
+      event.preventDefault()
+      event.stopPropagation()
+      void pasteFromDesktopClipboard()
+    }
+    if (key === "c") {
+      event.preventDefault()
+      event.stopPropagation()
+      void copyToDesktopClipboard()
+    }
+  }, [copyToDesktopClipboard, pasteFromDesktopClipboard])
+
+  const handleKetcherKeyDownCapture = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
+    handleClipboardShortcut(event)
+  }, [handleClipboardShortcut])
 
   useEffect(() => {
     const root = hostRef.current
@@ -68,6 +176,23 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["title", "aria-label"] })
     return () => observer.disconnect()
   }, [status])
+
+  useEffect(() => {
+    const handleDocumentKeyDown = (event: KeyboardEvent) => {
+      const dialog = hostRef.current?.closest(".molecule-editor-dialog")
+      if (!dialog) return
+      const target = event.target instanceof Node ? event.target : null
+      const activeElement = document.activeElement
+      const targetIsAmbient = event.target === document || event.target === document.body || event.target === document.documentElement
+      const activeInsideDialog = activeElement instanceof Node && dialog.contains(activeElement)
+      if (target && !dialog.contains(target) && !targetIsAmbient && !activeInsideDialog) return
+      handleClipboardShortcut(event)
+    }
+    document.addEventListener("keydown", handleDocumentKeyDown, true)
+    return () => document.removeEventListener("keydown", handleDocumentKeyDown, true)
+  }, [handleClipboardShortcut])
+
+  const showStatusMessage = status !== "ready"
 
   const saveStructure = async () => {
     const ketcher = ketcherRef.current
@@ -110,6 +235,8 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
             ref={hostRef}
             className="molecule-editor-host molecule-editor-host-ketcher"
             aria-label="Ketcher 2D structure editor"
+            onClickCapture={handleKetcherClickCapture}
+            onKeyDownCapture={handleKetcherKeyDownCapture}
             onPasteCapture={handlePasteCapture}
           >
             <MoleculeEditorErrorBoundary
@@ -135,7 +262,8 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
               </Suspense>
             </MoleculeEditorErrorBoundary>
           </div>
-          {status !== "ready" ? <div className={`molecule-editor-status${status === "error" ? " is-error" : ""}`}>{message}</div> : null}
+          {showStatusMessage ? <div className={`molecule-editor-status${status === "error" ? " is-error" : ""}`}>{message}</div> : null}
+          {toast ? <div className={`molecule-editor-toast${toast.tone === "error" ? " is-error" : ""}`} role="status">{toast.message}</div> : null}
         </div>
       </section>
     </div>
@@ -194,13 +322,15 @@ type DesktopChemicalClipboardResult = {
   payloads?: Array<{ format: string; text: string }>
 }
 
-const chemicalClipboardTypePattern = /(cdxml|chem|chemical|molfile|mdl|mol|rxn|skc|com\.cambridgesoft|xml|html|text\/plain)/i
+type ClipboardShortcutEvent = Pick<KeyboardEvent | ReactKeyboardEvent<HTMLElement>, "altKey" | "ctrlKey" | "key" | "metaKey" | "shiftKey" | "target" | "preventDefault" | "stopPropagation">
+
+const chemicalClipboardTypePattern = /(cdif|stru|chms|cdxm|cdx|cdxml|chem|chemical|molfile|mdl|mol|rxn|skc|com\.(cambridgesoft|perkinelmer|revvity)|xml|html|text\/plain)/i
 
 function structureCandidateFromClipboardData(clipboardData: DataTransfer | null): ClipboardStructureCandidate | null {
   if (!clipboardData) return null
   const types = Array.from(clipboardData.types)
   const orderedTypes = [
-    ...types.filter((type) => /cdxml|chem|chemical|molfile|mdl|mol|rxn|skc|com\.cambridgesoft/i.test(type)),
+    ...types.filter((type) => /cdx|cdxml|chem|chemical|molfile|mdl|mol|rxn|skc|com\.cambridgesoft/i.test(type)),
     ...types.filter((type) => /text\/plain/i.test(type)),
     ...types.filter((type) => /text\/html/i.test(type)),
   ]
@@ -231,7 +361,12 @@ function structureCandidateFromText(text: string, label: string, trustChemicalFo
   const extracted = extractKnownStructurePayload(text)
   if (extracted) return { text: extracted, label }
   const trimmed = text.trim()
-  if (trustChemicalFormat && trimmed.length > 0) return { text: trimmed, label }
+  if (!trimmed) return null
+  if (/cdx/i.test(label)) {
+    const cdx = base64CdxPayload(trimmed)
+    if (cdx) return { text: cdx, label }
+  }
+  if (trustChemicalFormat) return { text: trimmed, label }
   return null
 }
 
@@ -248,17 +383,42 @@ function extractKnownStructurePayload(text: string): string | null {
     const rxnBlock = candidate.match(/\$RXN[\s\S]*?(?:M\s+END)?/i)?.[0]
     if (rxnBlock) return rxnBlock
     if (/^\s*\{[\s\S]*\"root\"[\s\S]*\"nodes\"[\s\S]*\}\s*$/.test(candidate)) return candidate
+    const cdx = base64CdxPayload(candidate)
+    if (cdx) return cdx
   }
   return null
 }
 
 function chemicalClipboardPriority(format: string): number {
-  if (/cdxml|com\.cambridgesoft/i.test(format)) return 0
-  if (/molfile|mdl|mol/i.test(format)) return 1
-  if (/rxn/i.test(format)) return 2
-  if (/text\/plain|text/i.test(format)) return 3
-  if (/html/i.test(format)) return 4
-  return 5
+  if (/cdxml/i.test(format)) return 0
+  if (/cdif|stru|chms|cdxm|cdx|com\.(cambridgesoft|perkinelmer|revvity)/i.test(format)) return 1
+  if (/molfile|mdl|mol/i.test(format)) return 2
+  if (/rxn/i.test(format)) return 3
+  if (/text\/plain|text/i.test(format)) return 4
+  if (/html/i.test(format)) return 5
+  return 6
+}
+
+function clipboardFormatsSummary(formats: string[]): string {
+  if (formats.length === 0) return ""
+  const visible = formats.slice(0, 5).join(", ")
+  return ` Formats: ${visible}${formats.length > 5 ? ", ..." : ""}`
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target instanceof HTMLTextAreaElement && /cliparea/i.test(String(target.className))) return false
+  if (target.closest("[class*='cliparea']")) return false
+  return Boolean(target.closest("input, textarea, [contenteditable='true'], [contenteditable=''], [role='textbox']"))
+}
+
+function decorateKetcherTooltips(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>("button[title], [role='button'][title]").forEach((element) => {
+    const title = element.getAttribute("title")?.trim()
+    if (!title) return
+    element.dataset.rxnflowTooltip = title
+    if (!element.getAttribute("aria-label")) element.setAttribute("aria-label", title)
+  })
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -276,11 +436,7 @@ function decodeHtmlEntities(value: string): string {
   return textarea.value
 }
 
-function decorateKetcherTooltips(root: HTMLElement) {
-  root.querySelectorAll<HTMLElement>("button[title], [role='button'][title]").forEach((element) => {
-    const title = element.getAttribute("title")?.trim()
-    if (!title) return
-    element.dataset.rxnflowTooltip = title
-    if (!element.getAttribute("aria-label")) element.setAttribute("aria-label", title)
-  })
+function base64CdxPayload(value: string): string | null {
+  const compact = value.replace(/\s+/g, "")
+  return compact.length > 40 && /^[a-z0-9+/]+={0,2}$/i.test(compact) ? compact : null
 }

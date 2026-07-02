@@ -97,6 +97,17 @@ export type RxnflowDesktopApi = {
     payloads?: Array<{ format: string; text: string }>
     error?: string
   }>
+  writeChemicalClipboard?: (payload: {
+    cdxml?: string
+    cdx?: string
+    molfile?: string
+    ket?: string
+    text?: string
+  }) => Promise<{
+    ok: boolean
+    formats: string[]
+    error?: string
+  }>
   getWindowState?: () => Promise<{ isFullScreen: boolean; isMaximized: boolean }>
   onWindowStateChanged?: (callback: (state: { isFullScreen: boolean; isMaximized: boolean }) => void) => () => void
   onPreferencesChanged?: (callback: (preferences: DesktopPreferences) => void) => () => void

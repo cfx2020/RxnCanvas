@@ -245,8 +245,46 @@ async function chooseExternalApplication(profile) {
   }
 }
 
-const chemicalClipboardFormatPattern = /(cdxml|chem|chemical|molfile|mdl|mol|rxn|skc|com\.cambridgesoft|public\.utf8|text|xml|html)/i
+const chemicalClipboardFormatPattern = /(cdif|stru|chms|cdxm|cdx|cdxml|chem|chemical|molfile|mdl|mol|rxn|skc|com\.cambridgesoft|public\.utf8|text|xml|html)/i
 const maxClipboardPayloadChars = 2 * 1024 * 1024
+const chemicalClipboardWriteFormats = {
+  cdxml: [
+    "chemical/x-cdxml",
+    "com.revvity.cdxml",
+    "com.perkinelmer.cdxml",
+    "com.cambridgesoft.cdxml",
+    "CdxM",
+    "com.cambridgesoft.CDXML",
+    "com.cambridgesoft.ChemDraw CDXML",
+    "public.xml",
+  ],
+  cdx: [
+    "chemical/x-cdx",
+    "com.revvity.cdx",
+    "com.perkinelmer.cdx",
+    "com.revvity.chemdraw.cdx-clipboard",
+    "com.perkinelmer.chemdraw.cdx-clipboard",
+    "com.revvity.chemdraw.structure",
+    "com.perkinelmer.chemdraw.structure",
+    "com.cambridgesoft.cdx",
+    "com.cambridgesoft.CDX",
+    "com.cambridgesoft.ChemDraw CDX",
+    "CHMS",
+    "CDIF",
+    "STRU",
+  ],
+  molfile: [
+    "chemical/x-mdl-molfile",
+    "chemical/x-mdl-mol",
+    "com.revvity.external.mdl3000",
+    "com.perkinelmer.external.mdl3000",
+    "com.mdli.molfile",
+  ],
+  ket: [
+    "chemical/x-indigo-ket",
+    "application/x-indigo-ket",
+  ],
+}
 
 function chemicalClipboardPayloads(formats) {
   const payloads = []
@@ -255,7 +293,7 @@ function chemicalClipboardPayloads(formats) {
     if (!chemicalClipboardFormatPattern.test(format)) continue
     try {
       const buffer = clipboard.readBuffer(format)
-      const decoded = decodeClipboardBuffer(buffer)
+      const decoded = cdxBase64FromClipboardBuffer(format, buffer) || decodeClipboardBuffer(buffer)
       if (!decoded || seen.has(decoded)) continue
       seen.add(decoded)
       payloads.push({ format, text: clampClipboardText(decoded) })
@@ -285,6 +323,81 @@ function decodeClipboardBuffer(buffer) {
   if (!decoded) return ""
   const printableRatio = decoded.replace(/[^\x09\x0a\x0d\x20-\x7e\u00a0-\uffff]/g, "").length / Math.max(decoded.length, 1)
   return printableRatio > 0.72 ? decoded : ""
+}
+
+function cdxBase64FromClipboardBuffer(format, buffer) {
+  if (!isCdxClipboardFormat(format) || !Buffer.isBuffer(buffer) || buffer.length === 0) return ""
+  const compactText = buffer.toString("utf8").replace(/\s+/g, "")
+  if (isBase64CdxText(compactText)) return compactText
+  if (buffer.subarray(0, 8).toString("ascii") === "VjCD0100") return buffer.toString("base64")
+  return ""
+}
+
+function isCdxClipboardFormat(format) {
+  return /(cdif|stru|chms|\bcdx\b|x-cdx|cdx-clipboard|chemdraw\.structure|com\.(revvity|perkinelmer|cambridgesoft)\.cdx)/i.test(format)
+}
+
+function isBase64CdxText(value) {
+  if (!value || value.length < 16 || value.length % 4 !== 0 || !/^[a-z0-9+/]+={0,2}$/i.test(value)) return false
+  try {
+    return Buffer.from(value, "base64").subarray(0, 8).toString("ascii") === "VjCD0100"
+  } catch (_error) {
+    return false
+  }
+}
+
+function writeChemicalClipboardPayload(payload) {
+  const cdxml = normalizedClipboardText(payload?.cdxml)
+  const cdx = normalizedClipboardText(payload?.cdx)
+  const molfile = normalizedClipboardText(payload?.molfile)
+  const ket = normalizedClipboardText(payload?.ket)
+  const text = normalizedClipboardText(payload?.text) || cdxml || molfile || ket || cdx
+  const writtenFormats = []
+
+  clipboard.clear("clipboard")
+  if (text) {
+    clipboard.writeText(text, "clipboard")
+    writtenFormats.push("text/plain")
+  }
+  if (cdxml) writeClipboardTextFormats(chemicalClipboardWriteFormats.cdxml, cdxml, writtenFormats)
+  if (molfile) writeClipboardTextFormats(chemicalClipboardWriteFormats.molfile, molfile, writtenFormats)
+  if (ket) writeClipboardTextFormats(chemicalClipboardWriteFormats.ket, ket, writtenFormats)
+
+  const cdxBuffer = cdxBufferFromClipboardText(cdx)
+  if (cdxBuffer) {
+    for (const format of chemicalClipboardWriteFormats.cdx) {
+      clipboard.writeBuffer(format, cdxBuffer, "clipboard")
+      writtenFormats.push(format)
+    }
+  } else if (cdx) {
+    writeClipboardTextFormats(chemicalClipboardWriteFormats.cdx, cdx, writtenFormats)
+  }
+
+  return writtenFormats
+}
+
+function normalizedClipboardText(value) {
+  return typeof value === "string" && value.trim() ? clampClipboardText(value.trim()) : ""
+}
+
+function writeClipboardTextFormats(formats, text, writtenFormats) {
+  const buffer = Buffer.from(text, "utf8")
+  for (const format of formats) {
+    clipboard.writeBuffer(format, buffer, "clipboard")
+    writtenFormats.push(format)
+  }
+}
+
+function cdxBufferFromClipboardText(value) {
+  if (!value) return null
+  const compact = value.replace(/\s+/g, "")
+  if (!/^[a-z0-9+/]+={0,2}$/i.test(compact) || compact.length < 16) return null
+  try {
+    const buffer = Buffer.from(compact, "base64")
+    return buffer.length > 0 ? buffer : null
+  } catch (_error) {
+    return null
+  }
 }
 
 function installRuntimeSmokeExit(window) {
@@ -1301,6 +1414,22 @@ ipcMain.handle("rxnflow:read-chemical-clipboard", async () => {
       ok: false,
       formats: [],
       error: error instanceof Error ? error.message : "Could not read clipboard.",
+    }
+  }
+})
+
+ipcMain.handle("rxnflow:write-chemical-clipboard", async (_event, payload) => {
+  try {
+    const formats = writeChemicalClipboardPayload(payload && typeof payload === "object" ? payload : {})
+    return {
+      ok: true,
+      formats,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      formats: [],
+      error: error instanceof Error ? error.message : "Could not write clipboard.",
     }
   }
 })
