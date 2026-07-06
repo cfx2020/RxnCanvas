@@ -221,6 +221,7 @@ describe("CanvasWorkspace", () => {
       relativeRole: "addition-term",
       showInRelativeTable: false,
       expressionTerms: [],
+      relativeExpressionTerms: [],
     }
     const releaseNode: FlowNode = {
       ...node,

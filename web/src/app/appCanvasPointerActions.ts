@@ -1,5 +1,5 @@
 import type { PointerEvent } from "react"
-import type { CanvasViewport, FlowBarrier, FlowEdge, FlowNode, Point } from "../domain/projectPackages"
+import type { CanvasViewport, EdgeStepRole, FlowBarrier, FlowEdge, FlowNode, Point } from "../domain/projectPackages"
 import {
   connectionSnapRadiusPx,
   nearestConnectionMagnetTarget,
@@ -253,23 +253,34 @@ export function handlePointerMoveAction({
 
 export function createConnectionEdgeAction({
   edges,
+  nodes,
   sourceId,
   targetId,
+  stepRole,
   appStateSetters,
   pushEditHistory,
   now = Date.now(),
 }: {
   edges: FlowEdge[]
+  nodes?: FlowNode[]
   sourceId: string
   targetId: string
+  stepRole?: Extract<EdgeStepRole, "addition" | "release">
   appStateSetters: ProjectWorkspaceStateSetters
   pushEditHistory: PushCanvasEditHistory
   now?: number
 }): void {
-  const transition = createConnectionEdgeTransition(edges, `edge-${now}`, sourceId, targetId)
+  const transition = createConnectionEdgeTransition(edges, `edge-${now}`, sourceId, targetId, stepRole)
   if (!transition) return
+  const createdEdgeId = `edge-${now}`
   pushEditHistory()
-  appStateSetters.setEdges(transition.items)
+  if (stepRole && nodes) {
+    const participantId = stepRole === "addition" ? sourceId : targetId
+    appStateSetters.setNodes(nodes.map((node) => node.id === participantId ? { ...node, pathRole: "participant" } : node))
+  }
+  appStateSetters.setEdges(stepRole
+    ? transition.items.filter((edge) => !sideSpeciesEdgeInvolvingNode(edge, stepRole === "addition" ? sourceId : targetId) || edge.id === createdEdgeId)
+    : transition.items)
   applyCanvasSelectionState(appStateSetters, transition.selection)
   appStateSetters.setInspectorMode("inspector")
 }
@@ -308,6 +319,7 @@ export function finishConnectionDraftAtClientPointAction({
       sourceId: connectionDraft.sourceId,
       current: releasePoint,
       radius: connectionSnapRadiusWorld,
+      sourceStepRole: connectionDraft.stepRole,
     })
     : null
   const targetId = magneticTarget?.targetId ?? (releasePoint ? null : connectionDraft.snapTargetId) ?? flowNodeIdAtDocumentPoint({
@@ -319,10 +331,15 @@ export function finishConnectionDraftAtClientPointAction({
   const transition = completeConnectionDraftTransition(connectionDraft, pointerId, targetId)
   if (!transition) return false
   if (transition.target) {
+    const stepRole = magneticTarget
+      ? magneticTarget.stepRole ?? connectionDraft.stepRole
+      : (releasePoint ? connectionDraft.stepRole : (connectionDraft.snapStepRole ?? connectionDraft.stepRole))
     createConnectionEdgeAction({
       edges,
+      nodes,
       sourceId: transition.target.sourceId,
       targetId: transition.target.targetId,
+      stepRole,
       appStateSetters,
       pushEditHistory,
       now,
@@ -338,6 +355,7 @@ export function endCanvasPointerAction({
   connectionDraft,
   barrierDraft,
   nodes,
+  edges,
   barriers,
   selection,
   nodeIdSet,
@@ -351,6 +369,7 @@ export function endCanvasPointerAction({
   connectionDraft: ConnectionDraft | null
   barrierDraft: BarrierDraft | null
   nodes: FlowNode[]
+  edges: FlowEdge[]
   barriers: FlowBarrier[]
   selection: CanvasSelectionIds
   nodeIdSet: Set<string>
@@ -370,8 +389,11 @@ export function endCanvasPointerAction({
     )
     const finishedNodeDrag = transition?.nodeDrag
     if (finishedNodeDrag) {
-      if (finishedNodeDrag.moved && finishedNodeDrag.mode !== "copy") pushEditHistory(finishedNodeDrag.snapshot)
-      appStateSetters.setNodes((current) => applyNodePositions(current, finishedNodeDrag.positions))
+      const nextNodes = applyNodePositions(nodes, finishedNodeDrag.positions)
+      if (finishedNodeDrag.moved && finishedNodeDrag.mode !== "copy") {
+        pushEditHistory(finishedNodeDrag.snapshot)
+      }
+      appStateSetters.setNodes(nextNodes)
     }
     if (transition?.rubberBand) {
       applyCanvasSelectionState(appStateSetters, transition.rubberBand.selection)
@@ -404,11 +426,13 @@ export function endCanvasPointerAction({
 export function startConnectionAction({
   event,
   sourceId,
+  stepRole,
   screenToWorld,
   appStateSetters,
 }: {
   event: PointerEvent<HTMLElement>
   sourceId: string
+  stepRole?: Extract<EdgeStepRole, "addition" | "release">
   screenToWorld: ScreenToWorld
   appStateSetters: ProjectWorkspaceStateSetters
 }): void {
@@ -418,6 +442,7 @@ export function startConnectionAction({
     event.pointerId,
     sourceId,
     screenToWorld({ x: event.clientX, y: event.clientY }),
+    stepRole,
   )
   applyCanvasSelectionState(appStateSetters, transition.selection)
   appStateSetters.setKeyboardEdgeSourceId(transition.keyboardEdgeSourceId)
@@ -452,14 +477,18 @@ export function startBarrierAnnotationAction({
 export function completeConnectionToNodeAction({
   event,
   targetId,
+  targetStepRole,
   connectionDraft,
+  nodes,
   edges,
   appStateSetters,
   pushEditHistory,
 }: {
   event: PointerEvent<HTMLElement>
   targetId: string
+  targetStepRole?: Extract<EdgeStepRole, "addition">
   connectionDraft: ConnectionDraft | null
+  nodes?: FlowNode[]
   edges: FlowEdge[]
   appStateSetters: ProjectWorkspaceStateSetters
   pushEditHistory: PushCanvasEditHistory
@@ -468,13 +497,21 @@ export function completeConnectionToNodeAction({
   if (!transition) return
   event.stopPropagation()
   if (transition.target) {
+    const stepRole = targetStepRole ?? connectionDraft?.snapStepRole ?? connectionDraft?.stepRole
     createConnectionEdgeAction({
       edges,
+      nodes,
       sourceId: transition.target.sourceId,
       targetId: transition.target.targetId,
+      stepRole,
       appStateSetters,
       pushEditHistory,
     })
   }
   appStateSetters.setConnectionDraft(transition.connectionDraft)
+}
+
+function sideSpeciesEdgeInvolvingNode(edge: FlowEdge, nodeId: string): boolean {
+  return (edge.stepRole === "addition" || edge.stepRole === "release")
+    && (edge.sourceId === nodeId || edge.targetId === nodeId)
 }

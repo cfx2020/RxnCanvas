@@ -195,25 +195,24 @@ describe("appRuntimeEffects", () => {
     dispose()
   })
 
-  it("restores only the active startup project content when multiple payloads are present", async () => {
+  it("restores every startup project content in the provided order", async () => {
     const getStartupProjectContent = vi.fn(async () => ({
       canceled: false,
-      content: "{\"id\":\"newer\"}",
       projectContents: [
         { content: "{\"id\":\"older\"}", projectDirectory: "/tmp/older.rxnflow", validation: null, replaceProjects: true, source: "startup" },
         { content: "{\"id\":\"newer\"}", projectDirectory: "/tmp/newer.rxnflow", validation: null, replaceProjects: true, source: "startup" },
       ],
-      projectDirectory: "/tmp/newer.rxnflow",
-      validation: null,
-      replaceProjects: true,
-      source: "startup",
     }))
     const api = desktopApi({ getStartupProjectContent })
     const restoreProjectPackage = vi.fn()
     restoreStartupProjectFromRuntime({ desktopApi: api, restoreProjectPackage })
     await Promise.resolve()
-    expect(restoreProjectPackage).toHaveBeenCalledTimes(1)
-    expect(restoreProjectPackage).toHaveBeenCalledWith("{\"id\":\"newer\"}", null, {
+    expect(restoreProjectPackage).toHaveBeenCalledTimes(2)
+    expect(restoreProjectPackage).toHaveBeenNthCalledWith(1, "{\"id\":\"older\"}", null, {
+      replaceProjects: true,
+      projectDirectory: "/tmp/older.rxnflow",
+    })
+    expect(restoreProjectPackage).toHaveBeenNthCalledWith(2, "{\"id\":\"newer\"}", null, {
       replaceProjects: true,
       projectDirectory: "/tmp/newer.rxnflow",
     })

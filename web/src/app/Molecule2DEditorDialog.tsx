@@ -152,6 +152,17 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
     }
   }, [])
 
+  const handleKetcherRuntimeError = useCallback((nextMessage: string) => {
+    console.warn("RxnFlow Ketcher runtime error", nextMessage)
+    if (!ketcherRef.current) {
+      setStatus("error")
+      setMessage(ketcherEditorStartupMessage(nextMessage))
+      return
+    }
+    setStatus("ready")
+    showClipboardToast(ketcherRuntimeErrorToast(nextMessage), "error", 5600)
+  }, [showClipboardToast])
+
   const handleKetcherClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     const target = event.target instanceof Element ? event.target : null
     const pasteButton = target?.closest("[data-testid='paste-from-clipboard-button'], [data-testid='paste-button'], button[title='Paste'], [aria-label='Paste']")
@@ -293,10 +304,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
                     setStatus("ready")
                     setMessage("Ketcher ready. Paste from ChemDraw or draw a 2D structure.")
                   }}
-                  onError={(nextMessage) => {
-                    setStatus("error")
-                    setMessage(nextMessage)
-                  }}
+                  onError={handleKetcherRuntimeError}
                 />
               </Suspense>
             </MoleculeEditorErrorBoundary>
@@ -346,6 +354,18 @@ class MoleculeEditorErrorBoundary extends Component<{
 function editorErrorMessage(error: unknown): string {
   const detail = error instanceof Error && error.message ? ` (${error.message})` : ""
   return `Ketcher editor could not load. The rest of RxnFlow is still available.${detail}`
+}
+
+function ketcherEditorStartupMessage(message: string): string {
+  if (/styles?|initial structure|could not load/i.test(message)) return message
+  return "Ketcher editor reported an error while loading."
+}
+
+function ketcherRuntimeErrorToast(message: string): string {
+  if (/convert error|could not be loaded|loader|unsupported|invalid|unable to accept/i.test(message)) {
+    return "Ketcher could not open that structure file. Use .mol, .sdf, .rxn, .cdxml, .cdx, .ket, .smi, .smiles, .cml or .mrv."
+  }
+  return "Ketcher reported an editor error."
 }
 
 type ClipboardStructureCandidate = {

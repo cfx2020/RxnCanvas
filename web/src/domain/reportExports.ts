@@ -1,4 +1,15 @@
-import type { ParsedEnergyUnit } from "./sourceParsers"
+import {
+  energyTableCellText,
+  energyTableColumnSpecs,
+  energyTablePlainHeaders,
+  sortedEnergyTableRows,
+  visibleEnergyTableRows,
+  type EnergyTableRow,
+  type EnergyTableMode,
+} from "../app/energyDisplay"
+import { composeChemDrawEnergyDiagramCdxml, type ChemDrawCdxmlSideSpecies } from "./chemdrawCdxmlComposer"
+import type { EdgeStepRole, NodeKind, NodePathRole } from "./projectPackages"
+import type { ParsedEnergyTableData, ParsedEnergyUnit } from "./sourceParsers"
 
 export type ReportExportFormat = "png" | "cdxml" | "xlsx"
 
@@ -12,7 +23,9 @@ export type ReportExportNode = {
   id: string
   label: string
   formula: string
-  kind: string
+  kind: NodeKind
+  pathRole?: NodePathRole
+  coefficient?: number
   method: string
   solvent: string
   energyGas: number | null
@@ -27,6 +40,7 @@ export type ReportExportEdge = {
   sourceId: string
   targetId: string
   label: string
+  stepRole?: EdgeStepRole
 }
 
 export type ReportExportFile = {
@@ -40,12 +54,17 @@ export type ReportExportFile = {
 export type ReportExportEnergyRow = {
   nodeId: string
   label: string
-  kind: string
+  kind: NodeKind
   formula: string
+  charge?: number | null
+  spinMultiplicity?: number | null
   gas: number | null
   solution: number | null
   energyUnit: ParsedEnergyUnit
+  energyTable?: ParsedEnergyTableData | null
+  relativeEnergyTable?: ParsedEnergyTableData | null
   relative: number | null
+  showInRelativeTable?: boolean
 }
 
 export type ReportExportContext = {
@@ -144,190 +163,371 @@ export async function createReportArtifact(
 }
 
 export function buildReportSvg(context: ReportExportContext): string {
-  const layout = layoutNodes(context.nodes, imageWidth, imageHeight)
-  const rowByNodeId = new Map(context.rows.map((row) => [row.nodeId, row]))
-  const relativeRows = context.rows.filter((row) => typeof row.relative === "number")
-  const energyPath = buildEnergySummaryPath(relativeRows, 570, 495, 330, 88)
+  const diagram = buildEnergyDiagramModel(context)
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${imageWidth}" height="${imageHeight}" viewBox="0 0 ${imageWidth} ${imageHeight}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${diagram.width}" height="${diagram.height}" viewBox="0 0 ${diagram.width} ${diagram.height}">
   <defs>
-    <linearGradient id="rxnflow-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f8fbfd"/>
-      <stop offset="0.48" stop-color="#eef7fa"/>
-      <stop offset="1" stop-color="#f4f8f2"/>
-    </linearGradient>
-    <filter id="card-shadow" x="-20%" y="-20%" width="140%" height="150%">
-      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#33495a" flood-opacity="0.16"/>
+    <filter id="soft-shadow" x="-20%" y="-40%" width="140%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#243447" flood-opacity="0.10"/>
     </filter>
   </defs>
-  <rect width="${imageWidth}" height="${imageHeight}" rx="28" fill="url(#rxnflow-bg)"/>
-  <circle cx="472" cy="16" r="220" fill="#b1f3e5" opacity="0.22"/>
-  <text x="42" y="56" fill="#1f2f42" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">${xmlEscape(context.title || context.projectLabel)}</text>
-  <text x="43" y="84" fill="#6a7d8e" font-family="Inter, Arial, sans-serif" font-size="14">${xmlEscape(context.projectLabel)} / ${context.nodes.length} nodes / ${context.edges.length} edges</text>
+  <rect width="${diagram.width}" height="${diagram.height}" rx="0" fill="#ffffff"/>
+  <rect x="30" y="26" width="${diagram.width - 60}" height="${diagram.height - 54}" rx="8" fill="#fbfcfd" stroke="#dfe7ee"/>
+  <text x="54" y="64" fill="#172333" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800">${xmlEscape(context.title || context.projectLabel)}</text>
+  <text x="55" y="88" fill="#627386" font-family="Inter, Arial, sans-serif" font-size="13">${xmlEscape(context.projectLabel)} / relative energy diagram / kcal/mol</text>
+  <line x1="${diagram.plot.left}" y1="${diagram.plot.bottom}" x2="${diagram.plot.right}" y2="${diagram.plot.bottom}" stroke="#d8e0e8" stroke-width="1"/>
   <g stroke-linecap="round" stroke-linejoin="round">
-    ${context.edges.map((edge) => svgEdge(edge, layout)).join("\n    ")}
+    ${diagram.links.map((link) => svgEnergyConnector(link)).join("\n    ")}
   </g>
   <g>
-    ${context.nodes.map((node) => svgNode(node, layout.get(node.id), rowByNodeId.get(node.id))).join("\n    ")}
-  </g>
-  <g>
-    <rect x="526" y="402" width="388" height="152" rx="22" fill="#ffffff" opacity="0.68" stroke="#d7e4ea" filter="url(#card-shadow)"/>
-    <text x="554" y="440" fill="#26384c" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="800">Energy summary</text>
-    <text x="554" y="462" fill="#718496" font-family="Inter, Arial, sans-serif" font-size="12">${relativeRows.length} relative values in kcal/mol</text>
-    <path d="${energyPath.path}" fill="none" stroke="#4a8de8" stroke-width="4"/>
-    ${energyPath.points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="5" fill="#ffffff" stroke="#119c7e" stroke-width="3"/>`).join("\n    ")}
+    ${diagram.levels.map((level) => svgEnergyLevel(level)).join("\n    ")}
   </g>
 </svg>`
 }
 
 export function buildCdxmlReport(context: ReportExportContext): string {
-  const layout = layoutEnergyProfile(context.nodes, context.rows, 720, 460)
-  const rowByNodeId = new Map(context.rows.map((row) => [row.nodeId, row]))
-  let id = 900000
-  const nextId = () => String(id++)
-  const profileLines = cdxmlEnergyProfileLines(layout, nextId)
-  const textNodes = context.nodes.map((node) => {
-    const point = layout.get(node.id) ?? { x: 80, y: 120 }
-    const row = rowByNodeId.get(node.id)
-    const label = `${node.label}  ${formatMaybeRelative(row?.relative)}`
-    return cdxmlText(nextId(), point.x, point.y + 48, label)
+  const diagram = buildEnergyDiagramModel(context, { minWidth: 1120, height: 720, xStep: 170, sideMargin: 98 })
+  const cdxmlLevels = diagram.levels.map((level, index) => ({
+    ...level,
+    structureY: cdxmlStructureY(level, index, diagram),
+  }))
+  const sideSpecies = cdxmlSideSpecies(context, diagram, cdxmlLevels)
+  return composeChemDrawEnergyDiagramCdxml({
+    title: context.title || context.projectLabel,
+    subtitle: "Relative energy diagram (kcal/mol)",
+    width: diagram.width,
+    height: diagram.height,
+    plot: diagram.plot,
+    yMin: diagram.yMin,
+    yMax: diagram.yMax,
+    levels: cdxmlLevels.map((level) => ({
+      nodeId: level.nodeId,
+      label: level.label,
+      kind: level.kind,
+      relative: level.relative,
+      x: level.x,
+      y: level.y,
+      structureY: level.structureY,
+      lineWidth: level.lineWidth,
+      structureCdxml: level.node?.manualStructureCdxml,
+    })),
+    links: diagram.links.map((link) => ({
+      source: {
+        x: link.source.x,
+        y: link.source.y,
+        lineWidth: link.source.lineWidth,
+      },
+      target: {
+        x: link.target.x,
+        y: link.target.y,
+        lineWidth: link.target.lineWidth,
+      },
+      role: link.role,
+    })),
+    sideSpecies,
   })
-  const structureNodes = context.nodes.map((node) => {
-    const point = layout.get(node.id) ?? { x: 80, y: 120 }
-    return cdxmlManualStructure(nextId, node, point.x - 55, point.y - 118, 110, 76)
-      || cdxmlText(nextId(), point.x, point.y - 76, node.formula || node.kind, "9")
-  }).filter(Boolean)
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE CDXML SYSTEM "https://static.chemistry.revvitycloud.com/cdxml/CDXML.dtd" >
-<CDXML CreationProgram="RxnFlow" Name="${xmlAttribute(context.title || context.projectLabel)}" BoundingBox="0 0 720 460" LabelFont="1" LabelSize="10" CaptionFont="1" CaptionSize="10" LineWidth="1" BoldWidth="2" BondLength="14.4" color="1" bgcolor="0">
-  <colortable>
-    <color r="1" g="1" b="1"/>
-    <color r="0.12" g="0.18" b="0.26"/>
-    <color r="0.07" g="0.61" b="0.49"/>
-    <color r="0.32" g="0.48" b="0.62"/>
-  </colortable>
-  <fonttable>
-    <font id="1" charset="iso-8859-1" name="Arial"/>
-  </fonttable>
-  <page id="${nextId()}" BoundingBox="0 0 720 460" HeaderPosition="36" FooterPosition="424">
-    <group id="${nextId()}" Integral="yes" BoundingBox="0 0 720 460" Z="1">
-      ${cdxmlText(nextId(), 360, 42, context.title || context.projectLabel, "14")}
-      ${profileLines.join("\n      ")}
-      ${structureNodes.join("\n      ")}
-      ${textNodes.join("\n      ")}
-      ${cdxmlText(nextId(), 360, 426, "2D structures and relative energy profile generated by RxnFlow", "9")}
-    </group>
-  </page>
-</CDXML>`
 }
 
-function cdxmlManualStructure(
-  nextId: () => string,
-  node: ReportExportNode,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): string {
-  const id = nextId()
-  const fragment = extractCdxmlPageContent(node.manualStructureCdxml)
-  if (!fragment) return ""
-  const transformed = transformCdxmlFragment(fragment, nextId, x, y, width, height)
-  return `<group id="${id}" Integral="yes" RxnFlowManualStructureNode="${xmlAttribute(node.id)}" BoundingBox="${round(x)} ${round(y)} ${round(x + width)} ${round(y + height)}" Z="${id}">
-        <!-- RxnFlow manual molecule CDXML for ${xmlCommentText(node.label)} -->
-        ${transformed}
-      </group>`
+type EnergyDiagramLevel = {
+  nodeId: string
+  label: string
+  kind: NodeKind
+  node?: ReportExportNode
+  relative: number | null
+  x: number
+  y: number
+  structureY: number
+  depth: number
+  lineWidth: number
 }
 
-function extractCdxmlPageContent(cdxml: string | undefined): string {
-  if (!cdxml) return ""
-  const withoutDeclaration = cdxml.replace(/<\?xml[\s\S]*?\?>/gi, "").trim()
-  const pageMatch = withoutDeclaration.match(/<page\b[^>]*>([\s\S]*?)<\/page>/i)
-  const content = (pageMatch?.[1] ?? withoutDeclaration.replace(/<\/?CDXML\b[^>]*>/gi, "")).trim()
-  return content
-    .replace(/<colortable>[\s\S]*?<\/colortable>/gi, "")
-    .replace(/<fonttable>[\s\S]*?<\/fonttable>/gi, "")
-    .trim()
+function cdxmlStructureY(level: EnergyDiagramLevel, index: number, diagram: EnergyDiagramModel): number {
+  const stagger = index % 2 === 0 ? 0 : 46
+  return clamp(level.y + 76 + stagger, diagram.plot.top + 74, diagram.height - 132)
 }
 
-function transformCdxmlFragment(
-  fragment: string,
-  nextId: () => string,
-  targetX: number,
-  targetY: number,
-  targetWidth: number,
-  targetHeight: number,
-): string {
-  const idMap = new Map<string, string>()
-  let rewritten = fragment.replace(/\bid="([^"]+)"/g, (_match, value: string) => {
-    const mapped = idMap.get(value) ?? nextId()
-    idMap.set(value, mapped)
-    return `id="${mapped}"`
+function cdxmlSideSpecies(
+  context: ReportExportContext,
+  diagram: EnergyDiagramModel,
+  cdxmlLevels: EnergyDiagramLevel[],
+): ChemDrawCdxmlSideSpecies[] {
+  const nodeById = new Map(context.nodes.map((node) => [node.id, node]))
+  const participantIds = new Set(context.nodes.filter((node) => node.pathRole === "participant").map((node) => node.id))
+  const levelByNodeId = new Map(cdxmlLevels.map((level) => [level.nodeId, level]))
+  const laneByPathId = new Map<string, number>()
+  const sideSpecies: ChemDrawCdxmlSideSpecies[] = []
+  context.edges.forEach((edge) => {
+    if (edge.stepRole !== "addition" && edge.stepRole !== "release") return
+    const participantId = participantIds.has(edge.sourceId)
+      ? edge.sourceId
+      : participantIds.has(edge.targetId)
+        ? edge.targetId
+        : null
+    if (!participantId) return
+    const pathId = edge.sourceId === participantId ? edge.targetId : edge.sourceId
+    const participant = nodeById.get(participantId)
+    const anchor = levelByNodeId.get(pathId)
+    if (!participant || !anchor) return
+    const arrowAnchor = cdxmlSideSpeciesArrowAnchor(edge.stepRole, pathId, diagram)
+    const lane = laneByPathId.get(pathId) ?? 0
+    laneByPathId.set(pathId, lane + 1)
+    sideSpecies.push({
+      role: edge.stepRole,
+      label: participant.label || participant.formula || "species",
+      structureCdxml: participant.manualStructureCdxml,
+      anchor: {
+        x: anchor.x,
+        y: anchor.y,
+        structureY: anchor.structureY,
+        lineWidth: anchor.lineWidth,
+      },
+      arrowAnchor,
+      lane,
+    })
   })
-  rewritten = rewritten.replace(/\b(object|SupersededBy|B|E)="([^"]+)"/g, (match, name: string, value: string) => {
-    const mapped = value.split(/\s+/).map((part) => idMap.get(part) ?? part).join(" ")
-    return `${name}="${mapped}"`
-  })
-
-  const bounds = cdxmlCoordinateBounds(rewritten)
-  if (!bounds) return rewritten
-  const sourceWidth = Math.max(bounds.maxX - bounds.minX, 1)
-  const sourceHeight = Math.max(bounds.maxY - bounds.minY, 1)
-  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight, 1.15)
-  const offsetX = targetX + (targetWidth - sourceWidth * scale) / 2 - bounds.minX * scale
-  const offsetY = targetY + (targetHeight - sourceHeight * scale) / 2 - bounds.minY * scale
-
-  return rewritten.replace(
-    /\b(p|BoundingBox|Head3D|Tail3D|Center3D|MajorAxisEnd3D|MinorAxisEnd3D)="([^"]+)"/g,
-    (_match, name: string, value: string) => `${name}="${transformCoordinateAttribute(name, value, scale, offsetX, offsetY)}"`,
-  )
+  return sideSpecies
 }
 
-function cdxmlCoordinateBounds(fragment: string): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  let minX = Number.POSITIVE_INFINITY
-  let minY = Number.POSITIVE_INFINITY
-  let maxX = Number.NEGATIVE_INFINITY
-  let maxY = Number.NEGATIVE_INFINITY
-  const addPoint = (x: number, y: number) => {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return
-    minX = Math.min(minX, x)
-    minY = Math.min(minY, y)
-    maxX = Math.max(maxX, x)
-    maxY = Math.max(maxY, y)
+function cdxmlSideSpeciesArrowAnchor(
+  role: "addition" | "release",
+  pathId: string,
+  diagram: EnergyDiagramModel,
+): { x: number; y: number } | undefined {
+  const link = role === "addition"
+    ? diagram.links.find((item) => item.target.nodeId === pathId)
+    : diagram.links.find((item) => item.source.nodeId === pathId)
+  if (!link) {
+    const level = diagram.levels.find((item) => item.nodeId === pathId)
+    if (!level) return undefined
+    const direction = role === "addition" ? -1 : 1
+    return { x: level.x + direction * 26, y: level.y }
   }
-  for (const match of fragment.matchAll(/\b(p|BoundingBox|Head3D|Tail3D|Center3D|MajorAxisEnd3D|MinorAxisEnd3D)="([^"]+)"/g)) {
-    const name = match[1]
-    const values = numericAttributeValues(match[2])
-    if (name.endsWith("3D")) {
-      for (let index = 0; index + 1 < values.length; index += 3) addPoint(values[index], values[index + 1])
-    } else {
-      for (let index = 0; index + 1 < values.length; index += 2) addPoint(values[index], values[index + 1])
+  const source = {
+    x: link.source.x + Math.min(Math.max(link.source.lineWidth * 0.34, 18), 24) / 2,
+    y: link.source.y,
+  }
+  const target = {
+    x: link.target.x - Math.min(Math.max(link.target.lineWidth * 0.34, 18), 24) / 2,
+    y: link.target.y,
+  }
+  return role === "addition"
+    ? interpolatePoint(target, source, 0.16)
+    : interpolatePoint(source, target, 0.16)
+}
+
+function interpolatePoint(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  amount: number,
+): { x: number; y: number } {
+  return {
+    x: start.x + (end.x - start.x) * amount,
+    y: start.y + (end.y - start.y) * amount,
+  }
+}
+
+type EnergyDiagramLink = {
+  source: EnergyDiagramLevel
+  target: EnergyDiagramLevel
+  role: EdgeStepRole | "sequential"
+}
+
+type EnergyDiagramModel = {
+  width: number
+  height: number
+  plot: {
+    left: number
+    right: number
+    top: number
+    bottom: number
+  }
+  structureBand: {
+    y: number
+    height: number
+  }
+  yMin: number
+  yMax: number
+  levels: EnergyDiagramLevel[]
+  links: EnergyDiagramLink[]
+}
+
+function buildEnergyDiagramModel(
+  context: ReportExportContext,
+  options: { minWidth?: number; height?: number; xStep?: number; sideMargin?: number } = {},
+): EnergyDiagramModel {
+  const rows = visibleEnergyTableRows(sortedReportRows(context), "relative")
+  const levelsSource = rows.length > 0 ? rows : sortedReportRows(context)
+  const layout = graphDepthLayout(context, levelsSource)
+  const xStep = options.xStep ?? 118
+  const widestColumn = Math.max(...Array.from(layout.columnSizeByDepth.values()), 1)
+  const sideMargin = options.sideMargin ?? 86
+  const width = Math.max(
+    options.minWidth ?? imageWidth,
+    (layout.maxDepth + 1) * xStep + sideMargin * 2 + Math.max(0, widestColumn - 1) * 42,
+  )
+  const height = options.height ?? imageHeight
+  const plot = { left: sideMargin, right: width - sideMargin, top: 126, bottom: height - 252 }
+  const structureBand = { y: plot.bottom + 64, height: 118 }
+  const finiteValues = levelsSource
+    .map((row) => row.relative)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+  const minValue = finiteValues.length > 0 ? Math.min(...finiteValues) : 0
+  const maxValue = finiteValues.length > 0 ? Math.max(...finiteValues) : 0
+  const padding = Math.max((maxValue - minValue) * 0.12, 3)
+  const yMin = minValue - padding
+  const yMax = maxValue + padding
+  const ySpan = Math.max(yMax - yMin, 1)
+  const nodeById = new Map(context.nodes.map((node) => [node.id, node]))
+  const levels: EnergyDiagramLevel[] = levelsSource.map((row) => {
+    const depth = layout.depthByNodeId.get(row.nodeId) ?? 0
+    const lane = layout.laneByNodeId.get(row.nodeId) ?? 0
+    const columnSize = layout.columnSizeByDepth.get(depth) ?? 1
+    const baseX = layout.maxDepth === 0
+      ? width / 2
+      : plot.left + depth * ((plot.right - plot.left) / Math.max(layout.maxDepth, 1))
+    const laneOffset = columnSize > 1 ? (lane - (columnSize - 1) / 2) * Math.min(46, xStep / Math.max(columnSize, 2)) : 0
+    const x = baseX + laneOffset
+    const relative = typeof row.relative === "number" && Number.isFinite(row.relative) ? row.relative : null
+    const y = relative == null
+      ? plot.top + (plot.bottom - plot.top) / 2
+      : plot.bottom - ((relative - yMin) / ySpan) * (plot.bottom - plot.top)
+    return {
+      nodeId: row.nodeId,
+      label: row.label,
+      kind: row.kind,
+      node: nodeById.get(row.nodeId),
+      relative,
+      x,
+      y,
+      structureY: structureBand.y + (lane % 2) * 72,
+      depth,
+      lineWidth: 66,
+    }
+  })
+  const levelByNodeId = new Map(levels.map((level) => [level.nodeId, level]))
+  const graphLinks = context.edges.flatMap((edge): EnergyDiagramLink[] => {
+    if (edge.stepRole === "addition" || edge.stepRole === "release") return []
+    const source = levelByNodeId.get(edge.sourceId)
+    const target = levelByNodeId.get(edge.targetId)
+    if (!source || !target) return []
+    return [{ source, target, role: edge.stepRole ?? "path" }]
+  })
+  const links = graphLinks.length > 0
+    ? graphLinks
+    : levels.slice(0, -1).map((source, index) => ({ source, target: levels[index + 1], role: "sequential" as const }))
+  return { width, height, plot, structureBand, yMin, yMax, levels, links }
+}
+
+type DiagramGraphLayout = {
+  depthByNodeId: Map<string, number>
+  laneByNodeId: Map<string, number>
+  columnSizeByDepth: Map<number, number>
+  maxDepth: number
+}
+
+function graphDepthLayout(context: ReportExportContext, rows: EnergyTableRow[]): DiagramGraphLayout {
+  const rowIds = new Set(rows.map((row) => row.nodeId))
+  const sortedIds = rows.map((row) => row.nodeId)
+  const sortedIndex = new Map(sortedIds.map((nodeId, index) => [nodeId, index]))
+  const pathEdges = context.edges.filter((edge) => (
+    edge.stepRole !== "addition"
+    && edge.stepRole !== "release"
+    && rowIds.has(edge.sourceId)
+    && rowIds.has(edge.targetId)
+  ))
+
+  const depthByNodeId = new Map<string, number>()
+  if (pathEdges.length === 0) {
+    sortedIds.forEach((nodeId, index) => depthByNodeId.set(nodeId, index))
+  } else {
+    sortedIds.forEach((nodeId) => depthByNodeId.set(nodeId, 0))
+    const orderedEdges = [...pathEdges].sort((left, right) => (
+      (sortedIndex.get(left.sourceId) ?? 0) - (sortedIndex.get(right.sourceId) ?? 0)
+      || (sortedIndex.get(left.targetId) ?? 0) - (sortedIndex.get(right.targetId) ?? 0)
+    ))
+    for (let pass = 0; pass < sortedIds.length; pass += 1) {
+      let changed = false
+      for (const edge of orderedEdges) {
+        const sourceDepth = depthByNodeId.get(edge.sourceId) ?? 0
+        const targetDepth = depthByNodeId.get(edge.targetId) ?? 0
+        if (targetDepth <= sourceDepth) {
+          depthByNodeId.set(edge.targetId, sourceDepth + 1)
+          changed = true
+        }
+      }
+      if (!changed) break
     }
   }
-  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null
-}
 
-function transformCoordinateAttribute(name: string, value: string, scale: number, offsetX: number, offsetY: number): string {
-  const values = numericAttributeValues(value)
-  if (values.length === 0) return value
-  const stride = name.endsWith("3D") ? 3 : 2
-  const transformed = values.map((number, index) => {
-    const position = index % stride
-    if (position === 0) return round(number * scale + offsetX)
-    if (position === 1) return round(number * scale + offsetY)
-    return round(number)
+  const columns = new Map<number, string[]>()
+  sortedIds.forEach((nodeId) => {
+    const depth = depthByNodeId.get(nodeId) ?? 0
+    columns.set(depth, [...(columns.get(depth) ?? []), nodeId])
   })
-  return transformed.join(" ")
+  const laneByNodeId = new Map<string, number>()
+  const columnSizeByDepth = new Map<number, number>()
+  for (const [depth, nodeIds] of columns.entries()) {
+    nodeIds.sort((left, right) => (sortedIndex.get(left) ?? 0) - (sortedIndex.get(right) ?? 0))
+    columnSizeByDepth.set(depth, nodeIds.length)
+    nodeIds.forEach((nodeId, index) => laneByNodeId.set(nodeId, index))
+  }
+
+  return {
+    depthByNodeId,
+    laneByNodeId,
+    columnSizeByDepth,
+    maxDepth: Math.max(...Array.from(depthByNodeId.values()), 0),
+  }
 }
 
-function numericAttributeValues(value: string): number[] {
-  return value.split(/\s+/).map((part) => Number(part)).filter((part) => Number.isFinite(part))
+function sortedReportRows(context: ReportExportContext): EnergyTableRow[] {
+  return sortedEnergyTableRows(context.rows.map(reportRowToEnergyTableRow), context.nodes, context.edges)
 }
 
-function xmlCommentText(value: string): string {
-  return value.replace(/--/g, "—")
+function reportRowToEnergyTableRow(row: ReportExportEnergyRow): EnergyTableRow {
+  return {
+    nodeId: row.nodeId,
+    label: row.label,
+    kind: row.kind,
+    formula: row.formula,
+    charge: row.charge ?? null,
+    spinMultiplicity: row.spinMultiplicity ?? null,
+    gas: row.gas,
+    solution: row.solution,
+    energyUnit: row.energyUnit,
+    energyTable: row.energyTable ?? null,
+    relativeEnergyTable: row.relativeEnergyTable ?? null,
+    relative: row.relative,
+    relativeRole: "path-point",
+    showInRelativeTable: row.showInRelativeTable ?? true,
+    expressionTerms: [],
+    relativeExpressionTerms: [],
+  }
+}
+
+function svgEnergyConnector(link: EnergyDiagramLink): string {
+  const sourceX = link.source.x + link.source.lineWidth / 2
+  const targetX = link.target.x - link.target.lineWidth / 2
+  const stroke = link.role === "addition" ? "#2b9f78" : link.role === "release" ? "#c4821f" : "#718ba3"
+  const dash = link.role === "addition" || link.role === "release" ? ` stroke-dasharray="7 6"` : ""
+  const dx = targetX - sourceX
+  const curve = Math.max(18, Math.abs(dx) * 0.42)
+  const path = dx >= 0
+    ? `M ${round(sourceX)} ${round(link.source.y)} C ${round(sourceX + curve)} ${round(link.source.y)}, ${round(targetX - curve)} ${round(link.target.y)}, ${round(targetX)} ${round(link.target.y)}`
+    : `M ${round(sourceX)} ${round(link.source.y)} C ${round(sourceX + 36)} ${round(link.source.y)}, ${round(targetX - 36)} ${round(link.target.y)}, ${round(targetX)} ${round(link.target.y)}`
+  return `<path d="${path}" fill="none" stroke="${stroke}" stroke-width="2.2"${dash}/>`
+}
+
+function svgEnergyLevel(level: EnergyDiagramLevel): string {
+  const color = level.kind === "transition" ? "#dc4033" : level.kind === "product" ? "#188b64" : "#147b68"
+  const x1 = level.x - level.lineWidth / 2
+  const x2 = level.x + level.lineWidth / 2
+  return `<g>
+      <line x1="${round(x1)}" y1="${round(level.y)}" x2="${round(x2)}" y2="${round(level.y)}" stroke="${color}" stroke-width="5" stroke-linecap="round"/>
+      <text x="${round(level.x)}" y="${round(level.y - 16)}" fill="#172333" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" text-anchor="middle">${xmlEscape(formatMaybeRelative(level.relative))}</text>
+      <text x="${round(level.x)}" y="${round(level.y + 30)}" fill="#26384c" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" text-anchor="middle">${xmlEscape(shortText(level.label, 20))}</text>
+    </g>`
 }
 
 type XlsxFormulaCell = {
@@ -341,72 +541,33 @@ function formulaCell(formula: string, value?: number | string | null): XlsxFormu
   return { formula, value }
 }
 
-function buildEnergyWorksheetRows(context: ReportExportContext): XlsxCell[][] {
-  const absoluteHeader = ["Structure", "Egas", "Egas kcal/mol", "Gsol", "Gsol kcal/mol", "Type", "Formula", "Energy unit"]
-  const relativeHeader = ["Structure", "ΔEgas", "ΔEgas kcal/mol", "ΔGsol", "ΔGsol kcal/mol", "Type", "Formula", "Relative kcal/mol"]
-  const baseline = context.rows[0]
-  const absoluteRows = context.rows.map((row, index) => {
-    const sheetRow = index + 2
-    return [
-      row.label,
-      row.gas,
-      energyKcalFormulaCell(`B${sheetRow}`, row.gas, row.energyUnit),
-      row.solution,
-      energyKcalFormulaCell(`D${sheetRow}`, row.solution, row.energyUnit),
-      row.kind,
-      row.formula,
-      row.energyUnit,
-    ]
-  })
-  const relativeStartRow = absoluteRows.length + 4
-  const relativeRows = context.rows.map((row, index) => {
-    const absoluteSheetRow = index + 2
-    const sheetRow = relativeStartRow + index
-    const deltaGas = finiteDelta(row.gas, baseline?.gas)
-    const deltaSolution = finiteDelta(row.solution, baseline?.solution)
-    return [
-      row.label,
-      deltaGas == null ? null : formulaCell(`B${absoluteSheetRow}-B$2`, deltaGas),
-      deltaGas == null ? null : energyKcalFormulaCell(`B${sheetRow}`, deltaGas, row.energyUnit),
-      deltaSolution == null ? null : formulaCell(`D${absoluteSheetRow}-D$2`, deltaSolution),
-      deltaSolution == null ? null : energyKcalFormulaCell(`D${sheetRow}`, deltaSolution, row.energyUnit),
-      row.kind,
-      row.formula,
-      row.relative,
-    ]
-  })
+function buildEnergyWorksheetRows(context: ReportExportContext, mode: EnergyTableMode): XlsxCell[][] {
+  const rows = visibleEnergyTableRows(sortedReportRows(context), mode)
   return [
-    absoluteHeader,
-    ...absoluteRows,
-    [],
-    relativeHeader,
-    ...relativeRows,
+    energyTablePlainHeaders(mode),
+    ...rows.map((row) => energyTableColumnSpecs.map((column) => energyTableCellText(row, column, mode))),
   ]
 }
 
-function energyKcalFormulaCell(ref: string, value: number | null | undefined, unit: ParsedEnergyUnit): XlsxCell {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null
-  return formulaCell(unit === "hartree" ? `${ref}*627.5095` : ref, unit === "hartree" ? value * 627.5095 : value)
-}
-
-function finiteDelta(value: number | null | undefined, baseline: number | null | undefined): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null
-  if (typeof baseline !== "number" || !Number.isFinite(baseline)) return null
-  return value - baseline
-}
-
 export function buildXlsxWorkbook(context: ReportExportContext): Uint8Array {
-  const energyRows = buildEnergyWorksheetRows(context)
+  const relativeEnergyRows = buildEnergyWorksheetRows(context, "relative")
+  const absoluteEnergyRows = buildEnergyWorksheetRows(context, "absolute")
   const sheets = [
     {
-      name: "Energy Table",
+      name: "Energy Table Relative",
       path: "xl/worksheets/sheet1.xml",
-      rows: energyRows,
-      columnWidths: [22, 15, 16, 15, 16, 14, 18, 15],
+      rows: relativeEnergyRows,
+      columnWidths: [22, 14, 16, 18, 12, 16, 18, 17, 21, 16, 18, 12, 18],
+    },
+    {
+      name: "Energy Table Absolute",
+      path: "xl/worksheets/sheet2.xml",
+      rows: absoluteEnergyRows,
+      columnWidths: [22, 14, 16, 18, 12, 16, 18, 17, 21, 16, 18, 12, 18],
     },
     {
       name: "Import Files",
-      path: "xl/worksheets/sheet2.xml",
+      path: "xl/worksheets/sheet3.xml",
       rows: [
         ["Name", "Kind", "Size bytes", "Status"],
         ...context.files.map((file) => [file.name, file.kind, file.size, file.status]),
@@ -414,7 +575,7 @@ export function buildXlsxWorkbook(context: ReportExportContext): Uint8Array {
     },
     {
       name: "Export Metadata",
-      path: "xl/worksheets/sheet3.xml",
+      path: "xl/worksheets/sheet4.xml",
       rows: [
         ["Key", "Value"],
         ["project", context.projectLabel],
@@ -442,19 +603,20 @@ export function buildXlsxWorkbook(context: ReportExportContext): Uint8Array {
 }
 
 async function buildPngReport(context: ReportExportContext): Promise<Uint8Array> {
+  const diagram = buildEnergyDiagramModel(context)
   const svg = buildReportSvg(context)
-  const rasterized = await rasterizeSvgToPng(svg)
+  const rasterized = await rasterizeSvgToPng(svg, diagram.width, diagram.height)
   return rasterized ?? buildFallbackPng(context)
 }
 
-async function rasterizeSvgToPng(svg: string): Promise<Uint8Array | null> {
+async function rasterizeSvgToPng(svg: string, width: number, height: number): Promise<Uint8Array | null> {
   if (typeof document === "undefined" || typeof Image === "undefined") return null
   const canvas = document.createElement("canvas")
   const context = canvas.getContext("2d")
   if (!context || typeof canvas.toBlob !== "function") return null
 
-  canvas.width = imageWidth
-  canvas.height = imageHeight
+  canvas.width = width
+  canvas.height = height
   const image = new Image()
   const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
   const loaded = new Promise<boolean>((resolve) => {
@@ -523,33 +685,6 @@ function layoutEnergyProfile(
     layout.set(node.id, { x, y })
   })
   return layout
-}
-
-function cdxmlEnergyProfileLines(
-  layout: Map<string, { x: number; y: number }>,
-  nextId: () => string,
-): string[] {
-  const points = Array.from(layout.values()).sort((a, b) => a.x - b.x)
-  const lines: string[] = []
-  const halfWidth = 28
-  points.forEach((point, index) => {
-    lines.push(cdxmlLine(nextId(), point.x - halfWidth, point.y, point.x + halfWidth, point.y, "2.2", "3"))
-    const next = points[index + 1]
-    if (next) lines.push(cdxmlLine(nextId(), point.x + halfWidth, point.y, next.x - halfWidth, next.y, "1.3", "4"))
-  })
-  return lines
-}
-
-function cdxmlLine(
-  id: string,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  lineWidth = "1",
-  color = "1",
-): string {
-  return `<graphic id="${id}" GraphicType="Line" LineWidth="${lineWidth}" color="${color}" Tail3D="${round(x1)} ${round(y1)} 0" Head3D="${round(x2)} ${round(y2)} 0" BoundingBox="${round(Math.min(x1, x2))} ${round(Math.min(y1, y2))} ${round(Math.max(x1, x2))} ${round(Math.max(y1, y2))}" Z="${id}"/>`
 }
 
 function svgNode(
@@ -864,10 +999,6 @@ function drawLine(
     const y = y1 + (y2 - y1) * (index / steps)
     fillRect(pixels, width, x - 2, y - 2, 4, 4, color)
   }
-}
-
-function cdxmlText(id: string, x: number, y: number, value: string, size = "10"): string {
-  return `<t id="${id}" p="${round(x)} ${round(y)}" BoundingBox="${round(x - 120)} ${round(y - 14)} ${round(x + 120)} ${round(y + 14)}" CaptionJustification="Center" Justification="Center" LineHeight="auto" Z="${id}"><s font="1" size="${size}" color="1" face="0">${xmlEscape(value)}</s></t>`
 }
 
 function formatMaybeRelative(value: number | null | undefined): string {

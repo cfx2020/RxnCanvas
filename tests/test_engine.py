@@ -66,7 +66,8 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertTrue(gaussian.parsed)
         self.assertEqual(gaussian.sourceKind, "Gaussian")
         self.assertEqual(gaussian.formula, "C10H12")
-        self.assertEqual(gaussian.kind, "transition")
+        self.assertEqual(gaussian.kind, "intermediate")
+        self.assertEqual(gaussian.candidates[0].roleHint, "unknown")
         self.assertEqual(gaussian.energyUnit, "hartree")
         self.assertEqual(gaussian.parserId, "gaussian-log-text-preview")
         self.assertEqual(gaussian.parseScope, "preview")
@@ -78,6 +79,17 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertAlmostEqual(gaussian.energyTable.egasHartree if gaussian.energyTable else 0, -232.487921)
         self.assertAlmostEqual(gaussian.energyTable.ggas1mHartree if gaussian.energyTable else 0, -232.275788)
 
+        gaussian_ts = parse_source_preview(
+            "generic.log",
+            "\n".join([
+                "#p wb97xd/genecp opt=(ts,calcfc) freq",
+                "Stoichiometry C10H12",
+                "SCF Done: E(RwB97XD) = -232.487921 A.U.",
+            ]),
+        )
+        self.assertEqual(gaussian_ts.kind, "transition")
+        self.assertEqual(gaussian_ts.candidates[0].roleHint, "transition")
+
         orca = parse_source_preview(
             "adduct.out",
             "\n".join([
@@ -88,6 +100,16 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(orca.sourceKind, "ORCA")
         self.assertEqual(orca.kind, "product")
         self.assertAlmostEqual(orca.energySolution or 0, -231.894243)
+
+        orca_ts = parse_source_preview(
+            "generic.out",
+            "\n".join([
+                "! wB97X-D3 def2-TZVP OptTS Freq",
+                "FINAL SINGLE POINT ENERGY     -231.884002",
+            ]),
+        )
+        self.assertEqual(orca_ts.kind, "transition")
+        self.assertEqual(orca_ts.candidates[0].roleHint, "transition")
 
         xyz = parse_source_preview(
             "water.xyz",
@@ -244,6 +266,8 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertTrue(parsed.parsed)
         self.assertEqual(parsed.parserId, "gaussian-log-cclib+rxnflow-text-full-file")
         self.assertEqual(parsed.sourceKind, "Gaussian")
+        self.assertEqual(parsed.kind, "transition")
+        self.assertEqual(parsed.candidates[0].roleHint, "transition")
         self.assertEqual(parsed.formula, "H2O")
         self.assertEqual(parsed.candidates[0].charge, 0)
         self.assertEqual(parsed.candidates[0].spinMultiplicity, 1)

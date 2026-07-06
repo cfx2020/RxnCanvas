@@ -291,15 +291,16 @@ export function restoreStartupProjectFromRuntime({
 
   void desktopApi.getStartupProjectContent().then((result) => {
     if (canceled || !result || result.canceled) return
-    const payload = result.content
-      ? result as ProjectPackageOpenPayload
-      : Array.isArray(result.projectContents) && result.projectContents.length > 0
-        ? result.projectContents[result.projectContents.length - 1]
-        : null
-    if (!payload?.content) return
-    restoreProjectPackage(payload.content, payload.validation, {
-      replaceProjects: payload.replaceProjects ?? true,
-      projectDirectory: payload.projectDirectory,
+    const payloads = result.content
+      ? [result as ProjectPackageOpenPayload]
+      : Array.isArray(result.projectContents)
+        ? result.projectContents
+        : []
+    payloads.filter((payload) => payload?.content).forEach((payload, index) => {
+      restoreProjectPackage(payload.content, payload.validation, {
+        replaceProjects: payload.replaceProjects ?? index === 0,
+        projectDirectory: payload.projectDirectory,
+      })
     })
   }).catch(() => {
     // Startup restore is best-effort. Invalid recent workspaces are pruned by the main process.

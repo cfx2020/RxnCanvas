@@ -1,0 +1,60 @@
+feature: 2026-07-06-source-browser-rail
+created: 2026-07-06
+
+steps:
+  - action: "Source Browser 控件和派生列表：增加 search/filter/sort state，并从 SourceFileGroup 派生 visibleFileGroups"
+    exit_signal: "搜索、Attention/Missing/Error/Parsing 筛选、Name/Kind/Status 排序可独立工作"
+    status: done
+  - action: "原生滚动容器收敛：把 Project Rail 内容放入单一 project-rail-scroll，压缩行高和间距"
+    exit_signal: "文件列表区域触控板滚动命中同一个 overflow 容器，Project Rail 不作为 Electron drag region"
+    status: done
+  - action: "测试与视觉验证：补组件测试，跑相关测试/build，用浏览器检查控件、滚动 CSS、行高和视觉密度"
+    exit_signal: "ProjectRail 测试通过，build 通过，浏览器 DOM/CSS 检查符合 contract"
+    status: done
+  - action: "后续虚拟化评估钩子：记录 react-virtuoso / @tanstack/react-virtual 为大列表候选"
+    exit_signal: "文档明确第一版不引重型树组件，后续只在性能数据需要时替换列表渲染层"
+    status: done
+  - action: "视觉 cohesion pass：把搜索/筛选/排序默认折叠到 Files 标题入口，并恢复旧版 soft mint rail palette"
+    exit_signal: "默认左栏不出现常驻搜索/筛选大块；Project 行保持旧版配色但不大按钮化，文件列表单独压缩"
+    status: done
+
+checks:
+  - item: "输入多个 source files 后，Files 区显示 compact row，并显示 group/file count"
+    source: 验收场景
+    status: done
+  - item: "Search 输入文件名、method、formula、solvent 或 parser warning 关键词后，只显示匹配 source groups"
+    source: 验收场景
+    status: done
+  - item: "Attention 筛选显示 missing pair、parse error、parsing 任一待处理 group"
+    source: 验收场景
+    status: done
+  - item: "Missing pair / Errors / Parsing 筛选只显示对应 group"
+    source: 验收场景
+    status: done
+  - item: "Name / Kind / Status 排序只改变视图顺序，不重排项目 files 数据"
+    source: 验收场景
+    status: done
+  - item: "Files 区无匹配结果时显示 No matching files"
+    source: 验收场景
+    status: done
+  - item: "从文件行拖到画布仍使用既有 source drag payload 创建节点"
+    source: 验收场景
+    status: done
+  - item: "Project Rail 内输入、选择、滚动和拖文件不被 Electron drag region 抢事件"
+    source: 验收场景
+    status: done
+  - item: "不新增 parser、Electron import、project schema、report export 或第三方 tree/list dependency"
+    source: 范围守护
+    status: done
+  - item: "Source Browser 搜索/筛选/排序默认折叠，点 Files 标题旁放大镜后才展开"
+    source: 用户反馈
+    status: done
+  - item: "active project/file 使用旧版 soft mint 淡背景，不使用高饱和整块选中底色或竖向状态条"
+    source: 用户反馈
+    status: done
+  - item: "文件状态原因不使用原生 title tooltip；只在状态点 hover 时显示 rail 内部轻提示"
+    source: 用户反馈
+    status: done
+  - item: "Project 行高收敛到约 34px，PROJECTS label 起点与右侧 Node 面板内容区接近"
+    source: 用户反馈
+    status: done

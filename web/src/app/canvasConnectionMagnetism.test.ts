@@ -28,6 +28,10 @@ describe("canvasConnectionMagnetism", () => {
       x: 320,
       y: 187,
     })
+    expect(connectionTargetAnchor(flowNode("target", { x: 320, y: 80 }), "addition")).toEqual({
+      x: 320,
+      y: 149,
+    })
   })
 
   it("finds the nearest eligible input port inside the snap radius", () => {
@@ -51,6 +55,22 @@ describe("canvasConnectionMagnetism", () => {
       current: { x: 210, y: 187 },
       radius: 42,
     })).toBeNull()
+  })
+
+  it("prefers the visible addition connector over the middle input port", () => {
+    const source = flowNode("source", { x: 0, y: 0 })
+    const target = flowNode("target", { x: 320, y: 80 })
+
+    expect(nearestConnectionMagnetTarget({
+      nodes: [source, target],
+      sourceId: source.id,
+      current: { x: 322, y: 151 },
+      radius: 44,
+    })).toMatchObject({
+      targetId: "target",
+      point: { x: 320, y: 149 },
+      stepRole: "addition",
+    })
   })
 
   it("snaps draft endpoints to ports and clears stale snap state outside the radius", () => {
@@ -83,6 +103,40 @@ describe("canvasConnectionMagnetism", () => {
       pointerId: 7,
       sourceId: source.id,
       current: { x: 220, y: 190 },
+    })
+  })
+
+  it("stores addition snap role on draft endpoints and clears it when leaving the magnet", () => {
+    const source = flowNode("source", { x: 0, y: 0 })
+    const target = flowNode("target", { x: 320, y: 80 })
+    const draft = { pointerId: 7, sourceId: source.id, current: { x: 10, y: 10 } }
+
+    const snapped = updateConnectionDraftWithMagnetTarget({
+      draft,
+      pointerId: 7,
+      current: { x: 323, y: 151 },
+      nodes: [source, target],
+      radius: 44,
+    })
+
+    expect(snapped).toEqual({
+      pointerId: 7,
+      sourceId: source.id,
+      current: { x: 320, y: 149 },
+      snapTargetId: target.id,
+      snapStepRole: "addition",
+    })
+
+    expect(updateConnectionDraftWithMagnetTarget({
+      draft: snapped,
+      pointerId: 7,
+      current: { x: 220, y: 151 },
+      nodes: [source, target],
+      radius: 44,
+    })).toEqual({
+      pointerId: 7,
+      sourceId: source.id,
+      current: { x: 220, y: 151 },
     })
   })
 })

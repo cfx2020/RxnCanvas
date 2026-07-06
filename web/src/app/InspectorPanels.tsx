@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { ChevronDown, ExternalLink, FilePlus2, Maximize2, PanelRight, Pause, PencilLine, Play, RotateCcw, X } from "lucide-react"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
 import { classifyComputationTermination, type ParseCandidate, type SourceParseResult, type VibrationalMode } from "../domain/sourceParsers"
-import { type EnergyDisplayOptions, type EnergyTableRow, formatEnergy, formatRelativeEnergy } from "./energyDisplay"
+import { type EnergyDisplayOptions, type EnergyExpressionTerm, type EnergyTableRow, formatEnergy, formatRelativeEnergy } from "./energyDisplay"
 import { Molecule3DmolViewer } from "./Molecule3DmolViewer"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
 
@@ -186,6 +186,11 @@ function NodeInspector({
             <dd>{row ? formatRelativeEnergy(row.relative, energyDisplayOptions.outputUnit) : "pending"}</dd>
           </div>
         </dl>
+        <NodeEnergyCalculation
+          node={node}
+          row={row}
+          energyDisplayOptions={energyDisplayOptions}
+        />
       </section>
 
       <section className="node-panel-card node-structure-card" aria-label="Structure views">
@@ -218,6 +223,58 @@ function NodeInspector({
       />
     </div>
   )
+}
+
+function NodeEnergyCalculation({
+  node,
+  row,
+  energyDisplayOptions,
+}: {
+  node: FlowNode
+  row: EnergyTableRow | null
+  energyDisplayOptions: EnergyDisplayOptions
+}) {
+  const symbol = energyDisplayOptions.energySource === "solution" ? "ΔG" : "ΔE"
+  const expression = nodeEnergyCalculationExpression(node, row)
+  const value = row && !relativeEnergyRoleIsTerm(row.relativeRole)
+    ? formatRelativeEnergy(row.relative, energyDisplayOptions.outputUnit)
+    : null
+  return (
+    <div className="node-energy-calculation" aria-label={`${symbol} calculation`}>
+      <span>{symbol} =</span>
+      <code>{expression}</code>
+      {value ? <strong>= {value}</strong> : null}
+    </div>
+  )
+}
+
+function nodeEnergyCalculationExpression(node: FlowNode, row: EnergyTableRow | null): string {
+  if (!row) return "pending"
+  if (row.relativeRole === "addition-term") return `${node.label} is an added term`
+  if (row.relativeRole === "release-term") return `${node.label} is a released term`
+  if (row.relativeRole === "participant-term") return `${node.label} is a side species term`
+  if (row.relativeExpressionTerms.length === 0) return "reference"
+  return energyExpressionTermsLabel(row.relativeExpressionTerms)
+}
+
+function energyExpressionTermsLabel(terms: EnergyExpressionTerm[]): string {
+  return terms.map((term, index) => {
+    const sign = term.coefficient < 0 ? "-" : "+"
+    const magnitude = Math.abs(term.coefficient)
+    const coefficient = Math.abs(magnitude - 1) < 1e-9 ? "" : `${formatExpressionCoefficient(magnitude)} `
+    const label = `${coefficient}${term.label}`
+    return index === 0
+      ? (sign === "-" ? `- ${label}` : label)
+      : `${sign} ${label}`
+  }).join(" ")
+}
+
+function formatExpressionCoefficient(value: number): string {
+  return Number.isInteger(value) ? String(value) : Number(value.toFixed(6)).toString()
+}
+
+function relativeEnergyRoleIsTerm(role: EnergyTableRow["relativeRole"]): boolean {
+  return role === "addition-term" || role === "release-term" || role === "participant-term"
 }
 
 type NodeComputationOverview = {

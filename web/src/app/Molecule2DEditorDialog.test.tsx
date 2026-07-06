@@ -16,7 +16,7 @@ const ketcherMocks = vi.hoisted(() => ({
 }))
 
 vi.mock("./KetcherEditorHost", () => ({
-  KetcherEditorHost: ({ onReady }: { onReady: (ketcher: unknown) => void }) => {
+  KetcherEditorHost: ({ onReady, onError }: { onReady: (ketcher: unknown) => void; onError: (message: string) => void }) => {
     if (ketcherMocks.fail) throw new Error("synthetic Ketcher load failure")
     useEffect(() => {
       onReady({
@@ -36,6 +36,13 @@ vi.mock("./KetcherEditorHost", () => ({
         <textarea data-testid="ketcher-cliparea" className="cliparea-module_cliparea__GdPrN" />
         <button type="button" data-testid="copy-button" title="Copy">Copy</button>
         <button type="button" data-testid="paste-button" title="Paste">Paste</button>
+        <button
+          type="button"
+          data-testid="open-file-error"
+          onClick={() => onError("Convert error! Given string could not be loaded as molecule. array: invalid index -1")}
+        >
+          Open file error
+        </button>
         <button type="button" data-testid="paste-from-clipboard-button">Paste from clipboard</button>
         <button type="button" data-testid="copy-to-clipboard">Copy to clipboard</button>
       </div>
@@ -59,11 +66,13 @@ const node: FlowNode = {
 describe("Molecule2DEditorDialog", () => {
   let consoleError: ReturnType<typeof vi.spyOn>
   let consoleInfo: ReturnType<typeof vi.spyOn>
+  let consoleWarn: ReturnType<typeof vi.spyOn>
   let originalDesktop: unknown
 
   beforeEach(() => {
     consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
     consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined)
+    consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
     originalDesktop = window.rxnflowDesktop
     ketcherMocks.fail = false
     ketcherMocks.setMolecule.mockReset()
@@ -87,6 +96,7 @@ describe("Molecule2DEditorDialog", () => {
   afterEach(() => {
     consoleError.mockRestore()
     consoleInfo.mockRestore()
+    consoleWarn.mockRestore()
     window.rxnflowDesktop = originalDesktop as typeof window.rxnflowDesktop
   })
 
@@ -181,6 +191,27 @@ describe("Molecule2DEditorDialog", () => {
     await waitFor(() => {
       expect(ketcherMocks.addFragment).toHaveBeenCalledWith("CCO", { needZoom: true })
     })
+  })
+
+  it("keeps Ketcher file-open conversion failures as a compact toast", async () => {
+    const { container } = render(
+      <Molecule2DEditorDialog
+        node={node}
+        atoms={[]}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^save$/i })).toBeEnabled()
+    })
+
+    fireEvent.click(await screen.findByTestId("open-file-error"))
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Ketcher could not open that structure file.")
+    expect(screen.queryByText(/array: invalid index/i)).not.toBeInTheDocument()
+    expect(container.querySelector(".molecule-editor-status")).toBeNull()
   })
 
   it("routes the Ketcher copy button through the native chemical clipboard", async () => {

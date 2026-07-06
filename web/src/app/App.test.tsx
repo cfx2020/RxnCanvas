@@ -490,7 +490,7 @@ describe("App", () => {
 
     const node = screen.getByRole("button", { name: "Node TS1 (Endo)" })
     const start = transformTranslate(node.style.transform)
-    const connectedEdge = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): addition + Diene" })
+    const connectedEdge = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): Addition + Diene" })
     const connectedPath = connectedEdge.querySelector(".edge-visible-path") as SVGPathElement
     const connectedPathBefore = connectedPath.getAttribute("d")
 
@@ -610,7 +610,7 @@ describe("App", () => {
     fireEvent.change(energySelect, { target: { value: "gas" } })
     fireEvent.change(unitSelect, { target: { value: "hartree" } })
 
-    expect(screen.getAllByText("0.076907 Eh").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("0.000000 Eh").length).toBeGreaterThan(0)
   })
 
   it("keeps original workbench routes visible without a backend bridge", () => {
@@ -621,15 +621,15 @@ describe("App", () => {
     const energyTable = screen.getByRole("region", { name: "Energy table" })
     expect(energyTable).toBeInTheDocument()
     expect(document.querySelector(".app-shell")).toHaveClass("has-overlay-view")
-    expect(within(energyTable).getByRole("button", { name: "Absolute" })).toHaveAttribute("aria-pressed", "true")
-    expect(within(energyTable).getByRole("button", { name: "Relative" })).toBeInTheDocument()
+    expect(within(energyTable).getByRole("button", { name: "Relative" })).toHaveAttribute("aria-pressed", "true")
+    expect(within(energyTable).getByRole("button", { name: "Absolute" })).toBeInTheDocument()
     expect(within(energyTable).getByText("Charge / Mult.")).toBeInTheDocument()
     expect(within(energyTable).queryByText("Formula")).not.toBeInTheDocument()
     const headerText = Array.from(energyTable.querySelectorAll("th")).map((cell) => cell.textContent?.replace(/\s+/g, "").trim())
-    expect(headerText).toContain("Egas(Eh)")
-    expect(headerText).toContain("Egas(kcal/mol)")
-    expect(headerText.some((header) => header?.startsWith("Ggas+1M"))).toBe(true)
-    expect(headerText).toContain("Gsol(kcal/mol)")
+    expect(headerText).toContain("ΔEgas(Eh)")
+    expect(headerText).toContain("ΔEgas(kcal/mol)")
+    expect(headerText.some((header) => header?.startsWith("ΔGgas+1M"))).toBe(true)
+    expect(headerText).toContain("ΔGsol(kcal/mol)")
     expect(headerText.join(" ")).not.toContain("627.5095")
     expect(headerText.join(" ").toLowerCase()).not.toContain("shermo")
 
@@ -985,6 +985,103 @@ describe("App", () => {
     expect(dialog).toHaveTextContent("No supported parser recognized this source full-file.")
   })
 
+  it("clears grouped file progress when a duplicate Electron sol import resolves first", async () => {
+    const pending: Array<{
+      payload: any
+      resolve: (value: any) => void
+    }> = []
+    const importSourceFiles = vi.fn((payload: any) => new Promise<any>((resolve) => pending.push({ payload, resolve })))
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles: vi.fn(),
+        importSourceFiles,
+        filePathForFile: vi.fn((file: File) => `/tmp/${file.name}`),
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "import.preview"],
+          },
+        }),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+      },
+    })
+    render(<App />)
+
+    const rail = screen.getByRole("complementary", { name: "Project rail" })
+    const filesSection = within(rail).getByText("Files").closest(".rail-section") as HTMLElement
+    const gasFile = new File(["SCF Done: E(RwB97XD) = -101.0"], "7a-1fix-tsf.log", { type: "text/plain" })
+    const slowSolFile = new File(["SCF Done: E(RwB97XD) = -102.0"], "7a-1fix-tsf-sol.log", { type: "text/plain" })
+    await act(async () => {
+      dispatchDrop(filesSection, new TestDataTransfer([gasFile, slowSolFile]), 80, 420)
+      await Promise.resolve()
+    })
+
+    const groupButton = await within(rail).findByRole("button", { name: "7a-1fix-tsf Gaussian" })
+    expect(groupButton).toBeInTheDocument()
+    expect(screen.getByRole("progressbar", { name: "Parsing 7a-1fix-tsf" })).toBeInTheDocument()
+    await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(2))
+    const gasJob = pending.find((job) => job.payload.files[0].name === "7a-1fix-tsf.log")
+    expect(gasJob).toBeDefined()
+    await act(async () => {
+      gasJob!.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: gasJob!.payload.files[0].id,
+            name: "7a-1fix-tsf.log",
+            size: gasFile.size,
+            preview: "",
+            storedPath: "sources/7a-1fix-tsf.log",
+            checksum: `sha256:${"1".repeat(64)}`,
+            parse: parsedGaussianSource("7a-1fix-tsf"),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+    expect(screen.getByRole("progressbar", { name: "Parsing 7a-1fix-tsf" })).toBeInTheDocument()
+
+    const duplicateSolFile = new File(["SCF Done: E(RwB97XD) = -102.1"], "7a-1fix-tsf-sol.log", { type: "text/plain" })
+    await act(async () => {
+      dispatchDrop(filesSection, new TestDataTransfer([duplicateSolFile]), 80, 420)
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(3))
+    const duplicateSolJob = pending.at(-1)
+    expect(duplicateSolJob).toBeDefined()
+    expect(duplicateSolJob!.payload.files[0].name).toBe("7a-1fix-tsf-sol.log")
+    await act(async () => {
+      duplicateSolJob!.resolve({
+        ok: true,
+        data: {
+          files: [{
+            id: duplicateSolJob!.payload.files[0].id,
+            name: "7a-1fix-tsf-sol.log",
+            size: duplicateSolFile.size,
+            preview: "",
+            storedPath: "sources/7a-1fix-tsf-sol.log",
+            checksum: `sha256:${"2".repeat(64)}`,
+            parse: parsedGaussianSource("7a-1fix-tsf-sol"),
+          }],
+        },
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole("progressbar", { name: "Parsing 7a-1fix-tsf" })).not.toBeInTheDocument()
+    })
+    expect(await within(rail).findByRole("button", { name: "7a-1fix-tsf Gaussian" })).toHaveAttribute("title", "Solvation log paired")
+  })
+
   it("removes unsupported Electron sol placeholders when no gas file exists yet", async () => {
     const importJob = deferred<any>()
     const importSourceFiles = vi.fn(() => importJob.promise)
@@ -1155,6 +1252,7 @@ describe("App", () => {
     expect(within(rail).queryByRole("button", { name: "Bfix6-ts-sol.log Gaussian" })).not.toBeInTheDocument()
 
     const row = groupedRowButton.closest(".project-file-card") as HTMLElement
+    expect(row).toHaveAttribute("draggable", "true")
     expect(row.querySelector(".project-file-phase-badges")).not.toBeInTheDocument()
 
     const dataTransfer = new TestDataTransfer()
@@ -1292,21 +1390,23 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Open with external app" })).toBeInTheDocument()
   })
 
-  it("updates explicit reaction path semantics from canvas context menus", () => {
+  it("keeps reaction path semantics out of canvas context menus", () => {
     render(<App />)
 
     const productNode = screen.getByRole("button", { name: "Node Endo Adduct" })
     fireEvent.contextMenu(productNode, { clientX: 840, clientY: 320 })
-    fireEvent.click(screen.getByRole("menuitem", { name: "Mark as participant" }))
-
-    expect(productNode).toHaveClass("node-participant")
-    expect(within(productNode).getByText("PART")).toBeInTheDocument()
+    expect(screen.queryByRole("menuitem", { name: "Mark as path state" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("menuitem", { name: "Mark as participant" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("menuitem", { name: "Mark as transition state" })).not.toBeInTheDocument()
+    expect(productNode).not.toHaveClass("node-participant")
 
     const edge = screen.getByRole("button", { name: "Edge TS1 (Endo) to Endo Adduct: -18.53" })
     fireEvent.contextMenu(edge, { clientX: 720, clientY: 320 })
-    fireEvent.click(screen.getByRole("menuitem", { name: "Step role: branch" }))
-
-    expect(screen.getByRole("button", { name: "Edge TS1 (Endo) to Endo Adduct: branch -18.53" })).toHaveClass("edge-role-branch")
+    expect(screen.queryByRole("menuitem", { name: "Step role: path" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("menuitem", { name: "Step role: branch" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("menuitem", { name: "Step role: addition" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("menuitem", { name: "Step role: release" })).not.toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument()
   })
 
   it("creates a reaction edge from node handles without showing edge editors in the inspector", () => {
@@ -1368,6 +1468,29 @@ describe("App", () => {
     }
   })
 
+  it("drags from a release connector to mark a released side species", () => {
+    const { container } = render(<App />)
+
+    const releaseHandle = screen.getByRole("button", { name: "Release species after TS1 (Endo)" })
+    const targetNode = screen.getByRole("button", { name: "Node Exo Adduct" })
+    const restoreTargetHit = mockElementsFromPoint([targetNode])
+
+    try {
+      dispatchPointer(releaseHandle, "pointerDown", { button: 0, clientX: 610, clientY: 320, pointerId: 83 })
+      expect(container.querySelector(".connection-preview-path.is-release")).toBeInTheDocument()
+
+      dispatchPointer(window, "pointerMove", { button: 0, clientX: 850, clientY: 580, pointerId: 83 })
+      dispatchPointer(window, "pointerUp", { button: 0, clientX: 850, clientY: 580, pointerId: 83 })
+
+      expect(screen.getByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct: Release path/ })).toBeInTheDocument()
+      expect(targetNode).toHaveTextContent("PART")
+      expect(container.querySelector(".edge-role-release")).toBeInTheDocument()
+      expect(container.querySelector(".connection-preview-path")).not.toBeInTheDocument()
+    } finally {
+      restoreTargetHit()
+    }
+  })
+
   it("creates a reaction edge with keyboard-accessible node handles", () => {
     render(<App />)
 
@@ -1412,7 +1535,7 @@ describe("App", () => {
   it("opens path label editing from the capsule without selecting the curve", () => {
     render(<App />)
 
-    const edgeCurve = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): addition + Diene" })
+    const edgeCurve = screen.getByRole("button", { name: "Edge 1,3-Butadiene to TS1 (Endo): Addition + Diene" })
     const edgeLabel = screen.getByRole("button", { name: "Edit path label + Diene" })
 
     fireEvent.pointerDown(edgeLabel, { button: 0, pointerId: 11 })
@@ -1453,8 +1576,8 @@ describe("App", () => {
     const targetNode = screen.getByRole("button", { name: "Node TS1 (Endo)" })
     const restoreElementsFromPoint = mockElementsFromPoint([targetNode])
     try {
-      const handle = screen.getByRole("button", { name: "Drag barrier annotation from 1,3-Butadiene" })
-      fireEvent.pointerDown(handle, { button: 0, clientX: 410, clientY: 390, pointerId: 21 })
+      const handle = screen.getByRole("button", { name: "Drag barrier annotation from Endo Adduct" })
+      fireEvent.pointerDown(handle, { button: 0, clientX: 650, clientY: 170, pointerId: 21 })
       fireEvent.pointerMove(handle, { button: 0, clientX: 700, clientY: 360, pointerId: 21 })
       fireEvent.pointerUp(handle, { button: 0, clientX: 700, clientY: 360, pointerId: 21 })
     } finally {
@@ -1465,20 +1588,20 @@ describe("App", () => {
     expect(container.querySelector(".barrier-guide")).toBeInTheDocument()
     expect(
       screen.getByRole("button", {
-        name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔG‡ 51.17",
+        name: "Barrier annotation from Endo Adduct to TS1 (Endo): ΔG‡ 32.05",
       }),
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 51.17")
+    expect(screen.getByRole("button", { name: "Edit barrier label from Endo Adduct to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 32.05")
 
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
     expect(within(inspector).queryByText("Selected Barrier")).not.toBeInTheDocument()
     expect(within(inspector).getByRole("region", { name: "Source inspector" })).toHaveTextContent("gaussian.log")
 
-    const barrier = screen.getByRole("button", { name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔG‡ 51.17" })
+    const barrier = screen.getByRole("button", { name: "Barrier annotation from Endo Adduct to TS1 (Endo): ΔG‡ 32.05" })
     fireEvent.contextMenu(barrier, { clientX: 620, clientY: 320 })
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }))
 
-    expect(screen.queryByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Edit barrier label from Endo Adduct to TS1 (Endo)" })).not.toBeInTheDocument()
     expect(container.querySelector(".barrier-arrow")).not.toBeInTheDocument()
   })
 
@@ -1524,8 +1647,8 @@ describe("App", () => {
     const targetNode = screen.getByRole("button", { name: "Node TS1 (Endo)" })
     const restoreElementsFromPoint = mockElementsFromPoint([targetNode])
     try {
-      const handle = screen.getByRole("button", { name: "Drag barrier annotation from 1,3-Butadiene" })
-      fireEvent.pointerDown(handle, { button: 0, clientX: 410, clientY: 390, pointerId: 22 })
+      const handle = screen.getByRole("button", { name: "Drag barrier annotation from Endo Adduct" })
+      fireEvent.pointerDown(handle, { button: 0, clientX: 650, clientY: 170, pointerId: 22 })
       fireEvent.pointerMove(handle, { button: 0, clientX: 700, clientY: 360, pointerId: 22 })
       fireEvent.pointerUp(handle, { button: 0, clientX: 700, clientY: 360, pointerId: 22 })
     } finally {
@@ -1533,14 +1656,14 @@ describe("App", () => {
     }
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
-    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 51.17")
+    expect(screen.getByRole("button", { name: "Edit barrier label from Endo Adduct to TS1 (Endo)" })).toHaveTextContent("ΔG‡ 32.05")
 
     fireEvent.change(within(toolbar).getByRole("combobox", { name: "Energy" }), { target: { value: "gas" } })
 
-    expect(screen.getByRole("button", { name: "Edit barrier label from 1,3-Butadiene to TS1 (Endo)" })).toHaveTextContent("ΔE‡ 48.26")
+    expect(screen.getByRole("button", { name: "Edit barrier label from Endo Adduct to TS1 (Endo)" })).toHaveTextContent("ΔE‡ 29.29")
     expect(
       screen.getByRole("button", {
-        name: "Barrier annotation from 1,3-Butadiene to TS1 (Endo): ΔE‡ 48.26",
+        name: "Barrier annotation from Endo Adduct to TS1 (Endo): ΔE‡ 29.29",
       }),
     ).toBeInTheDocument()
   })
@@ -1790,6 +1913,7 @@ describe("App", () => {
     fireEvent.dragOver(surface, { dataTransfer })
     expect(dataTransfer.dropEffect).toBe("copy")
     dispatchDrop(surface, dataTransfer, clientX, clientY)
+    expect(document.activeElement).toBe(surface)
 
     await waitFor(() => {
       const node = Array.from(container.querySelectorAll(".reaction-node[data-flow-node-id]"))
@@ -3114,6 +3238,85 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "4b-1.log Gaussian" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Ir open" })).toHaveAttribute("aria-current", "true")
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Nickel catalysis empty" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Ir screening empty" })).not.toBeInTheDocument()
+  })
+
+  it("restores all recent desktop workspaces on startup and keeps the active one selected", async () => {
+    const startupRestore = deferred<{
+      canceled: boolean
+      projectContents: Array<{
+        content: string
+        filePath: string
+        projectDirectory: string
+        replaceProjects: boolean
+        source: string
+        validation: null
+      }>
+    }>()
+    const projectContent = (id: string, label: string) => JSON.stringify({
+      schemaVersion: 1,
+      packageKind: "rxnflow-project",
+      project: { id, label, meta: "saved" },
+      files: [],
+      nodes: [],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      savedAt: "2026-07-03T00:00:00.000Z",
+    })
+    Object.defineProperty(window, "rxnflowDesktop", {
+      configurable: true,
+      value: {
+        platform: "darwin",
+        chooseFiles: vi.fn(),
+        getEngineStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            status: "ready",
+            engineVersion: "rxnflow-smoke-engine-v1",
+            capabilities: ["engine.status", "project.restore"],
+          },
+        }),
+        getStartupProjectContent: vi.fn(() => startupRestore.promise),
+        saveReportArtifact: vi.fn(),
+        saveProjectPackage: vi.fn(),
+        onMenuImportFiles: vi.fn(() => vi.fn()),
+        onMenuOpenProject: vi.fn(() => vi.fn()),
+        onMenuSaveProject: vi.fn(() => vi.fn()),
+        onOpenProjectContent: vi.fn(() => vi.fn()),
+      },
+    })
+
+    render(<App />)
+
+    await act(async () => {
+      startupRestore.resolve({
+        canceled: false,
+        projectContents: [
+          {
+            content: projectContent("ir-workspace", "Ir"),
+            filePath: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
+            projectDirectory: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
+            replaceProjects: true,
+            source: "startup",
+            validation: null,
+          },
+          {
+            content: projectContent("ni-workspace", "Ni"),
+            filePath: "/Users/linsay/Documents/RxnFlow/Ni.rxnflow",
+            projectDirectory: "/Users/linsay/Documents/RxnFlow/Ni.rxnflow",
+            replaceProjects: true,
+            source: "startup",
+            validation: null,
+          },
+        ],
+      })
+      await startupRestore.promise
+    })
+
+    expect(await screen.findByRole("button", { name: "Ni open" })).toHaveAttribute("aria-current", "true")
+    expect(screen.getByRole("button", { name: "Ir open" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Nickel catalysis empty" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Ir screening empty" })).not.toBeInTheDocument()

@@ -164,6 +164,14 @@ input:focus-visible,
   border-right: 1px solid rgba(118, 144, 160, 0.2);
 }
 
+.project-rail-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 .brand-block {
   display: flex;
   align-items: center;
@@ -1133,6 +1141,19 @@ input:focus-visible,
   filter: drop-shadow(0 0 7px rgba(31, 162, 131, 0.28));
 }
 
+.connection-preview-path.is-addition {
+  stroke: rgba(23, 133, 119, 0.72);
+}
+
+.connection-preview-path.is-release {
+  stroke: rgba(180, 88, 72, 0.72);
+}
+
+.connection-preview-path.is-release.is-snapped {
+  stroke: rgba(180, 88, 72, 0.9);
+  filter: drop-shadow(0 0 7px rgba(180, 88, 72, 0.28));
+}
+
 .connection-preview-snap-halo {
   fill: rgba(31, 162, 131, 0.1);
   stroke: rgba(31, 162, 131, 0.42);
@@ -1693,7 +1714,31 @@ input:focus-visible,
   cursor: crosshair;
 }
 
-.node-connector-out::before {
+.node-step-connector {
+  top: calc(50% - 38px);
+  box-shadow:
+    0 0 0 5px rgba(255, 255, 255, 0.48),
+    0 10px 22px rgba(58, 85, 104, 0.18);
+}
+
+.node-step-connector-addition {
+  left: -12px;
+  background: #1fa283;
+  cursor: crosshair;
+}
+
+.node-step-connector-release {
+  right: -12px;
+  background: #d86756;
+  cursor: crosshair;
+}
+
+.node-step-connector {
+  pointer-events: none;
+}
+
+.node-connector-out::before,
+.node-step-connector::before {
   content: "";
   position: absolute;
   inset: -15px;
@@ -1702,12 +1747,23 @@ input:focus-visible,
 
 .node-connector-out:hover,
 .node-connector-out:focus-visible,
-.node-connector-out.is-keyboard-active {
+.node-connector-out.is-keyboard-active,
+.node-step-connector-addition:hover,
+.node-step-connector-addition:focus-visible {
   outline: none;
   background: #0f7965;
   box-shadow:
-    0 0 0 8px rgba(51, 214, 169, 0.18),
+    0 0 0 5px rgba(255, 255, 255, 0.56),
     0 12px 28px rgba(31, 162, 131, 0.2);
+}
+
+.node-step-connector-release:hover,
+.node-step-connector-release:focus-visible {
+  outline: none;
+  background: #bd4e43;
+  box-shadow:
+    0 0 0 5px rgba(255, 255, 255, 0.56),
+    0 12px 28px rgba(180, 88, 72, 0.2);
 }
 
 .reaction-node.is-connection-snap-target .node-connector-in {
@@ -3725,6 +3781,18 @@ select,
   right: -7px;
 }
 
+.node-step-connector {
+  top: calc(50% - 38px);
+}
+
+.node-step-connector-addition {
+  left: -7px;
+}
+
+.node-step-connector-release {
+  right: -7px;
+}
+
 .edge-visible-path {
   stroke: rgba(72, 100, 120, 0.48);
   stroke-width: 2;
@@ -3925,6 +3993,15 @@ select,
 .reaction-node.has-input-edge .node-connector-in,
 .reaction-node.has-output-edge .node-connector-out,
 .reaction-node .node-connector-out.is-keyboard-active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) scale(1);
+}
+
+.reaction-node.is-selected .node-step-connector,
+.reaction-node:hover .node-step-connector,
+.reaction-node:focus-within .node-step-connector,
+.canvas-surface.is-connecting .reaction-node .node-step-connector-addition {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(-50%) scale(1);
@@ -4242,6 +4319,10 @@ select,
 .reaction-node:hover .node-connector,
 .reaction-node:focus-within .node-connector,
 .canvas-surface.is-connecting .reaction-node .node-connector-in,
+.canvas-surface.is-connecting .reaction-node .node-step-connector-addition,
+.reaction-node.is-selected .node-step-connector,
+.reaction-node:hover .node-step-connector,
+.reaction-node:focus-within .node-step-connector,
 .reaction-node.has-input-edge .node-connector-in,
 .reaction-node.has-output-edge .node-connector-out,
 .reaction-node .node-connector-out.is-keyboard-active {
@@ -4253,6 +4334,18 @@ select,
 }
 
 .node-connector-out {
+  right: -7px;
+}
+
+.node-step-connector {
+  top: calc(50% - 38px);
+}
+
+.node-step-connector-addition {
+  left: -7px;
+}
+
+.node-step-connector-release {
   right: -7px;
 }
 
@@ -4782,6 +4875,26 @@ select,
     0 0 0 4px rgba(217, 99, 82, 0.12);
 }
 
+.reaction-node .node-barrier-handle {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(4px) scale(0.72);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.reaction-node:hover .node-barrier-handle,
+.reaction-node:focus-within .node-barrier-handle,
+.reaction-node.is-selected .node-barrier-handle {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
 .barrier-activation-axis,
 .barrier-activation-icon {
   fill: none;
@@ -4938,6 +5051,40 @@ select,
   font-weight: 820;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.node-energy-calculation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 8px;
+  align-items: baseline;
+  margin-top: 9px;
+  border-top: 1px solid rgba(126, 152, 169, 0.12);
+  padding-top: 9px;
+}
+
+.node-energy-calculation span {
+  color: #6c8193;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+}
+
+.node-energy-calculation code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #243549;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 840;
+  line-height: 1.35;
+}
+
+.node-energy-calculation strong {
+  grid-column: 2;
+  color: #0f7965;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .node-panel-icon-button,
@@ -5256,6 +5403,7 @@ select,
 
 .theme-dark .node-panel-section-heading strong,
 .theme-dark .node-summary-grid dd,
+.theme-dark .node-energy-calculation code,
 .theme-dark .node-inspector-metrics strong,
 .theme-dark .node-energy-card .energy-row strong,
 .theme-dark .node-structure-open-copy strong,
@@ -5265,6 +5413,7 @@ select,
 
 .theme-dark .node-panel-section-heading span,
 .theme-dark .node-summary-grid dt,
+.theme-dark .node-energy-calculation span,
 .theme-dark .node-inspector-metrics span,
 .theme-dark .node-structure-open-copy em,
 .theme-dark .node-structure-open-meta,
@@ -5681,6 +5830,40 @@ select,
   font-weight: 850;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.node-energy-calculation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 8px;
+  align-items: baseline;
+  margin-top: 10px;
+  border-top: 1px solid rgba(126, 152, 169, 0.12);
+  padding-top: 10px;
+}
+
+.node-energy-calculation span {
+  color: #7a8d9d;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+}
+
+.node-energy-calculation code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #26384c;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.node-energy-calculation strong {
+  grid-column: 2;
+  color: #0f7965;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .node-overview-card {
@@ -10396,7 +10579,7 @@ select,
 .theme-dark .export-float-panel {
   top: calc(var(--rxnflow-titlebar-control-top, 10px) + 34px) !important;
   right: 46px !important;
-  width: 142px !important;
+  width: 218px !important;
   max-height: none !important;
   display: block !important;
   overflow: hidden !important;
@@ -10442,16 +10625,40 @@ select,
 
 .export-menu-list {
   display: grid !important;
-  gap: 2px !important;
+  gap: 6px !important;
+}
+
+.export-menu-heading {
+  display: grid !important;
+  gap: 3px !important;
+  margin-bottom: 10px !important;
+  padding: 0 2px 6px !important;
+  border-bottom: 1px solid rgba(126, 152, 169, 0.16) !important;
+}
+
+.export-menu-heading span {
+  color: #75899a !important;
+  font-size: 10px !important;
+  font-weight: 850 !important;
+  letter-spacing: 0 !important;
+  text-transform: uppercase !important;
+}
+
+.export-menu-heading strong {
+  color: #1f2f42 !important;
+  font-size: 14px !important;
+  font-weight: 850 !important;
+  letter-spacing: 0 !important;
 }
 
 .export-menu-item {
   width: 100% !important;
-  height: 30px !important;
+  min-height: 48px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  padding: 0 10px !important;
+  gap: 10px !important;
+  padding: 7px 9px !important;
   border: 0 !important;
   border-radius: 7px !important;
   background: transparent !important;
@@ -10463,6 +10670,42 @@ select,
   text-align: left !important;
   cursor: pointer !important;
   transition: background-color 90ms ease, color 90ms ease !important;
+}
+
+.export-menu-item-icon {
+  width: 28px !important;
+  height: 28px !important;
+  flex: 0 0 28px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 7px !important;
+  background: rgba(232, 242, 245, 0.92) !important;
+  color: #40566b !important;
+}
+
+.export-menu-item-copy {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 2px !important;
+}
+
+.export-menu-item-copy strong {
+  color: inherit !important;
+  font-size: 13px !important;
+  font-weight: 780 !important;
+  line-height: 1.1 !important;
+}
+
+.export-menu-item-copy::after {
+  content: attr(data-description);
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: #718496 !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  line-height: 1.15 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }
 
 .export-menu-item:hover,
@@ -10485,6 +10728,24 @@ select,
   color: #e3edf6 !important;
 }
 
+.theme-dark .export-menu-heading {
+  border-bottom-color: rgba(208, 226, 241, 0.14) !important;
+}
+
+.theme-dark .export-menu-heading span,
+.theme-dark .export-menu-item-copy::after {
+  color: rgba(215, 229, 241, 0.68) !important;
+}
+
+.theme-dark .export-menu-heading strong {
+  color: #f1f6fb !important;
+}
+
+.theme-dark .export-menu-item-icon {
+  background: rgba(219, 235, 250, 0.10) !important;
+  color: #dcecff !important;
+}
+
 .theme-dark .export-menu-item:hover,
 .theme-dark .export-menu-item:focus-visible {
   background: rgba(112, 172, 255, 0.18) !important;
@@ -10501,7 +10762,7 @@ select,
     top: calc(var(--rxnflow-titlebar-height, 48px) + 6px) !important;
     right: 12px !important;
     left: auto !important;
-    width: 142px !important;
+    width: min(218px, calc(100vw - 24px)) !important;
   }
 }
 
@@ -11390,6 +11651,10 @@ select,
   filter: drop-shadow(0 0 7px rgba(31, 162, 131, 0.28)) !important;
 }
 
+.connection-preview-path.is-addition.is-snapped {
+  stroke: rgba(15, 143, 116, 0.92) !important;
+}
+
 .connection-preview-snap-halo {
   fill: rgba(31, 162, 131, 0.1) !important;
   stroke: rgba(31, 162, 131, 0.42) !important;
@@ -11398,6 +11663,19 @@ select,
 }
 
 .reaction-node.is-connection-snap-target .node-connector-in {
+  width: 16px !important;
+  height: 16px !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  background: #1fa283 !important;
+  box-shadow:
+    0 0 0 6px rgba(255, 255, 255, 0.76),
+    0 0 0 13px rgba(31, 162, 131, 0.18),
+    0 16px 32px rgba(31, 162, 131, 0.28) !important;
+  transform: translateY(-50%) scale(1.08) !important;
+}
+
+.reaction-node.is-connection-snap-target-addition .node-step-connector-addition {
   width: 16px !important;
   height: 16px !important;
   opacity: 1 !important;
@@ -14065,6 +14343,7 @@ select,
   .workspace:not(.is-left-collapsed) > .project-rail .brand-block,
   .workspace:not(.is-left-collapsed) > .project-rail .rail-heading,
   .workspace:not(.is-left-collapsed) > .project-rail .rail-heading-actions,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-scroll,
   .workspace:not(.is-left-collapsed) > .project-rail .rail-section,
   .workspace:not(.is-left-collapsed) > .project-rail .rail-list,
   .workspace:not(.is-left-collapsed) > .project-rail .project-rail-project-group,
@@ -14191,6 +14470,11 @@ select,
 
 .project-rail .project-file-card {
   position: relative !important;
+  cursor: grab !important;
+}
+
+.project-rail .project-file-card:active {
+  cursor: grabbing !important;
 }
 
 .project-rail .project-file-progress {
@@ -14618,47 +14902,49 @@ select,
   flex: 0 0 auto !important;
 }
 
-/* 2026-06-30 project rail scrolling:
-   Many source files can exceed the rail height; keep the rail itself
-   scrollable while fixed context menus remain outside this clipping area. */
+/* Project rail scrolling: keep a single native scroll container for projects
+   and files; project-file drag uses browser-native HTML DnD. */
 .project-rail,
 .workspace:not(.is-left-collapsed) > .project-rail {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.project-rail-scroll,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll {
   min-height: 0 !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior: contain !important;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-color: rgba(100, 113, 120, 0.38) transparent !important;
+  scrollbar-width: thin !important;
 }
 
-.project-rail::-webkit-scrollbar {
-  width: 8px;
+.project-rail-scroll::-webkit-scrollbar,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
 }
 
-.project-rail::-webkit-scrollbar-track {
-  background: transparent;
+.project-rail-scroll::-webkit-scrollbar-track,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll::-webkit-scrollbar-track {
+  background: transparent !important;
 }
 
-.project-rail::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: rgba(99, 132, 146, 0.34);
-  background-clip: padding-box;
+.project-rail-scroll::-webkit-scrollbar-thumb,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll::-webkit-scrollbar-thumb {
+  min-height: 32px !important;
+  border: 2px solid transparent !important;
+  border-radius: 999px !important;
+  background: rgba(100, 113, 120, 0.38) !important;
+  background-clip: content-box !important;
 }
 
-.project-rail::-webkit-scrollbar-thumb:hover {
-  background: rgba(55, 114, 124, 0.5);
-  background-clip: padding-box;
-}
-
-.app-shell.theme-dark .project-rail::-webkit-scrollbar-thumb {
-  background: rgba(139, 172, 188, 0.36);
-  background-clip: padding-box;
-}
-
-.app-shell.theme-dark .project-rail::-webkit-scrollbar-thumb:hover {
-  background: rgba(171, 204, 218, 0.52);
-  background-clip: padding-box;
+.project-rail-scroll::-webkit-scrollbar-thumb:hover,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(78, 89, 96, 0.52) !important;
+  background-clip: content-box !important;
 }
 
 /* 2026-06-30 explicit reaction path semantics:
@@ -14715,4 +15001,1059 @@ select,
   border-color: rgba(166, 194, 210, 0.16);
   background: rgba(61, 78, 92, 0.72);
   color: #dbe7ef;
+}
+
+/* 2026-07-06 source browser redesign:
+   The project rail behaves like an editor resource panel, not a draggable
+   titlebar strip. Keep one native scroll container and compact, fixed-height
+   rows so trackpad scrolling and file dragging do not fight Electron hit tests. */
+.project-rail,
+.project-rail *,
+.project-rail-hover-panel .project-rail,
+.project-rail-hover-panel .project-rail * {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.project-rail,
+.workspace:not(.is-left-collapsed) > .project-rail {
+  gap: 8px !important;
+  padding: 10px 8px 10px !important;
+  overflow: hidden !important;
+  border-right-color: rgba(105, 130, 145, 0.16) !important;
+  background:
+    linear-gradient(180deg, rgba(249, 253, 253, 0.9), rgba(239, 247, 249, 0.88)) !important;
+  backdrop-filter: blur(22px) !important;
+}
+
+.project-rail-scroll,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  scroll-behavior: auto !important;
+  touch-action: pan-y !important;
+  scrollbar-color: rgba(91, 108, 119, 0.32) transparent !important;
+  scrollbar-width: thin !important;
+  will-change: scroll-position !important;
+}
+
+.project-rail-scroll::-webkit-scrollbar,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+.project-rail-scroll::-webkit-scrollbar-thumb,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll::-webkit-scrollbar-thumb {
+  min-height: 28px !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  background: rgba(91, 108, 119, 0.34) !important;
+  background-clip: content-box !important;
+}
+
+.project-rail .rail-section {
+  gap: 5px !important;
+}
+
+.project-rail .rail-heading {
+  min-height: 24px !important;
+  padding: 0 4px !important;
+  color: #697b87 !important;
+  font-size: 10px !important;
+  font-weight: 820 !important;
+}
+
+.project-rail .rail-heading button {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  border-radius: 8px !important;
+}
+
+.project-rail .rail-list {
+  display: grid !important;
+  gap: 2px !important;
+}
+
+.source-browser-controls {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: grid;
+  gap: 5px;
+  padding: 2px 0 5px;
+  background:
+    linear-gradient(180deg, rgba(249, 253, 253, 0.96), rgba(249, 253, 253, 0.88) 68%, rgba(249, 253, 253, 0));
+}
+
+.source-browser-search,
+.source-browser-menus label {
+  min-width: 0;
+  height: 28px;
+  display: grid;
+  align-items: center;
+  border: 1px solid rgba(112, 137, 151, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.64);
+  color: #617480;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.source-browser-search {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 5px;
+  padding: 0 7px;
+}
+
+.source-browser-search input,
+.source-browser-menus select {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #263b4c;
+  font: inherit;
+}
+
+.source-browser-search input {
+  height: 26px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.source-browser-search span {
+  color: #7e909b;
+  font-size: 10px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.source-browser-menus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 5px;
+}
+
+.source-browser-menus label {
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 3px;
+  padding: 0 6px;
+}
+
+.source-browser-menus select {
+  height: 26px;
+  appearance: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.source-browser-search:focus-within,
+.source-browser-menus label:focus-within {
+  border-color: rgba(31, 143, 122, 0.34);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 0 0 2px rgba(31, 143, 122, 0.1);
+}
+
+.project-rail .project-rail-item,
+.project-rail .project-file-card {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  border: 1px solid transparent !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.project-rail .project-rail-main,
+.project-rail .project-file-main {
+  height: 28px !important;
+  min-height: 28px !important;
+  border-radius: 6px !important;
+  padding: 0 6px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.project-rail .project-file-main {
+  grid-template-columns: 18px minmax(0, 1fr) auto !important;
+  gap: 5px !important;
+}
+
+.project-rail .project-rail-main {
+  grid-template-columns: 18px minmax(0, 1fr) auto !important;
+  gap: 6px !important;
+}
+
+.project-rail .project-rail-main > span,
+.project-rail .project-file-main > span:not(.project-file-kind-icon) {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 12px !important;
+  font-weight: 680 !important;
+  line-height: 1.1 !important;
+}
+
+.project-rail .project-rail-main > svg,
+.project-rail .project-file-kind-icon {
+  width: 17px !important;
+  height: 17px !important;
+  min-width: 17px !important;
+}
+
+.project-rail .project-file-kind-icon {
+  border-radius: 5px !important;
+  background: rgba(219, 232, 238, 0.78) !important;
+}
+
+.project-rail .project-file-kind-icon svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.project-rail .project-file-kind-icon.kind-gaussian::after {
+  right: -3px !important;
+  bottom: -3px !important;
+  width: 11px !important;
+  height: 11px !important;
+  border-width: 1px !important;
+  font-size: 7px !important;
+}
+
+.project-rail .project-rail-item:hover,
+.project-rail .project-rail-item:focus-within,
+.project-rail .project-rail-item.has-open-actions,
+.project-rail .project-file-card:hover,
+.project-rail .project-file-card:focus-within {
+  background: rgba(255, 255, 255, 0.58) !important;
+  border-color: rgba(112, 137, 151, 0.12) !important;
+}
+
+.project-rail .project-rail-item.is-active,
+.project-rail .project-file-card.is-active,
+.project-rail .project-file-card.project-file-card--selected {
+  background: rgba(198, 238, 229, 0.64) !important;
+  border-color: rgba(31, 143, 122, 0.18) !important;
+}
+
+.project-rail .project-file-progress {
+  left: 6px !important;
+  right: 6px !important;
+  bottom: 1px !important;
+  height: 1px !important;
+}
+
+.project-rail .project-canvas-list {
+  margin: 2px 0 4px 16px !important;
+  padding-left: 8px !important;
+  gap: 2px !important;
+}
+
+.project-rail .project-canvas-row-shell,
+.project-rail .project-canvas-row {
+  height: 26px !important;
+  min-height: 26px !important;
+}
+
+.project-rail .project-canvas-row {
+  padding: 0 6px !important;
+}
+
+.project-rail-footer {
+  flex: 0 0 auto !important;
+  padding-top: 6px !important;
+}
+
+.project-rail-settings {
+  min-height: 30px !important;
+  height: 30px !important;
+  border-radius: 8px !important;
+}
+
+.app-shell.theme-dark .project-rail,
+.app-shell.theme-dark .workspace:not(.is-left-collapsed) > .project-rail {
+  background:
+    linear-gradient(180deg, rgba(12, 23, 32, 0.94), rgba(10, 20, 29, 0.92)) !important;
+  border-right-color: rgba(145, 180, 199, 0.12) !important;
+}
+
+.app-shell.theme-dark .source-browser-controls {
+  background:
+    linear-gradient(180deg, rgba(12, 23, 32, 0.98), rgba(12, 23, 32, 0.9) 68%, rgba(12, 23, 32, 0));
+}
+
+.app-shell.theme-dark .source-browser-search,
+.app-shell.theme-dark .source-browser-menus label {
+  border-color: rgba(145, 180, 199, 0.13);
+  background: rgba(24, 39, 50, 0.78);
+  color: #a8bac7;
+  box-shadow: none;
+}
+
+.app-shell.theme-dark .source-browser-search input,
+.app-shell.theme-dark .source-browser-menus select {
+  color: #d8e6f0;
+}
+
+.app-shell.theme-dark .source-browser-search span {
+  color: #8ea3b4;
+}
+
+/* 2026-07-06 source browser cohesion pass:
+   The previous compact pass made the rail functional but visually too
+   form-heavy. Keep the same controls, but style them as quiet rail chrome. */
+.project-rail,
+.workspace:not(.is-left-collapsed) > .project-rail {
+  padding: 10px 9px 10px !important;
+  background:
+    linear-gradient(180deg, rgba(248, 253, 253, 0.86), rgba(239, 248, 249, 0.9)) !important;
+}
+
+.project-rail-scroll,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll {
+  gap: 12px !important;
+}
+
+.project-rail .rail-section {
+  gap: 4px !important;
+}
+
+.project-rail .rail-heading {
+  min-height: 22px !important;
+  padding: 0 6px !important;
+  color: #6d7f8b !important;
+  font-size: 10px !important;
+  font-weight: 820 !important;
+  letter-spacing: 0.12em !important;
+}
+
+.project-rail .rail-heading button {
+  width: 24px !important;
+  min-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  border-radius: 6px !important;
+  color: #6e808c !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.project-rail .rail-heading button:hover,
+.project-rail .rail-heading button:focus-visible,
+.project-rail .rail-heading button[aria-expanded="true"] {
+  background: rgba(52, 76, 91, 0.08) !important;
+  color: #233849 !important;
+}
+
+.source-browser-controls {
+  gap: 3px !important;
+  padding: 1px 0 4px !important;
+  background:
+    linear-gradient(180deg, rgba(247, 253, 253, 0.96), rgba(247, 253, 253, 0.82) 72%, rgba(247, 253, 253, 0)) !important;
+}
+
+.source-browser-search,
+.source-browser-menus label {
+  height: 26px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: rgba(79, 109, 126, 0.055) !important;
+  color: #60727e !important;
+  box-shadow: none !important;
+}
+
+.source-browser-search {
+  grid-template-columns: 18px minmax(0, 1fr) auto !important;
+  gap: 5px !important;
+  padding: 0 7px !important;
+}
+
+.source-browser-search input {
+  height: 24px !important;
+  color: #273a49 !important;
+  font-size: 11.5px !important;
+  font-weight: 660 !important;
+}
+
+.source-browser-search input::placeholder {
+  color: #7a8b96 !important;
+  opacity: 1 !important;
+}
+
+.source-browser-search span {
+  color: #7f8f9a !important;
+  font-size: 10px !important;
+  font-weight: 760 !important;
+}
+
+.source-browser-menus {
+  gap: 3px !important;
+}
+
+.source-browser-menus label {
+  grid-template-columns: 17px minmax(0, 1fr) !important;
+  gap: 2px !important;
+  padding: 0 6px !important;
+}
+
+.source-browser-menus select {
+  height: 24px !important;
+  color: #334755 !important;
+  font-size: 11px !important;
+  font-weight: 720 !important;
+}
+
+.source-browser-search:focus-within,
+.source-browser-menus label:focus-within {
+  background: rgba(255, 255, 255, 0.74) !important;
+  box-shadow: 0 0 0 1px rgba(31, 143, 122, 0.18) !important;
+}
+
+.project-rail .project-rail-item,
+.project-rail .project-file-card {
+  height: 28px !important;
+  min-height: 28px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+}
+
+.project-rail .project-rail-main,
+.project-rail .project-file-main {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 6px !important;
+}
+
+.project-rail .project-rail-main > span,
+.project-rail .project-file-main > span:not(.project-file-kind-icon) {
+  color: #263847 !important;
+  font-size: 12px !important;
+  font-weight: 720 !important;
+}
+
+.project-rail .project-rail-main > svg {
+  color: #607482 !important;
+}
+
+.project-rail .project-file-kind-icon {
+  background: rgba(91, 124, 142, 0.10) !important;
+  color: #607482 !important;
+}
+
+.project-rail .project-rail-item:hover,
+.project-rail .project-rail-item:focus-within,
+.project-rail .project-rail-item.has-open-actions,
+.project-rail .project-file-card:hover,
+.project-rail .project-file-card:focus-within {
+  background: rgba(255, 255, 255, 0.46) !important;
+  border-color: transparent !important;
+}
+
+.project-rail .project-rail-item.is-active,
+.project-rail .project-file-card.is-active,
+.project-rail .project-file-card.project-file-card--selected {
+  background: rgba(31, 143, 122, 0.105) !important;
+  border-color: transparent !important;
+}
+
+.project-rail .project-rail-item.is-active::before,
+.project-rail .project-file-card.is-active::before,
+.project-rail .project-file-card.project-file-card--selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(17, 132, 111, 0.82);
+}
+
+.project-rail .project-rail-item.is-active .project-rail-main > span,
+.project-rail .project-file-card.is-active .project-file-main > span:not(.project-file-kind-icon),
+.project-rail .project-file-card.project-file-card--selected .project-file-main > span:not(.project-file-kind-icon) {
+  color: #117763 !important;
+}
+
+.project-rail .project-file-progress {
+  left: 7px !important;
+  right: 7px !important;
+  bottom: 0 !important;
+  height: 1px !important;
+}
+
+.project-rail-footer {
+  padding-top: 4px !important;
+}
+
+.project-rail-settings {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.project-rail-settings:hover,
+.project-rail-settings:focus-visible {
+  background: rgba(255, 255, 255, 0.46) !important;
+}
+
+.app-shell.theme-dark .project-rail,
+.app-shell.theme-dark .workspace:not(.is-left-collapsed) > .project-rail {
+  background:
+    linear-gradient(180deg, rgba(12, 23, 32, 0.94), rgba(10, 20, 29, 0.92)) !important;
+}
+
+.app-shell.theme-dark .source-browser-controls {
+  background:
+    linear-gradient(180deg, rgba(12, 23, 32, 0.98), rgba(12, 23, 32, 0.86) 72%, rgba(12, 23, 32, 0)) !important;
+}
+
+.app-shell.theme-dark .source-browser-search,
+.app-shell.theme-dark .source-browser-menus label {
+  background: rgba(184, 211, 226, 0.075) !important;
+  color: #9cafbb !important;
+}
+
+.app-shell.theme-dark .source-browser-search input,
+.app-shell.theme-dark .source-browser-menus select {
+  color: #dce8f0 !important;
+}
+
+.app-shell.theme-dark .source-browser-search input::placeholder,
+.app-shell.theme-dark .source-browser-search span {
+  color: #8ea1ad !important;
+}
+
+.app-shell.theme-dark .project-rail .project-rail-main > span,
+.app-shell.theme-dark .project-rail .project-file-main > span:not(.project-file-kind-icon) {
+  color: #d7e3eb !important;
+}
+
+.app-shell.theme-dark .project-rail .project-rail-item:hover,
+.app-shell.theme-dark .project-rail .project-rail-item:focus-within,
+.app-shell.theme-dark .project-rail .project-rail-item.has-open-actions,
+.app-shell.theme-dark .project-rail .project-file-card:hover,
+.app-shell.theme-dark .project-rail .project-file-card:focus-within {
+  background: rgba(197, 221, 235, 0.075) !important;
+}
+
+.app-shell.theme-dark .project-rail .project-rail-item.is-active,
+.app-shell.theme-dark .project-rail .project-file-card.is-active,
+.app-shell.theme-dark .project-rail .project-file-card.project-file-card--selected {
+  background: rgba(63, 196, 164, 0.14) !important;
+}
+
+/* 2026-07-06 left rail first-version polish:
+   Keep the current feature set, but make the rail usable as a compact resource
+   navigator: selection, status, and controls should not compete visually. */
+.project-rail,
+.workspace:not(.is-left-collapsed) > .project-rail {
+  --rail-text: #243746;
+  --rail-muted: #657987;
+  --rail-subtle: rgba(78, 106, 122, 0.07);
+  --rail-subtle-hover: rgba(255, 255, 255, 0.50);
+  --rail-active: rgba(31, 143, 122, 0.12);
+  --rail-active-text: #11725f;
+  padding: 9px 9px 10px !important;
+  background: rgba(244, 251, 252, 0.88) !important;
+}
+
+.project-rail-scroll,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll {
+  gap: 11px !important;
+}
+
+.project-rail .rail-section {
+  gap: 5px !important;
+}
+
+.project-rail .rail-list {
+  gap: 1px !important;
+}
+
+.project-rail .rail-heading {
+  min-height: 22px !important;
+  padding: 0 5px !important;
+  color: var(--rail-muted) !important;
+  font-size: 10px !important;
+  font-weight: 760 !important;
+  letter-spacing: 0.10em !important;
+}
+
+.project-rail .rail-heading button {
+  width: 24px !important;
+  min-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  border-radius: 5px !important;
+}
+
+.source-browser-controls {
+  gap: 2px !important;
+  padding: 0 0 4px !important;
+}
+
+.source-browser-search,
+.source-browser-menus label {
+  height: 24px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: var(--rail-subtle) !important;
+}
+
+.source-browser-search {
+  grid-template-columns: 17px minmax(0, 1fr) auto !important;
+  padding: 0 7px !important;
+}
+
+.source-browser-search input {
+  height: 22px !important;
+  color: var(--rail-text) !important;
+  font-size: 11.5px !important;
+  font-weight: 620 !important;
+}
+
+.source-browser-search span {
+  color: var(--rail-muted) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+}
+
+.source-browser-menus {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 2px !important;
+}
+
+.source-browser-menus label {
+  grid-template-columns: 16px minmax(0, 1fr) !important;
+  padding: 0 6px !important;
+}
+
+.source-browser-menus select {
+  height: 22px !important;
+  color: var(--rail-text) !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+}
+
+.source-browser-search:focus-within,
+.source-browser-menus label:focus-within {
+  background: rgba(255, 255, 255, 0.70) !important;
+  box-shadow: 0 0 0 1px rgba(31, 143, 122, 0.22) !important;
+}
+
+.project-rail .project-rail-item,
+.project-rail .project-file-card {
+  height: 27px !important;
+  min-height: 27px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+}
+
+.project-rail .project-rail-main,
+.project-rail .project-file-main {
+  height: 27px !important;
+  min-height: 27px !important;
+  border-radius: 5px !important;
+  padding: 0 6px !important;
+}
+
+.project-rail .project-file-main {
+  grid-template-columns: 18px minmax(0, 1fr) auto !important;
+}
+
+.project-rail .project-rail-main > span,
+.project-rail .project-file-main > span:not(.project-file-kind-icon) {
+  color: var(--rail-text) !important;
+  font-size: 12px !important;
+  font-weight: 680 !important;
+}
+
+.project-rail .project-rail-item:hover,
+.project-rail .project-rail-item:focus-within,
+.project-rail .project-rail-item.has-open-actions,
+.project-rail .project-file-card:hover,
+.project-rail .project-file-card:focus-within {
+  background: var(--rail-subtle-hover) !important;
+}
+
+.project-rail .project-rail-item.is-active,
+.project-rail .project-file-card.is-active,
+.project-rail .project-file-card.project-file-card--selected {
+  background: var(--rail-active) !important;
+}
+
+.project-rail .project-rail-item.is-active::before,
+.project-rail .project-file-card.is-active::before,
+.project-rail .project-file-card.project-file-card--selected::before {
+  content: none !important;
+  display: none !important;
+}
+
+.project-rail .project-rail-item.is-active .project-rail-main > span,
+.project-rail .project-file-card.is-active .project-file-main > span:not(.project-file-kind-icon),
+.project-rail .project-file-card.project-file-card--selected .project-file-main > span:not(.project-file-kind-icon) {
+  color: var(--rail-active-text) !important;
+}
+
+.project-rail .project-file-kind-icon {
+  width: 17px !important;
+  height: 17px !important;
+  min-width: 17px !important;
+  border-radius: 4px !important;
+  background: rgba(91, 124, 142, 0.10) !important;
+  color: #5f7482 !important;
+}
+
+.project-rail .project-file-phase-badges.has-missing-solution,
+.project-rail .project-file-phase-badges.has-parse-error {
+  width: 6px !important;
+  height: 6px !important;
+  min-width: 6px !important;
+  margin-right: 1px !important;
+}
+
+.project-rail .project-file-card[data-status-title]::after {
+  content: none !important;
+  display: none !important;
+}
+
+.project-rail .project-file-phase-badges[data-status-title] {
+  position: relative !important;
+}
+
+.project-rail .project-file-phase-badges[data-status-title]::after {
+  content: attr(data-status-title);
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  z-index: 40;
+  max-width: 132px;
+  overflow: hidden;
+  padding: 2px 5px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(249, 253, 253, 0.92);
+  color: #3d5060;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(41, 60, 76, 0.10);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(2px);
+  transition: opacity 100ms ease, transform 100ms ease;
+}
+
+.project-rail .project-file-phase-badges[data-status-title]:hover::after {
+  opacity: 1;
+  transform: translateY(-50%);
+}
+
+.project-rail .project-file-progress {
+  left: 7px !important;
+  right: 7px !important;
+  bottom: 0 !important;
+  height: 1px !important;
+}
+
+.project-rail-settings {
+  height: 28px !important;
+  min-height: 28px !important;
+  border-radius: 5px !important;
+}
+
+.app-shell.theme-dark .project-rail,
+.app-shell.theme-dark .workspace:not(.is-left-collapsed) > .project-rail {
+  --rail-text: #d7e3eb;
+  --rail-muted: #91a5b3;
+  --rail-subtle: rgba(184, 211, 226, 0.075);
+  --rail-subtle-hover: rgba(197, 221, 235, 0.075);
+  --rail-active: rgba(63, 196, 164, 0.14);
+  --rail-active-text: #7ee2c5;
+  background: rgba(12, 23, 32, 0.94) !important;
+}
+
+.app-shell.theme-dark .project-rail .project-file-phase-badges[data-status-title]::after {
+  border-color: rgba(145, 180, 199, 0.14);
+  background: rgba(20, 34, 45, 0.96);
+  color: #d4e3ec;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+}
+
+/* 2026-07-06 left rail rollback-to-original pass:
+   Keep the older soft mint rail language. Only the file list is compacted;
+   project rows, section rhythm, and palette stay closer to the earlier build. */
+.project-rail,
+.workspace:not(.is-left-collapsed) > .project-rail {
+  --rail-mint: rgba(197, 248, 235, 0.72);
+  --rail-mint-strong: rgba(186, 244, 229, 0.86);
+  --rail-mint-text: #0f7965;
+  --rail-text: #263847;
+  --rail-muted: #647887;
+  width: var(--rxnflow-project-rail-width, 248px) !important;
+  min-width: var(--rxnflow-project-rail-width, 248px) !important;
+  max-width: var(--rxnflow-project-rail-width, 248px) !important;
+  gap: 16px !important;
+  padding: 50px 14px 18px !important;
+  background:
+    linear-gradient(180deg, rgba(250, 253, 255, 0.76), rgba(240, 249, 251, 0.78)) !important;
+  border-right-color: rgba(118, 144, 160, 0.18) !important;
+  backdrop-filter: blur(32px) !important;
+}
+
+.project-rail-scroll,
+.workspace:not(.is-left-collapsed) > .project-rail > .project-rail-scroll {
+  gap: 22px !important;
+}
+
+.project-rail .rail-section {
+  gap: 10px !important;
+}
+
+.project-rail .rail-heading {
+  min-height: 34px !important;
+  padding: 0 10px !important;
+  color: var(--rail-muted) !important;
+  font-size: 11px !important;
+  font-weight: 860 !important;
+  letter-spacing: 0.22em !important;
+}
+
+.project-rail .rail-heading button {
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  border-radius: 11px !important;
+  color: #536b7a !important;
+  background: transparent !important;
+}
+
+.project-rail .rail-heading button:hover,
+.project-rail .rail-heading button:focus-visible,
+.project-rail .rail-heading button[aria-expanded="true"] {
+  background: rgba(226, 250, 245, 0.78) !important;
+  color: var(--rail-mint-text) !important;
+}
+
+.project-rail .rail-list {
+  gap: 6px !important;
+}
+
+.project-rail .rail-section:has(.project-file-card) .rail-list {
+  gap: 3px !important;
+}
+
+.source-browser-controls {
+  position: static !important;
+  gap: 4px !important;
+  padding: 0 0 4px !important;
+  background: transparent !important;
+}
+
+.source-browser-search,
+.source-browser-menus label {
+  height: 28px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: rgba(228, 240, 244, 0.72) !important;
+  color: #5f7482 !important;
+}
+
+.source-browser-search input {
+  height: 26px !important;
+  color: var(--rail-text) !important;
+  font-size: 12px !important;
+  font-weight: 680 !important;
+}
+
+.source-browser-menus select {
+  height: 26px !important;
+  color: var(--rail-text) !important;
+  font-size: 11.5px !important;
+  font-weight: 740 !important;
+}
+
+.project-rail .project-rail-item {
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 6px !important;
+  border: 0 !important;
+  border-radius: 13px !important;
+  background: transparent !important;
+}
+
+.project-rail .project-rail-main {
+  height: 34px !important;
+  min-height: 34px !important;
+  border-radius: 12px !important;
+  padding: 0 4px !important;
+  gap: 8px !important;
+}
+
+.project-rail .project-rail-main > span {
+  color: var(--rail-text) !important;
+  font-size: 12.5px !important;
+  font-weight: 820 !important;
+  line-height: 1.15 !important;
+}
+
+.project-rail .project-rail-main > svg {
+  width: 18px !important;
+  height: 18px !important;
+  color: #365262 !important;
+}
+
+.project-rail .project-rail-item:hover,
+.project-rail .project-rail-item:focus-within,
+.project-rail .project-rail-item.has-open-actions {
+  background: rgba(255, 255, 255, 0.42) !important;
+}
+
+.project-rail .project-rail-item.is-active {
+  background: var(--rail-mint) !important;
+}
+
+.project-rail .project-rail-item.is-active .project-rail-main > span,
+.project-rail .project-rail-item.is-active .project-rail-main > svg {
+  color: var(--rail-mint-text) !important;
+}
+
+.project-rail .project-file-card {
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 13px !important;
+  background: transparent !important;
+}
+
+.project-rail .project-file-main {
+  height: 34px !important;
+  min-height: 34px !important;
+  grid-template-columns: 25px minmax(0, 1fr) auto !important;
+  gap: 10px !important;
+  padding: 0 5px !important;
+  border-radius: 12px !important;
+}
+
+.project-rail .project-file-main > span:not(.project-file-kind-icon) {
+  color: var(--rail-text) !important;
+  font-size: 13px !important;
+  font-weight: 780 !important;
+  line-height: 1.1 !important;
+}
+
+.project-rail .project-file-kind-icon {
+  width: 25px !important;
+  height: 25px !important;
+  min-width: 25px !important;
+  border-radius: 9px !important;
+  background: rgba(222, 237, 242, 0.92) !important;
+  color: #607482 !important;
+}
+
+.project-rail .project-file-kind-icon svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+.project-rail .project-file-kind-icon.kind-gaussian::after {
+  right: -4px !important;
+  bottom: -4px !important;
+  width: 15px !important;
+  height: 15px !important;
+  border-width: 2px !important;
+  font-size: 9px !important;
+}
+
+.project-rail .project-file-card:hover,
+.project-rail .project-file-card:focus-within {
+  background: rgba(255, 255, 255, 0.42) !important;
+}
+
+.project-rail .project-file-card.is-active,
+.project-rail .project-file-card.project-file-card--selected {
+  background: var(--rail-mint-strong) !important;
+}
+
+.project-rail .project-file-card.is-active .project-file-main > span:not(.project-file-kind-icon),
+.project-rail .project-file-card.project-file-card--selected .project-file-main > span:not(.project-file-kind-icon) {
+  color: var(--rail-mint-text) !important;
+}
+
+.project-rail .project-rail-item.is-active::before,
+.project-rail .project-file-card.is-active::before,
+.project-rail .project-file-card.project-file-card--selected::before {
+  content: none !important;
+  display: none !important;
+}
+
+.project-rail .project-file-phase-badges.has-missing-solution,
+.project-rail .project-file-phase-badges.has-parse-error {
+  margin-right: 2px !important;
+}
+
+.project-rail-footer {
+  padding-top: 8px !important;
+}
+
+.project-rail-settings {
+  height: 40px !important;
+  min-height: 40px !important;
+  border-radius: 12px !important;
+}
+
+.app-shell.theme-dark .project-rail,
+.app-shell.theme-dark .workspace:not(.is-left-collapsed) > .project-rail {
+  --rail-mint: rgba(31, 96, 82, 0.46);
+  --rail-mint-strong: rgba(42, 113, 94, 0.58);
+  --rail-mint-text: #aef6e1;
+  --rail-text: #d9e8f2;
+  --rail-muted: #9db0bc;
+  background: rgb(10, 23, 33) !important;
+}
+
+/* 2026-07-07 source browser menu focus polish:
+   Native selects keep focus after mouse selection/window refocus. Do not let
+   that state look like a sticky selected pill; reserve the ring for keyboard
+   focus-visible only. */
+.project-rail .source-browser-menus label:focus-within {
+  background: rgba(228, 240, 244, 0.72) !important;
+  box-shadow: none !important;
+}
+
+.project-rail .source-browser-menus label:has(select:focus-visible) {
+  background: rgba(255, 255, 255, 0.58) !important;
+  box-shadow: 0 0 0 1px rgba(31, 143, 122, 0.18) !important;
+}
+
+.app-shell.theme-dark .project-rail .source-browser-menus label:focus-within {
+  background: rgba(184, 211, 226, 0.075) !important;
+  box-shadow: none !important;
+}
+
+.app-shell.theme-dark .project-rail .source-browser-menus label:has(select:focus-visible) {
+  background: rgba(197, 221, 235, 0.12) !important;
+  box-shadow: 0 0 0 1px rgba(126, 232, 197, 0.22) !important;
 }

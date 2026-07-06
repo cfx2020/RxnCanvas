@@ -155,13 +155,14 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
   if (gaussian) {
     const atoms = gaussianAtomsFromText(preview)
     const vibrations = gaussianVibrationalModesFromText(preview, atoms.length, name)
+    const kind = computationKindFromParserEvidence("Gaussian", name, preview, vibrations.modes)
     const formula = inferFormulaFromText(preview) ?? (atoms.length > 0 ? formulaFromAtoms(atoms) : "pending")
     const [charge, spinMultiplicity] = gaussianChargeMultiplicity(preview)
     const energyTable = gaussianEnergyTable(preview)
     return sourceResultFromCandidates({
       label,
       sourceKind: "Gaussian",
-      kind: guessedKind,
+      kind,
       solvent: inferSolvent(preview),
       parserId: "gaussian-log-text-preview",
       candidates: [parseCandidate({
@@ -175,7 +176,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
         energySolution: gaussian.energySolution,
         energyUnit: "hartree",
         coordinatePreview: coordinatePreviewFromAtoms(atoms, vibrations.modes),
-        roleHint: roleHintFromName(name),
+        roleHint: roleHintFromParserEvidence(kind, name),
         warnings: vibrations.warnings,
         energyTable,
       })],
@@ -189,12 +190,13 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
   if (orca) {
     const atoms = orcaAtomsFromText(preview)
     const vibrationWarnings = orcaVibrationUnavailableWarnings(preview, name)
+    const kind = computationKindFromParserEvidence("ORCA", name, preview)
     const [charge, spinMultiplicity] = orcaChargeMultiplicity(preview)
     const energyTable = orcaEnergyTable(preview)
     return sourceResultFromCandidates({
       label,
       sourceKind: "ORCA",
-      kind: guessedKind,
+      kind,
       solvent: inferSolvent(preview),
       parserId: "orca-output-text-preview",
       candidates: [parseCandidate({
@@ -208,7 +210,7 @@ export function parseSourcePreview({ name, preview }: SourceParseInput): SourceP
         energySolution: orca.energySolution,
         energyUnit: "hartree",
         coordinatePreview: coordinatePreviewFromAtoms(atoms),
-        roleHint: roleHintFromName(name),
+        roleHint: roleHintFromParserEvidence(kind, name),
         warnings: vibrationWarnings,
         energyTable,
       })],
@@ -884,12 +886,41 @@ function isCoordinateAtom(atom: string | CoordinateAtom): atom is CoordinateAtom
   return typeof atom !== "string"
 }
 
-function inferNodeKind(name: string): ParsedNodeKind {
+function inferNodeKind(name: string, options: { allowTransition?: boolean } = {}): ParsedNodeKind {
+  const allowTransition = options.allowTransition ?? true
   const lower = name.toLowerCase()
-  if (/\b(ts|transition|saddle)\b/.test(lower)) return "transition"
+  if (allowTransition && /\b(ts|transition|saddle)\b/.test(lower)) return "transition"
   if (/\b(product|adduct|prod|final)\b/.test(lower)) return "product"
   if (/\b(reactant|reagent|substrate)\b/.test(lower)) return "reactant"
   return "intermediate"
+}
+
+function computationKindFromParserEvidence(
+  sourceKind: "Gaussian" | "ORCA",
+  name: string,
+  sourceText: string,
+  vibrationModes: VibrationalMode[] = [],
+): ParsedNodeKind {
+  const route = sourceKind === "Gaussian"
+    ? sourceText.match(gaussianRoutePattern)?.[1] ?? null
+    : sourceText.match(orcaRoutePattern)?.[1] ?? null
+  if (vibrationModesIndicateTransitionState(vibrationModes) || routeIndicatesTransitionState(sourceKind, route)) {
+    return "transition"
+  }
+  return inferNodeKind(name, { allowTransition: false })
+}
+
+function vibrationModesIndicateTransitionState(vibrationModes: VibrationalMode[]): boolean {
+  return vibrationModes.filter((mode) => mode.kind === "imaginary" || mode.frequencyCm1 < 0).length === 1
+}
+
+function routeIndicatesTransitionState(sourceKind: "Gaussian" | "ORCA", route: string | null): boolean {
+  if (!route) return false
+  if (sourceKind === "Gaussian") {
+    return /\bqst[23]\b/i.test(route)
+      || /\bopt\s*=\s*(?:\([^)]*\b(?:ts|qst2|qst3)\b[^)]*\)|(?:ts|qst2|qst3)\b)/i.test(route)
+  }
+  return /\boptts\b/i.test(route)
 }
 
 function inferSolvent(preview: string): string {
@@ -923,6 +954,14 @@ function roleHintFromName(name: string): string {
   const lower = name.toLowerCase()
   if (/\b(final|product|prod|adduct)\b/.test(lower)) return "final"
   if (/\b(ts|transition|saddle)\b/.test(lower)) return "transition"
+  if (/\b(frame|image|irc|path)\b/.test(lower)) return "path-point"
+  return "unknown"
+}
+
+function roleHintFromParserEvidence(kind: ParsedNodeKind, name: string): string {
+  if (kind === "transition") return "transition"
+  const lower = name.toLowerCase()
+  if (/\b(final|product|prod|adduct)\b/.test(lower)) return "final"
   if (/\b(frame|image|irc|path)\b/.test(lower)) return "path-point"
   return "unknown"
 }

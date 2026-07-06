@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from "vitest"
 import type { EnergyTableRow } from "./energyDisplay"
 import { EnergyTableView } from "./ReportPanels"
 
-function row(nodeId: string, label: string, absolute: number, relative: number): EnergyTableRow {
+function row(nodeId: string, label: string, absolute: number, relative: number, formula = label): EnergyTableRow {
   return {
     nodeId,
     label,
     kind: "intermediate",
-    formula: label,
+    formula,
     charge: null,
     spinMultiplicity: null,
     gas: absolute,
@@ -20,6 +20,7 @@ function row(nodeId: string, label: string, absolute: number, relative: number):
     relativeRole: "path-point",
     showInRelativeTable: true,
     expressionTerms: [{ nodeId, label, coefficient: 1 }],
+    relativeExpressionTerms: [{ nodeId, label, coefficient: 1 }],
   }
 }
 
@@ -40,17 +41,17 @@ describe("EnergyTableView", () => {
     expect(headers).toEqual([
       "Structure",
       "Charge/Mult.",
-      "Egas(Eh)",
-      "Egas(kcal/mol)",
+      "ΔEgas(Eh)",
+      "ΔEgas(kcal/mol)",
       "Basisgas",
-      "Ggas(Eh)",
-      "Ggas(kcal/mol)",
-      "Ggas+1M(Eh)",
-      "Ggas+1M(kcal/mol)",
-      "Esol(Eh)",
-      "Esol(kcal/mol)",
+      "ΔGgas(Eh)",
+      "ΔGgas(kcal/mol)",
+      "ΔGgas+1M(Eh)",
+      "ΔGgas+1M(kcal/mol)",
+      "ΔEsol(Eh)",
+      "ΔEsol(kcal/mol)",
       "Basissol",
-      "Gsol(kcal/mol)",
+      "ΔGsol(kcal/mol)",
     ])
     expect(headers.join(" ")).not.toContain("Formula")
     expect(headers.join(" ")).not.toContain("627.5095")
@@ -72,5 +73,22 @@ describe("EnergyTableView", () => {
 
     expect(within(bRow).getByText("0.000000")).toBeInTheDocument()
     expect(bRow).not.toHaveTextContent("2.000000")
+  })
+
+  it("keeps distinct canvas nodes even when their formulas match", () => {
+    render(
+      <EnergyTableView
+        rows={[
+          row("tsf", "i1N2fix14-tsf", -10, 1, "C12H18IrN2"),
+          row("tsr", "i1N2fix14-tsr", -9, 2, "C12H18IrN2"),
+        ]}
+        outputUnit="kcal/mol"
+        onSelectNode={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole("button", { name: "i1N2fix14-tsf" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "i1N2fix14-tsr" })).toBeInTheDocument()
+    expect(screen.getByText("2 rows")).toBeInTheDocument()
   })
 })

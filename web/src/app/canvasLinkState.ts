@@ -1,4 +1,4 @@
-import type { FlowBarrier, FlowEdge, Point } from "../domain/projectPackages"
+import type { EdgeStepRole, FlowBarrier, FlowEdge, Point } from "../domain/projectPackages"
 import { draftMatchesPointer, type CanvasPointerDraft } from "./canvasDragState"
 import {
   barrierOnlySelection,
@@ -59,11 +59,14 @@ export function startConnectionDraftTransition(
   pointerId: number,
   sourceId: string,
   current: Point,
+  stepRole?: Extract<EdgeStepRole, "addition" | "release">,
 ): StartConnectionDraftTransition {
+  const connectionDraft: CanvasPointerDraft = { pointerId, sourceId, current }
+  if (stepRole) connectionDraft.stepRole = stepRole
   return {
     selection: nodeOnlySelection(sourceId),
     keyboardEdgeSourceId: null,
-    connectionDraft: { pointerId, sourceId, current },
+    connectionDraft,
   }
 }
 
@@ -117,10 +120,12 @@ export function completeConnectionDraftTransition(
   }
 }
 
-export function appendConnectionEdge(edges: FlowEdge[], id: string, target: CanvasLinkTarget): FlowEdge[] {
+export function appendConnectionEdge(edges: FlowEdge[], id: string, target: CanvasLinkTarget, stepRole?: FlowEdge["stepRole"]): FlowEdge[] {
+  const edge: FlowEdge = { id, sourceId: target.sourceId, targetId: target.targetId, label: "path" }
+  if (stepRole) edge.stepRole = stepRole
   return [
     ...edges,
-    { id, sourceId: target.sourceId, targetId: target.targetId, label: "path" },
+    edge,
   ]
 }
 
@@ -129,12 +134,13 @@ export function createConnectionEdgeTransition(
   id: string,
   sourceId: string,
   targetId: string,
+  stepRole?: FlowEdge["stepRole"],
 ): CanvasLinkCreation<FlowEdge> | null {
   const target = validLinkTarget(sourceId, targetId)
   if (!target) return null
   return {
     target,
-    items: appendConnectionEdge(edges, id, target),
+    items: appendConnectionEdge(edges, id, target, stepRole),
     selection: edgeOnlySelection(id),
   }
 }

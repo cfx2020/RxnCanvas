@@ -31,9 +31,47 @@ export type EnergyTableRow = {
   relativeRole: RelativeEnergyRole
   showInRelativeTable: boolean
   expressionTerms: EnergyExpressionTerm[]
+  relativeExpressionTerms: EnergyExpressionTerm[]
+}
+
+export type EnergyTableMode = "absolute" | "relative"
+
+export type EnergyTableColumnId =
+  | "structure"
+  | "chargeMultiplicity"
+  | "egasHartree"
+  | "egasKcal"
+  | "gasBasisFunctions"
+  | "ggasHartree"
+  | "ggasKcal"
+  | "ggas1mHartree"
+  | "ggas1mKcal"
+  | "esolHartree"
+  | "esolKcal"
+  | "solBasisFunctions"
+  | "gsolKcal"
+
+export type EnergyTableColumnSpec = {
+  id: EnergyTableColumnId
 }
 
 export const kcalPerHartree = 627.509474
+
+export const energyTableColumnSpecs: readonly EnergyTableColumnSpec[] = [
+  { id: "structure" },
+  { id: "chargeMultiplicity" },
+  { id: "egasHartree" },
+  { id: "egasKcal" },
+  { id: "gasBasisFunctions" },
+  { id: "ggasHartree" },
+  { id: "ggasKcal" },
+  { id: "ggas1mHartree" },
+  { id: "ggas1mKcal" },
+  { id: "esolHartree" },
+  { id: "esolKcal" },
+  { id: "solBasisFunctions" },
+  { id: "gsolKcal" },
+] as const
 
 export const defaultEnergyDisplayOptions: EnergyDisplayOptions = {
   baselineNodeId: null,
@@ -153,9 +191,13 @@ export function energyTableRows(
   const baselineKcal = useModelBaselineTerms
     ? evaluateExpressionKcal(modelBaselineTerms ?? [], nodeById, options)
     : baselineNode ? expressionKcalByNodeId.get(baselineNode.id) ?? null : null
+  const baselineExpressionTerms = useModelBaselineTerms
+    ? modelBaselineTerms ?? []
+    : baselineNode ? model.termsByNodeId.get(baselineNode.id) ?? nodeSelfTerms(nodeById, baselineNode.id) : null
 
   return nodes.map((node) => {
     const role = model.roleByNodeId.get(node.id) ?? "standalone"
+    const expressionTerms = model.termsByNodeId.get(node.id) ?? nodeSelfTerms(nodeById, node.id)
     const expressionTable = expressionTableByNodeId.get(node.id) ?? null
     const expressionKcal = expressionKcalByNodeId.get(node.id) ?? null
     const relativeEnergyTable = relativeEnergyRoleIsTerm(role) ? null : subtractEnergyTables(expressionTable, baselineTable)
@@ -177,14 +219,236 @@ export function energyTableRows(
       relative,
       relativeRole: role,
       showInRelativeTable: model.relativeTableVisibilityByNodeId.get(node.id) ?? true,
-      expressionTerms: model.termsByNodeId.get(node.id) ?? nodeSelfTerms(nodeById, node.id),
+      expressionTerms,
+      relativeExpressionTerms: relativeEnergyRoleIsTerm(role) || !baselineExpressionTerms ? [] : relativeExpressionTerms(expressionTerms, baselineExpressionTerms),
     }
   })
+}
+
+export function sortedEnergyTableRows(
+  rows: EnergyTableRow[],
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+): EnergyTableRow[] {
+  const rowIndex = new Map(rows.map((row, index) => [row.nodeId, index]))
+  const order = pathNodeOrder(nodes, edges)
+  const orderIndex = new Map(order.map((nodeId, index) => [nodeId, index]))
+  return [...rows].sort((left, right) => {
+    const leftPathOrder = orderIndex.get(left.nodeId)
+    const rightPathOrder = orderIndex.get(right.nodeId)
+    if (leftPathOrder != null || rightPathOrder != null) {
+      return (leftPathOrder ?? Number.MAX_SAFE_INTEGER) - (rightPathOrder ?? Number.MAX_SAFE_INTEGER)
+    }
+    return (rowIndex.get(left.nodeId) ?? 0) - (rowIndex.get(right.nodeId) ?? 0)
+  })
+}
+
+export function visibleEnergyTableRows(
+  rows: EnergyTableRow[],
+  mode: EnergyTableMode,
+): EnergyTableRow[] {
+  return mode === "relative" ? rows.filter((row) => row.showInRelativeTable) : rows
+}
+
+export function energyTableColumnLabel(column: EnergyTableColumnSpec, mode: EnergyTableMode): string {
+  const prefix = mode === "relative" ? "Δ" : ""
+  switch (column.id) {
+    case "structure":
+      return "Structure"
+    case "chargeMultiplicity":
+      return "Charge / Mult."
+    case "egasHartree":
+      return `${prefix}Egas(Eh)`
+    case "egasKcal":
+      return `${prefix}Egas(kcal/mol)`
+    case "gasBasisFunctions":
+      return "Basisgas"
+    case "ggasHartree":
+      return `${prefix}Ggas(Eh)`
+    case "ggasKcal":
+      return `${prefix}Ggas(kcal/mol)`
+    case "ggas1mHartree":
+      return `${prefix}Ggas+1M(Eh)`
+    case "ggas1mKcal":
+      return `${prefix}Ggas+1M(kcal/mol)`
+    case "esolHartree":
+      return `${prefix}Esol(Eh)`
+    case "esolKcal":
+      return `${prefix}Esol(kcal/mol)`
+    case "solBasisFunctions":
+      return "Basissol"
+    case "gsolKcal":
+      return `${prefix}Gsol(kcal/mol)`
+  }
+}
+
+export function energyTableCellText(
+  row: EnergyTableRow,
+  column: EnergyTableColumnSpec,
+  mode: EnergyTableMode,
+): string {
+  switch (column.id) {
+    case "structure":
+      return row.label
+    case "chargeMultiplicity":
+      return chargeMultiplicity(row)
+    case "egasHartree":
+      return formatHartreeTableCell(row, "egasHartree", mode)
+    case "egasKcal":
+      return formatKcalFromHartreeCell(row, "egasHartree", mode)
+    case "gasBasisFunctions":
+      return formatIntegerCell(tableNumberValue(row, "gasBasisFunctions", mode))
+    case "ggasHartree":
+      return formatHartreeTableCell(row, "ggasHartree", mode)
+    case "ggasKcal":
+      return formatKcalFromHartreeCell(row, "ggasHartree", mode)
+    case "ggas1mHartree":
+      return formatHartreeTableCell(row, "ggas1mHartree", mode)
+    case "ggas1mKcal":
+      return formatKcalFromHartreeCell(row, "ggas1mHartree", mode)
+    case "esolHartree":
+      return formatHartreeTableCell(row, "esolHartree", mode)
+    case "esolKcal":
+      return formatKcalFromHartreeCell(row, "esolHartree", mode)
+    case "solBasisFunctions":
+      return formatIntegerCell(tableNumberValue(row, "solBasisFunctions", mode))
+    case "gsolKcal":
+      return formatKcalFromHartreeCell(row, "gsolHartree", mode)
+  }
+}
+
+export function energyTablePlainHeaders(mode: EnergyTableMode): string[] {
+  return energyTableColumnSpecs.map((column) => energyTableColumnLabel(column, mode))
+}
+
+export function chargeMultiplicity(row: Pick<EnergyTableRow, "charge" | "spinMultiplicity">): string {
+  if (typeof row.charge !== "number" && typeof row.spinMultiplicity !== "number") return "-"
+  return `${row.charge ?? "?"} / ${row.spinMultiplicity ?? "?"}`
+}
+
+type HartreeEnergyTableKey =
+  | "egasHartree"
+  | "ggasHartree"
+  | "ggas1mHartree"
+  | "esolHartree"
+  | "gsolHartree"
+
+type NumericEnergyTableKey =
+  | HartreeEnergyTableKey
+  | "gasBasisFunctions"
+  | "solBasisFunctions"
+
+export function formatHartreeTableCell(
+  row: Pick<EnergyTableRow, "energyTable" | "relativeEnergyTable" | "energyUnit" | "gas" | "solution">,
+  key: HartreeEnergyTableKey,
+  mode: EnergyTableMode,
+): string {
+  const value = tableNumberValue(row, key, mode)
+  if (typeof value !== "number") return "-"
+  return formatHartreeNumber(value)
+}
+
+export function formatKcalFromHartreeCell(
+  row: Pick<EnergyTableRow, "energyTable" | "relativeEnergyTable" | "energyUnit" | "gas" | "solution">,
+  key: HartreeEnergyTableKey,
+  mode: EnergyTableMode,
+): string {
+  const value = tableNumberValue(row, key, mode)
+  if (typeof value !== "number") return "-"
+  return formatKcalNumber(value * kcalPerHartree)
+}
+
+export function tableNumberValue(
+  row: Pick<EnergyTableRow, "energyTable" | "relativeEnergyTable" | "energyUnit" | "gas" | "solution">,
+  key: NumericEnergyTableKey,
+  mode: EnergyTableMode,
+): number | null {
+  const table = mode === "relative" ? row.relativeEnergyTable : row.energyTable
+  const value = table?.[key]
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (mode === "absolute" && key === "egasHartree" && row.energyUnit === "hartree" && typeof row.gas === "number") return row.gas
+  if (mode === "absolute" && key === "gsolHartree" && row.energyUnit === "hartree" && typeof row.solution === "number") return row.solution
+  return null
+}
+
+export function formatIntegerCell(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(Math.trunc(value)) : "-"
+}
+
+export function formatHartreeNumber(value: number): string {
+  return Number.isFinite(value) ? value.toFixed(6) : "-"
+}
+
+export function formatKcalNumber(value: number): string {
+  return Number.isFinite(value) ? value.toFixed(2) : "-"
+}
+
+function pathNodeOrder(nodes: FlowNode[], edges: FlowEdge[]): string[] {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const pathNodes = nodes.filter((node) => node.pathRole !== "participant")
+  const pathNodeIds = new Set(pathNodes.map((node) => node.id))
+  const pathEdges = edges.filter((edge) => {
+    const role = edgeStepRole(edge)
+    if (role === "addition" || role === "release") return false
+    return pathNodeIds.has(edge.sourceId) && pathNodeIds.has(edge.targetId)
+  })
+  if (pathEdges.length === 0) return pathNodes.map((node) => node.id)
+
+  const successors = new Map<string, string[]>()
+  const predecessors = new Map<string, string[]>()
+  const nodePositionOrder = new Map(nodes.map((node, index) => [node.id, index]))
+  for (const node of pathNodes) {
+    successors.set(node.id, [])
+    predecessors.set(node.id, [])
+  }
+  for (const edge of pathEdges) {
+    successors.set(edge.sourceId, [...(successors.get(edge.sourceId) ?? []), edge.targetId])
+    predecessors.set(edge.targetId, [...(predecessors.get(edge.targetId) ?? []), edge.sourceId])
+  }
+  for (const list of successors.values()) list.sort((left, right) => (nodePositionOrder.get(left) ?? 0) - (nodePositionOrder.get(right) ?? 0))
+
+  const starts = pathNodes
+    .filter((node) => (predecessors.get(node.id) ?? []).length === 0)
+    .sort((left, right) => (nodePositionOrder.get(left.id) ?? 0) - (nodePositionOrder.get(right.id) ?? 0))
+  const seedNodes = starts.length > 0 ? starts : [...pathNodes].sort((left, right) => (nodePositionOrder.get(left.id) ?? 0) - (nodePositionOrder.get(right.id) ?? 0))
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  const visit = (nodeId: string) => {
+    if (seen.has(nodeId) || !nodeById.has(nodeId)) return
+    seen.add(nodeId)
+    ordered.push(nodeId)
+    for (const nextId of successors.get(nodeId) ?? []) visit(nextId)
+  }
+  for (const node of seedNodes) visit(node.id)
+  for (const node of pathNodes) visit(node.id)
+  for (const edge of edges) {
+    const role = edgeStepRole(edge)
+    if (role === "addition" && !seen.has(edge.sourceId) && nodeById.get(edge.sourceId)?.pathRole === "participant") {
+      ordered.splice(Math.max(0, ordered.indexOf(edge.targetId)), 0, edge.sourceId)
+      seen.add(edge.sourceId)
+    }
+    if (role === "release" && !seen.has(edge.targetId) && nodeById.get(edge.targetId)?.pathRole === "participant") {
+      const sourceIndex = ordered.indexOf(edge.sourceId)
+      ordered.splice(sourceIndex >= 0 ? sourceIndex + 1 : ordered.length, 0, edge.targetId)
+      seen.add(edge.targetId)
+    }
+  }
+  return ordered
 }
 
 
 function relativeEnergyRoleIsTerm(role: RelativeEnergyRole): boolean {
   return role === "addition-term" || role === "release-term" || role === "participant-term"
+}
+
+function relativeExpressionTerms(
+  expressionTerms: EnergyExpressionTerm[],
+  baselineTerms: EnergyExpressionTerm[],
+): EnergyExpressionTerm[] {
+  return compactExpressionTerms([
+    ...expressionTerms,
+    ...baselineTerms.map((term) => ({ ...term, coefficient: -term.coefficient })),
+  ])
 }
 
 export function normalizedNodeEnergyTable(node: FlowNode): ParsedEnergyTableData | null {

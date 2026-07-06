@@ -157,37 +157,50 @@ function prepareStartupProjectRestore() {
 }
 
 async function restoreRecentProjectPayloads() {
+  const payloads = []
+  let activePayload = null
+  let state = { projectPaths: recentProjectPaths, activeProjectPath }
   for (const filePath of startupRestoreProjectPaths()) {
     try {
       const startupDirectory = await projectDirectoryForStartupRestore(filePath)
       if (!startupDirectory) {
         await forgetRecentProject(filePath)
+        state = { projectPaths: recentProjectPaths, activeProjectPath }
         continue
       }
       const projectPackage = await readProjectPackageWithValidation(filePath)
-      activateProjectDirectory(projectPackage.content, projectPackage.projectDirectory)
       const restoredPath = projectPackage.projectDirectory ?? filePath
-      const state = recordRecentProjectState(
-        { projectPaths: recentProjectPaths, activeProjectPath },
-        restoredPath,
-      )
-      recentProjectPaths = state.projectPaths
-      activeProjectPath = state.activeProjectPath
-      await persistRecentProjects()
-      return [{
+      state = recordRecentProjectState(state, restoredPath, { active: false })
+      const payload = {
         filePath,
         projectDirectory: projectPackage.projectDirectory,
         content: projectPackage.content,
         validation: projectPackage.validation,
         replaceProjects: true,
         source: "startup",
-      }]
+      }
+      payloads.push(payload)
+      if (!activePayload && activeProjectPath && runtimeProjectComparisonKey(restoredPath) === runtimeProjectComparisonKey(activeProjectPath)) {
+        activePayload = payload
+      }
     } catch (error) {
       await forgetRecentProject(filePath)
+      state = { projectPaths: recentProjectPaths, activeProjectPath }
       console.warn(`Could not restore recent RxnFlow project ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  return []
+  if (payloads.length === 0) return []
+  activePayload = activePayload ?? payloads[0]
+  const activePath = activePayload.projectDirectory ?? activePayload.filePath
+  state = recordRecentProjectState(state, activePath)
+  recentProjectPaths = state.projectPaths
+  activeProjectPath = state.activeProjectPath
+  activateProjectDirectory(activePayload.content, activePayload.projectDirectory)
+  await persistRecentProjects()
+  return [
+    ...payloads.filter((payload) => payload !== activePayload),
+    activePayload,
+  ]
 }
 
 function startupRestoreProjectPaths() {
@@ -506,14 +519,14 @@ function installRuntimeSmokeExit(window) {
                   return
                 }
                 if (startupRestoreSmoke) {
-                  const stillShowingDemoProjects = ["Diels-Alder Study", "Nickel catalysis", "Ir screening", "Older Restore Smoke"]
+                  const stillShowingDemoProjects = ["Diels-Alder Study", "Nickel catalysis", "Ir screening"]
                     .filter((label) => text.includes(label))
-                  if (!text.includes("Startup Restore Smoke") || stillShowingDemoProjects.length > 0) {
+                  if (!text.includes("Startup Restore Smoke") || !text.includes("Older Restore Smoke") || stillShowingDemoProjects.length > 0) {
                     if (Date.now() <= deadline) {
                       window.setTimeout(poll, 100)
                       return
                     }
-                    reject(new Error("desktop renderer did not restore the active recent workspace without demo projects"))
+                    reject(new Error("desktop renderer did not restore all recent workspaces without demo projects"))
                     return
                   }
                 }
@@ -1276,10 +1289,9 @@ ipcMain.handle("rxnflow:get-startup-project-content", async () => {
   startupProjectRestoreConsumed = true
   const payloads = await startupProjectRestorePromise
   if (!payloads || payloads.length === 0) return { canceled: true }
-  const lastPayload = payloads[payloads.length - 1]
   return {
     canceled: false,
-    ...lastPayload,
+    projectContents: payloads,
   }
 })
 

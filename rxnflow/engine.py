@@ -498,6 +498,11 @@ def parse_cclib_full_file(
         else None
     )
     parser_base = cclib_parser_base(source_kind)
+    kind = (
+        computation_kind_from_parser_evidence(source_kind, name, full_text, vibration_modes)
+        if source_kind in {"Gaussian", "ORCA"}
+        else text_result.kind
+    )
     candidate = parse_candidate(
         object_index=0,
         label=basename_without_extension(name),
@@ -507,7 +512,7 @@ def parse_cclib_full_file(
         energy_solution=energy_solution,
         energy_unit="hartree" if energy_gas is not None or energy_solution is not None else "kcal/mol",
         coordinate_preview=coordinate_preview_from_atoms(atoms, vibration_modes),
-        role_hint=role_hint_from_name(name),
+        role_hint=role_hint_from_parser_evidence(kind, name) if source_kind in {"Gaussian", "ORCA"} else role_hint_from_name(name),
         charge=charge,
         spin_multiplicity=spin,
         warnings=vibration_warnings,
@@ -516,7 +521,7 @@ def parse_cclib_full_file(
     return source_result_from_candidates(
         label=basename_without_extension(name),
         source_kind=source_kind,
-        kind=text_result.kind,
+        kind=kind,
         solvent=text_result.solvent,
         parser_id=parser_id_for_scope(parser_base, "full-file"),
         parser_version=PARSER_VERSION,
@@ -542,6 +547,11 @@ def merge_cclib_text_result(cclib_result: SourceParseResult, text_result: Source
     text_primary = text_result.candidates[0] if text_result.candidates else None
     merged_table = cclib_primary.energyTable if cclib_primary else cclib_result.energyTable
     merged_coordinate_preview = cclib_result.coordinatePreview
+    merged_kind = cclib_result.kind
+    merged_role_hint = role_hint_from_parser_evidence(
+        merged_kind,
+        text_primary.label if text_primary is not None else cclib_result.label,
+    )
     merged_candidate = parse_candidate(
         object_index=0,
         label=text_primary.label if text_primary is not None else cclib_result.label,
@@ -551,7 +561,7 @@ def merge_cclib_text_result(cclib_result: SourceParseResult, text_result: Source
         energy_solution=cclib_result.energySolution,
         energy_unit="hartree",
         coordinate_preview=merged_coordinate_preview,
-        role_hint=text_primary.roleHint if text_primary is not None else (cclib_primary.roleHint if cclib_primary else role_hint_from_name(cclib_result.label)),
+        role_hint=merged_role_hint,
         charge=cclib_primary.charge if cclib_primary is not None and cclib_primary.charge is not None else (text_primary.charge if text_primary else None),
         spin_multiplicity=cclib_primary.spinMultiplicity if cclib_primary is not None and cclib_primary.spinMultiplicity is not None else (text_primary.spinMultiplicity if text_primary else None),
         warnings=tuple(sorted((*cclib_result.warnings, *text_result.warnings), key=lambda warning: warning.code)),
@@ -560,7 +570,7 @@ def merge_cclib_text_result(cclib_result: SourceParseResult, text_result: Source
     return source_result_from_candidates(
         label=merged_candidate.label,
         source_kind=cclib_result.sourceKind,
-        kind=text_result.kind,
+        kind=merged_kind,
         solvent=text_result.solvent,
         parser_id=parser_id_for_scope(
             f"{cclib_parser_base(cclib_result.sourceKind)}+rxnflow-text",
@@ -1997,13 +2007,14 @@ def parse_source_preview(
         energy_gas, energy_solution, method = gaussian
         atoms = gaussian_atoms_from_text(preview)
         vibration_modes, vibration_warnings = gaussian_vibrational_modes_from_text(preview, len(atoms), name, "rxnflow-text")
+        kind = computation_kind_from_parser_evidence("Gaussian", name, preview, vibration_modes)
         formula = infer_formula_from_text(preview) or (formula_from_atoms(atoms) if atoms else "pending")
         charge, spin = gaussian_charge_multiplicity(preview)
         energy_table = gaussian_energy_table(preview)
         return source_result_from_candidates(
             label=label,
             source_kind="Gaussian",
-            kind=guessed_kind,
+            kind=kind,
             solvent=infer_solvent(preview),
             parser_id=parser_id_for_scope("gaussian-log-text", parse_scope),
             parser_version=PARSER_VERSION,
@@ -2017,7 +2028,7 @@ def parse_source_preview(
                     energy_solution=energy_solution,
                     energy_unit="hartree",
                     coordinate_preview=coordinate_preview_from_atoms(atoms, vibration_modes),
-                    role_hint=role_hint_from_name(name),
+                    role_hint=role_hint_from_parser_evidence(kind, name),
                     charge=charge,
                     spin_multiplicity=spin,
                     warnings=vibration_warnings,
@@ -2036,12 +2047,13 @@ def parse_source_preview(
         energy_gas, energy_solution = orca
         atoms = orca_atoms_from_text(preview)
         vibration_warnings = orca_vibration_unavailable_warnings(preview, name)
+        kind = computation_kind_from_parser_evidence("ORCA", name, preview)
         charge, spin = orca_charge_multiplicity(preview)
         energy_table = orca_energy_table(preview)
         return source_result_from_candidates(
             label=label,
             source_kind="ORCA",
-            kind=guessed_kind,
+            kind=kind,
             solvent=infer_solvent(preview),
             parser_id=parser_id_for_scope("orca-output-text", parse_scope),
             parser_version=PARSER_VERSION,
@@ -2055,7 +2067,7 @@ def parse_source_preview(
                     energy_solution=energy_solution,
                     energy_unit="hartree",
                     coordinate_preview=coordinate_preview_from_atoms(atoms),
-                    role_hint=role_hint_from_name(name),
+                    role_hint=role_hint_from_parser_evidence(kind, name),
                     charge=charge,
                     spin_multiplicity=spin,
                     warnings=vibration_warnings,
@@ -2807,6 +2819,17 @@ def role_hint_from_name(name: str) -> str:
     return "unknown"
 
 
+def role_hint_from_parser_evidence(kind: NodeKind, name: str) -> str:
+    if kind == "transition":
+        return "transition"
+    lower = name.lower()
+    if re.search(r"\b(final|product|prod|adduct)\b", lower):
+        return "final"
+    if re.search(r"\b(frame|image|irc|path)\b", lower):
+        return "path-point"
+    return "unknown"
+
+
 def first_group(pattern: re.Pattern[str], preview: str) -> str | None:
     match = pattern.search(preview)
     return match.group(1).strip() if match else None
@@ -2819,15 +2842,50 @@ def last_match(pattern: re.Pattern[str], preview: str) -> re.Match[str] | None:
     return match
 
 
-def infer_node_kind(name: str) -> NodeKind:
+def infer_node_kind(name: str, allow_transition: bool = True) -> NodeKind:
     lower = name.lower()
-    if re.search(r"\b(ts|transition|saddle)\b", lower):
+    if allow_transition and re.search(r"\b(ts|transition|saddle)\b", lower):
         return "transition"
     if re.search(r"\b(product|adduct|prod)\b", lower):
         return "product"
     if re.search(r"\b(reactant|reagent|substrate)\b", lower):
         return "reactant"
     return "intermediate"
+
+
+def computation_kind_from_parser_evidence(
+    source_kind: str,
+    name: str,
+    source_text: str,
+    vibration_modes: tuple[VibrationalMode, ...] = (),
+) -> NodeKind:
+    route = None
+    if source_kind == "Gaussian":
+        match = GAUSSIAN_ROUTE_PATTERN.search(source_text)
+        route = match.group(1) if match else None
+    elif source_kind == "ORCA":
+        match = ORCA_ROUTE_PATTERN.search(source_text)
+        route = match.group(1) if match else None
+    if vibration_modes_indicate_transition_state(vibration_modes) or route_indicates_transition_state(source_kind, route):
+        return "transition"
+    return infer_node_kind(name, allow_transition=False)
+
+
+def vibration_modes_indicate_transition_state(vibration_modes: tuple[VibrationalMode, ...]) -> bool:
+    return sum(1 for mode in vibration_modes if mode.kind == "imaginary" or mode.frequencyCm1 < 0) == 1
+
+
+def route_indicates_transition_state(source_kind: str, route: str | None) -> bool:
+    if not route:
+        return False
+    if source_kind == "Gaussian":
+        return bool(
+            re.search(r"\bqst[23]\b", route, re.IGNORECASE)
+            or re.search(r"\bopt\s*=\s*(?:\([^)]*\b(?:ts|qst2|qst3)\b[^)]*\)|(?:ts|qst2|qst3)\b)", route, re.IGNORECASE)
+        )
+    if source_kind == "ORCA":
+        return bool(re.search(r"\boptts\b", route, re.IGNORECASE))
+    return False
 
 
 def infer_solvent(preview: str) -> str:

@@ -549,6 +549,66 @@ describe("importRegistration", () => {
     ])
   })
 
+  it("replaces older same-name pending placeholders when a duplicate desktop import resolves", () => {
+    const olderPendingSol = {
+      ...sourceFile("older-sol", deferredParseResult()),
+      name: "7a-1fix-tsf-sol.log",
+    }
+    const currentPendingSol = {
+      ...sourceFile("fresh-sol", deferredParseResult()),
+      name: "7a-1fix-tsf-sol.log",
+    }
+    const gas = {
+      ...sourceFile("gas", parseResult([candidate({ label: "7a-1fix-tsf" })])),
+      name: "7a-1fix-tsf.log",
+      status: "parsed" as const,
+      storedPath: "sources/7a-1fix-tsf.log",
+    }
+    const parsedSol = {
+      ...sourceFile("fresh-sol", parseResult([candidate({ label: "7a-1fix-tsf-sol" })])),
+      name: "7a-1fix-tsf-sol.log",
+      storedPath: "sources/7a-1fix-tsf-sol.log",
+      checksum: `sha256:${"3".repeat(64)}`,
+    }
+    const plan = buildImportPlan([parsedSol], layout)
+
+    const next = sourceFilesWithImportPlan([olderPendingSol, currentPendingSol, gas], plan, "update")
+
+    expect(next.map((file) => [file.id, file.name, file.status, file.storedPath])).toEqual([
+      ["fresh-sol", "7a-1fix-tsf-sol.log", "parsed", "sources/7a-1fix-tsf-sol.log"],
+      ["gas", "7a-1fix-tsf.log", "parsed", "sources/7a-1fix-tsf.log"],
+    ])
+  })
+
+  it("ignores stale same-name desktop parse completions after a duplicate import already resolved", () => {
+    const parsedSol = {
+      ...sourceFile("fresh-sol", parseResult([candidate({ label: "7a-1fix-tsf-sol" })])),
+      name: "7a-1fix-tsf-sol.log",
+      status: "parsed" as const,
+      storedPath: "sources/7a-1fix-tsf-sol.log",
+    }
+    const gas = {
+      ...sourceFile("gas", parseResult([candidate({ label: "7a-1fix-tsf" })])),
+      name: "7a-1fix-tsf.log",
+      status: "parsed" as const,
+      storedPath: "sources/7a-1fix-tsf.log",
+    }
+    const staleParsedSol = {
+      ...sourceFile("older-sol", parseResult([candidate({ label: "7a-1fix-tsf-sol" })])),
+      name: "7a-1fix-tsf-sol.log",
+      storedPath: "sources/7a-1fix-tsf-sol-2.log",
+      checksum: `sha256:${"4".repeat(64)}`,
+    }
+    const plan = buildImportPlan([staleParsedSol], layout)
+
+    const next = sourceFilesWithImportPlan([parsedSol, gas], plan, "update")
+
+    expect(next.map((file) => [file.id, file.name, file.status, file.storedPath])).toEqual([
+      ["fresh-sol", "7a-1fix-tsf-sol.log", "parsed", "sources/7a-1fix-tsf-sol.log"],
+      ["gas", "7a-1fix-tsf.log", "parsed", "sources/7a-1fix-tsf.log"],
+    ])
+  })
+
   it("applies import plans with update file mode while preserving requested view mode", () => {
     const imported = sourceFile("existing", parseResult([candidate({ candidateId: "only", roleHint: "final" })]))
     const plan = buildImportPlan([imported], layout)

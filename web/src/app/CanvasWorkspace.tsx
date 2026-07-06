@@ -10,7 +10,7 @@ import {
   type PointerEvent,
 } from "react"
 import { Maximize2, UploadCloud, ZoomIn, ZoomOut } from "lucide-react"
-import type { CanvasAnnotation, CanvasViewport, FlowBarrier, FlowEdge, FlowNode, Point, SourceFile } from "../domain/projectPackages"
+import type { CanvasAnnotation, CanvasViewport, EdgeStepRole, FlowBarrier, FlowEdge, FlowNode, Point, SourceFile } from "../domain/projectPackages"
 import type { CoordinatePreview } from "../domain/sourceParsers"
 import {
   clamp,
@@ -69,6 +69,8 @@ export type ConnectionDraft = {
   sourceId: string
   current: Point
   snapTargetId?: string
+  snapStepRole?: Extract<EdgeStepRole, "addition">
+  stepRole?: Extract<EdgeStepRole, "addition" | "release">
 }
 
 export type BarrierDraft = {
@@ -237,8 +239,8 @@ export function CanvasSurface({
   onPointerEnd: (event: PointerEvent<HTMLDivElement>) => void
   onNodePointerDown: (event: PointerEvent<HTMLElement>, node: FlowNode) => void
   onNodeResizePointerDown: (event: PointerEvent<HTMLElement>, node: FlowNode) => void
-  onNodePointerUp: (event: PointerEvent<HTMLElement>, targetId: string) => void
-  onStartConnection: (event: PointerEvent<HTMLElement>, sourceId: string) => void
+  onNodePointerUp: (event: PointerEvent<HTMLElement>, targetId: string, targetStepRole?: Extract<EdgeStepRole, "addition">) => void
+  onStartConnection: (event: PointerEvent<HTMLElement>, sourceId: string, stepRole?: Extract<EdgeStepRole, "release">) => void
   onStartBarrierAnnotation: (event: PointerEvent<HTMLElement>, sourceId: string) => void
   onStartKeyboardConnection: (sourceId: string) => void
   onSelectNode: (nodeId: string, mode?: GraphSelectionMode) => void
@@ -295,6 +297,7 @@ export function CanvasSurface({
   }, [files])
 
   const connectionSnapTargetId = connectionDraft?.snapTargetId ?? null
+  const connectionSnapStepRole = connectionDraft?.snapStepRole ?? null
   const stableOnNodePointerDown = useLatestCallback(onNodePointerDown)
   const stableOnNodeResizePointerDown = useLatestCallback(onNodeResizePointerDown)
   const stableOnNodePointerUp = useLatestCallback(onNodePointerUp)
@@ -391,6 +394,7 @@ export function CanvasSurface({
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     if (!hasCanvasRawFileDrop(event.dataTransfer)) return
+    event.currentTarget.focus({ preventScroll: true })
     const position = canvasWorldPointFromClient(event.clientX, event.clientY, canvasRef.current, viewport)
     const projectFileIds = projectFileIdsFromDataTransfer(event.dataTransfer)
     if (projectFileIds.length > 0) {
@@ -490,6 +494,7 @@ export function CanvasSurface({
             coordinatePreview={coordinatePreviewForNode(node, fileById)}
             selected={selectedNodeIdSet.has(node.id)}
             connectionSnapTarget={connectionSnapTargetId === node.id}
+            connectionSnapStepRole={connectionSnapTargetId === node.id ? connectionSnapStepRole : null}
             keyboardConnectionActive={node.id === keyboardEdgeSourceId}
             inputConnected={connectedInputNodeIds.has(node.id)}
             outputConnected={connectedOutputNodeIds.has(node.id)}
@@ -806,6 +811,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   coordinatePreview,
   selected,
   connectionSnapTarget,
+  connectionSnapStepRole,
   keyboardConnectionActive,
   inputConnected,
   outputConnected,
@@ -835,6 +841,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   coordinatePreview: CoordinatePreview | null
   selected: boolean
   connectionSnapTarget: boolean
+  connectionSnapStepRole: Extract<EdgeStepRole, "addition"> | null
   keyboardConnectionActive: boolean
   inputConnected: boolean
   outputConnected: boolean
@@ -846,8 +853,8 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   energyBaseline: boolean
   onPointerDown: (event: PointerEvent<HTMLElement>, node: FlowNode) => void
   onResizePointerDown: (event: PointerEvent<HTMLElement>, node: FlowNode) => void
-  onPointerUp: (event: PointerEvent<HTMLElement>, targetId: string) => void
-  onStartConnection: (event: PointerEvent<HTMLElement>, sourceId: string) => void
+  onPointerUp: (event: PointerEvent<HTMLElement>, targetId: string, targetStepRole?: Extract<EdgeStepRole, "addition">) => void
+  onStartConnection: (event: PointerEvent<HTMLElement>, sourceId: string, stepRole?: Extract<EdgeStepRole, "release">) => void
   onStartBarrierAnnotation: (event: PointerEvent<HTMLElement>, sourceId: string) => void
   onStartKeyboardConnection: (sourceId: string) => void
   onSelectNode: (nodeId: string, mode?: GraphSelectionMode) => void
@@ -874,6 +881,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   const relativeEnergyLabel = formatNodeCardRelativeEnergy(relativeEnergy, outputUnit)
   const coefficientLabel = `×${formatCoefficientValue(coefficientValue)}`
   const roleLabel = nodeTermRoleLabel(relativeRole)
+  const showStepConnectors = node.pathRole !== "participant"
   const cardWidth = Math.max(cardSize.width, nodeCardMinimumWidth({
     symbol: relativeEnergySymbol,
     value: relativeEnergyLabel,
@@ -882,7 +890,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   }))
   const previewSize = {
     width: Math.max(128, cardWidth - 28),
-    height: Math.max(72, cardSize.height - 110),
+    height: Math.max(72, cardSize.height - 100),
   }
   const titleLabelWidth = autoTextBoxWidthForValue(renameEditing ? renameDraft : node.label, {
     placeholder: node.label || "Node",
@@ -953,7 +961,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
     <div
       role="button"
       tabIndex={0}
-      className={`reaction-node node-${node.kind}${node.pathRole === "participant" ? " node-participant" : ""}${selected ? " is-selected" : ""}${connectionSnapTarget ? " is-connection-snap-target" : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
+      className={`reaction-node node-${node.kind}${node.pathRole === "participant" ? " node-participant" : ""}${selected ? " is-selected" : ""}${connectionSnapTarget ? (connectionSnapStepRole === "addition" ? " is-connection-snap-target-addition" : " is-connection-snap-target") : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
       aria-label={`Node ${node.label}`}
       data-flow-node-id={node.id}
       style={{
@@ -970,6 +978,21 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
         className="node-connector node-connector-in"
         aria-hidden="true"
       />
+      {showStepConnectors ? (
+        <span
+          role="button"
+          tabIndex={0}
+          className="node-connector node-step-connector node-step-connector-addition"
+          aria-label={`Add species before ${node.label}`}
+          title={`Add species before ${node.label}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => {
+            event.stopPropagation()
+            onPointerUp(event, node.id, "addition")
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
+        />
+      ) : null}
       <div className="node-header">
         <div className="node-header-main">
           {renameEditing ? (
@@ -1100,6 +1123,17 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
         onPointerDown={(event) => onStartConnection(event, node.id)}
         onKeyDown={handleConnectorKeyDown}
       />
+      {showStepConnectors ? (
+        <span
+          role="button"
+          tabIndex={0}
+          className="node-connector node-step-connector node-step-connector-release"
+          aria-label={`Release species after ${node.label}`}
+          title={`Release species after ${node.label}`}
+          onPointerDown={(event) => onStartConnection(event, node.id, "release")}
+          onKeyDown={(event) => event.stopPropagation()}
+        />
+      ) : null}
       <button
         type="button"
         className="node-barrier-handle"
@@ -1237,6 +1271,7 @@ type ReactionNodeCardComparableProps = {
   coordinatePreview: CoordinatePreview | null
   selected: boolean
   connectionSnapTarget: boolean
+  connectionSnapStepRole: Extract<EdgeStepRole, "addition"> | null
   keyboardConnectionActive: boolean
   inputConnected: boolean
   outputConnected: boolean
@@ -1257,6 +1292,7 @@ function areReactionNodeCardPropsEqual(
     && previous.coordinatePreview === next.coordinatePreview
     && previous.selected === next.selected
     && previous.connectionSnapTarget === next.connectionSnapTarget
+    && previous.connectionSnapStepRole === next.connectionSnapStepRole
     && previous.keyboardConnectionActive === next.keyboardConnectionActive
     && previous.inputConnected === next.inputConnected
     && previous.outputConnected === next.outputConnected
@@ -1330,8 +1366,9 @@ const ReactionEdge = memo(function ReactionEdge({
   const source = nodeMap.get(edge.sourceId)
   const target = nodeMap.get(edge.targetId)
   if (!source || !target) return null
-  const segment = createEdgeSegment(source, target)
-  const roleLabel = edge.stepRole && edge.stepRole !== "path" ? `${edge.stepRole} ` : ""
+  const segment = createEdgeSegment(source, target, edge.stepRole)
+  const visibleRoleLabel = edgeStepRoleVisibleLabel(edge.stepRole)
+  const roleLabel = visibleRoleLabel ? `${visibleRoleLabel} ` : ""
 
   return (
     <g
@@ -1406,7 +1443,7 @@ const ReactionEdgeLabel = memo(function ReactionEdgeLabel({
   const source = nodeMap.get(edge.sourceId)
   const target = nodeMap.get(edge.targetId)
   if (!source || !target) return null
-  const segment = createEdgeSegment(source, target)
+  const segment = createEdgeSegment(source, target, edge.stepRole)
 
   return (
     <div
@@ -1532,11 +1569,16 @@ function EdgeInlineLabelEditor({ label, onValueChange, onApply, onDone }: {
 function ConnectionPreview({ draft, nodeMap }: { draft: ConnectionDraft; nodeMap: Map<string, FlowNode> }) {
   const source = nodeMap.get(draft.sourceId)
   if (!source) return null
+  const visibleStepRole = draft.snapStepRole ?? draft.stepRole
   return (
     <>
       <path
-        className={`connection-preview-path${draft.snapTargetId ? " is-snapped" : ""}`}
-        d={createConnectionPreviewPath(source, draft.current)}
+        className={[
+          "connection-preview-path",
+          visibleStepRole ? `is-${visibleStepRole}` : "",
+          draft.snapTargetId ? "is-snapped" : "",
+        ].filter(Boolean).join(" ")}
+        d={createConnectionPreviewPath(source, draft.current, draft.stepRole)}
       />
       {draft.snapTargetId ? (
         <circle
@@ -1961,7 +2003,6 @@ function nodeKindAbbreviation(node: FlowNode): string {
 function edgeStepRoleVisibleLabel(role: FlowEdge["stepRole"]): string {
   if (role === "addition") return "Addition"
   if (role === "release") return "Release"
-  if (role === "branch") return "Branch"
   return ""
 }
 

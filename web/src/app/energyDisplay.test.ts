@@ -102,7 +102,9 @@ describe("energyDisplay", () => {
     expect(gasRows.find((row) => row.nodeId === "cl")?.relative).toBeNull()
     expect(gasRows.find((row) => row.nodeId === "n2")?.relative).toBeNull()
     expect(expressionSignature(rowById(gasRows, "four-b"))).toEqual(["1:4b+", "1:Cl", "-1:4b-1"])
+    expect(relativeExpressionSignature(rowById(gasRows, "four-b"))).toEqual(["1:4b+", "1:Cl", "-1:4b-1"])
     expect(expressionSignature(rowById(gasRows, "tsf"))).toEqual(["1:i1N2fix14-tsf", "1:Cl", "-1:4b-1", "-1:1"])
+    expect(relativeExpressionSignature(rowById(gasRows, "tsf"))).toEqual(["1:i1N2fix14-tsf", "1:Cl", "-1:4b-1", "-1:1"])
     expect(expressionSignature(rowById(gasRows, "tsr"))).toEqual(["1:i1N2fix14-tsr", "1:Cl", "-1:4b-1", "-1:1"])
     expect(gasRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(128.3218, 3)
     expect(gasRows.find((row) => row.nodeId === "tsf")?.relative).toBeCloseTo(83.9137, 3)
@@ -116,6 +118,7 @@ describe("energyDisplay", () => {
     }, explicitEdges)
     expect(shiftedRows.find((row) => row.nodeId === "ts")?.relative).toBeCloseTo(0)
     expect(shiftedRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(36.0666, 3)
+    expect(relativeExpressionSignature(rowById(shiftedRows, "four-b"))).toEqual(["1:4b+", "-1:i1N2fix14-ts", "1:1"])
 
     const solutionRows = energyTableRows(nodes, defaultEnergyDisplayOptions, explicitEdges)
     expect(solutionRows.find((row) => row.nodeId === "four-b")?.relative).toBeCloseTo(17.5410, 3)
@@ -234,4 +237,8 @@ function rowById(rows: ReturnType<typeof energyTableRows>, nodeId: string) {
 
 function expressionSignature(row: ReturnType<typeof energyTableRows>[number]): string[] {
   return row.expressionTerms.map((term) => `${term.coefficient}:${term.label}`)
+}
+
+function relativeExpressionSignature(row: ReturnType<typeof energyTableRows>[number]): string[] {
+  return row.relativeExpressionTerms.map((term) => `${term.coefficient}:${term.label}`)
 }

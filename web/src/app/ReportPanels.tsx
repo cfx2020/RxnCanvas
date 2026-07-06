@@ -1,11 +1,21 @@
-import { memo, useMemo, useState, type ReactNode } from "react"
-import { X } from "lucide-react"
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { FileCode2, FileImage, Table2, X } from "lucide-react"
+import type { FlowEdge, FlowNode } from "../domain/projectPackages"
 import {
   reportExportCapability,
   type ReportExportArtifact,
   type ReportExportFormat,
 } from "../domain/reportExports"
-import { kcalPerHartree, type EnergyDisplayOptions, type EnergyTableRow } from "./energyDisplay"
+import {
+  energyTableCellText,
+  energyTableColumnSpecs,
+  sortedEnergyTableRows,
+  visibleEnergyTableRows,
+  type EnergyDisplayOptions,
+  type EnergyTableColumnSpec,
+  type EnergyTableMode,
+  type EnergyTableRow,
+} from "./energyDisplay"
 
 export type ExportedReportArtifact = ReportExportArtifact & {
   destination?: string
@@ -21,20 +31,33 @@ export function ExportDock({
   onExportFormat: (format: ReportExportFormat) => void | Promise<void>
 }) {
   const formats: ReportExportFormat[] = ["png", "xlsx", "cdxml"]
+  const formatMeta: Record<ReportExportFormat, { description: string; icon: ReactNode }> = {
+    png: { description: "Energy diagram image", icon: <FileImage size={16} /> },
+    xlsx: { description: "Energy table workbook", icon: <Table2 size={16} /> },
+    cdxml: { description: "ChemDraw diagram", icon: <FileCode2 size={16} /> },
+  }
 
   return (
     <section className="export-panel export-menu" aria-label="Export panel">
+      <div className="export-menu-heading">
+        <span>Export</span>
+        <strong>Report artifacts</strong>
+      </div>
       <div className="export-menu-list" role="menu" aria-label="Export formats">
         {formats.map((format) => (
           <button
             key={format}
             type="button"
             role="menuitem"
+            aria-label={reportExportCapability(format).label}
             className="export-menu-item"
             disabled={busy}
             onClick={() => onExportFormat(format)}
           >
-            {reportExportCapability(format).label}
+            <span className="export-menu-item-icon" aria-hidden="true">{formatMeta[format].icon}</span>
+            <span className="export-menu-item-copy" data-description={formatMeta[format].description}>
+              <strong>{reportExportCapability(format).label}</strong>
+            </span>
           </button>
         ))}
       </div>
@@ -43,24 +66,38 @@ export function ExportDock({
   )
 }
 
-type EnergyTableMode = "absolute" | "relative"
-
 export const EnergyTableView = memo(function EnergyTableView({
   rows,
+  nodes = [],
+  edges = [],
   outputUnit: _outputUnit,
   onSelectNode,
   onClose,
 }: {
   rows: EnergyTableRow[]
+  nodes?: FlowNode[]
+  edges?: FlowEdge[]
   outputUnit: EnergyDisplayOptions["outputUnit"]
   onSelectNode: (nodeId: string) => void
   onClose?: () => void
 }) {
-  const [tableMode, setTableMode] = useState<EnergyTableMode>("absolute")
-  const visibleRows = useMemo(
-    () => tableMode === "relative" ? rows.filter((row) => row.showInRelativeTable) : rows,
-    [rows, tableMode],
+  const [tableMode, setTableMode] = useState<EnergyTableMode>("relative")
+  const tableWrapRef = useRef<HTMLDivElement | null>(null)
+  const modeAnimationKey = tableMode === "relative" ? "relative" : "absolute"
+  const orderedRows = useMemo(
+    () => sortedEnergyTableRows(rows, nodes, edges),
+    [edges, nodes, rows],
   )
+  const visibleRows = useMemo(
+    () => visibleEnergyTableRows(orderedRows, tableMode),
+    [orderedRows, tableMode],
+  )
+
+  useEffect(() => {
+    if (typeof tableWrapRef.current?.scrollTo === "function") {
+      tableWrapRef.current.scrollTo({ top: 0, left: 0, behavior: "smooth" })
+    }
+  }, [tableMode])
 
   return (
     <section className="workbench-energy-table-panel" aria-label="Energy table">
@@ -70,15 +107,7 @@ export const EnergyTableView = memo(function EnergyTableView({
           <h2>Energy Table</h2>
         </div>
         <div className="workbench-energy-table-header-actions">
-          <div className="workbench-energy-table-mode" role="group" aria-label="Energy table mode">
-            <button
-              type="button"
-              className={tableMode === "absolute" ? "workbench-energy-table-mode-button--active" : ""}
-              aria-pressed={tableMode === "absolute"}
-              onClick={() => setTableMode("absolute")}
-            >
-              Absolute
-            </button>
+          <div className={`workbench-energy-table-mode is-${tableMode}`} role="group" aria-label="Energy table mode">
             <button
               type="button"
               className={tableMode === "relative" ? "workbench-energy-table-mode-button--active" : ""}
@@ -86,6 +115,14 @@ export const EnergyTableView = memo(function EnergyTableView({
               onClick={() => setTableMode("relative")}
             >
               Relative
+            </button>
+            <button
+              type="button"
+              className={tableMode === "absolute" ? "workbench-energy-table-mode-button--active" : ""}
+              aria-pressed={tableMode === "absolute"}
+              onClick={() => setTableMode("absolute")}
+            >
+              Absolute
             </button>
           </div>
           <span>{visibleRows.length} rows</span>
@@ -102,17 +139,17 @@ export const EnergyTableView = memo(function EnergyTableView({
           ) : null}
         </div>
       </header>
-      {rows.length === 0 ? (
+      {orderedRows.length === 0 ? (
         <div className="workbench-energy-table-empty">
           <strong>No nodes</strong>
         </div>
       ) : (
-        <div className="workbench-energy-table-wrap">
-          <table className="workbench-energy-table">
+        <div ref={tableWrapRef} className="workbench-energy-table-wrap">
+          <table key={modeAnimationKey} className="workbench-energy-table">
             <thead>
               <tr>
-                {energyTableHeaders(tableMode === "relative").map((header, index) => (
-                  <th key={index}>{header}</th>
+                {energyTableColumnSpecs.map((column) => (
+                  <th key={column.id}>{renderEnergyTableHeader(column, tableMode)}</th>
                 ))}
               </tr>
             </thead>
@@ -122,18 +159,9 @@ export const EnergyTableView = memo(function EnergyTableView({
                   <th scope="row">
                     <button type="button" onClick={() => onSelectNode(row.nodeId)}>{row.label}</button>
                   </th>
-                  <td>{chargeMultiplicity(row)}</td>
-                  <td>{formatHartreeTableCell(row, "egasHartree", tableMode)}</td>
-                  <td>{formatKcalFromHartreeCell(row, "egasHartree", tableMode)}</td>
-                  <td>{formatIntegerCell(tableNumberValue(row, "gasBasisFunctions", tableMode))}</td>
-                  <td>{formatHartreeTableCell(row, "ggasHartree", tableMode)}</td>
-                  <td>{formatKcalFromHartreeCell(row, "ggasHartree", tableMode)}</td>
-                  <td>{formatHartreeTableCell(row, "ggas1mHartree", tableMode)}</td>
-                  <td>{formatKcalFromHartreeCell(row, "ggas1mHartree", tableMode)}</td>
-                  <td>{formatHartreeTableCell(row, "esolHartree", tableMode)}</td>
-                  <td>{formatKcalFromHartreeCell(row, "esolHartree", tableMode)}</td>
-                  <td>{formatIntegerCell(tableNumberValue(row, "solBasisFunctions", tableMode))}</td>
-                  <td>{formatKcalFromHartreeCell(row, "gsolHartree", tableMode)}</td>
+                  {energyTableColumnSpecs.slice(1).map((column) => (
+                    <td key={column.id}>{energyTableCellText(row, column, tableMode)}</td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -144,79 +172,34 @@ export const EnergyTableView = memo(function EnergyTableView({
   )
 })
 
-function energyTableHeaders(relative: boolean): ReactNode[] {
-  const prefix = relative ? "Δ" : ""
-  return [
-    "Structure",
-    "Charge / Mult.",
-    <span>{prefix}E<sub>gas</sub>(Eh)</span>,
-    <span>{prefix}E<sub>gas</sub>(kcal/mol)</span>,
-    <span>Basis<sub>gas</sub></span>,
-    <span>{prefix}G<sub>gas</sub>(Eh)</span>,
-    <span>{prefix}G<sub>gas</sub>(kcal/mol)</span>,
-    <span>{prefix}G<sub>gas</sub>+1M(Eh)</span>,
-    <span>{prefix}G<sub>gas</sub>+1M(kcal/mol)</span>,
-    <span>{prefix}E<sub>sol</sub>(Eh)</span>,
-    <span>{prefix}E<sub>sol</sub>(kcal/mol)</span>,
-    <span>Basis<sub>sol</sub></span>,
-    <span>{prefix}G<sub>sol</sub>(kcal/mol)</span>,
-  ]
-}
-
-type HartreeEnergyTableKey =
-  | "egasHartree"
-  | "ggasHartree"
-  | "ggas1mHartree"
-  | "esolHartree"
-  | "gsolHartree"
-
-type NumericEnergyTableKey =
-  | HartreeEnergyTableKey
-  | "gasBasisFunctions"
-  | "solBasisFunctions"
-
-function chargeMultiplicity(row: EnergyTableRow): string {
-  if (typeof row.charge !== "number" && typeof row.spinMultiplicity !== "number") return "-"
-  return `${row.charge ?? "?"} / ${row.spinMultiplicity ?? "?"}`
-}
-
-function formatHartreeTableCell(
-  row: EnergyTableRow,
-  key: HartreeEnergyTableKey,
-  mode: EnergyTableMode,
-): string {
-  const value = tableNumberValue(row, key, mode)
-  if (typeof value !== "number") return "-"
-  return formatHartreeNumber(value)
-}
-
-function formatKcalFromHartreeCell(
-  row: EnergyTableRow,
-  key: HartreeEnergyTableKey,
-  mode: EnergyTableMode,
-): string {
-  const value = tableNumberValue(row, key, mode)
-  if (typeof value !== "number") return "-"
-  return formatKcalNumber(value * kcalPerHartree)
-}
-
-function tableNumberValue(row: EnergyTableRow, key: NumericEnergyTableKey, mode: EnergyTableMode): number | null {
-  const table = mode === "relative" ? row.relativeEnergyTable : row.energyTable
-  const value = table?.[key]
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (mode === "absolute" && key === "egasHartree" && row.energyUnit === "hartree" && typeof row.gas === "number") return row.gas
-  if (mode === "absolute" && key === "gsolHartree" && row.energyUnit === "hartree" && typeof row.solution === "number") return row.solution
-  return null
-}
-
-function formatIntegerCell(value: number | null | undefined): string {
-  return typeof value === "number" && Number.isFinite(value) ? String(Math.trunc(value)) : "-"
-}
-
-function formatHartreeNumber(value: number): string {
-  return Number.isFinite(value) ? value.toFixed(6) : "-"
-}
-
-function formatKcalNumber(value: number): string {
-  return Number.isFinite(value) ? value.toFixed(2) : "-"
+function renderEnergyTableHeader(column: EnergyTableColumnSpec, mode: EnergyTableMode): ReactNode {
+  const prefix = mode === "relative" ? "Δ" : ""
+  switch (column.id) {
+    case "structure":
+      return "Structure"
+    case "chargeMultiplicity":
+      return "Charge / Mult."
+    case "egasHartree":
+      return <span>{prefix}E<sub>gas</sub>(Eh)</span>
+    case "egasKcal":
+      return <span>{prefix}E<sub>gas</sub>(kcal/mol)</span>
+    case "gasBasisFunctions":
+      return <span>Basis<sub>gas</sub></span>
+    case "ggasHartree":
+      return <span>{prefix}G<sub>gas</sub>(Eh)</span>
+    case "ggasKcal":
+      return <span>{prefix}G<sub>gas</sub>(kcal/mol)</span>
+    case "ggas1mHartree":
+      return <span>{prefix}G<sub>gas</sub>+1M(Eh)</span>
+    case "ggas1mKcal":
+      return <span>{prefix}G<sub>gas</sub>+1M(kcal/mol)</span>
+    case "esolHartree":
+      return <span>{prefix}E<sub>sol</sub>(Eh)</span>
+    case "esolKcal":
+      return <span>{prefix}E<sub>sol</sub>(kcal/mol)</span>
+    case "solBasisFunctions":
+      return <span>Basis<sub>sol</sub></span>
+    case "gsolKcal":
+      return <span>{prefix}G<sub>sol</sub>(kcal/mol)</span>
+  }
 }

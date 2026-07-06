@@ -19,6 +19,8 @@ export type CanvasPointerDraft = {
   sourceId: string
   current: Point
   snapTargetId?: string
+  snapStepRole?: "addition"
+  stepRole?: "addition" | "release"
 }
 
 export type CanvasNodeDragSubject = {

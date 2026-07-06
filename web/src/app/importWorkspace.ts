@@ -272,11 +272,12 @@ export function sourceFilesWithImportPlan(
   fileMode: "prepend" | "update" = "prepend",
 ): SourceFile[] {
   const stagedById = new Map(importPlan.stagedFiles.map((file) => [file.id, file]))
-  const replacementKeys = new Set(importPlan.stagedFiles.map(sourceFileReplacementKey))
+  const replacementByKey = new Map(importPlan.stagedFiles.map((file) => [sourceFileReplacementKey(file), file]))
   const withoutStaleReplacedFiles = currentFiles.filter((file) => {
     if (stagedById.has(file.id)) return true
-    if (!replacementKeys.has(sourceFileReplacementKey(file))) return true
-    return !sourceFileIsFailedImportPlaceholder(file)
+    const replacement = replacementByKey.get(sourceFileReplacementKey(file))
+    if (!replacement) return true
+    return !sourceFileShouldYieldToReplacement(file, replacement)
   })
 
   if (fileMode === "prepend") {
@@ -292,7 +293,15 @@ export function sourceFilesWithImportPlan(
     if (staged) seen.add(file.id)
     return staged ?? file
   })
-  const missingStagedFiles = importPlan.stagedFiles.filter((file) => !seen.has(file.id))
+  const resolvedReplacementKeys = new Set(
+    updatedFiles
+      .filter(sourceFileIsResolvedImport)
+      .map(sourceFileReplacementKey),
+  )
+  const missingStagedFiles = importPlan.stagedFiles.filter((file) => (
+    !seen.has(file.id)
+    && !sourceFileResolvedReplacementAlreadyExists(file, resolvedReplacementKeys)
+  ))
   return [...missingStagedFiles, ...updatedFiles]
 }
 
@@ -312,6 +321,29 @@ function sourceFileIsFailedImportPlaceholder(file: SourceFile): boolean {
   if (!parse) return true
   if (parse.parsed) return false
   return !parseWasDeferred(parse)
+}
+
+function sourceFileShouldYieldToReplacement(file: SourceFile, replacement: SourceFile): boolean {
+  if (sourceFileIsFailedImportPlaceholder(file)) return true
+  return sourceFileIsPendingImportPlaceholder(file) && sourceFileIsResolvedImport(replacement)
+}
+
+function sourceFileIsPendingImportPlaceholder(file: SourceFile): boolean {
+  if (file.storedPath) return false
+  if (file.status !== "staged") return false
+  const parse = file.parse
+  return Boolean(parse && parseWasDeferred(parse))
+}
+
+function sourceFileIsResolvedImport(file: SourceFile): boolean {
+  if (sourceFileIsPendingImportPlaceholder(file)) return false
+  const parse = file.parse
+  if (parse && parseWasDeferred(parse)) return false
+  return file.status === "parsed" || Boolean(file.storedPath) || parse?.parsed === true
+}
+
+function sourceFileResolvedReplacementAlreadyExists(file: SourceFile, resolvedReplacementKeys: Set<string>): boolean {
+  return sourceFileIsResolvedImport(file) && resolvedReplacementKeys.has(sourceFileReplacementKey(file))
 }
 
 export function projectWorkspaceWithImportPlan(

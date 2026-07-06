@@ -1,4 +1,4 @@
-import type { FlowBarrier, FlowNode, Point } from "../domain/projectPackages"
+import type { EdgeStepRole, FlowBarrier, FlowNode, Point } from "../domain/projectPackages"
 import {
   energyToKcal,
   formatBarrierValue,
@@ -25,9 +25,9 @@ export type BarrierSegment = {
 
 export type BarrierRelativeEnergyLookup = ReadonlyMap<string, number | null>
 
-export function createEdgeSegment(source: FlowNode, target: FlowNode): EdgeSegment {
-  const start = edgeSourceAnchor(source)
-  const end = edgeTargetAnchor(target)
+export function createEdgeSegment(source: FlowNode, target: FlowNode, stepRole?: EdgeStepRole): EdgeSegment {
+  const start = edgeSourceAnchor(source, stepRole)
+  const end = edgeTargetAnchor(target, stepRole)
   const horizontal = Math.abs(end.x - start.x)
   const vertical = Math.abs(end.y - start.y)
   const bend = clamp(Math.max(horizontal * 0.34, vertical * 0.2), 28, 96)
@@ -40,8 +40,8 @@ export function createEdgeSegment(source: FlowNode, target: FlowNode): EdgeSegme
   }
 }
 
-export function createConnectionPreviewPath(source: FlowNode, current: Point): string {
-  const start = edgeSourceAnchor(source)
+export function createConnectionPreviewPath(source: FlowNode, current: Point, stepRole?: EdgeStepRole): string {
+  const start = edgeSourceAnchor(source, stepRole)
   const bend = Math.max(80, Math.abs(current.x - start.x) * 0.42)
   return cubicPath(start, current, bend)
 }
@@ -181,14 +181,23 @@ export function roundPathCoordinate(value: number): number {
   return Math.round(value * 10) / 10
 }
 
-function edgeSourceAnchor(source: FlowNode): Point {
+function edgeSourceAnchor(source: FlowNode, stepRole?: EdgeStepRole): Point {
   const size = flowNodeSize(source)
+  if (stepRole === "release") return stepConnectorAnchor(source, "release", size)
   return { x: source.position.x + size.width, y: source.position.y + size.height * 0.5 }
 }
 
-function edgeTargetAnchor(target: FlowNode): Point {
+function edgeTargetAnchor(target: FlowNode, stepRole?: EdgeStepRole): Point {
   const size = flowNodeSize(target)
+  if (stepRole === "addition") return stepConnectorAnchor(target, "addition", size)
   return { x: target.position.x, y: target.position.y + size.height * 0.5 }
+}
+
+function stepConnectorAnchor(node: FlowNode, role: Extract<EdgeStepRole, "addition" | "release">, size = flowNodeSize(node)): Point {
+  return {
+    x: role === "addition" ? node.position.x : node.position.x + size.width,
+    y: node.position.y + size.height * 0.5 - 38,
+  }
 }
 
 function cubicPath(start: Point, end: Point, bend: number): string {

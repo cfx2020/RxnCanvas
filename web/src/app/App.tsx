@@ -26,9 +26,6 @@ import {
 	  type FlowEdge,
 	  type FlowNode,
 	  type ManualStructurePayload,
-	  type EdgeStepRole,
-	  type NodeKind,
-	  type NodePathRole,
 	  type Point,
   type ProjectSummary,
   type SourceFile,
@@ -203,11 +200,8 @@ import {
   pushCanvasEditHistoryState,
   redoCanvasEditAction,
 	  undoCanvasEditAction,
-	  updateEdgeStepRoleAction,
 	  updateNodeCoefficientAction,
-	  updateNodeKindAction,
 	  updateNodeManualStructureAction,
-	  updateNodePathRoleAction,
 	  type CanvasEditHistorySetters,
 	} from "./appCanvasEditActions"
 import {
@@ -676,7 +670,7 @@ export function App() {
     for (const edgePreview of cache.edges) {
       const source = edgePreview.edge.sourceId === nodeId ? previewNode : edgePreview.source
       const targetNode = edgePreview.edge.targetId === nodeId ? previewNode : edgePreview.target
-      const segment = createEdgeSegment(source, targetNode)
+      const segment = createEdgeSegment(source, targetNode, edgePreview.edge.stepRole)
       edgePreview.hitPath?.setAttribute("d", segment.path)
       edgePreview.visiblePath?.setAttribute("d", segment.path)
       if (edgePreview.labelElement) {
@@ -740,7 +734,7 @@ export function App() {
     for (const edgePreview of cache.edges) {
       const source = edgePreview.edge.sourceId === nodeId ? previewNode : edgePreview.source
       const targetNode = edgePreview.edge.targetId === nodeId ? previewNode : edgePreview.target
-      const segment = createEdgeSegment(source, targetNode)
+      const segment = createEdgeSegment(source, targetNode, edgePreview.edge.stepRole)
       edgePreview.hitPath?.setAttribute("d", segment.path)
       edgePreview.visiblePath?.setAttribute("d", segment.path)
       if (edgePreview.labelElement) {
@@ -1509,6 +1503,7 @@ export function App() {
       connectionDraft,
       barrierDraft,
       nodes,
+      edges,
       barriers,
       selection: {
         nodeIds: selectedNodeIds,
@@ -1529,6 +1524,7 @@ export function App() {
     clearDragPreview,
     connectionDraft,
     dragState,
+    edges,
     finishConnectionDraftAtClientPoint,
     flushScheduledPointerMoveNow,
     nodeIdSet,
@@ -1576,10 +1572,11 @@ export function App() {
     }
   }, [inspectorMode])
 
-  const startConnection = useCallback((event: PointerEvent<HTMLElement>, sourceId: string) => {
+  const startConnection = useCallback((event: PointerEvent<HTMLElement>, sourceId: string, stepRole?: "release") => {
     startConnectionAction({
       event,
       sourceId,
+      stepRole,
       screenToWorld,
       appStateSetters,
     })
@@ -1594,16 +1591,18 @@ export function App() {
     })
   }, [appStateSetters, screenToWorld])
 
-  const completeConnectionToNode = useCallback((event: PointerEvent<HTMLElement>, targetId: string) => {
+  const completeConnectionToNode = useCallback((event: PointerEvent<HTMLElement>, targetId: string, targetStepRole?: "addition") => {
     completeConnectionToNodeAction({
       event,
       targetId,
+      targetStepRole,
       connectionDraft,
+      nodes,
       edges,
       appStateSetters,
       pushEditHistory,
     })
-  }, [appStateSetters, connectionDraft, edges, pushEditHistory])
+  }, [appStateSetters, connectionDraft, edges, nodes, pushEditHistory])
 
   const startKeyboardConnection = useCallback((sourceId: string) => {
     const transition = keyboardConnectionSourceTransition(keyboardEdgeSourceId, sourceId)
@@ -2614,24 +2613,6 @@ export function App() {
     setCanvasContextMenu(null)
   }, [contextMenuNodeId, showNodeSourceDetails])
 
-  const setContextMenuNodePathRole = useCallback((pathRole: NodePathRole) => {
-    if (!contextMenuNodeId) return
-    updateNodePathRoleAction({ nodes, nodeId: contextMenuNodeId, pathRole, appStateSetters, pushEditHistory })
-    setCanvasContextMenu(null)
-  }, [appStateSetters, contextMenuNodeId, nodes, pushEditHistory])
-
-  const setContextMenuNodeKind = useCallback((kind: NodeKind) => {
-    if (!contextMenuNodeId) return
-    updateNodeKindAction({ nodes, nodeId: contextMenuNodeId, kind, appStateSetters, pushEditHistory })
-    setCanvasContextMenu(null)
-  }, [appStateSetters, contextMenuNodeId, nodes, pushEditHistory])
-
-  const setContextMenuEdgeStepRole = useCallback((stepRole: EdgeStepRole) => {
-    if (!contextMenuEdgeId) return
-    updateEdgeStepRoleAction({ edges, edgeId: contextMenuEdgeId, stepRole, appStateSetters, pushEditHistory })
-    setCanvasContextMenu(null)
-  }, [appStateSetters, contextMenuEdgeId, edges, pushEditHistory])
-
   const handleCanvasKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     handleCanvasKeyboardEvent(event, hasCanvasSelection, {
       undoEdit,
@@ -2839,19 +2820,6 @@ export function App() {
               <button type="button" role="menuitem" onClick={setZeroFromContextMenuNode}>Set zero</button>
               <button type="button" role="menuitem" onClick={showSourceFromContextMenuNode}>Source details</button>
               <span className="canvas-context-menu-divider" aria-hidden="true" />
-              <button type="button" role="menuitem" onClick={() => setContextMenuNodePathRole("state")}>Mark as path state</button>
-              <button type="button" role="menuitem" onClick={() => setContextMenuNodePathRole("participant")}>Mark as participant</button>
-              <button type="button" role="menuitem" onClick={() => setContextMenuNodeKind("transition")}>Mark as transition state</button>
-              <span className="canvas-context-menu-divider" aria-hidden="true" />
-            </>
-          ) : null}
-          {contextMenuEdgeId ? (
-            <>
-              <button type="button" role="menuitem" onClick={() => setContextMenuEdgeStepRole("path")}>Step role: path</button>
-              <button type="button" role="menuitem" onClick={() => setContextMenuEdgeStepRole("branch")}>Step role: branch</button>
-              <button type="button" role="menuitem" onClick={() => setContextMenuEdgeStepRole("addition")}>Step role: addition</button>
-              <button type="button" role="menuitem" onClick={() => setContextMenuEdgeStepRole("release")}>Step role: release</button>
-              <span className="canvas-context-menu-divider" aria-hidden="true" />
             </>
           ) : null}
           <button type="button" role="menuitem" className="is-danger" onClick={deleteContextMenuSelection}>
@@ -2911,9 +2879,9 @@ export function App() {
                   selectedBarrierIds={selectedBarrierIds}
                   keyboardEdgeSourceId={keyboardEdgeSourceId}
                   tool={tool}
-                  viewport={viewport}
-                  rubberBandDraft={dragState?.kind === "rubber" ? dragState : null}
-                  connectionDraft={connectionDraft}
+	                  viewport={viewport}
+	                  rubberBandDraft={dragState?.kind === "rubber" ? dragState : null}
+	                  connectionDraft={connectionDraft}
                   barrierDraft={barrierDraft}
                   energyDisplayOptions={energyDisplayOptions}
                   energyRows={energyRows}
@@ -2973,6 +2941,8 @@ export function App() {
               >
                 <EnergyTableView
                   rows={energyRows}
+                  nodes={nodes}
+                  edges={edges}
                   outputUnit={energyDisplayOptions.outputUnit}
                   onClose={() => setViewMode("canvas")}
                   onSelectNode={(nodeId) => {

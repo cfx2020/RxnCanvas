@@ -13,7 +13,8 @@ describe("parseSourcePreview", () => {
     })
 
     expect(parsed.parsed).toBe(true)
-    expect(parsed.kind).toBe("transition")
+    expect(parsed.kind).toBe("intermediate")
+    expect(parsed.candidates[0]?.roleHint).toBe("unknown")
     expect(parsed.formula).toBe("C10H12")
     expect(parsed.method).toBe("RwB97XD")
     expect(parsed.energyGas).toBeCloseTo(-232.487921)
@@ -22,6 +23,20 @@ describe("parseSourcePreview", () => {
     expect(parsed.parserId).toBe("gaussian-log-text-preview")
     expect(parsed.objectCount).toBe(1)
     expect(parsed.candidates[0]?.formula).toBe("C10H12")
+  })
+
+  it("classifies Gaussian transition states from route evidence instead of filename", () => {
+    const parsed = parseSourcePreview({
+      name: "generic.log",
+      preview: [
+        "#p wb97xd/genecp opt=(ts,calcfc) freq",
+        "Stoichiometry C10H12",
+        "SCF Done: E(RwB97XD) = -232.487921 A.U.",
+      ].join("\n"),
+    })
+
+    expect(parsed.kind).toBe("transition")
+    expect(parsed.candidates[0]?.roleHint).toBe("transition")
   })
 
   it("extracts Ir atoms from Gaussian orientation atomic numbers", () => {
@@ -77,6 +92,8 @@ describe("parseSourcePreview", () => {
     })
 
     const modes = parsed.coordinatePreview?.vibrationModes ?? []
+    expect(parsed.kind).toBe("transition")
+    expect(parsed.candidates[0]?.roleHint).toBe("transition")
     expect(modes).toHaveLength(3)
     expect(modes[0]).toMatchObject({
       modeId: "mode-1-imaginary-423.12",
@@ -108,6 +125,19 @@ describe("parseSourcePreview", () => {
     expect(parsed.energyGas).toBeCloseTo(-231.884002)
     expect(parsed.energySolution).toBeCloseTo(-231.894243)
     expect(parsed.solvent).toBe("implicit solvent")
+  })
+
+  it("classifies ORCA transition states from route evidence instead of filename", () => {
+    const parsed = parseSourcePreview({
+      name: "generic.out",
+      preview: [
+        "! wB97X-D3 def2-TZVP OptTS Freq",
+        "FINAL SINGLE POINT ENERGY     -231.884002",
+      ].join("\n"),
+    })
+
+    expect(parsed.kind).toBe("transition")
+    expect(parsed.candidates[0]?.roleHint).toBe("transition")
   })
 
   it("extracts ORCA geometry, charge, and multiplicity summaries", () => {
