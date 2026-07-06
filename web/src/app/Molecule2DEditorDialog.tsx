@@ -44,7 +44,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
     const ketcher = ketcherRef.current
     if (!ketcher || !candidate.text.trim()) return false
     try {
-      await ketcher.setMolecule(candidate.text, { needZoom: true })
+      await ketcher.addFragment(candidate.text, { needZoom: true })
       setStatus("ready")
       showClipboardToast(`Pasted ${candidate.label} structure.`)
       return true
@@ -77,6 +77,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
   }, [pasteStructureIntoKetcher, showClipboardToast])
 
   const handlePasteCapture = useCallback((event: ReactClipboardEvent<HTMLElement>) => {
+    if (isEditableTarget(event.target) && !isKetcherClipboardTarget(event.target)) return
     const candidate = structureCandidateFromClipboardData(event.clipboardData)
     if (candidate) {
       event.preventDefault()
@@ -129,16 +130,38 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
     }
   }, [showClipboardToast])
 
+  const enrichKetcherClipboardForDesktop = useCallback(async () => {
+    const ketcher = ketcherRef.current
+    const desktop = window.rxnflowDesktop
+    if (!ketcher || !desktop?.readChemicalClipboard || !desktop.writeChemicalClipboard) return
+    const result = await desktop.readChemicalClipboard()
+    const candidate = structureCandidateFromDesktopClipboard(result)
+    if (!candidate) return
+    try {
+      const [ket, molfile, cdxml, cdx] = await Promise.all([
+        convertClipboardStructure(ketcher, candidate.text, ketcherChemicalMimeTypes.ket),
+        convertClipboardStructure(ketcher, candidate.text, ketcherChemicalMimeTypes.mol),
+        convertClipboardStructure(ketcher, candidate.text, ketcherChemicalMimeTypes.cdxml),
+        convertClipboardStructure(ketcher, candidate.text, ketcherChemicalMimeTypes.cdx),
+      ])
+      const text = cdxml || molfile || ket || candidate.text
+      if (!text.trim()) return
+      await desktop.writeChemicalClipboard({ ket, molfile, cdxml, cdx, text })
+    } catch (error) {
+      console.warn("RxnFlow could not enrich the Ketcher clipboard for ChemDraw", error)
+    }
+  }, [])
+
   const handleKetcherClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     const target = event.target instanceof Element ? event.target : null
-    const pasteButton = target?.closest("[data-testid='paste-from-clipboard-button'], button[title*='Paste'], [aria-label*='Paste']")
+    const pasteButton = target?.closest("[data-testid='paste-from-clipboard-button'], [data-testid='paste-button'], button[title='Paste'], [aria-label='Paste']")
     if (pasteButton) {
       event.preventDefault()
       event.stopPropagation()
       void pasteFromDesktopClipboard()
       return
     }
-    const copyButton = target?.closest("[data-testid='copy-to-clipboard'], button[title*='Copy'], [aria-label*='Copy']")
+    const copyButton = target?.closest("[data-testid='copy-to-clipboard']")
     if (copyButton) {
       event.preventDefault()
       event.stopPropagation()
@@ -147,10 +170,13 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
   }, [copyToDesktopClipboard, pasteFromDesktopClipboard])
 
   const handleClipboardShortcut = useCallback((event: ClipboardShortcutEvent) => {
-    if (isEditableTarget(event.target)) return
     const commandKey = event.metaKey || event.ctrlKey
     if (!commandKey || event.altKey || event.shiftKey) return
     const key = event.key.toLowerCase()
+    const ketcherOwnsShortcut = isTargetInsideElement(event.target, hostRef.current)
+      || isTargetInsideElement(document.activeElement, hostRef.current)
+    if (isEditableTarget(event.target) && !(key === "v" && isKetcherClipboardTarget(event.target))) return
+    if (key === "c" && ketcherOwnsShortcut) return
     if (key === "v" && window.rxnflowDesktop?.readChemicalClipboard) {
       event.preventDefault()
       event.stopPropagation()
@@ -166,6 +192,19 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
   const handleKetcherKeyDownCapture = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     handleClipboardShortcut(event)
   }, [handleClipboardShortcut])
+
+  useEffect(() => {
+    const root = hostRef.current
+    if (!root) return undefined
+    const handleCopy = (event: ClipboardEvent) => {
+      if (isEditableTarget(event.target) && !isKetcherClipboardTarget(event.target)) return
+      window.setTimeout(() => {
+        void enrichKetcherClipboardForDesktop()
+      }, 120)
+    }
+    root.addEventListener("copy", handleCopy)
+    return () => root.removeEventListener("copy", handleCopy)
+  }, [enrichKetcherClipboardForDesktop])
 
   useEffect(() => {
     const root = hostRef.current
@@ -325,6 +364,13 @@ type DesktopChemicalClipboardResult = {
 type ClipboardShortcutEvent = Pick<KeyboardEvent | ReactKeyboardEvent<HTMLElement>, "altKey" | "ctrlKey" | "key" | "metaKey" | "shiftKey" | "target" | "preventDefault" | "stopPropagation">
 
 const chemicalClipboardTypePattern = /(cdif|stru|chms|cdxm|cdx|cdxml|chem|chemical|molfile|mdl|mol|rxn|skc|com\.(cambridgesoft|perkinelmer|revvity)|xml|html|text\/plain)/i
+const ketcherChemicalMimeTypes = {
+  ket: "chemical/x-indigo-ket",
+  mol: "chemical/x-mdl-molfile",
+  cdxml: "chemical/x-cdxml",
+  cdx: "chemical/x-cdx",
+} as const
+type KetcherChemicalMimeType = typeof ketcherChemicalMimeTypes[keyof typeof ketcherChemicalMimeTypes]
 
 function structureCandidateFromClipboardData(clipboardData: DataTransfer | null): ClipboardStructureCandidate | null {
   if (!clipboardData) return null
@@ -390,13 +436,15 @@ function extractKnownStructurePayload(text: string): string | null {
 }
 
 function chemicalClipboardPriority(format: string): number {
-  if (/cdxml/i.test(format)) return 0
-  if (/cdif|stru|chms|cdxm|cdx|com\.(cambridgesoft|perkinelmer|revvity)/i.test(format)) return 1
-  if (/molfile|mdl|mol/i.test(format)) return 2
-  if (/rxn/i.test(format)) return 3
-  if (/text\/plain|text/i.test(format)) return 4
-  if (/html/i.test(format)) return 5
-  return 6
+  if (/ket|indigo/i.test(format)) return 0
+  if (/cdxml/i.test(format)) return 1
+  if (/cdif|stru|chms|cdxm|cdx|com\.(cambridgesoft|perkinelmer|revvity)/i.test(format)) return 2
+  if (/molfile|mdl|mol/i.test(format)) return 3
+  if (/smiles|daylight|chemaxon/i.test(format)) return 4
+  if (/rxn/i.test(format)) return 5
+  if (/text\/plain|text/i.test(format)) return 6
+  if (/html/i.test(format)) return 7
+  return 8
 }
 
 function clipboardFormatsSummary(formats: string[]): string {
@@ -407,9 +455,25 @@ function clipboardFormatsSummary(formats: string[]): string {
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
-  if (target instanceof HTMLTextAreaElement && /cliparea/i.test(String(target.className))) return false
-  if (target.closest("[class*='cliparea']")) return false
   return Boolean(target.closest("input, textarea, [contenteditable='true'], [contenteditable=''], [role='textbox']"))
+}
+
+function isKetcherClipboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return Boolean(
+    (target instanceof HTMLTextAreaElement && /cliparea/i.test(String(target.className)))
+    || target.closest("[data-cliparea], [class*='cliparea']"),
+  )
+}
+
+function isTargetInsideElement(target: EventTarget | null, element: HTMLElement | null): boolean {
+  return Boolean(element && target instanceof Node && element.contains(target))
+}
+
+async function convertClipboardStructure(ketcher: Ketcher, text: string, outputFormat: KetcherChemicalMimeType): Promise<string> {
+  if (!text.trim()) return ""
+  const result = await ketcher.indigo.convert(text, { outputFormat } as NonNullable<Parameters<Ketcher["indigo"]["convert"]>[1]>).catch(() => null)
+  return typeof result?.struct === "string" ? result.struct.trim() : ""
 }
 
 function decorateKetcherTooltips(root: HTMLElement) {

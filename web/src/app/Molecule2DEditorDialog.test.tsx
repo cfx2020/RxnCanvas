@@ -7,10 +7,12 @@ import type { FlowNode } from "../domain/projectPackages"
 const ketcherMocks = vi.hoisted(() => ({
   fail: false,
   setMolecule: vi.fn(),
+  addFragment: vi.fn(),
   getKet: vi.fn(),
   getMolfile: vi.fn(),
   getCDXml: vi.fn(),
   getCDX: vi.fn(),
+  convert: vi.fn(),
 }))
 
 vi.mock("./KetcherEditorHost", () => ({
@@ -19,15 +21,21 @@ vi.mock("./KetcherEditorHost", () => ({
     useEffect(() => {
       onReady({
         setMolecule: ketcherMocks.setMolecule,
+        addFragment: ketcherMocks.addFragment,
         getKet: ketcherMocks.getKet,
         getMolfile: ketcherMocks.getMolfile,
         getCDXml: ketcherMocks.getCDXml,
         getCDX: ketcherMocks.getCDX,
+        indigo: {
+          convert: ketcherMocks.convert,
+        },
       })
     }, [onReady])
     return (
       <div>
         <textarea data-testid="ketcher-cliparea" className="cliparea-module_cliparea__GdPrN" />
+        <button type="button" data-testid="copy-button" title="Copy">Copy</button>
+        <button type="button" data-testid="paste-button" title="Paste">Paste</button>
         <button type="button" data-testid="paste-from-clipboard-button">Paste from clipboard</button>
         <button type="button" data-testid="copy-to-clipboard">Copy to clipboard</button>
       </div>
@@ -59,15 +67,21 @@ describe("Molecule2DEditorDialog", () => {
     originalDesktop = window.rxnflowDesktop
     ketcherMocks.fail = false
     ketcherMocks.setMolecule.mockReset()
+    ketcherMocks.addFragment.mockReset()
     ketcherMocks.getKet.mockReset()
     ketcherMocks.getMolfile.mockReset()
     ketcherMocks.getCDXml.mockReset()
     ketcherMocks.getCDX.mockReset()
+    ketcherMocks.convert.mockReset()
     ketcherMocks.setMolecule.mockResolvedValue(undefined)
+    ketcherMocks.addFragment.mockResolvedValue(undefined)
     ketcherMocks.getKet.mockResolvedValue("{\"root\":{\"nodes\":[]}}")
     ketcherMocks.getMolfile.mockResolvedValue("molfile V3000\nM  END")
     ketcherMocks.getCDXml.mockResolvedValue("<CDXML><page><fragment id=\"1\"/></page></CDXML>")
     ketcherMocks.getCDX.mockResolvedValue("Q0RYLWJhc2U2NC1zdHJ1Y3R1cmUtcGF5bG9hZC1zaW11bGF0ZWQ=")
+    ketcherMocks.convert.mockImplementation(async (text: string, options: { outputFormat: string }) => ({
+      struct: `${options.outputFormat}:${text}`,
+    }))
   })
 
   afterEach(() => {
@@ -114,7 +128,7 @@ describe("Molecule2DEditorDialog", () => {
     fireEvent.click(await screen.findByTestId("paste-from-clipboard-button"))
 
     await waitFor(() => {
-      expect(ketcherMocks.setMolecule).toHaveBeenCalledWith("<CDXML><page><fragment id=\"1\"/></page></CDXML>", { needZoom: true })
+      expect(ketcherMocks.addFragment).toHaveBeenCalledWith("<CDXML><page><fragment id=\"1\"/></page></CDXML>", { needZoom: true })
     })
   })
 
@@ -140,7 +154,32 @@ describe("Molecule2DEditorDialog", () => {
     fireEvent.click(await screen.findByTestId("paste-from-clipboard-button"))
 
     await waitFor(() => {
-      expect(ketcherMocks.setMolecule).toHaveBeenCalledWith(cdxBase64, { needZoom: true })
+      expect(ketcherMocks.addFragment).toHaveBeenCalledWith(cdxBase64, { needZoom: true })
+    })
+  })
+
+  it("accepts ChemDraw AppleScript SMILES bridge payloads when the pasteboard only exposes an image", async () => {
+    window.rxnflowDesktop = {
+      readChemicalClipboard: vi.fn(async () => ({
+        ok: true,
+        formats: ["image/png", "chemical/x-daylight-smiles"],
+        payloads: [{ format: "chemical/x-daylight-smiles", text: "CCO" }],
+      })),
+    } as unknown as typeof window.rxnflowDesktop
+
+    render(
+      <Molecule2DEditorDialog
+        node={node}
+        atoms={[]}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(await screen.findByTestId("paste-from-clipboard-button"))
+
+    await waitFor(() => {
+      expect(ketcherMocks.addFragment).toHaveBeenCalledWith("CCO", { needZoom: true })
     })
   })
 
@@ -178,7 +217,7 @@ describe("Molecule2DEditorDialog", () => {
     expect(container.querySelector(".molecule-editor-status")).toBeNull()
   })
 
-  it("routes Ketcher hidden clipboard textarea shortcuts through native copy", async () => {
+  it("leaves Ketcher editor copy shortcuts to Ketcher's own clipboard handler", async () => {
     const writeChemicalClipboard = vi.fn(async () => ({
       ok: true,
       formats: ["text/plain", "CDIF"],
@@ -198,8 +237,91 @@ describe("Molecule2DEditorDialog", () => {
 
     fireEvent.keyDown(await screen.findByTestId("ketcher-cliparea"), { key: "c", metaKey: true })
 
+    expect(writeChemicalClipboard).not.toHaveBeenCalled()
+  })
+
+  it("routes Ketcher editor paste shortcuts through native chemical paste as a fragment", async () => {
+    window.rxnflowDesktop = {
+      readChemicalClipboard: vi.fn(async () => ({
+        ok: true,
+        formats: ["chemical/x-indigo-ket", "text/plain"],
+        payloads: [{ format: "chemical/x-indigo-ket", text: "{\"root\":{\"nodes\":[]}}" }],
+      })),
+    } as unknown as typeof window.rxnflowDesktop
+
+    render(
+      <Molecule2DEditorDialog
+        node={node}
+        atoms={[]}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    fireEvent.keyDown(await screen.findByTestId("ketcher-cliparea"), { key: "v", metaKey: true })
+
     await waitFor(() => {
-      expect(writeChemicalClipboard).toHaveBeenCalled()
+      expect(ketcherMocks.addFragment).toHaveBeenCalledWith("{\"root\":{\"nodes\":[]}}", { needZoom: true })
+    })
+  })
+
+  it("does not hijack Ketcher's regular copy toolbar button", async () => {
+    const writeChemicalClipboard = vi.fn(async () => ({
+      ok: true,
+      formats: ["text/plain", "CDIF"],
+    }))
+    window.rxnflowDesktop = {
+      writeChemicalClipboard,
+    } as unknown as typeof window.rxnflowDesktop
+
+    render(
+      <Molecule2DEditorDialog
+        node={node}
+        atoms={[]}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(await screen.findByTestId("copy-button"))
+
+    expect(writeChemicalClipboard).not.toHaveBeenCalled()
+  })
+
+  it("enriches Ketcher's own copy event with ChemDraw-readable clipboard formats", async () => {
+    const readChemicalClipboard = vi.fn(async () => ({
+      ok: true,
+      formats: ["text/plain"],
+      payloads: [{ format: "text/plain", text: "{\"root\":{\"nodes\":[]}}" }],
+    }))
+    const writeChemicalClipboard = vi.fn(async () => ({
+      ok: true,
+      formats: ["text/plain", "chemical/x-cdxml", "chemical/x-cdx"],
+    }))
+    window.rxnflowDesktop = {
+      readChemicalClipboard,
+      writeChemicalClipboard,
+    } as unknown as typeof window.rxnflowDesktop
+
+    render(
+      <Molecule2DEditorDialog
+        node={node}
+        atoms={[]}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    fireEvent.copy(await screen.findByTestId("ketcher-cliparea"))
+
+    await waitFor(() => {
+      expect(writeChemicalClipboard).toHaveBeenCalledWith({
+        ket: "chemical/x-indigo-ket:{\"root\":{\"nodes\":[]}}",
+        molfile: "chemical/x-mdl-molfile:{\"root\":{\"nodes\":[]}}",
+        cdxml: "chemical/x-cdxml:{\"root\":{\"nodes\":[]}}",
+        cdx: "chemical/x-cdx:{\"root\":{\"nodes\":[]}}",
+        text: "chemical/x-cdxml:{\"root\":{\"nodes\":[]}}",
+      })
     })
   })
 })

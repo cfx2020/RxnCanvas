@@ -1,4 +1,5 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, shell } = require("electron")
+const { execFile } = require("node:child_process")
 const fs = require("node:fs/promises")
 const path = require("node:path")
 const { getEngineStatus, runEngineRequest } = require("./engine-bridge.cjs")
@@ -247,6 +248,7 @@ async function chooseExternalApplication(profile) {
 
 const chemicalClipboardFormatPattern = /(cdif|stru|chms|cdxm|cdx|cdxml|chem|chemical|molfile|mdl|mol|rxn|skc|com\.cambridgesoft|public\.utf8|text|xml|html)/i
 const maxClipboardPayloadChars = 2 * 1024 * 1024
+const chemDrawAppleScriptTimeoutMs = 5000
 const chemicalClipboardWriteFormats = {
   cdxml: [
     "chemical/x-cdxml",
@@ -304,6 +306,50 @@ function chemicalClipboardPayloads(formats) {
     }
   }
   return payloads
+}
+
+async function chemDrawSelectionClipboardPayload(formats) {
+  if (process.platform !== "darwin") return null
+  const hasImageOnlyChemDrawClipboard = formats.some((format) => /^image\/|png|tiff/i.test(format))
+    && !formats.some((format) => chemicalClipboardFormatPattern.test(format))
+  if (!hasImageOnlyChemDrawClipboard) return null
+  try {
+    const output = await runAppleScript([
+      "use framework \"AppKit\"",
+      "use scripting additions",
+      "set pasteboardSource to ((current application's NSPasteboard's generalPasteboard())'s stringForType:\"org.nspasteboard.source\")",
+      "if pasteboardSource is missing value then set pasteboardSource to \"\"",
+      "set pasteboardSource to pasteboardSource as text",
+      "if pasteboardSource does not contain \"ChemDraw\" and pasteboardSource is not \"com.revvity.ChemDraw\" and pasteboardSource is not \"com.perkinelmer.ChemDraw\" and pasteboardSource is not \"com.cambridgesoft.ChemDraw\" then return \"\"",
+      "tell application id \"com.revvity.ChemDraw\"",
+      "  if (count of documents) is 0 then return \"\"",
+      "  tell document 1",
+      "    set selectedSmiles to SMILES of selection",
+      "    if selectedSmiles is missing value then return \"\"",
+      "    return selectedSmiles as text",
+      "  end tell",
+      "end tell",
+    ], chemDrawAppleScriptTimeoutMs)
+    const smiles = output.trim()
+    if (!smiles) return null
+    return { format: "chemical/x-daylight-smiles", text: clampClipboardText(smiles) }
+  } catch (error) {
+    console.warn(`Could not read ChemDraw selection through AppleScript: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+}
+
+function runAppleScript(lines, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const args = lines.flatMap((line) => ["-e", line])
+    execFile("osascript", args, { timeout: timeoutMs, maxBuffer: 64 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr?.trim() || error.message))
+        return
+      }
+      resolve(stdout)
+    })
+  })
 }
 
 function clampClipboardText(text) {
@@ -1402,9 +1448,16 @@ ipcMain.handle("rxnflow:read-chemical-clipboard", async () => {
     const text = clipboard.readText("clipboard")
     const html = clipboard.readHTML("clipboard")
     const payloads = chemicalClipboardPayloads(formats)
+    const chemDrawSelectionPayload = payloads.length === 0
+      ? await chemDrawSelectionClipboardPayload(formats)
+      : null
+    if (chemDrawSelectionPayload) payloads.push(chemDrawSelectionPayload)
+    const visibleFormats = chemDrawSelectionPayload
+      ? [...formats, chemDrawSelectionPayload.format]
+      : formats
     return {
       ok: true,
-      formats,
+      formats: visibleFormats,
       ...(text ? { text: clampClipboardText(text) } : {}),
       ...(html ? { html: clampClipboardText(html) } : {}),
       payloads,

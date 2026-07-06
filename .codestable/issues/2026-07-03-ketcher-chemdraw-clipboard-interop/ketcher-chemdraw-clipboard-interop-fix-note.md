@@ -32,3 +32,29 @@ created_at: 2026-07-03
 ## Remaining Manual Check
 
 Final proof still requires real ChemDraw round-trip validation in the packaged desktop app: copy ChemDraw -> RxnFlow Ketcher and RxnFlow Ketcher -> ChemDraw.
+
+## 2026-07-04 Regression Follow-Up
+
+- Ketcher-owned copy shortcuts and the regular Ketcher copy toolbar button are no longer intercepted by RxnFlow. Ketcher can keep its native selection-copy behavior.
+- Native desktop paste now calls Ketcher's `addFragment()` instead of `setMolecule()`, so pasted structures are added to the current editor canvas instead of replacing the whole 2D canvas.
+- Ketcher copy events are enriched after Ketcher writes its own clipboard payload: RxnFlow reads the copied KET/text payload, converts it through Ketcher/Indigo, then writes ChemDraw-readable KET, Molfile, CDXML, CDX, and plain text formats.
+- Clipboard payload priority now prefers KET/Indigo formats before CDXML/CDX/Molfile when RxnFlow is deciding what to feed back into Ketcher.
+
+## 2026-07-04 Verification
+
+- `cd web && npm run test -- --run src/app/Molecule2DEditorDialog.test.tsx`
+- `cd web && npm run build`
+- Browser smoke via Vite + Playwright: opened the real Ketcher 2D dialog, injected a desktop clipboard bridge, clicked Ketcher's Paste button, pressed `Cmd+V` on the Ketcher cliparea, and dispatched a Ketcher copy event. Verified paste used the desktop reader, `Cmd+V` was handled as paste, no blocking editor status appeared, and copy enrichment wrote `ket`, `molfile`, `cdxml`, `cdx`, and `text`.
+
+## 2026-07-04 ChemDraw Image-Only Clipboard Follow-Up
+
+- Observed failure: ChemDraw -> Ketcher paste can report only `image/png`, so no CDXML/CDX/Molfile/KET payload reaches the renderer.
+- Added a macOS ChemDraw selection bridge in the Electron main process: when the system clipboard has image-only data and the pasteboard source is ChemDraw, RxnFlow asks ChemDraw for the current selection's SMILES through its AppleScript API and exposes it as `chemical/x-daylight-smiles`.
+- The renderer now explicitly prioritizes SMILES chemical payloads ahead of plain text/html, so Ketcher receives the structure text instead of showing the unsupported-image toast.
+
+## 2026-07-04 ChemDraw Image-Only Verification
+
+- `node --check web/electron/main.cjs`
+- `cd web && npm run test -- --run src/app/Molecule2DEditorDialog.test.tsx`
+- `cd web && npm run build`
+- Local AppleScript probe verified ChemDraw exposes `SMILES of selection`; current clipboard source was Raycast during screenshot capture, so real ChemDraw paste still needs packaged-app manual confirmation with a selected ChemDraw structure.
