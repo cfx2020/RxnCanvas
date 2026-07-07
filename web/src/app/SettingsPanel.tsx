@@ -1,17 +1,17 @@
 import type { ReactNode } from "react"
-import { FileText, FlaskConical, Monitor, Palette, Ruler, X } from "lucide-react"
+import { FileText, FlaskConical, X } from "lucide-react"
 import type { AppearancePreference, DesktopPreferences, EnergyOutputUnitPreference, SourceOpenerProfile } from "./desktopPreferences"
 
-const appearanceOptions: Array<{ value: AppearancePreference; label: string; description: string }> = [
-  { value: "system", label: "Follow system", description: "Use macOS / Windows appearance." },
-  { value: "light", label: "Light", description: "Keep RxnFlow bright." },
-  { value: "dark", label: "Dark", description: "Use the dark workbench." },
+const appearanceOptions: Array<{ value: AppearancePreference; label: string }> = [
+  { value: "system", label: "Follow system" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
 ]
 
-const energyUnitOptions: Array<{ value: EnergyOutputUnitPreference; label: string; description: string }> = [
-  { value: "kcal/mol", label: "kcal", description: "Default for reaction profiles." },
-  { value: "hartree", label: "Eh", description: "Absolute quantum chemistry unit." },
-  { value: "kj/mol", label: "kJ", description: "SI-friendly reports." },
+const energyUnitOptions: Array<{ value: EnergyOutputUnitPreference; label: string }> = [
+  { value: "kcal/mol", label: "kcal" },
+  { value: "hartree", label: "Eh" },
+  { value: "kj/mol", label: "kJ" },
 ]
 
 export function SettingsPanel({
@@ -41,12 +41,8 @@ export function SettingsPanel({
         onPointerDown={(event) => event.stopPropagation()}
       >
         <header className="settings-panel-header">
-          <div className="settings-panel-titlemark" aria-hidden="true">
-            <Palette size={16} />
-          </div>
           <div>
-            <strong>Preferences</strong>
-            <span>Local workspace settings for this computer.</span>
+            <strong>Settings</strong>
           </div>
           <button type="button" className="settings-panel-close" aria-label="Close settings" title="Close settings" onClick={onClose}>
             <X size={15} aria-hidden="true" />
@@ -54,18 +50,11 @@ export function SettingsPanel({
         </header>
 
         <div className="settings-panel-body">
-          <section className="settings-section" aria-labelledby="settings-section-appearance">
-            <div className="settings-section-heading">
-              <span className="settings-section-icon" aria-hidden="true"><Monitor size={15} /></span>
-              <div>
-                <h2 id="settings-section-appearance">Appearance</h2>
-                <p>Choose how RxnFlow follows your system theme.</p>
-              </div>
-            </div>
+          <section className="settings-section" aria-labelledby="settings-section-general">
+            <h2 id="settings-section-general">General</h2>
             <label className="settings-row">
               <span className="settings-row-copy">
                 <strong>Theme</strong>
-                <em>{appearanceOptions.find((option) => option.value === preferences.appearance)?.description}</em>
               </span>
               <select
                 aria-label="Appearance"
@@ -77,20 +66,10 @@ export function SettingsPanel({
                 ))}
               </select>
             </label>
-          </section>
 
-          <section className="settings-section" aria-labelledby="settings-section-units">
-            <div className="settings-section-heading">
-              <span className="settings-section-icon" aria-hidden="true"><Ruler size={15} /></span>
-              <div>
-                <h2 id="settings-section-units">Energy display</h2>
-                <p>Controls the unit used across canvas labels and tables.</p>
-              </div>
-            </div>
             <label className="settings-row">
               <span className="settings-row-copy">
-                <strong>Default unit</strong>
-                <em>{energyUnitOptions.find((option) => option.value === preferences.energyOutputUnit)?.description}</em>
+                <strong>Energy unit</strong>
               </span>
               <select
                 aria-label="Energy unit"
@@ -105,17 +84,10 @@ export function SettingsPanel({
           </section>
 
           <section className="settings-section" aria-labelledby="settings-section-openers">
-            <div className="settings-section-heading">
-              <span className="settings-section-icon" aria-hidden="true"><FlaskConical size={15} /></span>
-              <div>
-                <h2 id="settings-section-openers">External apps</h2>
-                <p>Pick which local applications open calculation outputs.</p>
-              </div>
-            </div>
+            <h2 id="settings-section-openers">External apps</h2>
             <OpenerField
               icon={<FlaskConical size={15} />}
               label="Gaussian logs"
-              description="Open Gaussian output with GaussView or another molecular viewer."
               profile="gaussian"
               value={preferences.sourceOpeners.gaussian?.label ?? preferences.sourceOpeners.gaussian?.appPath ?? "Not set"}
               desktopAvailable={desktopAvailable}
@@ -125,7 +97,6 @@ export function SettingsPanel({
             <OpenerField
               icon={<FileText size={15} />}
               label="Text outputs"
-              description="Open ORCA, MAPLE and other text files with your preferred editor."
               profile="text"
               value={preferences.sourceOpeners.text?.label ?? preferences.sourceOpeners.text?.appPath ?? "Not set"}
               desktopAvailable={desktopAvailable}
@@ -142,7 +113,6 @@ export function SettingsPanel({
 function OpenerField({
   icon,
   label,
-  description,
   profile,
   value,
   desktopAvailable,
@@ -151,7 +121,6 @@ function OpenerField({
 }: {
   icon: ReactNode
   label: string
-  description: string
   profile: SourceOpenerProfile
   value: string
   desktopAvailable: boolean
@@ -165,7 +134,6 @@ function OpenerField({
       <span className="settings-row-glyph" aria-hidden="true">{icon}</span>
       <span className="settings-row-copy">
         <strong>{label}</strong>
-        <em>{description}</em>
       </span>
       <div className="settings-opener-control">
         <div className={`settings-opener-value${configured ? " is-configured" : ""}`} title={displayedValue}>
