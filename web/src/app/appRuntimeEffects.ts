@@ -58,7 +58,7 @@ export type RxnflowDesktopApi = {
     mimeType: string
     encoding: "utf8" | "base64"
     content: string
-  }) => Promise<{ canceled: boolean; filePath?: string; projectArtifactPath?: string }>
+  }) => Promise<{ canceled: boolean; filePath?: string }>
   createProjectFolder?: (payload: {
     projectLabel: string
     defaultName: string

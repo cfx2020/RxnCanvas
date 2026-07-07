@@ -39,10 +39,6 @@ export function ExportDock({
 
   return (
     <section className="export-panel export-menu" aria-label="Export panel">
-      <div className="export-menu-heading">
-        <span>Export</span>
-        <strong>Report artifacts</strong>
-      </div>
       <div className="export-menu-list" role="menu" aria-label="Export formats">
         {formats.map((format) => (
           <button

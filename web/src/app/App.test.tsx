@@ -6,6 +6,12 @@ function transformScale(transform: string): number {
   return match ? Number(match[1]) : Number.NaN
 }
 
+function fileButtonName(fileName: string, sourceKind: string): RegExp {
+  const escapedFileName = fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const escapedSourceKind = sourceKind.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return new RegExp(`${escapedFileName}\\s+${escapedSourceKind}(?:,|$)`)
+}
+
 function mockElementsFromPoint(elements: Element[]) {
   const original = document.elementsFromPoint
   Object.defineProperty(document, "elementsFromPoint", {
@@ -384,7 +390,7 @@ describe("App", () => {
     })
 
     expect(await screen.findByRole("button", { name: "Node Browser Open TS" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "browser-open.log Gaussian" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: fileButtonName("browser-open.log", "Gaussian") })).toBeInTheDocument()
     expect(screen.getAllByText("Browser Open Study").length).toBeGreaterThan(0)
   })
 
@@ -641,7 +647,7 @@ describe("App", () => {
     expect(within(exportPanel).queryByRole("checkbox", { name: "JSON" })).not.toBeInTheDocument()
     expect(within(exportPanel).queryByRole("checkbox", { name: "CSV" })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "gaussian.log Gaussian" }))
+    fireEvent.click(screen.getByRole("button", { name: fileButtonName("gaussian.log", "Gaussian") }))
     expect(screen.getByRole("region", { name: "Source inspector" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Open with external app" })).toBeInTheDocument()
   })
@@ -678,7 +684,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Diels-Alder Study open" }))
     expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "gaussian.log Gaussian" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: fileButtonName("gaussian.log", "Gaussian") })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Catalyst Screen empty" }))
     expect(screen.queryByRole("button", { name: "Node TS1 (Endo)" })).not.toBeInTheDocument()
@@ -743,7 +749,7 @@ describe("App", () => {
     expect(within(tabList).getByRole("tab", { name: "Diels-Alder Study 1" })).toHaveAttribute("aria-selected", "true")
     expect(within(tabList).queryByRole("tab", { name: "Untitled Study" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Diels-Alder Study open" })).toHaveAttribute("aria-current", "true")
-    expect(screen.getByRole("button", { name: "gaussian.log Gaussian" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: fileButtonName("gaussian.log", "Gaussian") })).toBeInTheDocument()
     expect(screen.queryByText("No local files")).not.toBeInTheDocument()
   })
 
@@ -764,12 +770,12 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await screen.findByRole("button", { name: "dropped-nickel.out ORCA" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("dropped-nickel.out", "ORCA") })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node dropped-nickel" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Nickel catalysis empty" })).toHaveAttribute("aria-current", "true")
 
     fireEvent.click(screen.getByRole("button", { name: "Diels-Alder Study open" }))
-    expect(screen.queryByRole("button", { name: "dropped-nickel.out ORCA" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: fileButtonName("dropped-nickel.out", "ORCA") })).not.toBeInTheDocument()
   })
 
   it("imports dropped local files into the active file list without adding canvas nodes", async () => {
@@ -790,9 +796,9 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    const droppedButton = await within(rail).findByRole("button", { name: "files-drop.out ORCA" })
+    const droppedButton = await within(rail).findByRole("button", { name: fileButtonName("files-drop.out", "ORCA") })
     expect(droppedButton).toBeInTheDocument()
-    expect(droppedButton).toHaveAttribute("title", "No paired solvation log")
+    expect(droppedButton).toHaveAttribute("aria-label", expect.stringContaining("No paired solvation log"))
     expect(screen.queryByRole("button", { name: "Node files-drop" })).not.toBeInTheDocument()
     expect(document.querySelectorAll(".reaction-node")).toHaveLength(initialNodeCount)
     const droppedRow = droppedButton.closest(".project-file-card") as HTMLElement
@@ -833,7 +839,7 @@ describe("App", () => {
     const file = new File(["SCF Done: E(RwB97XD) = -201.0"], "rail-path-missing.log", { type: "text/plain" })
     dispatchDrop(filesSection, new TestDataTransfer([file]), 80, 420)
 
-    expect(await within(rail).findByRole("button", { name: "rail-path-missing.log Gaussian" })).toBeInTheDocument()
+    expect(await within(rail).findByRole("button", { name: fileButtonName("rail-path-missing.log", "Gaussian") })).toBeInTheDocument()
     expect(importSourceFiles).toHaveBeenCalledTimes(1)
     const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
     expect(payload.files[0]).toMatchObject({
@@ -863,7 +869,7 @@ describe("App", () => {
     })
 
     await waitFor(() => {
-      expect(within(rail).queryByRole("button", { name: "rail-path-missing.log Gaussian" })).not.toBeInTheDocument()
+      expect(within(rail).queryByRole("button", { name: fileButtonName("rail-path-missing.log", "Gaussian") })).not.toBeInTheDocument()
       expect(screen.queryByRole("button", { name: "Node rail-path-missing" })).not.toBeInTheDocument()
       expect(screen.queryByRole("progressbar", { name: "Parsing rail-path-missing.log" })).not.toBeInTheDocument()
     })
@@ -908,7 +914,7 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await within(rail).findByRole("button", { name: "i1p6.log Gaussian" })).toBeInTheDocument()
+    expect(await within(rail).findByRole("button", { name: fileButtonName("i1p6.log", "Gaussian") })).toBeInTheDocument()
     await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(1))
     const gasJob = pending.shift()
     expect(gasJob).toBeDefined()
@@ -930,8 +936,8 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    const gasButton = await within(rail).findByRole("button", { name: "i1p6.log Gaussian" })
-    expect(gasButton).toHaveAttribute("title", "No paired solvation log")
+    const gasButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6.log", "Gaussian") })
+    expect(gasButton).toHaveAttribute("aria-label", expect.stringContaining("No paired solvation log"))
     const gasRow = gasButton.closest(".project-file-card") as HTMLElement
     expect(gasRow.querySelector(".project-file-phase-badges.has-missing-solution")).toBeInTheDocument()
 
@@ -972,11 +978,11 @@ describe("App", () => {
     })
 
     await waitFor(() => {
-      expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Gaussian" })).not.toBeInTheDocument()
-      expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Raw" })).not.toBeInTheDocument()
+      expect(within(rail).queryByRole("button", { name: fileButtonName("i1p6-sol.log", "Gaussian") })).not.toBeInTheDocument()
+      expect(within(rail).queryByRole("button", { name: fileButtonName("i1p6-sol.log", "Raw") })).not.toBeInTheDocument()
     })
-    const finalGasButton = await within(rail).findByRole("button", { name: "i1p6.log Gaussian" })
-    expect(finalGasButton).toHaveAttribute("title", "No paired solvation log")
+    const finalGasButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6.log", "Gaussian") })
+    expect(finalGasButton).toHaveAttribute("aria-label", expect.stringContaining("No paired solvation log"))
     const finalGasRow = finalGasButton.closest(".project-file-card") as HTMLElement
     expect(finalGasRow.querySelector(".project-file-phase-badges.has-missing-solution")).toBeInTheDocument()
     expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
@@ -1024,7 +1030,7 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    const groupButton = await within(rail).findByRole("button", { name: "7a-1fix-tsf Gaussian" })
+    const groupButton = await within(rail).findByRole("button", { name: fileButtonName("7a-1fix-tsf", "Gaussian") })
     expect(groupButton).toBeInTheDocument()
     expect(screen.getByRole("progressbar", { name: "Parsing 7a-1fix-tsf" })).toBeInTheDocument()
     await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(2))
@@ -1079,7 +1085,8 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.queryByRole("progressbar", { name: "Parsing 7a-1fix-tsf" })).not.toBeInTheDocument()
     })
-    expect(await within(rail).findByRole("button", { name: "7a-1fix-tsf Gaussian" })).toHaveAttribute("title", "Solvation log paired")
+    const groupedButton = await within(rail).findByRole("button", { name: fileButtonName("7a-1fix-tsf", "Gaussian") })
+    expect(groupedButton.closest(".project-file-card")?.querySelector(".project-file-phase-badges")).not.toBeInTheDocument()
   })
 
   it("removes unsupported Electron sol placeholders when no gas file exists yet", async () => {
@@ -1117,7 +1124,7 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await within(rail).findByRole("button", { name: "i1p6-sol.log Gaussian" })).toBeInTheDocument()
+    expect(await within(rail).findByRole("button", { name: fileButtonName("i1p6-sol.log", "Gaussian") })).toBeInTheDocument()
     const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
     await act(async () => {
       importJob.resolve({
@@ -1140,8 +1147,8 @@ describe("App", () => {
     })
 
     await waitFor(() => {
-      expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Gaussian" })).not.toBeInTheDocument()
-      expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Raw" })).not.toBeInTheDocument()
+      expect(within(rail).queryByRole("button", { name: fileButtonName("i1p6-sol.log", "Gaussian") })).not.toBeInTheDocument()
+      expect(within(rail).queryByRole("button", { name: fileButtonName("i1p6-sol.log", "Raw") })).not.toBeInTheDocument()
     })
     expect(await screen.findByRole("alertdialog", { name: "Unsupported import format" })).toHaveTextContent("i1p6-sol.log")
   })
@@ -1199,7 +1206,7 @@ describe("App", () => {
     const file = new File(["SCF Done: E(RwB97XD) = -201.0"], "finder-drop.log", { type: "text/plain" })
     dispatchDrop(filesSection, new TestDataTransfer([file]), 80, 420)
 
-    expect(await within(rail).findByRole("button", { name: "finder-drop.log Gaussian" })).toBeInTheDocument()
+    expect(await within(rail).findByRole("button", { name: fileButtonName("finder-drop.log", "Gaussian") })).toBeInTheDocument()
     expect(importSourceFiles).toHaveBeenCalledTimes(1)
     const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
     expect(payload.projectId).toBe("finder-study")
@@ -1229,7 +1236,7 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await within(rail).findByRole("button", { name: "finder-drop.log ORCA" })).toBeInTheDocument()
+    expect(await within(rail).findByRole("button", { name: fileButtonName("finder-drop.log", "ORCA") })).toBeInTheDocument()
     expect(screen.queryByRole("progressbar", { name: "Parsing finder-drop.log" })).not.toBeInTheDocument()
   })
 
@@ -1245,11 +1252,10 @@ describe("App", () => {
     })
 
     const rail = screen.getByRole("complementary", { name: "Project rail" })
-    const groupedRowButton = await within(rail).findByRole("button", { name: "Bfix6-ts Gaussian" })
+    const groupedRowButton = await within(rail).findByRole("button", { name: fileButtonName("Bfix6-ts", "Gaussian") })
     expect(groupedRowButton).toBeInTheDocument()
-    expect(groupedRowButton).toHaveAttribute("title", "Solvation log paired")
-    expect(within(rail).queryByRole("button", { name: "Bfix6-ts.log Gaussian" })).not.toBeInTheDocument()
-    expect(within(rail).queryByRole("button", { name: "Bfix6-ts-sol.log Gaussian" })).not.toBeInTheDocument()
+    expect(within(rail).queryByRole("button", { name: fileButtonName("Bfix6-ts.log", "Gaussian") })).not.toBeInTheDocument()
+    expect(within(rail).queryByRole("button", { name: fileButtonName("Bfix6-ts-sol.log", "Gaussian") })).not.toBeInTheDocument()
 
     const row = groupedRowButton.closest(".project-file-card") as HTMLElement
     expect(row).toHaveAttribute("draggable", "true")
@@ -1280,7 +1286,7 @@ describe("App", () => {
     })
 
     const rail = screen.getByRole("complementary", { name: "Project rail" })
-    const gasButton = await within(rail).findByRole("button", { name: "i1p6.log Gaussian" })
+    const gasButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6.log", "Gaussian") })
     const gasRow = gasButton.closest(".project-file-card") as HTMLElement
     const dataTransfer = new TestDataTransfer()
     fireEvent.dragStart(gasRow, { dataTransfer })
@@ -1293,14 +1299,14 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    const groupedRowButton = await within(rail).findByRole("button", { name: "i1p6 Gaussian" })
+    const groupedRowButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6", "Gaussian") })
     expect(groupedRowButton).toBeInTheDocument()
-    expect(groupedRowButton.getAttribute("title")).toContain("No paired solvation log")
-    expect(groupedRowButton.getAttribute("title")).toContain("No supported parser recognized this source preview.")
+    expect(groupedRowButton).toHaveAttribute("aria-label", expect.stringContaining("No paired solvation log"))
+    expect(groupedRowButton).toHaveAttribute("aria-label", expect.stringContaining("No supported parser recognized this source preview."))
     const groupedRow = groupedRowButton.closest(".project-file-card") as HTMLElement
     expect(groupedRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
-    expect(within(rail).queryByRole("button", { name: "i1p6.log Gaussian" })).not.toBeInTheDocument()
-    expect(within(rail).queryByRole("button", { name: "i1p6-sol.log Raw" })).not.toBeInTheDocument()
+    expect(within(rail).queryByRole("button", { name: fileButtonName("i1p6.log", "Gaussian") })).not.toBeInTheDocument()
+    expect(within(rail).queryByRole("button", { name: fileButtonName("i1p6-sol.log", "Raw") })).not.toBeInTheDocument()
     expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
     dispatchPointer(node, "pointerDown", { button: 0, clientX: 640, clientY: 360, pointerId: 84 })
     dispatchPointer(node, "pointerUp", { button: 0, clientX: 640, clientY: 360, pointerId: 84 })
@@ -1323,8 +1329,8 @@ describe("App", () => {
     })
 
     const rail = screen.getByRole("complementary", { name: "Project rail" })
-    const solutionButton = await within(rail).findByRole("button", { name: "i1p6-sol.log Gaussian" })
-    expect(solutionButton).toHaveAttribute("title", "No paired gas log")
+    const solutionButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6-sol.log", "Gaussian") })
+    expect(solutionButton).toHaveAttribute("aria-label", expect.stringContaining("No paired gas log"))
     const solutionRow = solutionButton.closest(".project-file-card") as HTMLElement
     expect(solutionRow.querySelector(".project-file-phase-badges.has-missing-solution")).toBeInTheDocument()
 
@@ -1333,8 +1339,7 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    const groupedButton = await within(rail).findByRole("button", { name: "i1p6 Gaussian" })
-    expect(groupedButton).toHaveAttribute("title", "Solvation log paired")
+    const groupedButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6", "Gaussian") })
     const groupedRow = groupedButton.closest(".project-file-card") as HTMLElement
     expect(groupedRow.querySelector(".project-file-phase-badges.has-missing-solution")).not.toBeInTheDocument()
   })
@@ -1813,7 +1818,7 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    const sourceButton = await screen.findByRole("button", { name: "orca-water.out ORCA" })
+    const sourceButton = await screen.findByRole("button", { name: fileButtonName("orca-water.out", "ORCA") })
     expect(sourceButton).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node orca-water" })).not.toBeInTheDocument()
     fireEvent.click(sourceButton)
@@ -1847,9 +1852,9 @@ describe("App", () => {
     render(<App />)
 
     const initialNodeCount = document.querySelectorAll(".reaction-node").length
-    const gaussianButton = screen.getByRole("button", { name: "gaussian.log Gaussian" })
-    const orcaButton = screen.getByRole("button", { name: "orca.out ORCA" })
-    const mapleButton = screen.getByRole("button", { name: "maple-path.out MAPLE" })
+    const gaussianButton = screen.getByRole("button", { name: fileButtonName("gaussian.log", "Gaussian") })
+    const orcaButton = screen.getByRole("button", { name: fileButtonName("orca.out", "ORCA") })
+    const mapleButton = screen.getByRole("button", { name: fileButtonName("maple-path.out", "MAPLE") })
     const gaussianRow = gaussianButton.closest(".project-file-card") as HTMLElement
     const orcaRow = orcaButton.closest(".project-file-card") as HTMLElement
     const mapleRow = mapleButton.closest(".project-file-card") as HTMLElement
@@ -1886,7 +1891,7 @@ describe("App", () => {
     fireEvent.contextMenu(orcaRow, { clientX: 240, clientY: 360 })
     expect(screen.getByRole("menu", { name: "File actions for orca.out" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete file and nodes" }))
-    expect(screen.queryByRole("button", { name: "orca.out ORCA" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: fileButtonName("orca.out", "ORCA") })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node Maleic Anhydride" })).not.toBeInTheDocument()
     expect(document.querySelectorAll(".reaction-node")).toHaveLength(initialNodeCount - 1)
   })
@@ -1945,7 +1950,7 @@ describe("App", () => {
     expect(dataTransfer.dropEffect).toBe("copy")
     dispatchDrop(surface, dataTransfer, clientX, clientY)
 
-    expect(await screen.findByRole("button", { name: "canvas-drop.out ORCA" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("canvas-drop.out", "ORCA") })).toBeInTheDocument()
     await waitFor(() => {
       const node = Array.from(container.querySelectorAll(".reaction-node[data-flow-node-id]"))
         .find((element) => element.getAttribute("data-flow-node-id")?.startsWith("imported-file-") && element.getAttribute("data-flow-node-id")?.includes("-drop-")) as HTMLElement | undefined
@@ -2026,7 +2031,7 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    const sourceButton = await screen.findByRole("button", { name: "path.xyz MAPLE" })
+    const sourceButton = await screen.findByRole("button", { name: fileButtonName("path.xyz", "MAPLE") })
     expect(sourceButton).toBeInTheDocument()
     expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node Frame 1" })).not.toBeInTheDocument()
@@ -2159,11 +2164,11 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
-    expect(await screen.findByRole("button", { name: "native-path.xyz XYZ" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("native-path.xyz", "XYZ") })).toBeInTheDocument()
     expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
     expect(registerImportCandidates).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole("button", { name: "native-path.xyz XYZ" }))
+    fireEvent.click(screen.getByRole("button", { name: fileButtonName("native-path.xyz", "XYZ") }))
     fireEvent.click(screen.getByRole("button", { name: "Review candidates" }))
     const dialog = await screen.findByRole("dialog", { name: "Import candidates" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Register selected" }))
@@ -2219,7 +2224,7 @@ describe("App", () => {
     render(<App />)
     fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
-    expect(await screen.findByRole("button", { name: "desktop.calc Raw" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("desktop.calc", "Raw") })).toBeInTheDocument()
     expect(screen.getByRole("progressbar", { name: "Parsing desktop.calc" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node desktop" })).not.toBeInTheDocument()
     expect(importSourceFiles).toHaveBeenCalledTimes(1)
@@ -2251,9 +2256,9 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await screen.findByRole("button", { name: "desktop.calc ORCA" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("desktop.calc", "ORCA") })).toBeInTheDocument()
     expect(screen.queryByRole("progressbar", { name: "Parsing desktop.calc" })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "desktop.calc ORCA" }))
+    fireEvent.click(screen.getByRole("button", { name: fileButtonName("desktop.calc", "ORCA") }))
     expect(screen.getByRole("complementary", { name: "Inspector" })).toHaveTextContent("engine-preview")
   })
 
@@ -2314,7 +2319,7 @@ describe("App", () => {
     render(<App />)
     fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
-    expect(await screen.findByRole("button", { name: "race.log Gaussian" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("race.log", "Gaussian") })).toBeInTheDocument()
     expect(screen.getByRole("progressbar", { name: "Parsing race.log" })).toBeInTheDocument()
     await waitFor(() => expect(autosaveProjectPackage).toHaveBeenCalled(), { timeout: 2500 })
     expect(JSON.parse(autosaveProjectPackage.mock.calls[0][0].content).files[0].parse.warnings[0].code).toBe("parse_deferred")
@@ -2338,7 +2343,7 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await screen.findByRole("button", { name: "race.log ORCA" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("race.log", "ORCA") })).toBeInTheDocument()
     expect(screen.queryByRole("progressbar", { name: "Parsing race.log" })).not.toBeInTheDocument()
 
     await act(async () => {
@@ -2347,7 +2352,7 @@ describe("App", () => {
       await Promise.resolve()
     })
 
-    expect(await screen.findByRole("button", { name: "race.log ORCA" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("race.log", "ORCA") })).toBeInTheDocument()
     expect(screen.queryByRole("progressbar", { name: "Parsing race.log" })).not.toBeInTheDocument()
   })
 
@@ -2388,7 +2393,7 @@ describe("App", () => {
     render(<App />)
     fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
-    expect(await screen.findByRole("button", { name: "no-parse.log Gaussian" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("no-parse.log", "Gaussian") })).toBeInTheDocument()
     expect(screen.getByRole("progressbar", { name: "Parsing no-parse.log" })).toBeInTheDocument()
     const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
 
@@ -2414,7 +2419,7 @@ describe("App", () => {
     })
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "no-parse.log Gaussian" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: fileButtonName("no-parse.log", "Gaussian") })).not.toBeInTheDocument()
       expect(screen.queryByRole("progressbar", { name: "Parsing no-parse.log" })).not.toBeInTheDocument()
     })
     expect(await screen.findByRole("alertdialog", { name: "Import failed" })).toHaveTextContent("no-parse.log")
@@ -2672,7 +2677,7 @@ describe("App", () => {
     const file = new File(["SCF Done: E(Test) = -1.0"], "path-missing.log", { type: "text/plain" })
     dispatchDrop(surface, new TestDataTransfer([file]), 640, 360)
 
-    expect(await screen.findByRole("button", { name: "path-missing.log Gaussian" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("path-missing.log", "Gaussian") })).toBeInTheDocument()
     expect(importSourceFiles).toHaveBeenCalledTimes(1)
     const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
     expect(payload.files[0]).toMatchObject({
@@ -2703,7 +2708,7 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "Node path-missing" })).not.toBeInTheDocument()
-      expect(screen.queryByRole("button", { name: "path-missing.log Gaussian" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: fileButtonName("path-missing.log", "Gaussian") })).not.toBeInTheDocument()
       expect(screen.queryByRole("progressbar", { name: "Parsing path-missing.log" })).not.toBeInTheDocument()
     })
     expect(await screen.findByRole("alertdialog", { name: "Import failed" })).toHaveTextContent("path-missing.log")
@@ -2733,8 +2738,7 @@ describe("App", () => {
     })
     const saveReportArtifact = vi.fn(async (payload: { defaultName: string; content?: string }) => ({
       canceled: false,
-      filePath: `/tmp/diels-alder-study.rxnflow/exports/${payload.defaultName}`,
-      projectArtifactPath: `exports/${payload.defaultName}`,
+      filePath: `/tmp/${payload.defaultName}`,
     }))
     const saveProjectPackage = vi.fn().mockResolvedValue({ canceled: false, filePath: "/tmp/diels-alder-study.rxnflow.zip" })
     const getEngineStatus = vi.fn().mockResolvedValue({
@@ -2765,7 +2769,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
-    const sourceButton = await screen.findByRole("button", { name: "desktop.out ORCA" })
+    const sourceButton = await screen.findByRole("button", { name: /desktop\.out ORCA/ })
     expect(sourceButton).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node engine-preview" })).not.toBeInTheDocument()
     const sourceRow = sourceButton.closest(".project-file-card") as HTMLElement
@@ -2790,9 +2794,9 @@ describe("App", () => {
     fireEvent.click(within(exportPanel).getByRole("menuitem", { name: "CDXML" }))
     await waitFor(() => expect(saveReportArtifact).toHaveBeenCalledTimes(3))
     expect(saveReportArtifact.mock.calls.map((call) => call[0].defaultName)).toEqual([
-      "rxnflow-report.png",
-      "rxnflow-report.xlsx",
-      "rxnflow-report.cdxml",
+      "diels-alder-study.png",
+      "diels-alder-study.xlsx",
+      "diels-alder-study.cdxml",
     ])
     expect(saveReportArtifact.mock.calls[2][0].content).toContain("engine-preview")
   })
@@ -2863,14 +2867,14 @@ describe("App", () => {
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(screen.getByRole("button", { name: "Import files" }))
 
-    expect(await screen.findByRole("button", { name: "desktop.out ORCA" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: fileButtonName("desktop.out", "ORCA") })).toBeInTheDocument()
     await waitFor(() => expect(autosaveProjectPackage).toHaveBeenCalled(), { timeout: 2500 })
     expect(JSON.parse(autosaveProjectPackage.mock.calls[0][0].content).files[0]).toMatchObject({
       name: "desktop.out",
       sourcePath: "/external/desktop.out",
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "desktop.out ORCA" }))
+    fireEvent.click(screen.getByRole("button", { name: fileButtonName("desktop.out", "ORCA") }))
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
     expect(within(inspector).getByText("engine-preview")).toBeInTheDocument()
     const sourceInspector = within(inspector).getByRole("region", { name: "Source inspector" })
@@ -3006,7 +3010,7 @@ describe("App", () => {
     })
 
     expect(await screen.findByRole("button", { name: "Node Recent TS" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "recent.log Gaussian" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: fileButtonName("recent.log", "Gaussian") })).toBeInTheDocument()
     expect(screen.getAllByText("Recent Study").length).toBeGreaterThan(0)
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Nickel catalysis empty" })).not.toBeInTheDocument()
@@ -3235,7 +3239,7 @@ describe("App", () => {
     })
 
     expect(await screen.findByRole("button", { name: "Node 4b-1" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "4b-1.log Gaussian" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: fileButtonName("4b-1.log", "Gaussian") })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Ir open" })).toHaveAttribute("aria-current", "true")
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()

@@ -10579,7 +10579,7 @@ select,
 .theme-dark .export-float-panel {
   top: calc(var(--rxnflow-titlebar-control-top, 10px) + 34px) !important;
   right: 46px !important;
-  width: 218px !important;
+  width: 206px !important;
   max-height: none !important;
   display: block !important;
   overflow: hidden !important;
@@ -10625,40 +10625,17 @@ select,
 
 .export-menu-list {
   display: grid !important;
-  gap: 6px !important;
-}
-
-.export-menu-heading {
-  display: grid !important;
   gap: 3px !important;
-  margin-bottom: 10px !important;
-  padding: 0 2px 6px !important;
-  border-bottom: 1px solid rgba(126, 152, 169, 0.16) !important;
-}
-
-.export-menu-heading span {
-  color: #75899a !important;
-  font-size: 10px !important;
-  font-weight: 850 !important;
-  letter-spacing: 0 !important;
-  text-transform: uppercase !important;
-}
-
-.export-menu-heading strong {
-  color: #1f2f42 !important;
-  font-size: 14px !important;
-  font-weight: 850 !important;
-  letter-spacing: 0 !important;
 }
 
 .export-menu-item {
   width: 100% !important;
-  min-height: 48px !important;
+  min-height: 42px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  gap: 10px !important;
-  padding: 7px 9px !important;
+  gap: 9px !important;
+  padding: 6px 8px !important;
   border: 0 !important;
   border-radius: 7px !important;
   background: transparent !important;
@@ -10673,9 +10650,9 @@ select,
 }
 
 .export-menu-item-icon {
-  width: 28px !important;
-  height: 28px !important;
-  flex: 0 0 28px !important;
+  width: 26px !important;
+  height: 26px !important;
+  flex: 0 0 26px !important;
   display: grid !important;
   place-items: center !important;
   border-radius: 7px !important;
@@ -10728,17 +10705,8 @@ select,
   color: #e3edf6 !important;
 }
 
-.theme-dark .export-menu-heading {
-  border-bottom-color: rgba(208, 226, 241, 0.14) !important;
-}
-
-.theme-dark .export-menu-heading span,
 .theme-dark .export-menu-item-copy::after {
   color: rgba(215, 229, 241, 0.68) !important;
-}
-
-.theme-dark .export-menu-heading strong {
-  color: #f1f6fb !important;
 }
 
 .theme-dark .export-menu-item-icon {
@@ -10762,7 +10730,7 @@ select,
     top: calc(var(--rxnflow-titlebar-height, 48px) + 6px) !important;
     right: 12px !important;
     left: auto !important;
-    width: min(218px, calc(100vw - 24px)) !important;
+    width: min(206px, calc(100vw - 24px)) !important;
   }
 }
 

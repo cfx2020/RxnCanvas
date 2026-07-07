@@ -9,7 +9,6 @@ const {
   readProjectContent,
   resolveProjectStatePath,
   saveProjectContent,
-  saveProjectReportArtifact,
   slimProjectPackageForPersistence,
 } = require("./project-store.cjs")
 const {
@@ -1203,6 +1202,19 @@ function invalidEngineInput(message) {
   }
 }
 
+function reportArtifactFilterName(extension) {
+  switch (extension) {
+    case "png":
+      return "PNG Image"
+    case "xlsx":
+      return "Excel Workbook"
+    case "cdxml":
+      return "ChemDraw CDXML"
+    default:
+      return "Export File"
+  }
+}
+
 ipcMain.handle("rxnflow:save-json-snapshot", async (_event, payload) => {
   const defaultPath = payload?.defaultName || "rxnflow-flow.json"
   const content = typeof payload?.content === "string" ? payload.content : "{}"
@@ -1224,23 +1236,21 @@ ipcMain.handle("rxnflow:save-json-snapshot", async (_event, payload) => {
 })
 
 ipcMain.handle("rxnflow:save-report-artifact", async (_event, payload) => {
-  const defaultPath = payload?.defaultName || "rxnflow-export"
+  const requestedDefaultName = typeof payload?.defaultName === "string" && payload.defaultName.trim()
+    ? payload.defaultName
+    : "rxnflow-export"
+  const defaultName = path.basename(requestedDefaultName)
   const encoding = payload?.encoding === "base64" ? "base64" : "utf8"
   const content = typeof payload?.content === "string" ? payload.content : ""
-  if (currentProjectDirectory) {
-    return saveProjectReportArtifact(currentProjectDirectory, {
-      defaultName: defaultPath,
-      mimeType: payload?.mimeType,
-      encoding,
-      content,
-    })
-  }
+  const extension = path.extname(defaultName).replace(".", "") || "*"
+  const defaultPath = path.join(app.getPath("documents"), defaultName)
 
   const result = await dialog.showSaveDialog({
-    title: "Export RxnFlow report artifact",
+    title: "Export RxnFlow file",
+    buttonLabel: "Export",
     defaultPath,
     filters: [
-      { name: "Report artifact", extensions: [path.extname(defaultPath).replace(".", "") || "*"] },
+      { name: reportArtifactFilterName(extension), extensions: [extension] },
       { name: "All files", extensions: ["*"] },
     ],
   })

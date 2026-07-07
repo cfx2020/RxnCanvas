@@ -24,7 +24,6 @@ export type DesktopReportArtifactBridge = {
   }) => Promise<{
     canceled: boolean
     filePath?: string
-    projectArtifactPath?: string
   }>
 }
 
@@ -70,10 +69,10 @@ export async function saveReportArtifacts(
 
 export function reportExportStatus(exportedCount: number, canceledCount: number): string {
   if (exportedCount === 0) {
-    return canceledCount > 0 ? "Export canceled." : "No report artifacts exported."
+    return canceledCount > 0 ? "Export canceled." : "No files exported."
   }
   const canceledSuffix = canceledCount > 0 ? ` ${canceledCount} canceled.` : ""
-  return `Exported ${exportedCount} report artifact${exportedCount === 1 ? "" : "s"}.${canceledSuffix}`
+  return `Exported ${exportedCount} file${exportedCount === 1 ? "" : "s"}.${canceledSuffix}`
 }
 
 export async function saveReportArtifactToDestination(
@@ -97,7 +96,7 @@ export async function saveReportArtifactToDestination(
     const result = await desktopBridge.saveReportArtifact(payload)
     return {
       canceled: result.canceled,
-      destination: result.projectArtifactPath ?? result.filePath,
+      destination: result.filePath,
     }
   }
 

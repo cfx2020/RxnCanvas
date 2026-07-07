@@ -27,10 +27,10 @@ const xlsxArtifact: ReportExportArtifact = {
 
 describe("reportExportWorkflow", () => {
   it("summarizes report export results", () => {
-    expect(reportExportStatus(0, 0)).toBe("No report artifacts exported.")
+    expect(reportExportStatus(0, 0)).toBe("No files exported.")
     expect(reportExportStatus(0, 3)).toBe("Export canceled.")
-    expect(reportExportStatus(1, 0)).toBe("Exported 1 report artifact.")
-    expect(reportExportStatus(2, 1)).toBe("Exported 2 report artifacts. 1 canceled.")
+    expect(reportExportStatus(1, 0)).toBe("Exported 1 file.")
+    expect(reportExportStatus(2, 1)).toBe("Exported 2 files. 1 canceled.")
   })
 
   it("keeps canceled artifacts out of the saved artifact list", async () => {
@@ -39,7 +39,7 @@ describe("reportExportWorkflow", () => {
       destination: `exports/${artifact.fileName}`,
     }))
 
-    expect(result.status).toBe("Exported 1 report artifact. 1 canceled.")
+    expect(result.status).toBe("Exported 1 file. 1 canceled.")
     expect(result.artifacts).toEqual([{
       ...cdxmlArtifact,
       destination: "exports/rxnflow-report.cdxml",
@@ -96,7 +96,7 @@ describe("reportExportWorkflow", () => {
       "engine-preview.cdxml",
       "engine-preview.xlsx",
     ])
-    expect(result.status).toBe("Exported 2 report artifacts.")
+    expect(result.status).toBe("Exported 2 files.")
     expect(result.artifacts.map((artifact) => artifact.destination)).toEqual([
       "exports/engine-preview.cdxml",
       "exports/engine-preview.xlsx",
@@ -108,12 +108,11 @@ describe("reportExportWorkflow", () => {
       saveReportArtifact: vi.fn(async (payload: { defaultName: string }) => ({
         canceled: false,
         filePath: `/tmp/${payload.defaultName}`,
-        projectArtifactPath: `exports/${payload.defaultName}`,
       })),
     }
 
-    await saveReportArtifactToDestination(cdxmlArtifact, bridge)
-    await saveReportArtifactToDestination(xlsxArtifact, bridge)
+    const cdxmlResult = await saveReportArtifactToDestination(cdxmlArtifact, bridge)
+    const xlsxResult = await saveReportArtifactToDestination(xlsxArtifact, bridge)
 
     expect(bridge.saveReportArtifact.mock.calls[0][0]).toMatchObject({
       defaultName: "rxnflow-report.cdxml",
@@ -126,5 +125,7 @@ describe("reportExportWorkflow", () => {
       encoding: "base64",
       content: "QUJD",
     })
+    expect(cdxmlResult.destination).toBe("/tmp/rxnflow-report.cdxml")
+    expect(xlsxResult.destination).toBe("/tmp/rxnflow-report.xlsx")
   })
 })

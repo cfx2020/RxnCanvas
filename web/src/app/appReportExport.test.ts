@@ -58,7 +58,7 @@ describe("appReportExport", () => {
   it("updates busy/status/artifacts for a successful export", async () => {
     createAndSaveReportArtifactsMock.mockResolvedValue({
       artifacts: [{ format: "png", destination: "browser-download" }],
-      status: "Exported 1 artifact.",
+      status: "Exported 1 file.",
     })
     const setExportBusy = vi.fn()
     const setExportStatus = vi.fn()
@@ -76,9 +76,9 @@ describe("appReportExport", () => {
       setExportArtifacts,
     })
     expect(setExportBusy).toHaveBeenNthCalledWith(1, true)
-    expect(setExportStatus).toHaveBeenCalledWith("Preparing report artifacts...")
+    expect(setExportStatus).toHaveBeenCalledWith("Preparing export...")
     expect(setExportArtifacts).toHaveBeenCalledWith([{ format: "png", destination: "browser-download" }])
-    expect(setExportStatus).toHaveBeenCalledWith("Exported 1 artifact.")
+    expect(setExportStatus).toHaveBeenCalledWith("Exported 1 file.")
     expect(setExportBusy).toHaveBeenLastCalledWith(false)
     expect(ketcherMocks.createStructService).not.toHaveBeenCalled()
   })
@@ -109,7 +109,7 @@ describe("appReportExport", () => {
   it("adds Ketcher CDXML structures from parsed coordinate previews before exporting CDXML", async () => {
     createAndSaveReportArtifactsMock.mockResolvedValue({
       artifacts: [{ format: "cdxml", destination: "browser-download" }],
-      status: "Exported 1 artifact.",
+      status: "Exported 1 file.",
     })
 
     await exportSelectedReportFormats({

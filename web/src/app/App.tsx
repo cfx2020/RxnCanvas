@@ -448,7 +448,7 @@ export function App() {
   const [exportOptions] = useState<ReportExportOptions>({ ...defaultReportExportOptions })
   const [, setExportArtifacts] = useState<ExportedReportArtifact[]>([])
   const [exportBusy, setExportBusy] = useState(false)
-  const [exportStatus, setExportStatus] = useState("No report artifacts exported in this session.")
+  const [exportStatus, setExportStatus] = useState("No files exported in this session.")
   const [energyDisplayOptions, setEnergyDisplayOptions] = useState<EnergyDisplayOptions>(() => initialEnergyDisplayOptions())
   const [engineStatus, setEngineStatus] = useState<DesktopEngineStatus | null>(null)
   const [projectValidation, setProjectValidation] = useState<ProjectValidationPayload | null>(null)
@@ -551,6 +551,7 @@ export function App() {
   }), [activeCanvasTabId, activeProject, files, projectCanvases])
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const activeProjectLabel = activeProject?.label ?? "Untitled Study"
+  const activeCanvasLabel = canvasTabs.find((tab) => tab.id === activeCanvasTabId)?.label ?? activeProjectLabel
   const isMacDesktop = window.rxnflowDesktop?.platform === "darwin"
   const isMacCopyDragPlatform = isMacDesktop || /Mac|iPhone|iPad|iPod/.test(window.navigator.platform)
   const theme = effectiveThemeFromAppearance(desktopPreferences.appearance, systemPrefersDark)
@@ -2372,6 +2373,8 @@ export function App() {
       exportOptions: {
         ...exportOptions,
         formats: [format],
+        basename: activeCanvasLabel,
+        title: activeCanvasLabel,
       },
       projectLabel: activeProject.label,
       nodes,
@@ -2383,7 +2386,7 @@ export function App() {
       setExportStatus,
       setExportArtifacts,
     })
-  }, [activeProject.label, edges, energyRows, exportOptions, files, nodes])
+  }, [activeCanvasLabel, activeProject.label, edges, energyRows, exportOptions, files, nodes])
 
   const openSourceFileInSystemApp = useCallback(async (fileId: string) => {
     const file = files.find((item) => item.id === fileId)

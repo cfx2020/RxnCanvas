@@ -30,7 +30,7 @@ The shell provides:
 - macOS hardened-runtime builder settings and `build/entitlements.mac.plist`; `scripts/notarize-mac.cjs` provides the signed release notarization/stapling step when Apple signing credentials are available.
 - Native menu entries for importing files, opening RxnFlow project folders, exporting RxnFlow project zips, and reopening recent workspaces.
 - Native file open dialog, source preview IPC, and preload `registerImportCandidates` for reviewed import candidates.
-- Native save behavior for PNG/CDXML/XLSX report artifacts; if a workspace folder is current, artifacts are written to its root `exports/` directory.
+- Native save behavior for PNG/CDXML/XLSX exports through the system save dialog, with the renderer-provided filename as the default.
 - Native create/open dialog for local workspace folders, `.rxnflow.zip` export for sharing/migration, legacy `.rxnflow.json` package read compatibility, plus a persisted recent projects menu.
 - Workspace folder persistence in `project-store.cjs`: hidden `.rxnflow/project.json` with lightweight `importLedger`, `.rxnflow/manifest.json`, root `sources/` raw/source copies with size/sha256 metadata, root `exports/manifest.json` with artifact size/sha256 metadata, and zip archive export of the workspace.
 - Renderer-side lightweight relative energy display and 3Dmol.js Structure coordinate viewer. These are persisted in renderer project state where applicable and do not require Electron-specific backend services. The old Compute/Profile panel and correction editing UI are not active UI.

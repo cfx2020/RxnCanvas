@@ -37,7 +37,7 @@ export async function exportSelectedReportFormats({
 }): Promise<void> {
   if (exportOptions.formats.length === 0) return
   setExportBusy(true)
-  setExportStatus("Preparing report artifacts...")
+  setExportStatus("Preparing export...")
   try {
     const exportNodes = await reportExportNodesWithStructures(nodes, files, exportOptions.formats)
     const result = await createAndSaveReportArtifacts(exportOptions, {
