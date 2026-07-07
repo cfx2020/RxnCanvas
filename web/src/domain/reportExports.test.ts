@@ -147,6 +147,18 @@ describe("report exports", () => {
       nodes: [
         ...context.nodes,
         {
+          id: "node-product",
+          label: "Product",
+          formula: "C8H8",
+          kind: "product",
+          method: "dft",
+          solvent: "gas",
+          energyGas: null,
+          energySolution: null,
+          energyUnit: "hartree",
+          position: { x: 320, y: 30 },
+        },
+        {
           id: "ligand",
           label: "L",
           formula: "L",
@@ -175,8 +187,23 @@ describe("report exports", () => {
       ],
       edges: [
         ...context.edges,
+        { id: "edge-ts-product", sourceId: "node-ts", targetId: "node-product", label: "step" },
         { id: "edge-l-ts", sourceId: "ligand", targetId: "node-ts", label: "addition", stepRole: "addition" },
         { id: "edge-ts-n2", sourceId: "node-ts", targetId: "n2", label: "release", stepRole: "release" },
+      ],
+      rows: [
+        ...context.rows,
+        {
+          nodeId: "node-product",
+          label: "Product",
+          kind: "product",
+          formula: "C8H8",
+          gas: null,
+          solution: null,
+          energyUnit: "hartree",
+          relative: -5,
+          showInRelativeTable: true,
+        },
       ],
     }
     const cdxml = buildCdxmlReport(sideContext)
@@ -185,6 +212,65 @@ describe("report exports", () => {
     expect(cdxml).toContain("<arrow")
     expect(cdxml).toContain(">L<")
     expect(cdxml).toContain(">N2<")
+    const arrows = cdxmlArrows(cdxml)
+    const dashedSegments = dashedBondSegments(cdxml)
+    expect(arrows.length).toBeGreaterThanOrEqual(2)
+    expect(arrows.every((arrow) => dashedSegments.some((segment) => distancePointToSegment(arrow.center, segment) < 0.6))).toBe(true)
+    const additionLabel = cdxmlTextPosition(cdxml, "L")
+    const releaseLabel = cdxmlTextPosition(cdxml, "N2")
+    const additionArrow = nearestArrow(additionLabel, arrows)
+    const releaseArrow = nearestArrow(releaseLabel, arrows)
+    expect(distance(additionLabel, additionArrow.tail)).toBeLessThan(distance(additionLabel, additionArrow.head))
+    expect(distance(releaseLabel, releaseArrow.head)).toBeLessThan(distance(releaseLabel, releaseArrow.tail))
+    expect(() => preflightChemDrawCdxml(cdxml)).not.toThrow()
+  })
+
+  it("keeps branch energy levels vertically parallel in CDXML", () => {
+    const branchContext: ReportExportContext = {
+      ...context,
+      nodes: [
+        context.nodes[0],
+        {
+          ...context.nodes[1],
+          id: "ts-a",
+          label: "TS-A",
+          position: { x: 80, y: -60 },
+        },
+        {
+          ...context.nodes[1],
+          id: "ts-b",
+          label: "TS-B",
+          position: { x: 80, y: 80 },
+        },
+        {
+          ...context.nodes[0],
+          id: "product",
+          label: "Product",
+          kind: "product",
+          position: { x: 280, y: 20 },
+        },
+      ],
+      edges: [
+        { id: "edge-a", sourceId: "node-a", targetId: "ts-a", label: "branch a" },
+        { id: "edge-b", sourceId: "node-a", targetId: "ts-b", label: "branch b" },
+        { id: "edge-a-product", sourceId: "ts-a", targetId: "product", label: "finish a" },
+        { id: "edge-b-product", sourceId: "ts-b", targetId: "product", label: "finish b" },
+      ],
+      rows: [
+        context.rows[0],
+        { ...context.rows[1], nodeId: "ts-a", label: "TS-A", relative: 4.9 },
+        { ...context.rows[1], nodeId: "ts-b", label: "TS-B", relative: 1.5 },
+        { ...context.rows[0], nodeId: "product", label: "Product", kind: "product", relative: -10 },
+      ],
+    }
+    const cdxml = buildCdxmlReport(branchContext)
+    const tsA = cdxmlTextPosition(cdxml, "TS-A")
+    const tsB = cdxmlTextPosition(cdxml, "TS-B")
+
+    expect(tsA).toBeTruthy()
+    expect(tsB).toBeTruthy()
+    expect(Math.abs((tsA?.x ?? 0) - (tsB?.x ?? 0))).toBeLessThan(0.1)
+    expect(Math.abs((tsA?.y ?? 0) - (tsB?.y ?? 0))).toBeGreaterThan(8)
     expect(() => preflightChemDrawCdxml(cdxml)).not.toThrow()
   })
 
@@ -295,4 +381,80 @@ function boldBondLengths(cdxml: string): number[] {
       const [x2, y2] = end.split(/\s+/).map(Number)
       return Math.hypot(x2 - x1, y2 - y1)
     })
+}
+
+function cdxmlTextPosition(cdxml: string, value: string): { x: number; y: number } | null {
+  const document = parseCdxml(cdxml)
+  const text = Array.from(document.getElementsByTagName("t")).find((item) => item.textContent === value)
+  const point = text?.getAttribute("p")
+  if (!point) return null
+  const [x, y] = point.split(/\s+/).map(Number)
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+}
+
+function cdxmlArrows(cdxml: string): Array<{ center: { x: number; y: number }; tail: { x: number; y: number }; head: { x: number; y: number } }> {
+  const document = parseCdxml(cdxml)
+  return Array.from(document.getElementsByTagName("arrow")).flatMap((arrow) => {
+    const center = cdxmlPoint3D(arrow.getAttribute("Center3D"))
+    const tail = cdxmlPoint3D(arrow.getAttribute("Tail3D"))
+    const head = cdxmlPoint3D(arrow.getAttribute("Head3D"))
+    return center && tail && head ? [{ center, tail, head }] : []
+  })
+}
+
+function dashedBondSegments(cdxml: string): Array<{ start: { x: number; y: number }; end: { x: number; y: number } }> {
+  const document = parseCdxml(cdxml)
+  const nodeById = new Map(
+    Array.from(document.getElementsByTagName("n"))
+      .map((node) => [node.getAttribute("id"), node.getAttribute("p")] as const)
+      .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1])),
+  )
+  return Array.from(document.getElementsByTagName("b"))
+    .filter((bond) => bond.getAttribute("Display") === "Dash")
+    .flatMap((bond) => {
+      const beginId = bond.getAttribute("B")
+      const endId = bond.getAttribute("E")
+      const begin = beginId ? nodeById.get(beginId) : undefined
+      const end = endId ? nodeById.get(endId) : undefined
+      if (!begin || !end) return []
+      const [x1, y1] = begin.split(/\s+/).map(Number)
+      const [x2, y2] = end.split(/\s+/).map(Number)
+      if (![x1, y1, x2, y2].every(Number.isFinite)) return []
+      return [{ start: { x: x1, y: y1 }, end: { x: x2, y: y2 } }]
+    })
+}
+
+function cdxmlPoint3D(value: string | null): { x: number; y: number } | null {
+  if (!value) return null
+  const [x, y] = value.split(/\s+/).map(Number)
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+}
+
+function nearestArrow(
+  point: { x: number; y: number } | null,
+  arrows: Array<{ center: { x: number; y: number }; tail: { x: number; y: number }; head: { x: number; y: number } }>,
+): { center: { x: number; y: number }; tail: { x: number; y: number }; head: { x: number; y: number } } {
+  if (!point || arrows.length === 0) throw new Error("Missing arrow geometry")
+  return arrows.reduce((nearest, arrow) => (
+    Math.hypot(arrow.center.x - point.x, arrow.center.y - point.y) < Math.hypot(nearest.center.x - point.x, nearest.center.y - point.y)
+      ? arrow
+      : nearest
+  ))
+}
+
+function distance(left: { x: number; y: number } | null, right: { x: number; y: number }): number {
+  if (!left) return Number.POSITIVE_INFINITY
+  return Math.hypot(left.x - right.x, left.y - right.y)
+}
+
+function distancePointToSegment(
+  point: { x: number; y: number },
+  segment: { start: { x: number; y: number }; end: { x: number; y: number } },
+): number {
+  const dx = segment.end.x - segment.start.x
+  const dy = segment.end.y - segment.start.y
+  const lengthSquared = dx * dx + dy * dy
+  if (lengthSquared === 0) return Math.hypot(point.x - segment.start.x, point.y - segment.start.y)
+  const amount = Math.max(0, Math.min(1, ((point.x - segment.start.x) * dx + (point.y - segment.start.y) * dy) / lengthSquared))
+  return Math.hypot(point.x - (segment.start.x + amount * dx), point.y - (segment.start.y + amount * dy))
 }

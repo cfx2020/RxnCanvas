@@ -24,6 +24,13 @@ export type ChemDrawCdxmlEnergyLink = {
   role: string
 }
 
+export type ChemDrawCdxmlArrowAnchor = {
+  x: number
+  y: number
+  tangentX?: number
+  tangentY?: number
+}
+
 export type ChemDrawCdxmlSideSpecies = {
   role: "addition" | "release"
   label: string
@@ -34,10 +41,7 @@ export type ChemDrawCdxmlSideSpecies = {
     structureY: number
     lineWidth: number
   }
-  arrowAnchor?: {
-    x: number
-    y: number
-  }
+  arrowAnchor?: ChemDrawCdxmlArrowAnchor
   lane: number
 }
 
@@ -139,7 +143,7 @@ export function composeChemDrawEnergyDiagramCdxml(diagram: ChemDrawCdxmlEnergyDi
     ...diagram.links.map((link) => cdxmlConnector(ids, link)),
     ...diagram.levels.flatMap((level) => cdxmlEnergyLevel(ids, level)),
     ...diagram.levels.flatMap((level) => cdxmlStructure(ids, level)),
-    ...(diagram.sideSpecies ?? []).flatMap((species) => cdxmlSideSpecies(ids, species, diagram.width)),
+    ...(diagram.sideSpecies ?? []).flatMap((species) => cdxmlSideSpecies(ids, species, diagram.width, diagram.height)),
   ]
   const root = cdxmlElement("CDXML", chemDrawRootAttributes(diagram), [
     cdxmlElement("colortable", {}, colors.map((color) => cdxmlElement("color", color))),
@@ -305,10 +309,31 @@ function cdxmlStructure(ids: CdxmlIdAllocator, level: ChemDrawCdxmlEnergyLevel):
   })
 }
 
-function cdxmlSideSpecies(ids: CdxmlIdAllocator, species: ChemDrawCdxmlSideSpecies, pageWidth: number): CdxmlElement[] {
+function cdxmlSideSpecies(
+  ids: CdxmlIdAllocator,
+  species: ChemDrawCdxmlSideSpecies,
+  pageWidth: number,
+  pageHeight: number,
+): CdxmlElement[] {
   const direction = species.role === "addition" ? -1 : 1
-  const sideX = clamp(species.anchor.x + direction * 62, 42, pageWidth - 42)
-  const sideY = Math.max(species.anchor.structureY - 48 + (species.lane % 2) * 24, species.anchor.y + 44)
+  const arrowCenterX = species.arrowAnchor?.x ?? (species.anchor.x + direction * 24)
+  const arrowCenterY = species.arrowAnchor?.y ?? species.anchor.y
+  const clockwise = species.role === "release"
+  const arrowGeometry = arcArrowGeometry(arrowCenterX, arrowCenterY, 12, clockwise, species.arrowAnchor)
+  const attachment = species.role === "addition" ? arrowGeometry.tail : arrowGeometry.head
+  const laneOffset = species.lane * 18
+  const sideCenterX = clamp(
+    attachment.x + arrowGeometry.sideNormal.x * (54 + laneOffset) + arrowGeometry.tangent.x * laneOffset * 0.35,
+    42,
+    pageWidth - 42,
+  )
+  const sideCenterY = clamp(
+    attachment.y + arrowGeometry.sideNormal.y * (44 + laneOffset) + arrowGeometry.tangent.y * laneOffset * 0.35,
+    46,
+    pageHeight - 46,
+  )
+  const sideX = sideCenterX
+  const sideY = sideCenterY - 26
   const structure = species.structureCdxml
     ? importCdxmlPageElements(ids, species.structureCdxml, {
       x: sideX - 30,
@@ -318,13 +343,10 @@ function cdxmlSideSpecies(ids: CdxmlIdAllocator, species: ChemDrawCdxmlSideSpeci
     })
     : []
   const labelY = structure.length > 0 ? sideY + 72 : sideY + 14
-  const arrowCenterX = species.arrowAnchor?.x ?? (species.anchor.x + direction * 24)
-  const arrowCenterY = (species.arrowAnchor?.y ?? species.anchor.y) + 16
-  const clockwise = species.role === "release"
   return [
     ...structure,
     cdxmlText(ids, sideX, labelY, shortText(species.label, 18), { size: 10, color: "0", width: 70, bold: true }),
-    ...cdxmlArcArrow(ids, arrowCenterX, arrowCenterY, 12, clockwise),
+    ...cdxmlArcArrow(ids, arrowCenterX, arrowCenterY, 12, clockwise, species.arrowAnchor),
   ]
 }
 
@@ -393,15 +415,18 @@ function cdxmlText(
   ])
 }
 
-function cdxmlArcArrow(ids: CdxmlIdAllocator, centerX: number, centerY: number, radius: number, clockwise: boolean): CdxmlElement[] {
+function cdxmlArcArrow(
+  ids: CdxmlIdAllocator,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  clockwise: boolean,
+  anchor?: ChemDrawCdxmlArrowAnchor,
+): CdxmlElement[] {
   const graphicId = ids.next()
   const arrowId = ids.next()
-  const tailAngle = clockwise ? 210 : 330
-  const headAngle = clockwise ? 330 : 210
-  const tail = pointOnCircle(centerX, centerY, radius, tailAngle)
-  const head = pointOnCircle(centerX, centerY, radius, headAngle)
-  const major = { x: centerX + radius, y: centerY }
-  const minor = { x: centerX, y: centerY + (clockwise ? radius : -radius) }
+  const geometry = arcArrowGeometry(centerX, centerY, radius, clockwise, anchor)
+  const { tail, head, major, minor } = geometry
   const bounds = coordinateBoundsFromPoints([tail, head, { x: centerX - radius, y: centerY - radius }, { x: centerX + radius, y: centerY + radius }])
   const common = {
     BoundingBox: `${round(bounds.minX)} ${round(bounds.minY)} ${round(bounds.maxX)} ${round(bounds.maxY)}`,
@@ -434,6 +459,43 @@ function cdxmlArcArrow(ids: CdxmlIdAllocator, centerX: number, centerY: number, 
       MinorAxisEnd3D: `${round(minor.x)} ${round(minor.y)} 0`,
     }),
   ]
+}
+
+function arcArrowGeometry(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  clockwise: boolean,
+  anchor?: ChemDrawCdxmlArrowAnchor,
+): {
+  tail: { x: number; y: number }
+  head: { x: number; y: number }
+  major: { x: number; y: number }
+  minor: { x: number; y: number }
+  tangent: { x: number; y: number }
+  sideNormal: { x: number; y: number }
+} {
+  const tangent = normalizedVector(anchor?.tangentX, anchor?.tangentY)
+  const sideNormal = clockwise
+    ? { x: -tangent.y, y: tangent.x }
+    : { x: tangent.y, y: -tangent.x }
+  const angle = Math.atan2(tangent.y, tangent.x) * 180 / Math.PI
+  const tailAngle = clockwise ? angle + 210 : angle + 150
+  const headAngle = clockwise ? angle + 330 : angle + 30
+  return {
+    tail: pointOnCircle(centerX, centerY, radius, tailAngle),
+    head: pointOnCircle(centerX, centerY, radius, headAngle),
+    major: { x: centerX + tangent.x * radius, y: centerY + tangent.y * radius },
+    minor: { x: centerX + sideNormal.x * radius, y: centerY + sideNormal.y * radius },
+    tangent,
+    sideNormal,
+  }
+}
+
+function normalizedVector(x = 1, y = 0): { x: number; y: number } {
+  const length = Math.hypot(x, y)
+  if (!Number.isFinite(length) || length < 0.0001) return { x: 1, y: 0 }
+  return { x: x / length, y: y / length }
 }
 
 function importCdxmlPageElements(

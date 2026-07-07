@@ -187,7 +187,7 @@ export function buildReportSvg(context: ReportExportContext): string {
 }
 
 export function buildCdxmlReport(context: ReportExportContext): string {
-  const diagram = buildEnergyDiagramModel(context, { minWidth: 1120, height: 720, xStep: 170, sideMargin: 98 })
+  const diagram = buildEnergyDiagramModel(context, { minWidth: 1120, height: 720, xStep: 170, sideMargin: 98, branchLaneOffset: 0 })
   const cdxmlLevels = diagram.levels.map((level, index) => ({
     ...level,
     structureY: cdxmlStructureY(level, index, diagram),
@@ -239,11 +239,13 @@ type EnergyDiagramLevel = {
   y: number
   structureY: number
   depth: number
+  lane: number
+  columnSize: number
   lineWidth: number
 }
 
 function cdxmlStructureY(level: EnergyDiagramLevel, index: number, diagram: EnergyDiagramModel): number {
-  const stagger = index % 2 === 0 ? 0 : 46
+  const stagger = level.columnSize > 1 ? level.lane * 112 : (index % 2 === 0 ? 0 : 46)
   return clamp(level.y + 76 + stagger, diagram.plot.top + 74, diagram.height - 132)
 }
 
@@ -293,7 +295,7 @@ function cdxmlSideSpeciesArrowAnchor(
   role: "addition" | "release",
   pathId: string,
   diagram: EnergyDiagramModel,
-): { x: number; y: number } | undefined {
+): { x: number; y: number; tangentX?: number; tangentY?: number } | undefined {
   const link = role === "addition"
     ? diagram.links.find((item) => item.target.nodeId === pathId)
     : diagram.links.find((item) => item.source.nodeId === pathId)
@@ -301,7 +303,7 @@ function cdxmlSideSpeciesArrowAnchor(
     const level = diagram.levels.find((item) => item.nodeId === pathId)
     if (!level) return undefined
     const direction = role === "addition" ? -1 : 1
-    return { x: level.x + direction * 26, y: level.y }
+    return { x: level.x + direction * 26, y: level.y, tangentX: 1, tangentY: 0 }
   }
   const source = {
     x: link.source.x + Math.min(Math.max(link.source.lineWidth * 0.34, 18), 24) / 2,
@@ -312,8 +314,8 @@ function cdxmlSideSpeciesArrowAnchor(
     y: link.target.y,
   }
   return role === "addition"
-    ? interpolatePoint(target, source, 0.16)
-    : interpolatePoint(source, target, 0.16)
+    ? { ...interpolatePoint(target, source, 0.16), tangentX: target.x - source.x, tangentY: target.y - source.y }
+    : { ...interpolatePoint(source, target, 0.16), tangentX: target.x - source.x, tangentY: target.y - source.y }
 }
 
 function interpolatePoint(
@@ -354,7 +356,7 @@ type EnergyDiagramModel = {
 
 function buildEnergyDiagramModel(
   context: ReportExportContext,
-  options: { minWidth?: number; height?: number; xStep?: number; sideMargin?: number } = {},
+  options: { minWidth?: number; height?: number; xStep?: number; sideMargin?: number; branchLaneOffset?: number } = {},
 ): EnergyDiagramModel {
   const rows = visibleEnergyTableRows(sortedReportRows(context), "relative")
   const levelsSource = rows.length > 0 ? rows : sortedReportRows(context)
@@ -386,7 +388,8 @@ function buildEnergyDiagramModel(
     const baseX = layout.maxDepth === 0
       ? width / 2
       : plot.left + depth * ((plot.right - plot.left) / Math.max(layout.maxDepth, 1))
-    const laneOffset = columnSize > 1 ? (lane - (columnSize - 1) / 2) * Math.min(46, xStep / Math.max(columnSize, 2)) : 0
+    const branchLaneOffset = options.branchLaneOffset ?? Math.min(46, xStep / Math.max(columnSize, 2))
+    const laneOffset = columnSize > 1 ? (lane - (columnSize - 1) / 2) * branchLaneOffset : 0
     const x = baseX + laneOffset
     const relative = typeof row.relative === "number" && Number.isFinite(row.relative) ? row.relative : null
     const y = relative == null
@@ -402,6 +405,8 @@ function buildEnergyDiagramModel(
       y,
       structureY: structureBand.y + (lane % 2) * 72,
       depth,
+      lane,
+      columnSize,
       lineWidth: 66,
     }
   })
