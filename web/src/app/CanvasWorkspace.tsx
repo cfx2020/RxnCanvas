@@ -1221,7 +1221,7 @@ function NodeStructurePreview({
       <Maximize2 size={13} aria-hidden="true" />
     </button>
   )
-  if (atoms.length === 0 && !node.manualStructureMolfile && !node.manualStructureSvg) {
+  if (atoms.length === 0 && !node.manualStructureMolfile) {
     return (
       <div
         className="node-structure-preview node-structure-preview-empty"
@@ -1243,7 +1243,6 @@ function NodeStructurePreview({
         atoms={atoms}
         formula={node.formula}
         manualMolfile={node.manualStructureMolfile}
-        manualSvg={node.manualStructureSvg}
         label={node.label}
         width={previewSize.width}
         height={previewSize.height}

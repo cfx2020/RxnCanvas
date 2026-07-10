@@ -25,9 +25,10 @@ from .engine import (
     save_project,
     validate_project_content,
 )
+from .version import __version__
 
 
-ENGINE_VERSION = "rxnflow-smoke-engine-v1"
+ENGINE_VERSION = __version__
 
 
 def handle_request(request: dict[str, Any]) -> dict[str, Any]:

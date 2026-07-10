@@ -5,6 +5,7 @@ const { getEngineStatus, runEngineRequest } = require("./engine-bridge.cjs")
 const {
   exportManifestFile,
   exportProjectWorkspaceArchive,
+  importProjectWorkspaceArchive,
   materializeImportSourceFile,
   projectManifestFile,
   projectStateFile,
@@ -648,6 +649,16 @@ async function verifyProjectDirectoryStore() {
       if (!archiveBytes.includes(Buffer.from(entryName))) {
         throw new Error(`Project archive is missing ${entryName}`)
       }
+    }
+
+    const importedProjectPath = path.join(tempDir, "Imported Alpha Study")
+    const importedArchive = await importProjectWorkspaceArchive(archivePath, importedProjectPath)
+    const importedContent = JSON.parse(await readProjectContent(importedArchive.projectDirectory))
+    if (importedContent.project?.id !== "alpha-study") {
+      throw new Error(`Imported project archive did not restore project content: ${JSON.stringify(importedContent.project)}`)
+    }
+    if (!fs.existsSync(path.join(importedProjectPath, "sources", "gaussian.log"))) {
+      throw new Error("Imported project archive did not restore source files")
     }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })

@@ -1,15 +1,18 @@
 const fs = require("node:fs")
 const path = require("node:path")
+const { execFileSync } = require("node:child_process")
 
 const projectRoot = path.join(__dirname, "..")
 const packageJsonPath = path.join(projectRoot, "package.json")
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"))
+const pythonVersionPath = path.join(projectRoot, "..", "rxnflow", "version.py")
 
 function main() {
   verifyPackageMetadata()
   verifyDesktopIconAssets()
   verifyBuilderConfiguration()
   verifyReleaseScripts()
+  verifyReleaseManifestScript()
   verifyRendererAssetBase()
   verifyBundledEngineConfiguration()
   verifyRuntimeSmokeScript()
@@ -34,6 +37,7 @@ function verifyBundledEngineConfiguration() {
   const removedEnginePath = path.join(projectRoot, "electron", "embedded-engine.cjs")
   const buildScriptPath = path.join(projectRoot, "scripts", "build-engine.cjs")
   const entryPath = path.join(projectRoot, "scripts", "engine-entry.py")
+  const requirementsLockPath = path.join(projectRoot, "engine-requirements.lock")
   const bridgeSource = fs.readFileSync(path.join(projectRoot, "electron", "engine-bridge.cjs"), "utf8")
   const buildScript = fs.readFileSync(buildScriptPath, "utf8")
   const extraResources = packageJson.build?.extraResources ?? []
@@ -42,8 +46,11 @@ function verifyBundledEngineConfiguration() {
   assert(!fs.existsSync(removedEnginePath), "electron/embedded-engine.cjs must be removed")
   assert(fs.existsSync(buildScriptPath), "missing scripts/build-engine.cjs")
   assert(fs.existsSync(entryPath), "missing scripts/engine-entry.py")
+  assert(fs.existsSync(requirementsLockPath), "missing locked engine dependency graph")
   assert(engineResource, "build.extraResources must copy engine/ into app resources")
   assert(buildScript.includes("--collect-all") && buildScript.includes("cclib"), "engine build must collect bundled cclib")
+  assert(buildScript.includes("--with-requirements"), "uv engine build must use the locked dependency graph")
+  assert(buildScript.includes("--require-hashes"), "pip engine build must enforce locked dependency hashes")
   assert(bridgeSource.includes("bundledEngineCommand"), "engine bridge must prefer the bundled engine executable")
   assert(bridgeSource.includes("isPackagedAppRuntime"), "packaged app must require the bundled engine executable")
   assert(bridgeSource.includes("rxnflow.engine_ipc"), "engine bridge must keep the development Python IPC entry")
@@ -61,6 +68,12 @@ function verifyRendererAssetBase() {
 }
 
 function verifyPackageMetadata() {
+  assert(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageJson.version), "package version must be release semver")
+  assert(packageJson.version !== "0.0.0", "package version must be set before release")
+  assert(fs.existsSync(pythonVersionPath), "Python engine version module is missing")
+  const pythonVersionSource = fs.readFileSync(pythonVersionPath, "utf8")
+  const pythonVersion = pythonVersionSource.match(/__version__\s*=\s*["']([^"']+)["']/)?.[1]
+  assert(pythonVersion === packageJson.version, "Python engine and desktop package versions must match")
   assert(packageJson.main === "electron/main.cjs", "package main must point at Electron main")
   assert(packageJson.build?.appId === "com.rxnflow.app", "build.appId must be stable")
   assert(packageJson.build?.productName === "RxnFlow", "build.productName must be RxnFlow")
@@ -112,6 +125,8 @@ function verifyBuilderConfiguration() {
   assert(packageJson.build?.mac?.hardenedRuntime === true, "mac hardenedRuntime must be enabled for signed distribution")
   assert(packageJson.build?.mac?.entitlements === "build/entitlements.mac.plist", "mac entitlements must point to build/entitlements.mac.plist")
   assert(packageJson.build?.mac?.entitlementsInherit === "build/entitlements.mac.plist", "mac entitlementsInherit must point to build/entitlements.mac.plist")
+  assert(packageJson.build?.afterPack === "scripts/after-pack.cjs", "desktop build must run the release metadata hardening hook")
+  assert(packageJson.build?.mac?.extendInfo?.NSAppTransportSecurity?.NSAllowsArbitraryLoads === false, "mac app must not allow arbitrary network loads")
 
   const winTargets = packageJson.build?.win?.target ?? []
   assert(packageJson.build?.win?.icon === "build/icon.ico", "win icon must point to build/icon.ico")
@@ -138,13 +153,25 @@ function verifyReleaseScripts() {
   assert(scripts["desktop:pack:win"]?.includes("npm run desktop:engine"), "desktop:pack:win must build the bundled Python engine")
   assert(scripts["desktop:pack:win"]?.includes("electron-builder --win --x64 --dir"), "desktop:pack:win must target Windows x64 unpacked")
   assert(scripts["desktop:pack:win"]?.includes("--publish never"), "desktop:pack:win must not publish local unpacked app")
+  assert(scripts["desktop:release:manifest"] === "node scripts/generate-release-manifest.cjs", "desktop:release:manifest missing")
+}
+
+function verifyReleaseManifestScript() {
+  const manifestScriptPath = path.join(projectRoot, "scripts", "generate-release-manifest.cjs")
+  assert(fs.existsSync(manifestScriptPath), "missing release manifest generator")
+  const source = fs.readFileSync(manifestScriptPath, "utf8")
+  assert(source.includes("sha256"), "release manifest must record SHA-256 digests")
+  assert(source.includes("SHA256SUMS.txt"), "release manifest generator must write SHA256SUMS.txt")
+  assert(source.includes("release-manifest.json"), "release manifest generator must write release-manifest.json")
+  assert(source.includes("GITHUB_SHA"), "release manifest must accept the CI source revision")
+  assert(source.includes("entry.name.includes(packageJson.version)"), "release manifest must exclude artifacts from other versions")
 }
 
 function verifyWindowsInstallerSmokeScript() {
   const installerSmokePath = path.join(projectRoot, "electron", "windows-installer-smoke.cjs")
   assert(fs.existsSync(installerSmokePath), "missing electron/windows-installer-smoke.cjs")
   const source = fs.readFileSync(installerSmokePath, "utf8")
-  assert(source.includes("RxnFlow Setup 0.0.0.exe"), "Windows installer smoke must target the NSIS setup artifact")
+  assert(source.includes("packageJson.version"), "Windows installer smoke must derive the NSIS artifact version from package.json")
   assert(source.includes("/S"), "Windows installer smoke must use silent NSIS install/uninstall")
   assert(source.includes("/D="), "Windows installer smoke must install into an isolated temp directory")
   assert(source.includes("--rxnflow-smoke-exit"), "Windows installer smoke must launch the installed app with runtime smoke flag")
@@ -156,11 +183,13 @@ function verifyRuntimeSmokeScript() {
   const appSourcePath = path.join(projectRoot, "src", "app", "App.tsx")
   const workbenchCssPath = path.join(projectRoot, "src", "app", "workbench.css")
   const runtimeSmokePath = path.join(projectRoot, "electron", "runtime-smoke.cjs")
+  const indexHtmlPath = path.join(projectRoot, "index.html")
   assert(fs.existsSync(runtimeSmokePath), "missing electron/runtime-smoke.cjs")
   const mainSource = fs.readFileSync(mainPath, "utf8")
   const appSource = fs.readFileSync(appSourcePath, "utf8")
   const workbenchCss = fs.readFileSync(workbenchCssPath, "utf8")
   const smokeSource = fs.readFileSync(runtimeSmokePath, "utf8")
+  const indexHtml = fs.readFileSync(indexHtmlPath, "utf8")
   assert(mainSource.includes("--rxnflow-smoke-exit"), "Electron main must support --rxnflow-smoke-exit")
   assert(mainSource.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK"), "Electron main must emit runtime smoke success marker")
   assert(mainSource.includes("desktop packaged runtime must use bundled Python engine with cclib"), "runtime smoke must verify bundled Python+cclib")
@@ -171,6 +200,12 @@ function verifyRuntimeSmokeScript() {
   assert(mainSource.includes("titleBarStyle: process.platform === \"darwin\" ? \"hidden\" : \"default\""), "macOS window must use hidden titlebar instead of hiddenInset")
   assert(mainSource.includes("trafficLightPosition: macTrafficLightPosition"), "macOS traffic lights must use a stable explicit position")
   assert(mainSource.includes("installMacWindowControls(window)"), "Electron main must keep native macOS window controls visible")
+  assert(mainSource.includes("installRendererNavigationGuards(window)"), "Electron main must install renderer navigation guards")
+  assert(mainSource.includes("setWindowOpenHandler"), "Electron main must deny renderer-created windows")
+  assert(mainSource.includes("will-navigate"), "Electron main must guard renderer navigation")
+  assert(mainSource.includes("...(devServerUrl ? ["), "production View menu must hide reload and DevTools roles")
+  assert(indexHtml.includes("Content-Security-Policy"), "renderer must define a Content Security Policy")
+  assert(indexHtml.includes("object-src 'none'"), "renderer CSP must disable object embedding")
   assert(!appSource.includes("macos-traffic-light-ghosts"), "renderer must not draw fake macOS traffic-light dots")
   assert(!workbenchCss.includes(".macos-traffic-light-ghosts"), "workbench CSS must not draw fake macOS traffic-light dots")
   assert(!workbenchCss.includes(".app-shell.is-macos-desktop::before"), "workbench CSS must not draw a custom macOS traffic-light backing layer")
@@ -207,6 +242,9 @@ function verifyReleaseWorkflow() {
     "npm run desktop:runtime:smoke",
     "npm run desktop:installer:smoke:win",
     "npm run desktop:notarize:mac",
+    "npm run desktop:release:manifest",
+    "SHA256SUMS.txt",
+    "release-manifest.json",
   ]) {
     assert(workflow.includes(requiredText), `desktop release workflow missing ${requiredText}`)
   }
@@ -232,6 +270,17 @@ function verifyCurrentPlatformUnpackedApp() {
   assert(fs.statSync(executablePath).mode & 0o111, "mac executable is not executable")
   const infoPlist = fs.readFileSync(infoPlistPath, "utf8")
   assert(infoPlist.includes("com.rxnflow.app"), "Info.plist missing bundle id")
+  assert(readPlistValue(infoPlistPath, "CFBundleShortVersionString") === packageJson.version, "Info.plist version must match package.json")
+  assert(readPlistValue(infoPlistPath, "NSAppTransportSecurity.NSAllowsArbitraryLoads") === "false", "mac app must disable arbitrary network loads")
+  for (const privacyKey of [
+    "NSAudioCaptureUsageDescription",
+    "NSBluetoothAlwaysUsageDescription",
+    "NSBluetoothPeripheralUsageDescription",
+    "NSCameraUsageDescription",
+    "NSMicrophoneUsageDescription",
+  ]) {
+    assert(readPlistValue(infoPlistPath, privacyKey) === null, `mac app must not declare unused ${privacyKey}`)
+  }
   if (!fs.existsSync(asarPath)) {
     console.warn("Existing mac unpacked app is stale or partial; skipping app.asar check.")
     return
@@ -246,6 +295,17 @@ function verifyCurrentPlatformUnpackedApp() {
   assert(infoPlist.includes("icon.icns"), "Info.plist missing app icon reference")
   assert(fs.existsSync(enginePath), "mac unpacked app missing bundled rxnflow-engine")
   assert(fs.statSync(enginePath).mode & 0o111, "bundled rxnflow-engine is not executable")
+}
+
+function readPlistValue(infoPlistPath, key) {
+  try {
+    return execFileSync("plutil", ["-extract", key, "raw", infoPlistPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim()
+  } catch {
+    return null
+  }
 }
 
 function verifyWindowsUnpackedApp() {
@@ -296,11 +356,16 @@ function verifyWindowsDistributionArtifacts() {
   const releaseDir = path.join(projectRoot, "release")
   if (!fs.existsSync(releaseDir)) return
 
-  const installerPath = path.join(releaseDir, "RxnFlow Setup 0.0.0.exe")
-  const portablePath = path.join(releaseDir, "RxnFlow 0.0.0.exe")
-  const blockMapPath = path.join(releaseDir, "RxnFlow Setup 0.0.0.exe.blockmap")
-  const anyWindowsDistExists = [installerPath, portablePath, blockMapPath].some((filePath) => fs.existsSync(filePath))
+  const installerPath = path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe`)
+  const portablePath = path.join(releaseDir, `RxnFlow ${packageJson.version}.exe`)
+  const blockMapPath = path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe.blockmap`)
+  const anyWindowsDistExists = fs.readdirSync(releaseDir).some((name) => /^RxnFlow(?: Setup)? .+\.exe(?:\.blockmap)?$/.test(name))
   if (!anyWindowsDistExists) return
+
+  if (![installerPath, portablePath, blockMapPath].some((filePath) => fs.existsSync(filePath))) {
+    console.warn(`Existing Windows distribution artifacts do not match version ${packageJson.version}; rebuild them on Windows.`)
+    return
+  }
 
   assert(fs.existsSync(installerPath), "Windows NSIS installer missing")
   assert(fs.existsSync(portablePath), "Windows portable executable missing")

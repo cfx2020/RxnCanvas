@@ -3,7 +3,7 @@ import type { ClipboardEvent as ReactClipboardEvent, ErrorInfo, KeyboardEvent as
 import type { Ketcher } from "ketcher-core"
 import type { FlowNode, ManualStructurePayload } from "../domain/projectPackages"
 import type { CoordinateAtom } from "../domain/sourceParsers"
-import { molfileFromAtoms, svgFromMolfile } from "./Molecule2DDepiction"
+import { molfileFromAtoms } from "./Molecule2DDepiction"
 
 const KetcherEditorHost = lazy(() => import("./KetcherEditorHost").then((module) => ({ default: module.KetcherEditorHost })))
 
@@ -255,8 +255,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
         ketcher.getMolfile("v3000").catch(() => ""),
         ketcher.getCDXml().catch(() => ""),
       ])
-      const svg = svgFromMolfile(molfile, 260, 132) ?? undefined
-      onSave(node.id, { ket, molfile, cdxml, svg })
+      onSave(node.id, { ket, molfile, cdxml })
       onClose()
     } catch (error) {
       console.error("RxnFlow Ketcher save failed", error)

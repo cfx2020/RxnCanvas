@@ -326,10 +326,13 @@ const desktopImportRejectedWarningCodes = new Set([
   "cclib_parse_failed",
   "cclib_unavailable",
   "full_file_read_failed",
+  "source_file_too_large",
   "source_materialize_failed",
   "import_preview_missing",
   "import_preview_failed",
 ])
+const maxBrowserProjectPackageBytes = 64 * 1024 * 1024
+const maxCanvasImageFileBytes = 10 * 1024 * 1024
 
 function initialDesktopPreferences(): DesktopPreferences {
   if (typeof window === "undefined" || typeof window.localStorage?.getItem !== "function") {
@@ -2120,6 +2123,18 @@ export function App() {
     const file = event.currentTarget.files?.[0]
     event.currentTarget.value = ""
     if (!file) return
+    if (file.size > maxBrowserProjectPackageBytes) {
+      setProjectValidation({
+        valid: false,
+        summary: { size: file.size, maxSize: maxBrowserProjectPackageBytes },
+        issues: [{
+          severity: "error",
+          code: "project_package_too_large",
+          message: `Project package is too large (${file.size} bytes; maximum ${maxBrowserProjectPackageBytes} bytes).`,
+        }],
+      })
+      return
+    }
     try {
       restoreProjectPackage(await file.text(), null)
     } catch {
@@ -3139,7 +3154,6 @@ function canvasAutosaveSignature(canvas: ProjectAutosaveInput["canvases"][number
       manualStructureKet: node.manualStructureKet,
       manualStructureMolfile: node.manualStructureMolfile,
       manualStructureCdxml: node.manualStructureCdxml,
-      manualStructureSvg: node.manualStructureSvg,
       position: node.position,
       size: node.size,
     })),
@@ -3550,6 +3564,7 @@ async function imageAnnotationFromFile(
   file: File,
   center: Point,
 ): Promise<Extract<CanvasAnnotation, { type: "image" }> | null> {
+  if (file.size > maxCanvasImageFileBytes) return null
   const dataUrl = await readFileAsDataUrl(file)
   if (!dataUrl.startsWith("data:image/")) return null
   const size = await imageSizeFromDataUrl(dataUrl)
@@ -3618,7 +3633,6 @@ function buildEnergyRowsSignature(
     node.manualStructureKet ?? "",
     node.manualStructureMolfile ?? "",
     node.manualStructureCdxml ?? "",
-    node.manualStructureSvg ?? "",
     JSON.stringify(node.energyTable ?? null),
     JSON.stringify(node.corrections ?? []),
   ].join("~")).join("||")

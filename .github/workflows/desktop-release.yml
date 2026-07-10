@@ -52,9 +52,16 @@ jobs:
         run: npm ci
       - name: Run Python core tests
         run: python3 -m unittest discover
+      - name: Audit locked Python engine dependencies
+        run: |
+          python3 -m pip install pip-audit==2.9.0
+          python3 -m pip_audit -r web/engine-requirements.lock
       - name: Run renderer tests
         working-directory: web
         run: npm run test
+      - name: Audit production renderer dependencies
+        working-directory: web
+        run: npm audit --omit=dev
       - name: Build renderer
         working-directory: web
         run: npm run build
@@ -122,6 +129,9 @@ jobs:
       - name: Recheck release configuration and artifact shape
         working-directory: web
         run: npm run desktop:release:smoke
+      - name: Generate Windows checksums and release manifest
+        working-directory: web
+        run: npm run desktop:release:manifest
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -129,6 +139,9 @@ jobs:
           path: |
             web/release/*.exe
             web/release/*.blockmap
+            web/release/SHA256SUMS.txt
+            web/release/release-manifest.json
+            web/legal/*third-party-licenses.json
           if-no-files-found: error
 
   macos-signed-notarized:
@@ -170,6 +183,9 @@ jobs:
       - name: Notarize and staple macOS artifacts
         working-directory: web
         run: npm run desktop:notarize:mac
+      - name: Generate macOS checksums and release manifest
+        working-directory: web
+        run: npm run desktop:release:manifest
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -177,4 +193,7 @@ jobs:
           path: |
             web/release/*.dmg
             web/release/*.zip
+            web/release/SHA256SUMS.txt
+            web/release/release-manifest.json
+            web/legal/*third-party-licenses.json
           if-no-files-found: error

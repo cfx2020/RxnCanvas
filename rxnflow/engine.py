@@ -28,6 +28,8 @@ PARSER_VERSION = "0.2.1"
 EV_TO_HARTREE = 0.03674932217565499
 ONE_M_STANDARD_STATE_CORRECTION_HARTREE = 0.003019
 NUMBER_PATTERN = r"[-+]?\d+(?:\.\d+)?(?:[EeDd][-+]?\d+)?"
+MAX_SOURCE_FILE_BYTES = 512 * 1024 * 1024
+MAX_PROJECT_CONTENT_CHARACTERS = 64 * 1024 * 1024
 
 
 GAUSSIAN_SCF_PATTERN = re.compile(rf"SCF Done:\s+E\(([^)]+)\)\s+=\s+({NUMBER_PATTERN})", re.IGNORECASE)
@@ -326,7 +328,19 @@ def parse_source_file(name: str, preview: str, source_path: str | None = None) -
     if not source_path:
         return parse_source_preview(name, preview, parse_scope="preview", confidence="low")
     try:
-        full_text = Path(source_path).expanduser().read_text(encoding="utf8", errors="replace")
+        expanded_path = Path(source_path).expanduser()
+        source_size = expanded_path.stat().st_size
+        if source_size > MAX_SOURCE_FILE_BYTES:
+            fallback = parse_source_preview(name, preview, parse_scope="preview", confidence="low")
+            return append_parse_warning(
+                fallback,
+                ParseWarning(
+                    "source_file_too_large",
+                    f"Source file is {source_size} bytes; full-file parsing is limited to {MAX_SOURCE_FILE_BYTES} bytes.",
+                    source_path,
+                ),
+            )
+        full_text = expanded_path.read_text(encoding="utf8", errors="replace")
     except OSError as exc:
         fallback = parse_source_preview(name, preview, parse_scope="preview", confidence="low")
         return append_parse_warning(
@@ -1252,6 +1266,15 @@ def node_kind_from_candidate(candidate: ParseCandidate, fallback: NodeKind) -> N
 def validate_project_content(content: str, project_root: str | Path | None = None) -> dict[str, Any]:
     """Validate the lightweight desktop project package envelope."""
 
+    if len(content) > MAX_PROJECT_CONTENT_CHARACTERS:
+        return project_validation_result(None, [
+            ProjectValidationIssue(
+                "error",
+                "project_content_too_large",
+                f"Project content exceeds {MAX_PROJECT_CONTENT_CHARACTERS} characters.",
+            ),
+        ])
+
     try:
         package = json.loads(content)
     except json.JSONDecodeError as exc:
@@ -1274,6 +1297,8 @@ def open_project(project_path: str) -> dict[str, Any]:
     content_path = resolve_project_state_path(path) if path.is_dir() else path
     if not content_path.exists():
         raise FileNotFoundError(f"RxnFlow project not found: {content_path}")
+    if content_path.stat().st_size > MAX_PROJECT_CONTENT_CHARACTERS:
+        raise ValueError(f"RxnFlow project state exceeds {MAX_PROJECT_CONTENT_CHARACTERS} bytes: {content_path}")
 
     content = content_path.read_text(encoding="utf8")
     project_root = project_root_for_content(path, content_path)

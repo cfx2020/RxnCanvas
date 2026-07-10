@@ -1,0 +1,3 @@
+pyinstaller==6.21.0
+cclib==1.8.1
+setuptools==82.0.1

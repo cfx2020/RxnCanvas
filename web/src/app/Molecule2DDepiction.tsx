@@ -6,7 +6,6 @@ type Molecule2DDepictionProps = {
   atoms: CoordinateAtom[]
   formula: string
   manualMolfile?: string
-  manualSvg?: string
   label: string
   width: number
   height: number
@@ -26,7 +25,6 @@ export function Molecule2DDepiction({
   atoms,
   formula,
   manualMolfile,
-  manualSvg,
   label,
   width,
   height,
@@ -34,7 +32,6 @@ export function Molecule2DDepiction({
   emptyText = "2D depiction unavailable",
 }: Molecule2DDepictionProps) {
   const svg = useMemo(() => {
-    if (manualSvg) return normalizeStoredSvg(manualSvg)
     if (atoms.length === 0 && !manualMolfile) return null
     const cacheKey = depictionCacheKey(atoms, width, height, manualMolfile)
     const cached = svgCache.get(cacheKey)
@@ -42,7 +39,7 @@ export function Molecule2DDepiction({
     const rendered = manualMolfile ? svgFromMolfile(manualMolfile, width, height) : svgFromAtoms(atoms, width, height)
     if (rendered) svgCache.set(cacheKey, rendered)
     return rendered
-  }, [atoms, height, manualMolfile, manualSvg, width])
+  }, [atoms, height, manualMolfile, width])
 
   if (svg) {
     return (
@@ -231,12 +228,6 @@ function terminalCarbonHydrogenIndexes(atoms: CoordinateAtom[], bonds: Array<[nu
 function depictionCacheKey(atoms: CoordinateAtom[], width: number, height: number, manualMolfile?: string): string {
   if (manualMolfile) return `${width}x${height}:manual:${hashText(manualMolfile)}`
   return `${width}x${height}:` + atoms.map((atom) => `${atom.element}:${atom.x.toFixed(3)},${atom.y.toFixed(3)},${atom.z.toFixed(3)}`).join(";")
-}
-
-function normalizeStoredSvg(svg: string): string {
-  const safeSvg = svg.replace(/<script[\s\S]*?<\/script>/gi, "")
-  if (/^<svg\b[^>]*\baria-hidden=/i.test(safeSvg)) return safeSvg
-  return safeSvg.replace("<svg ", "<svg aria-hidden=\"true\" focusable=\"false\" ")
 }
 
 function hashText(value: string): string {

@@ -129,7 +129,6 @@ export function updateNodeManualStructureTransition(
           manualStructureKet: normalized?.ket,
           manualStructureMolfile: normalized?.molfile,
           manualStructureCdxml: normalized?.cdxml,
-          manualStructureSvg: normalized?.svg,
         }
       : item),
     selection: nodeOnlySelection(nodeId),
@@ -143,16 +142,14 @@ function normalizeManualStructurePayload(structure: ManualStructurePayload | nul
     ket: structure.ket?.trim() || undefined,
     molfile: structure.molfile?.trim() || undefined,
     cdxml: structure.cdxml?.trim() || undefined,
-    svg: structure.svg?.trim() || undefined,
   }
-  return normalized.ket || normalized.molfile || normalized.cdxml || normalized.svg ? normalized : null
+  return normalized.ket || normalized.molfile || normalized.cdxml ? normalized : null
 }
 
 function sameManualStructure(node: FlowNode, structure: ManualStructurePayload | null): boolean {
   return (node.manualStructureKet ?? undefined) === structure?.ket
     && (node.manualStructureMolfile ?? undefined) === structure?.molfile
     && (node.manualStructureCdxml ?? undefined) === structure?.cdxml
-    && (node.manualStructureSvg ?? undefined) === structure?.svg
 }
 
 function nodeOnlySelection(nodeId: string | null): CanvasSelectionIds {

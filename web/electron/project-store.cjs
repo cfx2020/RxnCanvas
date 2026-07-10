@@ -1,7 +1,9 @@
 const crypto = require("node:crypto")
+const fsSync = require("node:fs")
 const fs = require("node:fs/promises")
 const path = require("node:path")
-const zlib = require("node:zlib")
+const archiver = require("archiver")
+const extractZip = require("extract-zip")
 
 const projectDirectoryExtension = ".rxnflow"
 const projectMetadataDirectory = ".rxnflow"
@@ -12,14 +14,28 @@ const projectManifestFile = path.join(projectMetadataDirectory, "manifest.json")
 const sourcesDirectory = "sources"
 const exportsDirectory = "exports"
 const exportManifestFile = path.join(exportsDirectory, "manifest.json")
+const maxProjectStateBytes = 64 * 1024 * 1024
+const maxProjectArchiveBytes = 2 * 1024 * 1024 * 1024
+const maxArchiveEntryBytes = 1024 * 1024 * 1024
+const maxArchiveExpandedBytes = 4 * 1024 * 1024 * 1024
+const maxArchiveEntries = 20_000
 
 async function readProjectContent(projectPath) {
   const stats = await fs.stat(projectPath)
   if (stats.isDirectory()) {
     const statePath = await resolveProjectStatePath(projectPath)
-    return fs.readFile(statePath, "utf8")
+    return readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnFlow project state")
   }
-  return fs.readFile(projectPath, "utf8")
+  return readUtf8FileWithLimit(projectPath, maxProjectStateBytes, "RxnFlow project package")
+}
+
+async function readUtf8FileWithLimit(filePath, maxBytes, label) {
+  const stats = await fs.stat(filePath)
+  if (!stats.isFile()) throw new Error(`${label} is not a file: ${filePath}`)
+  if (stats.size > maxBytes) {
+    throw new Error(`${label} is too large (${stats.size} bytes; maximum ${maxBytes} bytes).`)
+  }
+  return fs.readFile(filePath, "utf8")
 }
 
 async function resolveProjectStatePath(projectDirectory) {
@@ -125,12 +141,53 @@ async function exportProjectWorkspaceArchive(projectDirectory, targetArchivePath
 
   const archivePath = normalizeProjectArchivePath(targetArchivePath)
   await fs.mkdir(path.dirname(archivePath), { recursive: true })
-  const entries = await collectProjectArchiveEntries(workspaceDirectory, archivePath)
-  await fs.writeFile(archivePath, buildZipArchive(entries))
+  await writeProjectWorkspaceArchive(workspaceDirectory, archivePath)
   return {
     canceled: false,
     filePath: archivePath,
     projectDirectory: workspaceDirectory,
+  }
+}
+
+async function importProjectWorkspaceArchive(sourceArchivePath, targetProjectDirectory) {
+  const archivePath = path.resolve(sourceArchivePath)
+  const archiveStats = await fs.stat(archivePath)
+  if (!archiveStats.isFile()) throw new Error(`RxnFlow project archive is not a file: ${archivePath}`)
+  if (archiveStats.size > maxProjectArchiveBytes) {
+    throw new Error(`RxnFlow project archive is too large (${archiveStats.size} bytes; maximum ${maxProjectArchiveBytes} bytes).`)
+  }
+
+  const projectDirectory = normalizeProjectDirectoryPath(targetProjectDirectory)
+  const temporaryDirectory = `${projectDirectory}.import-${process.pid}-${Date.now()}`
+  await fs.rm(temporaryDirectory, { recursive: true, force: true })
+  await fs.mkdir(temporaryDirectory, { recursive: true })
+
+  let entryCount = 0
+  let expandedBytes = 0
+  try {
+    await extractZip(archivePath, {
+      dir: temporaryDirectory,
+      onEntry: (entry) => {
+        entryCount += 1
+        const entryBytes = Number(entry.uncompressedSize) || 0
+        expandedBytes += entryBytes
+        if (entryCount > maxArchiveEntries) throw new Error(`RxnFlow project archive has too many entries (maximum ${maxArchiveEntries}).`)
+        if (entryBytes > maxArchiveEntryBytes) throw new Error(`RxnFlow project archive entry is too large: ${entry.fileName}`)
+        if (expandedBytes > maxArchiveExpandedBytes) throw new Error(`RxnFlow project archive expands beyond ${maxArchiveExpandedBytes} bytes.`)
+      },
+    })
+
+    const statePath = await resolveProjectStatePath(temporaryDirectory)
+    await readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnFlow imported project state")
+    await fs.mkdir(path.dirname(projectDirectory), { recursive: true })
+    await fs.rename(temporaryDirectory, projectDirectory)
+    return {
+      filePath: archivePath,
+      projectDirectory,
+    }
+  } catch (error) {
+    await fs.rm(temporaryDirectory, { recursive: true, force: true })
+    throw error
   }
 }
 
@@ -458,133 +515,30 @@ async function readExportArtifactRecords(projectDirectory) {
   }
 }
 
-async function collectProjectArchiveEntries(projectDirectory, archivePath) {
-  const entries = []
+function writeProjectWorkspaceArchive(projectDirectory, archivePath) {
   const archivePathKey = path.resolve(archivePath)
-
-  async function visit(currentDirectory, relativeDirectory = "") {
-    const stats = await fs.stat(currentDirectory)
-    if (relativeDirectory) {
-      entries.push({
-        name: `${toProjectPath(relativeDirectory)}/`,
-        data: Buffer.alloc(0),
-        directory: true,
-        mtime: stats.mtime,
-      })
+  return new Promise((resolve, reject) => {
+    const output = fsSync.createWriteStream(archivePath)
+    const archive = archiver("zip", { zlib: { level: 6 } })
+    let settled = false
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      if (error) reject(error)
+      else resolve()
     }
 
-    const dirents = await fs.readdir(currentDirectory, { withFileTypes: true })
-    dirents.sort((left, right) => left.name.localeCompare(right.name))
-    for (const dirent of dirents) {
-      const absolutePath = path.join(currentDirectory, dirent.name)
-      if (path.resolve(absolutePath) === archivePathKey) continue
-      const relativePath = relativeDirectory ? path.join(relativeDirectory, dirent.name) : dirent.name
-      if (dirent.isDirectory()) {
-        await visit(absolutePath, relativePath)
-        continue
-      }
-      if (!dirent.isFile()) continue
-      entries.push({
-        name: toProjectPath(relativePath),
-        data: await fs.readFile(absolutePath),
-        directory: false,
-        mtime: (await fs.stat(absolutePath)).mtime,
-      })
-    }
-  }
-
-  await visit(projectDirectory)
-  return entries
-}
-
-function buildZipArchive(entries) {
-  const localParts = []
-  const centralParts = []
-  let offset = 0
-
-  for (const entry of entries) {
-    const fileName = Buffer.from(entry.name, "utf8")
-    const rawData = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(entry.data ?? "")
-    const compressedData = entry.directory ? rawData : zlib.deflateRawSync(rawData, { level: 6 })
-    const method = entry.directory ? 0 : 8
-    const checksum = crc32(rawData)
-    const { dosTime, dosDate } = dosDateTime(entry.mtime instanceof Date ? entry.mtime : new Date())
-
-    const localHeader = Buffer.alloc(30)
-    localHeader.writeUInt32LE(0x04034b50, 0)
-    localHeader.writeUInt16LE(20, 4)
-    localHeader.writeUInt16LE(0x0800, 6)
-    localHeader.writeUInt16LE(method, 8)
-    localHeader.writeUInt16LE(dosTime, 10)
-    localHeader.writeUInt16LE(dosDate, 12)
-    localHeader.writeUInt32LE(checksum, 14)
-    localHeader.writeUInt32LE(compressedData.length, 18)
-    localHeader.writeUInt32LE(rawData.length, 22)
-    localHeader.writeUInt16LE(fileName.length, 26)
-    localHeader.writeUInt16LE(0, 28)
-
-    localParts.push(localHeader, fileName, compressedData)
-
-    const centralHeader = Buffer.alloc(46)
-    centralHeader.writeUInt32LE(0x02014b50, 0)
-    centralHeader.writeUInt16LE(20, 4)
-    centralHeader.writeUInt16LE(20, 6)
-    centralHeader.writeUInt16LE(0x0800, 8)
-    centralHeader.writeUInt16LE(method, 10)
-    centralHeader.writeUInt16LE(dosTime, 12)
-    centralHeader.writeUInt16LE(dosDate, 14)
-    centralHeader.writeUInt32LE(checksum, 16)
-    centralHeader.writeUInt32LE(compressedData.length, 20)
-    centralHeader.writeUInt32LE(rawData.length, 24)
-    centralHeader.writeUInt16LE(fileName.length, 28)
-    centralHeader.writeUInt16LE(0, 30)
-    centralHeader.writeUInt16LE(0, 32)
-    centralHeader.writeUInt16LE(0, 34)
-    centralHeader.writeUInt16LE(0, 36)
-    centralHeader.writeUInt32LE(entry.directory ? 0x10 : 0, 38)
-    centralHeader.writeUInt32LE(offset, 42)
-    centralParts.push(centralHeader, fileName)
-
-    offset += localHeader.length + fileName.length + compressedData.length
-  }
-
-  const centralOffset = offset
-  const centralDirectory = Buffer.concat(centralParts)
-  const endRecord = Buffer.alloc(22)
-  endRecord.writeUInt32LE(0x06054b50, 0)
-  endRecord.writeUInt16LE(0, 4)
-  endRecord.writeUInt16LE(0, 6)
-  endRecord.writeUInt16LE(entries.length, 8)
-  endRecord.writeUInt16LE(entries.length, 10)
-  endRecord.writeUInt32LE(centralDirectory.length, 12)
-  endRecord.writeUInt32LE(centralOffset, 16)
-  endRecord.writeUInt16LE(0, 20)
-
-  return Buffer.concat([...localParts, centralDirectory, endRecord])
-}
-
-function dosDateTime(date) {
-  const year = Math.max(1980, Math.min(2107, date.getFullYear()))
-  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2)
-  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
-  return { dosTime, dosDate }
-}
-
-const crc32Table = new Uint32Array(256)
-for (let index = 0; index < 256; index += 1) {
-  let value = index
-  for (let bit = 0; bit < 8; bit += 1) {
-    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1
-  }
-  crc32Table[index] = value >>> 0
-}
-
-function crc32(buffer) {
-  let value = 0xffffffff
-  for (const byte of buffer) {
-    value = crc32Table[(value ^ byte) & 0xff] ^ (value >>> 8)
-  }
-  return (value ^ 0xffffffff) >>> 0
+    output.on("close", () => finish())
+    output.on("error", finish)
+    archive.on("warning", finish)
+    archive.on("error", finish)
+    archive.pipe(output)
+    archive.directory(projectDirectory, false, (entry) => {
+      const absolutePath = path.resolve(projectDirectory, entry.name)
+      return absolutePath === archivePathKey ? false : entry
+    })
+    archive.finalize().catch(finish)
+  })
 }
 
 function safeSourceFileName(file, index) {
@@ -640,6 +594,7 @@ module.exports = {
   exportProjectWorkspaceArchive,
   exportsDirectory,
   isProjectDirectoryPath,
+  importProjectWorkspaceArchive,
   legacyProjectManifestFile,
   legacyProjectStateFile,
   materializeImportSourceFile,

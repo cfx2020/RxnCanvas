@@ -110,20 +110,17 @@ describe("canvasEditState", () => {
       ket: " manual ket ",
       molfile: " manual molfile ",
       cdxml: " manual cdxml ",
-      svg: " manual svg ",
     })
 
     expect(updated?.items[0].manualStructureKet).toBe("manual ket")
     expect(updated?.items[0].manualStructureMolfile).toBe("manual molfile")
     expect(updated?.items[0].manualStructureCdxml).toBe("manual cdxml")
-    expect(updated?.items[0].manualStructureSvg).toBe("manual svg")
     expect(updated?.selection.nodeIds).toEqual(["node-a"])
 
     const reset = updateNodeManualStructureTransition(updated?.items ?? [], "node-a", null)
     expect(reset?.items[0].manualStructureKet).toBeUndefined()
     expect(reset?.items[0].manualStructureMolfile).toBeUndefined()
     expect(reset?.items[0].manualStructureCdxml).toBeUndefined()
-    expect(reset?.items[0].manualStructureSvg).toBeUndefined()
   })
 
   it("derives canvas pan and rubber-band drag state from pointer input", () => {

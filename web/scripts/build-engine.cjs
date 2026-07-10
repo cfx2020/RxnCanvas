@@ -7,6 +7,7 @@ const repoRoot = path.resolve(webRoot, "..")
 const engineDir = path.join(webRoot, "engine")
 const buildRoot = path.join(webRoot, ".engine-build")
 const entryPath = path.join(webRoot, "scripts", "engine-entry.py")
+const requirementsLockPath = path.join(webRoot, "engine-requirements.lock")
 const executableBaseName = "rxnflow-engine"
 const executableName = process.platform === "win32" ? `${executableBaseName}.exe` : executableBaseName
 const executablePath = path.join(engineDir, executableName)
@@ -14,6 +15,7 @@ const executablePath = path.join(engineDir, executableName)
 function main() {
   fs.mkdirSync(engineDir, { recursive: true })
   fs.mkdirSync(buildRoot, { recursive: true })
+  assert(fs.existsSync(requirementsLockPath), `Missing locked engine dependencies: ${requirementsLockPath}`)
   for (const staleName of ["rxnflow-engine", "rxnflow-engine.exe"]) {
     fs.rmSync(path.join(engineDir, staleName), { force: true })
   }
@@ -22,12 +24,8 @@ function main() {
   if (commandAvailable("uv", ["--version"])) {
     run("uv", [
       "run",
-      "--with",
-      "pyinstaller",
-      "--with",
-      "cclib",
-      "--with",
-      "setuptools",
+      "--with-requirements",
+      requirementsLockPath,
       "python",
       "-m",
       "PyInstaller",
@@ -39,11 +37,9 @@ function main() {
     const venvPython = process.platform === "win32"
       ? path.join(venvDir, "Scripts", "python.exe")
       : path.join(venvDir, "bin", "python")
-    if (!fs.existsSync(venvPython)) {
-      run(python, ["-m", "venv", venvDir])
-    }
-    run(venvPython, ["-m", "pip", "install", "--upgrade", "pip"])
-    run(venvPython, ["-m", "pip", "install", "pyinstaller", "cclib", "setuptools"])
+    fs.rmSync(venvDir, { recursive: true, force: true })
+    run(python, ["-m", "venv", venvDir])
+    run(venvPython, ["-m", "pip", "install", "--require-hashes", "-r", requirementsLockPath])
     run(venvPython, ["-m", "PyInstaller", ...args])
   }
 

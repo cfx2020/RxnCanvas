@@ -5,6 +5,7 @@ import {
   parseProjectPackage,
   safeProjectFileStem,
   type CanvasViewport,
+  type CanvasAnnotation,
   type FlowBarrier,
   type FlowEdge,
   type FlowNode,
@@ -56,7 +57,6 @@ const nodes: FlowNode[] = [{
   manualStructureKet: "{\"root\":{\"nodes\":[]}}",
   manualStructureMolfile: "manual molfile",
   manualStructureCdxml: "<CDXML><page><fragment id=\"1\"/></page></CDXML>",
-  manualStructureSvg: "<svg><text>manual</text></svg>",
   position: { x: 10, y: -140 },
 }]
 
@@ -74,6 +74,22 @@ const barriers: FlowBarrier[] = [{
   label: "OA barrier",
 }]
 
+const annotations: CanvasAnnotation[] = [{
+  id: "annotation-text",
+  type: "text",
+  position: { x: 72, y: 96 },
+  text: "Rate-determining step",
+  width: 220,
+}, {
+  id: "annotation-image",
+  type: "image",
+  position: { x: 160, y: 210 },
+  dataUrl: "data:image/png;base64,aGVsbG8=",
+  width: 180,
+  height: 120,
+  name: "scheme.png",
+}]
+
 const viewport: CanvasViewport = {
   x: 575,
   y: 300,
@@ -88,6 +104,7 @@ describe("project packages", () => {
       nodes,
       edges,
       barriers,
+      annotations,
       viewport,
       selectedNodeIds: ["ts-endo"],
       selectedEdgeIds: [],
@@ -108,6 +125,7 @@ describe("project packages", () => {
         nodes,
         edges,
         barriers,
+        annotations,
         viewport,
       }],
       activeCanvasId: "canvas-1",
@@ -160,7 +178,7 @@ describe("project packages", () => {
           manualStructureKet: "  custom ket  ",
           manualStructureMolfile: "  custom molfile  ",
           manualStructureCdxml: "  custom cdxml  ",
-          manualStructureSvg: "  custom svg  ",
+          manualStructureSvg: "<svg><image href=\"invalid://rxnflow\" onerror=\"window.pwned=true\"/></svg>",
           position: { x: 12, y: 24 },
         }],
         edges,
@@ -173,6 +191,28 @@ describe("project packages", () => {
           sourceId: "node-a",
           targetId: "",
           label: "",
+        }],
+        annotations: [{
+          id: "note-a",
+          type: "text",
+          position: { x: 5, y: 9 },
+          text: "  keep note spacing  ",
+          width: 240,
+        }, {
+          id: "image-a",
+          type: "image",
+          position: { x: 25, y: 36 },
+          dataUrl: "data:image/png;base64,aGVsbG8=",
+          width: 16,
+          height: 900,
+          name: "  scheme.png  ",
+        }, {
+          id: "bad-image",
+          type: "image",
+          position: { x: 0, y: 0 },
+          dataUrl: "https://example.com/not-project-owned.png",
+          width: 100,
+          height: 100,
         }],
         viewport,
         selectedNodeIds: ["node-a"],
@@ -217,9 +257,24 @@ describe("project packages", () => {
       manualStructureKet: "  custom ket  ",
       manualStructureMolfile: "  custom molfile  ",
       manualStructureCdxml: "  custom cdxml  ",
-      manualStructureSvg: "  custom svg  ",
       position: { x: 12, y: 24 },
     })
+    expect(parsed?.nodes?.[0]).not.toHaveProperty("manualStructureSvg")
+    expect(parsed?.canvases?.[0].annotations).toEqual([{
+      id: "note-a",
+      type: "text",
+      position: { x: 5, y: 9 },
+      text: "  keep note spacing  ",
+      width: 240,
+    }, {
+      id: "image-a",
+      type: "image",
+      position: { x: 25, y: 36 },
+      dataUrl: "data:image/png;base64,aGVsbG8=",
+      width: 48,
+      height: 720,
+      name: "scheme.png",
+    }])
     expect(parsed?.files[0]).toMatchObject({
       name: "gaussian.log",
       storedPath: "sources/gaussian.log",

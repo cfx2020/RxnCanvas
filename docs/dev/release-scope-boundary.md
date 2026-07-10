@@ -4,7 +4,7 @@ slug: release-scope-boundary
 status: current
 summary: 发布前区分当前可用功能、roadmap-only 能力和非 active 历史能力
 tags: [release, desktop, scope, roadmap]
-last_reviewed: 2026-06-17
+last_reviewed: 2026-07-10
 ---
 
 # Release Scope Boundary
@@ -20,10 +20,10 @@ last_reviewed: 2026-06-17
 - **无限画布编辑**：画布平移、缩放、Fit view、小地图、节点拖拽、框选、Shift 多选、键盘删除/清选/微调、Undo/Redo。
 - **图谱结构编辑**：拖线创建 reaction edge、键盘创建 edge、edge 选中与 label 编辑、barrier 创建/选中/内联 label 编辑/删除。
 - **轻量能量显示**：`Egas` / `Gsol` 与 hartree / kcal/mol / kJ/mol 切换、相对能量 zero point、Table view、Auto layout 的轻量排序布局。
-- **结构预览、Inspector 与 source preview**：节点卡与 Node 面板显示 lightweight 2D skeletal depiction；Node 面板可用 Ketcher 画板手动保存/重置单节点 KET/Molfile/CDXML/SVG；Node / Source / Export 三个 active tab，Node 内 3Dmol.js `3D Structure` 真实坐标查看器，Source details。
+- **结构预览、Inspector 与 source preview**：节点卡与 Node 面板显示由坐标或 canonical Molfile 生成的受控 2D depiction；Ketcher 保存/重置单节点 KET/Molfile/CDXML，不持久化第三方 SVG；Node / Source / Export 三个 active tab，Node 内 3Dmol.js `3D Structure` 支持真实坐标、振动与量测，Source details。
 - **报告导出**：PNG、CDXML、XLSX 三种当前 UI 承载 artifact；Electron 打开 `.rxnflow` 项目目录时导出到项目 `exports/`。
-- **轻量 `.rxnflow` 项目目录**：Electron open/save、本地 recent projects、`project.json`、source/export size + sha256 metadata、轻量 importLedger、基础引用校验与 warning。
-- **桌面壳层**：macOS/Windows Electron BrowserWindow、preload IPC、native import/open/save menu、packaged embedded Node engine fallback、runtime smoke flag。
+- **轻量 `.rxnflow` 项目目录**：Electron open/save、本地 recent projects、`project.json`、source/export size + sha256 metadata、轻量 importLedger、基础引用校验与 warning，以及带 zip-slip/条目/体积限制的 `.rxnflow.zip` 流式导入导出。
+- **桌面壳层**：macOS/Windows Electron BrowserWindow、preload IPC、native import/open/save menu、packaged bundled Python+cclib engine、runtime smoke flag。
 
 ## Roadmap-only 能力
 
@@ -44,7 +44,7 @@ last_reviewed: 2026-06-17
 
 - `ShellClient`、`local-http`、`Python bridge`、fixture transport、Browser Project Repository 作为用户可见能力。
 - `Computer Profile`、`Objects`、`Object Registry`、`Apply correction`、`Compute`、`Energy Profile`。
-- `Search flows`、`Settings`、`Preferences`、云/Auth/sync 入口。
+- `Search flows`、云/Auth/sync 入口。Settings/Preferences 已作为本地桌面偏好进入 active UI。
 - `More canvas actions`、`Add Node` 等旧 demo 操作入口。
 - CSV/SVG/PDF/PPTX/CDX/JSON export 的 active 开关或菜单项。
 

@@ -1,6 +1,8 @@
 import type { CoordinatePreview, ParseCandidate, ParsedEnergyTableData, ParsedEnergyUnit, SourceParseResult } from "./sourceParsers"
 import { compactVibrationalModesForPersistence, normalizeVibrationalModes } from "./vibrations"
 
+const maxCanvasImageDataUrlLength = 14 * 1024 * 1024
+
 export type NodeKind = "reactant" | "transition" | "intermediate" | "product"
 export type NodePathRole = "state" | "participant"
 export type EdgeStepRole = "path" | "addition" | "release" | "branch"
@@ -37,7 +39,6 @@ export type ManualStructurePayload = {
   ket?: string
   molfile?: string
   cdxml?: string
-  svg?: string
 }
 
 export type FlowNode = {
@@ -66,7 +67,6 @@ export type FlowNode = {
   manualStructureKet?: string
   manualStructureMolfile?: string
   manualStructureCdxml?: string
-  manualStructureSvg?: string
   position: Point
   size?: NodeSize
 }
@@ -435,7 +435,6 @@ function normalizeProjectNode(node: FlowNode | Partial<FlowNode>, index: number)
     manualStructureKet: nonEmptyStringOrUndefined(node.manualStructureKet),
     manualStructureMolfile: nonEmptyStringOrUndefined(node.manualStructureMolfile),
     manualStructureCdxml: nonEmptyStringOrUndefined(node.manualStructureCdxml),
-    manualStructureSvg: nonEmptyStringOrUndefined(node.manualStructureSvg),
     position: normalizePoint(node.position),
     size: normalizeNodeSize(node.size),
   }
@@ -464,7 +463,11 @@ function normalizeCanvasAnnotation(annotation: CanvasAnnotation | Partial<Canvas
   if (!isObject(annotation)) return null
   const position = normalizePoint(annotation.position)
   if (annotation.type === "image") {
-    const dataUrl = typeof annotation.dataUrl === "string" && annotation.dataUrl.startsWith("data:image/") ? annotation.dataUrl : ""
+    const dataUrl = typeof annotation.dataUrl === "string"
+      && annotation.dataUrl.startsWith("data:image/")
+      && annotation.dataUrl.length <= maxCanvasImageDataUrlLength
+      ? annotation.dataUrl
+      : ""
     if (!dataUrl) return null
     return {
       id: stringOrFallback(annotation.id, `annotation-${index + 1}`),
@@ -495,6 +498,11 @@ function normalizeProjectCanvas(
   const nodes = Array.isArray(canvas.nodes) ? canvas.nodes.map(normalizeProjectNode) : []
   const edges = Array.isArray(canvas.edges) ? canvas.edges.map(normalizeProjectEdge) : []
   const barriers = Array.isArray(canvas.barriers) ? canvas.barriers.map(normalizeProjectBarrier) : []
+  const annotations = Array.isArray(canvas.annotations)
+    ? canvas.annotations
+        .map((annotation, annotationIndex) => normalizeCanvasAnnotation(annotation, annotationIndex))
+        .filter((annotation): annotation is CanvasAnnotation => annotation !== null)
+    : []
   const viewport = normalizeViewport(canvas.viewport) ?? { x: 0, y: 0, zoom: 1 }
 
   return {
@@ -503,7 +511,7 @@ function normalizeProjectCanvas(
     nodes,
     edges,
     barriers,
-    annotations: [],
+    annotations,
     viewport,
     selectedNodeIds: normalizeSelectionIds(canvas.selectedNodeIds, nodes.map((node) => node.id)),
     selectedEdgeIds: normalizeSelectionIds(canvas.selectedEdgeIds, edges.map((edge) => edge.id)),

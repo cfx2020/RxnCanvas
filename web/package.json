@@ -1,7 +1,7 @@
 {
   "name": "rxnflow-web",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Local-first reaction canvas workbench for RxnFlow.",
   "author": "RxnFlow",
   "type": "module",
@@ -21,16 +21,8 @@
     "desktop:dist:mac": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --mac --publish never",
     "desktop:notarize:mac": "node scripts/notarize-mac.cjs",
     "desktop:dist:win": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --win --x64 --publish never",
+    "desktop:release:manifest": "node scripts/generate-release-manifest.cjs",
     "test": "vitest run"
-  },
-  "dependencies": {
-    "3dmol": "^2.5.5",
-    "ketcher-core": "^3.15.0",
-    "ketcher-react": "^3.15.0",
-    "ketcher-standalone": "^3.15.0",
-    "lucide-react": "^1.16.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -39,10 +31,17 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
+    "3dmol": "^2.5.5",
     "electron": "^42.4.0",
     "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
+    "ketcher-core": "^3.15.0",
+    "ketcher-react": "^3.15.0",
+    "ketcher-standalone": "^3.15.0",
+    "lucide-react": "^1.24.0",
     "playwright": "^1.60.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "typescript": "^6.0.3",
     "vite": "^8.0.13",
     "vitest": "^4.1.6"
@@ -51,6 +50,7 @@
     "appId": "com.rxnflow.app",
     "productName": "RxnFlow",
     "asar": true,
+    "afterPack": "scripts/after-pack.cjs",
     "directories": {
       "buildResources": "build",
       "output": "release"
@@ -60,6 +60,7 @@
       "dist/**/*",
       "electron/**/*",
       "build/**/*",
+      "legal/**/*",
       "package.json"
     ],
     "extraResources": [
@@ -72,11 +73,17 @@
       }
     ],
     "mac": {
-      "category": "public.app-category.developer-tools",
+      "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": false
+        }
+      },
       "target": [
         "dmg",
         "zip"
@@ -89,5 +96,9 @@
         "portable"
       ]
     }
+  },
+  "dependencies": {
+    "archiver": "7.0.1",
+    "extract-zip": "2.0.1"
   }
 }

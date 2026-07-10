@@ -53,10 +53,11 @@ describe("Molecule2DDepiction", () => {
     expect(document.querySelector("svg")).toBeInTheDocument()
   })
 
-  it("renders stored manual SVG before falling back to molfile parsing", () => {
-    render(<Molecule2DDepiction atoms={[]} formula="H2O" label="manual" width={160} height={78} manualSvg="<svg><text>manual sketch</text></svg>" />)
+  it("renders manual structures from canonical molfile content", () => {
+    render(<Molecule2DDepiction atoms={[]} formula="H2O" label="manual" width={160} height={78} manualMolfile={molfileFromAtoms(waterAtoms)} />)
 
-    expect(screen.getByText("manual sketch")).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: "manual 2D structure depiction" })).toBeInTheDocument()
+    expect(document.querySelector("svg")).toBeInTheDocument()
   })
 
   it("builds a fallback SVG from V2000 molfile content", () => {

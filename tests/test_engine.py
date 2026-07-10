@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from rxnflow import demo_flow, export_flow_json
-from rxnflow.engine import EV_TO_HARTREE, parse_source_file, parse_source_preview, validate_project_content
+from rxnflow.engine import MAX_SOURCE_FILE_BYTES, EV_TO_HARTREE, parse_source_file, parse_source_preview, validate_project_content
 from rxnflow.engine_ipc import ENGINE_VERSION, handle_request
 
 
@@ -162,6 +162,21 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(parse["energyTable"]["gasBasisFunctions"], 42)
         self.assertAlmostEqual(parse["energyTable"]["ggasHartree"], -76.4)
         self.assertAlmostEqual(parse["energyTable"]["ggas1mHartree"], -76.396981)
+
+    def test_engine_skips_full_file_read_above_the_source_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "oversized.log"
+            with source_path.open("wb") as handle:
+                handle.truncate(MAX_SOURCE_FILE_BYTES + 1)
+
+            parsed = parse_source_file(
+                "oversized.log",
+                "Stoichiometry H2O\nSCF Done: E(RB3LYP) = -76.431 A.U.",
+                str(source_path),
+            )
+
+        self.assertEqual(parsed.parseScope, "preview")
+        self.assertIn("source_file_too_large", [warning.code for warning in parsed.warnings])
 
     def test_engine_import_preview_does_not_mark_intermediate_gaussian_normal_as_final(self) -> None:
         parsed = parse_source_preview(

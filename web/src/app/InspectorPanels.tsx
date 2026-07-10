@@ -618,7 +618,7 @@ export function StructurePreviewDialog({
     return modes[0] ?? null
   }, [vibrationPreview?.vibrationModes])
   const [vibrationPlaying, setVibrationPlaying] = useState(false)
-  const hasManualStructure = Boolean(node.manualStructureKet || node.manualStructureMolfile || node.manualStructureCdxml || node.manualStructureSvg)
+  const hasManualStructure = Boolean(node.manualStructureKet || node.manualStructureMolfile || node.manualStructureCdxml)
   const canAttemptVibrationHydration = Boolean(file && onHydrateSourceParse && defaultVibrationMode && !vibrationalModeHasFullDisplacements(defaultVibrationMode, coordinateAtoms.length))
   const playableVibrationMode = defaultVibrationMode && vibrationalModeHasFullDisplacements(defaultVibrationMode, coordinateAtoms.length) ? defaultVibrationMode : null
 
@@ -690,7 +690,6 @@ export function StructurePreviewDialog({
               atoms={coordinateAtoms}
               formula={node.formula}
               manualMolfile={node.manualStructureMolfile}
-              manualSvg={node.manualStructureSvg}
               label={node.label}
               width={264}
               height={236}

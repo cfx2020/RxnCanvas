@@ -4,7 +4,7 @@ slug: desktop-canvas-workbench
 status: current
 summary: 当前 RxnFlow 桌面多画布工作台的可用功能和边界
 tags: [desktop, canvas, multi-canvas, local-first, electron]
-last_reviewed: 2026-06-19
+last_reviewed: 2026-07-10
 ---
 
 # Desktop Canvas Workbench
@@ -20,15 +20,15 @@ RxnFlow 当前是本地优先的反应路径多画布工作台。第一屏就是
 5. 从节点右侧连接点拖到另一个节点，可以创建 reaction edge；如果拖拽 release 落在 window 但指针下仍命中目标节点，也会完成 edge，落在空白处则清掉临时连线。也可以用键盘聚焦连接点后按 Enter/Space，再聚焦目标节点按 Enter/Space 创建 edge。点击 edge 可在右侧 Inspector 查看来源、目标并编辑 edge label。节点底部 barrier 手柄可拖到另一个节点创建显式能垒标注；标注会显示自动 `ΔE‡`/`ΔG‡` 标签，并支持画布内联改名、选中和 Delete selection 删除。
 6. 悬浮工具条支持旧 UI 已承载的画布编辑命令：Undo、Redo、Delete selection、Auto layout 和 Fit view；同时提供画布级 `Energy`/`Unit` 快速切换。当前 lightweight 表格真实承载 `Egas` 和 `Gsol` 两种能量源，Unit 支持 hartree、kcal/mol 和 kJ/mol。Delete selection 会按当前多选集合删除节点、edge 或 barrier，并级联移除被删节点相关的 edge/barrier。节点卡会显示当前 Energy/Unit 选项下的相对能量，并可直接把该节点设为相对能量 zero point；Auto layout 使用当前 Energy/Unit 能量源和 zero point 做轻量能量排序布局，不调用旧后端 `energy.compute`。
 7. 切换到 Table view 查看结构、类型、formula、gas/solution energy 和相对值。
-8. 右侧 Inspector 可查看 selected node、selected edge、source preview 和 Export。节点卡的 More actions 菜单可直接打开该节点的 Source details；Selected edge 面板支持修改 edge label；节点卡和 Node 面板里的 `Structure Preview` 会优先使用项目内轻量 SVG 从真实坐标推断键并生成 ChemDraw-like 2D 骨架图（默认隐藏碳上的显式 H，不引入隐式氢标注）；Node 面板提供 `Edit 2D` 入口，可用 Ketcher + Indigo WASM 手动画/粘贴 ChemDraw 结构，保存 KET/Molfile/CDXML/SVG 后覆盖此节点的 2D 预览并参与 CDXML 导出，`Reset 2D` 可恢复自动推断；Node 面板里的 `3D Structure` 会打开 3Dmol.js ball-stick 分子查看器；有真实坐标的 source 可在 2D/3D 两种视角查看。
+8. 右侧 Inspector 可查看 selected node、selected edge、source preview 和 Export。节点卡的 More actions 菜单可直接打开该节点的 Source details；Selected edge 面板支持修改 edge label；节点卡和 Node 面板里的 `Structure Preview` 会从真实坐标或 Molfile 生成受控的 ChemDraw-like 2D 骨架图。Node 面板提供 `Edit 2D`，Ketcher 编辑后保存 KET/Molfile/CDXML canonical 数据并重新生成预览，不保存第三方 SVG；`Reset 2D` 可恢复自动推断。`3D Structure` 会打开 3Dmol.js ball-stick 查看器；存在频率数据时可立即播放第一个振动模式。
 9. Export 当前可导出原 UI 默认承载的 PNG、CDXML、XLSX 报告 artifact；PNG 是当前图谱报表图，CDXML 表达节点/边/能量元数据，XLSX 包含能量表、导入文件表和导出元数据。Electron 桌面端导出后会在 Export summary 中显示保存位置；打开工作区文件夹时会显示项目内 `exports/...` artifact 路径。
-10. Electron 桌面端可通过 Project Rail 的 `New Project Folder` 创建真实工作区文件夹，通过 `Open Folder` 或菜单 `File > Open RxnFlow Project Folder` 打开本地工作区，并通过 `File > Export RxnFlow Project Zip` 导出 `.rxnflow.zip` 分享/迁移压缩包；旧 `.rxnflow.json` project package 仍可兼容读取但不是主入口。工作区包含 `.rxnflow/project.json`、`.rxnflow/manifest.json`、`sources/` 导入 source 副本和 `exports/manifest.json`，并为 source/export 文件记录 size 与 `sha256`；打开项目时会校验 file/node/edge/barrier/import ledger 基础引用、node 能量/position/可选 coefficient 形状，以及 source/export 文件缺失或 checksum 不一致问题。若发现问题，画布会显示 `Project warnings` 或 `Project needs repair` 悬浮提示。打开或创建过的工作区会进入 `File > Open Recent`。
-11. Electron 桌面端会自动探测本地 engine；右上角显示 `Local engine` 表示 IPC 可用。打包应用包含 lightweight embedded engine fallback，因此不要求用户手动启动 Python 或 local bridge。浏览器开发预览显示 `Browser preview`。
+10. Electron 桌面端可通过 Project Rail 的 `New Project Folder` 创建真实工作区文件夹，通过 `Open Folder` 或菜单 `File > Open RxnFlow Project Folder` 打开本地工作区；同一入口也可以选择 `.rxnflow.zip`，应用会在压缩包旁创建新的工作区并恢复项目。`File > Export RxnFlow Project Zip` 可导出分享/迁移压缩包。旧 `.rxnflow.json` package 仍可读取但不是主入口。工作区包含 `.rxnflow/project.json`、`.rxnflow/manifest.json`、`sources/` 导入 source 副本和 `exports/manifest.json`，并为 source/export 文件记录 size 与 `sha256`；打开项目时会校验基础引用、数值形状、文件缺失和 checksum。打开或创建过的工作区会进入 `File > Open Recent`。
+11. Electron 桌面端会自动探测本地 engine；右上角显示 `Local engine` 表示 IPC 可用。打包应用包含 bundled Python+cclib engine，因此不要求用户手动安装或启动 Python/local bridge。浏览器开发预览显示 `Browser preview`。
 
 ## 当前不提供
 
 - 不提供旧 ShellClient `energy.compute` 后端命令面板、EnergyProfilePanel、Object Registry / Objects tab、correction 表单、完整 correction policy engine 或旧 ChemicalRegistry service；当前只有 renderer-side 相对能量显示。
-- 当前节点卡/Inspector 的 2D 结构预览使用项目内轻量 SVG 基于导入坐标和推断键生成骨架图；Node 面板中可用 Ketcher + Indigo WASM 手动画/粘贴 ChemDraw 结构，并保存 KET/Molfile/CDXML/SVG；当前仍不支持 2D/3D 原子联动选择、测量或 atom-map 工作流。当前 `3D Structure` 使用 3Dmol.js 做真实坐标 ball-stick 预览；仍不提供结构测量、轨迹播放或表面/电荷密度等高级 viewer 功能。
+- 当前节点卡/Inspector 的 2D 结构预览由项目代码基于坐标或 Molfile 生成；Ketcher 保存 KET/Molfile/CDXML，不保存外部 SVG。当前仍不支持 2D/3D 原子联动选择或 atom-map 工作流。`3D Structure` 支持真实坐标、振动播放和键长/键角/二面角量测，但不提供轨迹、表面或电荷密度等高级 viewer 功能。
 - 不要求用户手动启动 Python、local HTTP bridge 或 ShellClient。
 - 不提供账号、云同步、多人协作或后台目录监听。
 - CSV/SVG/PDF/PPTX/CDX 导出、旧 Python ReportExportService、完整 Gaussian/ORCA/MAPLE/XYZ parser engine、旧 Chemical Registry/完整持久化 import registry workflow、Project Content 深校验/migration/content index、完整 artifact cleanup/repair、完整 energy/correction backend 仍在 roadmap 中。

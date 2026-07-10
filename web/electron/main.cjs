@@ -2,9 +2,11 @@ const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, shell
 const { execFile } = require("node:child_process")
 const fs = require("node:fs/promises")
 const path = require("node:path")
+const { fileURLToPath } = require("node:url")
 const { getEngineStatus, runEngineRequest } = require("./engine-bridge.cjs")
 const {
   exportProjectWorkspaceArchive,
+  importProjectWorkspaceArchive,
   materializeImportSourceFile,
   readProjectContent,
   resolveProjectStatePath,
@@ -39,6 +41,7 @@ const desktopImportRejectedWarningCodes = new Set([
   "cclib_parse_failed",
   "cclib_unavailable",
   "full_file_read_failed",
+  "source_file_too_large",
   "source_materialize_failed",
   "import_preview_missing",
   "import_preview_failed",
@@ -81,6 +84,7 @@ function createMainWindow() {
 
   installMacWindowControls(window)
   installWindowStateBridge(window)
+  installRendererNavigationGuards(window)
 
   if (runtimeSmokeExit) {
     if (runtimeStartupRestoreSmoke) prepareStartupProjectRestore()
@@ -99,6 +103,26 @@ function createMainWindow() {
   }
 
   return window
+}
+
+function installRendererNavigationGuards(window) {
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
+  window.webContents.on("will-navigate", (event, targetUrl) => {
+    if (rendererNavigationAllowed(targetUrl)) return
+    event.preventDefault()
+  })
+}
+
+function rendererNavigationAllowed(targetUrl) {
+  try {
+    const target = new URL(targetUrl)
+    if (devServerUrl) return target.origin === new URL(devServerUrl).origin
+    if (target.protocol !== "file:") return false
+    const rendererEntry = path.resolve(__dirname, "..", "dist", "index.html")
+    return path.resolve(fileURLToPath(target)) === rendererEntry
+  } catch {
+    return false
+  }
 }
 
 function windowStatePayload(window) {
@@ -695,10 +719,12 @@ function installApplicationMenu() {
     {
       label: "View",
       submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
-        { role: "toggleDevTools" },
-        { type: "separator" },
+        ...(devServerUrl ? [
+          { role: "reload" },
+          { role: "forceReload" },
+          { role: "toggleDevTools" },
+          { type: "separator" },
+        ] : []),
         { role: "resetZoom" },
         { role: "zoomIn" },
         { role: "zoomOut" },
@@ -723,9 +749,20 @@ function installApplicationMenu() {
       label: "Help",
       submenu: [
         {
-          label: "RxnFlow Roadmap",
+          label: "About RxnFlow",
           click: () => {
-            void shell.openExternal("https://github.com/")
+            void dialog.showMessageBox({
+              type: "info",
+              title: "About RxnFlow",
+              message: `RxnFlow ${app.getVersion()}`,
+              detail: [
+                "Local-first reaction pathway workbench for computational chemistry results.",
+                "Project data stays in the workspace folders you choose.",
+                `Application data: ${app.getPath("userData")}`,
+                "Support and security contact are not configured for this unpublished build.",
+              ].join("\n"),
+              buttons: ["OK"],
+            })
           },
         },
       ],
@@ -1269,23 +1306,35 @@ ipcMain.handle("rxnflow:save-report-artifact", async (_event, payload) => {
 
 ipcMain.handle("rxnflow:open-project-package", async () => {
   const result = await dialog.showOpenDialog({
-    title: "Open RxnFlow project folder",
-    buttonLabel: "Open Folder",
+    title: "Open RxnFlow project folder or archive",
+    buttonLabel: "Open Project",
     defaultPath: app.getPath("documents"),
-    properties: ["openDirectory"],
+    properties: ["openFile", "openDirectory"],
+    filters: [
+      { name: "RxnFlow projects", extensions: ["zip", "json", "rxnflow"] },
+      { name: "All files", extensions: ["*"] },
+    ],
   })
 
   if (result.canceled || result.filePaths.length === 0) {
     return { canceled: true }
   }
 
-  const filePath = result.filePaths[0]
+  const selectedPath = result.filePaths[0]
+  const importedArchive = selectedPath.toLowerCase().endsWith(".zip")
+    ? await importProjectWorkspaceArchive(
+        selectedPath,
+        await uniqueProjectDirectory(path.join(path.dirname(selectedPath), importedArchiveFolderName(selectedPath))),
+      )
+    : null
+  const filePath = importedArchive?.projectDirectory ?? selectedPath
   const projectPackage = await readProjectPackageWithValidation(filePath)
   activateProjectDirectory(projectPackage.content, projectPackage.projectDirectory)
   await rememberRecentProject(projectPackage.projectDirectory ?? filePath)
   return {
     canceled: false,
     filePath,
+    ...(importedArchive ? { sourceArchivePath: importedArchive.filePath } : {}),
     projectDirectory: projectPackage.projectDirectory,
     content: projectPackage.content,
     validation: projectPackage.validation,
@@ -1772,6 +1821,13 @@ function archiveDefaultPath(defaultName) {
     .replace(/\.rxnflow$/i, "")
     .replace(/\.json$/i, "")
   return `${safeProjectPathStem(stem) || "rxnflow-project"}.rxnflow.zip`
+}
+
+function importedArchiveFolderName(archivePath) {
+  const stem = path.basename(archivePath)
+    .replace(/\.rxnflow\.zip$/i, "")
+    .replace(/\.zip$/i, "")
+  return safeWorkspaceFolderName(stem)
 }
 
 async function uniqueProjectDirectory(preferredPath) {

@@ -1,0 +1,72 @@
+[
+  {
+    "Description": "Python graph (network) package",
+    "License": "MIT License",
+    "Name": "altgraph",
+    "URL": "https://altgraph.readthedocs.io",
+    "Version": "0.17.5"
+  },
+  {
+    "Description": "parsers and algorithms for computational chemistry",
+    "License": "BSD License",
+    "Name": "cclib",
+    "URL": "https://github.com/cclib/cclib",
+    "Version": "1.8.1"
+  },
+  {
+    "Description": "Mach-O header analysis and editing",
+    "License": "MIT License",
+    "Name": "macholib",
+    "URL": "http://github.com/ronaldoussoren/macholib",
+    "Version": "1.16.4"
+  },
+  {
+    "Description": "Fundamental package for array computing in Python",
+    "License": "UNKNOWN",
+    "Name": "numpy",
+    "URL": "https://numpy.org",
+    "Version": "2.5.1"
+  },
+  {
+    "Description": "Core utilities for Python packages",
+    "License": "UNKNOWN",
+    "Name": "packaging",
+    "URL": "https://github.com/pypa/packaging",
+    "Version": "26.2"
+  },
+  {
+    "Description": "Extensible periodic table of the elements",
+    "License": "Public Domain",
+    "Name": "periodictable",
+    "URL": "https://github.com/python-periodictable/periodictable",
+    "Version": "2.1.0"
+  },
+  {
+    "Description": "PyInstaller bundles a Python application and all its dependencies into a single package.",
+    "License": "GNU General Public License v2 (GPLv2)",
+    "Name": "pyinstaller",
+    "URL": "https://pyinstaller.org",
+    "Version": "6.21.0"
+  },
+  {
+    "Description": "Community maintained hooks for PyInstaller",
+    "License": "Apache Software License; GNU General Public License v2 (GPLv2)",
+    "Name": "pyinstaller-hooks-contrib",
+    "URL": "https://github.com/pyinstaller/pyinstaller-hooks-contrib",
+    "Version": "2026.6"
+  },
+  {
+    "Description": "pyparsing - Classes and methods to define and execute parsing grammars",
+    "License": "UNKNOWN",
+    "Name": "pyparsing",
+    "URL": "https://github.com/pyparsing/pyparsing/",
+    "Version": "3.3.2"
+  },
+  {
+    "Description": "Fundamental algorithms for scientific computing in Python",
+    "License": "BSD License",
+    "Name": "scipy",
+    "URL": "https://scipy.org/",
+    "Version": "1.18.0"
+  }
+]

@@ -2,6 +2,10 @@ import type { SourceFile } from "../domain/projectPackages"
 import { sourceKindFromName } from "./fileDisplay"
 import type { DesktopSourceFile, ImportSourceFile } from "./importRegistrationTypes"
 
+const maxFullPreviewLength = 512 * 1024
+const largeFilePreviewHeadBytes = 64 * 1024
+const largeFilePreviewTailBytes = maxFullPreviewLength - largeFilePreviewHeadBytes - 1024
+
 export async function browserImportSourceFilesFromFiles(
   fileList: FileList | File[],
   idPrefix = "file",
@@ -53,16 +57,25 @@ async function readFilePreview(file: File, mode: "full" | "head" | "none"): Prom
   if (mode === "none") return ""
   try {
     const text = mode === "head"
-      ? await file.slice(0, 64 * 1024).text()
-      : await file.text()
+      ? await file.slice(0, largeFilePreviewHeadBytes).text()
+      : file.size <= maxFullPreviewLength
+        ? await file.text()
+        : await largeFilePreview(file)
     return sourcePreviewSample(text)
   } catch {
     return "Preview unavailable."
   }
 }
 
+async function largeFilePreview(file: File): Promise<string> {
+  const [head, tail] = await Promise.all([
+    file.slice(0, largeFilePreviewHeadBytes).text(),
+    file.slice(Math.max(0, file.size - largeFilePreviewTailBytes)).text(),
+  ])
+  return `${head}\n\n[... RxnFlow preview skipped ${Math.max(0, file.size - maxFullPreviewLength)} bytes ...]\n\n${tail}`
+}
+
 export function sourcePreviewSample(text: string): string {
-  const maxFullPreviewLength = 512 * 1024
   if (text.length <= maxFullPreviewLength) return text
 
   const head = text.slice(0, 64 * 1024)

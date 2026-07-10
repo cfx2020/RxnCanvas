@@ -4,11 +4,12 @@ const path = require("node:path")
 
 const projectRoot = path.join(__dirname, "..")
 const releaseDir = path.join(projectRoot, "release")
+const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
 
 function main() {
   assert(process.platform === "darwin", "macOS notarization must run on macOS.")
   const appPath = findMacApp()
-  const dmgPath = findArtifact(/\.dmg$/)
+  const dmgPath = findArtifact(new RegExp(`^RxnFlow-${escapeRegExp(packageJson.version)}-.+\\.dmg$`))
   assert(appPath, "No RxnFlow.app found under web/release. Run npm run desktop:dist:mac first.")
   assert(dmgPath, "No macOS DMG found under web/release. Run npm run desktop:dist:mac first.")
 
@@ -52,6 +53,10 @@ function findArtifact(pattern) {
     .map((entry) => path.join(releaseDir, entry.name))
     .sort()
     .at(0) ?? null
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 function requireEnv(name) {

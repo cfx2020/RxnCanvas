@@ -4,6 +4,7 @@ const os = require("node:os")
 const path = require("node:path")
 
 const projectRoot = path.join(__dirname, "..")
+const packageJson = require(path.join(projectRoot, "package.json"))
 const releaseDir = path.join(projectRoot, "release")
 const timeoutMs = Number.parseInt(process.env.RXNFLOW_WINDOWS_INSTALLER_SMOKE_TIMEOUT_MS || "60000", 10)
 
@@ -13,7 +14,7 @@ async function main() {
     return
   }
 
-  const installerPath = path.join(releaseDir, "RxnFlow Setup 0.0.0.exe")
+  const installerPath = path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe`)
   if (!fs.existsSync(installerPath)) {
     throw new Error("Windows NSIS installer not found. Run npm run desktop:dist:win first.")
   }

@@ -920,6 +920,23 @@ describe("importRegistration", () => {
     expect(sample).toContain("SCF Done")
   })
 
+  it("samples large browser files without reading the entire file into memory", async () => {
+    const largeFile = new File([
+      "Gaussian header\n".padEnd(64 * 1024, "."),
+      "middle".padEnd(520 * 1024, "x"),
+      "\nSCF Done: E(RB3LYP) = -76.431 A.U.\n",
+    ], "large.log")
+    const textSpy = vi.spyOn(largeFile, "text")
+
+    const [source] = await browserImportSourceFilesFromFiles([largeFile])
+
+    expect(textSpy).not.toHaveBeenCalled()
+    expect(source.preview).toContain("Gaussian header")
+    expect(source.preview).toContain("preview skipped")
+    expect(source.preview).toContain("SCF Done")
+    expect(source.preview.length).toBeLessThanOrEqual(512 * 1024 + 160)
+  })
+
   it("keeps import layout math deterministic for canvas and dropped points", () => {
     vi.spyOn(Date, "now").mockReturnValue(55)
     const canvas = {
