@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
 import type { ParseCandidate, SourceParseResult } from "../domain/sourceParsers"
@@ -176,6 +176,58 @@ describe("InspectorPanels", () => {
     expect(screen.queryByText("全屏打开")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Open 3D structure fullscreen" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Play vibration" })).toBeInTheDocument()
+  })
+
+  it("hydrates and plays the first vibration mode from a single click", async () => {
+    const vibrationAtoms = candidate.coordinatePreview?.atoms ?? []
+    const firstModeMetadata = {
+      modeId: "mode-1-real-120.00",
+      modeIndex: 0,
+      frequencyCm1: 120,
+      kind: "real" as const,
+      source: "cclib" as const,
+      displacements: [],
+    }
+    const secondModeWithDisplacements = {
+      modeId: "mode-2-imaginary-300.00",
+      modeIndex: 1,
+      frequencyCm1: -300,
+      kind: "imaginary" as const,
+      source: "cclib" as const,
+      displacements: vibrationAtoms.map((_atom, atomIndex) => ({ atomIndex, dx: 0, dy: 0.1, dz: 0 })),
+    }
+    const metadataCandidate: ParseCandidate = {
+      ...candidate,
+      coordinatePreview: {
+        ...candidate.coordinatePreview!,
+        vibrationModes: [firstModeMetadata, secondModeWithDisplacements],
+      },
+    }
+    const hydratedCandidate: ParseCandidate = {
+      ...metadataCandidate,
+      coordinatePreview: {
+        ...metadataCandidate.coordinatePreview!,
+        vibrationModes: [{
+          ...firstModeMetadata,
+          displacements: vibrationAtoms.map((_atom, atomIndex) => ({ atomIndex, dx: 0.1, dy: 0, dz: 0 })),
+        }, secondModeWithDisplacements],
+      },
+    }
+    const onHydrateSourceParse = vi.fn().mockResolvedValue(sourceParseResult([hydratedCandidate]))
+
+    render(
+      <StructurePreviewDialog
+        node={baseNode}
+        file={sourceFile(sourceParseResult([metadataCandidate]))}
+        onClose={vi.fn()}
+        onHydrateSourceParse={onHydrateSourceParse}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Play vibration" }))
+
+    await waitFor(() => expect(onHydrateSourceParse).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pause vibration" })).toBeInTheDocument())
   })
 
   it("uses disabled icons instead of visible copy for missing structure previews", () => {

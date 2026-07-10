@@ -615,7 +615,7 @@ export function StructurePreviewDialog({
   const vibrationPreview = hydratedCoordinatePreview ?? coordinatePreview
   const defaultVibrationMode = useMemo(() => {
     const modes = vibrationPreview?.vibrationModes ?? []
-    return modes.find((mode) => mode.kind === "imaginary" || mode.frequencyCm1 < 0) ?? modes[0] ?? null
+    return modes[0] ?? null
   }, [vibrationPreview?.vibrationModes])
   const [vibrationPlaying, setVibrationPlaying] = useState(false)
   const hasManualStructure = Boolean(node.manualStructureKet || node.manualStructureMolfile || node.manualStructureCdxml || node.manualStructureSvg)
@@ -632,11 +632,18 @@ export function StructurePreviewDialog({
     setHydratingVibration(true)
     try {
       const parse = await onHydrateSourceParse(file)
-      if (parse) setHydratedParse(parse)
+      if (parse) {
+        setHydratedParse(parse)
+        const hydratedPreview = sourceCoordinatePreview(node, { ...file, parse })
+        const hydratedMode = hydratedPreview?.vibrationModes?.[0] ?? null
+        if (vibrationalModeHasFullDisplacements(hydratedMode, coordinateAtoms.length)) {
+          setVibrationPlaying(true)
+        }
+      }
     } finally {
       setHydratingVibration(false)
     }
-  }, [defaultVibrationMode, file, hydratingVibration, onHydrateSourceParse, playableVibrationMode])
+  }, [coordinateAtoms.length, defaultVibrationMode, file, hydratingVibration, node, onHydrateSourceParse, playableVibrationMode])
 
   const edit2DStructure = () => {
     onEdit2DStructure?.(node.id)

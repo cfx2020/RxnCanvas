@@ -3094,6 +3094,7 @@ function sourceFileAutosaveSignature(file: SourceFile) {
       confidence: parse.confidence,
       sourceKind: parse.sourceKind,
       terminationStatus: parse.terminationStatus,
+      primaryModeDisplacements: parse.coordinatePreview?.vibrationModes?.[0]?.displacements.length ?? 0,
       warnings: parse.warnings.map((warning) => `${warning.code}:${warning.target ?? ""}`),
       candidates: parse.candidates.map((candidate) => ({
         candidateId: candidate.candidateId,
@@ -3103,6 +3104,7 @@ function sourceFileAutosaveSignature(file: SourceFile) {
         roleHint: candidate.roleHint,
         atoms: candidate.coordinatePreview?.atomCount ?? 0,
         modes: candidate.coordinatePreview?.vibrationModes?.length ?? 0,
+        primaryModeDisplacements: candidate.coordinatePreview?.vibrationModes?.[0]?.displacements.length ?? 0,
       })),
     } : null,
   }
@@ -3303,6 +3305,7 @@ function sourceParseAutosaveSignatureMatches(left: SourceParseResult | undefined
     || left.confidence !== right.confidence
     || left.sourceKind !== right.sourceKind
     || left.terminationStatus !== right.terminationStatus
+    || (left.coordinatePreview?.vibrationModes?.[0]?.displacements.length ?? 0) !== (right.coordinatePreview?.vibrationModes?.[0]?.displacements.length ?? 0)
     || left.warnings.length !== right.warnings.length
     || left.candidates.length !== right.candidates.length) {
     return false
@@ -3321,7 +3324,8 @@ function sourceParseAutosaveSignatureMatches(left: SourceParseResult | undefined
       || leftCandidate.formula !== rightCandidate.formula
       || leftCandidate.roleHint !== rightCandidate.roleHint
       || (leftCandidate.coordinatePreview?.atomCount ?? 0) !== (rightCandidate.coordinatePreview?.atomCount ?? 0)
-      || (leftCandidate.coordinatePreview?.vibrationModes?.length ?? 0) !== (rightCandidate.coordinatePreview?.vibrationModes?.length ?? 0)) {
+      || (leftCandidate.coordinatePreview?.vibrationModes?.length ?? 0) !== (rightCandidate.coordinatePreview?.vibrationModes?.length ?? 0)
+      || (leftCandidate.coordinatePreview?.vibrationModes?.[0]?.displacements.length ?? 0) !== (rightCandidate.coordinatePreview?.vibrationModes?.[0]?.displacements.length ?? 0)) {
       return false
     }
   }

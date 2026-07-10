@@ -5,7 +5,7 @@ scope: Electron/Vite renderer 当前桌面工作台的项目栏、画布/表格�
 summary: 当前桌面工作台采用“项目级共享 source files + active canvas 投影编辑”模型，并已同步到 Settings 偏好、右键菜单、紧凑 toolbar、可搜索筛选排序的紧凑 Source Browser、悬浮侧栏预览、可重命名节点卡、支持振动/量测的统一 structure dialog，以及桌面导入先入栏再后台解析这套 UI 现状
 status: current
 created: 2026-05-16
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-10
 depends_on: [core-platform]
 implements: [project-content-persistence, structure-vibration-inspection, desktop-preferences]
 tags: [web, react, vite, desktop-renderer, local-first, canvas, multi-canvas, inspector, import, export, project-schema]
@@ -135,7 +135,7 @@ Floating toolbar 现在是紧凑胶囊样式：
 - 打开后是单个 dialog；
 - 左侧显示 2D preview，右侧显示 3Dmol structure；
 - 2D 侧可继续进入手动编辑或 reset manual structure；
-- 有合法 `CoordinatePreview.vibrationModes` 时普通态提供 Play vibration 图标，默认优先 imaginary/负频 mode，没有负频则选第一个 mode；无振动时按钮 disabled 且不显示大段解释文案；
+- 有合法 `CoordinatePreview.vibrationModes` 时普通态提供 Play vibration 图标，并固定播放 parser 顺序中的第一个 mode；首个 mode 已含完整位移时第一次点击直接播放，旧轻量项目缺位移时第一次点击补载并在完成后自动播放，不要求第二次点击；无振动时按钮 disabled 且不显示大段解释文案；
 - 普通 3D 视图内联提供原子选择检查：选 1 个显示元素编号，选 2/3/4 个在左下角显示 distance / angle / dihedral；量测点击只作用于 viewer，不冒泡触发画布选择或 dialog 关闭；
 - 对话框支持点击遮罩关闭与 `Escape` 关闭。（`web/src/app/InspectorPanels.tsx:872-997`）
 
@@ -150,7 +150,7 @@ Floating toolbar 现在是紧凑胶囊样式：
 - `RxnFlowProjectCanvas`：持久化层单个画布结构，包含图元、viewport 与 selection。（`web/src/domain/projectPackages.ts:118-128`）
 - `RxnFlowProjectPackage`：当前持久化 envelope，`schemaVersion` 为 2，authority 是 `files + canvases[] + activeCanvasId + importLedger`；同时仍写出 active canvas 的 `nodes / edges / barriers / viewport` 作为兼容字段。（`web/src/domain/projectPackages.ts:130-143, 186-252`）
 - `ImportLedger`：保存 candidate / parser provenance 的轻量来源账本；序列化时由项目共享 `files` 和 **全部 canvases 的 nodes** 派生，而不是只看当前 active canvas。（`web/src/domain/projectPackages.ts:97-116, 268-343`）
-- `CoordinatePreview.vibrationModes`：随 `SourceFile.parse` 保存/恢复，project package normalization 会保留合法 mode，并清理非数值、长度不匹配或 atomIndex 越界 payload。（`web/src/domain/sourceParsers.ts`; `web/src/domain/projectPackages.ts`; `web/src/domain/vibrations.ts`）
+- `CoordinatePreview.vibrationModes`：随 `SourceFile.parse` 保存/恢复。project package normalization 会校验 mode shape，只保留 parser 顺序中第一个 mode 的完整位移，其余 mode 保存 frequency/kind/IR/Raman 等 metadata 并清空位移，从而让默认 3D 播放可直接恢复，同时避免全部 normal modes 把项目 JSON 放大到不可用量级。（`web/src/domain/sourceParsers.ts`; `web/src/domain/projectPackages.ts`; `web/src/domain/vibrations.ts`; `web/electron/project-store.cjs`）
 - `DesktopPreferences`：只属于本机运行时偏好，不进入 `RxnFlowProjectPackage`；Electron 存 userData，浏览器 fallback 使用 localStorage 保存外观/单位。（`web/src/app/desktopPreferences.ts`; `web/electron/preferences-store.cjs`）
 - `Desktop import parse queue`：不是持久化数据结构，而是桌面导入 runtime 队列。`importParseJobs.ts` 默认以 3 并发处理单文件 parser job；placeholder 先写入 `ProjectWorkspaceSnapshot.files`，每个 job 完成后通过 callback 回填 parse/storedPath/checksum。（`web/src/app/importParseJobs.ts:5-130`; `web/src/app/appImportActions.ts:33-74`）
 
@@ -167,7 +167,7 @@ Floating toolbar 现在是紧凑胶囊样式：
 - **startup restore 视为 one-shot IPC**：见 `.codestable/compound/2026-06-19-learning-startup-restore-one-shot-ipc.md`。这就是为什么恢复逻辑放在稳定 effect 入口，并在恢复后主动回写 active project directory runtime binding。
 - **原始 log/out/xyz 不是长期 authority，项目权威数据是结构化 project data**：见 `.codestable/compound/2026-06-06-decision-canonical-import-data.md`。当前桌面工作区虽然会复制 source 到 `sources/`，但保存/恢复权威仍是 `rxnflow-project` 结构、节点 provenance 和轻量 `importLedger`，而不是重新把 raw 文件当主数据模型。
 - **导入 UI 先反馈、解析结果后回填**：桌面 dialog/drop 不再读 head preview 来“提前猜”解析结果；Project Rail 的 placeholder/progress 是运行时反馈，权威 parse 仍来自 background import job 和 bundled Python engine。
-- **振动模式跟随 source parse 结构化保存**：3D 播放和内联量测消费 `CoordinatePreview` / `VibrationalMode`，不在 `FlowNode` 上复制坐标或振动字段，也不要求恢复项目时重新读取 raw log/out。
+- **默认播放振动以有界结构化数据保存**：3D 播放和内联量测消费 `CoordinatePreview` / `VibrationalMode`，不在 `FlowNode` 上复制坐标或振动字段。项目保留第一个 mode 的完整位移、其余 mode 的 metadata；新导入和正常保存恢复不要求重新读取 raw log/out。2026-06-27 之前已被瘦身为空位移的项目仍可从工作区 source 补载一次，补载完成后 autosave signature 会识别首个 mode 位移从空到完整并写回项目。
 - **桌面偏好属于本机，不属于项目**：外部应用路径、appearance 和默认 energy unit 通过 Electron userData / browser fallback 保存，不能写入项目 JSON、source metadata 或导出包。
 
 ## 5. 代码锚点
@@ -214,7 +214,7 @@ Floating toolbar 现在是紧凑胶囊样式：
 - `Delete file and nodes` 的级联删除当前只覆盖 active canvas 投影态；如果未来要扩成“删文件即全项目所有画布同步清理”，那会是新的实现与验收动作，而不是当前现状。（`web/src/app/App.tsx:1158-1183`; `web/src/app/projectWorkspace.ts:27-44`）
 - barrier 默认标签受当前 energy source 影响；因此 UI 切换 `ΔEgas` / `ΔGsol` 会同时影响 barrier 默认文案与相对能量表达。（`web/src/app/InspectorPanels.tsx:81-97`; `web/src/app/WorkbenchToolbar.tsx:58-87`）
 - 相对能量输出单位受 Settings 中 `energyOutputUnit` 偏好控制；source 原始能量单位不被改写。（`web/src/app/desktopPreferences.ts`; `web/src/app/energyDisplay.ts`）
-- vibration modes 只在 payload shape 与同一 candidate atom count 对齐时进入 UI；解析失败必须降级为 warning / disabled Play，不得阻断普通结构查看。（`web/src/domain/vibrations.ts`; `web/src/app/InspectorPanels.tsx:548-650`）
+- vibration modes 只在 payload shape 与同一 candidate atom count 对齐时进入 UI；持久化只允许第一个 mode 常驻完整位移，其余 mode 保持 metadata-only。解析或 legacy hydration 失败必须降级为 warning / disabled Play，不得阻断普通结构查看。（`web/src/domain/vibrations.ts`; `web/src/app/InspectorPanels.tsx:610-761`）
 - Source 外部打开只能使用 userData preference、默认候选探测或用户选择应用，不允许从项目文件读取 opener path，也不允许拼 shell 命令字符串。（`web/electron/preferences-store.cjs`; `web/electron/source-openers.cjs`）
 - startup restore / recent project payload 仍按 one-shot IPC 设计，不能绑到会频繁重建的 effect/callback 上。（`web/src/app/appRuntimeEffects.ts:220-249`; `.codestable/attention.md`）
 - 桌面 chrome 依赖 drag / no-drag CSS 边界；后续如果改 toolbar、tab bar 或 topbar，需要特别检查窗口拖拽是否仍成立。（`web/src/app/workbench.css:3436-3447, 5859-5875`）
@@ -239,3 +239,4 @@ Floating toolbar 现在是紧凑胶囊样式：
 - 2026-06-26：回写结构化 vibration modes、3Dmol 振动播放/内联量测、Settings 偏好、桌面 source opener、工具栏瘦身与 canvas/node 右键菜单现状。
 - 2026-06-28：回写 Files 区外部 drop、桌面导入 metadata-only placeholder + pending progressbar、限并发 parse queue、缺 sol 指示灯显示规则，以及当前未使用 Web/Electron worker 的导入性能边界。
 - 2026-07-06：回写 Source Browser 的搜索/筛选/排序、单一原生 rail scroll 容器、Project Rail no-drag 边界和紧凑文件行样式。
+- 2026-07-10：振动持久化改为只保留 parser 第一个 mode 的完整位移，其余 mode 保留 metadata；修正首次点击 legacy hydration 完成后自动播放，并让 autosave 识别首个 mode 位移补载。

@@ -363,7 +363,7 @@ function slimParseForPersistence(parse) {
 function slimCoordinatePreviewForPersistence(preview) {
   if (!preview || typeof preview !== "object") return preview ?? null
   const modes = Array.isArray(preview.vibrationModes)
-    ? preview.vibrationModes.map((mode) => slimVibrationModeForPersistence(mode)).filter(Boolean)
+    ? preview.vibrationModes.map((mode, index) => slimVibrationModeForPersistence(mode, index === 0)).filter(Boolean)
     : []
   return {
     ...preview,
@@ -371,15 +371,15 @@ function slimCoordinatePreviewForPersistence(preview) {
   }
 }
 
-function slimVibrationModeForPersistence(mode) {
+function slimVibrationModeForPersistence(mode, retainDisplacements) {
   if (!mode || typeof mode !== "object") return null
   const {
-    displacements: _displacements,
+    displacements,
     ...rest
   } = mode
   return {
     ...rest,
-    displacements: [],
+    displacements: retainDisplacements && Array.isArray(displacements) ? displacements : [],
   }
 }
 

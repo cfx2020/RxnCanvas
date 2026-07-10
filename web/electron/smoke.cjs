@@ -11,6 +11,7 @@ const {
   readProjectContent,
   saveProjectContent,
   saveProjectReportArtifact,
+  slimProjectPackageForPersistence,
 } = require("./project-store.cjs")
 const {
   loadRecentProjects,
@@ -40,6 +41,7 @@ async function main() {
   }
 
   await verifyRecentProjectsStore()
+  verifyVibrationPayloadSlimming()
   await verifyProjectDirectoryStore()
   await verifyLocalEngineFailureMode()
   await verifyLocalEngineParserCoverage()
@@ -115,6 +117,39 @@ async function main() {
   console.log("RxnFlow import.preview ready")
   console.log("RxnFlow import.register ready")
   console.log(`RxnFlow local engine ready: ${status.data.engineVersion}`)
+}
+
+function verifyVibrationPayloadSlimming() {
+  const firstDisplacements = [{ atomIndex: 0, dx: 0.1, dy: 0, dz: 0 }]
+  const secondDisplacements = [{ atomIndex: 0, dx: 0, dy: 0.1, dz: 0 }]
+  const preview = {
+    atomCount: 1,
+    vibrationModes: [
+      { modeId: "mode-1", frequencyCm1: -300, displacements: firstDisplacements },
+      { modeId: "mode-2", frequencyCm1: 120, displacements: secondDisplacements },
+    ],
+  }
+  const slimmed = slimProjectPackageForPersistence({
+    files: [{
+      parse: {
+        coordinatePreview: preview,
+        candidates: [{ coordinatePreview: preview }],
+      },
+    }],
+  })
+  const previews = [
+    slimmed.files?.[0]?.parse?.coordinatePreview,
+    slimmed.files?.[0]?.parse?.candidates?.[0]?.coordinatePreview,
+  ]
+  for (const slimmedPreview of previews) {
+    const modes = slimmedPreview?.vibrationModes ?? []
+    if (JSON.stringify(modes[0]?.displacements) !== JSON.stringify(firstDisplacements)) {
+      throw new Error("RxnFlow project persistence did not retain the first vibration mode")
+    }
+    if (!Array.isArray(modes[1]?.displacements) || modes[1].displacements.length !== 0) {
+      throw new Error("RxnFlow project persistence retained non-primary vibration displacements")
+    }
+  }
 }
 
 async function verifyLocalEngineFailureMode() {

@@ -306,7 +306,7 @@ describe("project packages", () => {
     })
   })
 
-  it("preserves valid vibration payloads and drops invalid modes during package parse", () => {
+  it("keeps only the first valid vibration displacement payload during package parse", () => {
     const parseWithVibration = {
       label: "gaussian",
       sourceKind: "Gaussian",
@@ -352,9 +352,19 @@ describe("project packages", () => {
               { atomIndex: 1, dx: -0.1, dy: 0, dz: 0 },
             ],
           }, {
-            modeId: "bad",
+            modeId: "mode-2-real-10.00",
             modeIndex: 1,
             frequencyCm1: 10,
+            kind: "real",
+            source: "rxnflow-text",
+            displacements: [
+              { atomIndex: 0, dx: 0, dy: 0.1, dz: 0 },
+              { atomIndex: 1, dx: 0, dy: -0.1, dz: 0 },
+            ],
+          }, {
+            modeId: "bad",
+            modeIndex: 2,
+            frequencyCm1: 20,
             kind: "real",
             source: "rxnflow-text",
             displacements: [{ atomIndex: 0, dx: 0, dy: 0, dz: 0 }],
@@ -388,11 +398,20 @@ describe("project packages", () => {
     }))
 
     const modes = parsed?.files[0]?.parse?.candidates[0]?.coordinatePreview?.vibrationModes ?? []
-    expect(modes).toHaveLength(1)
+    expect(modes).toHaveLength(2)
     expect(modes[0]).toMatchObject({
       modeId: "mode-1-imaginary-42.00",
       frequencyCm1: -42,
       kind: "imaginary",
+      displacements: [
+        { atomIndex: 0, dx: 0.1, dy: 0, dz: 0 },
+        { atomIndex: 1, dx: -0.1, dy: 0, dz: 0 },
+      ],
+    })
+    expect(modes[1]).toMatchObject({
+      modeId: "mode-2-real-10.00",
+      frequencyCm1: 10,
+      kind: "real",
       displacements: [],
     })
     expect(parsed?.files[0]?.parse?.warnings.map((warning) => warning.code)).toContain("vibration_shape_mismatch")

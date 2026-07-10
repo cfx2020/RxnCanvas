@@ -129,10 +129,10 @@ export function normalizeVibrationalModes(
   return { modes, warnings }
 }
 
-export function stripVibrationalModeDisplacements(modes: VibrationalMode[]): VibrationalMode[] {
-  return modes.map((mode) => ({
+export function compactVibrationalModesForPersistence(modes: VibrationalMode[]): VibrationalMode[] {
+  return modes.map((mode, index) => ({
     ...mode,
-    displacements: [],
+    displacements: index === 0 ? mode.displacements : [],
   }))
 }
 

@@ -1,5 +1,5 @@
 import type { CoordinatePreview, ParseCandidate, ParsedEnergyTableData, ParsedEnergyUnit, SourceParseResult } from "./sourceParsers"
-import { normalizeVibrationalModes, stripVibrationalModeDisplacements } from "./vibrations"
+import { compactVibrationalModesForPersistence, normalizeVibrationalModes } from "./vibrations"
 
 export type NodeKind = "reactant" | "transition" | "intermediate" | "product"
 export type NodePathRole = "state" | "participant"
@@ -734,7 +734,7 @@ function normalizeCoordinatePreview(value: CoordinatePreview | null | undefined,
     atomCount,
     has3d: Boolean(value.has3d) || Boolean(value.atoms?.length),
     elements: Array.isArray(value.elements) ? value.elements.filter((element) => typeof element === "string") : [],
-    ...(normalized.modes.length > 0 ? { vibrationModes: stripVibrationalModeDisplacements(normalized.modes) } : { vibrationModes: undefined }),
+    ...(normalized.modes.length > 0 ? { vibrationModes: compactVibrationalModesForPersistence(normalized.modes) } : { vibrationModes: undefined }),
   }
 }
 
