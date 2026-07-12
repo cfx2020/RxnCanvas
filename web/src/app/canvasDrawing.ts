@@ -25,6 +25,8 @@ export type BarrierSegment = {
 
 export type BarrierRelativeEnergyLookup = ReadonlyMap<string, number | null>
 
+export const stepConnectorOffsetY = 38
+
 export function createEdgeSegment(source: FlowNode, target: FlowNode, stepRole?: EdgeStepRole): EdgeSegment {
   const start = edgeSourceAnchor(source, stepRole)
   const end = edgeTargetAnchor(target, stepRole)
@@ -196,7 +198,7 @@ function edgeTargetAnchor(target: FlowNode, stepRole?: EdgeStepRole): Point {
 function stepConnectorAnchor(node: FlowNode, role: Extract<EdgeStepRole, "addition" | "release">, size = flowNodeSize(node)): Point {
   return {
     x: role === "addition" ? node.position.x : node.position.x + size.width,
-    y: node.position.y + size.height * 0.5 - 38,
+    y: node.position.y + size.height * 0.5 - stepConnectorOffsetY,
   }
 }
 

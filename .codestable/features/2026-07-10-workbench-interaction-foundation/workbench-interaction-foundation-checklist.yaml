@@ -1,0 +1,37 @@
+feature: 2026-07-10-workbench-interaction-foundation
+status: in-progress
+steps:
+  - id: command-layout-foundation
+    step: 建立共享 command 描述与带版本的侧栏布局偏好
+    status: done
+  - id: toolbar-palette
+    step: 重组工具栏并接入快捷键提示和命令面板
+    status: done
+  - id: structure-first-node-card
+    step: 将节点卡改为以 2D 结构为主体的卡内信息布局
+    status: done
+  - id: accessibility
+    step: 统一可见焦点、键盘路径、aria-live 与非颜色状态语义
+    status: done
+  - id: verification
+    step: 完成测试、构建、桌面与窄屏浏览器验收和文档回写
+    status: done
+checks:
+  - id: shared-command-path
+    check: toolbar、快捷键和 palette 调用同一现有动作
+    status: pending
+  - id: sidebar-persistence
+    check: 左右侧栏状态跨 reload 恢复且损坏值安全回退
+    status: pending
+  - id: node-card-contract
+    check: 结构为主体且名称、能量单位、角色和来源状态全部位于卡内
+    status: pending
+  - id: accessibility-contract
+    check: 核心控件有可见 focus-visible 且状态不只依赖颜色
+    status: pending
+  - id: responsive-contract
+    check: 桌面和 900x700 窄屏无重叠或页面横向溢出
+    status: pending
+  - id: scope-guard
+    check: 项目 schema、能量计算和 edge/barrier 行为未改变
+    status: pending

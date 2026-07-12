@@ -945,7 +945,7 @@ describe("App", () => {
     fireEvent.dragStart(gasRow, { dataTransfer: dragData })
     dispatchDrop(screen.getByLabelText("Graph canvas surface"), dragData, 640, 360)
     const node = await screen.findByRole("button", { name: "Node i1p6" })
-    expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
+    expect(node.querySelector(":scope > .node-status-light-corner.status-light-missing")).toBeInTheDocument()
 
     const solFile = new File(["bad sol file"], "i1p6-sol.log", { type: "text/plain" })
     await act(async () => {
@@ -985,7 +985,7 @@ describe("App", () => {
     expect(finalGasButton).toHaveAttribute("aria-label", expect.stringContaining("No paired solvation log"))
     const finalGasRow = finalGasButton.closest(".project-file-card") as HTMLElement
     expect(finalGasRow.querySelector(".project-file-phase-badges.has-missing-solution")).toBeInTheDocument()
-    expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
+    expect(node.querySelector(":scope > .node-status-light-corner.status-light-missing")).toBeInTheDocument()
     const dialog = await screen.findByRole("alertdialog", { name: "Unsupported import format" })
     expect(dialog).toHaveTextContent("i1p6-sol.log")
     expect(dialog).toHaveTextContent("No supported parser recognized this source full-file.")
@@ -1292,7 +1292,7 @@ describe("App", () => {
     fireEvent.dragStart(gasRow, { dataTransfer })
     dispatchDrop(screen.getByLabelText("Graph canvas surface"), dataTransfer, 640, 360)
     const node = await screen.findByRole("button", { name: "Node i1p6" })
-    expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
+    expect(node.querySelector(":scope > .node-status-light-corner.status-light-missing")).toBeInTheDocument()
 
     await act(async () => {
       fireEvent.change(input, { target: { files: [solutionLog] } })
@@ -1307,7 +1307,7 @@ describe("App", () => {
     expect(groupedRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
     expect(within(rail).queryByRole("button", { name: fileButtonName("i1p6.log", "Gaussian") })).not.toBeInTheDocument()
     expect(within(rail).queryByRole("button", { name: fileButtonName("i1p6-sol.log", "Raw") })).not.toBeInTheDocument()
-    expect(node.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
+    expect(node.querySelector(":scope > .node-status-light-corner.status-light-missing")).toBeInTheDocument()
     dispatchPointer(node, "pointerDown", { button: 0, clientX: 640, clientY: 360, pointerId: 84 })
     dispatchPointer(node, "pointerUp", { button: 0, clientX: 640, clientY: 360, pointerId: 84 })
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
@@ -1488,7 +1488,8 @@ describe("App", () => {
       dispatchPointer(window, "pointerUp", { button: 0, clientX: 850, clientY: 580, pointerId: 83 })
 
       expect(screen.getByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct: Release path/ })).toBeInTheDocument()
-      expect(targetNode).toHaveTextContent("PART")
+      expect(targetNode).toHaveClass("node-participant")
+      expect(targetNode).not.toHaveTextContent("PART")
       expect(container.querySelector(".edge-role-release")).toBeInTheDocument()
       expect(container.querySelector(".connection-preview-path")).not.toBeInTheDocument()
     } finally {
@@ -1554,25 +1555,25 @@ describe("App", () => {
     expect(screen.getByRole("complementary", { name: "Inspector" })).toHaveTextContent("TS1 (Endo)")
   })
 
-  it("edits node stoichiometric coefficients inline and tracks the change in canvas history", () => {
+  it("edits node stoichiometric coefficients from the context menu and hides the default value", () => {
     render(<App />)
 
-    const coefficientButton = screen.getByRole("button", { name: "Stoichiometric coefficient for TS1 (Endo)" })
-    expect(coefficientButton).toHaveTextContent("×1")
-    fireEvent.click(coefficientButton)
-
-    const coefficientInput = screen.getByLabelText("Stoichiometric coefficient for TS1 (Endo)")
+    const node = screen.getByRole("button", { name: "Node TS1 (Endo)" })
+    expect(node).not.toHaveTextContent("1x")
+    fireEvent.contextMenu(node, { clientX: 500, clientY: 320 })
+    const coefficientInput = screen.getByLabelText("Node coefficient")
     fireEvent.change(coefficientInput, { target: { value: "2" } })
-    fireEvent.keyDown(coefficientInput, { key: "Enter" })
+    fireEvent.blur(coefficientInput)
 
-    expect(screen.getByRole("button", { name: "Stoichiometric coefficient for TS1 (Endo)" })).toHaveTextContent("×2")
+    expect(node).toHaveTextContent("2x")
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
     fireEvent.click(within(toolbar).getByRole("button", { name: "Undo canvas edit" }))
-    expect(screen.getByRole("button", { name: "Stoichiometric coefficient for TS1 (Endo)" })).toHaveTextContent("×1")
+    expect(node).not.toHaveTextContent("1x")
+    expect(node).not.toHaveTextContent("2x")
 
     fireEvent.click(within(toolbar).getByRole("button", { name: "Redo canvas edit" }))
-    expect(screen.getByRole("button", { name: "Stoichiometric coefficient for TS1 (Endo)" })).toHaveTextContent("×2")
+    expect(node).toHaveTextContent("2x")
   })
 
   it("marks explicit barrier annotations between two nodes and deletes the selection", () => {
@@ -1783,8 +1784,8 @@ describe("App", () => {
     })
 
     const afterNudge = transformTranslate(butadiene.style.transform)
-    fireEvent.click(screen.getByRole("button", { name: "Stoichiometric coefficient for 1,3-Butadiene" }))
-    fireEvent.keyDown(screen.getByLabelText("Stoichiometric coefficient for 1,3-Butadiene"), { key: "ArrowRight" })
+    fireEvent.contextMenu(butadiene, { clientX: 300, clientY: 300 })
+    fireEvent.keyDown(screen.getByLabelText("Node coefficient"), { key: "ArrowRight" })
     expect(transformTranslate(butadiene.style.transform)).toEqual(afterNudge)
 
     const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
@@ -1957,11 +1958,12 @@ describe("App", () => {
       expect(node).toBeDefined()
       expect(node?.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
       expect(node?.querySelector(".status-light-node.status-light-missing")).toBeInTheDocument()
-      expect(node?.querySelector(".node-header-actions .node-status-light-corner.status-light-missing")).toBeInTheDocument()
+      expect(node?.querySelector(":scope > .node-status-light-corner.status-light-missing")).toBeInTheDocument()
       expect(node?.querySelector(".node-card-meta-row .status-light-node")).not.toBeInTheDocument()
-      expect(node?.querySelector(".node-header-main .node-coefficient-control-header")).toBeInTheDocument()
+      expect(node?.querySelector(".node-header-main .node-coefficient-control-header")).not.toBeInTheDocument()
       expect(node?.querySelector(".node-card-meta-row .node-coefficient-control-meta")).not.toBeInTheDocument()
-      expect(node?.querySelector(".node-card-meta-row")?.textContent).toMatch(/ΔG.*INT/)
+      expect(node?.querySelector(".node-card-meta-row")?.textContent).toMatch(/ΔG/)
+      expect(node?.querySelector(".node-card-meta-row")?.textContent).not.toMatch(/INT|TS|PART/)
       expect(node?.querySelector(".node-card-meta-row")?.textContent).not.toContain("×1")
     })
   })

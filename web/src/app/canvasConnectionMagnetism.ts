@@ -1,9 +1,9 @@
 import type { EdgeStepRole, FlowNode, Point } from "../domain/projectPackages"
+import { stepConnectorOffsetY } from "./canvasDrawing"
 import { flowNodeSize } from "./canvasGeometry"
 import type { CanvasPointerDraft } from "./canvasDragState"
 
 export const connectionSnapRadiusPx = 44
-const stepConnectorOffsetY = 38
 
 export type ConnectionMagnetTarget = {
   targetId: string

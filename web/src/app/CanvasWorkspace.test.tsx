@@ -285,8 +285,8 @@ describe("CanvasWorkspace", () => {
       />,
     )
 
-    expect(screen.getByText("addition")).toBeInTheDocument()
-    expect(screen.getByText("release")).toBeInTheDocument()
+    expect(screen.queryByText("addition")).not.toBeInTheDocument()
+    expect(screen.queryByText("release")).not.toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/ΔG\s*=\s*pending/)
   })
 

@@ -17,8 +17,6 @@ import {
   createMinimapGeometry,
   fallbackCanvasSize,
   flowNodeSize,
-  maxNodeWidth,
-  minNodeWidth,
   minimapRectStyle,
   minimapSize,
   viewportFromCanvasWheel,
@@ -32,6 +30,7 @@ import {
   createBarrierSegment,
   createConnectionPreviewPath,
   createEdgeSegment,
+  stepConnectorOffsetY,
   type BarrierSegment,
   type BarrierRelativeEnergyLookup,
 } from "./canvasDrawing"
@@ -196,9 +195,9 @@ export function CanvasSurface({
   onSelectNode,
   onSelectEdge,
   onSelectBarrier,
+  onSetNodeCoefficient: _onSetNodeCoefficient,
   onUpdateEdgeLabel,
   onUpdateBarrierLabel,
-  onSetNodeCoefficient,
   onSetRelativeEnergyZero,
   onOpenStructure,
   onShowNodeSource,
@@ -246,9 +245,9 @@ export function CanvasSurface({
   onSelectNode: (nodeId: string, mode?: GraphSelectionMode) => void
   onSelectEdge: (edgeId: string, mode?: GraphSelectionMode) => void
   onSelectBarrier: (barrierId: string, mode?: GraphSelectionMode) => void
+  onSetNodeCoefficient: (nodeId: string, coefficient: number) => void
   onUpdateEdgeLabel: (edgeId: string, label: string) => void
   onUpdateBarrierLabel: (barrierId: string, label: string | null) => void
-  onSetNodeCoefficient: (nodeId: string, coefficient: number) => void
   onSetRelativeEnergyZero: (nodeId: string) => void
   onOpenStructure: (nodeId: string) => void
   onShowNodeSource: (nodeId: string) => void
@@ -309,7 +308,6 @@ export function CanvasSurface({
   const stableOnSelectBarrier = useLatestCallback(onSelectBarrier)
   const stableOnUpdateEdgeLabel = useLatestCallback(onUpdateEdgeLabel)
   const stableOnUpdateBarrierLabel = useLatestCallback(onUpdateBarrierLabel)
-  const stableOnSetNodeCoefficient = useLatestCallback(onSetNodeCoefficient)
   const stableOnSetRelativeEnergyZero = useLatestCallback(onSetRelativeEnergyZero)
   const stableOnOpenStructure = useLatestCallback(onOpenStructure)
   const stableOnShowNodeSource = useLatestCallback(onShowNodeSource)
@@ -511,7 +509,6 @@ export function CanvasSurface({
             onStartBarrierAnnotation={stableOnStartBarrierAnnotation}
             onStartKeyboardConnection={stableOnStartKeyboardConnection}
             onSelectNode={stableOnSelectNode}
-            onSetCoefficient={stableOnSetNodeCoefficient}
             onSetRelativeEnergyZero={stableOnSetRelativeEnergyZero}
             onOpenStructure={stableOnOpenStructure}
             onShowNodeSource={stableOnShowNodeSource}
@@ -828,7 +825,6 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   onStartBarrierAnnotation,
   onStartKeyboardConnection,
   onSelectNode,
-  onSetCoefficient,
   onSetRelativeEnergyZero,
   onOpenStructure,
   onShowNodeSource,
@@ -858,7 +854,6 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   onStartBarrierAnnotation: (event: PointerEvent<HTMLElement>, sourceId: string) => void
   onStartKeyboardConnection: (sourceId: string) => void
   onSelectNode: (nodeId: string, mode?: GraphSelectionMode) => void
-  onSetCoefficient: (nodeId: string, coefficient: number) => void
   onSetRelativeEnergyZero: (nodeId: string) => void
   onOpenStructure: (nodeId: string) => void
   onShowNodeSource: (nodeId: string) => void
@@ -868,26 +863,17 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   onOpenContextMenu: (event: Pick<MouseEvent<HTMLElement>, "clientX" | "clientY" | "preventDefault" | "stopPropagation">) => void
 }) {
   const coefficientValue = nodeCoefficient(node)
-  const [coefficientEditing, setCoefficientEditing] = useState(false)
-  const [coefficientDraft, setCoefficientDraft] = useState(formatCoefficientValue(coefficientValue))
   const [renameEditing, setRenameEditing] = useState(false)
   const [renameDraft, setRenameDraft] = useState(node.label)
-  const coefficientInputRef = useRef<HTMLInputElement | null>(null)
   const sourceStatusLabel = nodeFooterText(node)
   const solvationStatusLabel = solvationPairStatusLabel(solvationStatus)
   const nodeStatusLight = solvationStatus === "missing-solution" || solvationStatus === "missing-gas" ? "missing" : (node.sourceStatus ?? solvationStatus)
   const relativeEnergySymbol = energySource === "solution" ? "ΔG" : "ΔE"
   const cardSize = flowNodeSize(node)
   const relativeEnergyLabel = formatNodeCardRelativeEnergy(relativeEnergy, outputUnit)
-  const coefficientLabel = `×${formatCoefficientValue(coefficientValue)}`
-  const roleLabel = nodeTermRoleLabel(relativeRole)
+  const hideRelativeEnergy = relativeRole === "addition-term" || relativeRole === "release-term"
   const showStepConnectors = node.pathRole !== "participant"
-  const cardWidth = Math.max(cardSize.width, nodeCardMinimumWidth({
-    symbol: relativeEnergySymbol,
-    value: relativeEnergyLabel,
-    roleLabel,
-    kindLabel: nodeKindAbbreviation(node),
-  }))
+  const cardWidth = cardSize.width
   const previewSize = {
     width: Math.max(128, cardWidth - 28),
     height: Math.max(72, cardSize.height - 100),
@@ -900,10 +886,6 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   })
 
   useEffect(() => {
-    if (!coefficientEditing) setCoefficientDraft(formatCoefficientValue(coefficientValue))
-  }, [coefficientEditing, coefficientValue])
-
-  useEffect(() => {
     if (!renameRequested) return
     setRenameEditing(true)
     onRenameRequestHandled(node.id)
@@ -912,12 +894,6 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   useEffect(() => {
     if (!renameEditing) setRenameDraft(node.label)
   }, [node.label, renameEditing])
-
-  useEffect(() => {
-    if (!coefficientEditing) return
-    coefficientInputRef.current?.focus()
-    coefficientInputRef.current?.select()
-  }, [coefficientEditing])
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
@@ -941,26 +917,11 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
     event.stopPropagation()
     onStartKeyboardConnection(node.id)
   }
-  const cancelCoefficientEdit = () => {
-    setCoefficientDraft(formatCoefficientValue(coefficientValue))
-    setCoefficientEditing(false)
-  }
-  const applyCoefficient = () => {
-    const coefficient = Number(coefficientDraft)
-    if (!Number.isFinite(coefficient) || coefficient === 0) {
-      cancelCoefficientEdit()
-      return
-    }
-    const normalized = Number(coefficient.toFixed(6))
-    setCoefficientDraft(formatCoefficientValue(normalized))
-    setCoefficientEditing(false)
-    if (normalized !== coefficientValue) onSetCoefficient(node.id, normalized)
-  }
-
   return (
     <div
       role="button"
       tabIndex={0}
+      aria-pressed={selected}
       className={`reaction-node node-${node.kind}${node.pathRole === "participant" ? " node-participant" : ""}${selected ? " is-selected" : ""}${connectionSnapTarget ? (connectionSnapStepRole === "addition" ? " is-connection-snap-target-addition" : " is-connection-snap-target") : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
       aria-label={`Node ${node.label}`}
       data-flow-node-id={node.id}
@@ -983,6 +944,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
           role="button"
           tabIndex={0}
           className="node-connector node-step-connector node-step-connector-addition"
+          style={{ top: `calc(50% - ${stepConnectorOffsetY}px)` }}
           aria-label={`Add species before ${node.label}`}
           title={`Add species before ${node.label}`}
           onPointerDown={(event) => event.stopPropagation()}
@@ -1037,60 +999,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
               {node.label}
             </button>
           )}
-          <span
-            className="node-coefficient-control node-coefficient-control-header"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-          >
-            {coefficientEditing ? (
-              <input
-                ref={coefficientInputRef}
-                aria-label={`Stoichiometric coefficient for ${node.label}`}
-                value={coefficientDraft}
-                inputMode="decimal"
-                onChange={(event) => setCoefficientDraft(event.currentTarget.value)}
-                onBlur={applyCoefficient}
-                onKeyDown={(event) => {
-                  event.stopPropagation()
-                  if (event.key === "Enter") {
-                    event.preventDefault()
-                    event.currentTarget.blur()
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault()
-                    cancelCoefficientEdit()
-                  }
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                aria-label={`Stoichiometric coefficient for ${node.label}`}
-                title={`Stoichiometric coefficient for ${node.label}`}
-                onClick={() => setCoefficientEditing(true)}
-              >
-                <span className="node-coefficient-label" aria-hidden="true">
-                  <span className="node-coefficient-multiply">×</span>
-                  <span className="node-coefficient-value">{formatCoefficientValue(coefficientValue)}</span>
-                </span>
-              </button>
-            )}
-          </span>
         </div>
-        <span
-          className="node-header-actions"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          {nodeStatusLight === "missing" ? (
-            <span
-              className="status-light status-light-node status-light-missing node-status-light-corner"
-              title={`${sourceStatusLabel}. ${solvationStatusLabel}`}
-              aria-label={`${sourceStatusLabel}. ${solvationStatusLabel}`}
-            />
-          ) : null}
-        </span>
       </div>
       <NodeStructurePreview
         node={node}
@@ -1098,21 +1007,24 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
         previewSize={previewSize}
         onOpenStructure={onOpenStructure}
       />
-      <div className="node-energy-strip node-card-meta-row" title={nodeEnergyStripTitle(relativeEnergySymbol, relativeRole)}>
-        {roleLabel ? (
-          <span className="node-card-energy-value node-card-energy-term" title={nodeEnergyStripTitle(relativeEnergySymbol, relativeRole)}>
-            <strong>{roleLabel}</strong>
-          </span>
-        ) : (
+      {nodeStatusLight === "missing" ? (
+        <span
+          className="status-light status-light-node status-light-missing node-status-light-corner"
+          title={`${sourceStatusLabel}. ${solvationStatusLabel}`}
+          aria-label={`${sourceStatusLabel}. ${solvationStatusLabel}`}
+        />
+      ) : null}
+      {coefficientValue !== 1 ? <span className="node-stoichiometry-label">{formatCoefficientValue(coefficientValue)}x</span> : null}
+      {!hideRelativeEnergy ? (
+        <div className="node-energy-strip node-card-meta-row" title={nodeEnergyStripTitle(relativeEnergySymbol, relativeRole)}>
           <span className="node-card-energy-value">
             <span>{relativeEnergySymbol}</span>
             <strong className={energyBaseline ? "node-relative-energy is-zero" : "node-relative-energy"}>
               {relativeEnergyLabel}
             </strong>
           </span>
-        )}
-        <em className="node-kind-badge">{nodeKindAbbreviation(node)}</em>
-      </div>
+        </div>
+      ) : null}
       <span
         role="button"
         tabIndex={0}
@@ -1128,6 +1040,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
           role="button"
           tabIndex={0}
           className="node-connector node-step-connector node-step-connector-release"
+          style={{ top: `calc(50% - ${stepConnectorOffsetY}px)` }}
           aria-label={`Release species after ${node.label}`}
           title={`Release species after ${node.label}`}
           onPointerDown={(event) => onStartConnection(event, node.id, "release")}
@@ -1163,23 +1076,6 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
 function formatNodeCardRelativeEnergy(value: number | null, unit: EnergyDisplayOptions["outputUnit"]): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "pending"
   return formatRelativeEnergyValue(relativeEnergyValueFromKcal(value, unit), unit)
-}
-
-function nodeCardMinimumWidth({
-  symbol,
-  value,
-  roleLabel,
-  kindLabel,
-}: {
-  symbol: string
-  value: string
-  roleLabel: string | null
-  kindLabel: string
-}): number {
-  const energyLabel = roleLabel ?? `${symbol} = ${value}`
-  const energyPillWidth = Math.ceil(estimatedInlineTextWidth(energyLabel) + 22)
-  const kindPillWidth = Math.max(34, Math.ceil(estimatedInlineTextWidth(kindLabel) + 18))
-  return clamp(30 + energyPillWidth + 6 + kindPillWidth, minNodeWidth, maxNodeWidth)
 }
 
 function nodeEnergyStripTitle(symbol: string, role: EnergyTableRow["relativeRole"]): string {
@@ -1989,14 +1885,6 @@ type NodeSolvationStatus = "paired" | "missing-solution" | "missing-gas" | "unkn
 type SolvationPairPresence = {
   hasGas: boolean
   hasSolution: boolean
-}
-
-function nodeKindAbbreviation(node: FlowNode): string {
-  if (node.pathRole === "participant") return "PART"
-  if (node.kind === "transition") return "TS"
-  if (node.kind === "intermediate") return "INT"
-  if (node.kind === "reactant") return "R"
-  return "P"
 }
 
 function edgeStepRoleVisibleLabel(role: FlowEdge["stepRole"]): string {

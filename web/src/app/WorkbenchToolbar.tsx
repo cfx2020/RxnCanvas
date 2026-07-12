@@ -4,6 +4,7 @@ import {
   Hand,
   ImagePlus,
   LayoutDashboard,
+  Maximize2,
   MousePointer2,
   Redo2,
   Table2,
@@ -28,6 +29,7 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
   onUndo,
   onRedo,
   onAutoLayout,
+  onFitView,
   onInsertImage,
   placement,
   onDragStart,
@@ -45,6 +47,7 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
   onUndo: () => void
   onRedo: () => void
   onAutoLayout: () => void
+  onFitView: () => void
   onInsertImage: () => void
   placement: ToolbarPlacement
   onDragStart: (event: ReactPointerEvent<HTMLButtonElement>) => void
@@ -73,7 +76,7 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
         >
           <GripVertical size={16} />
         </button>
-        <div className="toolbar-energy-chip" role="group" aria-label="Energy display">
+        <div className="toolbar-command-group toolbar-energy-chip" role="group" aria-label="Energy and view">
           <label className="toolbar-select-group toolbar-select-compact">
             <span className="visually-hidden">Energy</span>
             <select
@@ -95,7 +98,8 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
           className={viewMode === "table" ? "toolbar-table-toggle is-active" : "toolbar-table-toggle"}
           aria-pressed={viewMode === "table"}
           aria-label="Table view"
-          title={viewMode === "table" ? "Close table" : "Open table"}
+          title={viewMode === "table" ? "Close Table (T)" : "Open Table (T)"}
+          aria-keyshortcuts="T"
           onClick={() => onSetViewMode(viewMode === "table" ? "canvas" : "table")}
         >
           <Table2 size={18} />
@@ -106,7 +110,8 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
           className={tool === "select" ? "is-active" : ""}
           aria-pressed={tool === "select"}
           aria-label="Select tool"
-          title="Select"
+          title="Select Tool (V)"
+          aria-keyshortcuts="V"
           onClick={() => onSetTool("select")}
         >
           <MousePointer2 size={18} />
@@ -116,7 +121,8 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
           className={tool === "pan" ? "is-active" : ""}
           aria-pressed={tool === "pan"}
           aria-label="Pan tool"
-          title="Pan"
+          title="Pan Tool (H)"
+          aria-keyshortcuts="H"
           onClick={() => onSetTool("pan")}
         >
           <Hand size={18} />
@@ -126,7 +132,8 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
           className={tool === "text" ? "is-active" : ""}
           aria-pressed={tool === "text"}
           aria-label="Text tool"
-          title="Text"
+          title="Text Tool (X)"
+          aria-keyshortcuts="X"
           onClick={() => onSetTool("text")}
         >
           <Type size={18} />
@@ -134,20 +141,24 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
         <button
           type="button"
           aria-label="Insert image"
-          title="Insert image"
+          title="Insert Image (I)"
+          aria-keyshortcuts="I"
           onClick={onInsertImage}
         >
           <ImagePlus size={18} />
         </button>
         <div className="toolbar-divider" />
-        <button type="button" aria-label="Undo canvas edit" title="Undo" onClick={onUndo} disabled={!canUndo}>
+        <button type="button" aria-label="Undo canvas edit" title="Undo (⌘Z)" aria-keyshortcuts="Meta+Z Control+Z" onClick={onUndo} disabled={!canUndo}>
           <Undo2 size={18} />
         </button>
-        <button type="button" aria-label="Redo canvas edit" title="Redo" onClick={onRedo} disabled={!canRedo}>
+        <button type="button" aria-label="Redo canvas edit" title="Redo (⇧⌘Z)" aria-keyshortcuts="Meta+Shift+Z Control+Y" onClick={onRedo} disabled={!canRedo}>
           <Redo2 size={18} />
         </button>
-        <button type="button" aria-label="Auto layout" title="Auto layout" onClick={onAutoLayout}>
+        <button type="button" aria-label="Auto layout" title="Auto Layout (A)" aria-keyshortcuts="A" onClick={onAutoLayout}>
           <LayoutDashboard size={18} />
+        </button>
+        <button type="button" aria-label="Fit view" title="Fit View (F)" aria-keyshortcuts="F" onClick={onFitView}>
+          <Maximize2 size={18} />
         </button>
     </div>
   )

@@ -2,7 +2,7 @@
 doc_type: architecture
 slug: web-workbench
 scope: Electron/Vite renderer 当前桌面工作台的项目栏、画布/表格、Inspector、导入导出与工作区持久化表面
-summary: 当前桌面工作台采用“项目级共享 source files + active canvas 投影编辑”模型，并已同步到 Settings 偏好、右键菜单、紧凑 toolbar、可搜索筛选排序的紧凑 Source Browser、悬浮侧栏预览、可重命名节点卡、支持振动/量测的统一 structure dialog，以及桌面导入先入栏再后台解析这套 UI 现状
+summary: 当前桌面工作台采用“项目级共享 source files + active canvas 投影编辑”模型，并已同步到 Settings 偏好、可持久化侧栏布局、带快捷键和命令面板的分组 toolbar、structure-first 节点卡、可搜索 Source Browser、支持振动/量测的 structure dialog，以及桌面导入先入栏再后台解析这套 UI 现状
 status: current
 created: 2026-05-16
 last_reviewed: 2026-07-10
@@ -57,6 +57,9 @@ Project Rail 当前承载三层信息：
 - 项目行保留三点菜单，只提供 `Import files into project` 与 `Remove from sidebar`；删除项目只移除 renderer / recent 列表，不删除磁盘工作区文件夹。（`web/src/app/ProjectRail.tsx:300-345`）
 - 左侧栏折叠后，不是完全失去入口；`App.tsx` 会渲染一个固定在左侧的 hover preview trigger，hover / focus 时弹出半悬浮的 Project Rail 预览层。（`web/src/app/App.tsx:1382-1412`; `web/src/app/workbench.css:5341-5395`）
 - Settings 按钮打开轻量设置面板，当前承载 Appearance（system / dark / light）、Energy unit、Gaussian opener 和 Text opener；浏览器 fallback 中 opener controls 标为 `Desktop only`，不伪造外部 app 打开。（`web/src/app/SettingsPanel.tsx`; `web/src/app/App.tsx:1771-1807`）
+- 左右侧栏展开状态作为 versioned device layout preference 存入 localStorage，重新加载时恢复；损坏值回退为双栏展开。（`web/src/app/workbenchLayoutPreferences.ts`）
+- Canvas toolbar 按能量/视图、创作工具和历史/布局组织，tooltip 与 `aria-keyshortcuts` 显示快捷键；`⌘/Ctrl+K` command palette 复用同一动作 callback。（`web/src/app/WorkbenchToolbar.tsx`; `web/src/app/CommandPalette.tsx`）
+- 节点卡以 2D depiction 为主体，常驻信息收敛为名称、相对能量、电荷/多重度和异常状态灯；不显示来源文件名、单位或角色缩写，TS/普通节点以阴影色区分。系数为 1 时隐藏，非 1 时显示 `{n}x` 并从右键菜单编辑；拓扑 connector、barrier 和 resize handle 保留在边界并按上下文渐进显示。（`web/src/app/CanvasWorkspace.tsx`; `web/src/app/App.tsx`）
 - 文件列表当前是紧凑 Source Browser：仍按 gas / solution 对分组，但不再显示单独的 gas / sol 文本 badge；分组名直接回到结构名，文件行固定为紧凑高度，支持搜索、Attention / Missing pair / Errors / Parsing 筛选，以及 Project / Name / Kind / Status 排序。搜索/筛选/排序只作用于 `SourceFileGroup` 展示层，不重排项目级 `files` authority。（`web/src/app/fileDisplay.ts:234-316`; `web/src/app/ProjectRail.tsx:95-105, 574-637`）
 - Project Rail 现在把 Projects 与 Files 包在同一个 `.project-rail-scroll` 原生纵向滚动容器里；Project Rail 及 hover preview 内部全部声明 `-webkit-app-region: no-drag`，避免 Electron 窗口拖拽区域抢走触控板滚动、输入控件和文件拖拽事件。（`web/src/app/ProjectRail.tsx:207-376`; `web/src/app/workbench.css:14969-15275`）
 - Files 区可以直接接收外部文件 drop。Electron dialog/drop 会先生成 metadata-only source placeholder，让文件名、大小、类型和 missing-sol 推断立即进入 Project Rail；解析未完成时文件行显示由 `parse_deferred` / `parse_queued` / `parse_running` 驱动的 pending progressbar，解析结果再回填同一文件项。（`web/src/app/ProjectRail.tsx:634-686`; `web/src/app/importParseJobs.ts:5-63`; `web/src/app/importRegistration.ts`）

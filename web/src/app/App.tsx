@@ -68,6 +68,7 @@ import {
   defaultEnergyDisplayOptions,
   energyTableNodeSelectionTransition,
   energyTableRows,
+  nodeCoefficient,
   relativeEnergyZeroNode,
   relativeEnergyZeroSelectionTransition,
   type EnergyDisplayOptions,
@@ -153,6 +154,8 @@ import {
   type SourceOpenerProfile,
 } from "./desktopPreferences"
 import { WorkbenchToolbar } from "./WorkbenchToolbar"
+import { CommandPalette, type WorkbenchCommand } from "./CommandPalette"
+import { loadWorkbenchLayoutPreference, saveWorkbenchLayoutPreference } from "./workbenchLayoutPreferences"
 import {
   clampToolbarPlacement,
   defaultFloatingToolbarPlacement,
@@ -442,9 +445,10 @@ export function App() {
   const [tool, setTool] = useState<CanvasTool>("pan")
   const [viewMode, setViewMode] = useState<WorkbenchViewMode>("canvas")
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>("inspector")
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
+  const initialLayoutPreference = useMemo(() => loadWorkbenchLayoutPreference(), [])
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(initialLayoutPreference.leftSidebarOpen)
   const [projectRailWidth, setProjectRailWidth] = useState(() => initialProjectRailWidth())
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(initialLayoutPreference.rightSidebarOpen)
   const [canvasTabs, setCanvasTabs] = useState<CanvasTabState[]>(() => initialCanvasTabs(initialProjects[0].label))
   const [activeCanvasTabId, setActiveCanvasTabId] = useState("canvas-1")
   const [keyboardEdgeSourceId, setKeyboardEdgeSourceId] = useState<string | null>(null)
@@ -468,12 +472,17 @@ export function App() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [canvasContextMenu, setCanvasContextMenu] = useState<CanvasContextMenuRequest | null>(null)
   const [renameEditingNodeId, setRenameEditingNodeId] = useState<string | null>(null)
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null)
   const [toolbarPlacement, setToolbarPlacement] = useState<ToolbarPlacement>(() => initialToolbarPlacement())
   const [toolbarMetrics, setToolbarMetrics] = useState<ToolbarMetrics | null>(null)
   const [startupRestorePending, setStartupRestorePending] = useState(() => Boolean(window.rxnflowDesktop?.getStartupProjectContent))
+
+  useEffect(() => {
+    saveWorkbenchLayoutPreference({ schemaVersion: 1, leftSidebarOpen, rightSidebarOpen })
+  }, [leftSidebarOpen, rightSidebarOpen])
 
   const rememberProjectDirectory = useCallback((projectId: string, projectDirectory?: string | null) => {
     if (!projectId) return
@@ -2591,6 +2600,7 @@ export function App() {
   }, [])
 
   const contextMenuNodeId = canvasContextMenu?.target.kind === "node" ? canvasContextMenu.target.nodeId : null
+  const contextMenuNode = contextMenuNodeId ? nodeMap.get(contextMenuNodeId) ?? null : null
   const contextMenuEdgeId = canvasContextMenu?.target.kind === "edge" ? canvasContextMenu.target.edgeId : null
   const contextMenuAnnotationId = canvasContextMenu?.target.kind === "annotation" ? canvasContextMenu.target.annotationId : null
   const beginMoveAnnotation = useCallback(() => {
@@ -2706,6 +2716,42 @@ export function App() {
       onResizeStep={setClampedProjectRailWidth}
     />
   )
+
+  const workbenchCommands = useMemo<WorkbenchCommand[]>(() => [
+    { id: "tool-select", label: "Select Tool", group: "Tools", shortcut: "V", run: () => setTool("select") },
+    { id: "tool-pan", label: "Pan Tool", group: "Tools", shortcut: "H", run: () => setTool("pan") },
+    { id: "tool-text", label: "Text Tool", group: "Tools", shortcut: "X", run: () => setTool("text") },
+    { id: "insert-image", label: "Insert Image", group: "Tools", shortcut: "I", run: openImagePicker },
+    { id: "table", label: tableDrawerOpen ? "Close Table" : "Open Table", group: "View", shortcut: "T", run: () => setViewMode(tableDrawerOpen ? "canvas" : "table") },
+    { id: "fit-view", label: "Fit View", group: "View", shortcut: "F", run: fitCanvasViewport },
+    { id: "auto-layout", label: "Auto Layout", group: "View", shortcut: "A", run: applyAutoLayout, enabled: nodes.length > 0 },
+    { id: "toggle-projects", label: leftSidebarOpen ? "Hide Project Sidebar" : "Show Project Sidebar", group: "View", run: () => setLeftSidebarOpen((current) => !current) },
+    { id: "toggle-inspector", label: rightSidebarOpen ? "Hide Inspector" : "Show Inspector", group: "View", run: () => setRightSidebarOpen((current) => !current) },
+    { id: "import", label: "Import Calculation Files", group: "Project", shortcut: "⌘O", run: () => importInputRef.current?.click() },
+    { id: "settings", label: "Open Settings", group: "Project", run: () => setSettingsOpen(true) },
+    { id: "undo", label: "Undo Canvas Edit", group: "Edit", shortcut: "⌘Z", run: undoEdit, enabled: historyPast.length > 0 },
+    { id: "redo", label: "Redo Canvas Edit", group: "Edit", shortcut: "⇧⌘Z", run: redoEdit, enabled: historyFuture.length > 0 },
+  ], [applyAutoLayout, fitCanvasViewport, historyFuture.length, historyPast.length, leftSidebarOpen, nodes.length, openImagePicker, redoEdit, rightSidebarOpen, tableDrawerOpen, undoEdit])
+
+  useEffect(() => {
+    const handleCommandKey = (event: globalThis.KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault()
+        setCommandPaletteOpen((current) => !current)
+        return
+      }
+      if (commandPaletteOpen || isEditablePasteTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return
+      const commandByKey: Record<string, string> = { v: "tool-select", h: "tool-pan", x: "tool-text", i: "insert-image", t: "table", f: "fit-view", a: "auto-layout" }
+      const commandId = commandByKey[event.key.toLowerCase()]
+      if (!commandId) return
+      const command = workbenchCommands.find((candidate) => candidate.id === commandId)
+      if (!command || command.enabled === false) return
+      event.preventDefault()
+      command.run()
+    }
+    window.addEventListener("keydown", handleCommandKey)
+    return () => window.removeEventListener("keydown", handleCommandKey)
+  }, [commandPaletteOpen, workbenchCommands])
 
   const appShellClassName = `app-shell theme-${theme}${isMacDesktop ? " is-macos-desktop" : ""}${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}${desktopWindowState.isFullScreen ? " is-window-fullscreen" : ""}${desktopWindowState.isMaximized ? " is-window-maximized" : ""}${desktopWindowState.isFullScreen || desktopWindowState.isMaximized ? " is-window-edge-to-edge" : ""}${tableDrawerOpen || structurePreviewNode || structureEditorNode ? " has-overlay-view" : ""}`
 
@@ -2824,6 +2870,8 @@ export function App() {
         />
       ) : null}
 
+      {commandPaletteOpen ? <CommandPalette commands={workbenchCommands} onClose={() => setCommandPaletteOpen(false)} /> : null}
+
       {canvasContextMenu ? (
         <div
           ref={contextMenuRef}
@@ -2835,6 +2883,29 @@ export function App() {
           {contextMenuNodeId ? (
             <>
               <button type="button" role="menuitem" onClick={renameContextMenuNode}>Rename</button>
+              <label className="canvas-context-menu-field">
+                <span>Coefficient</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  name="node-coefficient"
+                  autoComplete="off"
+                  defaultValue={contextMenuNode ? nodeCoefficient(contextMenuNode) : 1}
+                  aria-label="Node coefficient"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    event.stopPropagation()
+                    if (event.key === "Enter") event.currentTarget.blur()
+                    if (event.key === "Escape") setCanvasContextMenu(null)
+                  }}
+                  onBlur={(event) => {
+                    if (!contextMenuNodeId) return
+                    const value = Number(event.currentTarget.value)
+                    if (Number.isFinite(value) && value !== 0) updateNodeCoefficient(contextMenuNodeId, Number(value.toFixed(6)))
+                    setCanvasContextMenu(null)
+                  }}
+                />
+              </label>
               <button type="button" role="menuitem" onClick={setZeroFromContextMenuNode}>Set zero</button>
               <button type="button" role="menuitem" onClick={showSourceFromContextMenuNode}>Source details</button>
               <span className="canvas-context-menu-divider" aria-hidden="true" />
@@ -2866,6 +2937,7 @@ export function App() {
               onUndo={undoEdit}
               onRedo={redoEdit}
               onAutoLayout={applyAutoLayout}
+              onFitView={fitCanvasViewport}
               onInsertImage={openImagePicker}
               placement={toolbarPlacement}
               onDragStart={handleToolbarDragStart}
@@ -2917,9 +2989,9 @@ export function App() {
                   onSelectNode={selectNode}
                   onSelectEdge={selectEdge}
                   onSelectBarrier={selectBarrier}
+                  onSetNodeCoefficient={updateNodeCoefficient}
                   onUpdateEdgeLabel={updateEdgeLabel}
                   onUpdateBarrierLabel={updateBarrierLabel}
-                  onSetNodeCoefficient={updateNodeCoefficient}
                   onSetRelativeEnergyZero={setRelativeEnergyZeroFromNode}
                   onOpenStructure={(nodeId) => setStructurePreviewNodeId(nodeId)}
                   onShowNodeSource={showNodeSourceDetails}
