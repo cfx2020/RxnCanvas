@@ -327,6 +327,38 @@ describe("App", () => {
     expect(container.querySelector(".macos-traffic-light-ghosts")).not.toBeInTheDocument()
   })
 
+  it("toggles the project rail and node inspector independently", () => {
+    const { container } = render(<App />)
+    const workspace = container.querySelector(".workspace") as HTMLElement
+
+    expect(workspace).not.toHaveClass("is-left-collapsed")
+    expect(workspace).not.toHaveClass("is-right-collapsed")
+    expect(screen.getByRole("complementary", { name: "Inspector" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse project sidebar" }))
+
+    expect(workspace).toHaveClass("is-left-collapsed")
+    expect(workspace).not.toHaveClass("is-right-collapsed")
+    expect(screen.getByRole("complementary", { name: "Inspector" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Collapse node sidebar" })).toHaveAttribute("aria-pressed", "true")
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand project sidebar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Collapse node sidebar" }))
+
+    expect(workspace).not.toHaveClass("is-left-collapsed")
+    expect(workspace).toHaveClass("is-right-collapsed")
+    expect(screen.getByRole("complementary", { name: "Project rail" })).toBeInTheDocument()
+    expect(screen.queryByRole("complementary", { name: "Inspector" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse project sidebar" }))
+    expect(workspace).toHaveClass("is-left-collapsed", "is-right-collapsed")
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand node sidebar" }))
+    expect(workspace).toHaveClass("is-left-collapsed")
+    expect(workspace).not.toHaveClass("is-right-collapsed")
+    expect(screen.getByRole("complementary", { name: "Inspector" })).toBeInTheDocument()
+  })
+
   it("keeps non-desktop bridge workflows out of the active workbench", () => {
     render(<App />)
 

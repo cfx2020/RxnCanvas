@@ -355,24 +355,85 @@ export function projectWorkspaceWithImportPlan(
 ): ProjectWorkspaceSnapshot {
   const fileMode = options.fileMode ?? "prepend"
   const activeCanvas = activeCanvasSnapshot(targetSnapshot)
-  return projectWorkspaceSnapshot({
-    ...projectWorkspaceWithActiveCanvas(targetSnapshot, {
-      ...activeCanvas,
-      nodes: [
-        ...activeCanvas.nodes,
-        ...autoNodes,
-      ],
-      selectedNodeIds: autoNodes[0]?.id ? [autoNodes[0].id] : [],
-      selectedEdgeIds: [],
-      selectedBarrierIds: [],
-      viewport: activeCanvas.viewport,
-    }),
-    files: sourceFilesWithImportPlan(targetSnapshot.files, importPlan, fileMode),
+  const nextFiles = sourceFilesWithImportPlan(targetSnapshot.files, importPlan, fileMode)
+  const workspaceWithActiveCanvas = projectWorkspaceWithActiveCanvas(targetSnapshot, {
+    ...activeCanvas,
+    nodes: [
+      ...activeCanvas.nodes,
+      ...autoNodes,
+    ],
+    selectedNodeIds: autoNodes[0]?.id ? [autoNodes[0].id] : [],
+    selectedEdgeIds: [],
+    selectedBarrierIds: [],
+    viewport: activeCanvas.viewport,
+  })
+  return reconcileProjectWorkspaceSourceNodes(projectWorkspaceSnapshot({
+    ...workspaceWithActiveCanvas,
+    files: nextFiles,
     selectedFileId: importedFiles[0]?.id ?? null,
     selectedFileIds: importedFiles[0]?.id ? [importedFiles[0].id] : [],
     lastSelectedFileId: importedFiles[0]?.id ?? null,
     inspectorMode: "inspector",
     viewMode: options.viewMode ?? "canvas",
+  }))
+}
+
+export function reconcileProjectWorkspaceSourceNodes(snapshot: ProjectWorkspaceSnapshot): ProjectWorkspaceSnapshot {
+  const reconciledCanvases = snapshot.canvases.map((canvas) => ({
+    ...canvas,
+    nodes: reconcileNodesWithPairedSourceFiles(canvas.nodes, snapshot.files),
+  }))
+  const activeCanvas = reconciledCanvases.find((canvas) => canvas.id === snapshot.activeCanvasId)
+    ?? reconciledCanvases[0]
+  if (!activeCanvas) return projectWorkspaceSnapshot(snapshot)
+  return projectWorkspaceSnapshot({
+    ...snapshot,
+    canvases: reconciledCanvases,
+    nodes: activeCanvas.nodes,
+    edges: activeCanvas.edges,
+    barriers: activeCanvas.barriers,
+    annotations: activeCanvas.annotations ?? [],
+    viewport: activeCanvas.viewport,
+    selectedNodeIds: activeCanvas.selectedNodeIds,
+    selectedEdgeIds: activeCanvas.selectedEdgeIds,
+    selectedBarrierIds: activeCanvas.selectedBarrierIds,
+  })
+}
+
+function reconcileNodesWithPairedSourceFiles(nodes: FlowNode[], files: SourceFile[]): FlowNode[] {
+  const parsedImports = files.flatMap((file, index) => file.parse ? [{ file, index, parsed: file.parse }] : [])
+  const pairedNodeByGroupKey = new Map<string, FlowNode>()
+  for (const [groupIndex, group] of parsedImportGroups(parsedImports).entries()) {
+    if (!shouldPairParsedGroup(group)) continue
+    const stagedGroupFiles = group.map(({ file, parsed }) => stagedSourceFile(file, parsed))
+    const gasFiles = stagedGroupFiles.filter((file) => !sourceFileLooksLikeSolutionLog(file))
+    const solutionFiles = stagedGroupFiles.filter(sourceFileLooksLikeParsedSolutionLog)
+    if (gasFiles.length !== 1 || solutionFiles.length !== 1) continue
+    const pairedNode = pairedGasSolutionNode(group, groupIndex, {
+      origin: { x: 0, y: 0 },
+      columns: 1,
+      idSuffix: "source-refresh",
+    })
+    const sourceFile = group[0]?.file
+    if (pairedNode && sourceFile) pairedNodeByGroupKey.set(sourceFileDisplayGroupKey(sourceFile), pairedNode)
+  }
+
+  const fileById = new Map(files.map((file) => [file.id, file]))
+  return nodes.map((node) => {
+    if (!node.sourceFileId) return node
+    const sourceFile = fileById.get(node.sourceFileId)
+    if (!sourceFile) return node
+    const pairedNode = pairedNodeByGroupKey.get(sourceFileDisplayGroupKey(sourceFile))
+    if (!pairedNode) return node
+    return {
+      ...node,
+      energyGas: pairedNode.energyGas,
+      energySolution: pairedNode.energySolution,
+      energyUnit: pairedNode.energyUnit,
+      energyTable: pairedNode.energyTable,
+      solvent: pairedNode.solvent,
+      sourceStatus: pairedNode.sourceStatus,
+    }
   })
 }
 

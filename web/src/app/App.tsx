@@ -77,6 +77,7 @@ import {
   browserImportSourceFilesFromFiles,
   canvasRawFileDropImportTransition,
   pendingImportProjectTransition,
+  reconcileProjectWorkspaceSourceNodes,
   type CandidateReviewState,
   type ImportSourceFile,
   type StageSourceFilesOptions,
@@ -995,15 +996,30 @@ export function App() {
   }, [clearEditHistory])
 
   const applyProjectWorkspaceSnapshot = useCallback((snapshot: ProjectWorkspaceSnapshot) => {
-    setCanvasTabs(canvasTabsFromProjectCanvases(snapshot.canvases))
-    setActiveCanvasTabId(snapshot.activeCanvasId)
-    applyProjectWorkspaceSnapshotState(appStateSetters, snapshot, clearEditHistory)
+    const reconciledSnapshot = reconcileProjectWorkspaceSourceNodes(snapshot)
+    setCanvasTabs(canvasTabsFromProjectCanvases(reconciledSnapshot.canvases))
+    setActiveCanvasTabId(reconciledSnapshot.activeCanvasId)
+    applyProjectWorkspaceSnapshotState(appStateSetters, reconciledSnapshot, clearEditHistory)
   }, [appStateSetters, clearEditHistory])
 
   const applyProjectTransition = useCallback((transition: ProjectTransitionApplication) => {
-    setCanvasTabs(canvasTabsFromProjectCanvases(transition.activeSnapshot.canvases))
-    setActiveCanvasTabId(transition.activeSnapshot.activeCanvasId)
-    applyProjectTransitionState(appStateSetters, transition, clearEditHistory)
+    const reconciledWorkspaces = Object.fromEntries(Object.entries(transition.workspaces).map(([projectId, snapshot]) => [
+      projectId,
+      reconcileProjectWorkspaceSourceNodes(snapshot),
+    ]))
+    const activeSnapshot = reconciledWorkspaces[transition.activeProjectId]
+      ?? reconcileProjectWorkspaceSourceNodes(transition.activeSnapshot)
+    const reconciledTransition = {
+      ...transition,
+      workspaces: {
+        ...reconciledWorkspaces,
+        [transition.activeProjectId]: activeSnapshot,
+      },
+      activeSnapshot,
+    }
+    setCanvasTabs(canvasTabsFromProjectCanvases(activeSnapshot.canvases))
+    setActiveCanvasTabId(activeSnapshot.activeCanvasId)
+    applyProjectTransitionState(appStateSetters, reconciledTransition, clearEditHistory)
   }, [appStateSetters, clearEditHistory])
 
   const switchCanvasTab = useCallback((tabId: string) => {

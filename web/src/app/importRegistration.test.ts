@@ -29,6 +29,7 @@ import {
   pendingImportProjectTransition,
   prepareProjectWorkspaceImport,
   projectWorkspaceImportApplyTransition,
+  reconcileProjectWorkspaceSourceNodes,
   projectWorkspaceWithImportPlan,
   projectWorkspaceWithRegisteredImportNodes,
   registeredOrFallbackNodesFromEntries,
@@ -489,6 +490,207 @@ describe("importRegistration", () => {
 
     next.nodes[0].position.x = 999
     expect(targetSnapshot.nodes[0].position.x).toBe(1)
+  })
+
+  it("refreshes existing canvas nodes when a matching solution log is imported later", () => {
+    const gas = {
+      ...sourceFile("late-pair-gas", parseResult([candidate({
+        candidateId: "gas",
+        label: "late-pair-ts",
+        energyGas: -101,
+        energySolution: -100.9,
+        energyTable: {
+          egasHartree: -101,
+          ggasHartree: -100.9,
+          ggas1mHartree: -100.896981,
+          gasBasisFunctions: 120,
+        },
+      })])),
+      name: "late-pair-ts.log",
+      status: "parsed" as const,
+    }
+    const sol = {
+      ...sourceFile("late-pair-sol", parseResult([candidate({
+        candidateId: "sol",
+        label: "late-pair-ts-sol",
+        energyGas: -101.2,
+        energySolution: null,
+        energyTable: {
+          egasHartree: -101.2,
+          gasBasisFunctions: 140,
+        },
+      })])),
+      name: "late-pair-ts-sol.log",
+    }
+    const existingNode = {
+      id: "existing-gas-node",
+      label: "User label",
+      formula: "C2H4",
+      kind: "transition" as const,
+      method: "wB97X-D",
+      solvent: "unassigned",
+      energyGas: -101,
+      energySolution: -100.9,
+      energyUnit: "hartree" as const,
+      energyTable: gas.parse?.candidates[0]?.energyTable,
+      sourceStatus: "parsed" as const,
+      sourceFileId: gas.id,
+      position: { x: 41, y: 73 },
+      size: { width: 240, height: 210 },
+      manualStructureMolfile: "manual molfile",
+    }
+    const inactiveCanvasNode = {
+      ...existingNode,
+      id: "inactive-gas-node",
+      position: { x: 9, y: 11 },
+    }
+    const edge = { id: "edge-existing", sourceId: "reference", targetId: existingNode.id, label: "path" }
+    const targetSnapshot = workspaceSnapshot({
+      files: [gas],
+      nodes: [existingNode],
+      edges: [edge],
+      canvases: [
+        {
+          id: "canvas-1",
+          label: "Active",
+          nodes: [existingNode],
+          edges: [edge],
+          barriers: [],
+          viewport: { x: 0, y: 0, zoom: 1 },
+          selectedNodeIds: [existingNode.id],
+          selectedEdgeIds: [],
+          selectedBarrierIds: [],
+        },
+        {
+          id: "canvas-2",
+          label: "Inactive",
+          nodes: [inactiveCanvasNode],
+          edges: [],
+          barriers: [],
+          viewport: { x: 5, y: 6, zoom: 0.8 },
+          selectedNodeIds: [],
+          selectedEdgeIds: [],
+          selectedBarrierIds: [],
+        },
+      ],
+      activeCanvasId: "canvas-1",
+    })
+    const plan = buildImportPlan([sol], layout)
+
+    const next = projectWorkspaceWithImportPlan(targetSnapshot, [sol], plan, [], { fileMode: "update" })
+
+    expect(next.nodes).toHaveLength(1)
+    expect(next.nodes[0]).toMatchObject({
+      id: existingNode.id,
+      label: "User label",
+      position: { x: 41, y: 73 },
+      size: { width: 240, height: 210 },
+      manualStructureMolfile: "manual molfile",
+      energyGas: -101,
+      energySolution: -101.2,
+      solvent: "SMD",
+      energyTable: {
+        egasHartree: -101,
+        ggasHartree: -100.9,
+        ggas1mHartree: -100.896981,
+        gasBasisFunctions: 120,
+        esolHartree: -101.2,
+        solBasisFunctions: 140,
+        gsolHartree: -101.096981,
+      },
+    })
+    expect(next.edges).toEqual([edge])
+    expect(next.canvases[1].nodes[0]).toMatchObject({
+      id: inactiveCanvasNode.id,
+      position: { x: 9, y: 11 },
+      energySolution: -101.2,
+      energyTable: { gsolHartree: -101.096981 },
+    })
+  })
+
+  it("does not refresh existing nodes from an unparsed solution log", () => {
+    const gas = {
+      ...sourceFile("failed-pair-gas", parseResult([candidate({ candidateId: "gas", energyGas: -80, energySolution: -79.9 })])),
+      name: "failed-pair.log",
+      status: "parsed" as const,
+    }
+    const failedSol = {
+      ...sourceFile("failed-pair-sol", failedParseResult()),
+      name: "failed-pair-sol.log",
+    }
+    const existingNode = {
+      id: "failed-pair-node",
+      label: "Failed pair",
+      formula: "C2H4",
+      kind: "intermediate" as const,
+      method: "DFT",
+      solvent: "unassigned",
+      energyGas: -80,
+      energySolution: -79.9,
+      energyUnit: "hartree" as const,
+      sourceFileId: gas.id,
+      position: { x: 1, y: 2 },
+    }
+    const targetSnapshot = workspaceSnapshot({ files: [gas], nodes: [existingNode] })
+    const plan = buildImportPlan([failedSol], layout)
+
+    const next = projectWorkspaceWithImportPlan(targetSnapshot, [failedSol], plan, [], { fileMode: "update" })
+
+    expect(next.nodes[0]).toEqual(existingNode)
+  })
+
+  it("repairs stale paired node energy when an existing project snapshot is reopened", () => {
+    const gas = {
+      ...sourceFile("saved-pair-gas", parseResult([candidate({
+        candidateId: "gas",
+        energyGas: -60,
+        energySolution: -59.8,
+        energyTable: {
+          egasHartree: -60,
+          ggas1mHartree: -59.8,
+        },
+      })])),
+      name: "saved-pair.log",
+      status: "parsed" as const,
+    }
+    const sol = {
+      ...sourceFile("saved-pair-sol", parseResult([candidate({
+        candidateId: "sol",
+        energyGas: -60.25,
+        energySolution: null,
+        energyTable: { egasHartree: -60.25 },
+      })])),
+      name: "saved-pair-sol.log",
+      status: "parsed" as const,
+    }
+    const staleNode = {
+      id: "saved-stale-node",
+      label: "Saved node",
+      formula: "C2H4",
+      kind: "intermediate" as const,
+      method: "DFT",
+      solvent: "unassigned",
+      energyGas: -60,
+      energySolution: -59.8,
+      energyUnit: "hartree" as const,
+      energyTable: { egasHartree: -60, ggas1mHartree: -59.8 },
+      sourceFileId: gas.id,
+      position: { x: 12, y: 34 },
+    }
+    const savedSnapshot = workspaceSnapshot({ files: [gas, sol], nodes: [staleNode] })
+
+    const reopened = reconcileProjectWorkspaceSourceNodes(savedSnapshot)
+
+    expect(reopened.nodes[0]).toMatchObject({
+      id: staleNode.id,
+      position: staleNode.position,
+      energySolution: -60.25,
+      energyTable: {
+        egasHartree: -60,
+        esolHartree: -60.25,
+        gsolHartree: -60.05,
+      },
+    })
   })
 
   it("replaces a failed same-name staged placeholder when a source is reimported", () => {

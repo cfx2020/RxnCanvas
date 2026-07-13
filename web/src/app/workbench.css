@@ -16637,6 +16637,83 @@ select,
   }
 }
 
+/* 2026-07-13 narrow project rail auto-hide refinement.
+   On compact desktop windows the canvas owns the full width. The project rail
+   leaves a quiet edge target and reveals itself on pointer hover or keyboard
+   focus, without changing the rail's internal desktop layout. */
+@media (max-width: 1180px) {
+  .workspace > .project-rail,
+  .workspace.is-left-collapsed > .project-rail,
+  .workspace:not(.is-left-collapsed) > .project-rail {
+    --rxnflow-narrow-rail-edge-target: 12px;
+    position: fixed !important;
+    top: var(--rxnflow-titlebar-height, 36px) !important;
+    right: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    z-index: 1400 !important;
+    width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    min-width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    max-width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    max-height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: translateX(calc(-100% + var(--rxnflow-narrow-rail-edge-target))) !important;
+    transition:
+      transform 190ms cubic-bezier(.22, 1, .36, 1),
+      box-shadow 190ms ease !important;
+    will-change: transform !important;
+  }
+
+  .workspace > .project-rail::after,
+  .workspace.is-left-collapsed > .project-rail::after,
+  .workspace:not(.is-left-collapsed) > .project-rail::after {
+    content: "" !important;
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: var(--rxnflow-narrow-rail-edge-target) !important;
+    border-left: 1px solid rgba(89, 123, 133, 0.12) !important;
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(204, 232, 230, 0.4)),
+      rgba(244, 251, 251, 0.68) !important;
+    box-shadow: 5px 0 16px rgba(32, 67, 73, 0.08) !important;
+    pointer-events: none !important;
+  }
+
+  .workspace > .project-rail:hover,
+  .workspace > .project-rail:focus-within {
+    transform: translateX(0) !important;
+    box-shadow: 24px 0 68px rgba(22, 48, 58, 0.2) !important;
+  }
+
+  .desktop-titlebar-shell .left-sidebar-fixed-toggle {
+    display: none !important;
+  }
+
+  .app-shell.is-macos-desktop .desktop-titlebar-shell .desktop-titlebar-tabs,
+  .app-shell.is-macos-desktop.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
+    left: 104px !important;
+  }
+
+  .app-shell.theme-dark .workspace > .project-rail::after {
+    border-left-color: rgba(151, 190, 195, 0.12) !important;
+    background:
+      linear-gradient(90deg, rgba(8, 20, 25, 0), rgba(55, 91, 92, 0.42)),
+      rgba(15, 29, 36, 0.74) !important;
+    box-shadow: 5px 0 18px rgba(0, 0, 0, 0.2) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace > .project-rail {
+    transition: none !important;
+  }
+}
+
 /* Final node status-light placement after legacy node-card layers. */
 .app-shell .reaction-node .node-status-light-corner.status-light-missing,
 .app-shell.theme-light .reaction-node .node-status-light-corner.status-light-missing,
@@ -17126,4 +17203,383 @@ select,
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 8px 20px rgba(0, 0, 0, 0.24),
     0 0 0 3px rgba(72, 199, 168, 0.12) !important;
+}
+
+/* 2026-07-12 invisible connector hot zones.
+   Connection affordances stay visually absent until the pointer reaches the
+   edge hit area, keyboard focus lands on a connector, or a dragged edge snaps
+   to a compatible target. The hit area remains generous while the visible
+   rail is only a narrow mark centered on the existing curve anchor. */
+.app-shell .reaction-node .node-connector,
+.app-shell.theme-light .reaction-node .node-connector,
+.app-shell.theme-dark .reaction-node .node-connector {
+  z-index: 9 !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  cursor: crosshair !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.app-shell .reaction-node .node-connector-in,
+.app-shell .reaction-node .node-connector-out {
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+.app-shell .reaction-node .node-connector-in,
+.app-shell .reaction-node .node-step-connector-addition {
+  left: -14px !important;
+}
+
+.app-shell .reaction-node .node-connector-out,
+.app-shell .reaction-node .node-step-connector-release {
+  right: -14px !important;
+}
+
+.app-shell .reaction-node .node-step-connector-addition,
+.app-shell .reaction-node .node-step-connector-release {
+  top: calc(50% - 38px) !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  transform: translateY(-50%) !important;
+}
+
+.app-shell .reaction-node .node-connector::before,
+.app-shell.theme-light .reaction-node .node-connector::before,
+.app-shell.theme-dark .reaction-node .node-connector::before {
+  content: "";
+  position: absolute;
+  inset: auto !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: 50% !important;
+  width: 4px;
+  height: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 999px;
+  background: rgba(42, 135, 119, 0.78);
+  box-shadow:
+    0 0 0 1px rgba(36, 103, 92, 0.15),
+    0 0 12px rgba(31, 141, 119, 0.2);
+  opacity: 0;
+  transform: translate(-50%, -50%) scaleY(0.62);
+  transform-origin: center;
+  pointer-events: none;
+  transition:
+    opacity 90ms ease-out,
+    transform 170ms cubic-bezier(.22, 1, .36, 1),
+    background 140ms ease,
+    box-shadow 160ms ease;
+}
+
+.app-shell .reaction-node .node-step-connector::before {
+  height: 18px;
+}
+
+.app-shell .reaction-node:hover .node-connector::before,
+.app-shell .reaction-node:focus-within .node-connector::before {
+  opacity: 0.82;
+  transform: translate(-50%, -50%) scaleY(0.92);
+}
+
+.app-shell .reaction-node:hover .node-step-connector-release::before,
+.app-shell .reaction-node:focus-within .node-step-connector-release::before {
+  background: rgba(190, 91, 75, 0.72);
+}
+
+.app-shell .reaction-node .node-connector:hover::before,
+.app-shell .reaction-node .node-connector:focus-visible::before,
+.app-shell .reaction-node .node-connector-out.is-keyboard-active::before,
+.app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
+.app-shell .reaction-node.is-connection-snap-target-addition .node-step-connector-addition::before {
+  opacity: 1;
+  transform: translate(-50%, -50%) scaleY(1);
+}
+
+.app-shell .reaction-node .node-connector:hover::before,
+.app-shell .reaction-node .node-connector:focus-visible::before,
+.app-shell .reaction-node .node-connector-out.is-keyboard-active::before {
+  background: rgba(35, 151, 126, 0.78);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.72),
+    0 0 0 6px rgba(39, 154, 128, 0.15),
+    0 0 18px rgba(31, 125, 105, 0.32);
+}
+
+.app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
+.app-shell .reaction-node.is-connection-snap-target-addition .node-step-connector-addition::before {
+  height: 32px;
+  background: rgba(28, 165, 134, 0.92);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.82),
+    0 0 0 8px rgba(39, 154, 128, 0.18),
+    0 0 22px rgba(28, 132, 109, 0.38);
+}
+
+.app-shell .reaction-node.is-connection-snap-target-addition .node-step-connector-addition::before {
+  height: 22px;
+}
+
+.app-shell .reaction-node .node-step-connector-release:hover::before,
+.app-shell .reaction-node .node-step-connector-release:focus-visible::before {
+  background: rgba(190, 91, 75, 0.82);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.72),
+    0 0 0 6px rgba(190, 91, 75, 0.14),
+    0 0 18px rgba(155, 67, 55, 0.3);
+}
+
+.app-shell.theme-dark .reaction-node .node-connector::before {
+  border-color: rgba(218, 239, 235, 0.36);
+  background: rgba(121, 202, 184, 0.82);
+  box-shadow:
+    0 0 0 1px rgba(3, 14, 15, 0.3),
+    0 0 14px rgba(74, 216, 181, 0.22);
+}
+
+.app-shell.theme-dark .reaction-node .node-connector:hover::before,
+.app-shell.theme-dark .reaction-node .node-connector:focus-visible::before,
+.app-shell.theme-dark .reaction-node .node-connector-out.is-keyboard-active::before,
+.app-shell.theme-dark .reaction-node.is-connection-snap-target .node-connector-in::before,
+.app-shell.theme-dark .reaction-node.is-connection-snap-target-addition .node-step-connector-addition::before {
+  background: rgba(91, 221, 188, 0.88);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .reaction-node .node-connector::before {
+    transition: none !important;
+  }
+}
+
+/* 2026-07-13 responsive sidebar contract.
+   Narrow layouts use explicit, independent left/right states. The project
+   rail opens as a real drawer when its titlebar button is pressed; the node
+   inspector becomes an overlay below 960px, so closing it never leaves an
+   empty grid column. */
+@media (max-width: 1180px) {
+  .workspace:not(.is-left-collapsed):not(.is-right-collapsed),
+  .workspace.is-left-collapsed:not(.is-right-collapsed) {
+    grid-template-columns:
+      0
+      minmax(0, 1fr)
+      var(--rxnflow-responsive-inspector-width, var(--rxnflow-inspector-width, 288px)) !important;
+  }
+
+  .workspace.is-right-collapsed:not(.is-left-collapsed),
+  .workspace.is-left-collapsed.is-right-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail {
+    position: fixed !important;
+    top: var(--rxnflow-titlebar-height, 36px) !important;
+    right: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    z-index: 1400 !important;
+    width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    min-width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    max-width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    max-height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: translateX(0) !important;
+  }
+
+  .workspace.is-left-collapsed > .project-rail {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transform: translateX(-100%) !important;
+  }
+
+  .app-shell.is-macos-desktop {
+    --rxnflow-titlebar-left-button-left: 104px !important;
+    --rxnflow-left-collapsed-workbench-reserve: 150px !important;
+  }
+
+  .app-shell.is-macos-desktop .desktop-titlebar-shell .left-sidebar-fixed-toggle {
+    left: var(--rxnflow-titlebar-left-button-left, 104px) !important;
+  }
+
+  .app-shell.is-macos-desktop .desktop-titlebar-shell .desktop-titlebar-tabs {
+    left: var(--rxnflow-left-collapsed-workbench-reserve, 150px) !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .workspace:not(.is-left-collapsed):not(.is-right-collapsed),
+  .workspace.is-left-collapsed:not(.is-right-collapsed),
+  .workspace.is-right-collapsed:not(.is-left-collapsed),
+  .workspace.is-left-collapsed.is-right-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+  }
+
+  .workspace:not(.is-right-collapsed) > .inspector-panel {
+    position: fixed !important;
+    top: var(--rxnflow-titlebar-height, 36px) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    z-index: 1450 !important;
+    width: min(310px, calc(100vw - 20px)) !important;
+    height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    max-height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+  }
+}
+
+/* Final narrow-rail behavior: compact windows auto-hide the project rail and
+   reveal it from the physical left edge. Keep this after the responsive
+   sidebar contract so open/collapsed persistence cannot pin the drawer open. */
+@media (max-width: 1180px) {
+  .workspace:not(.is-left-collapsed) > .project-rail,
+  .workspace.is-left-collapsed > .project-rail {
+    --rxnflow-narrow-rail-edge-target: 12px;
+    top: 0 !important;
+    z-index: 2900 !important;
+    width: var(--rxnflow-project-rail-width, 212px) !important;
+    min-width: var(--rxnflow-project-rail-width, 212px) !important;
+    max-width: var(--rxnflow-project-rail-width, 212px) !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    padding: 50px 14px 18px !important;
+    align-items: normal !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: translateX(calc(-100% + var(--rxnflow-narrow-rail-edge-target))) !important;
+  }
+
+  .workspace > .project-rail .brand-block,
+  .workspace > .project-rail .rail-heading,
+  .workspace > .project-rail .rail-heading-actions,
+  .workspace > .project-rail .rail-section,
+  .workspace > .project-rail .rail-list,
+  .workspace > .project-rail .project-rail-project-group,
+  .workspace > .project-rail .project-canvas-list {
+    width: 100% !important;
+    justify-content: initial !important;
+    justify-items: stretch !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-scroll,
+  .workspace.is-left-collapsed > .project-rail .project-rail-scroll {
+    width: calc(var(--rxnflow-project-rail-width, 212px) - 20px) !important;
+  }
+
+  .workspace > .project-rail .rail-heading {
+    justify-content: space-between !important;
+  }
+
+  .workspace > .project-rail .rail-heading-actions {
+    flex-direction: row !important;
+  }
+
+  .workspace > .project-rail .brand-block div:not(.brand-mark),
+  .workspace > .project-rail .rail-heading > span,
+  .workspace > .project-rail .project-rail-main span,
+  .workspace > .project-rail .project-rail-main em,
+  .workspace > .project-rail .project-file-main span,
+  .workspace > .project-rail .project-file-main em,
+  .workspace > .project-rail .project-file-phase-badges,
+  .workspace > .project-rail .project-file-remove,
+  .workspace > .project-rail .project-rail-settings span {
+    display: initial !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-item,
+  .workspace.is-left-collapsed > .project-rail .project-rail-item {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    grid-template-columns: minmax(0, 1fr) 28px !important;
+    place-items: stretch !important;
+    padding: 0 6px !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-main,
+  .workspace.is-left-collapsed > .project-rail .project-rail-main {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    grid-template-columns: 18px minmax(0, 1fr) auto !important;
+    place-items: center stretch !important;
+    gap: 8px !important;
+    padding: 0 4px !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-rail-action,
+  .workspace.is-left-collapsed > .project-rail .project-rail-action {
+    position: static !important;
+    right: auto !important;
+    bottom: auto !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-card,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main,
+  .workspace.is-left-collapsed > .project-rail .project-file-card,
+  .workspace.is-left-collapsed > .project-rail .project-file-main {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    place-items: center stretch !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-card,
+  .workspace.is-left-collapsed > .project-rail .project-file-card {
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding: 0 8px !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main,
+  .workspace.is-left-collapsed > .project-rail .project-file-main {
+    grid-template-columns: 25px minmax(0, 1fr) auto !important;
+    padding: 0 5px !important;
+  }
+
+  .workspace:not(.is-left-collapsed) > .project-rail:hover,
+  .workspace:not(.is-left-collapsed) > .project-rail:focus-within,
+  .workspace.is-left-collapsed > .project-rail:hover,
+  .workspace.is-left-collapsed > .project-rail:focus-within {
+    transform: translateX(0) !important;
+    box-shadow: 24px 0 68px rgba(22, 48, 58, 0.2) !important;
+  }
+
+  .desktop-titlebar-shell .left-sidebar-fixed-toggle {
+    display: grid !important;
+    left: calc(var(--rxnflow-project-rail-width, 212px) / 2 - 17px) !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .app-shell:has(.project-rail:hover) .desktop-titlebar-shell .left-sidebar-fixed-toggle,
+  .app-shell:has(.project-rail:focus-within) .desktop-titlebar-shell .left-sidebar-fixed-toggle {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  .app-shell:has(.project-rail:hover) .desktop-titlebar-shell .desktop-titlebar-tabs,
+  .app-shell:has(.project-rail:focus-within) .desktop-titlebar-shell .desktop-titlebar-tabs {
+    left: var(--rxnflow-project-rail-width, 212px) !important;
+  }
 }
