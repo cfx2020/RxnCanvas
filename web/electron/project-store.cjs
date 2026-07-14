@@ -235,15 +235,14 @@ async function persistSourceFile(projectDirectory, file, index, options) {
   if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
     await fs.copyFile(sourcePath, targetPath)
     invalidateFileHash(targetPath)
-  } else if (!sourcePath && hasNonEmptyPreview(file)) {
-    await fs.writeFile(targetPath, file.preview, "utf8")
-    invalidateFileHash(targetPath)
   } else if (!sourcePath) {
     const { sourcePath: _sourcePath, storedPath: _computedStoredPath, checksum: _checksum, ...rest } = file
     return {
       ...rest,
-      ...(typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)
-        ? { storedPath: toProjectPath(file.storedPath) }
+      ...(sourceFileRequiresStoredContent(file)
+        ? typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)
+          ? { storedPath: toProjectPath(file.storedPath) }
+          : { storedPath }
         : {}),
     }
   }
@@ -451,8 +450,8 @@ function invalidateFileHash(filePath) {
   }
 }
 
-function hasNonEmptyPreview(file) {
-  return typeof file?.preview === "string" && file.preview.length > 0
+function sourceFileRequiresStoredContent(file) {
+  return file?.status === "ready" || file?.status === "parsed" || file?.parse?.parsed === true
 }
 
 function sourceStoredPathForFile(file, index, usedStoredPaths) {

@@ -575,6 +575,38 @@ async function verifyProjectDirectoryStore() {
       throw new Error("Project save wrote an empty source file for an empty preview payload")
     }
 
+    const sampledPreviewSavePath = path.join(tempDir, "Sampled Preview Study")
+    const sampledPreviewProject = {
+      ...JSON.parse(projectContent),
+      project: { id: "sampled-preview-study", label: "Sampled Preview Study", meta: "open" },
+      files: [{
+        id: "sampled-preview-source",
+        name: "sampled-preview.log",
+        kind: "Gaussian",
+        size: 900100,
+        status: "parsed",
+        preview: "head\n[... RxnFlow preview skipped 900000 bytes ...]\ntail",
+        parse: { parsed: true },
+      }],
+    }
+    const savedSampledPreview = await saveProjectContent(sampledPreviewSavePath, JSON.stringify(sampledPreviewProject))
+    const restoredSampledPreview = JSON.parse(savedSampledPreview.content)
+    const sampledStoredPath = restoredSampledPreview.files?.[0]?.storedPath
+    if (!sampledStoredPath || restoredSampledPreview.files[0].checksum) {
+      throw new Error(`Project save did not preserve missing-source metadata: ${savedSampledPreview.content}`)
+    }
+    if (fs.existsSync(path.join(sampledPreviewSavePath, sampledStoredPath))) {
+      throw new Error("Project save materialized sampled preview text as a source file")
+    }
+    const sampledValidation = await runEngineRequest({
+      command: "project.validate",
+      content: savedSampledPreview.content,
+      projectPath: sampledPreviewSavePath,
+    }, { timeoutMs: 5000 })
+    if (!sampledValidation.ok || !sampledValidation.data?.issues?.some((issue) => issue.code === "source_missing")) {
+      throw new Error(`Sampled preview missing-source validation failed: ${JSON.stringify(sampledValidation)}`)
+    }
+
     const rawFilePathB = path.join(tempDir, "4b.log")
     const rawFilePathC = path.join(tempDir, "4b-sol.log")
     fs.writeFileSync(rawFilePathB, "SCF Done: E(RwB97XD) = -101.0", "utf8")
@@ -755,6 +787,8 @@ async function verifyEngineProjectCommands() {
     }, { timeoutMs: 5000 })
     assertProjectReferenceValidation(invalidProject, "RxnFlow project reference validation smoke failed")
 
+    fs.mkdirSync(path.join(projectPath, "sources"), { recursive: true })
+    fs.writeFileSync(path.join(projectPath, "sources", "01-file-1-engine.log"), "complete engine source", "utf8")
     const saved = await runEngineRequest({
       command: "project.save",
       projectPath,

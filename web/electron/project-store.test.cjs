@@ -188,6 +188,86 @@ test("different source names that sanitize alike keep separate stored paths", as
   assert.equal(fs.readFileSync(path.join(projectDirectory, second.storedPath), "utf8"), "second")
 })
 
+test("project save never materializes preview text as source content", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-preview-source-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+
+  const projectDirectory = path.join(tempDirectory, "preview-study.rxnflow")
+  const preview = [
+    "head of calculation",
+    "[... RxnFlow preview skipped 900000 bytes ...]",
+    "tail of calculation",
+  ].join("\n")
+  const saved = await saveProjectContent(projectDirectory, projectContent({
+    id: "large-preview",
+    name: "large.log",
+    kind: "Gaussian",
+    size: 900_100,
+    status: "parsed",
+    preview,
+    parse: { parsed: true },
+  }))
+  const savedFile = JSON.parse(saved.content).files[0]
+
+  assert.equal(savedFile.storedPath, "sources/large.log")
+  assert.equal(savedFile.checksum, undefined)
+  assert.equal(savedFile.size, 900_100)
+  assert.equal(savedFile.preview, preview)
+  assert.equal(fs.existsSync(path.join(projectDirectory, savedFile.storedPath)), false)
+})
+
+test("pending preview-only imports stay pending without a fake stored path", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-pending-preview-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+
+  const projectDirectory = path.join(tempDirectory, "pending-preview-study.rxnflow")
+  const saved = await saveProjectContent(projectDirectory, projectContent({
+    id: "pending-preview",
+    name: "pending.log",
+    kind: "Gaussian",
+    size: 800_000,
+    status: "staged",
+    preview: "sampled preview",
+    storedPath: "sources/pending.log",
+    parse: {
+      parsed: false,
+      warnings: [{ code: "parse_deferred", message: "waiting" }],
+    },
+  }))
+  const savedFile = JSON.parse(saved.content).files[0]
+
+  assert.equal(savedFile.storedPath, undefined)
+  assert.equal(savedFile.checksum, undefined)
+  assert.equal(fs.existsSync(path.join(projectDirectory, "sources", "pending.log")), false)
+})
+
+test("project save preserves an existing full source instead of replacing it with preview", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-existing-source-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+
+  const projectDirectory = path.join(tempDirectory, "existing-source-study.rxnflow")
+  const storedPath = "sources/full.log"
+  const storedSourcePath = path.join(projectDirectory, storedPath)
+  fs.mkdirSync(path.dirname(storedSourcePath), { recursive: true })
+  fs.writeFileSync(storedSourcePath, "complete source bytes", "utf8")
+  const saved = await saveProjectContent(projectDirectory, projectContent({
+    id: "full-source",
+    name: "full.log",
+    kind: "Gaussian",
+    size: 999_999,
+    status: "parsed",
+    preview: "truncated preview",
+    storedPath,
+    parse: { parsed: true },
+  }))
+  const savedFile = JSON.parse(saved.content).files[0]
+
+  assert.equal(fs.readFileSync(storedSourcePath, "utf8"), "complete source bytes")
+  assert.equal(savedFile.size, Buffer.byteLength("complete source bytes"))
+  assert.equal(savedFile.checksum, sha256("complete source bytes"))
+  assert.equal(savedFile.storedPath, storedPath)
+})
+
 test("project source hashes use a shared bounded fingerprint cache with safe invalidation", async (t) => {
   const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-hash-cache-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))

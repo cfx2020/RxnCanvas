@@ -1933,17 +1933,93 @@ class EngineSmokeTest(unittest.TestCase):
             self.assertTrue((Path(project_path) / ".rxnflow" / "manifest.json").exists())
             self.assertTrue((Path(project_path) / "exports" / "manifest.json").exists())
             self.assertNotIn("sourcePath", saved["data"]["content"])
-            self.assertTrue(json.loads(saved["data"]["content"])["files"][0]["checksum"].startswith("sha256:"))
-            self.assertEqual(json.loads(saved["data"]["content"])["importLedger"]["entries"][0]["registeredNodeIds"], ["node-1"])
+            saved_package = json.loads(saved["data"]["content"])
+            self.assertNotIn("checksum", saved_package["files"][0])
+            self.assertFalse((Path(project_path) / "sources" / "01-file-1-desktop.log").exists())
+            self.assertIn("source_missing", {issue["code"] for issue in saved["data"]["validation"]["issues"]})
+            self.assertEqual(saved_package["importLedger"]["entries"][0]["registeredNodeIds"], ["node-1"])
 
             opened = handle_request({"command": "project.open", "projectPath": project_path})
             self.assertTrue(opened["ok"])
             self.assertTrue(opened["data"]["validation"]["valid"])
             self.assertEqual(opened["data"]["validation"]["summary"]["nodeCount"], 1)
+            self.assertIn("source_missing", {issue["code"] for issue in opened["data"]["validation"]["issues"]})
 
         invalid = handle_request({"command": "project.save", "projectPath": "", "content": content})
         self.assertFalse(invalid["ok"])
         self.assertEqual(invalid["error"]["code"], "invalid_input")
+
+    def test_project_save_preserves_full_source_and_never_materializes_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir) / "Preview Study"
+            stored_path = "sources/full.log"
+            source_path = project_path / stored_path
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_text("complete source bytes", encoding="utf8")
+            project = sample_project_content({
+                "files": [{
+                    "id": "full-source",
+                    "name": "full.log",
+                    "kind": "Gaussian",
+                    "size": 900_100,
+                    "status": "parsed",
+                    "preview": "head\n[... RxnFlow preview skipped 900000 bytes ...]\ntail",
+                    "storedPath": stored_path,
+                    "parse": {"parsed": True},
+                }],
+            })
+
+            saved = handle_request({
+                "command": "project.save",
+                "projectPath": str(project_path),
+                "content": json.dumps(project),
+            })
+            saved_file = json.loads(saved["data"]["content"])["files"][0]
+
+            self.assertTrue(saved["ok"])
+            self.assertEqual("complete source bytes", source_path.read_text(encoding="utf8"))
+            self.assertEqual(len("complete source bytes"), saved_file["size"])
+            self.assertTrue(saved_file["checksum"].startswith("sha256:"))
+
+            source_path.unlink()
+            missing = handle_request({
+                "command": "project.save",
+                "projectPath": str(project_path),
+                "content": json.dumps(project),
+            })
+            missing_file = json.loads(missing["data"]["content"])["files"][0]
+            self.assertTrue(missing["ok"])
+            self.assertFalse(source_path.exists())
+            self.assertNotIn("checksum", missing_file)
+            self.assertIn("source_missing", {issue["code"] for issue in missing["data"]["validation"]["issues"]})
+
+    def test_project_save_drops_missing_stored_path_from_pending_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir) / "Pending Preview Study"
+            project = sample_project_content({
+                "files": [{
+                    "id": "pending-source",
+                    "name": "pending.log",
+                    "kind": "Gaussian",
+                    "size": 800_000,
+                    "status": "staged",
+                    "preview": "sampled preview",
+                    "storedPath": "sources/pending.log",
+                    "parse": {"parsed": False, "warnings": [{"code": "parse_deferred", "message": "waiting"}]},
+                }],
+            })
+
+            saved = handle_request({
+                "command": "project.save",
+                "projectPath": str(project_path),
+                "content": json.dumps(project),
+            })
+            saved_file = json.loads(saved["data"]["content"])["files"][0]
+
+            self.assertTrue(saved["ok"])
+            self.assertNotIn("storedPath", saved_file)
+            self.assertNotIn("checksum", saved_file)
+            self.assertFalse((project_path / "sources" / "pending.log").exists())
 
 
 def sample_project_content(overrides: dict[str, object] | None = None) -> dict[str, object]:

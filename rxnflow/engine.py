@@ -1844,10 +1844,6 @@ def materialize_project_sources(project_directory: Path, package: dict[str, Any]
             continue
 
         source_path = project_directory / project_relative_path(stored_path)
-        if not source_path.exists() and isinstance(file.get("preview"), str):
-            source_path.parent.mkdir(parents=True, exist_ok=True)
-            source_path.write_text(file["preview"], encoding="utf8")
-
         if source_path.is_file():
             stats = source_path.stat()
             next_files.append({
@@ -1855,13 +1851,23 @@ def materialize_project_sources(project_directory: Path, package: dict[str, Any]
                 "size": stats.st_size,
                 "checksum": f"sha256:{sha256_file(source_path)}",
             })
+        elif source_file_requires_stored_content(file):
+            next_files.append({key: value for key, value in file.items() if key != "checksum"})
         else:
-            next_files.append(file)
+            next_files.append({key: value for key, value in file.items() if key not in {"storedPath", "checksum"}})
 
     return {
         **package,
         "files": next_files,
     }
+
+
+def source_file_requires_stored_content(file: dict[str, Any]) -> bool:
+    parse = file.get("parse")
+    return (
+        file.get("status") in {"ready", "parsed"}
+        or isinstance(parse, dict) and parse.get("parsed") is True
+    )
 
 
 def write_project_manifest(project_directory: Path, package: dict[str, Any]) -> None:
