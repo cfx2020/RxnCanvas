@@ -1,4 +1,5 @@
 import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { StrictMode } from "react"
 import { App } from "./App"
 
 function transformScale(transform: string): number {
@@ -3500,6 +3501,7 @@ describe("App", () => {
       viewport: { x: 120, y: 180, zoom: 0.9 },
       savedAt: "2026-06-17T00:00:00.000Z",
     })
+    const getStartupProjectContent = vi.fn(() => startupRestore.promise)
     Object.defineProperty(window, "rxnflowDesktop", {
       configurable: true,
       value: {
@@ -3513,7 +3515,7 @@ describe("App", () => {
             capabilities: ["engine.status", "project.restore"],
           },
         }),
-        getStartupProjectContent: vi.fn(() => startupRestore.promise),
+        getStartupProjectContent,
         saveReportArtifact: vi.fn(),
         saveProjectPackage: vi.fn(),
         onMenuImportFiles: vi.fn(() => vi.fn()),
@@ -3523,9 +3525,10 @@ describe("App", () => {
       },
     })
 
-    render(<App />)
+    render(<StrictMode><App /></StrictMode>)
 
     expect(screen.getByRole("status")).toHaveTextContent("Opening workspace")
+    expect(getStartupProjectContent).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Nickel catalysis empty" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Ir screening empty" })).not.toBeInTheDocument()
@@ -3550,6 +3553,7 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Nickel catalysis empty" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Ir screening empty" })).not.toBeInTheDocument()
+    expect(getStartupProjectContent).toHaveBeenCalledTimes(1)
   })
 
   it("restores all recent desktop workspaces on startup and keeps the active one selected", async () => {

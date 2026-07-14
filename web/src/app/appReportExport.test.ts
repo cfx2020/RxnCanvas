@@ -7,6 +7,7 @@ const ketcherMocks = vi.hoisted(() => ({
   convert: vi.fn(),
   destroy: vi.fn(),
   createStructService: vi.fn(),
+  runtimeDestroyed: false,
 }))
 
 vi.mock("./reportExportWorkflow", () => ({
@@ -28,9 +29,18 @@ describe("appReportExport", () => {
     ketcherMocks.convert.mockReset()
     ketcherMocks.destroy.mockReset()
     ketcherMocks.createStructService.mockReset()
+    ketcherMocks.runtimeDestroyed = false
     ketcherMocks.createStructService.mockReturnValue({
-      convert: ketcherMocks.convert,
-      destroy: ketcherMocks.destroy,
+      convert: (...args: Parameters<typeof ketcherMocks.convert>) => {
+        if (ketcherMocks.runtimeDestroyed) {
+          return Promise.reject(new Error("Ketcher runtime was destroyed."))
+        }
+        return ketcherMocks.convert(...args)
+      },
+      destroy: () => {
+        ketcherMocks.runtimeDestroyed = true
+        ketcherMocks.destroy()
+      },
     })
     ketcherMocks.convert.mockResolvedValue({
       struct: "<CDXML><page id=\"1\"><fragment id=\"2\"><n id=\"3\" p=\"0 0\" Element=\"6\"/></fragment></page></CDXML>",
@@ -188,7 +198,46 @@ describe("appReportExport", () => {
       input_format: "chemical/x-mdl-molfile",
       output_format: "chemical/x-cdxml",
     })
-    expect(ketcherMocks.destroy).toHaveBeenCalledTimes(1)
+    expect(ketcherMocks.destroy).not.toHaveBeenCalled()
     expect(context.nodes[0].manualStructureCdxml).toContain("<CDXML>")
+  })
+
+  it("keeps the Ketcher runtime available across consecutive CDXML exports", async () => {
+    createAndSaveReportArtifactsMock.mockResolvedValue({
+      artifacts: [{ format: "cdxml", destination: "browser-download" }],
+      status: "Exported 1 file.",
+    })
+    const request = {
+      exportOptions: { ...defaultReportExportOptions, formats: ["cdxml" as const] },
+      projectLabel: "Project",
+      nodes: [{
+        id: "node-a",
+        label: "A",
+        formula: "C",
+        kind: "intermediate" as const,
+        method: "dft",
+        solvent: "gas",
+        energyGas: -1,
+        energySolution: null,
+        energyUnit: "hartree" as const,
+        manualStructureMolfile: "RxnFlow\n  test\n\n  0  0  0  0  0  0  0  0  0  0999 V2000\nM  END",
+        position: { x: 0, y: 0 },
+      }],
+      edges: [],
+      files: [],
+      rows: [],
+      desktopApi: undefined,
+      setExportBusy: vi.fn(),
+      setExportStatus: vi.fn(),
+      setExportArtifacts: vi.fn(),
+    }
+
+    await exportSelectedReportFormats(request)
+    await exportSelectedReportFormats(request)
+
+    expect(ketcherMocks.createStructService).toHaveBeenCalledTimes(2)
+    expect(ketcherMocks.convert).toHaveBeenCalledTimes(2)
+    expect(ketcherMocks.destroy).not.toHaveBeenCalled()
+    expect(createAndSaveReportArtifactsMock).toHaveBeenCalledTimes(2)
   })
 })

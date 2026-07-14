@@ -10,6 +10,7 @@ import {
   watchDesktopEngineStatus,
   type RxnflowDesktopApi,
   type ProjectPackageOpenPayload,
+  type ProjectPackageOpenResult,
 } from "./appRuntimeEffects"
 import type { DesktopEngineStatus } from "./desktopRuntime"
 
@@ -217,6 +218,92 @@ describe("appRuntimeEffects", () => {
       { content: "{\"id\":\"older\"}", projectDirectory: "/tmp/older.rxnflow", validation: null, replaceProjects: true, source: "startup" },
       { content: "{\"id\":\"newer\"}", projectDirectory: "/tmp/newer.rxnflow", validation: null, replaceProjects: true, source: "startup" },
     ])
+  })
+
+  it("shares an in-flight startup request while keeping subscription cancellation isolated", async () => {
+    let resolveStartup!: (result: ProjectPackageOpenResult) => void
+    const startupRequest = new Promise<ProjectPackageOpenResult>((resolve) => {
+      resolveStartup = resolve
+    })
+    const getStartupProjectContent = vi.fn(() => startupRequest)
+    const api = desktopApi({ getStartupProjectContent })
+    const firstRestore = vi.fn()
+    const firstSettled = vi.fn()
+    const secondRestore = vi.fn()
+    const secondSettled = vi.fn()
+
+    const disposeFirst = restoreStartupProjectFromRuntime({
+      desktopApi: api,
+      restoreProjectPackages: firstRestore,
+      onSettled: firstSettled,
+    })
+    restoreStartupProjectFromRuntime({
+      desktopApi: api,
+      restoreProjectPackages: secondRestore,
+      onSettled: secondSettled,
+    })
+    disposeFirst()
+
+    expect(getStartupProjectContent).toHaveBeenCalledTimes(1)
+
+    resolveStartup({
+      canceled: false,
+      content: "{\"id\":\"restored\"}",
+      projectDirectory: "/tmp/restored.rxnflow",
+      validation: null,
+      source: "startup",
+    })
+    await startupRequest
+    await Promise.resolve()
+
+    expect(firstRestore).not.toHaveBeenCalled()
+    expect(firstSettled).not.toHaveBeenCalled()
+    expect(secondRestore).toHaveBeenCalledWith([{
+      canceled: false,
+      content: "{\"id\":\"restored\"}",
+      projectDirectory: "/tmp/restored.rxnflow",
+      validation: null,
+      source: "startup",
+    }])
+    await vi.waitFor(() => expect(secondSettled).toHaveBeenCalledTimes(1))
+  })
+
+  it("starts a fresh startup request after the shared request settles", async () => {
+    const getStartupProjectContent = vi.fn()
+      .mockResolvedValueOnce({ canceled: true })
+      .mockResolvedValueOnce({
+        canceled: false,
+        content: "{\"id\":\"next\"}",
+        validation: null,
+        source: "startup",
+      })
+    const api = desktopApi({ getStartupProjectContent })
+    const firstSettled = vi.fn()
+
+    restoreStartupProjectFromRuntime({
+      desktopApi: api,
+      restoreProjectPackages: vi.fn(),
+      onSettled: firstSettled,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const secondRestore = vi.fn()
+    restoreStartupProjectFromRuntime({
+      desktopApi: api,
+      restoreProjectPackages: secondRestore,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(getStartupProjectContent).toHaveBeenCalledTimes(2)
+    expect(firstSettled).toHaveBeenCalledTimes(1)
+    expect(secondRestore).toHaveBeenCalledWith([{
+      canceled: false,
+      content: "{\"id\":\"next\"}",
+      validation: null,
+      source: "startup",
+    }])
   })
 
   it("persists the active desktop project when the renderer switches workspaces", async () => {

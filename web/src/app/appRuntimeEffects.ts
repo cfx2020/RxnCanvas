@@ -166,6 +166,28 @@ export type RestoreStartupProjectPackagesHandler = (
   payloads: ProjectPackageOpenPayload[],
 ) => void
 
+const pendingStartupProjectRequests = new WeakMap<
+  RxnflowDesktopApi,
+  Promise<ProjectPackageOpenResult>
+>()
+
+function startupProjectRequest(
+  desktopApi: RxnflowDesktopApi,
+): Promise<ProjectPackageOpenResult> {
+  const pendingRequest = pendingStartupProjectRequests.get(desktopApi)
+  if (pendingRequest) return pendingRequest
+
+  const request = desktopApi.getStartupProjectContent!()
+  pendingStartupProjectRequests.set(desktopApi, request)
+  const clearRequest = () => {
+    if (pendingStartupProjectRequests.get(desktopApi) === request) {
+      pendingStartupProjectRequests.delete(desktopApi)
+    }
+  }
+  void request.then(clearRequest, clearRequest)
+  return request
+}
+
 export async function openProjectPackageFromRuntime({
   desktopApi,
   projectInput,
@@ -293,7 +315,7 @@ export function restoreStartupProjectFromRuntime({
     canceled = true
   }
 
-  void desktopApi.getStartupProjectContent().then((result) => {
+  void startupProjectRequest(desktopApi).then((result) => {
     if (canceled || !result || result.canceled) return
     const payloads = result.content
       ? [result as ProjectPackageOpenPayload]

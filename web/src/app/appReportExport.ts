@@ -58,7 +58,7 @@ export async function exportSelectedReportFormats({
   }
 }
 
-type KetcherStructService = Pick<StructService, "convert" | "destroy">
+type KetcherStructService = Pick<StructService, "convert">
 
 type StructureConversionInput = {
   struct: string
@@ -81,22 +81,18 @@ async function reportExportNodesWithStructures(
   if (inputs.every((input, index) => nodes[index].manualStructureCdxml || !input)) return nodes
 
   const service = await createKetcherStructService()
-  try {
-    const exportNodes: ReportExportNode[] = []
-    for (let index = 0; index < nodes.length; index += 1) {
-      const node = nodes[index]
-      const input = inputs[index]
-      if (node.manualStructureCdxml || !input) {
-        exportNodes.push(node)
-        continue
-      }
-      const cdxml = await convertStructureToKetcherCdxml(service, input)
-      exportNodes.push({ ...node, manualStructureCdxml: cdxml })
+  const exportNodes: ReportExportNode[] = []
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index]
+    const input = inputs[index]
+    if (node.manualStructureCdxml || !input) {
+      exportNodes.push(node)
+      continue
     }
-    return exportNodes
-  } finally {
-    service.destroy?.()
+    const cdxml = await convertStructureToKetcherCdxml(service, input)
+    exportNodes.push({ ...node, manualStructureCdxml: cdxml })
   }
+  return exportNodes
 }
 
 async function createKetcherStructService(): Promise<KetcherStructService> {
