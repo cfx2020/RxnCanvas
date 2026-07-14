@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import type { SourceParseResult } from "../domain/sourceParsers"
 import type { RxnflowDesktopApi } from "./appRuntimeEffects"
-import { desktopParsedImportSourceFiles } from "./importParseJobs"
+import { createAnimationFrameBatcher, desktopParsedImportSourceFiles } from "./importParseJobs"
 import type { ImportSourceFile } from "./importRegistration"
 
 function importSourceFile(id: string): ImportSourceFile {
@@ -61,6 +61,73 @@ function flushPromises() {
 }
 
 describe("importParseJobs", () => {
+  it("batches values queued in one animation frame by input order", async () => {
+    let scheduledFrame: FrameRequestCallback | null = null
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      scheduledFrame = callback
+      return 17
+    })
+    const cancelFrame = vi.fn()
+    const onFlush = vi.fn(async () => undefined)
+    const batcher = createAnimationFrameBatcher({ onFlush, requestFrame, cancelFrame })
+
+    batcher.enqueue("third", 2)
+    batcher.enqueue("first", 0)
+    batcher.enqueue("second", 1)
+
+    expect(requestFrame).toHaveBeenCalledTimes(1)
+    expect(onFlush).not.toHaveBeenCalled()
+
+    expect(scheduledFrame).not.toBeNull()
+    const flushFrame = scheduledFrame as unknown as FrameRequestCallback
+    flushFrame(16)
+    await batcher.flush()
+
+    expect(cancelFrame).not.toHaveBeenCalled()
+    expect(onFlush).toHaveBeenCalledTimes(1)
+    expect(onFlush).toHaveBeenCalledWith(["first", "second", "third"], "second")
+  })
+
+  it("flushes the final queued batch immediately and cancels its pending frame", async () => {
+    const requestFrame = vi.fn(() => 23)
+    const cancelFrame = vi.fn()
+    const onFlush = vi.fn(async () => undefined)
+    const batcher = createAnimationFrameBatcher({ onFlush, requestFrame, cancelFrame })
+
+    batcher.enqueue("final", 0)
+    await batcher.flush()
+
+    expect(cancelFrame).toHaveBeenCalledWith(23)
+    expect(onFlush).toHaveBeenCalledWith(["final"], "final")
+  })
+
+  it("cancels a queued batch and retains flush failures for the job boundary", async () => {
+    const requestFrame = vi.fn(() => 31)
+    const cancelFrame = vi.fn()
+    const canceledFlush = vi.fn(async () => undefined)
+    const canceledBatcher = createAnimationFrameBatcher({ onFlush: canceledFlush, requestFrame, cancelFrame })
+
+    canceledBatcher.enqueue("discarded", 0)
+    canceledBatcher.cancel()
+    await canceledBatcher.flush()
+
+    expect(cancelFrame).toHaveBeenCalledWith(31)
+    expect(canceledFlush).not.toHaveBeenCalled()
+
+    const flushError = new Error("stage failed")
+    const failingBatcher = createAnimationFrameBatcher({
+      onFlush: async () => {
+        throw flushError
+      },
+      requestFrame: () => 37,
+      cancelFrame: vi.fn(),
+    })
+    failingBatcher.enqueue("failed", 0)
+
+    await expect(failingBatcher.flush()).rejects.toBe(flushError)
+    await expect(failingBatcher.flush()).rejects.toBe(flushError)
+  })
+
   it("runs desktop parser imports as bounded per-file jobs", async () => {
     const pending: Array<{
       payload: Parameters<NonNullable<RxnflowDesktopApi["importSourceFiles"]>>[0]

@@ -145,6 +145,51 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
+function installDesktopImportRuntime(overrides: Record<string, unknown>) {
+  Object.defineProperty(window, "rxnflowDesktop", {
+    configurable: true,
+    value: {
+      platform: "darwin",
+      chooseFiles: vi.fn(),
+      getEngineStatus: vi.fn().mockResolvedValue({
+        ok: true,
+        data: {
+          status: "ready",
+          engineVersion: "rxnflow-smoke-engine-v1",
+          capabilities: ["engine.status", "import.preview"],
+        },
+      }),
+      saveReportArtifact: vi.fn(),
+      saveProjectPackage: vi.fn(),
+      onMenuImportFiles: vi.fn(() => vi.fn()),
+      onMenuOpenProject: vi.fn(() => vi.fn()),
+      onMenuSaveProject: vi.fn(() => vi.fn()),
+      ...overrides,
+    },
+  })
+}
+
+type PendingDesktopImportJob = {
+  payload: any
+  resolve: (value: any) => void
+}
+
+function desktopImportResponse(
+  job: PendingDesktopImportJob,
+  file: Record<string, unknown>,
+) {
+  return {
+    ok: true,
+    data: {
+      files: [{
+        id: job.payload.files[0].id,
+        preview: "",
+        ...file,
+      }],
+    },
+  }
+}
+
 function parsedOrcaSource(label: string) {
   return {
     label,
@@ -610,7 +655,7 @@ describe("App", () => {
       pointerId: 41,
     })
 
-    expect(world.style.transform).not.toBe(initialTransform)
+    await waitFor(() => expect(world.style.transform).not.toBe(initialTransform))
     expect(container.querySelector(".minimap-window.is-draft")).toBeInTheDocument()
 
     fireEvent.pointerUp(minimap, {
@@ -2221,6 +2266,178 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Node Engine registered frame 2" })).toHaveTextContent("ΔG")
   })
 
+  it("batches same-frame sidebar parse completions while preserving file order and latest selection", async () => {
+    const pending: PendingDesktopImportJob[] = []
+    const chooseFiles = vi.fn().mockResolvedValue({
+      canceled: false,
+      files: [
+        { name: "frame-first.log", size: 101, preview: "", sourcePath: "/tmp/frame-first.log" },
+        { name: "frame-second.log", size: 102, preview: "", sourcePath: "/tmp/frame-second.log" },
+      ],
+    })
+    const importSourceFiles = vi.fn((payload: any) => new Promise<any>((resolve) => pending.push({ payload, resolve })))
+    installDesktopImportRuntime({ chooseFiles, importSourceFiles })
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 71)
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined)
+
+    try {
+      render(<App />)
+      requestFrame.mockClear()
+      cancelFrame.mockClear()
+      fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+
+      await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(2))
+      expect(screen.getByRole("progressbar", { name: "Parsing frame-first.log" })).toBeInTheDocument()
+      expect(screen.getByRole("progressbar", { name: "Parsing frame-second.log" })).toBeInTheDocument()
+
+      await act(async () => {
+        pending[1].resolve(desktopImportResponse(pending[1], {
+          name: "frame-second.log",
+          size: 102,
+          storedPath: "sources/frame-second.log",
+          checksum: `sha256:${"2".repeat(64)}`,
+          parse: parsedGaussianSource("frame-second"),
+        }))
+        await Promise.resolve()
+        pending[0].resolve(desktopImportResponse(pending[0], {
+          name: "frame-first.log",
+          size: 101,
+          storedPath: "sources/frame-first.log",
+          checksum: `sha256:${"1".repeat(64)}`,
+          parse: parsedGaussianSource("frame-first"),
+        }))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      const rail = screen.getByRole("complementary", { name: "Project rail" })
+      const firstButton = await within(rail).findByRole("button", { name: fileButtonName("frame-first.log", "Gaussian") })
+      const secondButton = await within(rail).findByRole("button", { name: fileButtonName("frame-second.log", "Gaussian") })
+      await waitFor(() => {
+        expect(screen.queryByRole("progressbar", { name: "Parsing frame-first.log" })).not.toBeInTheDocument()
+        expect(screen.queryByRole("progressbar", { name: "Parsing frame-second.log" })).not.toBeInTheDocument()
+      })
+      expect(requestFrame).toHaveBeenCalledTimes(1)
+      expect(cancelFrame).toHaveBeenCalledWith(71)
+      const importedButtons = within(rail).getAllByRole("button").filter((button) => (
+        /frame-(?:first|second)\.log/.test(button.textContent ?? "")
+      ))
+      expect(importedButtons.map((button) => button.textContent?.trim())).toEqual(["frame-first.log", "frame-second.log"])
+      expect(firstButton).toHaveAttribute("aria-pressed", "true")
+      expect(secondButton).toHaveAttribute("aria-pressed", "false")
+    } finally {
+      requestFrame.mockRestore()
+      cancelFrame.mockRestore()
+    }
+  })
+
+  it("flushes queued sidebar successes before rolling back a failed parse result", async () => {
+    const pending: PendingDesktopImportJob[] = []
+    const chooseFiles = vi.fn().mockResolvedValue({
+      canceled: false,
+      files: [
+        { name: "batch-good.log", size: 111, preview: "", sourcePath: "/tmp/batch-good.log" },
+        { name: "batch-bad.dat", size: 112, preview: "", sourcePath: "/tmp/batch-bad.dat" },
+      ],
+    })
+    const importSourceFiles = vi.fn((payload: any) => new Promise<any>((resolve) => pending.push({ payload, resolve })))
+    installDesktopImportRuntime({ chooseFiles, importSourceFiles })
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 79)
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined)
+
+    try {
+      render(<App />)
+      fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+      await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(2))
+
+      await act(async () => {
+        pending[0].resolve(desktopImportResponse(pending[0], {
+          name: "batch-good.log",
+          size: 111,
+          storedPath: "sources/batch-good.log",
+          checksum: `sha256:${"4".repeat(64)}`,
+          parse: parsedGaussianSource("batch-good"),
+        }))
+        await Promise.resolve()
+        pending[1].resolve(desktopImportResponse(pending[1], {
+          name: "batch-bad.dat",
+          size: 112,
+          parse: unsupportedSource("batch-bad"),
+          error: {
+            code: "unsupported_format",
+            message: "No supported parser recognized this source full-file.",
+          },
+        }))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      const rail = screen.getByRole("complementary", { name: "Project rail" })
+      expect(await within(rail).findByRole("button", { name: fileButtonName("batch-good.log", "Gaussian") })).toBeInTheDocument()
+      await waitFor(() => {
+        expect(within(rail).queryByRole("button", { name: "batch-bad.dat Raw" })).not.toBeInTheDocument()
+        expect(screen.queryByRole("progressbar", { name: "Parsing batch-good.log" })).not.toBeInTheDocument()
+        expect(screen.queryByRole("progressbar", { name: "Parsing batch-bad.dat" })).not.toBeInTheDocument()
+      })
+      expect(await screen.findByRole("alertdialog", { name: "Unsupported import format" })).toHaveTextContent("batch-bad.dat")
+    } finally {
+      requestFrame.mockRestore()
+      cancelFrame.mockRestore()
+    }
+  })
+
+  it("cancels a queued sidebar import frame when the app unmounts", async () => {
+    const pending: PendingDesktopImportJob[] = []
+    const chooseFiles = vi.fn().mockResolvedValue({
+      canceled: false,
+      files: [
+        { name: "unmount-first.log", size: 121, preview: "", sourcePath: "/tmp/unmount-first.log" },
+        { name: "unmount-second.log", size: 122, preview: "", sourcePath: "/tmp/unmount-second.log" },
+      ],
+    })
+    const importSourceFiles = vi.fn((payload: any) => new Promise<any>((resolve) => pending.push({ payload, resolve })))
+    installDesktopImportRuntime({ chooseFiles, importSourceFiles })
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 83)
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined)
+
+    try {
+      const { unmount } = render(<App />)
+      fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+      await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(2))
+
+      await act(async () => {
+        pending[0].resolve(desktopImportResponse(pending[0], {
+          name: "unmount-first.log",
+          size: 121,
+          storedPath: "sources/unmount-first.log",
+          checksum: `sha256:${"5".repeat(64)}`,
+          parse: parsedGaussianSource("unmount-first"),
+        }))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await waitFor(() => expect(requestFrame).toHaveBeenCalled())
+
+      unmount()
+      expect(cancelFrame).toHaveBeenCalledWith(83)
+
+      pending[1].resolve(desktopImportResponse(pending[1], {
+        name: "unmount-second.log",
+        size: 122,
+        storedPath: "sources/unmount-second.log",
+        checksum: `sha256:${"6".repeat(64)}`,
+        parse: parsedGaussianSource("unmount-second"),
+      }))
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+    } finally {
+      requestFrame.mockRestore()
+      cancelFrame.mockRestore()
+    }
+  })
+
   it("stages Electron dialog imports before the desktop parser job resolves", async () => {
     const importJob = deferred<any>()
     const chooseFiles = vi.fn().mockResolvedValue({
@@ -2603,6 +2820,60 @@ describe("App", () => {
       expect(screen.queryByRole("button", { name: "native-unsupported.dat Raw" })).not.toBeInTheDocument()
     })
     expect(screen.queryByRole("alertdialog", { name: "Unsupported import format" })).not.toBeInTheDocument()
+  })
+
+  it("keeps auto-registering canvas parse completions on the per-file path", async () => {
+    const pending: PendingDesktopImportJob[] = []
+    const importSourceFiles = vi.fn((payload: any) => new Promise<any>((resolve) => pending.push({ payload, resolve })))
+    installDesktopImportRuntime({
+      importSourceFiles,
+      filePathForFile: vi.fn((file: File) => `/tmp/${file.name}`),
+    })
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 89)
+
+    try {
+      render(<App />)
+      requestFrame.mockClear()
+      const surface = screen.getByLabelText("Graph canvas surface")
+      mockSurfaceRect(surface)
+      const firstFile = new File(["first"], "canvas-frame-first.calc", { type: "text/plain" })
+      const secondFile = new File(["second"], "canvas-frame-second.calc", { type: "text/plain" })
+      dispatchDrop(surface, new TestDataTransfer([firstFile, secondFile]), 640, 360)
+
+      await waitFor(() => expect(importSourceFiles).toHaveBeenCalledTimes(2))
+      await act(async () => {
+        pending[0].resolve(desktopImportResponse(pending[0], {
+          name: "canvas-frame-first.calc",
+          size: firstFile.size,
+          storedPath: "sources/canvas-frame-first.calc",
+          checksum: `sha256:${"7".repeat(64)}`,
+          parse: parsedOrcaSource("canvas-frame-first"),
+        }))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(await screen.findByRole("button", { name: "Node canvas-frame-first" })).toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Node canvas-frame-second" })).not.toBeInTheDocument()
+      expect(requestFrame).not.toHaveBeenCalled()
+
+      await act(async () => {
+        pending[1].resolve(desktopImportResponse(pending[1], {
+          name: "canvas-frame-second.calc",
+          size: secondFile.size,
+          storedPath: "sources/canvas-frame-second.calc",
+          checksum: `sha256:${"8".repeat(64)}`,
+          parse: parsedOrcaSource("canvas-frame-second"),
+        }))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(await screen.findByRole("button", { name: "Node canvas-frame-second" })).toBeInTheDocument()
+      expect(requestFrame).not.toHaveBeenCalled()
+    } finally {
+      requestFrame.mockRestore()
+    }
   })
 
   it("stages Electron canvas drops before creating parsed nodes at the drop point", async () => {
@@ -3288,7 +3559,7 @@ describe("App", () => {
         content: string
         filePath: string
         projectDirectory: string
-        replaceProjects: boolean
+        replaceProjects?: boolean
         source: string
         validation: null
       }>
@@ -3297,12 +3568,33 @@ describe("App", () => {
       schemaVersion: 1,
       packageKind: "rxnflow-project",
       project: { id, label, meta: "saved" },
-      files: [],
-      nodes: [],
+      files: [{
+        id: `${id}-file`,
+        name: `${label}.log`,
+        kind: "Gaussian",
+        size: 128,
+        status: "parsed",
+        preview: `${label} calculation`,
+        storedPath: `sources/${label}.log`,
+      }],
+      nodes: [{
+        id: `${id}-node`,
+        label: `${label} node`,
+        formula: "H2",
+        kind: "intermediate",
+        method: "B3LYP",
+        solvent: "gas",
+        energyGas: -1,
+        energyUnit: "hartree",
+        sourceStatus: "parsed",
+        sourceFileId: `${id}-file`,
+        position: { x: 40, y: 60 },
+      }],
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 },
       savedAt: "2026-07-03T00:00:00.000Z",
     })
+    const setActiveProject = vi.fn().mockResolvedValue({ ok: true })
     Object.defineProperty(window, "rxnflowDesktop", {
       configurable: true,
       value: {
@@ -3317,6 +3609,7 @@ describe("App", () => {
           },
         }),
         getStartupProjectContent: vi.fn(() => startupRestore.promise),
+        setActiveProject,
         saveReportArtifact: vi.fn(),
         saveProjectPackage: vi.fn(),
         onMenuImportFiles: vi.fn(() => vi.fn()),
@@ -3336,7 +3629,6 @@ describe("App", () => {
             content: projectContent("ir-workspace", "Ir"),
             filePath: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
             projectDirectory: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
-            replaceProjects: true,
             source: "startup",
             validation: null,
           },
@@ -3344,7 +3636,7 @@ describe("App", () => {
             content: projectContent("ni-workspace", "Ni"),
             filePath: "/Users/linsay/Documents/RxnFlow/Ni.rxnflow",
             projectDirectory: "/Users/linsay/Documents/RxnFlow/Ni.rxnflow",
-            replaceProjects: true,
+            replaceProjects: false,
             source: "startup",
             validation: null,
           },
@@ -3354,9 +3646,24 @@ describe("App", () => {
     })
 
     expect(await screen.findByRole("button", { name: "Ni open" })).toHaveAttribute("aria-current", "true")
+    expect(screen.getByRole("button", { name: "Node Ni node" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Node Ir node" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Ir open" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Nickel catalysis empty" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Ir screening empty" })).not.toBeInTheDocument()
+    await waitFor(() => expect(setActiveProject).toHaveBeenCalledTimes(1))
+    expect(setActiveProject).toHaveBeenLastCalledWith({
+      projectId: "ni-workspace",
+      projectDirectory: "/Users/linsay/Documents/RxnFlow/Ni.rxnflow",
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Ir open" }))
+    expect(await screen.findByRole("button", { name: "Node Ir node" })).toBeInTheDocument()
+    await waitFor(() => expect(setActiveProject).toHaveBeenCalledTimes(2))
+    expect(setActiveProject).toHaveBeenLastCalledWith({
+      projectId: "ir-workspace",
+      projectDirectory: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
+    })
   })
 })

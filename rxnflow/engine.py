@@ -14,9 +14,9 @@ import json
 import math
 import re
 from dataclasses import asdict, dataclass, replace
-from collections import Counter
+from collections import Counter, OrderedDict
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 
 NodeKind = Literal["reactant", "transition", "intermediate", "product"]
@@ -30,6 +30,7 @@ ONE_M_STANDARD_STATE_CORRECTION_HARTREE = 0.003019
 NUMBER_PATTERN = r"[-+]?\d+(?:\.\d+)?(?:[EeDd][-+]?\d+)?"
 MAX_SOURCE_FILE_BYTES = 512 * 1024 * 1024
 MAX_PROJECT_CONTENT_CHARACTERS = 64 * 1024 * 1024
+SHA256_FILE_CACHE_CAPACITY = 128
 
 
 GAUSSIAN_SCF_PATTERN = re.compile(rf"SCF Done:\s+E\(([^)]+)\)\s+=\s+({NUMBER_PATTERN})", re.IGNORECASE)
@@ -67,6 +68,11 @@ GAUSSIAN_FREE_ENERGY_PATTERN = re.compile(
     rf"Sum of electronic and thermal Free Energies=\s*({NUMBER_PATTERN})",
     re.IGNORECASE,
 )
+GAUSSIAN_FREQUENCY_PATTERN = re.compile(rf"Frequencies\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
+GAUSSIAN_REDUCED_MASS_PATTERN = re.compile(rf"Red\.\s*masses\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
+GAUSSIAN_FORCE_CONSTANT_PATTERN = re.compile(rf"Frc\s*consts?\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
+GAUSSIAN_IR_INTENSITY_PATTERN = re.compile(rf"IR\s+Inten\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
+GAUSSIAN_RAMAN_ACTIVITY_PATTERN = re.compile(rf"Raman\s+Activ\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
 MAPLE_BANNER_MARKERS = ("M   A   P   L   E", "MAchine-learning Potential for Landscape Exploration")
 MAPLE_OUTPUT_ENERGY_PATTERN = re.compile(r"Energy:\s*(-?\d+(?:\.\d+)?(?:[Ee][-+]?\d+)?)\s*(Hartree)?", re.IGNORECASE)
 MAPLE_TASK_PATTERN = re.compile(r"^\s*Task:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
@@ -86,6 +92,8 @@ PROJECT_STATE_FILE = Path(PROJECT_METADATA_DIRECTORY) / "project.json"
 PROJECT_MANIFEST_FILE = Path(PROJECT_METADATA_DIRECTORY) / "manifest.json"
 EXPORT_MANIFEST_PATH = Path("exports") / "manifest.json"
 SHA256_CHECKSUM_PATTERN = re.compile(r"^sha256:([a-f0-9]{64})$", re.IGNORECASE)
+Sha256FileFingerprint = tuple[str, int, int, int, int, int]
+_SHA256_FILE_DIGEST_CACHE: OrderedDict[Sha256FileFingerprint, str] = OrderedDict()
 
 
 @dataclass(frozen=True)
@@ -188,6 +196,57 @@ class CoordinateAtom:
     x: float
     y: float
     z: float
+
+
+@dataclass(frozen=True)
+class GaussianTextSnapshot:
+    scfEnergy: float | None
+    scfMethodLabel: str | None
+    freeEnergy: float | None
+    gibbsCorrection: float | None
+    basisFunctions: int | None
+    atoms: tuple[CoordinateAtom, ...]
+    charge: int | None
+    spinMultiplicity: int | None
+    route: str | None
+    method: str | None
+    methodBasis: str | None
+    formula: str | None
+    solvent: str
+    computation: ComputationMetadata
+    lastNormalTerminationEnd: int
+    lastErrorIndex: int
+    continuationAfterNormal: bool
+
+
+@dataclass(frozen=True)
+class GaussianVibrationIndex:
+    lines: tuple[str, ...]
+    frequencyLineIndices: tuple[int, ...]
+    hasFrequencyMarker: bool
+
+
+@dataclass(frozen=True)
+class _SourceTextParseContext:
+    result: SourceParseResult
+    gaussianSnapshot: GaussianTextSnapshot
+    gaussianVibrationIndex: GaussianVibrationIndex | None
+
+
+@dataclass(frozen=True)
+class OrcaTextSnapshot:
+    finalSinglePointEnergy: float | None
+    totalEnergy: float | None
+    solvationEnergy: float | None
+    basisFunctions: int | None
+    atoms: tuple[CoordinateAtom, ...]
+    charge: int | None
+    spinMultiplicity: int | None
+    route: str | None
+    method: str | None
+    formula: str | None
+    solvent: str
+    hasVibrationSection: bool
 
 
 @dataclass(frozen=True)
@@ -351,10 +410,11 @@ def parse_source_file(name: str, preview: str, source_path: str | None = None) -
                 source_path,
             ),
         )
-    text_result = parse_source_preview(name, full_text, parse_scope="full-file", confidence="high")
+    text_context = _parse_source_text_context(name, full_text, parse_scope="full-file", confidence="high")
+    text_result = text_context.result
     if not should_try_cclib(name, full_text):
         return text_result
-    cclib_result, cclib_warning = parse_cclib_full_file(name, source_path, full_text, text_result)
+    cclib_result, cclib_warning = parse_cclib_full_file(name, source_path, full_text, text_context)
     if cclib_result is None:
         return cclib_required_failed_source_result(name, text_result, cclib_warning)
     return merge_cclib_text_result(cclib_result, text_result)
@@ -460,7 +520,7 @@ def parse_cclib_full_file(
     name: str,
     source_path: str,
     full_text: str,
-    text_result: SourceParseResult,
+    text_context: _SourceTextParseContext,
 ) -> tuple[SourceParseResult | None, ParseWarning | None]:
     """Parse a complete computational output with cclib when available.
 
@@ -494,16 +554,25 @@ def parse_cclib_full_file(
             name,
         )
 
+    text_result = text_context.result
     atoms = atoms_from_cclib_data(data)
     vibration_modes, vibration_warnings = vibrational_modes_from_cclib_data(data, len(atoms), name)
     if not vibration_modes:
-        text_vibration_modes, text_vibration_warnings = gaussian_vibrational_modes_from_text(full_text, len(atoms), name, "rxnflow-text")
+        vibration_source: str | GaussianVibrationIndex = full_text
+        if source_kind == "Gaussian" and text_context.gaussianVibrationIndex is not None:
+            vibration_source = text_context.gaussianVibrationIndex
+        text_vibration_modes, text_vibration_warnings = gaussian_vibrational_modes_from_text(vibration_source, len(atoms), name, "rxnflow-text")
         vibration_modes = text_vibration_modes
         vibration_warnings = (*vibration_warnings, *text_vibration_warnings)
     formula = formula_from_atoms(atoms) if atoms else text_result.formula
     charge = optional_int_from_any(getattr(data, "charge", None))
     spin = optional_int_from_any(getattr(data, "mult", None))
-    method = method_basis_label_from_text(source_kind, full_text) or cclib_method_from_data(data) or text_result.method
+    method_text: str | GaussianTextSnapshot = (
+        text_context.gaussianSnapshot
+        if source_kind == "Gaussian"
+        else full_text
+    )
+    method = method_basis_label_from_text(source_kind, method_text) or cclib_method_from_data(data) or text_result.method
     energy_table = cclib_energy_table_from_data(name, data)
     energy_gas = energy_table.egasHartree if energy_table is not None else None
     energy_solution = (
@@ -512,11 +581,12 @@ def parse_cclib_full_file(
         else None
     )
     parser_base = cclib_parser_base(source_kind)
-    kind = (
-        computation_kind_from_parser_evidence(source_kind, name, full_text, vibration_modes)
-        if source_kind in {"Gaussian", "ORCA"}
-        else text_result.kind
-    )
+    if source_kind == "Gaussian":
+        kind = gaussian_computation_kind_from_snapshot(name, text_context.gaussianSnapshot, vibration_modes)
+    elif source_kind == "ORCA":
+        kind = computation_kind_from_parser_evidence(source_kind, name, full_text, vibration_modes)
+    else:
+        kind = text_result.kind
     candidate = parse_candidate(
         object_index=0,
         label=basename_without_extension(name),
@@ -544,7 +614,11 @@ def parse_cclib_full_file(
         energy_table=energy_table,
         parse_scope="full-file",
         confidence="high",
-        computation=computation_metadata_from_source(full_text),
+        computation=(
+            text_context.gaussianSnapshot.computation
+            if source_kind == "Gaussian"
+            else computation_metadata_from_result(text_result)
+        ),
     ), None
 
 
@@ -651,23 +725,19 @@ def vibrational_modes_from_cclib_data(data: Any, atom_count: int, target: str) -
 
 
 def gaussian_vibrational_modes_from_text(
-    source_text: str,
+    source_text: str | GaussianVibrationIndex,
     atom_count: int,
     target: str,
     source: Literal["rxnflow-text"] = "rxnflow-text",
 ) -> tuple[tuple[VibrationalMode, ...], tuple[ParseWarning, ...]]:
     if atom_count <= 0:
         return (), ()
-    lines = source_text.splitlines()
+    vibration_index = source_text if isinstance(source_text, GaussianVibrationIndex) else gaussian_vibration_index(source_text)
+    lines = vibration_index.lines
     modes: list[VibrationalMode] = []
     warnings: list[ParseWarning] = []
-    frequency_pattern = re.compile(rf"Frequencies\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
-    reduced_mass_pattern = re.compile(rf"Red\.\s*masses\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
-    force_constant_pattern = re.compile(rf"Frc\s*consts?\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
-    ir_intensity_pattern = re.compile(rf"IR\s+Inten\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
-    raman_activity_pattern = re.compile(rf"Raman\s+Activ\s+--\s+((?:{NUMBER_PATTERN}\s*)+)", re.IGNORECASE)
-    for index, line in enumerate(lines):
-        match = frequency_pattern.search(line)
+    for index in vibration_index.frequencyLineIndices:
+        match = GAUSSIAN_FREQUENCY_PATTERN.search(lines[index])
         if match is None:
             continue
         frequencies = numbers_from_text(match.group(1))
@@ -679,10 +749,10 @@ def gaussian_vibrational_modes_from_text(
             warnings.append(ParseWarning("vibration_parse_partial", "Gaussian frequency lines were found, but normal-mode displacements were not recognized.", target))
             continue
         displacements = gaussian_displacements_from_lines(lines, displacement_start, atom_count, mode_count)
-        reduced_masses = nearby_numbers(lines, index, reduced_mass_pattern, mode_count)
-        force_constants = nearby_numbers(lines, index, force_constant_pattern, mode_count)
-        ir_intensities = nearby_numbers(lines, index, ir_intensity_pattern, mode_count)
-        raman_activities = nearby_numbers(lines, index, raman_activity_pattern, mode_count)
+        reduced_masses = nearby_numbers(lines, index, GAUSSIAN_REDUCED_MASS_PATTERN, mode_count)
+        force_constants = nearby_numbers(lines, index, GAUSSIAN_FORCE_CONSTANT_PATTERN, mode_count)
+        ir_intensities = nearby_numbers(lines, index, GAUSSIAN_IR_INTENSITY_PATTERN, mode_count)
+        raman_activities = nearby_numbers(lines, index, GAUSSIAN_RAMAN_ACTIVITY_PATTERN, mode_count)
         for offset, frequency in enumerate(frequencies):
             mode_displacements = displacements[offset] if offset < len(displacements) else ()
             if len(mode_displacements) != atom_count:
@@ -701,9 +771,22 @@ def gaussian_vibrational_modes_from_text(
                 ramanActivity=optional_list_float(raman_activities, offset),
                 source=source,
             ))
-    if not modes and "Frequencies --" in source_text and not any(warning.code == "vibration_parse_partial" for warning in warnings):
+    if not modes and vibration_index.hasFrequencyMarker and not any(warning.code == "vibration_parse_partial" for warning in warnings):
         warnings.append(ParseWarning("vibration_parse_partial", "Frequency data was detected, but no complete normal modes were parsed.", target))
     return tuple(modes), tuple(warnings)
+
+
+def gaussian_vibration_index(source_text: str) -> GaussianVibrationIndex:
+    lines = tuple(source_text.splitlines())
+    return GaussianVibrationIndex(
+        lines=lines,
+        frequencyLineIndices=tuple(
+            index
+            for index, line in enumerate(lines)
+            if GAUSSIAN_FREQUENCY_PATTERN.search(line) is not None
+        ),
+        hasFrequencyMarker="Frequencies --" in source_text,
+    )
 
 
 def displacement_tuple_from_cclib(raw_displacements: Any, atom_count: int) -> tuple[VibrationDisplacement, ...]:
@@ -721,14 +804,14 @@ def displacement_tuple_from_cclib(raw_displacements: Any, atom_count: int) -> tu
     return tuple(displacements)
 
 
-def gaussian_displacement_start(lines: list[str], start: int, atom_count: int) -> int:
+def gaussian_displacement_start(lines: Sequence[str], start: int, atom_count: int) -> int:
     for index in range(start, min(len(lines), start + atom_count + 18)):
         if re.match(r"^\s*Atom\s+AN\b", lines[index], re.IGNORECASE):
             return index + 1
     return -1
 
 
-def gaussian_displacements_from_lines(lines: list[str], start: int, atom_count: int, mode_count: int) -> tuple[tuple[VibrationDisplacement, ...], ...]:
+def gaussian_displacements_from_lines(lines: Sequence[str], start: int, atom_count: int, mode_count: int) -> tuple[tuple[VibrationDisplacement, ...], ...]:
     modes: list[list[VibrationDisplacement]] = [[] for _ in range(mode_count)]
     for line in lines[start:start + atom_count + 4]:
         parts = line.split()
@@ -749,7 +832,7 @@ def gaussian_displacements_from_lines(lines: list[str], start: int, atom_count: 
     return tuple(tuple(mode) for mode in modes)
 
 
-def nearby_numbers(lines: list[str], start: int, pattern: re.Pattern[str], expected: int) -> list[float]:
+def nearby_numbers(lines: Sequence[str], start: int, pattern: re.Pattern[str], expected: int) -> list[float]:
     for line in lines[start + 1:start + 8]:
         match = pattern.search(line)
         if match is not None:
@@ -1619,6 +1702,7 @@ def validate_stored_source_file(project_root: Path, stored_path: str, file: dict
     issues: list[ProjectValidationIssue] = []
     source_path = project_root / project_relative_path(stored_path)
     if not source_path.is_file():
+        _invalidate_sha256_file_cache(source_path)
         return [
             ProjectValidationIssue("warning", "source_missing", f"files[{index}].storedPath does not exist in the workspace folder."),
         ]
@@ -1670,6 +1754,7 @@ def validate_export_manifest(project_root: Path) -> list[ProjectValidationIssue]
 
         full_path = project_root / project_relative_path(artifact_path)
         if not full_path.is_file():
+            _invalidate_sha256_file_cache(full_path)
             issues.append(ProjectValidationIssue("warning", "artifact_missing", f"artifacts[{index}].path does not exist in the workspace folder."))
             continue
 
@@ -1858,6 +1943,43 @@ def sha256_checksum_value(value: Any) -> str | None:
 
 
 def sha256_file(path: Path) -> str:
+    absolute_path = path.resolve()
+    try:
+        stats = absolute_path.stat()
+    except OSError:
+        _invalidate_sha256_file_cache(absolute_path)
+        raise
+
+    fingerprint: Sha256FileFingerprint = (
+        str(absolute_path),
+        stats.st_dev,
+        stats.st_ino,
+        stats.st_size,
+        stats.st_mtime_ns,
+        stats.st_ctime_ns,
+    )
+    cached_digest = _SHA256_FILE_DIGEST_CACHE.get(fingerprint)
+    if cached_digest is not None:
+        _SHA256_FILE_DIGEST_CACHE.move_to_end(fingerprint)
+        return cached_digest
+
+    _invalidate_sha256_file_cache(absolute_path)
+    digest = _compute_sha256_file(absolute_path)
+    _SHA256_FILE_DIGEST_CACHE[fingerprint] = digest
+    _SHA256_FILE_DIGEST_CACHE.move_to_end(fingerprint)
+    while len(_SHA256_FILE_DIGEST_CACHE) > SHA256_FILE_CACHE_CAPACITY:
+        _SHA256_FILE_DIGEST_CACHE.popitem(last=False)
+    return digest
+
+
+def _invalidate_sha256_file_cache(path: Path) -> None:
+    absolute_path = str(path.resolve())
+    stale_fingerprints = [fingerprint for fingerprint in _SHA256_FILE_DIGEST_CACHE if fingerprint[0] == absolute_path]
+    for fingerprint in stale_fingerprints:
+        del _SHA256_FILE_DIGEST_CACHE[fingerprint]
+
+
+def _compute_sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -2024,23 +2146,33 @@ def parse_source_preview(
     parse_scope: ParseScope = "preview",
     confidence: ParseConfidence = "low",
 ) -> SourceParseResult:
+    return _parse_source_text_context(name, preview, parse_scope, confidence).result
+
+
+def _parse_source_text_context(
+    name: str,
+    preview: str,
+    parse_scope: ParseScope,
+    confidence: ParseConfidence,
+) -> _SourceTextParseContext:
     label = basename_without_extension(name)
     guessed_kind = infer_node_kind(name)
-    computation = computation_metadata_from_source(preview)
-    gaussian = parse_gaussian(preview)
+    gaussian_snapshot = gaussian_text_snapshot(preview)
+    gaussian = parse_gaussian(gaussian_snapshot)
     if gaussian:
         energy_gas, energy_solution, method = gaussian
-        atoms = gaussian_atoms_from_text(preview)
-        vibration_modes, vibration_warnings = gaussian_vibrational_modes_from_text(preview, len(atoms), name, "rxnflow-text")
-        kind = computation_kind_from_parser_evidence("Gaussian", name, preview, vibration_modes)
-        formula = infer_formula_from_text(preview) or (formula_from_atoms(atoms) if atoms else "pending")
-        charge, spin = gaussian_charge_multiplicity(preview)
-        energy_table = gaussian_energy_table(preview)
-        return source_result_from_candidates(
+        atoms = gaussian_atoms_from_text(gaussian_snapshot)
+        vibration_index = gaussian_vibration_index(preview)
+        vibration_modes, vibration_warnings = gaussian_vibrational_modes_from_text(vibration_index, len(atoms), name, "rxnflow-text")
+        kind = gaussian_computation_kind_from_snapshot(name, gaussian_snapshot, vibration_modes)
+        formula = gaussian_snapshot.formula or (formula_from_atoms(atoms) if atoms else "pending")
+        charge, spin = gaussian_charge_multiplicity(gaussian_snapshot)
+        energy_table = gaussian_energy_table(gaussian_snapshot)
+        result = source_result_from_candidates(
             label=label,
             source_kind="Gaussian",
             kind=kind,
-            solvent=infer_solvent(preview),
+            solvent=gaussian_snapshot.solvent,
             parser_id=parser_id_for_scope("gaussian-log-text", parse_scope),
             parser_version=PARSER_VERSION,
             candidates=(
@@ -2064,30 +2196,33 @@ def parse_source_preview(
             energy_table=energy_table,
             parse_scope=parse_scope,
             confidence=confidence,
-            computation=computation,
+            computation=gaussian_snapshot.computation,
         )
+        return _SourceTextParseContext(result, gaussian_snapshot, vibration_index)
 
-    orca = parse_orca(preview)
+    computation = computation_metadata_from_source(preview)
+    orca_snapshot = orca_text_snapshot(preview)
+    orca = parse_orca(orca_snapshot)
     if orca:
         energy_gas, energy_solution = orca
-        atoms = orca_atoms_from_text(preview)
-        vibration_warnings = orca_vibration_unavailable_warnings(preview, name)
-        kind = computation_kind_from_parser_evidence("ORCA", name, preview)
-        charge, spin = orca_charge_multiplicity(preview)
-        energy_table = orca_energy_table(preview)
-        return source_result_from_candidates(
+        atoms = orca_atoms_from_text(orca_snapshot)
+        vibration_warnings = orca_vibration_unavailable_warnings(orca_snapshot, name)
+        kind = orca_computation_kind_from_snapshot(name, orca_snapshot)
+        charge, spin = orca_charge_multiplicity(orca_snapshot)
+        energy_table = orca_energy_table(orca_snapshot)
+        result = source_result_from_candidates(
             label=label,
             source_kind="ORCA",
             kind=kind,
-            solvent=infer_solvent(preview),
+            solvent=orca_snapshot.solvent,
             parser_id=parser_id_for_scope("orca-output-text", parse_scope),
             parser_version=PARSER_VERSION,
             candidates=(
                 parse_candidate(
                     object_index=0,
                     label=label,
-                    formula=infer_formula_from_text(preview) or (formula_from_atoms(atoms) if atoms else "pending"),
-                    method=orca_method_from_text(preview) or "ORCA single point",
+                    formula=orca_snapshot.formula or (formula_from_atoms(atoms) if atoms else "pending"),
+                    method=orca_method_from_text(orca_snapshot) or "ORCA single point",
                     energy_gas=energy_gas,
                     energy_solution=energy_solution,
                     energy_unit="hartree",
@@ -2105,10 +2240,11 @@ def parse_source_preview(
             confidence=confidence,
             computation=computation,
         )
+        return _SourceTextParseContext(result, gaussian_snapshot, None)
 
     extxyz = parse_extxyz_preview(name, preview)
     if extxyz is not None:
-        return source_result_from_candidates(
+        result = source_result_from_candidates(
             label=label,
             source_kind="extxyz",
             kind=guessed_kind,
@@ -2121,10 +2257,11 @@ def parse_source_preview(
             confidence=confidence,
             computation=computation,
         )
+        return _SourceTextParseContext(result, gaussian_snapshot, None)
 
     maple = parse_maple_preview(name, preview)
     if maple is not None:
-        return source_result_from_candidates(
+        result = source_result_from_candidates(
             label=label,
             source_kind="MAPLE",
             kind=guessed_kind,
@@ -2137,10 +2274,11 @@ def parse_source_preview(
             confidence=confidence,
             computation=computation,
         )
+        return _SourceTextParseContext(result, gaussian_snapshot, None)
 
     xyz = parse_xyz_preview(name, preview)
     if xyz:
-        return source_result_from_candidates(
+        result = source_result_from_candidates(
             label=label,
             source_kind="XYZ",
             kind=guessed_kind,
@@ -2153,9 +2291,10 @@ def parse_source_preview(
             confidence=confidence,
             computation=computation,
         )
+        return _SourceTextParseContext(result, gaussian_snapshot, None)
 
     if looks_like_xyz_input(name, preview):
-        return failed_source_result(
+        result = failed_source_result(
             label=label,
             source_kind="XYZ",
             kind=guessed_kind,
@@ -2166,8 +2305,9 @@ def parse_source_preview(
             confidence=confidence,
             computation=computation,
         )
+        return _SourceTextParseContext(result, gaussian_snapshot, None)
 
-    return SourceParseResult(
+    result = SourceParseResult(
         label=label,
         sourceKind="Raw",
         formula="pending",
@@ -2192,6 +2332,7 @@ def parse_source_preview(
         jobCpuTime=computation.jobCpuTime,
         elapsedTime=computation.elapsedTime,
     )
+    return _SourceTextParseContext(result, gaussian_snapshot, None)
 
 
 def failed_source_result(
@@ -2473,33 +2614,193 @@ def parser_id_for_scope(base_id: str, parse_scope: ParseScope) -> str:
     return f"{base_id}-{suffix}"
 
 
-def parse_gaussian(preview: str) -> tuple[float, float | None, str] | None:
-    match = last_match(GAUSSIAN_SCF_PATTERN, preview)
-    if not match:
-        return None
-    energy_gas = parse_number(match.group(2))
-    if energy_gas is None:
-        return None
-    free_energy = number_from_match(last_match(GAUSSIAN_FREE_ENERGY_PATTERN, preview))
-    correction = number_from_match(last_match(GAUSSIAN_GIBBS_CORRECTION_PATTERN, preview))
-    if free_energy is not None:
-        energy_solution = free_energy
+def gaussian_text_snapshot(preview: str) -> GaussianTextSnapshot:
+    scf_energy: float | None = None
+    scf_method_label: str | None = None
+    free_energy: float | None = None
+    gibbs_correction: float | None = None
+    basis_functions: int | None = None
+    best_atoms: list[CoordinateAtom] = []
+    charge: int | None = None
+    spin_multiplicity: int | None = None
+    route: str | None = None
+    formula: str | None = None
+    job_cpu_time: str | None = None
+    elapsed_time: str | None = None
+    total_run_time: str | None = None
+    last_normal_end = -1
+    last_error_index = -1
+    continuation_after_normal = False
+    has_toluene = False
+    has_water = False
+    has_acetonitrile = False
+    has_implicit_solvent = False
+
+    raw_lines = preview.splitlines(keepends=True)
+    lines = [raw_line.rstrip("\r\n") for raw_line in raw_lines]
+    line_start = 0
+    for index, (raw_line, line) in enumerate(zip(raw_lines, lines)):
+        lower = line.lower()
+
+        for match in GAUSSIAN_SCF_PATTERN.finditer(line):
+            parsed_energy = parse_number(match.group(2))
+            if parsed_energy is not None:
+                scf_energy = parsed_energy
+                scf_method_label = match.group(1)
+        for match in GAUSSIAN_FREE_ENERGY_PATTERN.finditer(line):
+            parsed_energy = parse_number(match.group(1))
+            if parsed_energy is not None:
+                free_energy = parsed_energy
+        for match in GAUSSIAN_GIBBS_CORRECTION_PATTERN.finditer(line):
+            parsed_correction = parse_number(match.group(1))
+            if parsed_correction is not None:
+                gibbs_correction = parsed_correction
+        if basis_functions is None:
+            match = GAUSSIAN_BASIS_FUNCTION_PATTERN.search(line)
+            if match is not None:
+                basis_functions = optional_int_from_text(match.group(1))
+        if route is None:
+            match = GAUSSIAN_ROUTE_PATTERN.match(line)
+            if match is not None:
+                route = match.group(1).strip()
+        if formula is None:
+            match = FORMULA_PATTERN.search(line)
+            if match is not None:
+                formula = match.group(1)
+        for match in GAUSSIAN_CHARGE_MULTIPLICITY_PATTERN.finditer(line):
+            charge = int(match.group(1))
+            spin_multiplicity = int(match.group(2))
+        if "Standard orientation:" in line or "Input orientation:" in line:
+            atoms = gaussian_orientation_block(lines, index + 1)
+            if atoms:
+                best_atoms = atoms
+
+        runtime_match = re.match(r"^\s*Job cpu time:\s*(.+)$", line, re.IGNORECASE)
+        if runtime_match is not None:
+            job_cpu_time = normalized_runtime_from_line(runtime_match.group(1))
+        runtime_match = re.match(r"^\s*Elapsed time:\s*(.+)$", line, re.IGNORECASE)
+        if runtime_match is not None:
+            elapsed_time = normalized_runtime_from_line(runtime_match.group(1))
+        runtime_match = re.match(r"^\s*TOTAL RUN TIME:\s*(.+)$", line, re.IGNORECASE)
+        if runtime_match is not None:
+            total_run_time = normalized_runtime_from_line(runtime_match.group(1))
+
+        normal_match = re.search(r"normal termination of gaussian[^\n]*", line, re.IGNORECASE)
+        if normal_match is not None:
+            last_normal_end = line_start + normal_match.end()
+            continuation_after_normal = False
+        error_matches = re.finditer(
+            r"error termination via lnk1e in .*?\bl\d+\.exe\b|error termination request processed by link\s+\d+|segmentation fault|ORCA finished by error|aborting the run|error termination|killed|signal",
+            line,
+            re.IGNORECASE,
+        )
+        for error_match in error_matches:
+            last_error_index = line_start + error_match.start()
+        if last_normal_end >= 0 and line_start + len(line) > last_normal_end and re.search(
+            r"^\s*(?:Link1:|Entering Link|#\s*[A-Za-z]|Charge\s*=\s*-?\d+\s+Multiplicity\s*=|Input orientation:|Standard orientation:|SCF Done:|Frequencies\s+--)",
+            line[last_normal_end - line_start:] if line_start <= last_normal_end <= line_start + len(line) else line,
+            re.IGNORECASE,
+        ):
+            continuation_after_normal = True
+
+        has_toluene = has_toluene or "toluene" in lower
+        has_water = has_water or "water" in lower or "h2o" in lower
+        has_acetonitrile = has_acetonitrile or "acetonitrile" in lower or "mecn" in lower
+        has_implicit_solvent = has_implicit_solvent or "smd" in lower or "cpcm" in lower or "pcm" in lower
+        line_start += len(raw_line)
+
+    if last_error_index > last_normal_end:
+        termination_status: ComputationTerminationStatus = "error"
+    elif last_normal_end >= 0 and continuation_after_normal:
+        termination_status = "running"
+    elif last_normal_end >= 0:
+        termination_status = "normal"
+    elif last_error_index >= 0:
+        termination_status = "error"
     else:
-        energy_solution = energy_gas + correction if correction is not None else None
-    method = gaussian_method_from_text(preview) or match.group(1) or "Gaussian"
+        termination_status = "unknown"
+    method = None
+    method_basis = None
+    if route is not None:
+        for token in route.split():
+            if "/" not in token:
+                continue
+            route_method, route_basis = token.split("/", 1)
+            method = route_method.strip() or None
+            route_basis = route_basis.strip()
+            method_basis = f"{method}/{route_basis}" if method and route_basis else None
+            break
+    solvent = (
+        "Toluene"
+        if has_toluene
+        else "Water"
+        if has_water
+        else "Acetonitrile"
+        if has_acetonitrile
+        else "implicit solvent"
+        if has_implicit_solvent
+        else "unassigned"
+    )
+    return GaussianTextSnapshot(
+        scfEnergy=scf_energy,
+        scfMethodLabel=scf_method_label,
+        freeEnergy=free_energy,
+        gibbsCorrection=gibbs_correction,
+        basisFunctions=basis_functions,
+        atoms=tuple(best_atoms),
+        charge=charge,
+        spinMultiplicity=spin_multiplicity,
+        route=route,
+        method=method,
+        methodBasis=method_basis,
+        formula=formula,
+        solvent=solvent,
+        computation=ComputationMetadata(
+            terminationStatus=termination_status,
+            terminationLabel=termination_status,
+            jobCpuTime=job_cpu_time,
+            elapsedTime=elapsed_time or total_run_time,
+        ),
+        lastNormalTerminationEnd=last_normal_end,
+        lastErrorIndex=last_error_index,
+        continuationAfterNormal=continuation_after_normal,
+    )
+
+
+def as_gaussian_text_snapshot(preview: str | GaussianTextSnapshot) -> GaussianTextSnapshot:
+    return preview if isinstance(preview, GaussianTextSnapshot) else gaussian_text_snapshot(preview)
+
+
+def gaussian_computation_kind_from_snapshot(
+    name: str,
+    snapshot: GaussianTextSnapshot,
+    vibration_modes: tuple[VibrationalMode, ...] = (),
+) -> NodeKind:
+    if vibration_modes_indicate_transition_state(vibration_modes) or route_indicates_transition_state("Gaussian", snapshot.route):
+        return "transition"
+    return infer_node_kind(name, allow_transition=False)
+
+
+def parse_gaussian(preview: str | GaussianTextSnapshot) -> tuple[float, float | None, str] | None:
+    snapshot = as_gaussian_text_snapshot(preview)
+    if snapshot.scfEnergy is None:
+        return None
+    energy_gas = snapshot.scfEnergy
+    if snapshot.freeEnergy is not None:
+        energy_solution = snapshot.freeEnergy
+    else:
+        energy_solution = energy_gas + snapshot.gibbsCorrection if snapshot.gibbsCorrection is not None else None
+    method = snapshot.method or snapshot.scfMethodLabel or "Gaussian"
     return energy_gas, energy_solution, method
 
 
-def gaussian_energy_table(preview: str) -> ParsedEnergyTableData | None:
-    scf_match = last_match(GAUSSIAN_SCF_PATTERN, preview)
-    egas = parse_number(scf_match.group(2)) if scf_match else None
-    free_energy = number_from_match(last_match(GAUSSIAN_FREE_ENERGY_PATTERN, preview))
-    correction = number_from_match(last_match(GAUSSIAN_GIBBS_CORRECTION_PATTERN, preview))
-    ggas = free_energy if free_energy is not None else (egas + correction if egas is not None and correction is not None else None)
-    basis = optional_int_from_text(first_group(GAUSSIAN_BASIS_FUNCTION_PATTERN, preview))
+def gaussian_energy_table(preview: str | GaussianTextSnapshot) -> ParsedEnergyTableData | None:
+    snapshot = as_gaussian_text_snapshot(preview)
+    egas = snapshot.scfEnergy
+    ggas = snapshot.freeEnergy if snapshot.freeEnergy is not None else (egas + snapshot.gibbsCorrection if egas is not None and snapshot.gibbsCorrection is not None else None)
     table = ParsedEnergyTableData(
         egasHartree=egas,
-        gasBasisFunctions=basis,
+        gasBasisFunctions=snapshot.basisFunctions,
         ggasHartree=ggas,
         ggas1mHartree=ggas + ONE_M_STANDARD_STATE_CORRECTION_HARTREE if ggas is not None else None,
         standardStateCorrectionHartree=ONE_M_STANDARD_STATE_CORRECTION_HARTREE if ggas is not None else None,
@@ -2507,44 +2808,168 @@ def gaussian_energy_table(preview: str) -> ParsedEnergyTableData | None:
     return table if energy_table_has_value(table) else None
 
 
-def parse_orca(preview: str) -> tuple[float, float | None] | None:
-    energy_gas = number_from_match(last_match(ORCA_ENERGY_PATTERN, preview))
-    if energy_gas is None:
-        energy_gas = number_from_match(last_match(ORCA_TOTAL_ENERGY_PATTERN, preview))
-    if energy_gas is None:
-        return None
-    solvation = number_from_match(last_match(ORCA_SOLVATION_PATTERN, preview))
-    return energy_gas, energy_gas + solvation if solvation is not None else None
-
-
-def orca_energy_table(preview: str) -> ParsedEnergyTableData | None:
-    egas = number_from_match(last_match(ORCA_ENERGY_PATTERN, preview))
-    if egas is None:
-        egas = number_from_match(last_match(ORCA_TOTAL_ENERGY_PATTERN, preview))
-    basis = optional_int_from_text(first_group(ORCA_BASIS_FUNCTION_PATTERN, preview))
-    table = ParsedEnergyTableData(
-        egasHartree=egas,
-        gasBasisFunctions=basis,
-    )
-    return table if energy_table_has_value(table) else None
-
-
-def orca_vibration_unavailable_warnings(preview: str, target: str) -> tuple[ParseWarning, ...]:
-    if re.search(r"VIBRATIONAL FREQUENCIES|NORMAL MODES", preview, re.IGNORECASE):
-        return (ParseWarning("vibration_unavailable", "ORCA vibration data needs the full-file cclib parser or a recognized normal-mode block.", target),)
-    return ()
-
-
-def orca_atoms_from_text(preview: str) -> list[CoordinateAtom]:
-    lines = preview.splitlines()
+def orca_text_snapshot(preview: str) -> OrcaTextSnapshot:
+    final_single_point_energy: float | None = None
+    total_energy: float | None = None
+    solvation_energy: float | None = None
+    basis_functions: int | None = None
     best_atoms: list[CoordinateAtom] = []
+    xyz_charge: int | None = None
+    xyz_multiplicity: int | None = None
+    summary_charge: int | None = None
+    summary_multiplicity: int | None = None
+    route: str | None = None
+    formula: str | None = None
+    has_vibration_section = False
+    has_toluene = False
+    has_water = False
+    has_acetonitrile = False
+    has_implicit_solvent = False
+
+    raw_lines = preview.splitlines(keepends=True)
+    line_start = 0
+    for raw_line in raw_lines:
+        line = raw_line.rstrip("\r\n")
+        upper = line.upper()
+        lower = line.lower()
+
+        if "FINAL SINGLE POINT ENERGY" in upper:
+            for marker in re.finditer(r"FINAL SINGLE POINT ENERGY", line, re.IGNORECASE):
+                match = ORCA_ENERGY_PATTERN.match(preview, line_start + marker.start())
+                if match is not None:
+                    final_single_point_energy = parse_number(match.group(1))
+        if "TOTAL ENERGY" in upper:
+            for marker in re.finditer(r"Total Energy", line, re.IGNORECASE):
+                match = ORCA_TOTAL_ENERGY_PATTERN.match(preview, line_start + marker.start())
+                if match is not None:
+                    total_energy = parse_number(match.group(1))
+        if "SMD" in upper or "PCM" in upper:
+            for marker in re.finditer(r"CPCM|SMD|PCM", line, re.IGNORECASE):
+                match = ORCA_SOLVATION_PATTERN.match(preview, line_start + marker.start())
+                if match is not None:
+                    solvation_energy = parse_number(match.group(1))
+        if basis_functions is None:
+            for marker_text in ("NUMBER OF BASIS FUNCTIONS", "# OF CONTRACTED BASIS FUNCTIONS"):
+                marker_index = upper.find(marker_text)
+                if marker_index < 0:
+                    continue
+                match = ORCA_BASIS_FUNCTION_PATTERN.match(preview, line_start + marker_index)
+                if match is not None:
+                    basis_functions = optional_int_from_text(match.group(1))
+                    break
+        if route is None:
+            match = ORCA_ROUTE_PATTERN.search(line)
+            if match is not None:
+                route = match.group(1).strip()
+        if xyz_charge is None and xyz_multiplicity is None:
+            match = ORCA_XYZ_DIRECTIVE_PATTERN.match(preview, line_start)
+            if match is not None:
+                xyz_charge = int(match.group(1))
+                xyz_multiplicity = int(match.group(2))
+        if summary_charge is None:
+            marker_index = upper.find("TOTAL CHARGE")
+            if marker_index >= 0:
+                match = ORCA_CHARGE_PATTERN.match(preview, line_start + marker_index)
+                if match is not None:
+                    summary_charge = optional_int_from_text(match.group(1))
+        if summary_multiplicity is None:
+            marker_index = upper.find("MULTIPLICITY")
+            if marker_index >= 0:
+                match = ORCA_MULTIPLICITY_PATTERN.match(preview, line_start + marker_index)
+                if match is not None:
+                    summary_multiplicity = optional_int_from_text(match.group(1))
+        if formula is None:
+            formula_markers = sorted(index for marker_text in ("FORMULA", "STOICHIOMETRY") if (index := upper.find(marker_text)) >= 0)
+            for marker_index in formula_markers:
+                match = FORMULA_PATTERN.match(preview, line_start + marker_index)
+                if match is not None:
+                    formula = match.group(1)
+                    break
+        if "VIBRATIONAL FREQUENCIES" in upper or "NORMAL MODES" in upper:
+            has_vibration_section = True
+
+        has_toluene = has_toluene or "toluene" in lower
+        has_water = has_water or "water" in lower or "h2o" in lower
+        has_acetonitrile = has_acetonitrile or "acetonitrile" in lower or "mecn" in lower
+        has_implicit_solvent = has_implicit_solvent or "smd" in lower or "cpcm" in lower or "pcm" in lower
+        line_start += len(raw_line)
+
+    lines = preview.splitlines()
     for index, line in enumerate(lines):
         if "CARTESIAN COORDINATES" not in line.upper():
             continue
         atoms = orca_coordinate_block(lines, index + 1)
         if atoms:
             best_atoms = atoms
-    return best_atoms
+
+    solvent = (
+        "Toluene"
+        if has_toluene
+        else "Water"
+        if has_water
+        else "Acetonitrile"
+        if has_acetonitrile
+        else "implicit solvent"
+        if has_implicit_solvent
+        else "unassigned"
+    )
+    return OrcaTextSnapshot(
+        finalSinglePointEnergy=final_single_point_energy,
+        totalEnergy=total_energy,
+        solvationEnergy=solvation_energy,
+        basisFunctions=basis_functions,
+        atoms=tuple(best_atoms),
+        charge=xyz_charge if xyz_charge is not None else summary_charge,
+        spinMultiplicity=xyz_multiplicity if xyz_multiplicity is not None else summary_multiplicity,
+        route=route,
+        method=" ".join(route.split()[:4]) if route is not None else None,
+        formula=formula,
+        solvent=solvent,
+        hasVibrationSection=has_vibration_section,
+    )
+
+
+def as_orca_text_snapshot(preview: str | OrcaTextSnapshot) -> OrcaTextSnapshot:
+    return preview if isinstance(preview, OrcaTextSnapshot) else orca_text_snapshot(preview)
+
+
+def orca_computation_kind_from_snapshot(name: str, snapshot: OrcaTextSnapshot) -> NodeKind:
+    if route_indicates_transition_state("ORCA", snapshot.route):
+        return "transition"
+    return infer_node_kind(name, allow_transition=False)
+
+
+def parse_orca(preview: str | OrcaTextSnapshot) -> tuple[float, float | None] | None:
+    snapshot = as_orca_text_snapshot(preview)
+    energy_gas = snapshot.finalSinglePointEnergy
+    if energy_gas is None:
+        energy_gas = snapshot.totalEnergy
+    if energy_gas is None:
+        return None
+    solvation = snapshot.solvationEnergy
+    return energy_gas, energy_gas + solvation if solvation is not None else None
+
+
+def orca_energy_table(preview: str | OrcaTextSnapshot) -> ParsedEnergyTableData | None:
+    snapshot = as_orca_text_snapshot(preview)
+    egas = snapshot.finalSinglePointEnergy
+    if egas is None:
+        egas = snapshot.totalEnergy
+    table = ParsedEnergyTableData(
+        egasHartree=egas,
+        gasBasisFunctions=snapshot.basisFunctions,
+    )
+    return table if energy_table_has_value(table) else None
+
+
+def orca_vibration_unavailable_warnings(preview: str | OrcaTextSnapshot, target: str) -> tuple[ParseWarning, ...]:
+    if as_orca_text_snapshot(preview).hasVibrationSection:
+        return (ParseWarning("vibration_unavailable", "ORCA vibration data needs the full-file cclib parser or a recognized normal-mode block.", target),)
+    return ()
+
+
+def orca_atoms_from_text(preview: str | OrcaTextSnapshot) -> list[CoordinateAtom]:
+    return list(as_orca_text_snapshot(preview).atoms)
 
 
 def orca_coordinate_block(lines: list[str], start: int) -> list[CoordinateAtom]:
@@ -2582,20 +3007,13 @@ def orca_coordinate_block(lines: list[str], start: int) -> list[CoordinateAtom]:
     return atoms
 
 
-def orca_charge_multiplicity(preview: str) -> tuple[int | None, int | None]:
-    xyz_match = ORCA_XYZ_DIRECTIVE_PATTERN.search(preview)
-    if xyz_match is not None:
-        return int(xyz_match.group(1)), int(xyz_match.group(2))
-    charge = optional_int_from_text(first_group(ORCA_CHARGE_PATTERN, preview))
-    multiplicity = optional_int_from_text(first_group(ORCA_MULTIPLICITY_PATTERN, preview))
-    return charge, multiplicity
+def orca_charge_multiplicity(preview: str | OrcaTextSnapshot) -> tuple[int | None, int | None]:
+    snapshot = as_orca_text_snapshot(preview)
+    return snapshot.charge, snapshot.spinMultiplicity
 
 
-def orca_method_from_text(preview: str) -> str | None:
-    route = first_group(ORCA_ROUTE_PATTERN, preview)
-    if route is None:
-        return None
-    return " ".join(route.split()[:4])
+def orca_method_from_text(preview: str | OrcaTextSnapshot) -> str | None:
+    return as_orca_text_snapshot(preview).method
 
 
 def parse_maple(preview: str) -> float | None:
@@ -2738,16 +3156,8 @@ def last_maple_output_energy(preview: str) -> float | None:
     return float(matches[-1].group(1))
 
 
-def gaussian_atoms_from_text(preview: str) -> list[CoordinateAtom]:
-    lines = preview.splitlines()
-    best_atoms: list[CoordinateAtom] = []
-    for index, line in enumerate(lines):
-        if "Standard orientation:" not in line and "Input orientation:" not in line:
-            continue
-        atoms = gaussian_orientation_block(lines, index + 1)
-        if atoms:
-            best_atoms = atoms
-    return best_atoms
+def gaussian_atoms_from_text(preview: str | GaussianTextSnapshot) -> list[CoordinateAtom]:
+    return list(as_gaussian_text_snapshot(preview).atoms)
 
 
 def gaussian_orientation_block(lines: list[str], start: int) -> list[CoordinateAtom]:
@@ -2775,45 +3185,23 @@ def gaussian_orientation_block(lines: list[str], start: int) -> list[CoordinateA
     return atoms
 
 
-def gaussian_charge_multiplicity(preview: str) -> tuple[int | None, int | None]:
-    matches = GAUSSIAN_CHARGE_MULTIPLICITY_PATTERN.findall(preview)
-    if not matches:
-        return None, None
-    charge, multiplicity = matches[-1]
-    return int(charge), int(multiplicity)
+def gaussian_charge_multiplicity(preview: str | GaussianTextSnapshot) -> tuple[int | None, int | None]:
+    snapshot = as_gaussian_text_snapshot(preview)
+    return snapshot.charge, snapshot.spinMultiplicity
 
 
-def gaussian_method_from_text(preview: str) -> str | None:
-    match = GAUSSIAN_ROUTE_PATTERN.search(preview)
-    if match is None:
-        return None
-    route = match.group(1).strip()
-    for token in route.split():
-        if "/" in token:
-            return token.split("/", 1)[0].strip()
-    return None
+def gaussian_method_from_text(preview: str | GaussianTextSnapshot) -> str | None:
+    return as_gaussian_text_snapshot(preview).method
 
 
-def method_basis_label_from_text(source_kind: str, text: str) -> str | None:
+def method_basis_label_from_text(source_kind: str, text: str | GaussianTextSnapshot) -> str | None:
     if source_kind == "Gaussian":
         return gaussian_method_basis_from_text(text)
     return None
 
 
-def gaussian_method_basis_from_text(text: str) -> str | None:
-    match = GAUSSIAN_ROUTE_PATTERN.search(text)
-    if match is None:
-        return None
-    route = match.group(1).strip()
-    for token in route.split():
-        if "/" not in token:
-            continue
-        method, basis = token.split("/", 1)
-        method = method.strip()
-        basis = basis.strip()
-        if method and basis:
-            return f"{method}/{basis}"
-    return None
+def gaussian_method_basis_from_text(text: str | GaussianTextSnapshot) -> str | None:
+    return as_gaussian_text_snapshot(text).methodBasis
 
 
 def coordinate_preview_from_atoms(

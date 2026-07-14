@@ -162,6 +162,10 @@ export type RestoreProjectPackageHandler = (
   options?: RestoreProjectPackageOptions,
 ) => void
 
+export type RestoreStartupProjectPackagesHandler = (
+  payloads: ProjectPackageOpenPayload[],
+) => void
+
 export async function openProjectPackageFromRuntime({
   desktopApi,
   projectInput,
@@ -274,11 +278,11 @@ export function subscribeProjectPackageRuntimeMenus({
 
 export function restoreStartupProjectFromRuntime({
   desktopApi,
-  restoreProjectPackage,
+  restoreProjectPackages,
   onSettled,
 }: {
   desktopApi: RxnflowDesktopApi | undefined
-  restoreProjectPackage: RestoreProjectPackageHandler
+  restoreProjectPackages: RestoreStartupProjectPackagesHandler
   onSettled?: () => void
 }): () => void {
   let canceled = false
@@ -296,12 +300,7 @@ export function restoreStartupProjectFromRuntime({
       : Array.isArray(result.projectContents)
         ? result.projectContents
         : []
-    payloads.filter((payload) => payload?.content).forEach((payload, index) => {
-      restoreProjectPackage(payload.content, payload.validation, {
-        replaceProjects: payload.replaceProjects ?? index === 0,
-        projectDirectory: payload.projectDirectory,
-      })
-    })
+    restoreProjectPackages(payloads.filter((payload) => payload?.content))
   }).catch(() => {
     // Startup restore is best-effort. Invalid recent workspaces are pruned by the main process.
   }).finally(() => {

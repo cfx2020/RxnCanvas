@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
 import type { ParseCandidate, SourceParseResult } from "../domain/sourceParsers"
 import {
@@ -10,6 +10,21 @@ import {
 } from "./InspectorPanels"
 import { defaultEnergyDisplayOptions } from "./energyDisplay"
 import { candidateReviewKey, nodeKindFromCandidate, type CandidateReviewEntry } from "./importRegistration"
+
+const heavyEditorPreloadMocks = vi.hoisted(() => ({
+  preload3Dmol: vi.fn(() => Promise.resolve({})),
+  preloadKetcherEditorHost: vi.fn(() => Promise.resolve({})),
+}))
+
+vi.mock("./Molecule3DmolViewer.loader", () => ({
+  load3DmolModule: vi.fn(() => Promise.resolve({})),
+  preload3Dmol: heavyEditorPreloadMocks.preload3Dmol,
+}))
+
+vi.mock("./KetcherEditorHost.loader", () => ({
+  loadKetcherEditorHostModule: vi.fn(() => Promise.resolve({})),
+  preloadKetcherEditorHost: heavyEditorPreloadMocks.preloadKetcherEditorHost,
+}))
 
 const baseNode: FlowNode = {
   id: "ts-node",
@@ -89,6 +104,75 @@ function sourceFile(parse = sourceParseResult()): SourceFile {
 }
 
 describe("InspectorPanels", () => {
+  beforeEach(() => {
+    heavyEditorPreloadMocks.preload3Dmol.mockClear()
+    heavyEditorPreloadMocks.preloadKetcherEditorHost.mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("preloads 3Dmol immediately from inspector hover and keyboard focus", () => {
+    render(
+      <InspectorPanel
+        node={baseNode}
+        file={sourceFile()}
+        rows={[]}
+        files={[sourceFile()]}
+        energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
+        onReviewCandidates={vi.fn()}
+        onOpenStructure={vi.fn()}
+        onEdit2DStructure={vi.fn()}
+        onReset2DStructure={vi.fn()}
+        onOpenSourceFile={vi.fn()}
+      />,
+    )
+
+    const open3D = screen.getByRole("button", { name: "Open 3D Structure" })
+    fireEvent.mouseEnter(open3D)
+    expect(heavyEditorPreloadMocks.preload3Dmol).toHaveBeenCalledTimes(1)
+
+    fireEvent.focus(open3D)
+    expect(heavyEditorPreloadMocks.preload3Dmol).toHaveBeenCalledTimes(2)
+  })
+
+  it("waits for Ketcher hover intent, cancels on leave, and preloads immediately on focus", () => {
+    vi.useFakeTimers()
+    const view = render(
+      <StructurePreviewDialog
+        node={baseNode}
+        file={sourceFile()}
+        onClose={vi.fn()}
+        onEdit2DStructure={vi.fn()}
+      />,
+    )
+    const edit2D = screen.getByRole("button", { name: "Edit 2D structure for TS node" })
+
+    fireEvent.mouseEnter(edit2D)
+    vi.advanceTimersByTime(199)
+    expect(heavyEditorPreloadMocks.preloadKetcherEditorHost).not.toHaveBeenCalled()
+
+    fireEvent.mouseLeave(edit2D)
+    vi.advanceTimersByTime(1)
+    expect(heavyEditorPreloadMocks.preloadKetcherEditorHost).not.toHaveBeenCalled()
+
+    fireEvent.mouseEnter(edit2D)
+    vi.advanceTimersByTime(200)
+    expect(heavyEditorPreloadMocks.preloadKetcherEditorHost).toHaveBeenCalledTimes(1)
+
+    fireEvent.mouseEnter(edit2D)
+    fireEvent.focus(edit2D)
+    expect(heavyEditorPreloadMocks.preloadKetcherEditorHost).toHaveBeenCalledTimes(2)
+    vi.advanceTimersByTime(200)
+    expect(heavyEditorPreloadMocks.preloadKetcherEditorHost).toHaveBeenCalledTimes(2)
+
+    fireEvent.mouseEnter(edit2D)
+    view.unmount()
+    vi.advanceTimersByTime(200)
+    expect(heavyEditorPreloadMocks.preloadKetcherEditorHost).toHaveBeenCalledTimes(2)
+  })
+
   it("shows source details when a file is selected and no node is selected", () => {
     const onReviewCandidates = vi.fn()
     const file = sourceFile(sourceParseResult([

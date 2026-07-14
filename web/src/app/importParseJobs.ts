@@ -4,6 +4,93 @@ import type { ImportSourceFile } from "./importRegistration"
 
 const defaultDesktopImportConcurrency = 3
 
+export type AnimationFrameBatcher<T> = {
+  enqueue: (value: T, order: number) => void
+  flush: () => Promise<void>
+  cancel: () => void
+}
+
+export function createAnimationFrameBatcher<T>({
+  onFlush,
+  requestFrame = (callback) => window.requestAnimationFrame(callback),
+  cancelFrame = (frameId) => window.cancelAnimationFrame(frameId),
+}: {
+  onFlush: (values: T[], lastQueuedValue: T) => void | Promise<void>
+  requestFrame?: (callback: FrameRequestCallback) => number
+  cancelFrame?: (frameId: number) => void
+}): AnimationFrameBatcher<T> {
+  let queuedValues: Array<{ value: T; order: number; sequence: number }> = []
+  let nextSequence = 0
+  let scheduledFrameId: number | null = null
+  let activeFlush = Promise.resolve()
+  let flushFailure: unknown = null
+  let hasFlushFailure = false
+  let canceled = false
+
+  const cancelScheduledFrame = () => {
+    if (scheduledFrameId === null) return
+    cancelFrame(scheduledFrameId)
+    scheduledFrameId = null
+  }
+
+  const runQueuedBatch = () => {
+    if (canceled || hasFlushFailure || queuedValues.length === 0) return activeFlush
+    const batch = queuedValues
+    queuedValues = []
+    const orderedValues = [...batch]
+      .sort((left, right) => left.order - right.order || left.sequence - right.sequence)
+      .map(({ value }) => value)
+    const lastQueuedValue = batch[batch.length - 1].value
+    const currentFlush = activeFlush.then(async () => {
+      if (canceled || hasFlushFailure) return
+      await onFlush(orderedValues, lastQueuedValue)
+    })
+    activeFlush = currentFlush.catch((error: unknown) => {
+      hasFlushFailure = true
+      flushFailure = error
+      queuedValues = []
+      cancelScheduledFrame()
+    })
+    return currentFlush
+  }
+
+  const flushScheduledBatch = () => {
+    scheduledFrameId = null
+    void runQueuedBatch().catch(() => undefined)
+  }
+
+  return {
+    enqueue(value, order) {
+      if (canceled || hasFlushFailure) return
+      queuedValues.push({ value, order, sequence: nextSequence })
+      nextSequence += 1
+      if (scheduledFrameId !== null) return
+      scheduledFrameId = requestFrame(flushScheduledBatch)
+    },
+    async flush() {
+      if (canceled) return
+      cancelScheduledFrame()
+      while (!canceled) {
+        if (hasFlushFailure) throw flushFailure
+        if (queuedValues.length > 0) {
+          await runQueuedBatch()
+        } else {
+          await activeFlush
+        }
+        if (hasFlushFailure) throw flushFailure
+        if (queuedValues.length === 0) return
+        cancelScheduledFrame()
+      }
+    },
+    cancel() {
+      if (canceled) return
+      canceled = true
+      queuedValues = []
+      cancelScheduledFrame()
+    },
+  }
+}
+
 export async function desktopParsedImportSourceFiles({
   desktopApi,
   projectId,

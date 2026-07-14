@@ -1,4 +1,4 @@
-import { gaussianVibrationalModesFromText } from "./vibrations"
+import { createGaussianVibrationIndex, parseGaussianVibrationalModes } from "./vibrations"
 
 export type ParsedEnergyUnit = "kcal/mol" | "hartree"
 export type ParsedNodeKind = "reactant" | "transition" | "intermediate" | "product"
@@ -124,7 +124,7 @@ const gaussianGibbsCorrectionPattern = new RegExp(`Thermal correction to Gibbs F
 const gaussianFreeEnergyPattern = new RegExp(`Sum of electronic and thermal Free Energies=\\s*(${numberPattern})`, "i")
 const gaussianBasisFunctionPattern = /\bNBasis=\s*(\d+)/i
 const gaussianRoutePattern = /^\s*#\s*[PpNnTt]?\s+(.+)$/m
-const gaussianChargeMultiplicityPattern = /Charge\s*=\s*([-+]?\d+)\s+Multiplicity\s*=\s*(\d+)/g
+const gaussianChargeMultiplicityPattern = /Charge\s*=\s*([-+]?\d+)\s+Multiplicity\s*=\s*(\d+)/
 const orcaEnergyPattern = new RegExp(`FINAL SINGLE POINT ENERGY\\s+(${numberPattern})`, "i")
 const orcaTotalEnergyPattern = new RegExp(`Total Energy\\s*:\\s*(${numberPattern})(?:\\s*Eh)?`, "i")
 const orcaSolvationPattern = new RegExp(`(?:CPCM|SMD|PCM)\\s+SOLVATION ENERGY\\s+=\\s+(${numberPattern})`, "i")
@@ -150,75 +150,78 @@ const mapleBannerMarkers = ["M   A   P   L   E", "MAchine-learning Potential for
 export function parseSourcePreview({ name, preview }: SourceParseInput): SourceParseResult {
   const label = basenameWithoutExtension(name)
   const guessedKind = inferNodeKind(name)
-  const computation = computationMetadataFromSource(preview)
-  const gaussian = parseGaussian(preview)
-  if (gaussian) {
-    const atoms = gaussianAtomsFromText(preview)
-    const vibrations = gaussianVibrationalModesFromText(preview, atoms.length, name)
-    const kind = computationKindFromParserEvidence("Gaussian", name, preview, vibrations.modes)
-    const formula = inferFormulaFromText(preview) ?? (atoms.length > 0 ? formulaFromAtoms(atoms) : "pending")
-    const [charge, spinMultiplicity] = gaussianChargeMultiplicity(preview)
-    const energyTable = gaussianEnergyTable(preview)
+  const gaussian = __sourceParserTestHooks.gaussianTextSnapshot(preview)
+  if (gaussian.scfEnergy !== null) {
+    const vibrationIndex = __sourceParserTestHooks.gaussianVibrationIndex(preview)
+    const vibrations = parseGaussianVibrationalModes(vibrationIndex, gaussian.atoms.length, name)
+    const kind = gaussianComputationKindFromSnapshot(name, gaussian, vibrations.modes)
+    const formula = gaussian.formula ?? (gaussian.atoms.length > 0 ? formulaFromAtoms(gaussian.atoms) : "pending")
+    const energySolution = gaussian.freeEnergy
+      ?? (gaussian.gibbsCorrection !== null ? gaussian.scfEnergy + gaussian.gibbsCorrection : null)
+    const energyTable = gaussianEnergyTableFromSnapshot(gaussian)
     return sourceResultFromCandidates({
       label,
       sourceKind: "Gaussian",
       kind,
-      solvent: inferSolvent(preview),
+      solvent: gaussian.solvent,
       parserId: "gaussian-log-text-preview",
       candidates: [parseCandidate({
         objectIndex: 0,
         label,
         formula,
-        charge,
-        spinMultiplicity,
-        method: gaussian.method,
-        energyGas: gaussian.energyGas,
-        energySolution: gaussian.energySolution,
+        charge: gaussian.charge,
+        spinMultiplicity: gaussian.spinMultiplicity,
+        method: gaussian.method ?? gaussian.scfMethodLabel ?? "Gaussian",
+        energyGas: gaussian.scfEnergy,
+        energySolution,
         energyUnit: "hartree",
-        coordinatePreview: coordinatePreviewFromAtoms(atoms, vibrations.modes),
+        coordinatePreview: coordinatePreviewFromAtoms(gaussian.atoms, vibrations.modes),
         roleHint: roleHintFromParserEvidence(kind, name),
         warnings: vibrations.warnings,
         energyTable,
       })],
       warnings: vibrations.warnings,
       energyTable,
-      computation,
+      computation: gaussian.computation,
     })
   }
 
-  const orca = parseOrca(preview)
+  const orca = parseOrcaTextSnapshot(preview)
   if (orca) {
-    const atoms = orcaAtomsFromText(preview)
-    const vibrationWarnings = orcaVibrationUnavailableWarnings(preview, name)
-    const kind = computationKindFromParserEvidence("ORCA", name, preview)
-    const [charge, spinMultiplicity] = orcaChargeMultiplicity(preview)
-    const energyTable = orcaEnergyTable(preview)
+    const vibrationWarnings = orca.vibrationUnavailable
+      ? [orcaVibrationUnavailableWarning(name)]
+      : []
+    const kind = orca.route && routeIndicatesTransitionState("ORCA", orca.route)
+      ? "transition"
+      : inferNodeKind(name, { allowTransition: false })
     return sourceResultFromCandidates({
       label,
       sourceKind: "ORCA",
       kind,
-      solvent: inferSolvent(preview),
+      solvent: orca.solvent,
       parserId: "orca-output-text-preview",
       candidates: [parseCandidate({
         objectIndex: 0,
         label,
-        formula: inferFormulaFromText(preview) ?? (atoms.length > 0 ? formulaFromAtoms(atoms) : "pending"),
-        charge,
-        spinMultiplicity,
-        method: orcaMethodFromText(preview) ?? "ORCA single point",
-        energyGas: orca.energyGas,
-        energySolution: orca.energySolution,
+        formula: orca.formula ?? (orca.atoms.length > 0 ? formulaFromAtoms(orca.atoms) : "pending"),
+        charge: orca.charge,
+        spinMultiplicity: orca.spinMultiplicity,
+        method: orca.method ?? "ORCA single point",
+        energyGas: orca.energy.energyGas,
+        energySolution: orca.energy.energySolution,
         energyUnit: "hartree",
-        coordinatePreview: coordinatePreviewFromAtoms(atoms),
+        coordinatePreview: coordinatePreviewFromAtoms(orca.atoms),
         roleHint: roleHintFromParserEvidence(kind, name),
         warnings: vibrationWarnings,
-        energyTable,
+        energyTable: orca.energyTable,
       })],
       warnings: vibrationWarnings,
-      energyTable,
-      computation,
+      energyTable: orca.energyTable,
+      computation: orca.computation,
     })
   }
+
+  const computation = computationMetadataFromSource(preview)
 
   const extxyz = parseExtxyzPreview(name, preview)
   if (extxyz) {
@@ -460,32 +463,108 @@ function parseCandidate(input: Omit<ParseCandidate, "candidateId" | "warnings"> 
   }
 }
 
-function parseGaussian(preview: string): { method: string; energyGas: number; energySolution: number | null } | null {
-  const match = lastMatch(gaussianScfPattern, preview)
-  if (!match) return null
-  const energyGas = parseNumber(match[2])
-  if (energyGas === null) return null
-  const freeEnergy = numberFromMatch(lastMatch(gaussianFreeEnergyPattern, preview))
-  const correction = numberFromMatch(lastMatch(gaussianGibbsCorrectionPattern, preview))
+type GaussianTextSnapshot = {
+  scfEnergy: number | null
+  scfMethodLabel: string | null
+  freeEnergy: number | null
+  gibbsCorrection: number | null
+  basisFunctions: number | null
+  atoms: CoordinateAtom[]
+  charge: number | null
+  spinMultiplicity: number | null
+  route: string | null
+  method: string | null
+  formula: string | null
+  solvent: string
+  computation: ComputationMetadata
+  continuationAfterNormal: boolean
+}
+
+function gaussianTextSnapshot(preview: string): GaussianTextSnapshot {
+  const scfMatch = lastMatch(gaussianScfPattern, preview)
+  const chargeMultiplicityMatch = lastMatch(gaussianChargeMultiplicityPattern, preview)
+  const route = firstGroup(gaussianRoutePattern, preview)
+  const termination = gaussianComputationMetadataFromSource(preview)
+  const method = route?.split(/\s+/).find((token) => token.includes("/"))?.split("/", 1)[0] ?? null
   return {
-    method: gaussianMethodFromText(preview) ?? match[1] ?? "Gaussian",
-    energyGas,
-    energySolution: freeEnergy ?? (typeof correction === "number" ? energyGas + correction : null),
+    scfEnergy: scfMatch ? parseNumber(scfMatch[2] ?? "") : null,
+    scfMethodLabel: scfMatch?.[1] ?? null,
+    freeEnergy: numberFromMatch(lastMatch(gaussianFreeEnergyPattern, preview)),
+    gibbsCorrection: numberFromMatch(lastMatch(gaussianGibbsCorrectionPattern, preview)),
+    basisFunctions: optionalIntegerFromText(firstGroup(gaussianBasisFunctionPattern, preview) ?? undefined),
+    atoms: gaussianAtomsFromText(preview),
+    charge: chargeMultiplicityMatch ? Number.parseInt(chargeMultiplicityMatch[1] ?? "", 10) : null,
+    spinMultiplicity: chargeMultiplicityMatch ? Number.parseInt(chargeMultiplicityMatch[2] ?? "", 10) : null,
+    route,
+    method,
+    formula: firstGroup(formulaPattern, preview),
+    solvent: inferSolvent(preview),
+    computation: termination.computation,
+    continuationAfterNormal: termination.continuationAfterNormal,
   }
 }
 
-function gaussianEnergyTable(preview: string): ParsedEnergyTableData | null {
-  const scfMatch = lastMatch(gaussianScfPattern, preview)
-  const egasHartree = scfMatch ? parseNumber(scfMatch[2]) : null
-  const freeEnergy = numberFromMatch(lastMatch(gaussianFreeEnergyPattern, preview))
-  const correction = numberFromMatch(lastMatch(gaussianGibbsCorrectionPattern, preview))
-  const ggasHartree = typeof freeEnergy === "number"
-    ? freeEnergy
-    : (typeof egasHartree === "number" && typeof correction === "number" ? egasHartree + correction : null)
-  const gasBasisFunctions = optionalIntegerFromText(firstGroup(gaussianBasisFunctionPattern, preview) ?? undefined)
+function gaussianComputationMetadataFromSource(sourceText: string): {
+  computation: ComputationMetadata
+  continuationAfterNormal: boolean
+} {
+  const normal = lastRegexMatchWithIndex(sourceText, /normal termination of gaussian[^\n]*/gi)
+    ?? lastRegexMatchWithIndex(sourceText, /ORCA TERMINATED NORMALLY[^\n]*/gi)
+  const normalEnd = normal ? normal.index + normal.text.length : -1
+  const errors = [
+    lastRegexMatchWithIndex(sourceText, /error termination via lnk1e in .*?\bl(\d+)\.exe\b/gi),
+    lastRegexMatchWithIndex(sourceText, /error termination request processed by link\s+(\d+)/gi),
+    lastRegexMatchWithIndex(sourceText, /segmentation fault/gi),
+    lastRegexMatchWithIndex(sourceText, /(?:ORCA finished by error|aborting the run|error termination)/gi),
+    lastRegexMatchWithIndex(sourceText, /(?:killed|signal)/gi),
+  ]
+    .filter((item): item is { index: number; text: string; label: string } => Boolean(item))
+    .sort((left, right) => right.index - left.index)
+  const latestError = errors[0]
+  const continuationAfterNormal = normal ? gaussianJobContinuesAfter(sourceText, normalEnd) : false
+  const terminationStatus: ComputationTerminationStatus = latestError && latestError.index > normalEnd
+    ? "error"
+    : normal && continuationAfterNormal
+      ? "running"
+      : normal
+        ? "normal"
+        : latestError
+          ? "error"
+          : "unknown"
+  return {
+    computation: {
+      terminationStatus,
+      terminationLabel: terminationStatus,
+      jobCpuTime: jobCpuTimeFromSource(sourceText),
+      elapsedTime: elapsedTimeFromSource(sourceText),
+    },
+    continuationAfterNormal,
+  }
+}
+
+/** @internal Test seam that keeps the snapshot private to this parser module's consumers. */
+export const __sourceParserTestHooks = {
+  gaussianTextSnapshot,
+  gaussianVibrationIndex: createGaussianVibrationIndex,
+}
+
+function gaussianComputationKindFromSnapshot(
+  name: string,
+  snapshot: GaussianTextSnapshot,
+  vibrationModes: VibrationalMode[] = [],
+): ParsedNodeKind {
+  if (vibrationModesIndicateTransitionState(vibrationModes) || routeIndicatesTransitionState("Gaussian", snapshot.route)) {
+    return "transition"
+  }
+  return inferNodeKind(name, { allowTransition: false })
+}
+
+function gaussianEnergyTableFromSnapshot(snapshot: GaussianTextSnapshot): ParsedEnergyTableData | null {
+  const ggasHartree = snapshot.freeEnergy
+    ?? (snapshot.scfEnergy !== null && snapshot.gibbsCorrection !== null ? snapshot.scfEnergy + snapshot.gibbsCorrection : null)
   const table: ParsedEnergyTableData = {
-    egasHartree,
-    gasBasisFunctions,
+    egasHartree: snapshot.scfEnergy,
+    gasBasisFunctions: snapshot.basisFunctions,
     ggasHartree,
     ggas1mHartree: typeof ggasHartree === "number" ? ggasHartree + oneMStandardStateCorrectionHartree : null,
     standardStateCorrectionHartree: typeof ggasHartree === "number" ? oneMStandardStateCorrectionHartree : null,
@@ -493,30 +572,46 @@ function gaussianEnergyTable(preview: string): ParsedEnergyTableData | null {
   return hasEnergyTableValue(table) ? table : null
 }
 
-function parseOrca(preview: string): { energyGas: number; energySolution: number | null } | null {
-  const energyGas = numberFromMatch(lastMatch(orcaEnergyPattern, preview)) ?? numberFromMatch(lastMatch(orcaTotalEnergyPattern, preview))
+type OrcaTextSnapshot = {
+  energy: { energyGas: number; energySolution: number | null }
+  energyTable: ParsedEnergyTableData | null
+  atoms: CoordinateAtom[]
+  charge: number | null
+  spinMultiplicity: number | null
+  route: string | null
+  method: string | null
+  formula: string | null
+  solvent: string
+  vibrationUnavailable: boolean
+  computation: ComputationMetadata
+}
+
+function parseOrcaTextSnapshot(preview: string): OrcaTextSnapshot | null {
+  const finalEnergy = numberFromMatch(lastMatch(orcaEnergyPattern, preview))
+  const energyGas = finalEnergy ?? numberFromMatch(lastMatch(orcaTotalEnergyPattern, preview))
   if (typeof energyGas !== "number") return null
   const solvation = numberFromMatch(lastMatch(orcaSolvationPattern, preview))
-  return {
-    energyGas,
-    energySolution: typeof solvation === "number" ? energyGas + solvation : null,
-  }
-}
-
-function orcaVibrationUnavailableWarnings(preview: string, target: string): ParseWarning[] {
-  return /VIBRATIONAL FREQUENCIES|NORMAL MODES/i.test(preview)
-    ? [{ code: "vibration_unavailable", message: "ORCA vibration data needs the full-file cclib parser or a recognized normal-mode block.", target }]
-    : []
-}
-
-function orcaEnergyTable(preview: string): ParsedEnergyTableData | null {
-  const egasHartree = numberFromMatch(lastMatch(orcaEnergyPattern, preview)) ?? numberFromMatch(lastMatch(orcaTotalEnergyPattern, preview))
   const gasBasisFunctions = optionalIntegerFromText(firstGroup(orcaBasisFunctionPattern, preview) ?? undefined)
-  const table: ParsedEnergyTableData = {
-    egasHartree,
-    gasBasisFunctions,
+  const [charge, spinMultiplicity] = orcaChargeMultiplicity(preview)
+  const route = preview.match(orcaRoutePattern)?.[1]?.trim() ?? null
+  const energyTable: ParsedEnergyTableData = { egasHartree: energyGas, gasBasisFunctions }
+  return {
+    energy: { energyGas, energySolution: typeof solvation === "number" ? energyGas + solvation : null },
+    energyTable: hasEnergyTableValue(energyTable) ? energyTable : null,
+    atoms: orcaAtomsFromText(preview),
+    charge,
+    spinMultiplicity,
+    route,
+    method: route ? route.split(/\s+/).slice(0, 4).join(" ") : null,
+    formula: inferFormulaFromText(preview),
+    solvent: inferSolvent(preview),
+    vibrationUnavailable: /VIBRATIONAL FREQUENCIES|NORMAL MODES/i.test(preview),
+    computation: computationMetadataFromSource(preview),
   }
-  return hasEnergyTableValue(table) ? table : null
+}
+
+function orcaVibrationUnavailableWarning(target: string): ParseWarning {
+  return { code: "vibration_unavailable", message: "ORCA vibration data needs the full-file cclib parser or a recognized normal-mode block.", target }
 }
 
 function orcaAtomsFromText(preview: string): CoordinateAtom[] {
@@ -532,7 +627,8 @@ function orcaAtomsFromText(preview: string): CoordinateAtom[] {
 
 function orcaCoordinateBlock(lines: string[], start: number): CoordinateAtom[] {
   const atoms: CoordinateAtom[] = []
-  for (const line of lines.slice(start)) {
+  for (let index = start; index < lines.length; index += 1) {
+    const line = lines[index]
     const trimmed = line.trim()
     if (!trimmed) {
       if (atoms.length > 0) break
@@ -564,11 +660,6 @@ function orcaChargeMultiplicity(preview: string): [number | null, number | null]
     optionalIntegerFromText(preview.match(orcaChargePattern)?.[1]),
     optionalIntegerFromText(preview.match(orcaMultiplicityPattern)?.[1]),
   ]
-}
-
-function orcaMethodFromText(preview: string): string | null {
-  const route = preview.match(orcaRoutePattern)?.[1]?.trim()
-  return route ? route.split(/\s+/).slice(0, 4).join(" ") : null
 }
 
 function parseExtxyzPreview(name: string, preview: string): { candidates: ParseCandidate[]; warnings: ParseWarning[] } | null {
@@ -833,7 +924,8 @@ function gaussianAtomsFromText(preview: string): CoordinateAtom[] {
 function gaussianOrientationBlock(lines: string[], start: number): CoordinateAtom[] {
   let dashCount = 0
   const atoms: CoordinateAtom[] = []
-  for (const line of lines.slice(start)) {
+  for (let index = start; index < lines.length; index += 1) {
+    const line = lines[index]
     if (/^\s*-+\s*$/.test(line)) {
       dashCount += 1
       if (dashCount >= 3) break
@@ -854,18 +946,6 @@ function gaussianOrientationBlock(lines: string[], start: number): CoordinateAto
     })
   }
   return atoms
-}
-
-function gaussianChargeMultiplicity(preview: string): [number | null, number | null] {
-  const matches = Array.from(preview.matchAll(gaussianChargeMultiplicityPattern))
-  const last = matches.at(-1)
-  return last ? [Number.parseInt(last[1], 10), Number.parseInt(last[2], 10)] : [null, null]
-}
-
-function gaussianMethodFromText(preview: string): string | null {
-  const match = preview.match(gaussianRoutePattern)
-  if (!match) return null
-  return match[1].split(/\s+/).find((token) => token.includes("/"))?.split("/", 1)[0] ?? null
 }
 
 function coordinatePreviewFromAtoms(atoms: Array<string | CoordinateAtom>, vibrationModes: VibrationalMode[] = []): CoordinatePreview | null {
@@ -893,21 +973,6 @@ function inferNodeKind(name: string, options: { allowTransition?: boolean } = {}
   if (/\b(product|adduct|prod|final)\b/.test(lower)) return "product"
   if (/\b(reactant|reagent|substrate)\b/.test(lower)) return "reactant"
   return "intermediate"
-}
-
-function computationKindFromParserEvidence(
-  sourceKind: "Gaussian" | "ORCA",
-  name: string,
-  sourceText: string,
-  vibrationModes: VibrationalMode[] = [],
-): ParsedNodeKind {
-  const route = sourceKind === "Gaussian"
-    ? sourceText.match(gaussianRoutePattern)?.[1] ?? null
-    : sourceText.match(orcaRoutePattern)?.[1] ?? null
-  if (vibrationModesIndicateTransitionState(vibrationModes) || routeIndicatesTransitionState(sourceKind, route)) {
-    return "transition"
-  }
-  return inferNodeKind(name, { allowTransition: false })
 }
 
 function vibrationModesIndicateTransitionState(vibrationModes: VibrationalMode[]): boolean {
@@ -976,11 +1041,15 @@ function firstTrimmedMatch(sourceText: string, pattern: RegExp): string | null {
 }
 
 function lastMatch(pattern: RegExp, preview: string): RegExpMatchArray | null {
-  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`
-  const globalPattern = new RegExp(pattern.source, flags)
+  const patternWithGlobalFlag = asGlobalPattern(pattern)
   let result: RegExpMatchArray | null = null
-  for (const match of preview.matchAll(globalPattern)) result = match
+  for (const match of preview.matchAll(patternWithGlobalFlag)) result = match
   return result
+}
+
+function asGlobalPattern(pattern: RegExp): RegExp {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`
+  return new RegExp(pattern.source, flags)
 }
 
 function numberFromMatch(match: RegExpMatchArray | null): number | null {

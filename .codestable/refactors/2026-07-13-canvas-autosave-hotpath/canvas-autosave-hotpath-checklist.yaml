@@ -1,0 +1,35 @@
+refactor: 2026-07-13-canvas-autosave-hotpath
+design: canvas-autosave-hotpath-refactor-design.md
+status: completed
+
+steps:
+  - id: defer-autosave-fingerprint
+    description: 把 autosave 深指纹计算移动到防抖触发后
+    method: M-L4-02
+    status: done
+    verification: autosave 相关测试通过且防抖前不构建指纹
+
+  - id: minimap-local-preview
+    description: MiniMap 拖动使用局部 DOM 预览并在 pointerup 单次提交
+    method: M-L4-02
+    status: done
+    verification: pointermove 不提交顶层 viewport，pointerup 提交一次
+
+  - id: minimap-raf-batching
+    description: 用 requestAnimationFrame 合并 MiniMap 高频 draft 更新
+    method: M-L4-02
+    status: done
+    verification: 同一帧只安排一次更新且最终位置准确
+
+checks:
+  - id: autosave-behavior-equivalent
+    description: 自动保存内容、延迟和去重行为不变
+    status: passed
+
+  - id: minimap-behavior-equivalent
+    description: MiniMap 拖动、取消和释放后的最终视口行为不变
+    status: passed
+
+  - id: full-regression
+    description: Web 全量测试、构建和浏览器目视验证通过
+    status: passed

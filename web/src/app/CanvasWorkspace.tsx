@@ -55,6 +55,7 @@ import {
   sourceFileLooksLikeSolutionLog,
 } from "./fileDisplay"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
+import { preload3Dmol } from "./Molecule3DmolViewer.loader"
 
 export type GraphSelectionMode = "replace" | "toggle"
 
@@ -162,7 +163,7 @@ function canvasTextAnnotationWidth(text: string) {
   })
 }
 
-export function CanvasSurface({
+export const CanvasSurface = memo(function CanvasSurface({
   canvasRef,
   nodes,
   files,
@@ -578,7 +579,7 @@ export function CanvasSurface({
       ) : null}
     </div>
   )
-}
+})
 
 function CanvasRubberBand({ draft }: { draft: Extract<DragState, { kind: "rubber" }> }) {
   const rect = normalizedSelectionRect(draft.start, draft.current)
@@ -1108,6 +1109,8 @@ function NodeStructurePreview({
       className="node-structure-fullscreen"
       aria-label={`Open 3D Structure for ${node.label}`}
       title={`Open 3D Structure for ${node.label}`}
+      onMouseEnter={preload3DmolOnIntent}
+      onFocus={preload3DmolOnIntent}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation()
@@ -1149,6 +1152,10 @@ function NodeStructurePreview({
       <span className="node-qm-badge">{formatChargeMultiplicityBadge(node)}</span>
     </div>
   )
+}
+
+function preload3DmolOnIntent() {
+  void preload3Dmol().catch(() => undefined)
 }
 
 function coordinatePreviewForNode(node: FlowNode, fileById: Map<string, SourceFile>): CoordinatePreview | null {
@@ -1693,6 +1700,8 @@ export function MiniMap({
   selectedNodeIds,
   viewport,
   canvasRef,
+  onViewportPreview,
+  onViewportPreviewEnd,
   onViewportChange,
   onZoomIn,
   onZoomOut,
@@ -1702,6 +1711,8 @@ export function MiniMap({
   selectedNodeIds: string[]
   viewport: CanvasViewport
   canvasRef: React.RefObject<HTMLDivElement | null>
+  onViewportPreview: (viewport: CanvasViewport) => void
+  onViewportPreviewEnd: () => void
   onViewportChange: (viewport: CanvasViewport) => void
   onZoomIn: () => void
   onZoomOut: () => void
@@ -1713,6 +1724,8 @@ export function MiniMap({
   const dragCanvasSizeRef = useRef<SurfaceSize>(fallbackCanvasSize)
   const dragViewportRef = useRef<CanvasViewport | null>(null)
   const dragWindowOffsetRef = useRef<Point | null>(null)
+  const pendingDraftViewportRef = useRef<CanvasViewport | null>(null)
+  const previewFrameRef = useRef<number | null>(null)
   const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds])
   const geometry = useMemo(
     () => createMinimapGeometry(nodes, viewport, canvasSize, minimapSize),
@@ -1758,6 +1771,11 @@ export function MiniMap({
     return () => minimap.removeEventListener("wheel", handleWheel)
   }, [canvasRef, canvasSize, onViewportChange, setCanvasSize, viewport])
 
+  useEffect(() => () => {
+    if (previewFrameRef.current !== null) window.cancelAnimationFrame(previewFrameRef.current)
+    onViewportPreviewEnd()
+  }, [onViewportPreviewEnd])
+
   if (nodes.length === 0) return null
 
   const pointFromEvent = (event: PointerEvent<HTMLButtonElement>): Point => {
@@ -1793,6 +1811,24 @@ export function MiniMap({
       sourceCanvasSize,
     )
   }
+  const cancelPreviewFrame = () => {
+    if (previewFrameRef.current === null) return
+    window.cancelAnimationFrame(previewFrameRef.current)
+    previewFrameRef.current = null
+  }
+  const flushDraftPreview = () => {
+    previewFrameRef.current = null
+    const nextViewport = pendingDraftViewportRef.current
+    pendingDraftViewportRef.current = null
+    if (!nextViewport) return
+    setDraftViewport(nextViewport)
+    onViewportPreview(nextViewport)
+  }
+  const scheduleDraftPreview = (nextViewport: CanvasViewport) => {
+    pendingDraftViewportRef.current = nextViewport
+    if (previewFrameRef.current !== null) return
+    previewFrameRef.current = window.requestAnimationFrame(flushDraftPreview)
+  }
   const beginDrag = (event: PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -1808,7 +1844,9 @@ export function MiniMap({
     dragCanvasSizeRef.current = liveCanvasSize
     dragViewportRef.current = viewport
     setCanvasSize(liveCanvasSize)
-    setDraftViewport(previewFromPoint(point, liveGeometry, viewport, liveCanvasSize))
+    const nextViewport = previewFromPoint(point, liveGeometry, viewport, liveCanvasSize)
+    setDraftViewport(nextViewport)
+    onViewportPreview(nextViewport)
     safeSetPointerCapture(event.currentTarget, event.pointerId)
   }
   const updateDrag = (event: PointerEvent<HTMLButtonElement>) => {
@@ -1818,8 +1856,7 @@ export function MiniMap({
     event.preventDefault()
     event.stopPropagation()
     const nextViewport = previewFromPoint(pointFromEvent(event), dragGeometry, dragViewport, dragCanvasSizeRef.current)
-    setDraftViewport(nextViewport)
-    onViewportChange(nextViewport)
+    scheduleDraftPreview(nextViewport)
   }
   const commitDrag = (event: PointerEvent<HTMLButtonElement>) => {
     const dragGeometry = dragGeometryRef.current
@@ -1828,6 +1865,8 @@ export function MiniMap({
     event.preventDefault()
     event.stopPropagation()
     const nextViewport = previewFromPoint(pointFromEvent(event), dragGeometry, dragViewport, dragCanvasSizeRef.current)
+    cancelPreviewFrame()
+    pendingDraftViewportRef.current = null
     dragGeometryRef.current = null
     dragViewportRef.current = null
     dragWindowOffsetRef.current = null
@@ -1837,10 +1876,14 @@ export function MiniMap({
   }
   const cancelDrag = (event: PointerEvent<HTMLButtonElement>) => {
     event.stopPropagation()
+    cancelPreviewFrame()
+    pendingDraftViewportRef.current = null
     dragGeometryRef.current = null
     dragViewportRef.current = null
     dragWindowOffsetRef.current = null
     setDraftViewport(null)
+    onViewportPreview(viewport)
+    onViewportPreviewEnd()
   }
   return (
     <div className="minimap-stack">

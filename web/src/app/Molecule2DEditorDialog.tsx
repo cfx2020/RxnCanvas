@@ -1,11 +1,26 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { ClipboardEvent as ReactClipboardEvent, ErrorInfo, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react"
+import type { ClipboardEvent as ReactClipboardEvent, ErrorInfo, KeyboardEvent as ReactKeyboardEvent, LazyExoticComponent, MouseEvent as ReactMouseEvent, ReactNode } from "react"
 import type { Ketcher } from "ketcher-core"
 import type { FlowNode, ManualStructurePayload } from "../domain/projectPackages"
 import type { CoordinateAtom } from "../domain/sourceParsers"
 import { molfileFromAtoms } from "./Molecule2DDepiction"
+import { loadKetcherEditorHostModule } from "./KetcherEditorHost.loader"
 
-const KetcherEditorHost = lazy(() => import("./KetcherEditorHost").then((module) => ({ default: module.KetcherEditorHost })))
+type KetcherEditorHostComponent = typeof import("./KetcherEditorHost")["KetcherEditorHost"]
+
+let lazyKetcherEditorHost: LazyExoticComponent<KetcherEditorHostComponent> | null = null
+
+function getLazyKetcherEditorHost(): LazyExoticComponent<KetcherEditorHostComponent> {
+  if (lazyKetcherEditorHost) return lazyKetcherEditorHost
+  const nextLazyKetcherEditorHost: LazyExoticComponent<KetcherEditorHostComponent> = lazy(() => loadKetcherEditorHostModule()
+    .then((module) => ({ default: module.KetcherEditorHost }))
+    .catch((error: unknown) => {
+      if (lazyKetcherEditorHost === nextLazyKetcherEditorHost) lazyKetcherEditorHost = null
+      throw error
+    }))
+  lazyKetcherEditorHost = nextLazyKetcherEditorHost
+  return nextLazyKetcherEditorHost
+}
 
 type Molecule2DEditorDialogProps = {
   node: FlowNode
@@ -15,6 +30,7 @@ type Molecule2DEditorDialogProps = {
 }
 
 export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecule2DEditorDialogProps) {
+  const KetcherEditorHost = useMemo(getLazyKetcherEditorHost, [])
   const ketcherRef = useRef<Ketcher | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
   const toastTimerRef = useRef<number | null>(null)

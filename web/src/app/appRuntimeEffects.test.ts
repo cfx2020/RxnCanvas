@@ -184,18 +184,23 @@ describe("appRuntimeEffects", () => {
       source: "startup",
     }))
     const api = desktopApi({ getStartupProjectContent })
-    const restoreProjectPackage = vi.fn()
-    const dispose = restoreStartupProjectFromRuntime({ desktopApi: api, restoreProjectPackage })
+    const restoreProjectPackages = vi.fn()
+    const dispose = restoreStartupProjectFromRuntime({ desktopApi: api, restoreProjectPackages })
     await Promise.resolve()
     expect(getStartupProjectContent).toHaveBeenCalledTimes(1)
-    expect(restoreProjectPackage).toHaveBeenCalledWith("{\"packageKind\":\"rxnflow-project\"}", null, {
-      replaceProjects: true,
+    expect(restoreProjectPackages).toHaveBeenCalledTimes(1)
+    expect(restoreProjectPackages).toHaveBeenCalledWith([{
+      canceled: false,
+      content: "{\"packageKind\":\"rxnflow-project\"}",
       projectDirectory: "/tmp/ir.rxnflow",
-    })
+      validation: null,
+      replaceProjects: true,
+      source: "startup",
+    }])
     dispose()
   })
 
-  it("restores every startup project content in the provided order", async () => {
+  it("delivers every startup project content as one ordered batch", async () => {
     const getStartupProjectContent = vi.fn(async () => ({
       canceled: false,
       projectContents: [
@@ -204,18 +209,14 @@ describe("appRuntimeEffects", () => {
       ],
     }))
     const api = desktopApi({ getStartupProjectContent })
-    const restoreProjectPackage = vi.fn()
-    restoreStartupProjectFromRuntime({ desktopApi: api, restoreProjectPackage })
+    const restoreProjectPackages = vi.fn()
+    restoreStartupProjectFromRuntime({ desktopApi: api, restoreProjectPackages })
     await Promise.resolve()
-    expect(restoreProjectPackage).toHaveBeenCalledTimes(2)
-    expect(restoreProjectPackage).toHaveBeenNthCalledWith(1, "{\"id\":\"older\"}", null, {
-      replaceProjects: true,
-      projectDirectory: "/tmp/older.rxnflow",
-    })
-    expect(restoreProjectPackage).toHaveBeenNthCalledWith(2, "{\"id\":\"newer\"}", null, {
-      replaceProjects: true,
-      projectDirectory: "/tmp/newer.rxnflow",
-    })
+    expect(restoreProjectPackages).toHaveBeenCalledTimes(1)
+    expect(restoreProjectPackages.mock.calls[0][0]).toEqual([
+      { content: "{\"id\":\"older\"}", projectDirectory: "/tmp/older.rxnflow", validation: null, replaceProjects: true, source: "startup" },
+      { content: "{\"id\":\"newer\"}", projectDirectory: "/tmp/newer.rxnflow", validation: null, replaceProjects: true, source: "startup" },
+    ])
   })
 
   it("persists the active desktop project when the renderer switches workspaces", async () => {

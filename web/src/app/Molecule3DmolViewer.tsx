@@ -6,6 +6,7 @@ import {
   nextStructureAtomSelection,
   structureSelectionReadout,
 } from "./structureMeasurements"
+import { load3DmolModule } from "./Molecule3DmolViewer.loader"
 
 type Molecule3DmolViewerProps = {
   atoms: CoordinateAtom[]
@@ -71,7 +72,7 @@ export function Molecule3DmolViewer({
 
       try {
         setStatus("loading")
-        const $3Dmol = await import("3dmol")
+        const $3Dmol = await load3DmolModule()
         if (disposed || !containerRef.current) return
 
         container.innerHTML = ""

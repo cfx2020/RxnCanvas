@@ -203,22 +203,36 @@ def invalid_input(message: str) -> dict[str, Any]:
     }
 
 
-def main() -> int:
+def parse_request(payload: str) -> tuple[dict[str, Any], int]:
     try:
-        request = json.loads(sys.stdin.read() or "{}")
+        request = json.loads(payload)
     except json.JSONDecodeError as exc:
-        print(json.dumps({
+        return {
             "ok": False,
             "error": {
                 "code": "invalid_json",
                 "message": str(exc),
             },
-        }), flush=True)
-        return 2
+        }, 2
 
     response = handle_request(request if isinstance(request, dict) else {})
-    print(json.dumps(response, sort_keys=True), flush=True)
-    return 0 if response.get("ok") else 1
+    return response, 0 if response.get("ok") else 1
+
+
+def main() -> int:
+    exit_code: int | None = None
+    received_input = False
+
+    for payload in sys.stdin:
+        received_input = True
+        response, exit_code = parse_request(payload)
+        print(json.dumps(response, sort_keys=True), flush=True)
+
+    if not received_input:
+        response, exit_code = parse_request("{}")
+        print(json.dumps(response, sort_keys=True), flush=True)
+
+    return exit_code if exit_code is not None else 1
 
 
 if __name__ == "__main__":

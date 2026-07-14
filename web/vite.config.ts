@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: "jsdom",
-      exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
+      exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**", "**/electron/**/*.test.cjs"],
       globals: true,
       setupFiles: ["./src/test/setup.ts"],
     },

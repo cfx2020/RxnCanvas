@@ -19,6 +19,9 @@ const maxProjectArchiveBytes = 2 * 1024 * 1024 * 1024
 const maxArchiveEntryBytes = 1024 * 1024 * 1024
 const maxArchiveExpandedBytes = 4 * 1024 * 1024 * 1024
 const maxArchiveEntries = 20_000
+const maxFileHashCacheEntries = 256
+const maxFileHashAttempts = 3
+const fileHashCache = new Map()
 
 async function readProjectContent(projectPath) {
   const stats = await fs.stat(projectPath)
@@ -230,8 +233,10 @@ async function persistSourceFile(projectDirectory, file, index, options) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true })
   if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
     await fs.copyFile(sourcePath, targetPath)
+    invalidateFileHash(targetPath)
   } else if (!sourcePath && hasNonEmptyPreview(file)) {
     await fs.writeFile(targetPath, file.preview, "utf8")
+    invalidateFileHash(targetPath)
   } else if (!sourcePath) {
     const { sourcePath: _sourcePath, storedPath: _computedStoredPath, checksum: _checksum, ...rest } = file
     return {
@@ -242,13 +247,12 @@ async function persistSourceFile(projectDirectory, file, index, options) {
     }
   }
 
-  const stats = await fs.stat(targetPath)
-  const buffer = await fs.readFile(targetPath)
+  const hashedFile = await sha256File(targetPath)
   const { sourcePath: _sourcePath, ...rest } = file
   return {
     ...rest,
-    size: stats.size,
-    checksum: `sha256:${crypto.createHash("sha256").update(buffer).digest("hex")}`,
+    size: hashedFile.size,
+    checksum: `sha256:${hashedFile.digest}`,
     storedPath,
   }
 }
@@ -266,20 +270,20 @@ async function materializeImportSourceFile(projectDirectory, file, index, option
   await fs.mkdir(path.dirname(targetPath), { recursive: true })
   if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
     await fs.copyFile(sourcePath, targetPath)
+    invalidateFileHash(targetPath)
   } else if (sourcePath && path.resolve(sourcePath) === path.resolve(targetPath)) {
     // The source is already materialized in the project folder.
   } else {
     throw new Error("Could not copy source file because the import payload did not include a readable native file path.")
   }
 
-  const stats = await fs.stat(targetPath)
-  const buffer = await fs.readFile(targetPath)
+  const hashedFile = await sha256File(targetPath)
   return {
     id: typeof file?.id === "string" ? file.id : undefined,
     name: typeof file?.name === "string" && file.name ? file.name : safeSourceFileName(file, index),
     preview: typeof file?.preview === "string" ? file.preview : "",
-    size: stats.size,
-    checksum: `sha256:${crypto.createHash("sha256").update(buffer).digest("hex")}`,
+    size: hashedFile.size,
+    checksum: `sha256:${hashedFile.digest}`,
     storedPath,
     sourcePath: targetPath,
   }
@@ -322,6 +326,71 @@ async function projectSourcePathExists(projectDirectory, storedPath) {
   }
 }
 
+async function sha256File(filePath) {
+  const absolutePath = path.resolve(filePath)
+  for (let attempt = 1; attempt <= maxFileHashAttempts; attempt += 1) {
+    const before = await statFileFingerprint(absolutePath)
+    const cached = takeCachedFileHash(before.key)
+    if (cached) return cached
+
+    const digest = await streamSha256(absolutePath)
+    const after = await statFileFingerprint(absolutePath)
+    if (before.key === after.key) {
+      const result = { digest, size: Number(after.size) }
+      cacheFileHash(after.key, absolutePath, result)
+      return result
+    }
+  }
+  throw new Error(`Source file changed while computing its checksum: ${absolutePath}`)
+}
+
+async function statFileFingerprint(absolutePath) {
+  const stats = await fs.stat(absolutePath, { bigint: true })
+  if (!stats.isFile()) throw new Error(`Source path is not a file: ${absolutePath}`)
+  return {
+    key: [
+      absolutePath,
+      stats.dev,
+      stats.ino,
+      stats.size,
+      stats.mtimeNs,
+      stats.ctimeNs,
+    ].join("\0"),
+    size: stats.size,
+  }
+}
+
+async function streamSha256(filePath) {
+  const hash = crypto.createHash("sha256")
+  for await (const chunk of fsSync.createReadStream(filePath)) {
+    hash.update(chunk)
+  }
+  return hash.digest("hex")
+}
+
+function takeCachedFileHash(fingerprint) {
+  const cached = fileHashCache.get(fingerprint)
+  if (!cached) return null
+  fileHashCache.delete(fingerprint)
+  fileHashCache.set(fingerprint, cached)
+  return cached.result
+}
+
+function cacheFileHash(fingerprint, absolutePath, result) {
+  fileHashCache.delete(fingerprint)
+  fileHashCache.set(fingerprint, { absolutePath, result })
+  while (fileHashCache.size > maxFileHashCacheEntries) {
+    fileHashCache.delete(fileHashCache.keys().next().value)
+  }
+}
+
+function invalidateFileHash(filePath) {
+  const absolutePath = path.resolve(filePath)
+  for (const [fingerprint, cached] of fileHashCache) {
+    if (cached.absolutePath === absolutePath) fileHashCache.delete(fingerprint)
+  }
+}
+
 function hasNonEmptyPreview(file) {
   return typeof file?.preview === "string" && file.preview.length > 0
 }
@@ -361,7 +430,11 @@ async function pruneUnreferencedSourceFiles(projectDirectory, files) {
     if (!dirent.isFile()) return
     const storedPath = toProjectPath(path.join(sourcesDirectory, dirent.name))
     if (referenced.has(storedPath)) return
-    await fs.unlink(path.join(sourceRoot, dirent.name)).catch(() => undefined)
+    const sourcePath = path.join(sourceRoot, dirent.name)
+    await fs.unlink(sourcePath).then(
+      () => invalidateFileHash(sourcePath),
+      () => undefined,
+    )
   }))
 }
 

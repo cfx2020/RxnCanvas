@@ -140,6 +140,7 @@ import {
   invalidProjectPackageValidation,
   projectPackageRestoreTransitionFromContent,
   serializeProjectPackage,
+  type ProjectPackageRestoreTransition,
   type ProjectValidationPayload,
 } from "./projectPackageWorkflow"
 import { ProjectRail, type FileSelectionOptions } from "./ProjectRail"
@@ -179,8 +180,8 @@ import {
   saveProjectPackageToRuntime,
   setActiveProjectInRuntime,
   subscribeProjectPackageRuntimeMenus,
-  type RestoreProjectPackageHandler,
   type RestoreProjectPackageOptions,
+  type RestoreStartupProjectPackagesHandler,
   watchDesktopEngineStatus,
 } from "./appRuntimeEffects"
 import {
@@ -230,7 +231,12 @@ import {
   stageSourceFilesForProjectAction,
   toggleCandidateReviewSelectionAction,
 } from "./appImportActions"
-import { desktopParsedImportSourceFiles, desktopSourceFilePathForRawFile } from "./importParseJobs"
+import {
+  createAnimationFrameBatcher,
+  desktopParsedImportSourceFiles,
+  desktopSourceFilePathForRawFile,
+  type AnimationFrameBatcher,
+} from "./importParseJobs"
 
 
 function defaultCanvasViewport(canvas: HTMLDivElement | null): CanvasViewport {
@@ -414,8 +420,10 @@ export function App() {
   const autosaveInFlightRef = useRef(false)
   const autosaveQueuedRef = useRef(false)
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
-  const restoreProjectPackageRef = useRef<RestoreProjectPackageHandler | null>(null)
+  const restoreStartupProjectPackagesRef = useRef<RestoreStartupProjectPackagesHandler | null>(null)
   const stageSourceFilesForProjectRef = useRef<((projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>) | null>(null)
+  const desktopImportFrameBatchersRef = useRef(new Set<AnimationFrameBatcher<ImportSourceFile>>())
+  const appDisposedRef = useRef(false)
   const projectDirectoriesRef = useRef<Record<string, string>>({})
   const exportPanelRef = useRef<HTMLElement | null>(null)
   const exportTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -492,6 +500,12 @@ export function App() {
       return
     }
     if (projectDirectory === null) delete projectDirectoriesRef.current[projectId]
+  }, [])
+  const openStructurePreview = useCallback((nodeId: string) => {
+    setStructurePreviewNodeId(nodeId)
+  }, [])
+  const handleRenameRequestHandled = useCallback((nodeId: string) => {
+    setRenameEditingNodeId((current) => current === nodeId ? null : current)
   }, [])
   const toolbarDragOffsetRef = useRef<Point | null>(null)
   const toolbarDragMetricsRef = useRef<ToolbarMetrics | null>(null)
@@ -614,6 +628,15 @@ export function App() {
     canvasRef.current?.classList.add("is-live-pan")
     world.style.transform = `translate(${nextViewport.x}px, ${nextViewport.y}px) scale(${nextViewport.zoom})`
   }, [canvasWorldElement])
+
+  const finishCanvasViewportPreview = useCallback(() => {
+    canvasRef.current?.classList.remove("is-live-pan")
+  }, [])
+
+  const commitMinimapViewport = useCallback((nextViewport: CanvasViewport) => {
+    finishCanvasViewportPreview()
+    setViewport(nextViewport)
+  }, [finishCanvasViewportPreview])
 
   const buildNodeDragPreviewCache = useCallback((nodeId: string, preferredElement?: HTMLElement | null): NodeDragPreviewCache | null => {
     const canvas = canvasRef.current
@@ -1781,6 +1804,15 @@ export function App() {
     stageSourceFilesForProjectRef.current = stageSourceFilesForProject
   }, [stageSourceFilesForProject])
 
+  useEffect(() => {
+    appDisposedRef.current = false
+    return () => {
+      appDisposedRef.current = true
+      for (const batcher of desktopImportFrameBatchersRef.current) batcher.cancel()
+      desktopImportFrameBatchersRef.current.clear()
+    }
+  }, [])
+
   const removePendingImportFile = useCallback((projectId: string, ...removedFiles: ImportSourceFile[]) => {
     const rollbackTargets = removedFiles.filter(Boolean)
     if (rollbackTargets.length === 0) return
@@ -1820,7 +1852,34 @@ export function App() {
   ) => {
     const desktopApi = window.rxnflowDesktop
     if (!desktopApi?.importSourceFiles || importedFiles.length === 0) return
-    void desktopParsedImportSourceFiles({
+    const autoRegister = options.autoRegister === true
+    let frameBatcher: AnimationFrameBatcher<ImportSourceFile> | null = null
+    if (!autoRegister) {
+      frameBatcher = createAnimationFrameBatcher({
+        onFlush: async (parsedFiles, lastQueuedFile) => {
+          const currentBatcher = frameBatcher
+          if (!currentBatcher || !desktopImportFrameBatchersRef.current.has(currentBatcher)) return
+          await (stageSourceFilesForProjectRef.current ?? stageSourceFilesForProject)(
+            projectId,
+            parsedFiles,
+            {
+              ...options,
+              fileMode: "update",
+              autoRegister: false,
+              parseMode: "defer",
+            },
+          )
+          if (!desktopImportFrameBatchersRef.current.has(currentBatcher)) return
+          const selectedFileId = lastQueuedFile.id
+          setSelectedFileIds([selectedFileId])
+          setSelectedFileId(selectedFileId)
+          setLastSelectedFileId(selectedFileId)
+        },
+      })
+      desktopImportFrameBatchersRef.current.add(frameBatcher)
+    }
+
+    const parseJob = desktopParsedImportSourceFiles({
       desktopApi,
       projectId,
       projectDirectory: projectDirectoriesRef.current[projectId] ?? null,
@@ -1834,42 +1893,78 @@ export function App() {
       }),
       onFileParsed: async (parsedFile, index) => {
         if (desktopImportFailureShouldRemovePlaceholder(parsedFile)) {
-          removePendingImportFile(projectId, parsedFile, importedFiles[index] ?? parsedFile)
+          if (!frameBatcher) {
+            removePendingImportFile(projectId, parsedFile, importedFiles[index] ?? parsedFile)
+            return
+          }
+          const currentBatcher = frameBatcher
+          try {
+            await currentBatcher.flush()
+          } finally {
+            if (desktopImportFrameBatchersRef.current.has(currentBatcher)) {
+              removePendingImportFile(projectId, parsedFile, importedFiles[index] ?? parsedFile)
+            }
+          }
+          return
+        }
+        if (frameBatcher) {
+          frameBatcher.enqueue(parsedFile, index)
           return
         }
         await (stageSourceFilesForProjectRef.current ?? stageSourceFilesForProject)(projectId, [parsedFile], {
           ...options,
           fileMode: "update",
-          autoRegister: options.autoRegister ?? false,
+          autoRegister: true,
           parseMode: "defer",
         })
       },
-    }).then((parsedFiles) => {
-      const entries = importIssueDialogEntries(parsedFiles)
-      if (entries.length > 0) {
-        const issue = {
-          title: entries.some((entry) => entry.code === "unsupported_format") ? "Unsupported import format" : "Import failed",
-          entries,
-        }
-        if (desktopApi.showImportIssues) {
-          void desktopApi.showImportIssues(issue).catch(() => {
-            setImportIssueDialog(issue)
-          })
-          return
-        }
-        setImportIssueDialog(issue)
-      }
-    }).catch((error: unknown) => {
-      setProjectValidation({
-        valid: true,
-        summary: {},
-        issues: [{
-          severity: "warning",
-          code: "import_parse_failed",
-          message: error instanceof Error ? error.message : "The desktop parser could not finish this import job.",
-        }],
-      })
     })
+
+    void (async () => {
+      try {
+        const parsedFiles = await parseJob
+        await frameBatcher?.flush()
+        if (appDisposedRef.current) return
+        const entries = importIssueDialogEntries(parsedFiles)
+        if (entries.length > 0) {
+          const issue = {
+            title: entries.some((entry) => entry.code === "unsupported_format") ? "Unsupported import format" : "Import failed",
+            entries,
+          }
+          if (desktopApi.showImportIssues) {
+            void desktopApi.showImportIssues(issue).catch(() => {
+              if (!appDisposedRef.current) setImportIssueDialog(issue)
+            })
+            return
+          }
+          setImportIssueDialog(issue)
+        }
+      } catch (error: unknown) {
+        let reportedError = error
+        if (frameBatcher) {
+          try {
+            await frameBatcher.flush()
+          } catch (flushError: unknown) {
+            reportedError = flushError
+          }
+        }
+        if (appDisposedRef.current) return
+        setProjectValidation({
+          valid: true,
+          summary: {},
+          issues: [{
+            severity: "warning",
+            code: "import_parse_failed",
+            message: reportedError instanceof Error ? reportedError.message : "The desktop parser could not finish this import job.",
+          }],
+        })
+      } finally {
+        if (frameBatcher) {
+          frameBatcher.cancel()
+          desktopImportFrameBatchersRef.current.delete(frameBatcher)
+        }
+      }
+    })()
   }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, removePendingImportFile, stageSourceFilesForProject])
 
   const reviewCandidatesForFile = useCallback((fileId: string) => {
@@ -2097,12 +2192,13 @@ export function App() {
   }, [openImportPicker])
 
   useEffect(() => {
+    if (startupRestorePending) return
     setActiveProjectInRuntime({
       desktopApi: window.rxnflowDesktop,
       projectId: activeProjectId,
       projectDirectory: projectDirectoriesRef.current[activeProjectId] ?? null,
     })
-  }, [activeProjectId])
+  }, [activeProjectId, startupRestorePending])
 
   const restoreProjectPackage = useCallback((
     content: string,
@@ -2142,7 +2238,50 @@ export function App() {
     })
     applyProjectTransition(transition)
   }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects, rememberProjectDirectory])
-  restoreProjectPackageRef.current = restoreProjectPackage
+  const restoreStartupProjectPackages = useCallback<RestoreStartupProjectPackagesHandler>((payloads) => {
+    let restoreState = projectRestoreStateRef.current ?? {
+      projects,
+      workspaces: projectWorkspaces,
+      activeProjectId,
+      activeSnapshot: currentProjectWorkspaceSnapshot(),
+    }
+    let finalTransition: Extract<ProjectPackageRestoreTransition, { ok: true }> | null = null
+    let finalValidation: ProjectValidationPayload | null | undefined
+
+    for (const [index, payload] of payloads.entries()) {
+      const transition = projectPackageRestoreTransitionFromContent({
+        content: payload.content,
+        validation: payload.validation,
+        projects: restoreState.projects,
+        workspaces: restoreState.workspaces,
+        activeProjectId: restoreState.activeProjectId,
+        currentSnapshot: restoreState.activeSnapshot,
+        replaceProjects: payload.replaceProjects ?? index === 0,
+      })
+      finalValidation = transition.validation
+      if (!transition.ok) continue
+
+      rememberProjectDirectory(transition.activeProjectId, payload.projectDirectory)
+      restoreState = {
+        projects: transition.projects,
+        workspaces: transition.workspaces,
+        activeProjectId: transition.activeProjectId,
+        activeSnapshot: transition.activeSnapshot,
+      }
+      finalTransition = transition
+    }
+
+    if (!finalTransition) {
+      if (finalValidation !== undefined) setProjectValidation(finalValidation)
+      return
+    }
+    projectRestoreStateRef.current = restoreState
+    applyProjectTransition({
+      ...finalTransition,
+      validation: finalValidation,
+    })
+  }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects, rememberProjectDirectory])
+  restoreStartupProjectPackagesRef.current = restoreStartupProjectPackages
 
   const handleProjectInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0]
@@ -2231,10 +2370,9 @@ export function App() {
     if (!window.rxnflowDesktop?.autosaveProjectPackage) return
     if (startupRestorePending) return
 
-    const autosaveKey = projectAutosaveKey(autosaveInput)
     if (!autosaveHydratedRef.current) {
       autosaveHydratedRef.current = true
-      autosaveKeyRef.current = autosaveKey
+      autosaveKeyRef.current = projectAutosaveKey(autosaveInput)
       return
     }
     if (dragState) return
@@ -2254,8 +2392,8 @@ export function App() {
 
   useEffect(() => restoreStartupProjectFromRuntime({
     desktopApi: window.rxnflowDesktop,
-    restoreProjectPackage: (content, validation, options) => {
-      restoreProjectPackageRef.current?.(content, validation, options)
+    restoreProjectPackages: (payloads) => {
+      restoreStartupProjectPackagesRef.current?.(payloads)
     },
     onSettled: () => setStartupRestorePending(false),
   }), [])
@@ -3009,13 +3147,11 @@ export function App() {
                   onUpdateEdgeLabel={updateEdgeLabel}
                   onUpdateBarrierLabel={updateBarrierLabel}
                   onSetRelativeEnergyZero={setRelativeEnergyZeroFromNode}
-                  onOpenStructure={(nodeId) => setStructurePreviewNodeId(nodeId)}
+                  onOpenStructure={openStructurePreview}
                   onShowNodeSource={showNodeSourceDetails}
                   onRenameNode={renameNode}
                   renameEditingNodeId={renameEditingNodeId}
-                  onRenameRequestHandled={(nodeId) => {
-                    setRenameEditingNodeId((current) => current === nodeId ? null : current)
-                  }}
+                  onRenameRequestHandled={handleRenameRequestHandled}
                   onOpenContextMenu={openCanvasContextMenu}
                   onRawFileDrop={handleCanvasRawFileDrop}
                   editingAnnotationId={editingAnnotationId}
@@ -3030,7 +3166,9 @@ export function App() {
                   selectedNodeIds={selectedNodeIds}
                   viewport={viewport}
                   canvasRef={canvasRef}
-                  onViewportChange={setViewport}
+                  onViewportPreview={previewCanvasViewport}
+                  onViewportPreviewEnd={finishCanvasViewportPreview}
+                  onViewportChange={commitMinimapViewport}
                   onZoomIn={zoomCanvasIn}
                   onZoomOut={zoomCanvasOut}
                   onReset={fitCanvasViewport}
@@ -3071,7 +3209,7 @@ export function App() {
             files={files}
             energyDisplayOptions={energyDisplayOptions}
             onReviewCandidates={reviewCandidatesForFile}
-            onOpenStructure={(nodeId) => setStructurePreviewNodeId(nodeId)}
+            onOpenStructure={openStructurePreview}
             onEdit2DStructure={(nodeId) => setStructureEditorNodeId(nodeId)}
             onReset2DStructure={resetNodeManualStructure}
             onOpenSourceFile={openSourceFileInSystemApp}

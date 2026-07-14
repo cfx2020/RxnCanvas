@@ -2,20 +2,180 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from rxnflow import demo_flow, export_flow_json
 from rxnflow.engine import MAX_SOURCE_FILE_BYTES, EV_TO_HARTREE, parse_source_file, parse_source_preview, validate_project_content
+from rxnflow import engine
 from rxnflow.engine_ipc import ENGINE_VERSION, handle_request
 
 
 def fake_cclib_module(data: SimpleNamespace, parser_name: str = "Gaussian") -> SimpleNamespace:
     parser_type = type(parser_name, (), {"parse": lambda self: data})
     return SimpleNamespace(io=SimpleNamespace(ccopen=lambda _path, quiet=True: parser_type()))
+
+
+def large_orca_characterization_text(iterations: int = 96) -> str:
+    lines = [
+        "                              O   R   C   A",
+        "! UKS B3LYP D3BJ def2-TZVP OptTS Freq TightSCF",
+        "* xyz -1 2",
+        "Number of basis functions : 777",
+        "ORCA finished by error",
+    ]
+    for index in range(iterations):
+        offset = index / 1000
+        lines.extend([
+            "CARTESIAN COORDINATES (ANGSTROEM)",
+            "---------------------------------",
+            f"C      {offset:.6f}    0.000000    0.000000",
+            f"H      {offset:.6f}    0.000000    1.000000",
+            "",
+            f"FINAL SINGLE POINT ENERGY     {-400.0 - offset:.9f}",
+            f"CPCM SOLVATION ENERGY = {-0.001 - offset / 100:.9f}",
+            *(f"ORCA characterization filler {index:03d} {filler:02d}" for filler in range(12)),
+        ])
+    lines.extend([
+        "! HF def2-SVP SP",
+        "* xyz 2 5",
+        "# of contracted basis functions .... 888",
+        "Total Charge           Charge          ....    3",
+        "Multiplicity           Mult            ....    4",
+        "CARTESIAN COORDINATES (ANGSTROEM)",
+        "---------------------------------",
+        "1 C      0.100000    0.200000    0.300000",
+        "2 O      1.100000    1.200000    1.300000",
+        "3 C     -0.100000   -0.200000   -0.300000",
+        "4 H      2.100000    2.200000    2.300000",
+        "5 H     -2.100000   -2.200000   -2.300000",
+        "6 H      3.100000    3.200000    3.300000",
+        "7 H     -3.100000   -3.200000   -3.300000",
+        "---------------------------------",
+        "VIBRATIONAL FREQUENCIES",
+        "NORMAL MODES",
+        "FINAL SINGLE POINT ENERGY     -500.123456789",
+        "SMD SOLVATION ENERGY = -0.012345000",
+        "Total Energy       :          -999.999999999 Eh",
+        "ORCA TERMINATED NORMALLY",
+        "TOTAL RUN TIME: 0 days 1 hours 2 minutes 3.4 seconds",
+    ])
+    return "\n".join(lines)
+
+
+def large_gaussian_characterization_text(iterations: int = 176) -> str:
+    lines = [
+        " Entering Gaussian System, Link 0=g16",
+        " #p wb97xd/genecp opt=(ts,calcfc) freq scrf=(smd,solvent=toluene)",
+        " Stoichiometry C2H5NO",
+        " NBasis=   777 RedAO= T",
+        " Charge = -1 Multiplicity = 2",
+        *gaussian_orientation_lines([
+            (6, 0.0, 0.0, 0.0),
+            (8, 1.2, 0.0, 0.0),
+            (1, -0.6, 0.9, 0.0),
+            (1, -0.6, -0.9, 0.0),
+        ], "Input orientation:"),
+        " SCF Done:  E(RwB97XD) =  -400.000000000     A.U. after  12 cycles",
+    ]
+    for index in range(iterations):
+        offset = index / 1000
+        lines.extend([
+            *gaussian_orientation_lines([
+                (6, offset, 0.0, 0.0),
+                (8, 1.2 + offset, 0.0, 0.0),
+                (1, -0.6 + offset, 0.9, 0.0),
+                (1, -0.6 + offset, -0.9, 0.0),
+            ]),
+            f" SCF Done:  E(RwB97XD) =  {-400.0 - offset:.9f}     A.U. after  10 cycles",
+            *(f" Gaussian characterization filler {index:03d} {filler:02d} keeps Link1 sections realistic" for filler in range(12)),
+        ])
+    lines.extend([
+        " Job cpu time:       0 days  2 hours  3 minutes  4.5 seconds.",
+        " Elapsed time:       0 days  2 hours  4 minutes  5.6 seconds.",
+        " Normal termination of Gaussian 16 at Tue Jul 14 01:00:00 2026.",
+        " Link1:  Proceeding to internal job step number  2.",
+        " #p m062x/def2svp freq scrf=(pcm,solvent=water)",
+        " Stoichiometry H2O",
+        " NBasis=   888 RedAO= T",
+        " Charge = 2 Multiplicity = 3",
+        *gaussian_orientation_lines([
+            (6, 0.1, 0.2, 0.3),
+            (8, 1.1, 1.2, 1.3),
+            (1, -0.1, -0.2, -0.3),
+            (1, 2.1, 2.2, 2.3),
+        ]),
+        " SCF Done:  E(UM06-2X) =  -500.123456789     A.U. after  8 cycles",
+        " Thermal correction to Gibbs Free Energy=        0.135802468",
+        " Sum of electronic and thermal Free Energies=   -499.987654321",
+        " Frequencies --  -423.1200   120.5000   345.6700",
+        " Red. masses --     1.1000     2.2000     3.3000",
+        " Frc consts  --     0.4000     0.5000     0.6000",
+        " IR Inten    --    10.0000    20.0000    30.0000",
+        " Raman Activ --     4.0000     5.0000     6.0000",
+        " Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z",
+        "   1   6     0.010  0.000  0.000    0.000  0.020  0.000    0.000  0.000  0.030",
+        "   2   8    -0.010  0.000  0.000    0.000 -0.020  0.000    0.000  0.000 -0.030",
+        "   3   1     0.000  0.010  0.000    0.000  0.000  0.020    0.030  0.000  0.000",
+        "   4   1     0.000 -0.010  0.000    0.000  0.000 -0.020   -0.030  0.000  0.000",
+        " Frequencies --   901.2300  1002.3400",
+        " Red. masses --      4.4000     5.5000",
+        " malformed frequency payload without an Atom AN displacement table",
+        " Standard orientation:",
+        " ---------------------------------------------------------------------",
+        " Center     Atomic      Atomic             Coordinates (Angstroms)",
+        " Number     Number       Type             X           Y           Z",
+        " ---------------------------------------------------------------------",
+        " this trailing orientation block is intentionally incomplete",
+        " Job cpu time:       1 days  2 hours  3 minutes  4.5 seconds.",
+        " Elapsed time:       1 days  2 hours  4 minutes  5.6 seconds.",
+        " Normal termination of Gaussian 16 at Tue Jul 14 02:00:00 2026.",
+    ])
+    return "\n".join(lines)
+
+
+def gaussian_orientation_lines(
+    atoms: list[tuple[int, float, float, float]],
+    label: str = "Standard orientation:",
+) -> list[str]:
+    return [
+        f"                          {label}",
+        " ---------------------------------------------------------------------",
+        " Center     Atomic      Atomic             Coordinates (Angstroms)",
+        " Number     Number       Type             X           Y           Z",
+        " ---------------------------------------------------------------------",
+        *(f" {index:6d} {atomic_number:10d} {0:11d} {x:15.6f} {y:11.6f} {z:11.6f}" for index, (atomic_number, x, y, z) in enumerate(atoms, 1)),
+        " ---------------------------------------------------------------------",
+    ]
+
+
+def gaussian_cclib_context_text() -> str:
+    return "\n".join([
+        "Entering Gaussian System",
+        "#p wb97xd/genecp opt freq scrf=(smd,solvent=water)",
+        "Stoichiometry H2",
+        "Charge = 0 Multiplicity = 1",
+        *gaussian_orientation_lines([
+            (1, 0.0, 0.0, 0.0),
+            (1, 0.0, 0.0, 0.74),
+        ]),
+        "SCF Done: E(RwB97XD) = -76.431000 A.U.",
+        "Frequencies -- -123.4000",
+        "Atom  AN      X      Y      Z",
+        "  1   8     0.010  0.000  0.000",
+        "  2   1    -0.010  0.000  0.000",
+        "  3   1     0.000  0.010  0.000",
+        "Job cpu time: 0 days 0 hours 1 minutes 2.3 seconds.",
+        "Elapsed time: 0 days 0 hours 1 minutes 3.4 seconds.",
+        "Normal termination of Gaussian 16",
+    ])
 
 
 class EngineSmokeTest(unittest.TestCase):
@@ -52,6 +212,54 @@ class EngineSmokeTest(unittest.TestCase):
         missing = handle_request({"command": "missing"})
         self.assertFalse(missing["ok"])
         self.assertEqual(missing["error"]["code"], "unknown_command")
+
+    def test_engine_ipc_processes_multiple_requests_after_errors(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "-m", "rxnflow.engine_ipc"],
+            input="\n".join([
+                "not-json",
+                json.dumps({"command": "missing"}),
+                json.dumps({"command": "engine.status"}),
+            ]),
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        responses = [json.loads(line) for line in completed.stdout.splitlines()]
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(len(responses), 3)
+        self.assertEqual(responses[0]["error"]["code"], "invalid_json")
+        self.assertEqual(responses[1]["error"]["code"], "unknown_command")
+        self.assertTrue(responses[2]["ok"])
+        self.assertEqual(responses[2]["data"]["status"], "ready")
+
+    def test_engine_ipc_single_request_eof_keeps_exit_semantics(self) -> None:
+        cases = (
+            (json.dumps({"command": "engine.status"}), 0, None),
+            (json.dumps({"command": "missing"}), 1, "unknown_command"),
+            ("not-json", 2, "invalid_json"),
+        )
+
+        for payload, expected_returncode, expected_error in cases:
+            with self.subTest(payload=payload):
+                completed = subprocess.run(
+                    [sys.executable, "-m", "rxnflow.engine_ipc"],
+                    input=payload,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=10,
+                )
+                responses = [json.loads(line) for line in completed.stdout.splitlines()]
+
+                self.assertEqual(completed.returncode, expected_returncode)
+                self.assertEqual(len(responses), 1)
+                if expected_error is None:
+                    self.assertTrue(responses[0]["ok"])
+                else:
+                    self.assertEqual(responses[0]["error"]["code"], expected_error)
 
     def test_engine_import_preview_parses_calculation_sources(self) -> None:
         gaussian = parse_source_preview(
@@ -231,6 +439,84 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(len(modes[0].displacements), 3)
         self.assertEqual(modes[0].displacements[0].atomIndex, 0)
 
+    def test_gaussian_vibration_index_preserves_multilink_blocks_partial_warnings_and_mode_numbering(self) -> None:
+        source = "\n".join([
+            " Frequencies --  -100.0000   200.0000",
+            " Red. masses --      1.1000     2.2000",
+            " Frc consts  --      0.1000     0.2000",
+            " IR Inten    --     10.0000    20.0000",
+            " Atom  AN      X      Y      Z        X      Y      Z",
+            "   1   6     0.010  0.000  0.000    0.020  0.000  0.000",
+            "   2   1    -0.010  0.000  0.000   -0.020  0.000  0.000",
+            " Normal termination of Gaussian 16",
+            " Link1:",
+            " Frequencies --   300.0000",
+            " Red. masses --      3.3000",
+            " Frc consts  --      0.3000",
+            " IR Inten    --     30.0000",
+            " Atom  AN      X      Y      Z",
+            "   1   6     0.030  0.000  0.000",
+            "   2   1    -0.030  0.000  0.000",
+            " Link1:",
+            " Frequencies --   400.0000",
+            " malformed frequency payload one",
+            " Link1:",
+            " Frequencies --   500.0000",
+            " malformed frequency payload two",
+        ])
+        vibration_index = engine.gaussian_vibration_index(source)
+
+        indexed_modes, indexed_warnings = engine.gaussian_vibrational_modes_from_text(
+            vibration_index,
+            2,
+            "multilink.log",
+        )
+        string_modes, string_warnings = engine.gaussian_vibrational_modes_from_text(
+            source,
+            2,
+            "multilink.log",
+        )
+
+        self.assertEqual(len(vibration_index.frequencyLineIndices), 4)
+        self.assertTrue(vibration_index.hasFrequencyMarker)
+        self.assertEqual(indexed_modes, string_modes)
+        self.assertEqual(indexed_warnings, string_warnings)
+        self.assertEqual([mode.frequencyCm1 for mode in indexed_modes], [-100.0, 200.0, 300.0])
+        self.assertEqual([mode.modeIndex for mode in indexed_modes], [0, 1, 2])
+        self.assertEqual(
+            [mode.modeId for mode in indexed_modes],
+            ["mode-1-imaginary-100.00", "mode-2-real-200.00", "mode-3-real-300.00"],
+        )
+        self.assertEqual([mode.reducedMassAmu for mode in indexed_modes], [1.1, 2.2, 3.3])
+        self.assertEqual(
+            [warning.code for warning in indexed_warnings],
+            ["vibration_parse_partial", "vibration_parse_partial"],
+        )
+
+    def test_gaussian_vibration_index_supports_atom_count_mismatch_without_rebuilding(self) -> None:
+        source = "\n".join([
+            " Frequencies --   123.4500",
+            " Atom  AN      X      Y      Z",
+            "   1   6     0.010  0.000  0.000",
+            "   2   1    -0.010  0.000  0.000",
+        ])
+        vibration_index = engine.gaussian_vibration_index(source)
+
+        with patch.object(engine, "gaussian_vibration_index", wraps=engine.gaussian_vibration_index) as build_index:
+            modes, warnings = engine.gaussian_vibrational_modes_from_text(
+                vibration_index,
+                3,
+                "atom-mismatch.log",
+            )
+
+        self.assertEqual(build_index.call_count, 0)
+        self.assertEqual(modes, ())
+        self.assertEqual(
+            [warning.code for warning in warnings],
+            ["vibration_shape_mismatch", "vibration_parse_partial"],
+        )
+        self.assertEqual(warnings[0].message, "Vibration mode 1 displacement count does not match atom count.")
+
     def test_engine_import_preview_uses_cclib_standard_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source_path = Path(directory) / "cclib-gaussian.log"
@@ -291,6 +577,147 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(parsed.coordinatePreview.vibrationModes[0].source if parsed.coordinatePreview else "", "cclib")
         self.assertAlmostEqual(parsed.energyTable.egasHartree if parsed.energyTable else 0, -76.5)
         self.assertAlmostEqual(parsed.energyTable.ggasHartree if parsed.energyTable else 0, -76.39)
+
+    def test_cclib_full_file_falls_back_to_gaussian_text_vibration_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "cclib-gaussian-text-vibrations.log"
+            source_path.write_text(
+                "\n".join([
+                    "Entering Gaussian System",
+                    "Stoichiometry H2O",
+                    "Charge = 0 Multiplicity = 1",
+                    *gaussian_orientation_lines([
+                        (8, 0.0, 0.0, 0.0),
+                        (1, 0.0, 0.0, 0.96),
+                        (1, 0.92, 0.0, -0.24),
+                    ]),
+                    "SCF Done: E(RB3LYP) = -76.431000 A.U.",
+                    "Frequencies -- -123.4000",
+                    "Atom  AN      X      Y      Z",
+                    "  1   8     0.010  0.000  0.000",
+                    "  2   1    -0.010  0.000  0.000",
+                    "  3   1     0.000  0.010  0.000",
+                ]),
+                encoding="utf8",
+            )
+            fake_data = SimpleNamespace(
+                atomnos=[8, 1, 1],
+                atomcoords=[[
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.96],
+                    [0.92, 0.0, -0.24],
+                ]],
+                scfenergies=[-76.5 / EV_TO_HARTREE],
+                charge=0,
+                mult=1,
+                metadata={"methods": ["B3LYP"]},
+            )
+            fake_cclib = fake_cclib_module(fake_data)
+            sentinel = object()
+            previous = sys.modules.get("cclib", sentinel)
+            sys.modules["cclib"] = fake_cclib
+            try:
+                parsed = parse_source_file("cclib-gaussian-text-vibrations.log", "", str(source_path))
+            finally:
+                if previous is sentinel:
+                    sys.modules.pop("cclib", None)
+                else:
+                    sys.modules["cclib"] = previous
+
+        modes = parsed.coordinatePreview.vibrationModes if parsed.coordinatePreview else ()
+        self.assertEqual(len(modes), 1)
+        self.assertEqual(modes[0].source, "rxnflow-text")
+        self.assertAlmostEqual(modes[0].frequencyCm1, -123.4)
+
+    def test_cclib_full_file_reuses_one_gaussian_context_for_text_vibration_fallback(self) -> None:
+        source = gaussian_cclib_context_text()
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "cclib-gaussian-context.log"
+            source_path.write_text(source, encoding="utf8")
+            fake_data = SimpleNamespace(
+                atomnos=[8, 1, 1],
+                atomcoords=[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.96], [0.92, 0.0, -0.24]]],
+                scfenergies=[-76.5 / EV_TO_HARTREE],
+                charge=0,
+                mult=1,
+                metadata={"methods": ["DFT"]},
+            )
+            fake_cclib = fake_cclib_module(fake_data)
+            sentinel = object()
+            previous = sys.modules.get("cclib", sentinel)
+            sys.modules["cclib"] = fake_cclib
+            try:
+                with (
+                    patch.object(engine, "gaussian_text_snapshot", wraps=engine.gaussian_text_snapshot) as snapshot,
+                    patch.object(engine, "gaussian_vibration_index", wraps=engine.gaussian_vibration_index) as vibration_index,
+                    patch.object(engine, "gaussian_vibrational_modes_from_text", wraps=engine.gaussian_vibrational_modes_from_text) as text_vibrations,
+                    patch.object(engine, "computation_metadata_from_source", wraps=engine.computation_metadata_from_source) as computation_scan,
+                ):
+                    parsed = parse_source_file(source_path.name, "", str(source_path))
+            finally:
+                if previous is sentinel:
+                    sys.modules.pop("cclib", None)
+                else:
+                    sys.modules["cclib"] = previous
+
+        self.assertEqual(snapshot.call_count, 1)
+        self.assertEqual(vibration_index.call_count, 1)
+        self.assertEqual(text_vibrations.call_count, 2)
+        first_vibration_args = text_vibrations.call_args_list[0].args
+        fallback_vibration_args = text_vibrations.call_args_list[1].args
+        self.assertIs(first_vibration_args[0], fallback_vibration_args[0])
+        self.assertEqual(first_vibration_args[1], 2)
+        self.assertEqual(fallback_vibration_args[1], 3)
+        self.assertEqual(computation_scan.call_count, 0)
+        self.assertEqual(parsed.method, "wb97xd/genecp")
+        self.assertEqual(parsed.coordinatePreview.atomCount if parsed.coordinatePreview else 0, 3)
+        modes = parsed.coordinatePreview.vibrationModes if parsed.coordinatePreview else ()
+        self.assertEqual(len(modes), 1)
+        self.assertEqual(len(modes[0].displacements), 3)
+        self.assertEqual(modes[0].source, "rxnflow-text")
+        self.assertEqual(parsed.terminationStatus, "normal")
+        self.assertEqual(parsed.jobCpuTime, "0d 0h 1m 2.3s")
+        self.assertEqual(parsed.elapsedTime, "0d 0h 1m 3.4s")
+
+    def test_cclib_full_file_skips_second_text_vibration_parse_when_cclib_has_modes(self) -> None:
+        source = gaussian_cclib_context_text()
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "cclib-gaussian-vibrations.log"
+            source_path.write_text(source, encoding="utf8")
+            fake_data = SimpleNamespace(
+                atomnos=[8, 1, 1],
+                atomcoords=[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.96], [0.92, 0.0, -0.24]]],
+                scfenergies=[-76.5 / EV_TO_HARTREE],
+                vibfreqs=[-222.2],
+                vibdisps=[[[0.02, 0.0, 0.0], [-0.02, 0.0, 0.0], [0.0, 0.02, 0.0]]],
+                charge=0,
+                mult=1,
+                metadata={"methods": ["DFT"]},
+            )
+            fake_cclib = fake_cclib_module(fake_data)
+            sentinel = object()
+            previous = sys.modules.get("cclib", sentinel)
+            sys.modules["cclib"] = fake_cclib
+            try:
+                with (
+                    patch.object(engine, "gaussian_text_snapshot", wraps=engine.gaussian_text_snapshot) as snapshot,
+                    patch.object(engine, "gaussian_vibration_index", wraps=engine.gaussian_vibration_index) as vibration_index,
+                    patch.object(engine, "gaussian_vibrational_modes_from_text", wraps=engine.gaussian_vibrational_modes_from_text) as text_vibrations,
+                ):
+                    parsed = parse_source_file(source_path.name, "", str(source_path))
+            finally:
+                if previous is sentinel:
+                    sys.modules.pop("cclib", None)
+                else:
+                    sys.modules["cclib"] = previous
+
+        self.assertEqual(snapshot.call_count, 1)
+        self.assertEqual(vibration_index.call_count, 1)
+        self.assertEqual(text_vibrations.call_count, 1)
+        modes = parsed.coordinatePreview.vibrationModes if parsed.coordinatePreview else ()
+        self.assertEqual(len(modes), 1)
+        self.assertAlmostEqual(modes[0].frequencyCm1, -222.2)
+        self.assertEqual(modes[0].source, "cclib")
 
     def test_cclib_full_file_uses_gaussian_route_for_method_basis_label(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -560,6 +987,286 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(orca.coordinatePreview.atomCount if orca.coordinatePreview else 0, 3)
         self.assertEqual(orca.candidates[0].charge, 0)
         self.assertEqual(orca.candidates[0].spinMultiplicity, 1)
+
+    def test_engine_import_preview_preserves_orca_cross_line_regex_semantics(self) -> None:
+        orca = parse_source_preview(
+            "cross-line.out",
+            "\n".join([
+                "! B3LYP def2-SVP SP",
+                "*",
+                "xyz -2 3",
+                "Number of basis functions :",
+                "42",
+                "Stoichiometry",
+                "H2O",
+                "FINAL SINGLE POINT ENERGY",
+                "-10.000000",
+                "SMD",
+                "SOLVATION ENERGY =",
+                "-0.200000",
+            ]),
+        )
+
+        self.assertTrue(orca.parsed)
+        self.assertEqual(orca.formula, "H2O")
+        self.assertEqual(orca.method, "B3LYP def2-SVP SP")
+        self.assertEqual(orca.candidates[0].charge, -2)
+        self.assertEqual(orca.candidates[0].spinMultiplicity, 3)
+        self.assertEqual(orca.energyGas, -10.0)
+        self.assertEqual(orca.energySolution, -10.2)
+        self.assertEqual(orca.energyTable.gasBasisFunctions if orca.energyTable else None, 42)
+
+    def test_engine_import_preview_characterizes_large_orca_result(self) -> None:
+        with patch("rxnflow.engine.orca_text_snapshot", wraps=engine.orca_text_snapshot) as build_snapshot:
+            parsed = parse_source_preview(
+                "orca-large-characterization.out",
+                large_orca_characterization_text(),
+            )
+        self.assertEqual(build_snapshot.call_count, 1)
+        payload = json.loads(json.dumps(asdict(parsed)))
+        warning = {
+            "code": "vibration_unavailable",
+            "message": "ORCA vibration data needs the full-file cclib parser or a recognized normal-mode block.",
+            "target": "orca-large-characterization.out",
+        }
+        energy_table = {
+            "egasHartree": -500.123456789,
+            "gasBasisFunctions": 777,
+            "ggasHartree": None,
+            "ggas1mHartree": None,
+            "ggasShermoHartree": None,
+            "ggasShermo1mHartree": None,
+            "esolHartree": None,
+            "solBasisFunctions": None,
+            "sgauTran": None,
+            "swhitTran": None,
+            "entropyDelta": None,
+            "entropyCorrectionHartree": None,
+            "standardStateCorrectionHartree": None,
+            "gsolHartree": None,
+        }
+        coordinate_preview = {
+            "atomCount": 7,
+            "has3d": True,
+            "elements": ["C", "H", "O"],
+            "atoms": [
+                {"element": "C", "x": 0.1, "y": 0.2, "z": 0.3},
+                {"element": "O", "x": 1.1, "y": 1.2, "z": 1.3},
+                {"element": "C", "x": -0.1, "y": -0.2, "z": -0.3},
+                {"element": "H", "x": 2.1, "y": 2.2, "z": 2.3},
+                {"element": "H", "x": -2.1, "y": -2.2, "z": -2.3},
+                {"element": "H", "x": 3.1, "y": 3.2, "z": 3.3},
+                {"element": "H", "x": -3.1, "y": -3.2, "z": -3.3},
+            ],
+            "vibrationModes": [],
+            "previewKind": "text",
+        }
+        candidate = {
+            "candidateId": "candidate-1-orca-large-characterization",
+            "objectIndex": 0,
+            "label": "orca-large-characterization",
+            "formula": "C2H4O",
+            "charge": -1,
+            "spinMultiplicity": 2,
+            "method": "UKS B3LYP D3BJ def2-TZVP",
+            "energyGas": -500.123456789,
+            "energySolution": -500.13580178899997,
+            "energyUnit": "hartree",
+            "coordinatePreview": coordinate_preview,
+            "roleHint": "transition",
+            "warnings": [warning],
+            "energyTable": energy_table,
+        }
+
+        self.assertEqual(payload, {
+            "label": "orca-large-characterization",
+            "sourceKind": "ORCA",
+            "formula": "C2H4O",
+            "kind": "transition",
+            "method": "UKS B3LYP D3BJ def2-TZVP",
+            "solvent": "implicit solvent",
+            "energyGas": -500.123456789,
+            "energySolution": -500.13580178899997,
+            "energyUnit": "hartree",
+            "parsed": True,
+            "parserId": "orca-output-text-preview",
+            "parserVersion": "0.2.1",
+            "objectCount": 1,
+            "warnings": [warning],
+            "candidates": [candidate],
+            "coordinatePreview": coordinate_preview,
+            "energyTable": energy_table,
+            "parseScope": "preview",
+            "confidence": "low",
+            "terminationStatus": "normal",
+            "terminationLabel": "normal",
+            "jobCpuTime": None,
+            "elapsedTime": "0d 1h 2m 3.4s",
+        })
+
+    def test_engine_import_preview_characterizes_large_gaussian_link1_result(self) -> None:
+        source = large_gaussian_characterization_text()
+        self.assertGreaterEqual(len(source), 150_000)
+        self.assertLessEqual(len(source), 300_000)
+
+        parsed = parse_source_preview("gaussian-large-characterization.log", source)
+        payload = json.loads(json.dumps(asdict(parsed)))
+        modes = payload["coordinatePreview"].pop("vibrationModes")
+        candidate_modes = payload["candidates"][0]["coordinatePreview"].pop("vibrationModes")
+        self.assertEqual(candidate_modes, modes)
+
+        warning = {
+            "code": "vibration_parse_partial",
+            "message": "Gaussian frequency lines were found, but normal-mode displacements were not recognized.",
+            "target": "gaussian-large-characterization.log",
+        }
+        energy_table = {
+            "egasHartree": -500.123456789,
+            "gasBasisFunctions": 777,
+            "ggasHartree": -499.987654321,
+            "ggas1mHartree": -499.984635321,
+            "ggasShermoHartree": None,
+            "ggasShermo1mHartree": None,
+            "esolHartree": None,
+            "solBasisFunctions": None,
+            "sgauTran": None,
+            "swhitTran": None,
+            "entropyDelta": None,
+            "entropyCorrectionHartree": None,
+            "standardStateCorrectionHartree": 0.003019,
+            "gsolHartree": None,
+        }
+        coordinate_preview = {
+            "atomCount": 4,
+            "has3d": True,
+            "elements": ["C", "H", "O"],
+            "atoms": [
+                {"element": "C", "x": 0.1, "y": 0.2, "z": 0.3},
+                {"element": "O", "x": 1.1, "y": 1.2, "z": 1.3},
+                {"element": "H", "x": -0.1, "y": -0.2, "z": -0.3},
+                {"element": "H", "x": 2.1, "y": 2.2, "z": 2.3},
+            ],
+            "previewKind": "text",
+        }
+        candidate = {
+            "candidateId": "candidate-1-gaussian-large-characterization",
+            "objectIndex": 0,
+            "label": "gaussian-large-characterization",
+            "formula": "C2H5NO",
+            "charge": 2,
+            "spinMultiplicity": 3,
+            "method": "wb97xd",
+            "energyGas": -500.123456789,
+            "energySolution": -499.987654321,
+            "energyUnit": "hartree",
+            "coordinatePreview": coordinate_preview,
+            "roleHint": "transition",
+            "warnings": [warning],
+            "energyTable": energy_table,
+        }
+        self.assertEqual(payload, {
+            "label": "gaussian-large-characterization",
+            "sourceKind": "Gaussian",
+            "formula": "C2H5NO",
+            "kind": "transition",
+            "method": "wb97xd",
+            "solvent": "Toluene",
+            "energyGas": -500.123456789,
+            "energySolution": -499.987654321,
+            "energyUnit": "hartree",
+            "parsed": True,
+            "parserId": "gaussian-log-text-preview",
+            "parserVersion": "0.2.1",
+            "objectCount": 1,
+            "warnings": [warning],
+            "candidates": [candidate],
+            "coordinatePreview": coordinate_preview,
+            "energyTable": energy_table,
+            "parseScope": "preview",
+            "confidence": "low",
+            "terminationStatus": "normal",
+            "terminationLabel": "normal",
+            "jobCpuTime": "1d 2h 3m 4.5s",
+            "elapsedTime": "1d 2h 4m 5.6s",
+        })
+        self.assertEqual(len(modes), 3)
+        self.assertEqual(modes[0], {
+            "modeId": "mode-1-imaginary-423.12",
+            "modeIndex": 0,
+            "frequencyCm1": -423.12,
+            "kind": "imaginary",
+            "displacements": [
+                {"atomIndex": 0, "dx": 0.01, "dy": 0.0, "dz": 0.0},
+                {"atomIndex": 1, "dx": -0.01, "dy": 0.0, "dz": 0.0},
+                {"atomIndex": 2, "dx": 0.0, "dy": 0.01, "dz": 0.0},
+                {"atomIndex": 3, "dx": 0.0, "dy": -0.01, "dz": 0.0},
+            ],
+            "reducedMassAmu": 1.1,
+            "forceConstant": 0.4,
+            "irIntensityKmMol": 10.0,
+            "ramanActivity": 4.0,
+            "source": "rxnflow-text",
+        })
+
+    def test_engine_import_preview_builds_one_gaussian_snapshot(self) -> None:
+        source = large_gaussian_characterization_text(iterations=2)
+        original = engine.gaussian_text_snapshot
+        original_vibration_index = engine.gaussian_vibration_index
+
+        with (
+            patch.object(engine, "gaussian_text_snapshot", wraps=original) as snapshot,
+            patch.object(engine, "gaussian_vibration_index", wraps=original_vibration_index) as vibration_index,
+        ):
+            parsed = parse_source_preview("gaussian-single-snapshot.log", source)
+
+        self.assertTrue(parsed.parsed)
+        self.assertEqual(parsed.sourceKind, "Gaussian")
+        self.assertEqual(snapshot.call_count, 1)
+        self.assertEqual(vibration_index.call_count, 1)
+
+    def test_gaussian_snapshot_preserves_link1_first_last_and_valid_orientation_boundaries(self) -> None:
+        source = "\n".join([
+            "Entering Gaussian System",
+            "#p wb97xd/def2tzvp opt=(ts,calcfc) scrf=(smd,solvent=toluene)",
+            "Stoichiometry C2H6",
+            "NBasis= 111 RedAO= T",
+            "Charge = 0 Multiplicity = 1",
+            *gaussian_orientation_lines([(6, 0.0, 0.0, 0.0), (1, 1.0, 0.0, 0.0)]),
+            "SCF Done: E(RwB97XD) = -100.0 A.U.",
+            "Normal termination of Gaussian 16",
+            "Link1:",
+            "#p m062x/def2svp freq scrf=(pcm,solvent=water)",
+            "Stoichiometry H2O",
+            "NBasis= 222 RedAO= T",
+            "Charge = -2 Multiplicity = 3",
+            *gaussian_orientation_lines([(8, 0.1, 0.2, 0.3), (1, 1.1, 1.2, 1.3)]),
+            "SCF Done: E(UM06-2X) = -200.0 A.U.",
+            "Thermal correction to Gibbs Free Energy = 0.25",
+            "Standard orientation:",
+            " ---------------------------------------------------------------------",
+            " Center Atomic Atomic Coordinates",
+            " ---------------------------------------------------------------------",
+            " malformed trailing orientation",
+        ])
+
+        snapshot = engine.gaussian_text_snapshot(source)
+
+        self.assertEqual(snapshot.scfEnergy, -200.0)
+        self.assertEqual(snapshot.scfMethodLabel, "UM06-2X")
+        self.assertEqual(snapshot.freeEnergy, None)
+        self.assertEqual(snapshot.gibbsCorrection, 0.25)
+        self.assertEqual(snapshot.basisFunctions, 111)
+        self.assertEqual(snapshot.route, "wb97xd/def2tzvp opt=(ts,calcfc) scrf=(smd,solvent=toluene)")
+        self.assertEqual(snapshot.method, "wb97xd")
+        self.assertEqual(snapshot.methodBasis, "wb97xd/def2tzvp")
+        self.assertEqual(snapshot.formula, "C2H6")
+        self.assertEqual((snapshot.charge, snapshot.spinMultiplicity), (-2, 3))
+        self.assertEqual(snapshot.solvent, "Toluene")
+        self.assertEqual(tuple(atom.element for atom in snapshot.atoms), ("O", "H"))
+        self.assertEqual(snapshot.computation.terminationStatus, "running")
+        self.assertTrue(snapshot.continuationAfterNormal)
+        self.assertEqual(engine.parse_gaussian(source), (-200.0, -199.75, "wb97xd"))
+        self.assertEqual(engine.gaussian_method_basis_from_text(source), "wb97xd/def2tzvp")
 
     def test_engine_import_preview_preserves_coordinate_atoms_for_2d_depiction(self) -> None:
         gaussian = parse_source_preview(
@@ -1036,6 +1743,58 @@ class EngineSmokeTest(unittest.TestCase):
             self.assertTrue(missing["valid"])
             self.assertIn("source_missing", {issue["code"] for issue in missing["issues"]})
 
+    def test_project_validation_reuses_and_invalidates_source_file_digest_cache(self) -> None:
+        original_bytes = b"same-size-a"
+        changed_bytes = b"same-size-b"
+        project = sample_project_content({
+            "files": [{
+                "id": "file-1",
+                "name": "desktop.log",
+                "kind": "Gaussian",
+                "size": len(original_bytes),
+                "checksum": f"sha256:{hashlib.sha256(original_bytes).hexdigest()}",
+                "status": "parsed",
+                "preview": original_bytes.decode("utf8"),
+                "storedPath": "sources/01-file-1-desktop.log",
+            }],
+        })
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Alpha Study"
+            source_path = project_root / "sources" / "01-file-1-desktop.log"
+            source_path.parent.mkdir(parents=True)
+            source_path.write_bytes(original_bytes)
+            (project_root / "exports").mkdir()
+            (project_root / "exports" / "manifest.json").write_text(json.dumps({"artifacts": []}), encoding="utf8")
+            engine._invalidate_sha256_file_cache(source_path)
+
+            with patch("rxnflow.engine._compute_sha256_file", wraps=engine._compute_sha256_file) as compute_digest:
+                first = validate_project_content(json.dumps(project), project_root)
+                second = validate_project_content(json.dumps(project), project_root)
+                self.assertEqual([], first["issues"])
+                self.assertEqual([], second["issues"])
+                self.assertEqual(1, compute_digest.call_count)
+
+                previous_mtime_ns = source_path.stat().st_mtime_ns
+                source_path.write_bytes(changed_bytes)
+                os.utime(source_path, ns=(previous_mtime_ns + 1_000_000, previous_mtime_ns + 1_000_000))
+                changed = validate_project_content(json.dumps(project), project_root)
+                self.assertIn("source_checksum_mismatch", {issue["code"] for issue in changed["issues"]})
+                self.assertEqual(2, compute_digest.call_count)
+
+                replacement_path = source_path.with_suffix(".replacement")
+                replacement_path.write_bytes(original_bytes)
+                replacement_path.replace(source_path)
+                replaced = validate_project_content(json.dumps(project), project_root)
+                self.assertNotIn("source_checksum_mismatch", {issue["code"] for issue in replaced["issues"]})
+                self.assertEqual(3, compute_digest.call_count)
+
+                source_path.unlink()
+                missing = validate_project_content(json.dumps(project), project_root)
+                self.assertIn("source_missing", {issue["code"] for issue in missing["issues"]})
+                absolute_source_path = str(source_path.resolve())
+                self.assertFalse(any(fingerprint[0] == absolute_source_path for fingerprint in engine._SHA256_FILE_DIGEST_CACHE))
+
     def test_project_validation_checks_export_artifact_manifest(self) -> None:
         artifact_bytes = b"png-bytes"
         project = sample_project_content()
@@ -1061,6 +1820,52 @@ class EngineSmokeTest(unittest.TestCase):
             validation = validate_project_content(json.dumps(project), project_root)
             self.assertTrue(validation["valid"])
             self.assertIn("artifact_checksum_mismatch", {issue["code"] for issue in validation["issues"]})
+
+    def test_project_validation_reuses_and_invalidates_export_artifact_digest_cache(self) -> None:
+        artifact_bytes = b"png-bytes"
+        project = sample_project_content()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Alpha Study"
+            export_path = project_root / "exports" / "rxnflow-profile.png"
+            export_path.parent.mkdir(parents=True)
+            export_path.write_bytes(artifact_bytes)
+            (project_root / "exports" / "manifest.json").write_text(json.dumps({
+                "artifacts": [{
+                    "path": "exports/rxnflow-profile.png",
+                    "size": len(artifact_bytes),
+                    "checksum": f"sha256:{hashlib.sha256(artifact_bytes).hexdigest()}",
+                }],
+            }), encoding="utf8")
+            engine._invalidate_sha256_file_cache(export_path)
+
+            with patch("rxnflow.engine._compute_sha256_file", wraps=engine._compute_sha256_file) as compute_digest:
+                first = validate_project_content(json.dumps(project), project_root)
+                second = validate_project_content(json.dumps(project), project_root)
+                self.assertNotIn("artifact_checksum_mismatch", {issue["code"] for issue in first["issues"]})
+                self.assertNotIn("artifact_checksum_mismatch", {issue["code"] for issue in second["issues"]})
+                self.assertEqual(1, compute_digest.call_count)
+
+                export_path.unlink()
+                missing = validate_project_content(json.dumps(project), project_root)
+                self.assertIn("artifact_missing", {issue["code"] for issue in missing["issues"]})
+                absolute_export_path = str(export_path.resolve())
+                self.assertFalse(any(fingerprint[0] == absolute_export_path for fingerprint in engine._SHA256_FILE_DIGEST_CACHE))
+
+    def test_sha256_file_digest_cache_has_bounded_lru_capacity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_root = Path(temp_dir)
+            paths = []
+            for index in range(engine.SHA256_FILE_CACHE_CAPACITY + 1):
+                path = cache_root / f"artifact-{index}.bin"
+                path.write_bytes(str(index).encode("ascii"))
+                paths.append(path)
+                engine.sha256_file(path)
+
+            self.assertEqual(engine.SHA256_FILE_CACHE_CAPACITY, len(engine._SHA256_FILE_DIGEST_CACHE))
+            cached_paths = {fingerprint[0] for fingerprint in engine._SHA256_FILE_DIGEST_CACHE}
+            self.assertNotIn(str(paths[0].resolve()), cached_paths)
+            self.assertIn(str(paths[-1].resolve()), cached_paths)
 
     def test_engine_project_validate_save_and_open(self) -> None:
         project = sample_project_content({

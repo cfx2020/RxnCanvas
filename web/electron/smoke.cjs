@@ -1,7 +1,7 @@
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
-const { getEngineStatus, runEngineRequest } = require("./engine-bridge.cjs")
+const { getEngineStatus, runEngineRequest, shutdownEngineWorkers } = require("./engine-bridge.cjs")
 const {
   exportManifestFile,
   exportProjectWorkspaceArchive,
@@ -908,7 +908,7 @@ function assertProjectReferenceValidation(validation, message) {
   }
 }
 
-main().catch((error) => {
+main().finally(() => shutdownEngineWorkers()).catch((error) => {
   console.error(error)
   process.exit(1)
 })

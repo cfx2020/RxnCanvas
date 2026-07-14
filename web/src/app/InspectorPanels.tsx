@@ -1,10 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ChevronDown, ExternalLink, FilePlus2, Maximize2, PanelRight, Pause, PencilLine, Play, RotateCcw, X } from "lucide-react"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
 import { classifyComputationTermination, type ParseCandidate, type SourceParseResult, type VibrationalMode } from "../domain/sourceParsers"
 import { type EnergyDisplayOptions, type EnergyExpressionTerm, type EnergyTableRow, formatEnergy, formatRelativeEnergy } from "./energyDisplay"
 import { Molecule3DmolViewer } from "./Molecule3DmolViewer"
+import { preload3Dmol } from "./Molecule3DmolViewer.loader"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
+import { preloadKetcherEditorHost } from "./KetcherEditorHost.loader"
 
 export type InspectorMode = "inspector" | "export"
 
@@ -204,6 +206,8 @@ function NodeInspector({
           type="button"
           className="node-structure-open-button"
           aria-label="Open 3D Structure"
+          onMouseEnter={preload3DmolOnIntent}
+          onFocus={preload3DmolOnIntent}
           onClick={() => onOpenStructure(node.id)}
         >
           <span className="node-structure-open-icon" aria-hidden="true">
@@ -618,6 +622,7 @@ export function StructurePreviewDialog({
     return modes[0] ?? null
   }, [vibrationPreview?.vibrationModes])
   const [vibrationPlaying, setVibrationPlaying] = useState(false)
+  const ketcherPreloadTimerRef = useRef<number | null>(null)
   const hasManualStructure = Boolean(node.manualStructureKet || node.manualStructureMolfile || node.manualStructureCdxml)
   const canAttemptVibrationHydration = Boolean(file && onHydrateSourceParse && defaultVibrationMode && !vibrationalModeHasFullDisplacements(defaultVibrationMode, coordinateAtoms.length))
   const playableVibrationMode = defaultVibrationMode && vibrationalModeHasFullDisplacements(defaultVibrationMode, coordinateAtoms.length) ? defaultVibrationMode : null
@@ -650,6 +655,25 @@ export function StructurePreviewDialog({
     onClose()
   }
 
+  const cancelKetcherHoverPreload = useCallback(() => {
+    if (ketcherPreloadTimerRef.current === null) return
+    window.clearTimeout(ketcherPreloadTimerRef.current)
+    ketcherPreloadTimerRef.current = null
+  }, [])
+
+  const preloadKetcherNow = useCallback(() => {
+    cancelKetcherHoverPreload()
+    void preloadKetcherEditorHost().catch(() => undefined)
+  }, [cancelKetcherHoverPreload])
+
+  const scheduleKetcherHoverPreload = useCallback(() => {
+    if (ketcherPreloadTimerRef.current !== null) return
+    ketcherPreloadTimerRef.current = window.setTimeout(() => {
+      ketcherPreloadTimerRef.current = null
+      void preloadKetcherEditorHost().catch(() => undefined)
+    }, 200)
+  }, [])
+
   useEffect(() => {
     setHydratedParse(null)
     setVibrationPlaying(false)
@@ -666,6 +690,8 @@ export function StructurePreviewDialog({
   useEffect(() => {
     if (!playableVibrationMode) setVibrationPlaying(false)
   }, [playableVibrationMode])
+
+  useEffect(() => cancelKetcherHoverPreload, [cancelKetcherHoverPreload])
 
   return (
     <div
@@ -714,6 +740,9 @@ export function StructurePreviewDialog({
                   className="structure-dialog-action"
                   aria-label={`Edit 2D structure for ${node.label}`}
                   title={`Edit 2D structure for ${node.label}`}
+                  onMouseEnter={scheduleKetcherHoverPreload}
+                  onMouseLeave={cancelKetcherHoverPreload}
+                  onFocus={preloadKetcherNow}
                   onClick={edit2DStructure}
                 >
                   <PencilLine size={14} aria-hidden="true" />
@@ -746,6 +775,10 @@ export function StructurePreviewDialog({
       </section>
     </div>
   )
+}
+
+function preload3DmolOnIntent() {
+  void preload3Dmol().catch(() => undefined)
 }
 
 

@@ -3,7 +3,7 @@ const { execFile } = require("node:child_process")
 const fs = require("node:fs/promises")
 const path = require("node:path")
 const { fileURLToPath } = require("node:url")
-const { getEngineStatus, runEngineRequest } = require("./engine-bridge.cjs")
+const { getEngineStatus, runEngineRequest, shutdownEngineWorkers } = require("./engine-bridge.cjs")
 const {
   exportProjectWorkspaceArchive,
   importProjectWorkspaceArchive,
@@ -183,12 +183,13 @@ async function restoreRecentProjectPayloads() {
   const payloads = []
   let activePayload = null
   let state = { projectPaths: recentProjectPaths, activeProjectPath }
+  let removedInvalidRecentProject = false
   for (const filePath of startupRestoreProjectPaths()) {
     try {
       const startupDirectory = await projectDirectoryForStartupRestore(filePath)
       if (!startupDirectory) {
-        await forgetRecentProject(filePath)
-        state = { projectPaths: recentProjectPaths, activeProjectPath }
+        state = removeRecentProjectState(state, filePath)
+        removedInvalidRecentProject = true
         continue
       }
       const projectPackage = await readProjectPackageWithValidation(filePath)
@@ -207,23 +208,36 @@ async function restoreRecentProjectPayloads() {
         activePayload = payload
       }
     } catch (error) {
-      await forgetRecentProject(filePath)
-      state = { projectPaths: recentProjectPaths, activeProjectPath }
+      state = removeRecentProjectState(state, filePath)
+      removedInvalidRecentProject = true
       console.warn(`Could not restore recent RxnFlow project ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  if (payloads.length === 0) return []
-  activePayload = activePayload ?? payloads[0]
-  const activePath = activePayload.projectDirectory ?? activePayload.filePath
-  state = recordRecentProjectState(state, activePath)
+  if (payloads.length === 0 && !removedInvalidRecentProject) return []
+  if (payloads.length > 0) {
+    activePayload = activePayload ?? payloads[0]
+    const activePath = activePayload.projectDirectory ?? activePayload.filePath
+    state = recordRecentProjectState(state, activePath)
+  }
   recentProjectPaths = state.projectPaths
   activeProjectPath = state.activeProjectPath
-  activateProjectDirectory(activePayload.content, activePayload.projectDirectory)
   await persistRecentProjects()
-  return [
+  if (removedInvalidRecentProject) installApplicationMenu()
+  if (!activePayload) return []
+  const orderedPayloads = [
     ...payloads.filter((payload) => payload !== activePayload),
     activePayload,
   ]
+  registerRestoredProjectDirectories(orderedPayloads)
+  return orderedPayloads
+}
+
+function registerRestoredProjectDirectories(payloads) {
+  for (const payload of payloads) {
+    if (!payload.projectDirectory) continue
+    const identity = projectIdentityFromContent(payload.content)
+    if (identity?.id) projectDirectoriesById.set(identity.id, payload.projectDirectory)
+  }
 }
 
 function startupRestoreProjectPaths() {
@@ -1911,9 +1925,11 @@ function safeWorkspaceFolderName(value) {
 app.whenReady().then(async () => {
   app.setName("RxnFlow")
   recentProjectsStorePath = path.join(userDataDirectory(), "recent-projects.json")
-  const preferences = await loadPreferences(userDataDirectory())
+  const [preferences, recentProjectState] = await Promise.all([
+    loadPreferences(userDataDirectory()),
+    loadRecentProjectsState(recentProjectsStorePath),
+  ])
   nativeTheme.themeSource = preferences.appearance
-  const recentProjectState = await loadRecentProjectsState(recentProjectsStorePath)
   recentProjectPaths = recentProjectState.projectPaths
   activeProjectPath = recentProjectState.activeProjectPath
   installApplicationMenu()
@@ -1922,6 +1938,10 @@ app.whenReady().then(async () => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
   })
+})
+
+app.on("before-quit", () => {
+  void shutdownEngineWorkers()
 })
 
 app.on("window-all-closed", () => {

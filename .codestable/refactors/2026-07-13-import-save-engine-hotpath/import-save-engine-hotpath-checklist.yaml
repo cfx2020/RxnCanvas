@@ -1,0 +1,47 @@
+refactor: 2026-07-13-import-save-engine-hotpath
+design: import-save-engine-hotpath-refactor-design.md
+status: completed
+
+steps:
+  - id: python-multi-request-loop
+    description: Python IPC 支持常驻进程内逐行处理多请求
+    method: M-L1-01+M-L4-06
+    status: done
+    verification: 多请求与错误恢复刻画测试通过
+
+  - id: electron-engine-worker-pool
+    description: Electron 使用最多三个常驻 Python worker
+    method: M-L4-02+M-L4-06
+    status: done
+    verification: PID 复用、并发上限、崩溃恢复和 shutdown 测试通过
+
+  - id: electron-file-fingerprint-cache
+    description: Electron 使用有界文件指纹缓存与流式 SHA-256
+    method: M-L4-01
+    status: done
+    verification: 未变化文件不重复读取且所有失效场景通过
+
+  - id: python-validation-hash-cache
+    description: Python validation 使用有界文件指纹缓存
+    method: M-L4-01
+    status: done
+    verification: 缓存命中与 checksum warning 回归测试通过
+
+  - id: sidebar-import-frame-batching
+    description: 合并普通侧栏导入同一帧内的工作区更新
+    method: M-L4-02
+    status: done
+    verification: 多文件进度测试和浏览器验证通过
+
+checks:
+  - id: behavior-equivalent
+    description: 解析结果、进度、错误隔离和项目校验行为不变
+    status: passed
+
+  - id: performance-evidence
+    description: 冷启动次数和未变化文件读取量显著下降
+    status: passed
+
+  - id: full-regression
+    description: Python、Web、Electron smoke、build 和 diff 检查通过
+    status: passed

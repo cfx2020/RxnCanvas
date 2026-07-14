@@ -2,6 +2,12 @@ import type { ParseWarning, VibrationalMode, VibrationDisplacement } from "./sou
 
 type VibrationSource = VibrationalMode["source"]
 
+/** @internal Shared only by the domain parser so one preview parse can reuse the line index. */
+export type GaussianVibrationIndex = {
+  lines: string[]
+  frequencyLineIndices: number[]
+}
+
 const numberPattern = "[-+]?\\d+(?:\\.\\d+)?(?:[EeDd][-+]?\\d+)?"
 const gaussianFrequencyLinePattern = new RegExp(`Frequencies\\s+--\\s+((?:${numberPattern}\\s*)+)`, "i")
 const gaussianReducedMassLinePattern = new RegExp(`Red\\.\\s*masses\\s+--\\s+((?:${numberPattern}\\s*)+)`, "i")
@@ -9,28 +15,38 @@ const gaussianForceConstantLinePattern = new RegExp(`Frc\\s*consts?\\s+--\\s+((?
 const gaussianIrIntensityLinePattern = new RegExp(`IR\\s+Inten\\s+--\\s+((?:${numberPattern}\\s*)+)`, "i")
 const gaussianRamanActivityLinePattern = new RegExp(`Raman\\s+Activ\\s+--\\s+((?:${numberPattern}\\s*)+)`, "i")
 
-export function gaussianVibrationalModesFromText(
-  sourceText: string,
+export function createGaussianVibrationIndex(sourceText: string): GaussianVibrationIndex {
+  const lines = sourceText.split(/\r?\n/)
+  const frequencyLineIndices: number[] = []
+  lines.forEach((line, index) => {
+    if (/Frequencies\s+--/i.test(line)) frequencyLineIndices.push(index)
+  })
+  return { lines, frequencyLineIndices }
+}
+
+export function parseGaussianVibrationalModes(
+  source: string | GaussianVibrationIndex,
   atomCount: number,
   target: string,
-  source: VibrationSource = "rxnflow-text",
+  vibrationSource: VibrationSource = "rxnflow-text",
 ): { modes: VibrationalMode[]; warnings: ParseWarning[] } {
   if (atomCount <= 0) return { modes: [], warnings: [] }
-  const lines = sourceText.split(/\r?\n/)
+  const index = typeof source === "string" ? createGaussianVibrationIndex(source) : source
+  const { lines, frequencyLineIndices } = index
   const modes: VibrationalMode[] = []
   const warnings: ParseWarning[] = []
 
-  for (let index = 0; index < lines.length; index += 1) {
-    const frequencyMatch = lines[index]?.match(gaussianFrequencyLinePattern)
+  for (const frequencyLineIndex of frequencyLineIndices) {
+    const frequencyMatch = lines[frequencyLineIndex]?.match(gaussianFrequencyLinePattern)
     if (!frequencyMatch) continue
     const frequencies = numbersFromText(frequencyMatch[1])
     if (frequencies.length === 0) continue
     const modeCount = frequencies.length
-    const reducedMasses = nearbyNumbers(lines, index, gaussianReducedMassLinePattern, modeCount)
-    const forceConstants = nearbyNumbers(lines, index, gaussianForceConstantLinePattern, modeCount)
-    const irIntensities = nearbyNumbers(lines, index, gaussianIrIntensityLinePattern, modeCount)
-    const ramanActivities = nearbyNumbers(lines, index, gaussianRamanActivityLinePattern, modeCount)
-    const displacementStart = findGaussianDisplacementStart(lines, index + 1, atomCount)
+    const reducedMasses = nearbyNumbers(lines, frequencyLineIndex, gaussianReducedMassLinePattern, modeCount)
+    const forceConstants = nearbyNumbers(lines, frequencyLineIndex, gaussianForceConstantLinePattern, modeCount)
+    const irIntensities = nearbyNumbers(lines, frequencyLineIndex, gaussianIrIntensityLinePattern, modeCount)
+    const ramanActivities = nearbyNumbers(lines, frequencyLineIndex, gaussianRamanActivityLinePattern, modeCount)
+    const displacementStart = findGaussianDisplacementStart(lines, frequencyLineIndex + 1, atomCount)
     if (displacementStart === -1) {
       warnings.push({
         code: "vibration_parse_partial",
@@ -61,12 +77,12 @@ export function gaussianVibrationalModesFromText(
         forceConstant: forceConstants[modeOffset] ?? null,
         irIntensityKmMol: irIntensities[modeOffset] ?? null,
         ramanActivity: ramanActivities[modeOffset] ?? null,
-        source,
+        source: vibrationSource,
       })
     })
   }
 
-  if (modes.length === 0 && /Frequencies\s+--/i.test(sourceText) && !warnings.some((warning) => warning.code === "vibration_parse_partial")) {
+  if (modes.length === 0 && frequencyLineIndices.length > 0 && !warnings.some((warning) => warning.code === "vibration_parse_partial")) {
     warnings.push({
       code: "vibration_parse_partial",
       message: "Frequency data was detected, but no complete normal modes were parsed.",
@@ -75,6 +91,15 @@ export function gaussianVibrationalModesFromText(
   }
 
   return { modes, warnings }
+}
+
+export function gaussianVibrationalModesFromText(
+  sourceText: string,
+  atomCount: number,
+  target: string,
+  source: VibrationSource = "rxnflow-text",
+): { modes: VibrationalMode[]; warnings: ParseWarning[] } {
+  return parseGaussianVibrationalModes(sourceText, atomCount, target, source)
 }
 
 export function normalizeVibrationalModes(

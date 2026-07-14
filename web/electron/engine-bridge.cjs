@@ -4,6 +4,12 @@ const path = require("node:path")
 
 const defaultRepoRoot = path.resolve(__dirname, "..", "..")
 const defaultTimeoutMs = 5000
+const maxWorkerCount = 3
+const pendingRequests = []
+const workers = new Set()
+
+let dispatchScheduled = false
+let shutdownPromise = null
 
 function getEngineStatus(options = {}) {
   return runEngineRequest({ command: "engine.status" }, options)
@@ -16,78 +22,242 @@ async function runEngineRequest(request, options = {}) {
 function runPythonEngineRequest(request, options = {}) {
   const repoRoot = options.repoRoot || defaultRepoRoot
   const timeoutMs = options.timeoutMs || defaultTimeoutMs
-  const [command, args] = resolveEngineCommand()
+  const payload = JSON.stringify(request)
+  const config = resolveWorkerConfig(repoRoot)
 
   return new Promise((resolve) => {
-    let settled = false
-    let stdout = ""
-    let stderr = ""
-    const child = spawn(command, args, {
-      cwd: repoRoot,
-      env: engineEnvironment(repoRoot),
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    })
-
-    const finish = (response) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve(response)
+    if (shutdownPromise) {
+      resolve(engineUnavailableResponse("RxnFlow local engine is shutting down."))
+      return
     }
+    pendingRequests.push({ config, payload, resolve, timeoutMs, timer: null, worker: null })
+    scheduleDispatch()
+  })
+}
 
-    const timer = setTimeout(() => {
-      child.kill()
-      finish({
-        ok: false,
-        error: {
-          code: "engine_timeout",
-          message: `RxnFlow local engine did not respond within ${timeoutMs}ms.`,
-        },
-      })
-    }, timeoutMs)
+function resolveWorkerConfig(repoRoot) {
+  const [command, args] = resolveEngineCommand()
+  const env = engineEnvironment(repoRoot)
+  const environmentKey = Object.keys(env).sort().map((key) => `${key}=${env[key]}`).join("\n")
+  return {
+    command,
+    args,
+    cwd: repoRoot,
+    env,
+    key: JSON.stringify([command, args, repoRoot, environmentKey]),
+  }
+}
 
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8")
-    })
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8")
-    })
-    child.stdin.on("error", (error) => {
-      finish({
-        ok: false,
-        error: {
-          code: "engine_write_failed",
-          message: error.message,
-        },
-      })
-    })
-    child.on("error", (error) => {
-      finish({
-        ok: false,
-        error: {
-          code: "engine_unavailable",
-          message: error.message,
-        },
-      })
-    })
-    child.on("close", () => {
-      if (settled) return
-      const parsed = parseEngineResponse(stdout)
-      if (parsed) {
-        finish(parsed)
-        return
-      }
-      finish({
-        ok: false,
-        error: {
-          code: "engine_bad_response",
-          message: stderr.trim() || "RxnFlow local engine returned an unreadable response.",
-        },
-      })
-    })
+function scheduleDispatch() {
+  if (dispatchScheduled || shutdownPromise) return
+  dispatchScheduled = true
+  queueMicrotask(() => {
+    dispatchScheduled = false
+    dispatchRequests()
+  })
+}
 
-    child.stdin.end(`${JSON.stringify(request)}\n`)
+function dispatchRequests() {
+  if (shutdownPromise) return
+  while (pendingRequests.length > 0) {
+    const request = pendingRequests[0]
+    let worker = findIdleWorker(request.config.key)
+    if (!worker && workers.size < maxWorkerCount) {
+      worker = createWorker(request.config)
+    }
+    if (!worker) {
+      const incompatibleWorker = [...workers].find((candidate) => (
+        !candidate.activeRequest
+        && !candidate.retiring
+        && candidate.config.key !== request.config.key
+      ))
+      if (incompatibleWorker) retireWorker(incompatibleWorker)
+      return
+    }
+    pendingRequests.shift()
+    assignRequest(worker, request)
+  }
+}
+
+function findIdleWorker(configKey) {
+  return [...workers].find((worker) => (
+    worker.spawned
+    && !worker.closed
+    && !worker.retiring
+    && !worker.activeRequest
+    && worker.config.key === configKey
+  ))
+}
+
+function createWorker(config) {
+  const child = spawn(config.command, config.args, {
+    cwd: config.cwd,
+    env: config.env,
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  })
+  const worker = {
+    activeRequest: null,
+    child,
+    closed: false,
+    config,
+    retiring: false,
+    spawned: false,
+    stderr: "",
+    stdout: "",
+  }
+  workers.add(worker)
+
+  child.once("spawn", () => {
+    worker.spawned = true
+    if (worker.activeRequest) writeActiveRequest(worker)
+    scheduleDispatch()
+  })
+  child.stdout.on("data", (chunk) => handleWorkerStdout(worker, chunk))
+  child.stderr.on("data", (chunk) => {
+    worker.stderr += chunk.toString("utf8")
+  })
+  child.stdin.on("error", (error) => {
+    if (!worker.spawned || !worker.activeRequest) return
+    failActiveRequest(worker, {
+      ok: false,
+      error: { code: "engine_write_failed", message: error.message },
+    })
+    retireWorker(worker)
+  })
+  child.on("error", (error) => {
+    failActiveRequest(worker, engineUnavailableResponse(error.message))
+    retireWorker(worker)
+  })
+  child.on("close", () => handleWorkerClose(worker))
+  return worker
+}
+
+function assignRequest(worker, request) {
+  worker.activeRequest = request
+  worker.stderr = ""
+  request.worker = worker
+  request.timer = setTimeout(() => {
+    if (worker.activeRequest !== request) return
+    failActiveRequest(worker, {
+      ok: false,
+      error: {
+        code: "engine_timeout",
+        message: `RxnFlow local engine did not respond within ${request.timeoutMs}ms.`,
+      },
+    })
+    retireWorker(worker)
+  }, request.timeoutMs)
+  if (worker.spawned) writeActiveRequest(worker)
+}
+
+function writeActiveRequest(worker) {
+  const request = worker.activeRequest
+  if (!request || worker.closed || worker.retiring) return
+  worker.child.stdin.write(`${request.payload}\n`, (error) => {
+    if (!error || worker.activeRequest !== request) return
+    failActiveRequest(worker, {
+      ok: false,
+      error: { code: "engine_write_failed", message: error.message },
+    })
+    retireWorker(worker)
+  })
+}
+
+function handleWorkerStdout(worker, chunk) {
+  worker.stdout += chunk.toString("utf8")
+  while (true) {
+    const newlineIndex = worker.stdout.indexOf("\n")
+    if (newlineIndex < 0) return
+    const line = worker.stdout.slice(0, newlineIndex).replace(/\r$/, "")
+    worker.stdout = worker.stdout.slice(newlineIndex + 1)
+    if (!line.trim()) continue
+    if (!worker.activeRequest) {
+      retireWorker(worker)
+      return
+    }
+    const parsed = parseEngineResponse(line)
+    if (!parsed) {
+      failActiveRequest(worker, badResponse(worker.stderr))
+      retireWorker(worker)
+      return
+    }
+    finishActiveRequest(worker, parsed)
+    if (worker.stdout.split(/\r?\n/).some((extraLine) => extraLine.trim())) {
+      retireWorker(worker)
+      return
+    }
+  }
+}
+
+function handleWorkerClose(worker) {
+  if (worker.closed) return
+  worker.closed = true
+  if (worker.activeRequest) {
+    const parsed = parseEngineResponse(worker.stdout)
+    finishActiveRequest(worker, parsed || badResponse(worker.stderr))
+  }
+  workers.delete(worker)
+  scheduleDispatch()
+}
+
+function finishActiveRequest(worker, response) {
+  const request = worker.activeRequest
+  if (!request) return
+  worker.activeRequest = null
+  clearTimeout(request.timer)
+  request.resolve(response)
+  scheduleDispatch()
+}
+
+function failActiveRequest(worker, response) {
+  finishActiveRequest(worker, response)
+}
+
+function retireWorker(worker) {
+  if (worker.retiring || worker.closed) return
+  worker.retiring = true
+  worker.child.kill()
+}
+
+function badResponse(stderr) {
+  return {
+    ok: false,
+    error: {
+      code: "engine_bad_response",
+      message: stderr.trim() || "RxnFlow local engine returned an unreadable response.",
+    },
+  }
+}
+
+function engineUnavailableResponse(message) {
+  return {
+    ok: false,
+    error: { code: "engine_unavailable", message },
+  }
+}
+
+function shutdownEngineWorkers() {
+  if (shutdownPromise) return shutdownPromise
+  const response = engineUnavailableResponse("RxnFlow local engine is shutting down.")
+  for (const request of pendingRequests.splice(0)) request.resolve(response)
+
+  const activeWorkers = [...workers]
+  const workerClosures = activeWorkers.map(waitForWorkerClose)
+  for (const worker of activeWorkers) {
+    failActiveRequest(worker, response)
+    retireWorker(worker)
+  }
+  shutdownPromise = Promise.all(workerClosures).then(() => {
+    shutdownPromise = null
+  })
+  return shutdownPromise
+}
+
+function waitForWorkerClose(worker) {
+  if (worker.closed) return Promise.resolve()
+  return new Promise((resolve) => {
+    worker.child.once("close", resolve)
   })
 }
 
@@ -151,4 +321,5 @@ function engineEnvironment(repoRoot) {
 module.exports = {
   getEngineStatus,
   runEngineRequest,
+  shutdownEngineWorkers,
 }
