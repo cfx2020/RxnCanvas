@@ -356,15 +356,32 @@ export function projectWorkspaceWithImportPlan(
   const fileMode = options.fileMode ?? "prepend"
   const activeCanvas = activeCanvasSnapshot(targetSnapshot)
   const nextFiles = sourceFilesWithImportPlan(targetSnapshot.files, importPlan, fileMode)
+  const replacementSourceFileIds = new Set(importPlan.stagedFiles
+    .filter((stagedFile) => targetSnapshot.files.some((currentFile) => (
+      currentFile.id !== stagedFile.id
+      && sourceFileIsPendingImportPlaceholder(currentFile)
+      && sourceFileReplacementKey(currentFile) === sourceFileReplacementKey(stagedFile)
+    )))
+    .map((file) => file.id))
+  const existingNodeSourceFileIds = new Set(activeCanvas.nodes
+    .map((node) => node.sourceFileId)
+    .filter((sourceFileId): sourceFileId is string => Boolean(sourceFileId)))
+  const suppressedAutoNodeSourceFileIds = new Set([...replacementSourceFileIds]
+    .filter((sourceFileId) => existingNodeSourceFileIds.has(sourceFileId)))
+  const appendedAutoNodes = autoNodes.filter((node) => (
+    !node.sourceFileId || !suppressedAutoNodeSourceFileIds.has(node.sourceFileId)
+  ))
   const workspaceWithActiveCanvas = projectWorkspaceWithActiveCanvas(targetSnapshot, {
     ...activeCanvas,
     nodes: [
       ...activeCanvas.nodes,
-      ...autoNodes,
+      ...appendedAutoNodes,
     ],
-    selectedNodeIds: autoNodes[0]?.id ? [autoNodes[0].id] : [],
-    selectedEdgeIds: [],
-    selectedBarrierIds: [],
+    selectedNodeIds: appendedAutoNodes[0]?.id
+      ? [appendedAutoNodes[0].id]
+      : suppressedAutoNodeSourceFileIds.size > 0 ? activeCanvas.selectedNodeIds : [],
+    selectedEdgeIds: suppressedAutoNodeSourceFileIds.size > 0 ? activeCanvas.selectedEdgeIds : [],
+    selectedBarrierIds: suppressedAutoNodeSourceFileIds.size > 0 ? activeCanvas.selectedBarrierIds : [],
     viewport: activeCanvas.viewport,
   })
   return reconcileProjectWorkspaceSourceNodes(projectWorkspaceSnapshot({
@@ -375,13 +392,16 @@ export function projectWorkspaceWithImportPlan(
     lastSelectedFileId: importedFiles[0]?.id ?? null,
     inspectorMode: "inspector",
     viewMode: options.viewMode ?? "canvas",
-  }))
+  }), new Set(importPlan.stagedFiles.map((file) => file.id)))
 }
 
-export function reconcileProjectWorkspaceSourceNodes(snapshot: ProjectWorkspaceSnapshot): ProjectWorkspaceSnapshot {
+export function reconcileProjectWorkspaceSourceNodes(
+  snapshot: ProjectWorkspaceSnapshot,
+  refreshedSourceFileIds: ReadonlySet<string> = new Set(),
+): ProjectWorkspaceSnapshot {
   const reconciledCanvases = snapshot.canvases.map((canvas) => ({
     ...canvas,
-    nodes: reconcileNodesWithPairedSourceFiles(canvas.nodes, snapshot.files),
+    nodes: reconcileNodesWithPairedSourceFiles(canvas.nodes, snapshot.files, refreshedSourceFileIds),
   }))
   const activeCanvas = reconciledCanvases.find((canvas) => canvas.id === snapshot.activeCanvasId)
     ?? reconciledCanvases[0]
@@ -400,7 +420,11 @@ export function reconcileProjectWorkspaceSourceNodes(snapshot: ProjectWorkspaceS
   })
 }
 
-function reconcileNodesWithPairedSourceFiles(nodes: FlowNode[], files: SourceFile[]): FlowNode[] {
+function reconcileNodesWithPairedSourceFiles(
+  nodes: FlowNode[],
+  files: SourceFile[],
+  refreshedSourceFileIds: ReadonlySet<string>,
+): FlowNode[] {
   const parsedImports = files.flatMap((file, index) => file.parse ? [{ file, index, parsed: file.parse }] : [])
   const pairedNodeByGroupKey = new Map<string, FlowNode>()
   for (const [groupIndex, group] of parsedImportGroups(parsedImports).entries()) {
@@ -423,10 +447,13 @@ function reconcileNodesWithPairedSourceFiles(nodes: FlowNode[], files: SourceFil
     if (!node.sourceFileId) return node
     const sourceFile = fileById.get(node.sourceFileId)
     if (!sourceFile) return node
+    const refreshedNode = refreshedSourceFileIds.has(sourceFile.id)
+      ? nodeWithRefreshedSourceData(node, sourceFile)
+      : node
     const pairedNode = pairedNodeByGroupKey.get(sourceFileDisplayGroupKey(sourceFile))
-    if (!pairedNode) return node
+    if (!pairedNode) return refreshedNode
     return {
-      ...node,
+      ...refreshedNode,
       energyGas: pairedNode.energyGas,
       energySolution: pairedNode.energySolution,
       energyUnit: pairedNode.energyUnit,
@@ -435,6 +462,35 @@ function reconcileNodesWithPairedSourceFiles(nodes: FlowNode[], files: SourceFil
       sourceStatus: pairedNode.sourceStatus,
     }
   })
+}
+
+function nodeWithRefreshedSourceData(node: FlowNode, file: SourceFile): FlowNode {
+  const parsed = file.parse
+  if (!parsed?.parsed) return node
+  const candidates = parsed.candidates ?? []
+  const candidate = candidates.find((item) => item.candidateId === node.sourceCandidateId)
+    ?? candidates.find((item) => item.objectIndex === node.sourceObjectIndex)
+    ?? (candidates.length === 1 ? candidates[0] : null)
+  if (candidates.length > 1 && !candidate) return node
+
+  return {
+    ...node,
+    formula: candidate?.formula ?? parsed.formula,
+    method: candidate?.method || parsed.method,
+    solvent: parsed.solvent,
+    energyGas: candidate ? candidate.energyGas : parsed.energyGas,
+    energySolution: candidate ? candidate.energySolution : parsed.energySolution,
+    energyUnit: candidate?.energyUnit ?? parsed.energyUnit,
+    energyTable: candidate?.energyTable ?? parsed.energyTable ?? undefined,
+    parserId: parsed.parserId,
+    parserVersion: parsed.parserVersion,
+    sourceCandidateId: candidate?.candidateId ?? (candidates.length === 0 ? undefined : node.sourceCandidateId),
+    sourceObjectIndex: candidate?.objectIndex ?? (candidates.length === 0 ? undefined : node.sourceObjectIndex),
+    roleHint: candidate?.roleHint ?? node.roleHint,
+    charge: candidate ? candidate.charge : node.charge ?? null,
+    spinMultiplicity: candidate ? candidate.spinMultiplicity : node.spinMultiplicity ?? null,
+    sourceStatus: "parsed",
+  }
 }
 
 export function projectWorkspaceWithRegisteredImportNodes(

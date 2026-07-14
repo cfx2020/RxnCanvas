@@ -5,6 +5,7 @@ const path = require("node:path")
 const { fileURLToPath } = require("node:url")
 const { getEngineStatus, runEngineRequest, shutdownEngineWorkers } = require("./engine-bridge.cjs")
 const {
+  defaultImportStoredPathForFile,
   exportProjectWorkspaceArchive,
   importProjectWorkspaceArchive,
   materializeImportSourceFile,
@@ -46,6 +47,8 @@ const desktopImportRejectedWarningCodes = new Set([
   "import_preview_missing",
   "import_preview_failed",
 ])
+const latestSourceImportGenerationByKey = new Map()
+let sourceImportGeneration = 0
 
 const devServerUrl = process.env.RXNFLOW_DESKTOP_DEV_SERVER
 const runtimeSmokeExit = process.argv.includes("--rxnflow-smoke-exit")
@@ -933,6 +936,7 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
     })
   }
   const referencedStoredPaths = importReferencedStoredPaths(payload)
+  const importRequests = registerSourceImportRequests(projectDirectory, projectId, files)
 
   const previewFiles = files.map(importSourceFileForPreview)
   const parseTargets = previewFiles.filter((file) => !file.error)
@@ -980,6 +984,7 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
         parseTargets,
         previewFiles: preview.data.files,
         projectDirectory,
+        importRequests,
         referencedStoredPaths,
       }),
     },
@@ -992,6 +997,7 @@ async function parsedImportSourceFilePayloads({
   parseTargets,
   previewFiles,
   projectDirectory,
+  importRequests,
   referencedStoredPaths,
 }) {
   const usedStoredPaths = new Set()
@@ -1019,13 +1025,25 @@ async function parsedImportSourceFilePayloads({
       }
     }
 
+    const importRequest = importRequests[index]
+    if (!isLatestSourceImportRequest(importRequest)) {
+      return supersededImportSourceFilePayload(file, parse)
+    }
+
     try {
-      const materialized = await materializeImportSourceFile(projectDirectory, file, index, { usedStoredPaths, referencedStoredPaths })
+      const materialized = await materializeImportSourceFile(projectDirectory, file, index, {
+        usedStoredPaths,
+        referencedStoredPaths,
+        shouldCommit: () => isLatestSourceImportRequest(importRequest),
+      })
       return {
         ...importSourceFileRendererPayload(materialized),
         parse,
       }
     } catch (error) {
+      if (error?.code === "source_import_superseded") {
+        return supersededImportSourceFilePayload(file, parse)
+      }
       return {
         ...importSourceFileRendererPayload(file),
         parse,
@@ -1036,6 +1054,35 @@ async function parsedImportSourceFilePayloads({
       }
     }
   }))
+}
+
+function registerSourceImportRequests(projectDirectory, projectId, files) {
+  const projectKey = projectDirectory ? path.resolve(projectDirectory) : (projectId || "unbound-project")
+  return files.map((file, index) => {
+    const key = `${projectKey}\0${file.name.trim().toLowerCase()}`
+    if (projectDirectory && !file.storedPath) {
+      file.storedPath = defaultImportStoredPathForFile(file, index)
+    }
+    sourceImportGeneration += 1
+    const request = { key, generation: sourceImportGeneration }
+    latestSourceImportGenerationByKey.set(key, request.generation)
+    return request
+  })
+}
+
+function isLatestSourceImportRequest(request) {
+  return Boolean(request && latestSourceImportGenerationByKey.get(request.key) === request.generation)
+}
+
+function supersededImportSourceFilePayload(file, parse) {
+  return {
+    ...importSourceFileRendererPayload(file),
+    parse,
+    error: {
+      code: "source_import_superseded",
+      message: "A newer import of the same source file replaced this request.",
+    },
+  }
 }
 
 function desktopImportParseRejection(parse) {

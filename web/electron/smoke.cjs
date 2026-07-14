@@ -525,13 +525,14 @@ async function verifyProjectDirectoryStore() {
       name: "orphan-name.log",
       size: 31,
       preview: "",
+      storedPath: "sources/orphan-name.log",
       sourcePath: orphanRawPath,
     }, 0, { usedStoredPaths: new Set(), referencedStoredPaths: [storedPath] })
     if (rematerializedOrphan.storedPath !== "sources/orphan-name.log") {
-      throw new Error(`Project source import did not reuse an unreferenced orphan path: ${JSON.stringify(rematerializedOrphan)}`)
+      throw new Error(`Project source import did not reuse the same-name source path: ${JSON.stringify(rematerializedOrphan)}`)
     }
     if (!fs.readFileSync(path.join(projectPath, "sources", "orphan-name.log"), "utf8").includes("-111.0")) {
-      throw new Error("Project source import did not overwrite unreferenced orphan bytes")
+      throw new Error("Project source import did not replace existing same-name bytes")
     }
 
     const referencedRawPath = path.join(tempDir, "referenced-name.log")
@@ -542,10 +543,14 @@ async function verifyProjectDirectoryStore() {
       name: "referenced-name.log",
       size: 31,
       preview: "",
+      storedPath: "sources/referenced-name.log",
       sourcePath: referencedRawPath,
     }, 0, { usedStoredPaths: new Set(), referencedStoredPaths: [storedPath, "sources/referenced-name.log"] })
-    if (materializedReferenced.storedPath !== "sources/referenced-name-2.log") {
-      throw new Error(`Project source import overwrote a referenced source path: ${JSON.stringify(materializedReferenced)}`)
+    if (materializedReferenced.storedPath !== "sources/referenced-name.log") {
+      throw new Error(`Project source import did not replace the referenced same-name source: ${JSON.stringify(materializedReferenced)}`)
+    }
+    if (!fs.readFileSync(path.join(projectPath, "sources", "referenced-name.log"), "utf8").includes("-112.0")) {
+      throw new Error("Project source import did not update referenced same-name bytes")
     }
 
     const emptyPreviewSavePath = path.join(tempDir, "Empty Preview Study")

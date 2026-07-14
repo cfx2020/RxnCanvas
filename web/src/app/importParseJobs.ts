@@ -1,8 +1,60 @@
 import type { SourceParseResult } from "../domain/sourceParsers"
+import type { SourceFile } from "../domain/projectPackages"
 import type { RxnflowDesktopApi } from "./appRuntimeEffects"
 import type { ImportSourceFile } from "./importRegistration"
 
 const defaultDesktopImportConcurrency = 3
+
+export type DesktopImportReplacementTarget = {
+  fileId: string
+  storedPath: string
+}
+
+export function desktopImportFilesWithProjectTargets(
+  importedFiles: ImportSourceFile[],
+  existingFiles: SourceFile[],
+): {
+  files: ImportSourceFile[]
+  replacementsByImportId: Map<string, DesktopImportReplacementTarget>
+} {
+  const existingByName = new Map<string, SourceFile>()
+  for (const file of existingFiles) {
+    if (!file.storedPath) continue
+    const key = normalizedImportFileName(file.name)
+    if (!existingByName.has(key)) existingByName.set(key, file)
+  }
+
+  const replacementsByImportId = new Map<string, DesktopImportReplacementTarget>()
+  const files = importedFiles.map((file) => {
+    const existing = existingByName.get(normalizedImportFileName(file.name))
+    if (!existing?.storedPath) return file
+    replacementsByImportId.set(file.id, {
+      fileId: existing.id,
+      storedPath: existing.storedPath,
+    })
+    return {
+      ...file,
+      storedPath: existing.storedPath,
+    }
+  })
+  return { files, replacementsByImportId }
+}
+
+export function desktopImportFileWithReplacementIdentity(
+  file: ImportSourceFile,
+  replacement: DesktopImportReplacementTarget | undefined,
+): ImportSourceFile {
+  if (!replacement || !file.storedPath) return file
+  return {
+    ...file,
+    id: replacement.fileId,
+    storedPath: replacement.storedPath,
+  }
+}
+
+function normalizedImportFileName(name: string): string {
+  return name.trim().toLowerCase()
+}
 
 export type AnimationFrameBatcher<T> = {
   enqueue: (value: T, order: number) => void

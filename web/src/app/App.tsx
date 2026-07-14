@@ -233,6 +233,8 @@ import {
 } from "./appImportActions"
 import {
   createAnimationFrameBatcher,
+  desktopImportFilesWithProjectTargets,
+  desktopImportFileWithReplacementIdentity,
   desktopParsedImportSourceFiles,
   desktopSourceFilePathForRawFile,
   type AnimationFrameBatcher,
@@ -1853,6 +1855,10 @@ export function App() {
     const desktopApi = window.rxnflowDesktop
     if (!desktopApi?.importSourceFiles || importedFiles.length === 0) return
     const autoRegister = options.autoRegister === true
+    const projectFiles = projectId === activeProjectId
+      ? currentProjectWorkspaceSnapshot().files
+      : projectWorkspaces[projectId]?.files ?? []
+    const replacementPlan = desktopImportFilesWithProjectTargets(importedFiles, projectFiles)
     let frameBatcher: AnimationFrameBatcher<ImportSourceFile> | null = null
     if (!autoRegister) {
       frameBatcher = createAnimationFrameBatcher({
@@ -1883,7 +1889,7 @@ export function App() {
       desktopApi,
       projectId,
       projectDirectory: projectDirectoriesRef.current[projectId] ?? null,
-      importedFiles,
+      importedFiles: replacementPlan.files,
       rawFiles,
       referencedStoredPaths: referencedStoredPathsForProject({
         projectId,
@@ -1892,8 +1898,18 @@ export function App() {
         workspaces: projectWorkspaces,
       }),
       onFileParsed: async (parsedFile, index) => {
+        const replacementTarget = replacementPlan.replacementsByImportId.get(parsedFile.id)
+        const restoreReplacementSelection = () => {
+          if (!replacementTarget) return
+          setSelectedFileIds((current) => Array.from(new Set(current.map((id) => (
+            id === parsedFile.id ? replacementTarget.fileId : id
+          )))))
+          setSelectedFileId((current) => current === parsedFile.id ? replacementTarget.fileId : current)
+          setLastSelectedFileId((current) => current === parsedFile.id ? replacementTarget.fileId : current)
+        }
         if (desktopImportFailureShouldRemovePlaceholder(parsedFile)) {
           if (!frameBatcher) {
+            restoreReplacementSelection()
             removePendingImportFile(projectId, parsedFile, importedFiles[index] ?? parsedFile)
             return
           }
@@ -1902,16 +1918,21 @@ export function App() {
             await currentBatcher.flush()
           } finally {
             if (desktopImportFrameBatchersRef.current.has(currentBatcher)) {
+              restoreReplacementSelection()
               removePendingImportFile(projectId, parsedFile, importedFiles[index] ?? parsedFile)
             }
           }
           return
         }
+        const resolvedFile = desktopImportFileWithReplacementIdentity(
+          parsedFile,
+          replacementTarget,
+        )
         if (frameBatcher) {
-          frameBatcher.enqueue(parsedFile, index)
+          frameBatcher.enqueue(resolvedFile, index)
           return
         }
-        await (stageSourceFilesForProjectRef.current ?? stageSourceFilesForProject)(projectId, [parsedFile], {
+        await (stageSourceFilesForProjectRef.current ?? stageSourceFilesForProject)(projectId, [resolvedFile], {
           ...options,
           fileMode: "update",
           autoRegister: true,
@@ -3408,7 +3429,7 @@ function importIssueDialogEntries(files: ImportSourceFile[]): ImportIssueDialogS
   return files.flatMap((file) => {
     const warning = file.parse?.warnings.find((item) => shouldShowImportIssueDialog(item.code))
       ?? desktopImportParseRejectionWarning(file)
-    if (!warning) return []
+    if (!warning || warning.code === "source_import_superseded") return []
     return [{
       fileName: file.name,
       code: warning.code,
@@ -3905,6 +3926,7 @@ function shouldRemoveFailedDesktopImportFile(file: SourceFile, failedImport: Imp
     || warning.code === "cclib_parse_empty"
     || warning.code === "cclib_parse_failed"
     || warning.code === "source_materialize_failed"
+    || warning.code === "source_import_superseded"
     || warning.code === "full_file_read_failed"
   ))
 }

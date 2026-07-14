@@ -720,6 +720,144 @@ describe("importRegistration", () => {
     ])
   })
 
+  it("replaces a resolved same-name source in place and refreshes its existing node", () => {
+    const oldSource = {
+      ...sourceFile("stable-source", parseResult([candidate({
+        candidateId: "structure-1",
+        formula: "C2H4",
+        method: "old-method",
+        energyGas: -10,
+        energySolution: -9.8,
+      })])),
+      name: "opt.log",
+      status: "parsed" as const,
+      storedPath: "sources/opt.log",
+      checksum: `sha256:${"1".repeat(64)}`,
+    }
+    const pendingSource = {
+      ...sourceFile("incoming-operation", deferredParseResult()),
+      name: "opt.log",
+    }
+    const refreshedSource = {
+      ...sourceFile("stable-source", parseResult([candidate({
+        candidateId: "structure-1",
+        formula: "C3H6",
+        method: "new-method",
+        energyGas: -20,
+        energySolution: -19.7,
+        charge: 1,
+        spinMultiplicity: 2,
+        energyTable: { egasHartree: -20, gsolHartree: -19.7 },
+      })])),
+      name: "opt.log",
+      size: 84,
+      status: "parsed" as const,
+      storedPath: "sources/opt.log",
+      checksum: `sha256:${"2".repeat(64)}`,
+    }
+    const existingNode = {
+      id: "existing-node",
+      label: "User label",
+      formula: "C2H4",
+      kind: "intermediate" as const,
+      method: "old-method",
+      solvent: "SMD",
+      energyGas: -10,
+      energySolution: -9.8,
+      energyUnit: "hartree" as const,
+      sourceStatus: "parsed" as const,
+      sourceFileId: oldSource.id,
+      sourceCandidateId: "structure-1",
+      sourceObjectIndex: 0,
+      charge: 0,
+      spinMultiplicity: 1,
+      position: { x: 120, y: 80 },
+      size: { width: 300, height: 220 },
+      manualStructureMolfile: "manual molfile",
+    }
+    const targetSnapshot = workspaceSnapshot({
+      files: [pendingSource, oldSource],
+      nodes: [existingNode],
+    })
+    const plan = buildImportPlan([refreshedSource], layout)
+    const duplicateAutoNode = {
+      ...existingNode,
+      id: "duplicate-node",
+      sourceFileId: "stable-source",
+    }
+
+    const next = projectWorkspaceWithImportPlan(
+      targetSnapshot,
+      [refreshedSource],
+      plan,
+      [duplicateAutoNode],
+      { fileMode: "update" },
+    )
+
+    expect(next.files).toHaveLength(1)
+    expect(next.nodes).toHaveLength(1)
+    expect(next.files[0]).toMatchObject({
+      id: "stable-source",
+      name: "opt.log",
+      size: 84,
+      storedPath: "sources/opt.log",
+      checksum: `sha256:${"2".repeat(64)}`,
+    })
+    expect(next.selectedFileId).toBe("stable-source")
+    expect(next.nodes[0]).toMatchObject({
+      id: "existing-node",
+      label: "User label",
+      formula: "C3H6",
+      method: "new-method",
+      energyGas: -20,
+      energySolution: -19.7,
+      energyTable: { egasHartree: -20, gsolHartree: -19.7 },
+      sourceFileId: "stable-source",
+      charge: 1,
+      spinMultiplicity: 2,
+      position: { x: 120, y: 80 },
+      size: { width: 300, height: 220 },
+      manualStructureMolfile: "manual molfile",
+    })
+  })
+
+  it("still creates an auto node when the replaced source was not on the target canvas", () => {
+    const oldSource = {
+      ...sourceFile("stable-source", parseResult([candidate({ candidateId: "structure-1" })])),
+      name: "opt.log",
+      status: "parsed" as const,
+      storedPath: "sources/opt.log",
+    }
+    const pendingSource = {
+      ...sourceFile("incoming-operation", deferredParseResult()),
+      name: "opt.log",
+    }
+    const refreshedSource = {
+      ...sourceFile("stable-source", parseResult([candidate({ candidateId: "structure-1", energyGas: -22 })])),
+      name: "opt.log",
+      status: "parsed" as const,
+      storedPath: "sources/opt.log",
+    }
+    const autoNode = nodeFromCandidate(refreshedSource, refreshedSource.parse!, refreshedSource.parse!.candidates![0], 0, layout)
+    const targetSnapshot = workspaceSnapshot({ files: [pendingSource, oldSource], nodes: [] })
+    const plan = buildImportPlan([refreshedSource], layout)
+
+    const next = projectWorkspaceWithImportPlan(
+      targetSnapshot,
+      [refreshedSource],
+      plan,
+      [autoNode],
+      { fileMode: "update" },
+    )
+
+    expect(next.nodes).toHaveLength(1)
+    expect(next.nodes[0]).toMatchObject({
+      id: autoNode.id,
+      sourceFileId: "stable-source",
+      energyGas: -22,
+    })
+  })
+
   it("removes a failed same-name placeholder when a deferred desktop import finishes", () => {
     const pendingSol = {
       ...sourceFile("fresh-sol", deferredParseResult()),

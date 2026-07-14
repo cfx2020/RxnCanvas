@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest"
 import type { SourceParseResult } from "../domain/sourceParsers"
 import type { RxnflowDesktopApi } from "./appRuntimeEffects"
-import { createAnimationFrameBatcher, desktopParsedImportSourceFiles } from "./importParseJobs"
+import {
+  createAnimationFrameBatcher,
+  desktopImportFilesWithProjectTargets,
+  desktopImportFileWithReplacementIdentity,
+  desktopParsedImportSourceFiles,
+} from "./importParseJobs"
 import type { ImportSourceFile } from "./importRegistration"
 
 function importSourceFile(id: string): ImportSourceFile {
@@ -55,6 +60,38 @@ function parseResult(label: string): SourceParseResult {
     elapsedTime: null,
   }
 }
+
+describe("desktop same-name source replacement", () => {
+  it("targets the existing stored path and adopts the stable file id only after success", () => {
+    const incoming = importSourceFile("incoming")
+    incoming.name = "OPT.LOG"
+    const existing = {
+      ...importSourceFile("existing"),
+      name: "opt.log",
+      storedPath: "sources/opt.log",
+      checksum: `sha256:${"1".repeat(64)}`,
+    }
+
+    const prepared = desktopImportFilesWithProjectTargets([incoming], [existing])
+    expect(prepared.files[0]).toMatchObject({
+      id: "incoming",
+      storedPath: "sources/opt.log",
+    })
+    const replacement = prepared.replacementsByImportId.get("incoming")
+    expect(desktopImportFileWithReplacementIdentity({
+      ...prepared.files[0],
+      status: "parsed",
+      parse: parseResult("updated"),
+    }, replacement)).toMatchObject({
+      id: "existing",
+      storedPath: "sources/opt.log",
+    })
+    expect(desktopImportFileWithReplacementIdentity({
+      ...incoming,
+      storedPath: undefined,
+    }, replacement).id).toBe("incoming")
+  })
+})
 
 function flushPromises() {
   return Promise.resolve().then(() => Promise.resolve())

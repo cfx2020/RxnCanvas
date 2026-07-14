@@ -22,6 +22,7 @@ const maxArchiveEntries = 20_000
 const maxFileHashCacheEntries = 256
 const maxFileHashAttempts = 3
 const fileHashCache = new Map()
+const sourceMaterializationTails = new Map()
 
 async function readProjectContent(projectPath) {
   const stats = await fs.stat(projectPath)
@@ -258,26 +259,73 @@ async function persistSourceFile(projectDirectory, file, index, options) {
 }
 
 async function materializeImportSourceFile(projectDirectory, file, index, options = {}) {
-  const usedStoredPaths = options.usedStoredPaths
-  const referencedStoredPaths = normalizedStoredPathSet(options.referencedStoredPaths)
-  const storedPath = await importStoredPathForFile(projectDirectory, file, index, usedStoredPaths, referencedStoredPaths)
-  usedStoredPaths?.add(storedPath)
+  const reservation = await reserveImportStoredPath(projectDirectory, file, index)
+  const { storedPath } = reservation
   const targetPath = path.join(projectDirectory, storedPath)
-  const sourcePath = typeof file?.sourcePath === "string" && path.isAbsolute(file.sourcePath)
-    ? file.sourcePath
-    : null
+  let committed = false
+  try {
+    const materialized = await withSourceMaterializationLock(targetPath, async () => {
+      const sourcePath = typeof file?.sourcePath === "string" && path.isAbsolute(file.sourcePath)
+        ? file.sourcePath
+        : null
 
-  await fs.mkdir(path.dirname(targetPath), { recursive: true })
-  if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
-    await fs.copyFile(sourcePath, targetPath)
-    invalidateFileHash(targetPath)
-  } else if (sourcePath && path.resolve(sourcePath) === path.resolve(targetPath)) {
-    // The source is already materialized in the project folder.
-  } else {
-    throw new Error("Could not copy source file because the import payload did not include a readable native file path.")
+      await fs.mkdir(path.dirname(targetPath), { recursive: true })
+      if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
+        const temporaryPath = path.join(
+          path.dirname(targetPath),
+          `.rxnflow-import-${crypto.randomUUID()}${path.extname(targetPath) || ".tmp"}`,
+        )
+        try {
+          await fs.copyFile(sourcePath, temporaryPath)
+          const hashedFile = await sha256File(temporaryPath)
+          if (options.shouldCommit && !options.shouldCommit()) {
+            throw sourceImportSupersededError()
+          }
+          await fs.rename(temporaryPath, targetPath)
+          committed = true
+          invalidateFileHash(temporaryPath)
+          invalidateFileHash(targetPath)
+          try {
+            await cacheKnownFileHash(targetPath, hashedFile)
+          } catch {
+            // The committed source remains valid even if the optional hash cache cannot be refreshed.
+          }
+          return materializedSourceFile(file, index, storedPath, targetPath, hashedFile)
+        } finally {
+          await fs.rm(temporaryPath, { force: true })
+        }
+      }
+      if (sourcePath && path.resolve(sourcePath) === path.resolve(targetPath)) {
+        if (options.shouldCommit && !options.shouldCommit()) {
+          throw sourceImportSupersededError()
+        }
+        const hashedFile = await sha256File(targetPath)
+        return materializedSourceFile(file, index, storedPath, targetPath, hashedFile)
+      }
+      throw new Error("Could not copy source file because the import payload did not include a readable native file path.")
+    })
+    committed = true
+    return materialized
+  } finally {
+    if (reservation.createdPlaceholder && !committed) {
+      await fs.rm(targetPath, { force: true })
+    }
   }
+}
 
-  const hashedFile = await sha256File(targetPath)
+function sourceImportSupersededError() {
+  const error = new Error("A newer import of the same source file replaced this request.")
+  error.code = "source_import_superseded"
+  return error
+}
+
+async function cacheKnownFileHash(filePath, result) {
+  const fingerprint = await statFileFingerprint(path.resolve(filePath))
+  if (Number(fingerprint.size) !== result.size) return
+  cacheFileHash(fingerprint.key, path.resolve(filePath), result)
+}
+
+function materializedSourceFile(file, index, storedPath, targetPath, hashedFile) {
   return {
     id: typeof file?.id === "string" ? file.id : undefined,
     name: typeof file?.name === "string" && file.name ? file.name : safeSourceFileName(file, index),
@@ -289,41 +337,53 @@ async function materializeImportSourceFile(projectDirectory, file, index, option
   }
 }
 
-async function importStoredPathForFile(projectDirectory, file, index, usedStoredPaths, referencedStoredPaths) {
-  if (typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)) {
-    const storedPath = toProjectPath(file.storedPath)
-    if (!usedStoredPaths?.has(storedPath)) return storedPath
-  }
+async function withSourceMaterializationLock(targetPath, operation) {
+  const targetKey = path.resolve(targetPath)
+  const previous = sourceMaterializationTails.get(targetKey) || Promise.resolve()
+  let release
+  const turn = new Promise((resolve) => {
+    release = resolve
+  })
+  const tail = previous.then(() => turn)
+  sourceMaterializationTails.set(targetKey, tail)
 
-  const baseName = safeSourceFileName(file, index)
-  let storedPath = toProjectPath(path.join(sourcesDirectory, baseName))
-  let suffix = 2
-  while (usedStoredPaths?.has(storedPath) || await projectSourcePathConflicts(projectDirectory, storedPath, referencedStoredPaths)) {
-    storedPath = toProjectPath(path.join(sourcesDirectory, withFileNameSuffix(baseName, suffix)))
-    suffix += 1
-  }
-  return storedPath
-}
-
-function normalizedStoredPathSet(paths) {
-  if (!Array.isArray(paths)) return null
-  return new Set(paths
-    .filter(isSafeStoredSourcePath)
-    .map(toProjectPath))
-}
-
-async function projectSourcePathConflicts(projectDirectory, storedPath, referencedStoredPaths) {
-  if (referencedStoredPaths && !referencedStoredPaths.has(storedPath)) return false
-  return projectSourcePathExists(projectDirectory, storedPath)
-}
-
-async function projectSourcePathExists(projectDirectory, storedPath) {
+  await previous
   try {
-    const stats = await fs.stat(path.join(projectDirectory, storedPath))
-    return stats.isFile()
-  } catch {
-    return false
+    return await operation()
+  } finally {
+    release()
+    if (sourceMaterializationTails.get(targetKey) === tail) {
+      sourceMaterializationTails.delete(targetKey)
+    }
   }
+}
+
+async function reserveImportStoredPath(projectDirectory, file, index) {
+  if (typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)) {
+    return { storedPath: toProjectPath(file.storedPath), createdPlaceholder: false }
+  }
+
+  const sourceRoot = path.join(projectDirectory, sourcesDirectory)
+  await fs.mkdir(sourceRoot, { recursive: true })
+  const baseName = path.basename(defaultImportStoredPathForFile(file, index))
+  let suffix = 1
+  while (true) {
+    const candidateName = suffix === 1 ? baseName : withFileNameSuffix(baseName, suffix)
+    const storedPath = toProjectPath(path.join(sourcesDirectory, candidateName))
+    const targetPath = path.join(projectDirectory, storedPath)
+    try {
+      const handle = await fs.open(targetPath, "wx")
+      await handle.close()
+      return { storedPath, createdPlaceholder: true }
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error
+      suffix += 1
+    }
+  }
+}
+
+function defaultImportStoredPathForFile(file, index) {
+  return toProjectPath(path.join(sourcesDirectory, safeSourceFileName(file, index)))
 }
 
 async function sha256File(filePath) {
@@ -616,9 +676,15 @@ function writeProjectWorkspaceArchive(projectDirectory, archivePath) {
 
 function safeSourceFileName(file, index) {
   const originalName = typeof file?.name === "string" && file.name ? file.name : `source-${index + 1}.txt`
+  const normalizedOriginalName = path.basename(originalName).trim().toLowerCase()
   const extension = safeExtension(path.extname(originalName))
-  const baseName = safeStem(path.basename(originalName, path.extname(originalName))) || "source"
-  return `${baseName}${extension}`
+  const originalStem = path.basename(originalName, path.extname(originalName)).trim().toLowerCase()
+  const baseName = safeStem(originalStem) || "source"
+  const safeName = `${baseName}${extension}`
+  const uniqueBaseName = normalizedOriginalName === safeName
+    ? baseName
+    : `${baseName}-${crypto.createHash("sha256").update(normalizedOriginalName).digest("hex").slice(0, 16)}`
+  return `${uniqueBaseName}${extension}`
 }
 
 function withFileNameSuffix(fileName, suffix) {
@@ -663,6 +729,7 @@ function toProjectPath(projectPath) {
 }
 
 module.exports = {
+  defaultImportStoredPathForFile,
   exportManifestFile,
   exportProjectWorkspaceArchive,
   exportsDirectory,
