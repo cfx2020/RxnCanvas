@@ -1572,14 +1572,24 @@ ipcMain.handle("rxnflow:forget-project", async (_event, payload) => {
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
   if (!projectId) return { ok: false }
   invalidateProjectLifecycle(projectId)
-  const projectDirectory = projectDirectoriesById.get(projectId)
-  if (!projectDirectory) return { ok: false }
+  const mappedDirectory = projectDirectoriesById.get(projectId)
+  const payloadProject = mappedDirectory ? null : await projectPayloadForProjectId(projectId, payload)
+  const projectDirectory = mappedDirectory ?? payloadProject?.projectDirectory ?? null
+  if (!projectDirectory) return { ok: false, error: "Project directory is unavailable for recent-project removal." }
+  try {
+    await forgetRecentProject(projectDirectory)
+  } catch (error) {
+    return {
+      ok: false,
+      projectDirectory,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
   projectDirectoriesById.delete(projectId)
   if (currentProjectId === projectId) {
     currentProjectId = null
     currentProjectDirectory = null
   }
-  await forgetRecentProject(projectDirectory)
   return { ok: true, projectDirectory }
 })
 
@@ -1870,15 +1880,21 @@ function projectDirectoryForIdentity(identity) {
 }
 
 async function projectDirectoryFromActiveProjectPayload(projectId, payload) {
+  const projectPayload = await projectPayloadForProjectId(projectId, payload)
+  if (!projectPayload) return null
+  activateProjectDirectory(projectPayload.content, projectPayload.projectDirectory)
+  return projectPayload.projectDirectory
+}
+
+async function projectPayloadForProjectId(projectId, payload) {
   const projectDirectory = typeof payload?.projectDirectory === "string" ? payload.projectDirectory : null
   if (!projectDirectory) return null
   const resolvedDirectory = await projectDirectoryForOpenedPath(projectDirectory)
   if (!resolvedDirectory) return null
-  const projectPackage = await readProjectPackageWithValidation(resolvedDirectory)
-  const identity = projectIdentityFromContent(projectPackage.content)
+  const content = await readProjectContent(resolvedDirectory)
+  const identity = projectIdentityFromContent(content)
   if (identity?.id !== projectId) return null
-  activateProjectDirectory(projectPackage.content, projectPackage.projectDirectory)
-  return projectPackage.projectDirectory
+  return { projectDirectory: resolvedDirectory, content }
 }
 
 async function projectDirectoryForOpenedPath(openedPath) {

@@ -51,10 +51,17 @@ test("forget invalidates autosaves before checking the project directory", () =>
   const forgetBody = handlerSource("rxnflow:forget-project", "rxnflow:get-preferences")
   const invalidateIndex = forgetBody.indexOf("invalidateProjectLifecycle(projectId)")
   const directoryIndex = forgetBody.indexOf("projectDirectoriesById.get(projectId)")
+  const persistIndex = forgetBody.indexOf("await forgetRecentProject(projectDirectory)")
+  const deleteIndex = forgetBody.indexOf("projectDirectoriesById.delete(projectId)")
 
   assert.notEqual(invalidateIndex, -1)
   assert.notEqual(directoryIndex, -1)
+  assert.notEqual(persistIndex, -1)
+  assert.notEqual(deleteIndex, -1)
   assert.ok(invalidateIndex < directoryIndex)
+  assert.ok(directoryIndex < persistIndex)
+  assert.ok(persistIndex < deleteIndex)
+  assert.match(forgetBody, /projectPayloadForProjectId\(projectId, payload\)/)
 })
 
 test("project lifecycle generations invalidate only the deleted project", () => {

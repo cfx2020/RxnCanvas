@@ -322,9 +322,45 @@ describe("appRuntimeEffects", () => {
 
   it("forgets a desktop project when removed from the sidebar", async () => {
     const forgetProject = vi.fn(async () => ({ ok: true, projectDirectory: "/tmp/ir.rxnflow" }))
-    forgetProjectInRuntime({ desktopApi: desktopApi({ forgetProject }), projectId: "ir-workspace" })
-    await Promise.resolve()
-    expect(forgetProject).toHaveBeenCalledWith({ projectId: "ir-workspace" })
+    await expect(forgetProjectInRuntime({
+      desktopApi: desktopApi({ forgetProject }),
+      projectId: "ir-workspace",
+      projectDirectory: "/tmp/ir.rxnflow",
+    })).resolves.toBe(true)
+    expect(forgetProject).toHaveBeenCalledWith({
+      projectId: "ir-workspace",
+      projectDirectory: "/tmp/ir.rxnflow",
+    })
+  })
+
+  it("retries a rejected project forget and preserves its directory payload", async () => {
+    const forgetProject = vi.fn()
+      .mockRejectedValueOnce(new Error("recent store busy"))
+      .mockResolvedValueOnce({ ok: true, projectDirectory: "/tmp/ir.rxnflow" })
+
+    await expect(forgetProjectInRuntime({
+      desktopApi: desktopApi({ forgetProject }),
+      projectId: "ir-workspace",
+      projectDirectory: "/tmp/ir.rxnflow",
+      retryDelaysMs: [0],
+    })).resolves.toBe(true)
+    expect(forgetProject).toHaveBeenCalledTimes(2)
+    expect(forgetProject).toHaveBeenLastCalledWith({
+      projectId: "ir-workspace",
+      projectDirectory: "/tmp/ir.rxnflow",
+    })
+  })
+
+  it("reports false after project forget retries are exhausted", async () => {
+    const forgetProject = vi.fn().mockResolvedValue({ ok: false, error: "disk full" })
+
+    await expect(forgetProjectInRuntime({
+      desktopApi: desktopApi({ forgetProject }),
+      projectId: "ir-workspace",
+      projectDirectory: "/tmp/ir.rxnflow",
+      retryDelaysMs: [0, 0],
+    })).resolves.toBe(false)
+    expect(forgetProject).toHaveBeenCalledTimes(3)
   })
 
   it("watches desktop engine status", async () => {

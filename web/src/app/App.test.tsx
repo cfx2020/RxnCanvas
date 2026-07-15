@@ -818,6 +818,68 @@ describe("App", () => {
     expect(screen.getByText("No local files")).toBeInTheDocument()
   })
 
+  it("keeps a desktop project visible when Recent Projects removal fails and allows retry", async () => {
+    const forgetProject = vi.fn().mockResolvedValue({ ok: false, error: "recent store unavailable" })
+    installDesktopImportRuntime({
+      getStartupProjectContent: vi.fn().mockResolvedValue({
+        canceled: false,
+        projectContents: [
+          {
+            content: crossProjectAutosavePackage("project-b", "Project B", "B.log", "sources/b.log"),
+            filePath: "/tmp/project-b.rxnflow",
+            projectDirectory: "/tmp/project-b.rxnflow",
+            source: "startup",
+            validation: null,
+          },
+          {
+            content: crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a.log"),
+            filePath: "/tmp/project-a.rxnflow",
+            projectDirectory: "/tmp/project-a.rxnflow",
+            replaceProjects: false,
+            source: "startup",
+            validation: null,
+          },
+        ],
+      }),
+      forgetProject,
+    })
+
+    render(<App />)
+    expect(await screen.findByRole("button", { name: "Project A open" })).toHaveAttribute("aria-current", "true")
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Project actions for Project A" }))
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
+      fireEvent.click(within(screen.getByRole("alertdialog", { name: "Delete Project A" })).getByRole("button", { name: "Delete project" }))
+
+      expect(screen.getByRole("button", { name: "Project A open" })).toHaveAttribute("aria-current", "true")
+      await act(async () => vi.advanceTimersByTimeAsync(500))
+
+      expect(forgetProject).toHaveBeenCalledTimes(3)
+      expect(forgetProject).toHaveBeenLastCalledWith({
+        projectId: "project-a",
+        projectDirectory: "/tmp/project-a.rxnflow",
+      })
+      expect(screen.getByRole("button", { name: "Project A open" })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByRole("alert", { name: "Project validation" })).toHaveTextContent(
+        "Project A was not removed because RxnFlow could not update Recent Projects",
+      )
+
+      forgetProject.mockResolvedValue({ ok: true, projectDirectory: "/tmp/project-a.rxnflow" })
+      fireEvent.click(screen.getByRole("button", { name: "Project actions for Project A" }))
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
+      fireEvent.click(within(screen.getByRole("alertdialog", { name: "Delete Project A" })).getByRole("button", { name: "Delete project" }))
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+
+      expect(screen.queryByRole("button", { name: "Project A open" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Project B open" })).toHaveAttribute("aria-current", "true")
+      expect(screen.queryByRole("alert", { name: "Project validation" })).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("creates canvases from project actions and only deletes them from the sidebar", () => {
     render(<App />)
 
@@ -3055,7 +3117,10 @@ describe("App", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Delete project" }))
       await act(async () => vi.advanceTimersByTimeAsync(901))
 
-      expect(forgetProject).toHaveBeenCalledWith({ projectId: "project-a" })
+      expect(forgetProject).toHaveBeenCalledWith({
+        projectId: "project-a",
+        projectDirectory: "/tmp/project-a.rxnflow",
+      })
       expect(screen.queryByRole("button", { name: "Project A open" })).not.toBeInTheDocument()
       expect(screen.getByRole("button", { name: "Project B open" })).toHaveAttribute("aria-current", "true")
       expect(autosaveProjectPackage).toHaveBeenCalledTimes(1)

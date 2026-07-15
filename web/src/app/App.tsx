@@ -424,6 +424,7 @@ export function App() {
   const autosaveQueueRef = useRef(new Map<string, ProjectAutosaveInput>())
   const activeProjectIdRef = useRef(initialProjects[0].id)
   const projectLifecycleGenerationRef = useRef(new Map<string, number>())
+  const projectForgetInFlightRef = useRef(new Set<string>())
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
   const restoreStartupProjectPackagesRef = useRef<RestoreStartupProjectPackagesHandler | null>(null)
   const stageSourceFilesForProjectRef = useRef<((projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>) | null>(null)
@@ -1745,33 +1746,60 @@ export function App() {
   }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces])
 
   const deleteProject = useCallback((projectId: string) => {
-    autosaveQueueRef.current.delete(projectId)
-    autosaveKeysRef.current.delete(projectId)
-    projectLifecycleGenerationRef.current.set(
-      projectId,
-      (projectLifecycleGenerationRef.current.get(projectId) ?? 0) + 1,
-    )
-    rememberProjectDirectory(projectId, null)
-    const action = deleteProjectAction({
-      projects,
-      workspaces: projectWorkspaces,
-      activeProjectId,
-      deletedProjectId: projectId,
-      currentSnapshot: currentProjectWorkspaceSnapshot(),
-      emptyViewport: defaultCanvasViewport(canvasRef.current),
-      now: Date.now(),
-    })
-    if (action.kind === "activate") {
-      forgetProjectInRuntime({ desktopApi: window.rxnflowDesktop, projectId })
-      applyProjectTransition(action.transition)
+    if (projectForgetInFlightRef.current.has(projectId)) return
+    const project = projects.find((item) => item.id === projectId)
+    const projectDirectory = projectDirectoriesRef.current[projectId] ?? null
+    const applyRemoval = () => {
+      const latestState = projectRestoreStateRef.current ?? {
+        projects,
+        workspaces: projectWorkspaces,
+        activeProjectId,
+        activeSnapshot: currentProjectWorkspaceSnapshot(),
+      }
+      const action = deleteProjectAction({
+        projects: latestState.projects,
+        workspaces: latestState.workspaces,
+        activeProjectId: latestState.activeProjectId,
+        deletedProjectId: projectId,
+        currentSnapshot: latestState.activeSnapshot,
+        emptyViewport: defaultCanvasViewport(canvasRef.current),
+        now: Date.now(),
+      })
+      autosaveQueueRef.current.delete(projectId)
+      autosaveKeysRef.current.delete(projectId)
+      projectLifecycleGenerationRef.current.set(
+        projectId,
+        (projectLifecycleGenerationRef.current.get(projectId) ?? 0) + 1,
+      )
+      rememberProjectDirectory(projectId, null)
+      if (action.kind === "activate") {
+        applyProjectTransition(action.transition)
+        return
+      }
+      if (action.kind === "delete-inactive") {
+        setProjects(action.projects)
+        setProjectWorkspaces(action.workspaces)
+        setProjectValidation(null)
+      }
+    }
+    if (!window.rxnflowDesktop?.forgetProject) {
+      applyRemoval()
       return
     }
-    if (action.kind === "delete-inactive") {
-      forgetProjectInRuntime({ desktopApi: window.rxnflowDesktop, projectId })
-      setProjects(action.projects)
-      setProjectWorkspaces(action.workspaces)
-      setProjectValidation(null)
-    }
+    projectForgetInFlightRef.current.add(projectId)
+    void forgetProjectInRuntime({
+      desktopApi: window.rxnflowDesktop,
+      projectId,
+      projectDirectory,
+    }).then((forgotten) => {
+      if (forgotten) {
+        applyRemoval()
+        return
+      }
+      setProjectValidation(projectForgetFailureValidation(project?.label ?? projectId))
+    }).finally(() => {
+      projectForgetInFlightRef.current.delete(projectId)
+    })
   }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects, rememberProjectDirectory])
 
   const stageSourceFiles = useCallback(async (importedFiles: ImportSourceFile[], options: StageSourceFilesOptions = {}) => {
@@ -3676,6 +3704,18 @@ function projectFolderCreationFailureValidation(error: unknown): ProjectValidati
       severity: "error",
       code: "project_folder_create_failed",
       message: `Project folder creation failed: ${error instanceof Error ? error.message : String(error)}`,
+    }],
+  }
+}
+
+function projectForgetFailureValidation(projectLabel: string): ProjectValidationPayload {
+  return {
+    valid: false,
+    summary: { projectLabel },
+    issues: [{
+      severity: "error",
+      code: "project_forget_failed",
+      message: `${projectLabel} was not removed because RxnFlow could not update Recent Projects. Try removing it again.`,
     }],
   }
 }

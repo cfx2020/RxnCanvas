@@ -72,7 +72,10 @@ export type RxnflowDesktopApi = {
     projectId: string
     projectDirectory?: string | null
   }) => Promise<{ ok: boolean; projectDirectory?: string | null }>
-  forgetProject?: (payload: { projectId: string }) => Promise<{ ok: boolean; projectDirectory?: string | null }>
+  forgetProject?: (payload: {
+    projectId: string
+    projectDirectory?: string | null
+  }) => Promise<{ ok: boolean; projectDirectory?: string | null; error?: string }>
   openSourceFile?: (payload: {
     projectId?: string
     storedPath?: string
@@ -349,17 +352,30 @@ export function setActiveProjectInRuntime({
   })
 }
 
-export function forgetProjectInRuntime({
+export async function forgetProjectInRuntime({
   desktopApi,
   projectId,
+  projectDirectory,
+  retryDelaysMs = [120, 300],
 }: {
   desktopApi: RxnflowDesktopApi | undefined
   projectId: string
-}): void {
-  if (!desktopApi?.forgetProject || !projectId) return
-  void desktopApi.forgetProject({ projectId }).catch(() => {
-    // Removing a project from the desktop recent store is best-effort.
-  })
+  projectDirectory?: string | null
+  retryDelaysMs?: number[]
+}): Promise<boolean> {
+  if (!desktopApi?.forgetProject || !projectId) return true
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      const result = await desktopApi.forgetProject({ projectId, projectDirectory })
+      if (result.ok) return true
+    } catch {
+      // Retry below. The final failure is reported to the caller as false.
+    }
+    if (attempt < retryDelaysMs.length) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]))
+    }
+  }
+  return false
 }
 
 export function watchDesktopEngineStatus({
