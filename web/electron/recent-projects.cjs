@@ -1,3 +1,4 @@
+const crypto = require("node:crypto")
 const fs = require("node:fs/promises")
 const path = require("node:path")
 
@@ -31,12 +32,23 @@ async function saveRecentProjects(storePath, projectPaths) {
 
 async function saveRecentProjectsState(storePath, state) {
   const safeState = normalizeRecentProjectState(state)
-  await fs.mkdir(path.dirname(storePath), { recursive: true })
-  await fs.writeFile(storePath, `${JSON.stringify({
+  const storeDirectory = path.dirname(storePath)
+  const temporaryPath = path.join(
+    storeDirectory,
+    `.${path.basename(storePath)}.rxnflow-write-${process.pid}-${crypto.randomUUID()}.tmp`,
+  )
+  const content = `${JSON.stringify({
     version: recentProjectsVersion,
     activeProjectPath: safeState.activeProjectPath,
     projectPaths: safeState.projectPaths,
-  }, null, 2)}\n`, "utf8")
+  }, null, 2)}\n`
+  await fs.mkdir(storeDirectory, { recursive: true })
+  try {
+    await fs.writeFile(temporaryPath, content, "utf8")
+    await fs.rename(temporaryPath, storePath)
+  } finally {
+    await fs.rm(temporaryPath, { force: true })
+  }
   return safeState
 }
 
