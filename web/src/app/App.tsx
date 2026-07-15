@@ -311,6 +311,7 @@ type ProjectAutosaveInput = {
   files: SourceFile[]
   canvases: ReturnType<typeof projectCanvasesFromCanvasTabs>
   activeCanvasId: string
+  lifecycleGeneration: number
 }
 
 type ProjectRestoreRuntimeState = {
@@ -422,6 +423,7 @@ export function App() {
   const autosaveInFlightRef = useRef(false)
   const autosaveQueueRef = useRef(new Map<string, ProjectAutosaveInput>())
   const activeProjectIdRef = useRef(initialProjects[0].id)
+  const projectLifecycleGenerationRef = useRef(new Map<string, number>())
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
   const restoreStartupProjectPackagesRef = useRef<RestoreStartupProjectPackagesHandler | null>(null)
   const stageSourceFilesForProjectRef = useRef<((projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>) | null>(null)
@@ -578,6 +580,7 @@ export function App() {
     files,
     canvases: projectCanvases,
     activeCanvasId: activeCanvasTabId,
+    lifecycleGeneration: projectLifecycleGenerationRef.current.get(activeProject.id) ?? 0,
   }), [activeCanvasTabId, activeProject, files, projectCanvases])
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const activeProjectLabel = activeProject?.label ?? "Untitled Study"
@@ -1744,6 +1747,11 @@ export function App() {
   const deleteProject = useCallback((projectId: string) => {
     autosaveQueueRef.current.delete(projectId)
     autosaveKeysRef.current.delete(projectId)
+    projectLifecycleGenerationRef.current.set(
+      projectId,
+      (projectLifecycleGenerationRef.current.get(projectId) ?? 0) + 1,
+    )
+    rememberProjectDirectory(projectId, null)
     const action = deleteProjectAction({
       projects,
       workspaces: projectWorkspaces,
@@ -1764,7 +1772,7 @@ export function App() {
       setProjectWorkspaces(action.workspaces)
       setProjectValidation(null)
     }
-  }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects])
+  }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects, rememberProjectDirectory])
 
   const stageSourceFiles = useCallback(async (importedFiles: ImportSourceFile[], options: StageSourceFilesOptions = {}) => {
     await stageCurrentProjectSourceFilesAction({
@@ -2360,6 +2368,11 @@ export function App() {
     if (!desktopApi?.autosaveProjectPackage || !input) return
 
     const autosaveKey = projectAutosaveKey(input)
+    const lifecycleGeneration = input.lifecycleGeneration
+    if ((projectLifecycleGenerationRef.current.get(input.project.id) ?? 0) !== lifecycleGeneration) {
+      autosaveQueueRef.current.delete(input.project.id)
+      return
+    }
     if (autosaveKey === autosaveKeysRef.current.get(input.project.id)) {
       autosaveQueueRef.current.delete(input.project.id)
       return
@@ -2381,6 +2394,7 @@ export function App() {
           responseValidation = validation
         },
       })
+      if ((projectLifecycleGenerationRef.current.get(input.project.id) ?? 0) !== lifecycleGeneration) return
       rememberProjectDirectory(input.project.id, result?.projectDirectory)
       if (activeProjectIdRef.current === input.project.id) {
         if (responseValidation !== undefined) setProjectValidation(responseValidation)
@@ -2403,8 +2417,11 @@ export function App() {
         })
       }
     } catch (error) {
-      autosaveKeysRef.current.delete(input.project.id)
-      if (activeProjectIdRef.current === input.project.id) {
+      if ((projectLifecycleGenerationRef.current.get(input.project.id) ?? 0) === lifecycleGeneration) {
+        autosaveKeysRef.current.delete(input.project.id)
+      }
+      if ((projectLifecycleGenerationRef.current.get(input.project.id) ?? 0) === lifecycleGeneration
+        && activeProjectIdRef.current === input.project.id) {
         setProjectValidation(projectAutosaveFailureValidation(error))
       }
     } finally {

@@ -65,6 +65,7 @@ let recentProjectsPersistence = Promise.resolve()
 let startupProjectRestorePromise = null
 let startupProjectRestoreConsumed = false
 const projectDirectoriesById = new Map()
+const projectLifecycleGenerationById = new Map()
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -1516,6 +1517,7 @@ ipcMain.handle("rxnflow:autosave-project-package", async (_event, payload) => {
   const defaultPath = payload?.defaultName || "rxnflow-project.rxnflow"
   const content = typeof payload?.content === "string" ? payload.content : "{}"
   const identity = projectIdentityFromContent(content)
+  const lifecycleGeneration = identity?.id ? projectLifecycleGeneration(identity.id) : null
   const projectDirectory = autosaveProjectDirectory(identity, defaultPath)
   if (!projectDirectory) {
     return {
@@ -1532,11 +1534,16 @@ ipcMain.handle("rxnflow:autosave-project-package", async (_event, payload) => {
   const savedProject = await saveProjectContent(projectDirectory, content, {
     previousProjectDirectory,
   })
-  if (identity?.id && savedProject.projectDirectory) {
-    projectDirectoriesById.set(identity.id, savedProject.projectDirectory)
+  const lifecycleIsCurrent = Boolean(identity?.id && lifecycleGeneration === projectLifecycleGeneration(identity.id))
+  if (lifecycleIsCurrent) {
+    if (savedProject.projectDirectory) {
+      projectDirectoriesById.set(identity.id, savedProject.projectDirectory)
+    }
+    await rememberRecentProject(savedProject.filePath, { active: false })
   }
-  await rememberRecentProject(savedProject.filePath, { active: false })
-  const validation = await validateProjectPackageContent(savedProject.content, savedProject.projectDirectory)
+  const validation = lifecycleIsCurrent
+    ? await validateProjectPackageContent(savedProject.content, savedProject.projectDirectory)
+    : null
   return {
     canceled: false,
     filePath: savedProject.filePath,
@@ -1564,6 +1571,7 @@ ipcMain.handle("rxnflow:set-active-project", async (_event, payload) => {
 ipcMain.handle("rxnflow:forget-project", async (_event, payload) => {
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
   if (!projectId) return { ok: false }
+  invalidateProjectLifecycle(projectId)
   const projectDirectory = projectDirectoriesById.get(projectId)
   if (!projectDirectory) return { ok: false }
   projectDirectoriesById.delete(projectId)
@@ -1832,6 +1840,16 @@ function activateProjectDirectory(content, projectDirectory) {
   }
   currentProjectDirectory = projectDirectory
   if (identity?.id) projectDirectoriesById.set(identity.id, projectDirectory)
+}
+
+function projectLifecycleGeneration(projectId) {
+  return projectLifecycleGenerationById.get(projectId) ?? 0
+}
+
+function invalidateProjectLifecycle(projectId) {
+  const nextGeneration = projectLifecycleGeneration(projectId) + 1
+  projectLifecycleGenerationById.set(projectId, nextGeneration)
+  return nextGeneration
 }
 
 function autosaveProjectDirectory(identity, defaultPath) {

@@ -2986,6 +2986,111 @@ describe("App", () => {
     }
   })
 
+  it("ignores an in-flight autosave after its project is deleted", async () => {
+    const autosaveJob = deferred<any>()
+    const forgetProject = vi.fn().mockResolvedValue({ ok: true, projectDirectory: "/tmp/project-a.rxnflow" })
+    const autosaveProjectPackage = vi.fn((payload: { content: string }) => {
+      const projectId = JSON.parse(payload.content).project.id
+      if (projectId === "project-a") return autosaveJob.promise
+      return Promise.resolve({
+        canceled: false,
+        projectDirectory: "/tmp/project-b.rxnflow",
+        content: payload.content,
+        validation: null,
+      })
+    })
+    const projectAPackage = JSON.parse(crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a.log"))
+    projectAPackage.nodes = [{
+      id: "project-a-node",
+      label: "Project A node",
+      formula: "H2",
+      kind: "intermediate",
+      method: "B3LYP",
+      solvent: "gas",
+      energyGas: -1,
+      energyUnit: "hartree",
+      sourceStatus: "parsed",
+      sourceFileId: "shared-file",
+      position: { x: 40, y: 60 },
+    }]
+    installDesktopImportRuntime({
+      getStartupProjectContent: vi.fn().mockResolvedValue({
+        canceled: false,
+        projectContents: [
+          {
+            content: crossProjectAutosavePackage("project-b", "Project B", "B.log", "sources/b.log"),
+            filePath: "/tmp/project-b.rxnflow",
+            projectDirectory: "/tmp/project-b.rxnflow",
+            source: "startup",
+            validation: null,
+          },
+          {
+            content: JSON.stringify(projectAPackage),
+            filePath: "/tmp/project-a.rxnflow",
+            projectDirectory: "/tmp/project-a.rxnflow",
+            replaceProjects: false,
+            source: "startup",
+            validation: null,
+          },
+        ],
+      }),
+      autosaveProjectPackage,
+      forgetProject,
+    })
+
+    render(<App />)
+    expect(await screen.findByRole("button", { name: "Project A open" })).toHaveAttribute("aria-current", "true")
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Node Project A node" }), { clientX: 500, clientY: 320 })
+      fireEvent.change(screen.getByLabelText("Node coefficient"), { target: { value: "2" } })
+      fireEvent.blur(screen.getByLabelText("Node coefficient"))
+      await act(async () => vi.advanceTimersByTimeAsync(901))
+      expect(autosaveProjectPackage).toHaveBeenCalledTimes(1)
+
+      fireEvent.click(screen.getByRole("button", { name: "Project actions for Project A" }))
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
+      const dialog = screen.getByRole("alertdialog", { name: "Delete Project A" })
+      fireEvent.click(within(dialog).getByRole("button", { name: "Delete project" }))
+      await act(async () => vi.advanceTimersByTimeAsync(901))
+
+      expect(forgetProject).toHaveBeenCalledWith({ projectId: "project-a" })
+      expect(screen.queryByRole("button", { name: "Project A open" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Project B open" })).toHaveAttribute("aria-current", "true")
+      expect(autosaveProjectPackage).toHaveBeenCalledTimes(1)
+
+      const savedContent = JSON.parse(autosaveProjectPackage.mock.calls[0][0].content)
+      savedContent.files[0].storedPath = "sources/a-late.log"
+      await act(async () => {
+        autosaveJob.resolve({
+          canceled: false,
+          projectDirectory: "/tmp/project-a.rxnflow",
+          content: JSON.stringify(savedContent),
+          validation: {
+            valid: false,
+            summary: { projectId: "project-a" },
+            issues: [{
+              severity: "error",
+              code: "deleted_project_autosave",
+              message: "Deleted Project A autosave must be ignored.",
+            }],
+          },
+        })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+
+      expect(screen.queryByRole("button", { name: "Project A open" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Project B open" })).toHaveAttribute("aria-current", "true")
+      expect(screen.queryByText("Deleted Project A autosave must be ignored.")).not.toBeInTheDocument()
+      expect(autosaveProjectPackage.mock.calls.filter(([payload]) => (
+        JSON.parse(payload.content).project.id === "project-a"
+      ))).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("rolls back Electron import placeholders when a parser job returns without parse data", async () => {
     const importJob = deferred<any>()
     const chooseFiles = vi.fn().mockResolvedValue({

@@ -23,6 +23,8 @@ test("autosave records its project without changing the active project", () => {
   )
 
   assert.doesNotMatch(autosaveBody, /activateProjectDirectory\(/)
+  assert.match(autosaveBody, /const lifecycleGeneration = identity\?\.id \? projectLifecycleGeneration\(identity\.id\) : null/)
+  assert.match(autosaveBody, /const lifecycleIsCurrent = Boolean\(identity\?\.id && lifecycleGeneration === projectLifecycleGeneration\(identity\.id\)\)/)
   assert.match(autosaveBody, /projectDirectoriesById\.set\(identity\.id, savedProject\.projectDirectory\)/)
   assert.match(autosaveBody, /rememberRecentProject\(savedProject\.filePath, \{ active: false \}\)/)
 })
@@ -43,4 +45,34 @@ test("main recent-project wrapper forwards active-state options", () => {
   const rememberBody = mainSource.match(/async function rememberRecentProject\(filePath, options = \{\}\) \{([\s\S]*?)\n\}/)?.[1]
   assert.ok(rememberBody, "rememberRecentProject body missing")
   assert.match(rememberBody, /recordRecentProjectState\([^\n]+, filePath, options\)/)
+})
+
+test("forget invalidates autosaves before checking the project directory", () => {
+  const forgetBody = handlerSource("rxnflow:forget-project", "rxnflow:get-preferences")
+  const invalidateIndex = forgetBody.indexOf("invalidateProjectLifecycle(projectId)")
+  const directoryIndex = forgetBody.indexOf("projectDirectoriesById.get(projectId)")
+
+  assert.notEqual(invalidateIndex, -1)
+  assert.notEqual(directoryIndex, -1)
+  assert.ok(invalidateIndex < directoryIndex)
+})
+
+test("project lifecycle generations invalidate only the deleted project", () => {
+  const generationMatch = mainSource.match(/function projectLifecycleGeneration\(projectId\) \{([\s\S]*?)\n\}/)
+  const invalidateMatch = mainSource.match(/function invalidateProjectLifecycle\(projectId\) \{([\s\S]*?)\n\}/)
+  assert.ok(generationMatch, "projectLifecycleGeneration body missing")
+  assert.ok(invalidateMatch, "invalidateProjectLifecycle body missing")
+
+  const lifecycle = new Function(`
+    const projectLifecycleGenerationById = new Map()
+    function projectLifecycleGeneration(projectId) {${generationMatch[1]}\n}
+    function invalidateProjectLifecycle(projectId) {${invalidateMatch[1]}\n}
+    return { projectLifecycleGeneration, invalidateProjectLifecycle }
+  `)()
+
+  assert.equal(lifecycle.projectLifecycleGeneration("project-a"), 0)
+  assert.equal(lifecycle.projectLifecycleGeneration("project-b"), 0)
+  assert.equal(lifecycle.invalidateProjectLifecycle("project-a"), 1)
+  assert.equal(lifecycle.projectLifecycleGeneration("project-a"), 1)
+  assert.equal(lifecycle.projectLifecycleGeneration("project-b"), 0)
 })
