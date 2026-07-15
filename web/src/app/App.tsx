@@ -417,10 +417,10 @@ export function App() {
   const projectInputRef = useRef<HTMLInputElement | null>(null)
   const pendingImportProjectIdRef = useRef<string | null>(null)
   const autosaveHydratedRef = useRef(false)
-  const autosaveKeyRef = useRef<string | null>(null)
+  const autosaveKeysRef = useRef(new Map<string, string>())
   const autosaveInputRef = useRef<ProjectAutosaveInput | null>(null)
   const autosaveInFlightRef = useRef(false)
-  const autosaveQueuedRef = useRef(false)
+  const autosaveQueueRef = useRef(new Map<string, ProjectAutosaveInput>())
   const activeProjectIdRef = useRef(initialProjects[0].id)
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
   const restoreStartupProjectPackagesRef = useRef<RestoreStartupProjectPackagesHandler | null>(null)
@@ -1742,6 +1742,8 @@ export function App() {
   }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces])
 
   const deleteProject = useCallback((projectId: string) => {
+    autosaveQueueRef.current.delete(projectId)
+    autosaveKeysRef.current.delete(projectId)
     const action = deleteProjectAction({
       projects,
       workspaces: projectWorkspaces,
@@ -2352,24 +2354,24 @@ export function App() {
     rememberProjectDirectory(activeProject.id, result?.projectDirectory)
   }, [activeCanvasTabId, activeProject, files, projectCanvases, rememberProjectDirectory])
 
-  useEffect(() => {
-    autosaveInputRef.current = autosaveInput
-  }, [autosaveInput])
-
-  const runAutosaveProject = useCallback(async () => {
+  const runAutosaveProject = useCallback(async (requestedInput?: ProjectAutosaveInput) => {
     const desktopApi = window.rxnflowDesktop
-    const input = autosaveInputRef.current
+    const input = requestedInput ?? autosaveInputRef.current
     if (!desktopApi?.autosaveProjectPackage || !input) return
 
     const autosaveKey = projectAutosaveKey(input)
-    if (autosaveKey === autosaveKeyRef.current) return
+    if (autosaveKey === autosaveKeysRef.current.get(input.project.id)) {
+      autosaveQueueRef.current.delete(input.project.id)
+      return
+    }
     if (autosaveInFlightRef.current) {
-      autosaveQueuedRef.current = true
+      autosaveQueueRef.current.delete(input.project.id)
+      autosaveQueueRef.current.set(input.project.id, input)
       return
     }
 
     autosaveInFlightRef.current = true
-    autosaveKeyRef.current = autosaveKey
+    autosaveKeysRef.current.set(input.project.id, autosaveKey)
     try {
       let responseValidation: ProjectValidationPayload | null | undefined
       const result = await autosaveProjectPackageToRuntime({
@@ -2401,18 +2403,35 @@ export function App() {
         })
       }
     } catch (error) {
-      autosaveKeyRef.current = null
+      autosaveKeysRef.current.delete(input.project.id)
       if (activeProjectIdRef.current === input.project.id) {
         setProjectValidation(projectAutosaveFailureValidation(error))
       }
     } finally {
       autosaveInFlightRef.current = false
-      if (autosaveQueuedRef.current) {
-        autosaveQueuedRef.current = false
-        void runAutosaveProject()
+      const nextQueued = autosaveQueueRef.current.entries().next().value as [string, ProjectAutosaveInput] | undefined
+      if (nextQueued) {
+        autosaveQueueRef.current.delete(nextQueued[0])
+        void runAutosaveProject(nextQueued[1])
       }
     }
   }, [rememberProjectDirectory])
+
+  useEffect(() => {
+    const previousInput = autosaveInputRef.current
+    if (autosaveHydratedRef.current && previousInput && previousInput.project.id !== autosaveInput.project.id) {
+      void runAutosaveProject(previousInput)
+    }
+    autosaveInputRef.current = autosaveInput
+    if (autosaveQueueRef.current.has(autosaveInput.project.id)) {
+      if (autosaveKeysRef.current.get(autosaveInput.project.id) === projectAutosaveKey(autosaveInput)) {
+        autosaveQueueRef.current.delete(autosaveInput.project.id)
+        return
+      }
+      autosaveQueueRef.current.delete(autosaveInput.project.id)
+      autosaveQueueRef.current.set(autosaveInput.project.id, autosaveInput)
+    }
+  }, [autosaveInput, runAutosaveProject])
 
   useEffect(() => {
     if (!window.rxnflowDesktop?.autosaveProjectPackage) return
@@ -2420,13 +2439,13 @@ export function App() {
 
     if (!autosaveHydratedRef.current) {
       autosaveHydratedRef.current = true
-      autosaveKeyRef.current = projectAutosaveKey(autosaveInput)
+      autosaveKeysRef.current.set(autosaveInput.project.id, projectAutosaveKey(autosaveInput))
       return
     }
     if (dragState) return
 
     const timer = window.setTimeout(() => {
-      void runAutosaveProject()
+      void runAutosaveProject(autosaveInput)
     }, 900)
     return () => window.clearTimeout(timer)
   }, [autosaveInput, dragState, runAutosaveProject, startupRestorePending])

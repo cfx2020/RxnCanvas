@@ -2782,6 +2782,210 @@ describe("App", () => {
     await waitFor(() => expect(projectAAutosaveCalls).toBe(2), { timeout: 2500 })
   })
 
+  it("preserves each project in the autosave queue while another project is saving", async () => {
+    const jobs = new Map([
+      ["project-a", deferred<any>()],
+      ["project-b", deferred<any>()],
+      ["project-c", deferred<any>()],
+    ])
+    const contents = new Map<string, string>()
+    const callOrder: string[] = []
+    const projectBPackage = JSON.parse(crossProjectAutosavePackage("project-b", "Project B", "B.log", "sources/b.log"))
+    projectBPackage.nodes = [{
+      id: "project-b-node",
+      label: "Project B node",
+      formula: "H2",
+      kind: "intermediate",
+      method: "B3LYP",
+      solvent: "gas",
+      energyGas: -1,
+      energyUnit: "hartree",
+      sourceStatus: "parsed",
+      sourceFileId: "shared-file",
+      position: { x: 40, y: 60 },
+    }]
+    const projectCPackage = JSON.parse(crossProjectAutosavePackage("project-c", "Project C", "C.log", "sources/c.log"))
+    projectCPackage.nodes = [{
+      id: "project-c-node",
+      label: "Project C node",
+      formula: "H2",
+      kind: "intermediate",
+      method: "B3LYP",
+      solvent: "gas",
+      energyGas: -1,
+      energyUnit: "hartree",
+      sourceStatus: "parsed",
+      sourceFileId: "shared-file",
+      position: { x: 40, y: 60 },
+    }]
+    const autosaveProjectPackage = vi.fn((payload: { content: string }) => {
+      const projectId = JSON.parse(payload.content).project.id as string
+      callOrder.push(projectId)
+      contents.set(projectId, payload.content)
+      return jobs.get(projectId)?.promise ?? Promise.reject(new Error(`Unexpected project ${projectId}`))
+    })
+    installDesktopImportRuntime({
+      getStartupProjectContent: vi.fn().mockResolvedValue({
+        canceled: false,
+        projectContents: [
+          {
+            content: crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a.log"),
+            filePath: "/tmp/project-a.rxnflow",
+            projectDirectory: "/tmp/project-a.rxnflow",
+            source: "startup",
+            validation: null,
+          },
+          {
+            content: JSON.stringify(projectBPackage),
+            filePath: "/tmp/project-b.rxnflow",
+            projectDirectory: "/tmp/project-b.rxnflow",
+            replaceProjects: false,
+            source: "startup",
+            validation: null,
+          },
+          {
+            content: JSON.stringify(projectCPackage),
+            filePath: "/tmp/project-c.rxnflow",
+            projectDirectory: "/tmp/project-c.rxnflow",
+            replaceProjects: false,
+            source: "startup",
+            validation: null,
+          },
+        ],
+      }),
+      autosaveProjectPackage,
+    })
+
+    render(<App />)
+    expect(await screen.findByRole("button", { name: "Project C open" })).toHaveAttribute("aria-current", "true")
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Project A open" }))
+      await act(async () => vi.advanceTimersByTimeAsync(901))
+      expect(callOrder).toEqual(["project-a"])
+
+      fireEvent.click(screen.getByRole("button", { name: "Project B open" }))
+      await act(async () => vi.advanceTimersByTimeAsync(901))
+      expect(callOrder).toEqual(["project-a"])
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Node Project B node" }), { clientX: 500, clientY: 320 })
+      fireEvent.change(screen.getByLabelText("Node coefficient"), { target: { value: "2" } })
+      fireEvent.blur(screen.getByLabelText("Node coefficient"))
+
+      fireEvent.click(screen.getByRole("button", { name: "Project C open" }))
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Node Project C node" }), { clientX: 500, clientY: 320 })
+      fireEvent.change(screen.getByLabelText("Node coefficient"), { target: { value: "2" } })
+      fireEvent.blur(screen.getByLabelText("Node coefficient"))
+      await act(async () => vi.advanceTimersByTimeAsync(901))
+      expect(callOrder).toEqual(["project-a"])
+
+      await act(async () => {
+        jobs.get("project-a")?.resolve({
+          canceled: false,
+          projectDirectory: "/tmp/project-a.rxnflow",
+          content: contents.get("project-a"),
+          validation: null,
+        })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(callOrder).toEqual(["project-a", "project-b"])
+      const savedProjectB = JSON.parse(contents.get("project-b") ?? "{}")
+      const savedProjectBNode = savedProjectB.canvases?.flatMap((canvas: { nodes?: Array<{ id: string; coefficient?: number }> }) => canvas.nodes ?? [])
+        .find((node: { id: string }) => node.id === "project-b-node")
+      expect(savedProjectBNode?.coefficient).toBe(2)
+
+      await act(async () => {
+        jobs.get("project-b")?.resolve({
+          canceled: false,
+          projectDirectory: "/tmp/project-b.rxnflow",
+          content: contents.get("project-b"),
+          validation: null,
+        })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(callOrder).toEqual(["project-a", "project-b", "project-c"])
+
+      await act(async () => {
+        jobs.get("project-c")?.resolve({
+          canceled: false,
+          projectDirectory: "/tmp/project-c.rxnflow",
+          content: contents.get("project-c"),
+          validation: null,
+        })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("cancels a queued autosave when undo returns to the in-flight project state", async () => {
+    const autosaveJob = deferred<any>()
+    const autosaveProjectPackage = vi.fn((_payload: { content: string }) => autosaveJob.promise)
+    const projectPackage = JSON.parse(crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a.log"))
+    projectPackage.nodes = [{
+      id: "project-a-node",
+      label: "Project A node",
+      formula: "H2",
+      kind: "intermediate",
+      method: "B3LYP",
+      solvent: "gas",
+      energyGas: -1,
+      energyUnit: "hartree",
+      sourceStatus: "parsed",
+      sourceFileId: "shared-file",
+      position: { x: 40, y: 60 },
+    }]
+    installDesktopImportRuntime({
+      getStartupProjectContent: vi.fn().mockResolvedValue({
+        canceled: false,
+        projectContents: [{
+          content: JSON.stringify(projectPackage),
+          filePath: "/tmp/project-a.rxnflow",
+          projectDirectory: "/tmp/project-a.rxnflow",
+          source: "startup",
+          validation: null,
+        }],
+      }),
+      autosaveProjectPackage,
+    })
+
+    render(<App />)
+    expect(await screen.findByRole("button", { name: "Project A open" })).toHaveAttribute("aria-current", "true")
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Node Project A node" }), { clientX: 500, clientY: 320 })
+      fireEvent.change(screen.getByLabelText("Node coefficient"), { target: { value: "2" } })
+      fireEvent.blur(screen.getByLabelText("Node coefficient"))
+      await act(async () => vi.advanceTimersByTimeAsync(901))
+      expect(autosaveProjectPackage).toHaveBeenCalledTimes(1)
+
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Node Project A node" }), { clientX: 500, clientY: 320 })
+      fireEvent.change(screen.getByLabelText("Node coefficient"), { target: { value: "3" } })
+      fireEvent.blur(screen.getByLabelText("Node coefficient"))
+      await act(async () => vi.advanceTimersByTimeAsync(901))
+      expect(autosaveProjectPackage).toHaveBeenCalledTimes(1)
+
+      const toolbar = screen.getByRole("toolbar", { name: "Canvas commands" })
+      fireEvent.click(within(toolbar).getByRole("button", { name: "Undo canvas edit" }))
+      await act(async () => vi.advanceTimersByTimeAsync(901))
+
+      await act(async () => {
+        autosaveJob.resolve({
+          canceled: false,
+          projectDirectory: "/tmp/project-a.rxnflow",
+          content: autosaveProjectPackage.mock.calls[0][0].content,
+          validation: null,
+        })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(autosaveProjectPackage).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("rolls back Electron import placeholders when a parser job returns without parse data", async () => {
     const importJob = deferred<any>()
     const chooseFiles = vi.fn().mockResolvedValue({
