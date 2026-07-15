@@ -140,10 +140,38 @@ function mockImageNaturalSize(width = 120, height = 80) {
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((next) => {
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((next, fail) => {
     resolve = next
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
+}
+
+function crossProjectAutosavePackage(
+  projectId: string,
+  projectLabel: string,
+  fileName: string,
+  storedPath: string,
+) {
+  return JSON.stringify({
+    schemaVersion: 1,
+    packageKind: "rxnflow-project",
+    project: { id: projectId, label: projectLabel, meta: "saved" },
+    files: [{
+      id: "shared-file",
+      name: fileName,
+      kind: "Gaussian",
+      size: 128,
+      status: "parsed",
+      preview: `${projectLabel} calculation`,
+      storedPath,
+    }],
+    nodes: [],
+    edges: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+    savedAt: "2026-07-15T00:00:00.000Z",
+  })
 }
 
 function installDesktopImportRuntime(overrides: Record<string, unknown>) {
@@ -2606,6 +2634,152 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: fileButtonName("race.log", "ORCA") })).toBeInTheDocument()
     expect(screen.queryByRole("progressbar", { name: "Parsing race.log" })).not.toBeInTheDocument()
+  })
+
+  it("routes delayed autosave metadata back to the project that started the request", async () => {
+    const projectAAutosave = deferred<void>()
+    const backgroundAutosave = new Promise<never>(() => {})
+    const openSourceFile = vi.fn().mockResolvedValue({ ok: true })
+    const autosaveProjectPackage = vi.fn((payload: { content: string }) => {
+      const projectPackage = JSON.parse(payload.content)
+      if (projectPackage.project.id !== "project-a") return backgroundAutosave
+      projectPackage.files = projectPackage.files.map((file: Record<string, unknown>) => ({
+        ...file,
+        size: 512,
+        storedPath: "sources/a-autosaved.log",
+        checksum: `sha256:${"a".repeat(64)}`,
+      }))
+      return projectAAutosave.promise.then(() => ({
+        canceled: false,
+        projectDirectory: "/tmp/project-a.rxnflow",
+        content: JSON.stringify(projectPackage),
+        validation: {
+          valid: false,
+          summary: { projectId: "project-a" },
+          issues: [{
+            severity: "error" as const,
+            code: "project_a_validation",
+            message: "Project A autosave validation must stay with Project A.",
+          }],
+        },
+      }))
+    })
+    installDesktopImportRuntime({
+      getStartupProjectContent: vi.fn().mockResolvedValue({
+        canceled: false,
+        projectContents: [
+          {
+            content: crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a-original.log"),
+            filePath: "/tmp/project-a.rxnflow",
+            projectDirectory: "/tmp/project-a.rxnflow",
+            source: "startup",
+            validation: null,
+          },
+          {
+            content: crossProjectAutosavePackage("project-b", "Project B", "B.log", "sources/b-original.log"),
+            filePath: "/tmp/project-b.rxnflow",
+            projectDirectory: "/tmp/project-b.rxnflow",
+            replaceProjects: false,
+            source: "startup",
+            validation: null,
+          },
+        ],
+      }),
+      autosaveProjectPackage,
+      openSourceFile,
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole("button", { name: "Project B open" })).toHaveAttribute("aria-current", "true")
+    fireEvent.click(screen.getByRole("button", { name: "Project A open" }))
+    await waitFor(() => {
+      expect(autosaveProjectPackage.mock.calls.some(([payload]) => (
+        JSON.parse(payload.content).project.id === "project-a"
+      ))).toBe(true)
+    }, { timeout: 2500 })
+
+    fireEvent.click(screen.getByRole("button", { name: "Project B open" }))
+    expect(screen.getByRole("button", { name: "Project B open" })).toHaveAttribute("aria-current", "true")
+    await act(async () => {
+      projectAAutosave.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: fileButtonName("B.log", "Gaussian") }))
+    fireEvent.click(screen.getByRole("button", { name: "Open with external app" }))
+    expect(openSourceFile).toHaveBeenLastCalledWith(expect.objectContaining({
+      projectId: "project-b",
+      name: "B.log",
+      storedPath: "sources/b-original.log",
+    }))
+    expect(screen.queryByRole("alert", { name: "Project validation" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Project A autosave validation must stay with Project A.")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Project A open" }))
+    fireEvent.click(screen.getByRole("button", { name: fileButtonName("A.log", "Gaussian") }))
+    fireEvent.click(screen.getByRole("button", { name: "Open with external app" }))
+    expect(openSourceFile).toHaveBeenLastCalledWith(expect.objectContaining({
+      projectId: "project-a",
+      name: "A.log",
+      storedPath: "sources/a-autosaved.log",
+    }))
+  })
+
+  it("keeps a delayed autosave failure out of the newly active project and allows retry", async () => {
+    const projectAAutosave = deferred<never>()
+    const pendingAutosave = new Promise<never>(() => {})
+    let projectAAutosaveCalls = 0
+    const autosaveProjectPackage = vi.fn((payload: { content: string }) => {
+      const projectPackage = JSON.parse(payload.content)
+      if (projectPackage.project.id !== "project-a") return pendingAutosave
+      projectAAutosaveCalls += 1
+      return projectAAutosaveCalls === 1 ? projectAAutosave.promise : pendingAutosave
+    })
+    installDesktopImportRuntime({
+      getStartupProjectContent: vi.fn().mockResolvedValue({
+        canceled: false,
+        projectContents: [
+          {
+            content: crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a-original.log"),
+            filePath: "/tmp/project-a.rxnflow",
+            projectDirectory: "/tmp/project-a.rxnflow",
+            source: "startup",
+            validation: null,
+          },
+          {
+            content: crossProjectAutosavePackage("project-b", "Project B", "B.log", "sources/b-original.log"),
+            filePath: "/tmp/project-b.rxnflow",
+            projectDirectory: "/tmp/project-b.rxnflow",
+            replaceProjects: false,
+            source: "startup",
+            validation: null,
+          },
+        ],
+      }),
+      autosaveProjectPackage,
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole("button", { name: "Project B open" })).toHaveAttribute("aria-current", "true")
+    fireEvent.click(screen.getByRole("button", { name: "Project A open" }))
+    await waitFor(() => expect(projectAAutosaveCalls).toBe(1), { timeout: 2500 })
+
+    fireEvent.click(screen.getByRole("button", { name: "Project B open" }))
+    await act(async () => {
+      projectAAutosave.reject(new Error("Project A disk failure"))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByRole("button", { name: "Project B open" })).toHaveAttribute("aria-current", "true")
+    expect(screen.queryByRole("alert", { name: "Project validation" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Project autosave failed: Project A disk failure/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Project A open" }))
+    await waitFor(() => expect(projectAAutosaveCalls).toBe(2), { timeout: 2500 })
   })
 
   it("rolls back Electron import placeholders when a parser job returns without parse data", async () => {

@@ -421,6 +421,7 @@ export function App() {
   const autosaveInputRef = useRef<ProjectAutosaveInput | null>(null)
   const autosaveInFlightRef = useRef(false)
   const autosaveQueuedRef = useRef(false)
+  const activeProjectIdRef = useRef(initialProjects[0].id)
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
   const restoreStartupProjectPackagesRef = useRef<RestoreStartupProjectPackagesHandler | null>(null)
   const stageSourceFilesForProjectRef = useRef<((projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>) | null>(null)
@@ -618,6 +619,10 @@ export function App() {
   useLayoutEffect(() => {
     liveViewportRef.current = viewport
   }, [viewport])
+
+  useLayoutEffect(() => {
+    activeProjectIdRef.current = activeProjectId
+  }, [activeProjectId])
 
   const canvasWorldElement = useCallback(() => (
     canvasRef.current?.querySelector<HTMLElement>(".canvas-world") ?? null
@@ -2366,18 +2371,40 @@ export function App() {
     autosaveInFlightRef.current = true
     autosaveKeyRef.current = autosaveKey
     try {
+      let responseValidation: ProjectValidationPayload | null | undefined
       const result = await autosaveProjectPackageToRuntime({
         desktopApi,
         ...input,
-        setProjectValidation,
+        setProjectValidation: (validation) => {
+          responseValidation = validation
+        },
       })
       rememberProjectDirectory(input.project.id, result?.projectDirectory)
-      if (result?.content) {
+      if (activeProjectIdRef.current === input.project.id) {
+        if (responseValidation !== undefined) setProjectValidation(responseValidation)
+      }
+      if (result?.content && activeProjectIdRef.current === input.project.id) {
         setFiles((current) => sourceFilesWithAutosavedMetadata(current, result.content ?? ""))
+      } else if (result?.content) {
+        setProjectWorkspaces((current) => {
+          const workspace = current[input.project.id]
+          if (!workspace) return current
+          const nextFiles = sourceFilesWithAutosavedMetadata(workspace.files, result.content ?? "")
+          if (nextFiles === workspace.files) return current
+          return {
+            ...current,
+            [input.project.id]: {
+              ...workspace,
+              files: nextFiles,
+            },
+          }
+        })
       }
     } catch (error) {
       autosaveKeyRef.current = null
-      setProjectValidation(projectAutosaveFailureValidation(error))
+      if (activeProjectIdRef.current === input.project.id) {
+        setProjectValidation(projectAutosaveFailureValidation(error))
+      }
     } finally {
       autosaveInFlightRef.current = false
       if (autosaveQueuedRef.current) {
