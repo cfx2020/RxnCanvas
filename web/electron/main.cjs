@@ -61,6 +61,7 @@ let activeProjectPath = null
 let recentProjectsStorePath = null
 let currentProjectDirectory = null
 let currentProjectId = null
+let recentProjectsPersistence = Promise.resolve()
 let startupProjectRestorePromise = null
 let startupProjectRestoreConsumed = false
 const projectDirectoriesById = new Map()
@@ -835,11 +836,32 @@ async function clearRecentProjects() {
   installApplicationMenu()
 }
 
-async function persistRecentProjects() {
-  if (!recentProjectsStorePath) return
-  const state = await saveRecentProjectsState(recentProjectsStorePath, { projectPaths: recentProjectPaths, activeProjectPath })
-  recentProjectPaths = state.projectPaths
-  activeProjectPath = state.activeProjectPath
+function persistRecentProjects() {
+  if (!recentProjectsStorePath) return Promise.resolve()
+  const requestedState = {
+    projectPaths: [...recentProjectPaths],
+    activeProjectPath,
+  }
+  recentProjectsPersistence = recentProjectsPersistence
+    .catch(() => undefined)
+    .then(async () => {
+      const state = await saveRecentProjectsState(recentProjectsStorePath, requestedState)
+      const currentState = {
+        projectPaths: recentProjectPaths,
+        activeProjectPath,
+      }
+      if (recentProjectStatesEqual(currentState, requestedState)) {
+        recentProjectPaths = state.projectPaths
+        activeProjectPath = state.activeProjectPath
+      }
+    })
+  return recentProjectsPersistence
+}
+
+function recentProjectStatesEqual(left, right) {
+  return left.activeProjectPath === right.activeProjectPath
+    && left.projectPaths.length === right.projectPaths.length
+    && left.projectPaths.every((projectPath, index) => projectPath === right.projectPaths[index])
 }
 
 async function openRecentProject(filePath, focusedWindow) {
