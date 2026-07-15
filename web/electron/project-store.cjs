@@ -24,6 +24,7 @@ const maxFileHashAttempts = 3
 const fileHashCache = new Map()
 const sourceMaterializationTails = new Map()
 const projectSaveTails = new Map()
+const archiveDestinationTails = new Map()
 
 async function readProjectContent(projectPath) {
   const stats = await fs.stat(projectPath)
@@ -121,22 +122,30 @@ async function saveProjectDirectoryUnlocked(projectDirectory, content, options =
 }
 
 async function withProjectSaveLock(projectDirectory, operation) {
-  const projectKey = path.resolve(projectDirectory)
-  const previous = projectSaveTails.get(projectKey) || Promise.resolve()
+  return withOperationLock(projectSaveTails, projectDirectory, operation)
+}
+
+async function withArchiveDestinationLock(archivePath, operation) {
+  return withOperationLock(archiveDestinationTails, archivePath, operation)
+}
+
+async function withOperationLock(tails, targetPath, operation) {
+  const targetKey = path.resolve(targetPath)
+  const previous = tails.get(targetKey) || Promise.resolve()
   let release
   const turn = new Promise((resolve) => {
     release = resolve
   })
   const tail = previous.then(() => turn)
-  projectSaveTails.set(projectKey, tail)
+  tails.set(targetKey, tail)
 
   await previous
   try {
     return await operation()
   } finally {
     release()
-    if (projectSaveTails.get(projectKey) === tail) {
-      projectSaveTails.delete(projectKey)
+    if (tails.get(targetKey) === tail) {
+      tails.delete(targetKey)
     }
   }
 }
@@ -708,6 +717,12 @@ async function readExportArtifactRecords(projectDirectory) {
 }
 
 async function writeProjectWorkspaceArchiveAtomically(projectDirectory, archivePath) {
+  return withArchiveDestinationLock(archivePath, () => (
+    writeProjectWorkspaceArchiveAtomicallyUnlocked(projectDirectory, archivePath)
+  ))
+}
+
+async function writeProjectWorkspaceArchiveAtomicallyUnlocked(projectDirectory, archivePath) {
   const targetDirectory = path.dirname(archivePath)
   const temporaryPath = path.join(
     targetDirectory,
@@ -833,6 +848,7 @@ module.exports = {
   saveProjectReportArtifact,
   slimProjectPackageForPersistence,
   sourcesDirectory,
+  withArchiveDestinationLock,
   withProjectSaveLock,
   writeProjectFileAtomically,
   writeProjectWorkspaceArchiveAtomically,

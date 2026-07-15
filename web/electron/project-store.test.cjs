@@ -24,10 +24,12 @@ fs.createReadStream = function countedCreateReadStream(filePath, ...args) {
 const {
   defaultImportStoredPathForFile,
   exportProjectWorkspaceArchive,
+  importProjectWorkspaceArchive,
   materializeImportSourceFile,
   readProjectContent,
   saveProjectContent,
   saveProjectReportArtifact,
+  withArchiveDestinationLock,
   withProjectSaveLock,
   writeProjectFileAtomically,
   writeProjectWorkspaceArchiveAtomically,
@@ -251,6 +253,69 @@ test("archive export waits for project mutations and atomically replaces its tar
   assert.equal(fs.statSync(directoryTarget).isDirectory(), true)
   assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
 
+})
+
+test("archive destination requests commit in order across different projects", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-archive-destination-order-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectA = path.join(tempDirectory, "project-a.rxnflow")
+  const projectB = path.join(tempDirectory, "project-b.rxnflow")
+  const packageA = JSON.parse(projectContent(null))
+  packageA.project = { id: "project-a", label: "Project A", meta: "open" }
+  const packageB = JSON.parse(projectContent(null))
+  packageB.project = { id: "project-b", label: "Project B", meta: "open" }
+  await Promise.all([
+    saveProjectContent(projectA, JSON.stringify(packageA)),
+    saveProjectContent(projectB, JSON.stringify(packageB)),
+  ])
+  const archiveBasePath = path.join(tempDirectory, "shared-export")
+  const archivePath = `${archiveBasePath}.rxnflow.zip`
+  const releaseDestination = deferred()
+  const blocker = withArchiveDestinationLock(archivePath, async () => {
+    await releaseDestination.promise
+  })
+  await Promise.resolve()
+
+  const first = exportProjectWorkspaceArchive(projectA, archiveBasePath)
+  const second = exportProjectWorkspaceArchive(projectB, archiveBasePath)
+  await Promise.resolve()
+  assert.equal(fs.existsSync(archivePath), false)
+
+  releaseDestination.resolve()
+  await blocker
+  const [firstResult, secondResult] = await Promise.all([first, second])
+  assert.equal(firstResult.filePath, archivePath)
+  assert.equal(secondResult.filePath, archivePath)
+
+  const extractedDirectory = path.join(tempDirectory, "extracted.rxnflow")
+  await importProjectWorkspaceArchive(archivePath, extractedDirectory)
+  const finalPackage = JSON.parse(await readProjectContent(extractedDirectory))
+  assert.equal(finalPackage.project.id, "project-b")
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+})
+
+test("archive destination failures release only their target lock", async () => {
+  const failedTarget = "/tmp/failed-archive-target.zip"
+  const otherTarget = "/tmp/other-archive-target.zip"
+  const events = []
+  const first = withArchiveDestinationLock(failedTarget, async () => {
+    events.push("failed-start")
+    throw new Error("archive failed")
+  })
+  const second = withArchiveDestinationLock(failedTarget, async () => {
+    events.push("retry-start")
+    return "retry-complete"
+  })
+  const other = withArchiveDestinationLock(otherTarget, async () => {
+    events.push("other-start")
+    return "other-complete"
+  })
+
+  await assert.rejects(first, /archive failed/)
+  assert.equal(await second, "retry-complete")
+  assert.equal(await other, "other-complete")
+  assert.ok(events.indexOf("retry-start") > events.indexOf("failed-start"))
+  assert.ok(events.includes("other-start"))
 })
 
 test("planned source paths are stable for the same name and distinct after sanitization", () => {
