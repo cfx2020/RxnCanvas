@@ -798,18 +798,19 @@ describe("App", () => {
     expect(screen.getByText("No local files")).toBeInTheDocument()
   })
 
-  it("deletes local projects through project actions after confirmation", () => {
+  it("removes local projects from the sidebar after confirmation", () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole("button", { name: "Project actions for Diels-Alder Study" }))
-    expect(screen.getByRole("menuitem", { name: "Delete project" })).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "Remove from sidebar" })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
-    const dialog = screen.getByRole("alertdialog", { name: "Delete Diels-Alder Study" })
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
+    const dialog = screen.getByRole("alertdialog", { name: "Remove Diels-Alder Study from sidebar" })
     expect(dialog).toHaveTextContent("Diels-Alder Study")
+    expect(dialog).toHaveTextContent("Original source files and saved .rxnflow folders on disk are not deleted")
     expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete project" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove from sidebar" }))
 
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Nickel catalysis empty" })).toHaveAttribute("aria-current", "true")
@@ -850,8 +851,8 @@ describe("App", () => {
     vi.useFakeTimers()
     try {
       fireEvent.click(screen.getByRole("button", { name: "Project actions for Project A" }))
-      fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
-      fireEvent.click(within(screen.getByRole("alertdialog", { name: "Delete Project A" })).getByRole("button", { name: "Delete project" }))
+      fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
+      fireEvent.click(within(screen.getByRole("alertdialog", { name: "Remove Project A from sidebar" })).getByRole("button", { name: "Remove from sidebar" }))
 
       expect(screen.getByRole("button", { name: "Project A open" })).toHaveAttribute("aria-current", "true")
       await act(async () => vi.advanceTimersByTimeAsync(500))
@@ -868,8 +869,8 @@ describe("App", () => {
 
       forgetProject.mockResolvedValue({ ok: true, projectDirectory: "/tmp/project-a.rxnflow" })
       fireEvent.click(screen.getByRole("button", { name: "Project actions for Project A" }))
-      fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
-      fireEvent.click(within(screen.getByRole("alertdialog", { name: "Delete Project A" })).getByRole("button", { name: "Delete project" }))
+      fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
+      fireEvent.click(within(screen.getByRole("alertdialog", { name: "Remove Project A from sidebar" })).getByRole("button", { name: "Remove from sidebar" }))
       await act(async () => vi.advanceTimersByTimeAsync(0))
 
       expect(screen.queryByRole("button", { name: "Project A open" })).not.toBeInTheDocument()
@@ -3112,9 +3113,9 @@ describe("App", () => {
       expect(autosaveProjectPackage).toHaveBeenCalledTimes(1)
 
       fireEvent.click(screen.getByRole("button", { name: "Project actions for Project A" }))
-      fireEvent.click(screen.getByRole("menuitem", { name: "Delete project" }))
-      const dialog = screen.getByRole("alertdialog", { name: "Delete Project A" })
-      fireEvent.click(within(dialog).getByRole("button", { name: "Delete project" }))
+      fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
+      const dialog = screen.getByRole("alertdialog", { name: "Remove Project A from sidebar" })
+      fireEvent.click(within(dialog).getByRole("button", { name: "Remove from sidebar" }))
       await act(async () => vi.advanceTimersByTimeAsync(901))
 
       expect(forgetProject).toHaveBeenCalledWith({

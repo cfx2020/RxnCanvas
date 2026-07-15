@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import { ArrowDownAZ, FilePlus2, Filter, Folder, FolderOpen, FolderPlus, MoreHorizontal, Plus, Search, Settings2, Trash2, UploadCloud } from "lucide-react"
+import { ArrowDownAZ, FilePlus2, Filter, Folder, FolderMinus, FolderOpen, FolderPlus, MoreHorizontal, Plus, Search, Settings2, Trash2, UploadCloud } from "lucide-react"
 import type { ProjectSummary, SourceFile } from "../domain/projectPackages"
 import type { CanvasTabState } from "./projectCanvasState"
 import {
@@ -548,30 +548,29 @@ function ProjectRailItem({
             <span>New canvas</span>
           </button>
           <button type="button" role="menuitem" className="is-danger" onClick={onRequestDelete}>
-            <Trash2 size={14} />
-            <span>Delete project</span>
+            <FolderMinus size={14} />
+            <span>Remove from sidebar</span>
           </button>
         </div>
       ) : null}
       {confirmOpen ? (
-        <div className="project-delete-confirm" role="alertdialog" aria-label={`Delete ${project.label}`}>
+        <div className="project-delete-confirm" role="alertdialog" aria-label={`Remove ${project.label} from sidebar`}>
           <div className="project-delete-confirm-header">
             <span className="project-delete-confirm-icon" aria-hidden="true">
-              <Trash2 size={16} />
+              <FolderMinus size={16} />
             </span>
             <div>
-              <strong>Delete project from workspace?</strong>
+              <strong>Remove project from sidebar?</strong>
               <span>{project.label}</span>
             </div>
           </div>
           <p>
-            Deletes this project from the current workspace, including its canvases and imported log
-            registrations.
+            Removes this project, its canvases, and imported log registrations from the current sidebar.
           </p>
-          <small>Original source files on disk are not deleted.</small>
+          <small>Original source files and saved .rxnflow folders on disk are not deleted.</small>
           <div className="project-delete-confirm-actions">
             <button type="button" className="is-secondary" onClick={onCancelDelete}>Cancel</button>
-            <button type="button" className="is-danger" onClick={onConfirmDelete}>Delete project</button>
+            <button type="button" className="is-danger" onClick={onConfirmDelete}>Remove from sidebar</button>
           </div>
         </div>
       ) : null}
