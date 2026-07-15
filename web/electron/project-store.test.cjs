@@ -27,6 +27,7 @@ const {
   readProjectContent,
   saveProjectContent,
   withProjectSaveLock,
+  writeProjectFileAtomically,
 } = require("./project-store.cjs")
 
 test.after(() => {
@@ -131,6 +132,54 @@ test("same-directory project snapshots commit in request order", async (t) => {
 
   const finalPackage = JSON.parse(await readProjectContent(projectDirectory))
   assert.equal(finalPackage.project.label, "Newer snapshot")
+})
+
+test("project reads wait for the active directory mutation", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-read-lock-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "read-locked-project.rxnflow")
+  await saveProjectContent(projectDirectory, projectContent(null))
+  const releaseMutation = deferred()
+  const updatedPackage = JSON.parse(projectContent(null))
+  updatedPackage.project.label = "Updated while locked"
+  const mutation = withProjectSaveLock(projectDirectory, async () => {
+    await releaseMutation.promise
+    await writeProjectFileAtomically(
+      path.join(projectDirectory, ".rxnflow", "project.json"),
+      `${JSON.stringify(updatedPackage)}\n`,
+    )
+  })
+  await Promise.resolve()
+
+  let readCompleted = false
+  const read = readProjectContent(projectDirectory).then((content) => {
+    readCompleted = true
+    return content
+  })
+  await Promise.resolve()
+  assert.equal(readCompleted, false)
+
+  releaseMutation.resolve()
+  await mutation
+  const restored = JSON.parse(await read)
+  assert.equal(restored.project.label, "Updated while locked")
+})
+
+test("atomic project file writes replace complete files and clean failed temporaries", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-atomic-write-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const targetPath = path.join(tempDirectory, "project.json")
+  fs.writeFileSync(targetPath, "old", "utf8")
+
+  await writeProjectFileAtomically(targetPath, "new")
+  assert.equal(fs.readFileSync(targetPath, "utf8"), "new")
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+
+  const directoryTarget = path.join(tempDirectory, "directory-target")
+  fs.mkdirSync(directoryTarget)
+  await assert.rejects(() => writeProjectFileAtomically(directoryTarget, "cannot replace a directory"))
+  assert.equal(fs.statSync(directoryTarget).isDirectory(), true)
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
 })
 
 test("planned source paths are stable for the same name and distinct after sanitization", () => {

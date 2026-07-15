@@ -28,10 +28,16 @@ const projectSaveTails = new Map()
 async function readProjectContent(projectPath) {
   const stats = await fs.stat(projectPath)
   if (stats.isDirectory()) {
-    const statePath = await resolveProjectStatePath(projectPath)
-    return readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnFlow project state")
+    const projectDirectory = normalizeProjectDirectoryPath(projectPath)
+    return withProjectSaveLock(projectDirectory, async () => {
+      const statePath = await resolveProjectStatePath(projectDirectory)
+      return readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnFlow project state")
+    })
   }
-  return readUtf8FileWithLimit(projectPath, maxProjectStateBytes, "RxnFlow project package")
+  const projectFilePath = path.resolve(projectPath)
+  return withProjectSaveLock(projectFilePath, () => (
+    readUtf8FileWithLimit(projectFilePath, maxProjectStateBytes, "RxnFlow project package")
+  ))
 }
 
 async function readUtf8FileWithLimit(filePath, maxBytes, label) {
@@ -61,10 +67,13 @@ async function resolveProjectStatePath(projectDirectory) {
 
 async function saveProjectContent(targetPath, content, options = {}) {
   if (targetPath.toLowerCase().endsWith(".json")) {
-    const projectPackage = parseProjectPackageContent(content)
-    const savedContent = `${JSON.stringify(slimProjectPackageForPersistence(projectPackage))}\n`
-    await fs.writeFile(targetPath, savedContent, "utf8")
-    return { filePath: targetPath, projectDirectory: null, content: savedContent }
+    const projectFilePath = path.resolve(targetPath)
+    return withProjectSaveLock(projectFilePath, async () => {
+      const projectPackage = parseProjectPackageContent(content)
+      const savedContent = `${JSON.stringify(slimProjectPackageForPersistence(projectPackage))}\n`
+      await writeProjectFileAtomically(projectFilePath, savedContent)
+      return { filePath: projectFilePath, projectDirectory: null, content: savedContent }
+    })
   }
 
   return saveProjectDirectory(targetPath, content, options)
@@ -99,9 +108,9 @@ async function saveProjectDirectoryUnlocked(projectDirectory, content, options =
   })
   const savedContent = `${JSON.stringify(savedPackage)}\n`
 
-  await fs.writeFile(path.join(projectDirectory, projectStateFile), savedContent, "utf8")
   await writeProjectManifest(projectDirectory, savedPackage)
   await ensureExportManifest(projectDirectory, savedPackage)
+  await writeProjectFileAtomically(path.join(projectDirectory, projectStateFile), savedContent)
   await pruneUnreferencedSourceFiles(projectDirectory, savedPackage.files)
 
   return {
@@ -129,6 +138,21 @@ async function withProjectSaveLock(projectDirectory, operation) {
     if (projectSaveTails.get(projectKey) === tail) {
       projectSaveTails.delete(projectKey)
     }
+  }
+}
+
+async function writeProjectFileAtomically(targetPath, content) {
+  const targetDirectory = path.dirname(targetPath)
+  const temporaryPath = path.join(
+    targetDirectory,
+    `.${path.basename(targetPath)}.rxnflow-write-${process.pid}-${crypto.randomUUID()}.tmp`,
+  )
+  await fs.mkdir(targetDirectory, { recursive: true })
+  try {
+    await fs.writeFile(temporaryPath, content, "utf8")
+    await fs.rename(temporaryPath, targetPath)
+  } finally {
+    await fs.rm(temporaryPath, { force: true })
   }
 }
 
@@ -636,7 +660,7 @@ async function writeProjectManifest(projectDirectory, projectPackage) {
     })),
   }
   await fs.mkdir(path.join(projectDirectory, projectMetadataDirectory), { recursive: true })
-  await fs.writeFile(path.join(projectDirectory, projectManifestFile), `${JSON.stringify(manifest)}\n`, "utf8")
+  await writeProjectFileAtomically(path.join(projectDirectory, projectManifestFile), `${JSON.stringify(manifest)}\n`)
 }
 
 async function ensureExportManifest(projectDirectory, projectPackage) {
@@ -649,7 +673,7 @@ async function ensureExportManifest(projectDirectory, projectPackage) {
     artifacts: existingArtifacts,
   }
   await fs.mkdir(path.dirname(manifestPath), { recursive: true })
-  await fs.writeFile(manifestPath, `${JSON.stringify(manifest)}\n`, "utf8")
+  await writeProjectFileAtomically(manifestPath, `${JSON.stringify(manifest)}\n`)
 }
 
 async function upsertExportArtifactRecord(projectDirectory, record) {
@@ -665,7 +689,7 @@ async function upsertExportArtifactRecord(projectDirectory, record) {
     artifacts: nextArtifacts,
   }
   await fs.mkdir(path.dirname(manifestPath), { recursive: true })
-  await fs.writeFile(manifestPath, `${JSON.stringify(manifest)}\n`, "utf8")
+  await writeProjectFileAtomically(manifestPath, `${JSON.stringify(manifest)}\n`)
 }
 
 async function readExportArtifactRecords(projectDirectory) {
@@ -780,4 +804,5 @@ module.exports = {
   slimProjectPackageForPersistence,
   sourcesDirectory,
   withProjectSaveLock,
+  writeProjectFileAtomically,
 }
