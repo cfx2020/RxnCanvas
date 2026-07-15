@@ -812,8 +812,8 @@ function recentProjectsMenuItems() {
   ]
 }
 
-async function rememberRecentProject(filePath) {
-  const state = recordRecentProjectState({ projectPaths: recentProjectPaths, activeProjectPath }, filePath)
+async function rememberRecentProject(filePath, options = {}) {
+  const state = recordRecentProjectState({ projectPaths: recentProjectPaths, activeProjectPath }, filePath, options)
   recentProjectPaths = state.projectPaths
   activeProjectPath = state.activeProjectPath
   await persistRecentProjects()
@@ -1510,8 +1510,10 @@ ipcMain.handle("rxnflow:autosave-project-package", async (_event, payload) => {
   const savedProject = await saveProjectContent(projectDirectory, content, {
     previousProjectDirectory,
   })
-  activateProjectDirectory(savedProject.content, savedProject.projectDirectory)
-  await rememberRecentProject(savedProject.filePath)
+  if (identity?.id && savedProject.projectDirectory) {
+    projectDirectoriesById.set(identity.id, savedProject.projectDirectory)
+  }
+  await rememberRecentProject(savedProject.filePath, { active: false })
   const validation = await validateProjectPackageContent(savedProject.content, savedProject.projectDirectory)
   return {
     canceled: false,
