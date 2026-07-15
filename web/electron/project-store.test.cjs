@@ -8,6 +8,14 @@ const test = require("node:test")
 const originalCreateReadStream = fs.createReadStream
 let streamedFiles = []
 
+function deferred() {
+  let resolve
+  const promise = new Promise((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
+}
+
 fs.createReadStream = function countedCreateReadStream(filePath, ...args) {
   streamedFiles.push(path.resolve(filePath))
   return originalCreateReadStream.call(this, filePath, ...args)
@@ -16,11 +24,113 @@ fs.createReadStream = function countedCreateReadStream(filePath, ...args) {
 const {
   defaultImportStoredPathForFile,
   materializeImportSourceFile,
+  readProjectContent,
   saveProjectContent,
+  withProjectSaveLock,
 } = require("./project-store.cjs")
 
 test.after(() => {
   fs.createReadStream = originalCreateReadStream
+})
+
+test("project saves run in request order per directory and continue after failure", async () => {
+  const firstRelease = deferred()
+  const events = []
+  const projectDirectory = "/tmp/serialized-project-save.rxnflow"
+  const first = withProjectSaveLock(projectDirectory, async () => {
+    events.push("first-start")
+    await firstRelease.promise
+    events.push("first-fail")
+    throw new Error("first save failed")
+  })
+  await Promise.resolve()
+  const second = withProjectSaveLock(projectDirectory, async () => {
+    events.push("second-start")
+    events.push("second-complete")
+    return "saved"
+  })
+  await Promise.resolve()
+
+  assert.deepEqual(events, ["first-start"])
+  firstRelease.resolve()
+  await assert.rejects(first, /first save failed/)
+  assert.equal(await second, "saved")
+  assert.deepEqual(events, ["first-start", "first-fail", "second-start", "second-complete"])
+})
+
+test("different project directories can save concurrently", async () => {
+  const release = deferred()
+  const events = []
+  const first = withProjectSaveLock("/tmp/project-a.rxnflow", async () => {
+    events.push("a-start")
+    await release.promise
+    events.push("a-complete")
+  })
+  const second = withProjectSaveLock("/tmp/project-b.rxnflow", async () => {
+    events.push("b-start")
+    await release.promise
+    events.push("b-complete")
+  })
+  await Promise.resolve()
+
+  assert.deepEqual(events, ["a-start", "b-start"])
+  release.resolve()
+  await Promise.all([first, second])
+})
+
+test("source imports wait for an in-flight project save before mutating sources", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-save-import-lock-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "locked-project.rxnflow")
+  const sourcePath = path.join(tempDirectory, "new.log")
+  fs.writeFileSync(sourcePath, "new source", "utf8")
+  const releaseSave = deferred()
+  const save = withProjectSaveLock(projectDirectory, async () => {
+    await releaseSave.promise
+  })
+  await Promise.resolve()
+
+  let importCompleted = false
+  const imported = materializeImportSourceFile(projectDirectory, {
+    id: "new-source",
+    name: "new.log",
+    sourcePath,
+  }, 0, { usedStoredPaths: new Set() }).then((result) => {
+    importCompleted = true
+    return result
+  })
+  await Promise.resolve()
+
+  assert.equal(importCompleted, false)
+  releaseSave.resolve()
+  await save
+  const result = await imported
+  assert.equal(result.storedPath, "sources/new.log")
+  assert.equal(fs.readFileSync(path.join(projectDirectory, result.storedPath), "utf8"), "new source")
+})
+
+test("same-directory project snapshots commit in request order", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-save-order-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "ordered-project.rxnflow")
+  const releaseBlocker = deferred()
+  const blocker = withProjectSaveLock(projectDirectory, async () => {
+    await releaseBlocker.promise
+  })
+  await Promise.resolve()
+  const olderPackage = JSON.parse(projectContent(null))
+  olderPackage.project.label = "Older snapshot"
+  const newerPackage = JSON.parse(projectContent(null))
+  newerPackage.project.label = "Newer snapshot"
+
+  const olderSave = saveProjectContent(projectDirectory, JSON.stringify(olderPackage))
+  const newerSave = saveProjectContent(projectDirectory, JSON.stringify(newerPackage))
+  releaseBlocker.resolve()
+  await blocker
+  await Promise.all([olderSave, newerSave])
+
+  const finalPackage = JSON.parse(await readProjectContent(projectDirectory))
+  assert.equal(finalPackage.project.label, "Newer snapshot")
 })
 
 test("planned source paths are stable for the same name and distinct after sanitization", () => {

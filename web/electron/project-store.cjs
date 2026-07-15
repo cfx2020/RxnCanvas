@@ -23,6 +23,7 @@ const maxFileHashCacheEntries = 256
 const maxFileHashAttempts = 3
 const fileHashCache = new Map()
 const sourceMaterializationTails = new Map()
+const projectSaveTails = new Map()
 
 async function readProjectContent(projectPath) {
   const stats = await fs.stat(projectPath)
@@ -71,6 +72,10 @@ async function saveProjectContent(targetPath, content, options = {}) {
 
 async function saveProjectDirectory(projectPath, content, options = {}) {
   const projectDirectory = normalizeProjectDirectoryPath(projectPath)
+  return withProjectSaveLock(projectDirectory, () => saveProjectDirectoryUnlocked(projectDirectory, content, options))
+}
+
+async function saveProjectDirectoryUnlocked(projectDirectory, content, options = {}) {
   const projectPackage = parseProjectPackageContent(content)
 
   await fs.mkdir(projectDirectory, { recursive: true })
@@ -103,6 +108,27 @@ async function saveProjectDirectory(projectPath, content, options = {}) {
     filePath: projectDirectory,
     projectDirectory,
     content: savedContent,
+  }
+}
+
+async function withProjectSaveLock(projectDirectory, operation) {
+  const projectKey = path.resolve(projectDirectory)
+  const previous = projectSaveTails.get(projectKey) || Promise.resolve()
+  let release
+  const turn = new Promise((resolve) => {
+    release = resolve
+  })
+  const tail = previous.then(() => turn)
+  projectSaveTails.set(projectKey, tail)
+
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (projectSaveTails.get(projectKey) === tail) {
+      projectSaveTails.delete(projectKey)
+    }
   }
 }
 
@@ -258,6 +284,11 @@ async function persistSourceFile(projectDirectory, file, index, options) {
 }
 
 async function materializeImportSourceFile(projectDirectory, file, index, options = {}) {
+  const workspaceDirectory = normalizeProjectDirectoryPath(projectDirectory)
+  return withProjectSaveLock(workspaceDirectory, () => materializeImportSourceFileUnlocked(workspaceDirectory, file, index, options))
+}
+
+async function materializeImportSourceFileUnlocked(projectDirectory, file, index, options = {}) {
   const reservation = await reserveImportStoredPath(projectDirectory, file, index)
   const { storedPath } = reservation
   const targetPath = path.join(projectDirectory, storedPath)
@@ -748,4 +779,5 @@ module.exports = {
   saveProjectReportArtifact,
   slimProjectPackageForPersistence,
   sourcesDirectory,
+  withProjectSaveLock,
 }
