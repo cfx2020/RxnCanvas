@@ -17557,8 +17557,10 @@ select,
 
   .workspace:not(.is-left-collapsed) > .project-rail:hover,
   .workspace:not(.is-left-collapsed) > .project-rail:focus-within,
+  .workspace:not(.is-left-collapsed) > .project-rail:has(.project-rail-item.has-open-actions),
   .workspace.is-left-collapsed > .project-rail:hover,
-  .workspace.is-left-collapsed > .project-rail:focus-within {
+  .workspace.is-left-collapsed > .project-rail:focus-within,
+  .workspace.is-left-collapsed > .project-rail:has(.project-rail-item.has-open-actions) {
     transform: translateX(0) !important;
     box-shadow: 24px 0 68px rgba(22, 48, 58, 0.2) !important;
   }
@@ -17572,14 +17574,16 @@ select,
   }
 
   .app-shell:has(.project-rail:hover) .desktop-titlebar-shell .left-sidebar-fixed-toggle,
-  .app-shell:has(.project-rail:focus-within) .desktop-titlebar-shell .left-sidebar-fixed-toggle {
+  .app-shell:has(.project-rail:focus-within) .desktop-titlebar-shell .left-sidebar-fixed-toggle,
+  .app-shell:has(.project-rail .project-rail-item.has-open-actions) .desktop-titlebar-shell .left-sidebar-fixed-toggle {
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
   }
 
   .app-shell:has(.project-rail:hover) .desktop-titlebar-shell .desktop-titlebar-tabs,
-  .app-shell:has(.project-rail:focus-within) .desktop-titlebar-shell .desktop-titlebar-tabs {
+  .app-shell:has(.project-rail:focus-within) .desktop-titlebar-shell .desktop-titlebar-tabs,
+  .app-shell:has(.project-rail .project-rail-item.has-open-actions) .desktop-titlebar-shell .desktop-titlebar-tabs {
     left: var(--rxnflow-project-rail-width, 212px) !important;
   }
 }
