@@ -23,11 +23,14 @@ fs.createReadStream = function countedCreateReadStream(filePath, ...args) {
 
 const {
   defaultImportStoredPathForFile,
+  exportProjectWorkspaceArchive,
   materializeImportSourceFile,
   readProjectContent,
   saveProjectContent,
+  saveProjectReportArtifact,
   withProjectSaveLock,
   writeProjectFileAtomically,
+  writeProjectWorkspaceArchiveAtomically,
 } = require("./project-store.cjs")
 
 test.after(() => {
@@ -180,6 +183,74 @@ test("atomic project file writes replace complete files and clean failed tempora
   await assert.rejects(() => writeProjectFileAtomically(directoryTarget, "cannot replace a directory"))
   assert.equal(fs.statSync(directoryTarget).isDirectory(), true)
   assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+})
+
+test("report artifacts and their manifest commit inside the project mutation lock", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-artifact-lock-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "artifact-project.rxnflow")
+  await saveProjectContent(projectDirectory, projectContent(null))
+  const releaseMutation = deferred()
+  const mutation = withProjectSaveLock(projectDirectory, async () => {
+    await releaseMutation.promise
+  })
+  await Promise.resolve()
+
+  let artifactCompleted = false
+  const artifact = saveProjectReportArtifact(projectDirectory, {
+    defaultName: "report.txt",
+    content: "artifact content",
+    mimeType: "text/plain",
+  }).then((result) => {
+    artifactCompleted = true
+    return result
+  })
+  await Promise.resolve()
+  assert.equal(artifactCompleted, false)
+
+  releaseMutation.resolve()
+  await mutation
+  const result = await artifact
+  assert.equal(fs.readFileSync(result.filePath, "utf8"), "artifact content")
+  const manifest = JSON.parse(fs.readFileSync(path.join(projectDirectory, "exports", "manifest.json"), "utf8"))
+  assert.equal(manifest.artifacts[0].path, result.projectArtifactPath)
+  assert.equal(manifest.artifacts[0].checksum, sha256("artifact content"))
+})
+
+test("archive export waits for project mutations and atomically replaces its target", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-archive-lock-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "archive-project.rxnflow")
+  const archivePath = path.join(tempDirectory, "archive-project.rxnflow.zip")
+  await saveProjectContent(projectDirectory, projectContent(null))
+  const releaseMutation = deferred()
+  const mutation = withProjectSaveLock(projectDirectory, async () => {
+    await releaseMutation.promise
+  })
+  await Promise.resolve()
+
+  let archiveCompleted = false
+  const archive = exportProjectWorkspaceArchive(projectDirectory, archivePath).then((result) => {
+    archiveCompleted = true
+    return result
+  })
+  await Promise.resolve()
+  assert.equal(archiveCompleted, false)
+  assert.equal(fs.existsSync(archivePath), false)
+
+  releaseMutation.resolve()
+  await mutation
+  const result = await archive
+  assert.equal(result.filePath, archivePath)
+  assert.ok(fs.statSync(archivePath).size > 0)
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+
+  const directoryTarget = path.join(tempDirectory, "archive-directory-target")
+  fs.mkdirSync(directoryTarget)
+  await assert.rejects(() => writeProjectWorkspaceArchiveAtomically(projectDirectory, directoryTarget))
+  assert.equal(fs.statSync(directoryTarget).isDirectory(), true)
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+
 })
 
 test("planned source paths are stable for the same name and distinct after sanitization", () => {

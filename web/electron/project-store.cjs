@@ -149,7 +149,7 @@ async function writeProjectFileAtomically(targetPath, content) {
   )
   await fs.mkdir(targetDirectory, { recursive: true })
   try {
-    await fs.writeFile(temporaryPath, content, "utf8")
+    await fs.writeFile(temporaryPath, content)
     await fs.rename(temporaryPath, targetPath)
   } finally {
     await fs.rm(temporaryPath, { force: true })
@@ -157,6 +157,11 @@ async function writeProjectFileAtomically(targetPath, content) {
 }
 
 async function saveProjectReportArtifact(projectDirectory, payload) {
+  const workspaceDirectory = normalizeProjectDirectoryPath(projectDirectory)
+  return withProjectSaveLock(workspaceDirectory, () => saveProjectReportArtifactUnlocked(workspaceDirectory, payload))
+}
+
+async function saveProjectReportArtifactUnlocked(projectDirectory, payload) {
   const fileName = safeFileName(payload?.defaultName || "rxnflow-export")
   const encoding = payload?.encoding === "base64" ? "base64" : "utf8"
   const content = typeof payload?.content === "string" ? payload.content : ""
@@ -164,8 +169,7 @@ async function saveProjectReportArtifact(projectDirectory, payload) {
   const artifactPath = path.join(exportsDirectory, fileName)
   const targetPath = path.join(projectDirectory, artifactPath)
 
-  await fs.mkdir(path.dirname(targetPath), { recursive: true })
-  await fs.writeFile(targetPath, buffer)
+  await writeProjectFileAtomically(targetPath, buffer)
 
   const record = {
     id: `artifact-${safeStem(fileName)}`,
@@ -187,20 +191,21 @@ async function saveProjectReportArtifact(projectDirectory, payload) {
 
 async function exportProjectWorkspaceArchive(projectDirectory, targetArchivePath, options = {}) {
   const workspaceDirectory = normalizeProjectDirectoryPath(projectDirectory)
-  if (typeof options.content === "string") {
-    await saveProjectDirectory(workspaceDirectory, options.content, {
-      previousProjectDirectory: options.previousProjectDirectory,
-    })
-  }
+  return withProjectSaveLock(workspaceDirectory, async () => {
+    if (typeof options.content === "string") {
+      await saveProjectDirectoryUnlocked(workspaceDirectory, options.content, {
+        previousProjectDirectory: options.previousProjectDirectory,
+      })
+    }
 
-  const archivePath = normalizeProjectArchivePath(targetArchivePath)
-  await fs.mkdir(path.dirname(archivePath), { recursive: true })
-  await writeProjectWorkspaceArchive(workspaceDirectory, archivePath)
-  return {
-    canceled: false,
-    filePath: archivePath,
-    projectDirectory: workspaceDirectory,
-  }
+    const archivePath = normalizeProjectArchivePath(targetArchivePath)
+    await writeProjectWorkspaceArchiveAtomically(workspaceDirectory, archivePath)
+    return {
+      canceled: false,
+      filePath: archivePath,
+      projectDirectory: workspaceDirectory,
+    }
+  })
 }
 
 async function importProjectWorkspaceArchive(sourceArchivePath, targetProjectDirectory) {
@@ -702,29 +707,54 @@ async function readExportArtifactRecords(projectDirectory) {
   }
 }
 
-function writeProjectWorkspaceArchive(projectDirectory, archivePath) {
-  const archivePathKey = path.resolve(archivePath)
+async function writeProjectWorkspaceArchiveAtomically(projectDirectory, archivePath) {
+  const targetDirectory = path.dirname(archivePath)
+  const temporaryPath = path.join(
+    targetDirectory,
+    `.${path.basename(archivePath)}.rxnflow-write-${process.pid}-${crypto.randomUUID()}.tmp`,
+  )
+  await fs.mkdir(targetDirectory, { recursive: true })
+  try {
+    await writeProjectWorkspaceArchive(projectDirectory, temporaryPath, [archivePath])
+    await fs.rename(temporaryPath, archivePath)
+  } finally {
+    await fs.rm(temporaryPath, { force: true })
+  }
+}
+
+function writeProjectWorkspaceArchive(projectDirectory, archivePath, additionalExcludedPaths = []) {
+  const excludedPathKeys = new Set([archivePath, ...additionalExcludedPaths].map((filePath) => path.resolve(filePath)))
   return new Promise((resolve, reject) => {
     const output = fsSync.createWriteStream(archivePath)
     const archive = archiver("zip", { zlib: { level: 6 } })
     let settled = false
-    const finish = (error) => {
+    const succeed = () => {
       if (settled) return
       settled = true
-      if (error) reject(error)
-      else resolve()
+      resolve()
+    }
+    const fail = (error) => {
+      if (settled) return
+      settled = true
+      archive.abort()
+      if (output.closed) {
+        reject(error)
+        return
+      }
+      output.once("close", () => reject(error))
+      output.destroy()
     }
 
-    output.on("close", () => finish())
-    output.on("error", finish)
-    archive.on("warning", finish)
-    archive.on("error", finish)
+    output.on("close", succeed)
+    output.on("error", fail)
+    archive.on("warning", fail)
+    archive.on("error", fail)
     archive.pipe(output)
     archive.directory(projectDirectory, false, (entry) => {
       const absolutePath = path.resolve(projectDirectory, entry.name)
-      return absolutePath === archivePathKey ? false : entry
+      return excludedPathKeys.has(absolutePath) ? false : entry
     })
-    archive.finalize().catch(finish)
+    archive.finalize().catch(fail)
   })
 }
 
@@ -805,4 +835,5 @@ module.exports = {
   sourcesDirectory,
   withProjectSaveLock,
   writeProjectFileAtomically,
+  writeProjectWorkspaceArchiveAtomically,
 }
