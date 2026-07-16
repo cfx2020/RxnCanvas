@@ -805,11 +805,25 @@ describe("App", () => {
     expect(screen.getByRole("menuitem", { name: "Remove from sidebar" })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
-    const dialog = screen.getByRole("alertdialog", { name: "Remove Diels-Alder Study from sidebar" })
+    let dialog = screen.getByRole("alertdialog", { name: "Remove Diels-Alder Study from sidebar" })
     expect(dialog).toHaveTextContent("Diels-Alder Study")
     expect(dialog).toHaveTextContent("Original source files and saved .rxnflow folders on disk are not deleted")
+    const cancelButton = within(dialog).getByRole("button", { name: "Cancel" })
+    const removeButton = within(dialog).getByRole("button", { name: "Remove from sidebar" })
+    expect(cancelButton).toHaveFocus()
     expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toBeInTheDocument()
 
+    fireEvent.keyDown(cancelButton, { key: "Tab", shiftKey: true })
+    expect(removeButton).toHaveFocus()
+    fireEvent.keyDown(removeButton, { key: "Tab" })
+    expect(cancelButton).toHaveFocus()
+    fireEvent.keyDown(cancelButton, { key: "Escape" })
+    expect(screen.queryByRole("alertdialog", { name: "Remove Diels-Alder Study from sidebar" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Project actions for Diels-Alder Study" })).toHaveFocus()
+
+    fireEvent.click(screen.getByRole("button", { name: "Project actions for Diels-Alder Study" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
+    dialog = screen.getByRole("alertdialog", { name: "Remove Diels-Alder Study from sidebar" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove from sidebar" }))
 
     expect(screen.queryByRole("button", { name: "Diels-Alder Study open" })).not.toBeInTheDocument()

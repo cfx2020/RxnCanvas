@@ -501,6 +501,27 @@ function ProjectRailItem({
   onCancelDelete: () => void
   onConfirmDelete: () => void
 }) {
+  const actionButtonRef = useRef<HTMLButtonElement | null>(null)
+  const cancelDeleteButtonRef = useRef<HTMLButtonElement | null>(null)
+  const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null)
+  const restoreActionFocusRef = useRef(false)
+
+  useEffect(() => {
+    if (confirmOpen) {
+      restoreActionFocusRef.current = false
+      cancelDeleteButtonRef.current?.focus({ preventScroll: true })
+      return
+    }
+    if (!restoreActionFocusRef.current) return
+    restoreActionFocusRef.current = false
+    actionButtonRef.current?.focus({ preventScroll: true })
+  }, [confirmOpen])
+
+  const cancelDelete = () => {
+    restoreActionFocusRef.current = true
+    onCancelDelete()
+  }
+
   const acceptDroppedFiles = (event: DragEvent<HTMLDivElement>) => {
     if (!dataTransferHasFiles(event.dataTransfer)) return
     event.preventDefault()
@@ -531,6 +552,7 @@ function ProjectRailItem({
         <span>{project.label}</span>
       </button>
       <button
+        ref={actionButtonRef}
         type="button"
         className="project-rail-action"
         aria-label={`Project actions for ${project.label}`}
@@ -554,7 +576,28 @@ function ProjectRailItem({
         </div>
       ) : null}
       {confirmOpen ? (
-        <div className="project-delete-confirm" role="alertdialog" aria-label={`Remove ${project.label} from sidebar`}>
+        <div
+          className="project-delete-confirm"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label={`Remove ${project.label} from sidebar`}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault()
+              event.stopPropagation()
+              cancelDelete()
+              return
+            }
+            if (event.key !== "Tab") return
+            if (event.shiftKey && document.activeElement === cancelDeleteButtonRef.current) {
+              event.preventDefault()
+              confirmDeleteButtonRef.current?.focus({ preventScroll: true })
+            } else if (!event.shiftKey && document.activeElement === confirmDeleteButtonRef.current) {
+              event.preventDefault()
+              cancelDeleteButtonRef.current?.focus({ preventScroll: true })
+            }
+          }}
+        >
           <div className="project-delete-confirm-header">
             <span className="project-delete-confirm-icon" aria-hidden="true">
               <FolderMinus size={16} />
@@ -569,8 +612,8 @@ function ProjectRailItem({
           </p>
           <small>Original source files and saved .rxnflow folders on disk are not deleted.</small>
           <div className="project-delete-confirm-actions">
-            <button type="button" className="is-secondary" onClick={onCancelDelete}>Cancel</button>
-            <button type="button" className="is-danger" onClick={onConfirmDelete}>Remove from sidebar</button>
+            <button ref={cancelDeleteButtonRef} type="button" className="is-secondary" onClick={cancelDelete}>Cancel</button>
+            <button ref={confirmDeleteButtonRef} type="button" className="is-danger" onClick={onConfirmDelete}>Remove from sidebar</button>
           </div>
         </div>
       ) : null}
