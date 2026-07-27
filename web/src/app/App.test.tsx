@@ -742,6 +742,43 @@ describe("App", () => {
     expect(settingsTrigger).toHaveFocus()
   })
 
+  it("restores command palette focus and hands it through to settings", () => {
+    render(<App />)
+    const settingsTrigger = screen.getByRole("button", { name: "Settings" })
+    settingsTrigger.focus()
+
+    expect(fireEvent.keyDown(window, { key: "k", metaKey: true })).toBe(false)
+    let palette = screen.getByRole("dialog", { name: "Command palette" })
+    let search = within(palette).getByRole("searchbox", { name: "Search commands" })
+    expect(search).toHaveFocus()
+    fireEvent.keyDown(search, { key: "t" })
+    expect(screen.queryByRole("region", { name: "Energy table" })).not.toBeInTheDocument()
+
+    expect(fireEvent.keyDown(search, { key: "k", metaKey: true })).toBe(false)
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument()
+    expect(settingsTrigger).toHaveFocus()
+
+    expect(fireEvent.keyDown(window, { key: "k", metaKey: true })).toBe(false)
+    palette = screen.getByRole("dialog", { name: "Command palette" })
+    search = within(palette).getByRole("searchbox", { name: "Search commands" })
+    expect(fireEvent.keyDown(search, { key: "Escape" })).toBe(false)
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument()
+    expect(settingsTrigger).toHaveFocus()
+
+    expect(fireEvent.keyDown(window, { key: "k", metaKey: true })).toBe(false)
+    palette = screen.getByRole("dialog", { name: "Command palette" })
+    search = within(palette).getByRole("searchbox", { name: "Search commands" })
+    fireEvent.change(search, { target: { value: "Open Settings" } })
+    fireEvent.click(within(palette).getByRole("button", { name: /Open Settings/ }))
+
+    const settings = screen.getByRole("dialog", { name: "Settings" })
+    const closeSettings = within(settings).getByRole("button", { name: "Close settings" })
+    expect(closeSettings).toHaveFocus()
+    fireEvent.keyDown(closeSettings, { key: "Escape" })
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument()
+    expect(settingsTrigger).toHaveFocus()
+  })
+
   it("keeps original workbench routes visible without a backend bridge", () => {
     render(<App />)
 
