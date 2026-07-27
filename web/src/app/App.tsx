@@ -3009,7 +3009,7 @@ export function App() {
 
   useEffect(() => {
     const handleCommandKey = (event: globalThis.KeyboardEvent) => {
-      if (settingsOpen) {
+      if (settingsOpen || importIssueDialog) {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") event.preventDefault()
         return
       }
@@ -3029,7 +3029,7 @@ export function App() {
     }
     window.addEventListener("keydown", handleCommandKey)
     return () => window.removeEventListener("keydown", handleCommandKey)
-  }, [commandPaletteOpen, settingsOpen, workbenchCommands])
+  }, [commandPaletteOpen, importIssueDialog, settingsOpen, workbenchCommands])
 
   const appShellClassName = `app-shell theme-${theme}${isMacDesktop ? " is-macos-desktop" : ""}${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}${desktopWindowState.isFullScreen ? " is-window-fullscreen" : ""}${desktopWindowState.isMaximized ? " is-window-maximized" : ""}${desktopWindowState.isFullScreen || desktopWindowState.isMaximized ? " is-window-edge-to-edge" : ""}${tableDrawerOpen || structurePreviewNode || structureEditorNode ? " has-overlay-view" : ""}`
 
@@ -3385,6 +3385,21 @@ export function App() {
 }
 
 function ImportIssueDialog({ issue, onClose }: { issue: ImportIssueDialogState; onClose: () => void }) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement && activeElement !== document.body) {
+      returnFocusRef.current = activeElement
+    }
+    closeButtonRef.current?.focus({ preventScroll: true })
+    return () => {
+      const returnFocus = returnFocusRef.current
+      if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true })
+    }
+  }, [])
+
   return (
     <div
       className="structure-preview-scrim import-issue-scrim"
@@ -3398,14 +3413,25 @@ function ImportIssueDialog({ issue, onClose }: { issue: ImportIssueDialogState; 
         role="alertdialog"
         aria-modal="true"
         aria-label={issue.title}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            onClose()
+            return
+          }
+          if (event.key !== "Tab") return
+          event.preventDefault()
+          closeButtonRef.current?.focus({ preventScroll: true })
+        }}
       >
         <header className="structure-preview-header">
           <div>
             <span>Import Report</span>
             <strong>{issue.title}</strong>
           </div>
-          <button type="button" className="structure-preview-close-button" aria-label="Close import error" onClick={onClose}>
-            <X size={18} />
+          <button ref={closeButtonRef} type="button" className="structure-preview-close-button" aria-label="Close import error" onClick={onClose}>
+            <X size={18} aria-hidden="true" />
           </button>
         </header>
         <div className="structure-preview-body import-issue-body">

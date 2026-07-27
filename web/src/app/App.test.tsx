@@ -3292,7 +3292,9 @@ describe("App", () => {
     })
 
     render(<App />)
-    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+    const importTrigger = screen.getByRole("button", { name: "Import files" })
+    importTrigger.focus()
+    fireEvent.click(importTrigger)
 
     expect(await screen.findByRole("button", { name: "unsupported.dat Raw" })).toBeInTheDocument()
     const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
@@ -3321,8 +3323,24 @@ describe("App", () => {
       expect(screen.queryByRole("button", { name: "unsupported.dat Raw" })).not.toBeInTheDocument()
     })
     const dialog = await screen.findByRole("alertdialog", { name: "Unsupported import format" })
+    const closeImportError = within(dialog).getByRole("button", { name: "Close import error" })
+    expect(dialog).toHaveAttribute("aria-modal", "true")
+    expect(closeImportError).toHaveFocus()
     expect(dialog).toHaveTextContent("unsupported.dat")
     expect(dialog).toHaveTextContent("No supported parser recognized this source full-file.")
+
+    expect(fireEvent.keyDown(closeImportError, { key: "Tab" })).toBe(false)
+    expect(closeImportError).toHaveFocus()
+    expect(fireEvent.keyDown(closeImportError, { key: "Tab", shiftKey: true })).toBe(false)
+    expect(closeImportError).toHaveFocus()
+    fireEvent.keyDown(window, { key: "t" })
+    expect(fireEvent.keyDown(window, { key: "k", metaKey: true })).toBe(false)
+    expect(screen.queryByRole("region", { name: "Energy table" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument()
+
+    fireEvent.keyDown(closeImportError, { key: "Escape" })
+    expect(screen.queryByRole("alertdialog", { name: "Unsupported import format" })).not.toBeInTheDocument()
+    expect(importTrigger).toHaveFocus()
   })
 
   it("uses the native Electron import issue dialog when available", async () => {
