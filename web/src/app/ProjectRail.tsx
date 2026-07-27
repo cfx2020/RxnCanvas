@@ -68,7 +68,7 @@ export const ProjectRail = memo(function ProjectRail({
   onSelectCanvas?: (canvasId: string) => void
   onCreateCanvas?: (projectId?: string) => void
   onDeleteCanvas?: (canvasId: string) => void
-  onOpenSettings?: () => void
+  onOpenSettings?: (trigger: HTMLButtonElement) => void
   width?: number
   minWidth?: number
   maxWidth?: number
@@ -410,7 +410,13 @@ export const ProjectRail = memo(function ProjectRail({
 
         {onOpenSettings ? (
           <div className="project-rail-footer">
-            <button type="button" className="project-rail-settings" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
+            <button
+              type="button"
+              className="project-rail-settings"
+              aria-label="Settings"
+              title="Settings"
+              onClick={(event) => onOpenSettings(event.currentTarget)}
+            >
               <Settings2 size={15} aria-hidden="true" />
               <span>Settings</span>
             </button>

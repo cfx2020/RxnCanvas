@@ -433,6 +433,7 @@ export function App() {
   const projectDirectoriesRef = useRef<Record<string, string>>({})
   const exportPanelRef = useRef<HTMLElement | null>(null)
   const exportTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const settingsReturnFocusRef = useRef<HTMLElement | null>(null)
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
   const dragPreviewNodeRef = useRef<{ nodeId: string; element: HTMLElement | null } | null>(null)
   const dragPreviewGeometryRef = useRef<NodeDragPreviewCache | null>(null)
@@ -2954,6 +2955,13 @@ export function App() {
     window.addEventListener("pointercancel", stopProjectRailResize)
   }, [projectRailWidth, setClampedProjectRailWidth])
 
+  const openSettings = useCallback((returnFocusTo?: HTMLElement | null) => {
+    const activeElement = document.activeElement
+    settingsReturnFocusRef.current = returnFocusTo
+      ?? (activeElement instanceof HTMLElement ? activeElement : null)
+    setSettingsOpen(true)
+  }, [])
+
   const renderProjectRail = () => (
     <ProjectRail
       projects={projects}
@@ -2974,7 +2982,7 @@ export function App() {
       onSelectCanvas={switchCanvasTab}
       onCreateCanvas={createCanvasTab}
       onDeleteCanvas={deleteCanvasTab}
-      onOpenSettings={() => setSettingsOpen(true)}
+      onOpenSettings={openSettings}
       width={projectRailWidth}
       minWidth={projectRailMinWidth}
       maxWidth={projectRailMaxWidth}
@@ -2994,13 +3002,17 @@ export function App() {
     { id: "toggle-projects", label: leftSidebarOpen ? "Hide Project Sidebar" : "Show Project Sidebar", group: "View", run: () => setLeftSidebarOpen((current) => !current) },
     { id: "toggle-inspector", label: rightSidebarOpen ? "Hide Inspector" : "Show Inspector", group: "View", run: () => setRightSidebarOpen((current) => !current) },
     { id: "import", label: "Import Calculation Files", group: "Project", shortcut: "⌘O", run: () => importInputRef.current?.click() },
-    { id: "settings", label: "Open Settings", group: "Project", run: () => setSettingsOpen(true) },
+    { id: "settings", label: "Open Settings", group: "Project", run: () => openSettings() },
     { id: "undo", label: "Undo Canvas Edit", group: "Edit", shortcut: "⌘Z", run: undoEdit, enabled: historyPast.length > 0 },
     { id: "redo", label: "Redo Canvas Edit", group: "Edit", shortcut: "⇧⌘Z", run: redoEdit, enabled: historyFuture.length > 0 },
-  ], [applyAutoLayout, fitCanvasViewport, historyFuture.length, historyPast.length, leftSidebarOpen, nodes.length, openImagePicker, redoEdit, rightSidebarOpen, tableDrawerOpen, undoEdit])
+  ], [applyAutoLayout, fitCanvasViewport, historyFuture.length, historyPast.length, leftSidebarOpen, nodes.length, openImagePicker, openSettings, redoEdit, rightSidebarOpen, tableDrawerOpen, undoEdit])
 
   useEffect(() => {
     const handleCommandKey = (event: globalThis.KeyboardEvent) => {
+      if (settingsOpen) {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") event.preventDefault()
+        return
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault()
         setCommandPaletteOpen((current) => !current)
@@ -3017,7 +3029,7 @@ export function App() {
     }
     window.addEventListener("keydown", handleCommandKey)
     return () => window.removeEventListener("keydown", handleCommandKey)
-  }, [commandPaletteOpen, workbenchCommands])
+  }, [commandPaletteOpen, settingsOpen, workbenchCommands])
 
   const appShellClassName = `app-shell theme-${theme}${isMacDesktop ? " is-macos-desktop" : ""}${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}${desktopWindowState.isFullScreen ? " is-window-fullscreen" : ""}${desktopWindowState.isMaximized ? " is-window-maximized" : ""}${desktopWindowState.isFullScreen || desktopWindowState.isMaximized ? " is-window-edge-to-edge" : ""}${tableDrawerOpen || structurePreviewNode || structureEditorNode ? " has-overlay-view" : ""}`
 
@@ -3133,6 +3145,7 @@ export function App() {
           onChooseOpener={chooseSourceOpener}
           onClearOpener={clearSourceOpener}
           onClose={() => setSettingsOpen(false)}
+          returnFocusTo={settingsReturnFocusRef.current}
         />
       ) : null}
 

@@ -710,19 +710,36 @@ describe("App", () => {
     ])
     expect(within(toolbar).queryByLabelText("Unit")).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }))
+    const settingsTrigger = screen.getByRole("button", { name: "Settings" })
+    fireEvent.click(settingsTrigger)
     const settings = screen.getByRole("dialog", { name: "Settings" })
+    const closeSettings = within(settings).getByRole("button", { name: "Close settings" })
     const unitSelect = within(settings).getByRole("combobox", { name: "Energy unit" })
+    expect(settings).toHaveAttribute("aria-modal", "true")
+    expect(closeSettings).toHaveFocus()
     expect(within(unitSelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
       "kcal",
       "Eh",
       "kJ",
     ])
 
+    fireEvent.keyDown(closeSettings, { key: "Tab", shiftKey: true })
+    expect(unitSelect).toHaveFocus()
+    fireEvent.keyDown(unitSelect, { key: "Tab" })
+    expect(closeSettings).toHaveFocus()
+
     fireEvent.change(energySelect, { target: { value: "gas" } })
     fireEvent.change(unitSelect, { target: { value: "hartree" } })
 
     expect(screen.getAllByText("0.000000 Eh").length).toBeGreaterThan(0)
+    fireEvent.keyDown(window, { key: "t" })
+    expect(fireEvent.keyDown(window, { key: "k", metaKey: true })).toBe(false)
+    expect(screen.queryByRole("region", { name: "Energy table" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument()
+
+    fireEvent.keyDown(closeSettings, { key: "Escape" })
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument()
+    expect(settingsTrigger).toHaveFocus()
   })
 
   it("keeps original workbench routes visible without a backend bridge", () => {

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useEffect, useRef, type ReactNode } from "react"
 import { FileText, FlaskConical, X } from "lucide-react"
 import type { AppearancePreference, DesktopPreferences, EnergyOutputUnitPreference, SourceOpenerProfile } from "./desktopPreferences"
 
@@ -22,6 +22,7 @@ export function SettingsPanel({
   onChooseOpener,
   onClearOpener,
   onClose,
+  returnFocusTo,
 }: {
   preferences: DesktopPreferences
   desktopAvailable: boolean
@@ -30,21 +31,61 @@ export function SettingsPanel({
   onChooseOpener: (profile: SourceOpenerProfile) => void
   onClearOpener: (profile: SourceOpenerProfile) => void
   onClose: () => void
+  returnFocusTo?: HTMLElement | null
 }) {
+  const panelRef = useRef<HTMLElement | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(returnFocusTo ?? null)
+
+  useEffect(() => {
+    const activeElement = document.activeElement
+    if (!returnFocusRef.current && activeElement instanceof HTMLElement && !panelRef.current?.contains(activeElement)) {
+      returnFocusRef.current = activeElement
+    }
+    closeButtonRef.current?.focus({ preventScroll: true })
+    return () => {
+      const returnFocus = returnFocusRef.current
+      if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true })
+    }
+  }, [])
+
   return (
     <div className="settings-backdrop" onPointerDown={onClose}>
       <aside
+        ref={panelRef}
         className="settings-panel"
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
         onPointerDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            onClose()
+            return
+          }
+          if (event.key !== "Tab") return
+          const focusableElements = Array.from(
+            event.currentTarget.querySelectorAll<HTMLElement>("button:not([disabled]), select:not([disabled])"),
+          )
+          const firstElement = focusableElements[0]
+          const lastElement = focusableElements[focusableElements.length - 1]
+          if (!firstElement || !lastElement) return
+          if (event.shiftKey && document.activeElement === firstElement) {
+            event.preventDefault()
+            lastElement.focus({ preventScroll: true })
+          } else if (!event.shiftKey && document.activeElement === lastElement) {
+            event.preventDefault()
+            firstElement.focus({ preventScroll: true })
+          }
+        }}
       >
         <header className="settings-panel-header">
           <div>
             <strong>Settings</strong>
           </div>
-          <button type="button" className="settings-panel-close" aria-label="Close settings" title="Close settings" onClick={onClose}>
+          <button ref={closeButtonRef} type="button" className="settings-panel-close" aria-label="Close settings" title="Close settings" onClick={onClose}>
             <X size={15} aria-hidden="true" />
           </button>
         </header>
