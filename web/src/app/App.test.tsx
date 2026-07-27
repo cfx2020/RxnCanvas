@@ -867,6 +867,11 @@ describe("App", () => {
     expect(cancelButton).toHaveFocus()
     expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toBeInTheDocument()
 
+    expect(fireEvent.keyDown(cancelButton, { key: "k", metaKey: true })).toBe(false)
+    fireEvent.keyDown(cancelButton, { key: "t" })
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "Energy table" })).not.toBeInTheDocument()
+
     fireEvent.keyDown(cancelButton, { key: "Tab", shiftKey: true })
     expect(removeButton).toHaveFocus()
     fireEvent.keyDown(removeButton, { key: "Tab" })
@@ -1595,6 +1600,10 @@ describe("App", () => {
     const dialog = screen.getByRole("dialog", { name: "3D Structure" })
     expect(document.querySelector(".app-shell")).toHaveClass("has-overlay-view")
     expect(dialog).toHaveTextContent("TS1 (Endo)")
+    expect(fireEvent.keyDown(window, { key: "k", ctrlKey: true })).toBe(false)
+    fireEvent.keyDown(window, { key: "t" })
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "Energy table" })).not.toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole("button", { name: "Close 3D Structure" }))
     expect(screen.queryByRole("dialog", { name: "3D Structure" })).not.toBeInTheDocument()
   })
@@ -3336,6 +3345,9 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "unsupported.dat Raw" })).toBeInTheDocument()
     const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
 
+    expect(fireEvent.keyDown(window, { key: "k", metaKey: true })).toBe(false)
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument()
+
     await act(async () => {
       importJob.resolve({
         ok: true,
@@ -3362,6 +3374,8 @@ describe("App", () => {
     const dialog = await screen.findByRole("alertdialog", { name: "Unsupported import format" })
     const closeImportError = within(dialog).getByRole("button", { name: "Close import error" })
     expect(dialog).toHaveAttribute("aria-modal", "true")
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument()
+    expect(document.querySelectorAll('[aria-modal="true"]')).toHaveLength(1)
     expect(closeImportError).toHaveFocus()
     expect(dialog).toHaveTextContent("unsupported.dat")
     expect(dialog).toHaveTextContent("No supported parser recognized this source full-file.")

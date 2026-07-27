@@ -559,6 +559,7 @@ export function App() {
   const selectedFile = selectedFileId ? files.find((file) => file.id === selectedFileId) ?? null : null
   const structurePreviewNode = structurePreviewNodeId ? nodes.find((node) => node.id === structurePreviewNodeId) ?? null : null
   const structureEditorNode = structureEditorNodeId ? nodes.find((node) => node.id === structureEditorNodeId) ?? null : null
+  const appModalOpen = Boolean(settingsOpen || importIssueDialog || candidateReview || structurePreviewNode || structureEditorNode)
   const tableDrawerOpen = viewMode === "table"
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0]
   const currentCanvasSnapshot = useMemo(() => canvasTabSnapshotFromState({
@@ -3008,20 +3009,22 @@ export function App() {
   ], [applyAutoLayout, fitCanvasViewport, historyFuture.length, historyPast.length, leftSidebarOpen, nodes.length, openImagePicker, openSettings, redoEdit, rightSidebarOpen, tableDrawerOpen, undoEdit])
 
   useEffect(() => {
+    if (appModalOpen) setCommandPaletteOpen(false)
+  }, [appModalOpen])
+
+  useEffect(() => {
     const handleCommandKey = (event: globalThis.KeyboardEvent) => {
-      if (settingsOpen || importIssueDialog) {
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") event.preventDefault()
-        return
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      const paletteShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k"
+      if (paletteShortcut) {
         event.preventDefault()
+        if (!commandPaletteOpen && (appModalOpen || document.querySelector('[aria-modal="true"]'))) return
         setCommandPaletteOpen((current) => !current)
         return
       }
       if (commandPaletteOpen || isEditablePasteTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return
       const commandByKey: Record<string, string> = { v: "tool-select", h: "tool-pan", x: "tool-text", i: "insert-image", t: "table", f: "fit-view", a: "auto-layout" }
       const commandId = commandByKey[event.key.toLowerCase()]
-      if (!commandId) return
+      if (!commandId || document.querySelector('[aria-modal="true"]')) return
       const command = workbenchCommands.find((candidate) => candidate.id === commandId)
       if (!command || command.enabled === false) return
       event.preventDefault()
@@ -3029,7 +3032,7 @@ export function App() {
     }
     window.addEventListener("keydown", handleCommandKey)
     return () => window.removeEventListener("keydown", handleCommandKey)
-  }, [commandPaletteOpen, importIssueDialog, settingsOpen, workbenchCommands])
+  }, [appModalOpen, commandPaletteOpen, workbenchCommands])
 
   const appShellClassName = `app-shell theme-${theme}${isMacDesktop ? " is-macos-desktop" : ""}${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}${desktopWindowState.isFullScreen ? " is-window-fullscreen" : ""}${desktopWindowState.isMaximized ? " is-window-maximized" : ""}${desktopWindowState.isFullScreen || desktopWindowState.isMaximized ? " is-window-edge-to-edge" : ""}${tableDrawerOpen || structurePreviewNode || structureEditorNode ? " has-overlay-view" : ""}`
 
@@ -3149,7 +3152,7 @@ export function App() {
         />
       ) : null}
 
-      {commandPaletteOpen ? <CommandPalette commands={workbenchCommands} onClose={() => setCommandPaletteOpen(false)} /> : null}
+      {commandPaletteOpen && !appModalOpen ? <CommandPalette commands={workbenchCommands} onClose={() => setCommandPaletteOpen(false)} /> : null}
 
       {canvasContextMenu ? (
         <div
