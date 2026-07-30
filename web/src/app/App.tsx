@@ -559,7 +559,8 @@ export function App() {
   const selectedFile = selectedFileId ? files.find((file) => file.id === selectedFileId) ?? null : null
   const structurePreviewNode = structurePreviewNodeId ? nodes.find((node) => node.id === structurePreviewNodeId) ?? null : null
   const structureEditorNode = structureEditorNodeId ? nodes.find((node) => node.id === structureEditorNodeId) ?? null : null
-  const appModalOpen = Boolean(settingsOpen || importIssueDialog || candidateReview || structurePreviewNode || structureEditorNode)
+  const candidateReviewBlocked = Boolean(settingsOpen || importIssueDialog || structurePreviewNode || structureEditorNode)
+  const appModalOpen = candidateReviewBlocked || Boolean(candidateReview)
   const tableDrawerOpen = viewMode === "table"
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0]
   const currentCanvasSnapshot = useMemo(() => canvasTabSnapshotFromState({
@@ -2517,15 +2518,6 @@ export function App() {
     setEngineStatus,
   }), [])
 
-  useEffect(() => {
-    if (!candidateReview) return
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setCandidateReview(null)
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [candidateReview])
-
   const handleImportInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const transition = pendingImportProjectTransition(activeProjectId, pendingImportProjectIdRef.current)
     pendingImportProjectIdRef.current = transition.pendingImportProjectId
@@ -3373,8 +3365,9 @@ export function App() {
           onClose={() => setImportIssueDialog(null)}
         />
       ) : null}
-      {candidateReview ? (
+      {candidateReview && !candidateReviewBlocked ? (
         <CandidateReviewSheet
+          key={candidateReview.id}
           review={candidateReview}
           busy={candidateRegisterBusy}
           onToggleCandidate={toggleCandidateSelection}

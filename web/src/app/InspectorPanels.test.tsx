@@ -238,6 +238,51 @@ describe("InspectorPanels", () => {
     expect(onRegisterSelected).toHaveBeenCalled()
   })
 
+  it("contains candidate review focus and moves it off actions that become disabled", () => {
+    const entry: CandidateReviewEntry = {
+      file: sourceFile(),
+      parsed: sourceParseResult(),
+      candidate,
+    }
+    const key = candidateReviewKey(entry)
+    const onClose = vi.fn()
+    const view = render(
+      <CandidateReviewSheet
+        review={{ id: "review-focus", entries: [entry], selectedKeys: [key] }}
+        busy={false}
+        onToggleCandidate={vi.fn()}
+        onClose={onClose}
+        onRegisterSelected={vi.fn()}
+        onRegisterAll={vi.fn()}
+      />,
+    )
+
+    const closeButton = screen.getByRole("button", { name: "Close import candidates" })
+    const registerAllButton = screen.getByRole("button", { name: "Register all" })
+    const registerSelectedButton = screen.getByRole("button", { name: "Register selected" })
+    expect(closeButton).toHaveFocus()
+
+    expect(fireEvent.keyDown(closeButton, { key: "Tab", shiftKey: true })).toBe(false)
+    expect(registerAllButton).toHaveFocus()
+    expect(fireEvent.keyDown(registerAllButton, { key: "Tab" })).toBe(false)
+    expect(closeButton).toHaveFocus()
+
+    registerSelectedButton.focus()
+    view.rerender(
+      <CandidateReviewSheet
+        review={{ id: "review-focus", entries: [entry], selectedKeys: [key] }}
+        busy
+        onToggleCandidate={vi.fn()}
+        onClose={onClose}
+        onRegisterSelected={vi.fn()}
+        onRegisterAll={vi.fn()}
+      />,
+    )
+    expect(closeButton).toHaveFocus()
+    expect(fireEvent.keyDown(closeButton, { key: "Escape" })).toBe(false)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it("resolves source files and renders structure coordinate summaries", () => {
     const file = sourceFile()
     expect(sourceFileForNode(baseNode, [file])).toBe(file)

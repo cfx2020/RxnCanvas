@@ -521,16 +521,76 @@ export function CandidateReviewSheet({
   onRegisterAll: () => void
 }) {
   const selectedCount = review.selectedKeys.length
+  const sheetRef = useRef<HTMLElement | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    const activeElement = document.activeElement
+    if (
+      activeElement instanceof HTMLElement
+      && activeElement !== document.body
+      && !sheetRef.current?.contains(activeElement)
+    ) {
+      returnFocusRef.current = activeElement
+    }
+    closeButtonRef.current?.focus({ preventScroll: true })
+    return () => {
+      const returnFocus = returnFocusRef.current
+      if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!busy) return
+    const activeElement = document.activeElement
+    const activeElementDisabled = (
+      activeElement instanceof HTMLButtonElement
+      || activeElement instanceof HTMLInputElement
+    ) && activeElement.disabled
+    if (!sheetRef.current?.contains(activeElement) || activeElementDisabled) {
+      closeButtonRef.current?.focus({ preventScroll: true })
+    }
+  }, [busy])
+
   return (
-    <div className="candidate-review-scrim">
-      <section className="candidate-review-sheet" role="dialog" aria-modal="true" aria-label="Import candidates">
+    <div className="candidate-review-scrim" role="presentation">
+      <section
+        ref={sheetRef}
+        className="candidate-review-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Import candidates"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            onClose()
+            return
+          }
+          if (event.key !== "Tab") return
+          const focusableElements = Array.from(
+            event.currentTarget.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])"),
+          )
+          const firstElement = focusableElements[0]
+          const lastElement = focusableElements[focusableElements.length - 1]
+          if (!firstElement || !lastElement) return
+          if (event.shiftKey && document.activeElement === firstElement) {
+            event.preventDefault()
+            lastElement.focus({ preventScroll: true })
+          } else if (!event.shiftKey && document.activeElement === lastElement) {
+            event.preventDefault()
+            firstElement.focus({ preventScroll: true })
+          }
+        }}
+      >
         <header className="candidate-review-header">
           <div>
             <span>Import Preview</span>
             <strong>{review.entries.length} candidates</strong>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close import candidates">
-            <ChevronDown size={18} />
+          <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close import candidates">
+            <ChevronDown size={18} aria-hidden="true" />
           </button>
         </header>
 

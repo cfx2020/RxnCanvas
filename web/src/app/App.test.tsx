@@ -2259,7 +2259,7 @@ describe("App", () => {
     }
   })
 
-  it("reviews multi-candidate source previews before registering nodes", async () => {
+  it("contains and queues multi-candidate review before registering nodes", async () => {
     render(<App />)
 
     const input = screen.getByLabelText("Import calculation files")
@@ -2286,9 +2286,35 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Node Frame 2" })).not.toBeInTheDocument()
 
     fireEvent.click(sourceButton)
-    fireEvent.click(screen.getByRole("button", { name: "Review candidates" }))
+    const reviewTrigger = screen.getByRole("button", { name: "Review candidates" })
+    reviewTrigger.focus()
+    fireEvent.click(reviewTrigger)
 
-    const reopenedDialog = await screen.findByRole("dialog", { name: "Import candidates" })
+    let reopenedDialog = await screen.findByRole("dialog", { name: "Import candidates" })
+    const closeCandidates = within(reopenedDialog).getByRole("button", { name: "Close import candidates" })
+    expect(closeCandidates).toHaveFocus()
+    expect(fireEvent.keyDown(closeCandidates, { key: "Escape" })).toBe(false)
+    expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
+    expect(reviewTrigger).toHaveFocus()
+
+    const settingsTrigger = screen.getByRole("button", { name: "Settings" })
+    fireEvent.click(settingsTrigger)
+    const settings = screen.getByRole("dialog", { name: "Settings" })
+    fireEvent.click(reviewTrigger)
+    expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
+    expect(document.querySelectorAll('[aria-modal="true"]')).toHaveLength(1)
+
+    fireEvent.keyDown(within(settings).getByRole("button", { name: "Close settings" }), { key: "Escape" })
+    reopenedDialog = await screen.findByRole("dialog", { name: "Import candidates" })
+    const queuedCloseCandidates = within(reopenedDialog).getByRole("button", { name: "Close import candidates" })
+    expect(queuedCloseCandidates).toHaveFocus()
+    expect(document.querySelectorAll('[aria-modal="true"]')).toHaveLength(1)
+    fireEvent.keyDown(queuedCloseCandidates, { key: "Escape" })
+    expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
+    expect(settingsTrigger).toHaveFocus()
+
+    fireEvent.click(reviewTrigger)
+    reopenedDialog = await screen.findByRole("dialog", { name: "Import candidates" })
     fireEvent.click(within(reopenedDialog).getByRole("button", { name: "Register all" }))
 
     expect(await screen.findByRole("button", { name: "Node Frame 1" })).toHaveTextContent("ΔG")
