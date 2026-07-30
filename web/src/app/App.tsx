@@ -480,6 +480,7 @@ export function App() {
   const [candidateRegisterBusy, setCandidateRegisterBusy] = useState(false)
   const [structurePreviewNodeId, setStructurePreviewNodeId] = useState<string | null>(null)
   const [structureEditorNodeId, setStructureEditorNodeId] = useState<string | null>(null)
+  const structureEditorReturnFocusRef = useRef<HTMLElement | null>(null)
   const [historyPast, setHistoryPast] = useState<CanvasEditSnapshot[]>([])
   const [historyFuture, setHistoryFuture] = useState<CanvasEditSnapshot[]>([])
   const [desktopPreferences, setDesktopPreferences] = useState<DesktopPreferences>(() => initialDesktopPreferences())
@@ -2644,7 +2645,6 @@ export function App() {
 
   const saveNodeManualStructure = useCallback((nodeId: string, structure: ManualStructurePayload) => {
     updateNodeManualStructure(nodeId, structure)
-    setStructureEditorNodeId(null)
   }, [updateNodeManualStructure])
 
   const resetNodeManualStructure = useCallback((nodeId: string) => {
@@ -3330,7 +3330,10 @@ export function App() {
             energyDisplayOptions={energyDisplayOptions}
             onReviewCandidates={reviewCandidatesForFile}
             onOpenStructure={openStructurePreview}
-            onEdit2DStructure={(nodeId) => setStructureEditorNodeId(nodeId)}
+            onEdit2DStructure={(nodeId) => {
+              structureEditorReturnFocusRef.current = null
+              setStructureEditorNodeId(nodeId)
+            }}
             onReset2DStructure={resetNodeManualStructure}
             onOpenSourceFile={openSourceFileInSystemApp}
           />
@@ -3343,7 +3346,8 @@ export function App() {
           leftSidebarOpen={leftSidebarOpen}
           rightSidebarOpen={rightSidebarOpen}
           onClose={() => setStructurePreviewNodeId(null)}
-          onEdit2DStructure={(nodeId) => {
+          onEdit2DStructure={(nodeId, returnFocusTo) => {
+            structureEditorReturnFocusRef.current = returnFocusTo ?? null
             setStructurePreviewNodeId(null)
             setStructureEditorNodeId(nodeId)
           }}
@@ -3355,7 +3359,11 @@ export function App() {
         <Molecule2DEditorDialog
           node={structureEditorNode}
           atoms={sourceCoordinatePreview(structureEditorNode, sourceFileForNode(structureEditorNode, files))?.atoms ?? []}
-          onClose={() => setStructureEditorNodeId(null)}
+          returnFocusTo={structureEditorReturnFocusRef.current}
+          onClose={() => {
+            setStructureEditorNodeId(null)
+            structureEditorReturnFocusRef.current = null
+          }}
           onSave={saveNodeManualStructure}
         />
       ) : null}

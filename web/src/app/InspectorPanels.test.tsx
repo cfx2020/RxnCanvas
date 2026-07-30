@@ -173,6 +173,54 @@ describe("InspectorPanels", () => {
     expect(heavyEditorPreloadMocks.preloadKetcherEditorHost).toHaveBeenCalledTimes(2)
   })
 
+  it("contains 3D dialog focus and hands the original opener to the 2D editor", () => {
+    const opener = document.createElement("button")
+    opener.textContent = "Open structure preview"
+    document.body.append(opener)
+    opener.focus()
+    const onClose = vi.fn()
+    const onEdit2DStructure = vi.fn()
+    const directView = render(
+      <StructurePreviewDialog
+        node={baseNode}
+        file={sourceFile()}
+        onClose={onClose}
+        onEdit2DStructure={onEdit2DStructure}
+      />,
+    )
+
+    const closeButton = screen.getByRole("button", { name: "Close 3D Structure" })
+    const editButton = screen.getByRole("button", { name: "Edit 2D structure for TS node" })
+    expect(closeButton).toHaveFocus()
+    expect(fireEvent.keyDown(closeButton, { key: "Tab", shiftKey: true })).toBe(false)
+    expect(editButton).toHaveFocus()
+    expect(fireEvent.keyDown(editButton, { key: "Tab" })).toBe(false)
+    expect(closeButton).toHaveFocus()
+    expect(fireEvent.keyDown(closeButton, { key: "Escape" })).toBe(false)
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    directView.unmount()
+    expect(opener).toHaveFocus()
+
+    opener.focus()
+    const handoffView = render(
+      <StructurePreviewDialog
+        node={baseNode}
+        file={sourceFile()}
+        onClose={vi.fn()}
+        onEdit2DStructure={onEdit2DStructure}
+      />,
+    )
+    const handoffButton = screen.getByRole("button", { name: "Edit 2D structure for TS node" })
+    handoffButton.focus()
+    fireEvent.click(handoffButton)
+
+    expect(onEdit2DStructure).toHaveBeenLastCalledWith(baseNode.id, opener)
+    handoffView.unmount()
+    expect(opener).not.toHaveFocus()
+    opener.remove()
+  })
+
   it("shows source details when a file is selected and no node is selected", () => {
     const onReviewCandidates = vi.fn()
     const file = sourceFile(sourceParseResult([

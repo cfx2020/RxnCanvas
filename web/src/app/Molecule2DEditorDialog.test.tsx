@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { useEffect } from "react"
+import { StrictMode, useEffect, useRef, useState } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { Molecule2DEditorDialog } from "./Molecule2DEditorDialog"
 import type { FlowNode } from "../domain/projectPackages"
@@ -18,18 +18,26 @@ const ketcherMocks = vi.hoisted(() => ({
 vi.mock("./KetcherEditorHost", () => ({
   KetcherEditorHost: ({ onReady, onError }: { onReady: (ketcher: unknown) => void; onError: (message: string) => void }) => {
     if (ketcherMocks.fail) throw new Error("synthetic Ketcher load failure")
+    const initializedRef = useRef(false)
+    const [settingsOpen, setSettingsOpen] = useState(false)
     useEffect(() => {
-      onReady({
-        setMolecule: ketcherMocks.setMolecule,
-        addFragment: ketcherMocks.addFragment,
-        getKet: ketcherMocks.getKet,
-        getMolfile: ketcherMocks.getMolfile,
-        getCDXml: ketcherMocks.getCDXml,
-        getCDX: ketcherMocks.getCDX,
-        indigo: {
-          convert: ketcherMocks.convert,
-        },
-      })
+      if (initializedRef.current) return undefined
+      const timer = window.setTimeout(() => {
+        initializedRef.current = true
+        document.querySelector<HTMLTextAreaElement>('[data-testid="ketcher-cliparea"]')?.focus()
+        onReady({
+          setMolecule: ketcherMocks.setMolecule,
+          addFragment: ketcherMocks.addFragment,
+          getKet: ketcherMocks.getKet,
+          getMolfile: ketcherMocks.getMolfile,
+          getCDXml: ketcherMocks.getCDXml,
+          getCDX: ketcherMocks.getCDX,
+          indigo: {
+            convert: ketcherMocks.convert,
+          },
+        })
+      }, 0)
+      return () => window.clearTimeout(timer)
     }, [onReady])
     return (
       <div>
@@ -43,8 +51,15 @@ vi.mock("./KetcherEditorHost", () => ({
         >
           Open file error
         </button>
+        <button type="button" data-testid="ketcher-settings" onClick={() => setSettingsOpen(true)}>Settings</button>
         <button type="button" data-testid="paste-from-clipboard-button">Paste from clipboard</button>
         <button type="button" data-testid="copy-to-clipboard">Copy to clipboard</button>
+        {settingsOpen ? (
+          <dialog open aria-label="Ketcher settings">
+            <button type="button" onClick={() => setSettingsOpen(false)}>Close Ketcher settings</button>
+            <button type="button">Apply Ketcher settings</button>
+          </dialog>
+        ) : null}
       </div>
     )
   },
@@ -98,6 +113,83 @@ describe("Molecule2DEditorDialog", () => {
     consoleInfo.mockRestore()
     consoleWarn.mockRestore()
     window.rxnflowDesktop = originalDesktop as typeof window.rxnflowDesktop
+  })
+
+  it("contains editor focus and restores the supplied structure opener", async () => {
+    const opener = document.createElement("button")
+    opener.textContent = "Open 3D structure"
+    document.body.append(opener)
+    opener.focus()
+    const onClose = vi.fn()
+    const view = render(
+      <StrictMode>
+        <Molecule2DEditorDialog
+          node={node}
+          atoms={[]}
+          returnFocusTo={opener}
+          onClose={onClose}
+          onSave={vi.fn()}
+        />
+      </StrictMode>,
+    )
+
+    const cancelButton = screen.getByRole("button", { name: "Cancel" })
+    const saveButton = screen.getByRole("button", { name: "Save" })
+    const editorDialog = screen.getByRole("dialog", { name: "Edit 2D structure for Ir complex" })
+    const lastKetcherAction = await screen.findByTestId("copy-to-clipboard")
+    await waitFor(() => expect(saveButton).toBeEnabled())
+    await waitFor(() => expect(cancelButton).toHaveFocus())
+    editorDialog.querySelectorAll<HTMLElement>("button, input, textarea, select, a[href], [tabindex], [contenteditable='true']")
+      .forEach((element) => {
+        const visible = element !== screen.getByTestId("ketcher-cliparea")
+        vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
+          bottom: visible ? 20 : 0,
+          height: visible ? 20 : 0,
+          left: 0,
+          right: visible ? 20 : 0,
+          top: 0,
+          width: visible ? 20 : 0,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        })
+      })
+    fireEvent.keyDown(cancelButton, { key: "Tab", shiftKey: true })
+    expect(lastKetcherAction).toHaveFocus()
+    fireEvent.keyDown(lastKetcherAction, { key: "Tab" })
+    expect(cancelButton).toHaveFocus()
+    expect(fireEvent.keyDown(cancelButton, { key: "Escape" })).toBe(false)
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    view.unmount()
+    expect(opener).toHaveFocus()
+    opener.remove()
+  })
+
+  it("leaves Escape and Tab ownership with Ketcher nested dialogs", async () => {
+    const onClose = vi.fn()
+    render(
+      <Molecule2DEditorDialog
+        node={node}
+        atoms={[]}
+        onClose={onClose}
+        onSave={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled())
+    fireEvent.click(screen.getByTestId("ketcher-settings"))
+    const nestedDialog = screen.getByRole("dialog", { name: "Ketcher settings" })
+    const applyButton = screen.getByRole("button", { name: "Apply Ketcher settings" })
+    applyButton.focus()
+
+    fireEvent.keyDown(applyButton, { key: "Tab" })
+    expect(applyButton).toHaveFocus()
+    expect(screen.getByRole("button", { name: "Cancel" })).not.toHaveFocus()
+
+    fireEvent.keyDown(applyButton, { key: "Escape" })
+    expect(onClose).not.toHaveBeenCalled()
+    expect(nestedDialog).toBeInTheDocument()
   })
 
   it("keeps the dialog mounted when Ketcher fails to load", async () => {

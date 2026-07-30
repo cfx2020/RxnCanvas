@@ -667,7 +667,7 @@ export function StructurePreviewDialog({
   leftSidebarOpen?: boolean
   rightSidebarOpen?: boolean
   onClose: () => void
-  onEdit2DStructure?: (nodeId: string) => void
+  onEdit2DStructure?: (nodeId: string, returnFocusTo?: HTMLElement | null) => void
   onReset2DStructure?: (nodeId: string) => void
   onHydrateSourceParse?: (file: SourceFile) => Promise<SourceParseResult | null>
 }) {
@@ -683,6 +683,9 @@ export function StructurePreviewDialog({
   }, [vibrationPreview?.vibrationModes])
   const [vibrationPlaying, setVibrationPlaying] = useState(false)
   const ketcherPreloadTimerRef = useRef<number | null>(null)
+  const dialogRef = useRef<HTMLElement | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
   const hasManualStructure = Boolean(node.manualStructureKet || node.manualStructureMolfile || node.manualStructureCdxml)
   const canAttemptVibrationHydration = Boolean(file && onHydrateSourceParse && defaultVibrationMode && !vibrationalModeHasFullDisplacements(defaultVibrationMode, coordinateAtoms.length))
   const playableVibrationMode = defaultVibrationMode && vibrationalModeHasFullDisplacements(defaultVibrationMode, coordinateAtoms.length) ? defaultVibrationMode : null
@@ -711,8 +714,9 @@ export function StructurePreviewDialog({
   }, [coordinateAtoms.length, defaultVibrationMode, file, hydratingVibration, node, onHydrateSourceParse, playableVibrationMode])
 
   const edit2DStructure = () => {
-    onEdit2DStructure?.(node.id)
-    onClose()
+    const returnFocusTo = returnFocusRef.current
+    onEdit2DStructure?.(node.id, returnFocusTo)
+    returnFocusRef.current = null
   }
 
   const cancelKetcherHoverPreload = useCallback(() => {
@@ -740,12 +744,20 @@ export function StructurePreviewDialog({
   }, [file?.id, node.id])
 
   useEffect(() => {
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
+    const activeElement = document.activeElement
+    if (
+      activeElement instanceof HTMLElement
+      && activeElement !== document.body
+      && !dialogRef.current?.contains(activeElement)
+    ) {
+      returnFocusRef.current = activeElement
     }
-    document.addEventListener("keydown", closeOnEscape)
-    return () => document.removeEventListener("keydown", closeOnEscape)
-  }, [onClose])
+    closeButtonRef.current?.focus({ preventScroll: true })
+    return () => {
+      const returnFocusTo = returnFocusRef.current
+      if (returnFocusTo?.isConnected) returnFocusTo.focus({ preventScroll: true })
+    }
+  }, [])
 
   useEffect(() => {
     if (!playableVibrationMode) setVibrationPlaying(false)
@@ -760,14 +772,43 @@ export function StructurePreviewDialog({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <section className="structure-preview-dialog" role="dialog" aria-modal="true" aria-label="3D Structure">
+      <section
+        ref={dialogRef}
+        className="structure-preview-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="3D Structure"
+        onKeyDown={(event) => {
+          if (event.defaultPrevented) return
+          if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            onClose()
+            return
+          }
+          if (event.key !== "Tab") return
+          const focusableElements = Array.from(
+            event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not([disabled])"),
+          )
+          const firstElement = focusableElements[0]
+          const lastElement = focusableElements[focusableElements.length - 1]
+          if (!firstElement || !lastElement) return
+          if (event.shiftKey && document.activeElement === firstElement) {
+            event.preventDefault()
+            lastElement.focus({ preventScroll: true })
+          } else if (!event.shiftKey && document.activeElement === lastElement) {
+            event.preventDefault()
+            firstElement.focus({ preventScroll: true })
+          }
+        }}
+      >
         <header className="structure-preview-header">
           <div>
             <span>Structure Preview</span>
             <strong>{node.label}</strong>
           </div>
-          <button type="button" className="structure-preview-close-button" aria-label="Close 3D Structure" onClick={onClose}>
-            <X size={18} />
+          <button ref={closeButtonRef} type="button" className="structure-preview-close-button" aria-label="Close 3D Structure" onClick={onClose}>
+            <X size={18} aria-hidden="true" />
           </button>
         </header>
         <div className="structure-preview-body">

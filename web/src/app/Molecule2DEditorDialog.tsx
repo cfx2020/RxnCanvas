@@ -27,12 +27,18 @@ type Molecule2DEditorDialogProps = {
   atoms: CoordinateAtom[]
   onClose: () => void
   onSave: (nodeId: string, structure: ManualStructurePayload) => void
+  returnFocusTo?: HTMLElement | null
 }
 
-export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecule2DEditorDialogProps) {
+export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFocusTo }: Molecule2DEditorDialogProps) {
   const KetcherEditorHost = useMemo(getLazyKetcherEditorHost, [])
   const ketcherRef = useRef<Ketcher | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const dialogRef = useRef<HTMLElement | null>(null)
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(returnFocusTo ?? null)
+  const initialFocusPendingRef = useRef(true)
+  const initialFocusTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
   const [status, setStatus] = useState<"loading" | "ready" | "saving" | "error">("loading")
   const [message, setMessage] = useState("Loading Ketcher editor…")
@@ -54,6 +60,24 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
 
   useEffect(() => () => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
+    if (initialFocusTimerRef.current !== null) window.clearTimeout(initialFocusTimerRef.current)
+  }, [])
+
+  useEffect(() => {
+    const activeElement = document.activeElement
+    if (
+      !returnFocusRef.current
+      && activeElement instanceof HTMLElement
+      && activeElement !== document.body
+      && !dialogRef.current?.contains(activeElement)
+    ) {
+      returnFocusRef.current = activeElement
+    }
+    cancelButtonRef.current?.focus({ preventScroll: true })
+    return () => {
+      const returnFocusTarget = returnFocusRef.current
+      if (returnFocusTarget?.isConnected) returnFocusTarget.focus({ preventScroll: true })
+    }
   }, [])
 
   const pasteStructureIntoKetcher = useCallback(async (candidate: ClipboardStructureCandidate) => {
@@ -284,14 +308,70 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave }: Molecul
     <div className="structure-preview-scrim molecule-editor-scrim" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose()
     }}>
-      <section className="structure-preview-dialog molecule-editor-dialog" role="dialog" aria-modal="true" aria-label={`Edit 2D structure for ${node.label}`}>
+      <section
+        ref={dialogRef}
+        className="structure-preview-dialog molecule-editor-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Edit 2D structure for ${node.label}`}
+        onPointerDownCapture={() => {
+          initialFocusPendingRef.current = false
+        }}
+        onKeyDownCapture={(event) => {
+          if (event.key === "Tab") initialFocusPendingRef.current = false
+        }}
+        onFocusCapture={(event) => {
+          const focusTarget = event.target instanceof Node ? event.target : null
+          if (
+            !initialFocusPendingRef.current
+            || focusTarget === cancelButtonRef.current
+            || !focusTarget
+            || !hostRef.current?.contains(focusTarget)
+            || initialFocusTimerRef.current !== null
+          ) return
+          initialFocusTimerRef.current = window.setTimeout(() => {
+            initialFocusTimerRef.current = null
+            if (initialFocusPendingRef.current) cancelButtonRef.current?.focus({ preventScroll: true })
+          }, 0)
+        }}
+        onKeyDown={(event) => {
+          const eventTarget = event.target instanceof Element ? event.target : null
+          const nestedDialog = eventTarget?.closest("dialog, [role='dialog'], [aria-modal='true']")
+          if (nestedDialog && nestedDialog !== event.currentTarget) return
+          if (event.defaultPrevented) return
+          if (event.key === "Escape") {
+            event.preventDefault()
+            event.stopPropagation()
+            onClose()
+            return
+          }
+          if (event.key !== "Tab") return
+          const focusableElements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+            "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex='-1']), [contenteditable='true']",
+          )).filter((element) => {
+            if (element.closest("[hidden], [inert], [aria-hidden='true']")) return false
+            const bounds = element.getBoundingClientRect()
+            return bounds.width > 0 && bounds.height > 0
+          })
+          const firstElement = focusableElements[0]
+          const lastElement = focusableElements[focusableElements.length - 1]
+          if (!firstElement || !lastElement) return
+          if (event.shiftKey && document.activeElement === firstElement) {
+            event.preventDefault()
+            lastElement.focus({ preventScroll: true })
+          } else if (!event.shiftKey && document.activeElement === lastElement) {
+            event.preventDefault()
+            firstElement.focus({ preventScroll: true })
+          }
+        }}
+      >
         <header className="structure-preview-header">
           <div>
             <span>2D Structure Editor</span>
             <strong>{node.label}</strong>
           </div>
           <div className="molecule-editor-header-actions">
-            <button type="button" onClick={onClose}>Cancel</button>
+            <button ref={cancelButtonRef} type="button" onClick={onClose}>Cancel</button>
             <button type="button" className="command-button" onClick={saveStructure} disabled={status !== "ready"}>Save</button>
           </div>
         </header>

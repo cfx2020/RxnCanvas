@@ -1596,8 +1596,11 @@ describe("App", () => {
     expect(screen.queryByRole("region", { name: "Object registry" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Apply correction" })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "Open 3D Structure" }))
+    const openStructure = screen.getByRole("button", { name: "Open 3D Structure" })
+    openStructure.focus()
+    fireEvent.click(openStructure)
     const dialog = screen.getByRole("dialog", { name: "3D Structure" })
+    expect(within(dialog).getByRole("button", { name: "Close 3D Structure" })).toHaveFocus()
     expect(document.querySelector(".app-shell")).toHaveClass("has-overlay-view")
     expect(dialog).toHaveTextContent("TS1 (Endo)")
     expect(fireEvent.keyDown(window, { key: "k", ctrlKey: true })).toBe(false)
@@ -1606,6 +1609,28 @@ describe("App", () => {
     expect(screen.queryByRole("region", { name: "Energy table" })).not.toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole("button", { name: "Close 3D Structure" }))
     expect(screen.queryByRole("dialog", { name: "3D Structure" })).not.toBeInTheDocument()
+    expect(openStructure).toHaveFocus()
+  })
+
+  it("preserves the original structure opener through the 3D to 2D handoff", async () => {
+    render(<App />)
+
+    const openStructure = screen.getByRole("button", { name: "Open 3D Structure" })
+    openStructure.focus()
+    fireEvent.click(openStructure)
+
+    const previewDialog = screen.getByRole("dialog", { name: "3D Structure" })
+    fireEvent.click(within(previewDialog).getByRole("button", { name: "Edit 2D structure for TS1 (Endo)" }))
+
+    const editorDialog = await screen.findByRole("dialog", { name: "Edit 2D structure for TS1 (Endo)" })
+    const cancelButton = within(editorDialog).getByRole("button", { name: "Cancel" })
+    expect(cancelButton).toHaveFocus()
+    expect(screen.queryByRole("dialog", { name: "3D Structure" })).not.toBeInTheDocument()
+    expect(document.querySelectorAll('[aria-modal="true"]')).toHaveLength(1)
+
+    expect(fireEvent.keyDown(cancelButton, { key: "Escape" })).toBe(false)
+    expect(screen.queryByRole("dialog", { name: "Edit 2D structure for TS1 (Endo)" })).not.toBeInTheDocument()
+    expect(openStructure).toHaveFocus()
   })
 
   it("sets the relative energy zero point from a canvas node", () => {
