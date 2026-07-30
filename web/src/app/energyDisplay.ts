@@ -643,7 +643,7 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
     contextByNodeId.set(baselineId, normalizeParticipantContext({
       additions: additionsByPathNodeId.get(baselineId) ?? [],
       releases: [],
-    }, nodeById, nodeOrder))
+    }, nodeOrder))
     const queue = [baselineId]
     for (let index = 0; index < queue.length; index += 1) {
       const nodeId = queue[index]
@@ -653,7 +653,7 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
         const candidate = normalizeParticipantContext({
           additions: [...context.additions, ...(additionsByPathNodeId.get(nextId) ?? [])],
           releases: [...context.releases, ...(releasesAfterPathNodeId.get(nodeId) ?? [])],
-        }, nodeById, nodeOrder)
+        }, nodeOrder)
         const current = contextByNodeId.get(nextId)
         if (current && !participantContextIsBetter({
           candidate,
@@ -722,13 +722,20 @@ function expressionTermsForPathContext(
 
 function normalizeParticipantContext(
   context: PathParticipantContext,
-  nodeById: Map<string, FlowNode>,
   nodeOrder: Map<string, number>,
 ): PathParticipantContext {
   return {
-    additions: uniqueParticipantNodeIds(context.additions, nodeById, nodeOrder),
-    releases: uniqueParticipantNodeIds(context.releases, nodeById, nodeOrder),
+    // Species normalization is intentionally kept at each individual path
+    // step above. Once events enter the accumulated context, every occurrence
+    // represents a stoichiometric event, even when the same canvas node is
+    // reused at another step.
+    additions: sortNodeOccurrences(context.additions, nodeOrder),
+    releases: sortNodeOccurrences(context.releases, nodeOrder),
   }
+}
+
+function sortNodeOccurrences(nodeIds: string[], nodeOrder: Map<string, number>): string[] {
+  return [...nodeIds].sort((left, right) => (nodeOrder.get(left) ?? 0) - (nodeOrder.get(right) ?? 0))
 }
 
 function participantContextIsBetter({

@@ -176,6 +176,36 @@ describe("energyDisplay", () => {
     expect(expressionSignature(product)).toEqual(["1:4b-1", "1:3", "-1:base", "-1:Cl"])
     expect(product.relative).toBeCloseTo(103)
   })
+
+  it("keeps repeated participant occurrences across steps while deduplicating copies within one step", () => {
+    const nodes: FlowNode[] = [
+      kcalNode("base", "base", 0),
+      kcalNode("step", "step", 20),
+      kcalNode("product", "product", 100),
+      kcalNode("released-early", "i3-2", 5, "participant"),
+      kcalNode("released-early-copy", "i3-2", 5, "participant"),
+      kcalNode("added-early", "s-i1", 2, "participant"),
+    ]
+    const edges: FlowEdge[] = [
+      edge("base", "step"),
+      edge("step", "product"),
+      edge("base", "released-early", "release"),
+      edge("base", "released-early-copy", "release"),
+      edge("step", "released-early", "release"),
+      edge("added-early", "step", "addition"),
+      edge("added-early", "product", "addition"),
+    ]
+
+    const product = rowById(energyTableRows(nodes, defaultEnergyDisplayOptions, edges), "product")
+
+    expect(expressionSignature(product)).toEqual([
+      "1:product",
+      "2:i3-2",
+      "-1:base",
+      "-2:s-i1",
+    ])
+    expect(product.relative).toBeCloseTo(106)
+  })
 })
 
 function irNode(
