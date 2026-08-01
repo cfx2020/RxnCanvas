@@ -210,7 +210,7 @@ export const ProjectRail = memo(function ProjectRail({
   return (
     <>
       <aside className="project-rail" aria-label="Project rail" ref={railRef}>
-        <div className="project-rail-scroll">
+        <div className="project-rail-region project-rail-region-projects">
           <RailSection
             title="Projects"
             actionLabel="Workspace actions"
@@ -368,6 +368,9 @@ export const ProjectRail = memo(function ProjectRail({
             })}
           </RailSection>
 
+        </div>
+
+        <div className="project-rail-region project-rail-region-files">
           <RailSection
             title="Files"
             actionLabel="Import files"
