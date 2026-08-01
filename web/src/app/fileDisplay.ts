@@ -265,13 +265,12 @@ export function sourceFileGroupFromFiles(key: string, files: SourceFile[]): Sour
 
 export function sourceFileDisplayGroupKey(file: SourceFile): string {
   if (!isRawLogSourceFile(file)) return file.id
-  const withoutExtension = stripKnownRawExtension(stripChecksumPrefix(baseName(file.name)))
-  const withoutSolutionSuffix = stripSolutionSuffix(withoutExtension)
-  return withoutSolutionSuffix.trim().toLowerCase() || file.id
+  const stem = structureStemFromName(file.name)
+  return stem.toLowerCase() || file.id
 }
 
 export function sourceFileLooksLikeSolutionLog(file: SourceFile): boolean {
-  return Boolean(solutionLogSuffixForStem(stripKnownRawExtension(stripChecksumPrefix(baseName(file.name)))))
+  return isSolutionLogByName(file.name)
 }
 
 export function sourceFileHasUsableParsedData(file: SourceFile): boolean {
@@ -305,7 +304,7 @@ function sourceFileGroupSort(left: SourceFile, right: SourceFile): number {
 
 function sourceFileStructureName(file: SourceFile, key: string): string {
   if (!isRawLogSourceFile(file)) return file.name
-  const displayName = stripSolutionSuffix(stripKnownRawExtension(stripChecksumPrefix(baseName(file.name)))).trim()
+  const displayName = structureStemFromName(file.name)
   return displayName || key || file.name
 }
 
@@ -316,34 +315,21 @@ function isRawLogSourceFile(file: SourceFile): boolean {
     || /\.(log|out)$/i.test(baseName(file.name))
 }
 
-function solutionLogSuffixForStem(stem: string): string | null {
-  const lowered = stem.toLowerCase()
-  for (const suffix of [
-    "-sol",
-    "_sol",
-    ".sol",
-    " sol",
-    "-solution",
-    "_solution",
-    ".solution",
-    " solution",
-    "-solv",
-    "_solv",
-    ".solv",
-    " solv",
-    "-smd",
-    "_smd",
-    ".smd",
-    " smd",
-  ]) {
-    if (lowered.endsWith(suffix)) return suffix
-  }
-  return null
+const SOLUTION_TOKENS = new Set(["sol", "solution", "solv", "smd", "solvent", "solvation"])
+
+function tokenizeStem(stem: string): string[] {
+  return stem.split(/[-_.\s]+/).map((token) => token.trim()).filter((token) => token.length > 0)
 }
 
-function stripSolutionSuffix(value: string): string {
-  const suffix = solutionLogSuffixForStem(value)
-  return suffix ? value.slice(0, -suffix.length) : value
+function structureStemFromName(name: string): string {
+  const stem = stripKnownRawExtension(stripChecksumPrefix(baseName(name)))
+  const kept = tokenizeStem(stem).filter((token) => !SOLUTION_TOKENS.has(token.toLowerCase()))
+  return kept.join("-").trim()
+}
+
+function isSolutionLogByName(name: string): boolean {
+  const stem = stripKnownRawExtension(stripChecksumPrefix(baseName(name)))
+  return tokenizeStem(stem).some((token) => SOLUTION_TOKENS.has(token.toLowerCase()))
 }
 
 function stripKnownRawExtension(value: string): string {

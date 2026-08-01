@@ -16,6 +16,7 @@ import {
   selectSourceFileTransition,
   sourceFileDisplayGroupKey,
   sourceFileGroupsForDisplay,
+  sourceFileLooksLikeSolutionLog,
   sourceKindFromName,
 } from "./fileDisplay"
 
@@ -147,6 +148,26 @@ describe("fileDisplay", () => {
       hasParsedGasLog: false,
       hasParsedSolutionLog: true,
     })
+  })
+
+  it("pairs gas and solution logs when the solvent token sits in the middle of the name", () => {
+    const gas = sourceFile("gas", "S-i1-PhCF3.log", "Gaussian")
+    const solution = sourceFile("solution", "S-i1-sol-PhCF3.log", "Gaussian")
+
+    expect(sourceFileDisplayGroupKey(gas)).toBe("s-i1-phcf3")
+    expect(sourceFileDisplayGroupKey(solution)).toBe("s-i1-phcf3")
+    expect(sourceFileLooksLikeSolutionLog(solution)).toBe(true)
+    expect(sourceFileLooksLikeSolutionLog(gas)).toBe(false)
+
+    const groups = sourceFileGroupsForDisplay([solution, gas])
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({
+      id: "gas",
+      displayName: "S-i1-PhCF3",
+      hasGasLog: true,
+      hasSolutionLog: true,
+    })
+    expect(groups[0].files.map((file) => file.id)).toEqual(["gas", "solution"])
   })
 
   it("derives additive, range, and replacement file selections", () => {
