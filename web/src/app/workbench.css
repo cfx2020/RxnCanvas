@@ -13816,7 +13816,7 @@ select,
 .molecule-editor-scrim.has-right-sidebar {
   --structure-left-rail: 0px !important;
   --structure-right-rail: 0px !important;
-  z-index: 320 !important;
+  z-index: 2950 !important;
 }
 
 .molecule-editor-scrim::before {
