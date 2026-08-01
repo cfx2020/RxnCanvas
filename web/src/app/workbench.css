@@ -15334,6 +15334,73 @@ select,
     linear-gradient(180deg, rgba(249, 253, 253, 0.96), rgba(249, 253, 253, 0.88) 68%, rgba(249, 253, 253, 0));
 }
 
+.file-pair-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 0 6px;
+}
+
+.file-pair-summary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(91, 124, 142, 0.10);
+  color: #5f7482;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.file-pair-summary-chip:hover {
+  background: rgba(91, 124, 142, 0.18);
+}
+
+.file-pair-summary-chip .file-pair-summary-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.file-pair-summary-chip .file-pair-summary-count {
+  font-weight: 800;
+}
+
+.file-pair-summary-chip.is-ready {
+  color: #1fa283;
+}
+
+.file-pair-summary-chip.is-missing {
+  color: #ef8f35;
+}
+
+.file-pair-summary-chip.is-parsing {
+  color: #3a8bd6;
+}
+
+.file-pair-summary-chip.is-error {
+  color: #d94a40;
+}
+
+.file-pair-summary-chip.is-active {
+  background: rgba(91, 124, 142, 0.16);
+  border-color: currentColor;
+}
+
+.app-shell.theme-dark .file-pair-summary-chip {
+  background: rgba(120, 145, 162, 0.14);
+  color: #93a4b2;
+}
+
+.app-shell.theme-dark .file-pair-summary-chip.is-active {
+  background: rgba(120, 145, 162, 0.24);
+}
+
 .source-browser-search,
 .source-browser-menus label {
   min-width: 0;

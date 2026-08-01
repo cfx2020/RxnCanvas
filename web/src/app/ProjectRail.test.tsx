@@ -105,10 +105,6 @@ describe("ProjectRail", () => {
       sourceFile("queued", "Queued.log", deferredSource("Queued")),
     ])
 
-    expect(screen.queryByRole("searchbox", { name: "Search files" })).not.toBeInTheDocument()
-    const filesSection = screen.getByText("Files").closest(".rail-section") as HTMLElement
-    fireEvent.click(within(filesSection).getByRole("button", { name: "Search and filter files" }))
-
     expect(screen.getByRole("searchbox", { name: "Search files" })).toBeInTheDocument()
     expect(screen.getByRole("combobox", { name: "Filter files" })).toBeInTheDocument()
     expect(screen.getByRole("combobox", { name: "Sort files" })).toBeInTheDocument()
@@ -134,6 +130,33 @@ describe("ProjectRail", () => {
     expect(fileButtons()).toEqual([
       "Alpha.log Gaussian",
       "Beta Gaussian",
+      "Failed.log Gaussian",
+      "Queued.log Gaussian",
+    ])
+  })
+
+  it("summarizes pair status and filters when a summary chip is clicked", () => {
+    renderRail([
+      sourceFile("beta-gas", "Beta.log", parsedSource("Beta")),
+      sourceFile("beta-sol", "Beta-sol.log", parsedSource("Beta-sol")),
+      sourceFile("alpha", "Alpha.log", parsedSource("Alpha")),
+      sourceFile("failed", "Failed.log", failedSource("Failed")),
+      sourceFile("queued", "Queued.log", deferredSource("Queued")),
+    ])
+
+    const summary = screen.getByRole("group", { name: "File status summary" })
+    expect(within(summary).getByRole("button", { name: "Ready 1" })).toBeInTheDocument()
+    expect(within(summary).getByRole("button", { name: "Missing 1" })).toBeInTheDocument()
+    expect(within(summary).getByRole("button", { name: "Parsing 1" })).toBeInTheDocument()
+    expect(within(summary).getByRole("button", { name: "Failed 1" })).toBeInTheDocument()
+
+    fireEvent.click(within(summary).getByRole("button", { name: "Ready 1" }))
+    expect(fileButtons()).toEqual(["Beta Gaussian"])
+
+    fireEvent.click(within(summary).getByRole("button", { name: "Ready 1" }))
+    expect(fileButtons()).toEqual([
+      "Beta Gaussian",
+      "Alpha.log Gaussian",
       "Failed.log Gaussian",
       "Queued.log Gaussian",
     ])

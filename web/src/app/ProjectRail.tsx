@@ -13,12 +13,13 @@ import {
   sourceFileLooksLikeParsedSolutionLog,
   sourceFileGroupsForDisplay,
   type SourceFileGroup,
+  type SourceFilePairStatus,
 } from "./fileDisplay"
 
 const FILE_CONTEXT_MENU_WIDTH = 212
 const FILE_CONTEXT_MENU_HEIGHT = 68
 
-type FileFilterMode = "all" | "attention" | "missing-pair" | "parse-error" | "parsing"
+type FileFilterMode = "all" | "ready" | "attention" | "missing-pair" | "parse-error" | "parsing"
 type FileSortMode = "project" | "name" | "kind" | "status"
 
 export type FileSelectionOptions = {
@@ -85,7 +86,6 @@ export const ProjectRail = memo(function ProjectRail({
   const [canvasActionId, setCanvasActionId] = useState<string | null>(null)
   const [deleteConfirmProjectId, setDeleteConfirmProjectId] = useState<string | null>(null)
   const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null)
-  const [sourceBrowserToolsOpen, setSourceBrowserToolsOpen] = useState(false)
   const railRef = useRef<HTMLElement | null>(null)
   const fileContextMenuRef = useRef<HTMLDivElement | null>(null)
   const selectedFileSet = useMemo(() => new Set(selectedFileIds), [selectedFileIds])
@@ -106,8 +106,6 @@ export const ProjectRail = memo(function ProjectRail({
       .filter((group) => sourceFileGroupMatchesQuery(group, query))
       .sort((left, right) => sourceFileGroupCompare(left, right, fileSortMode))
   }, [fileFilterMode, fileGroups, fileSearchQuery, fileSortMode])
-  const sourceBrowserHasActiveControls = fileSearchQuery.trim().length > 0 || fileFilterMode !== "all" || fileSortMode !== "project"
-  const sourceBrowserControlsVisible = sourceBrowserToolsOpen || sourceBrowserHasActiveControls
   const selectedFileGroupFiles = useMemo(() => fileGroups
     .filter((group) => group.files.some((file) => selectedFileSet.has(file.id)))
     .flatMap((group) => group.files), [fileGroups, selectedFileSet])
@@ -375,13 +373,9 @@ export const ProjectRail = memo(function ProjectRail({
             actionLabel="Import files"
             actionIcon={<UploadCloud size={16} />}
             onAction={() => onImportFiles(activeProjectId)}
-            secondaryActionLabel={sourceBrowserControlsVisible ? "Hide file controls" : "Search and filter files"}
-            secondaryActionIcon={<Search size={16} />}
-            onSecondaryAction={() => setSourceBrowserToolsOpen((current) => !current)}
             onDropFiles={(droppedFiles) => onDropProjectFiles(activeProjectId, droppedFiles)}
           >
-            {sourceBrowserControlsVisible ? (
-              <SourceBrowserControls
+            <SourceBrowserControls
                 query={fileSearchQuery}
                 filterMode={fileFilterMode}
                 sortMode={fileSortMode}
@@ -390,8 +384,12 @@ export const ProjectRail = memo(function ProjectRail({
                 onQueryChange={setFileSearchQuery}
                 onFilterModeChange={setFileFilterMode}
                 onSortModeChange={setFileSortMode}
-              />
-            ) : null}
+            />
+            <FilePairSummaryBar
+              groups={fileGroups}
+              filterMode={fileFilterMode}
+              onFilterModeChange={setFileFilterMode}
+            />
             {files.length === 0 ? (
               <p className="rail-empty">No local files</p>
             ) : visibleFileGroups.length === 0 ? (
@@ -673,6 +671,7 @@ function SourceBrowserControls({
             }}
           >
             <option value="all">All</option>
+            <option value="ready">Ready</option>
             <option value="attention">Attention</option>
             <option value="missing-pair">Missing pair</option>
             <option value="parse-error">Errors</option>
@@ -696,6 +695,55 @@ function SourceBrowserControls({
           </select>
         </label>
       </div>
+    </div>
+  )
+}
+
+function FilePairSummaryBar({
+  groups,
+  filterMode,
+  onFilterModeChange,
+}: {
+  groups: SourceFileGroup[]
+  filterMode: FileFilterMode
+  onFilterModeChange: (mode: FileFilterMode) => void
+}) {
+  const counts = useMemo(() => {
+    const tally: Record<SourceFilePairStatus, number> = {
+      ready: 0,
+      parsing: 0,
+      "missing-pair": 0,
+      "parse-error": 0,
+    }
+    for (const group of groups) tally[group.pairStatus] += 1
+    return tally
+  }, [groups])
+  const segments: { mode: FileFilterMode; label: string; count: number; tone: string }[] = [
+    { mode: "ready", label: "Ready", count: counts.ready, tone: "is-ready" },
+    { mode: "missing-pair", label: "Missing", count: counts["missing-pair"], tone: "is-missing" },
+    { mode: "parsing", label: "Parsing", count: counts.parsing, tone: "is-parsing" },
+    { mode: "parse-error", label: "Failed", count: counts["parse-error"], tone: "is-error" },
+  ]
+  return (
+    <div className="file-pair-summary-bar" role="group" aria-label="File status summary">
+      {segments.map((segment) => {
+        const active = filterMode === segment.mode
+        return (
+          <button
+            key={segment.mode}
+            type="button"
+            className={`file-pair-summary-chip ${segment.tone}${active ? " is-active" : ""}`}
+            aria-pressed={active}
+            aria-label={`${segment.label} ${segment.count}`}
+            title={`${segment.label}: ${segment.count}${active ? " (showing only these)" : ""}`}
+            onClick={() => onFilterModeChange(active ? "all" : segment.mode)}
+          >
+            <span className="file-pair-summary-dot" aria-hidden="true" />
+            <span className="file-pair-summary-label">{segment.label}</span>
+            <span className="file-pair-summary-count">{segment.count}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -842,6 +890,7 @@ function sourceFileGroupSearchText(group: SourceFileGroup): string {
 
 function sourceFileGroupMatchesFilter(group: SourceFileGroup, mode: FileFilterMode): boolean {
   if (mode === "all") return true
+  if (mode === "ready") return group.pairStatus === "ready"
   if (mode === "attention") return group.pairStatus !== "ready"
   if (mode === "missing-pair") return group.pairStatus === "missing-pair"
   if (mode === "parse-error") return group.pairStatus === "parse-error"
