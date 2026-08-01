@@ -14565,7 +14565,8 @@ select,
   display: none !important;
 }
 
-.project-rail .project-file-phase-badges.has-missing-solution {
+.project-rail .project-file-phase-badges.has-missing-solution,
+.project-rail .project-file-phase-badges.has-missing-gas {
   width: 6px !important;
   height: 6px !important;
   min-width: 6px !important;
@@ -14631,7 +14632,8 @@ select,
   }
 }
 
-.app-shell.theme-dark .project-rail .project-file-phase-badges.has-missing-solution {
+.app-shell.theme-dark .project-rail .project-file-phase-badges.has-missing-solution,
+.app-shell.theme-dark .project-rail .project-file-phase-badges.has-missing-gas {
   background: #f6a04e !important;
   box-shadow: 0 0 0 3px rgba(246, 160, 78, 0.18) !important;
 }
@@ -14725,6 +14727,7 @@ select,
   }
 
   .workspace:not(.is-left-collapsed) > .project-rail .project-file-main .project-file-phase-badges.has-missing-solution,
+  .workspace:not(.is-left-collapsed) > .project-rail .project-file-main .project-file-phase-badges.has-missing-gas,
   .workspace:not(.is-left-collapsed) > .project-rail .project-file-main .project-file-phase-badges.has-parse-error {
     display: inline-block !important;
   }
@@ -15958,6 +15961,7 @@ select,
   color: #5f7482 !important;
 }
 
+.project-rail .project-file-phase-badges.has-missing-gas,
 .project-rail .project-file-phase-badges.has-missing-solution,
 .project-rail .project-file-phase-badges.has-parse-error {
   width: 6px !important;
@@ -16246,6 +16250,7 @@ select,
   display: none !important;
 }
 
+.project-rail .project-file-phase-badges.has-missing-gas,
 .project-rail .project-file-phase-badges.has-missing-solution,
 .project-rail .project-file-phase-badges.has-parse-error {
   margin-right: 2px !important;

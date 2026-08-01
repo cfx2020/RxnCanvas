@@ -2,6 +2,8 @@ import type { FlowNode, SourceFile } from "../domain/projectPackages"
 
 export const projectFileDragMimeType = "application/x-rxnflow-raw-file"
 
+export type SourceFilePairStatus = "ready" | "parsing" | "missing-pair" | "parse-error"
+
 export type SourceFileGroup = {
   id: string
   files: SourceFile[]
@@ -12,6 +14,9 @@ export type SourceFileGroup = {
   hasSolutionLog: boolean
   hasParsedGasLog: boolean
   hasParsedSolutionLog: boolean
+  hasPendingParse: boolean
+  hasParseError: boolean
+  pairStatus: SourceFilePairStatus
 }
 
 export type SourceFileSelectionOptions = {
@@ -250,6 +255,9 @@ export function sourceFileGroupFromFiles(key: string, files: SourceFile[]): Sour
     && !sourceFileLooksLikeSolutionLog(file)
     && sourceFileHasUsableParsedData(file))
   const groupedStructure = hasSolutionLog && sortedFiles.length > 1
+  const hasPendingParse = sortedFiles.some(sourceFileHasPendingDesktopParse)
+  const hasParseError = sortedFiles.some((file) => sourceFileParseIssue(file) !== null)
+  const pairStatus = computeSourceFilePairStatus({ hasGasLog, hasSolutionLog, hasPendingParse, hasParseError })
   return {
     id: primaryFile.id,
     files: sortedFiles,
@@ -260,6 +268,9 @@ export function sourceFileGroupFromFiles(key: string, files: SourceFile[]): Sour
     hasSolutionLog,
     hasParsedGasLog,
     hasParsedSolutionLog,
+    hasPendingParse,
+    hasParseError,
+    pairStatus,
   }
 }
 
@@ -285,6 +296,41 @@ export function sourceFileHasUsableParsedData(file: SourceFile): boolean {
 
 export function sourceFileLooksLikeParsedSolutionLog(file: SourceFile): boolean {
   return sourceFileLooksLikeSolutionLog(file) && sourceFileHasUsableParsedData(file)
+}
+
+export function sourceFileHasPendingDesktopParse(file: SourceFile): boolean {
+  if (file.status !== "staged") return false
+  return (file.parse?.warnings ?? []).some((warning) => isPendingParseWarning(warning.code))
+}
+
+export function sourceFileParseIssue(file: SourceFile): { file: SourceFile; message: string } | null {
+  if (!file.parse || file.parse.parsed || sourceFileHasPendingDesktopParse(file)) return null
+  const warning = file.parse.warnings.find((item) => !isPendingParseWarning(item.code))
+  return {
+    file,
+    message: warning?.message || "This source could not be parsed.",
+  }
+}
+
+function computeSourceFilePairStatus({
+  hasGasLog,
+  hasSolutionLog,
+  hasPendingParse,
+  hasParseError,
+}: {
+  hasGasLog: boolean
+  hasSolutionLog: boolean
+  hasPendingParse: boolean
+  hasParseError: boolean
+}): SourceFilePairStatus {
+  if (hasParseError) return "parse-error"
+  const bothPresent = hasGasLog && hasSolutionLog
+  if (bothPresent) return hasPendingParse ? "parsing" : "ready"
+  return hasPendingParse ? "parsing" : "missing-pair"
+}
+
+function isPendingParseWarning(code: string): boolean {
+  return code === "parse_deferred" || code === "parse_queued" || code === "parse_running"
 }
 
 export function safeRawFileName(value: string): string {

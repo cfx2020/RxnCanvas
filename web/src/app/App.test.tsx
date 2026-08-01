@@ -1543,7 +1543,6 @@ describe("App", () => {
 
     const groupedRowButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6", "Gaussian") })
     expect(groupedRowButton).toBeInTheDocument()
-    expect(groupedRowButton).toHaveAttribute("aria-label", expect.stringContaining("No paired solvation log"))
     expect(groupedRowButton).toHaveAttribute("aria-label", expect.stringContaining("No supported parser recognized this source preview."))
     const groupedRow = groupedRowButton.closest(".project-file-card") as HTMLElement
     expect(groupedRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
@@ -1574,7 +1573,7 @@ describe("App", () => {
     const solutionButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6-sol.log", "Gaussian") })
     expect(solutionButton).toHaveAttribute("aria-label", expect.stringContaining("No paired gas log"))
     const solutionRow = solutionButton.closest(".project-file-card") as HTMLElement
-    expect(solutionRow.querySelector(".project-file-phase-badges.has-missing-solution")).toBeInTheDocument()
+    expect(solutionRow.querySelector(".project-file-phase-badges.has-missing-gas")).toBeInTheDocument()
 
     await act(async () => {
       fireEvent.change(input, { target: { files: [gasLog] } })
@@ -1583,7 +1582,7 @@ describe("App", () => {
 
     const groupedButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6", "Gaussian") })
     const groupedRow = groupedButton.closest(".project-file-card") as HTMLElement
-    expect(groupedRow.querySelector(".project-file-phase-badges.has-missing-solution")).not.toBeInTheDocument()
+    expect(groupedRow.querySelector(".project-file-phase-badges.has-missing-gas")).not.toBeInTheDocument()
   })
 
   it("keeps object registry correction out of the main UI while preserving structure preview", () => {

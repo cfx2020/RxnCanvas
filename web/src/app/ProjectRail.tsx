@@ -8,6 +8,8 @@ import {
   filesFromDataTransfer,
   projectFileDragMimeType,
   projectFileDragPath,
+  sourceFileHasPendingDesktopParse,
+  sourceFileParseIssue,
   sourceFileLooksLikeParsedSolutionLog,
   sourceFileGroupsForDisplay,
   type SourceFileGroup,
@@ -716,16 +718,15 @@ function ProjectFileRow({
   const { primaryFile } = group
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
   const suppressNextClickRef = useRef(false)
-  const missingPairLog = group.hasParsedGasLog !== group.hasParsedSolutionLog
-  const parsing = group.files.some(sourceFileHasPendingDesktopParse)
+  const parsing = group.hasPendingParse
   const parseIssue = group.files.map(sourceFileParseIssue).find((issue) => issue !== null) ?? null
   const parseIssueTitle = parseIssue ? `${parseIssue.file.name}: ${parseIssue.message}` : undefined
-  const solvationPairTitle = missingPairLog
-    ? !group.hasParsedGasLog && group.hasSolutionLog
+  const missingPairTitle = group.pairStatus === "missing-pair"
+    ? !group.hasGasLog && group.hasSolutionLog
       ? "No paired gas log"
       : "No paired solvation log"
     : undefined
-  const fileStatusTitle = [solvationPairTitle, parseIssueTitle].filter(Boolean).join(" - ") || undefined
+  const fileStatusTitle = [missingPairTitle, parseIssueTitle].filter(Boolean).join(" - ") || undefined
   const fileAriaLabel = `${group.displayName} ${group.displayKind}${fileStatusTitle ? `, ${fileStatusTitle}` : ""}`
 
   const selectFromEvent = (event: MouseEvent<HTMLButtonElement>) => {
@@ -783,16 +784,16 @@ function ProjectFileRow({
           <FilePlus2 size={14} />
         </span>
         <span>{group.displayName}</span>
-        {parseIssue ? (
+        {group.pairStatus === "parse-error" ? (
           <i
             className="project-file-phase-badges has-parse-error"
             data-status-title={parseIssueTitle}
             aria-hidden="true"
           />
-        ) : missingPairLog ? (
+        ) : group.pairStatus === "missing-pair" ? (
           <i
-            className="project-file-phase-badges has-missing-solution"
-            data-status-title={solvationPairTitle}
+            className={`project-file-phase-badges${!group.hasGasLog && group.hasSolutionLog ? " has-missing-gas" : " has-missing-solution"}`}
+            data-status-title={missingPairTitle}
             aria-hidden="true"
           />
         ) : null}
@@ -841,13 +842,10 @@ function sourceFileGroupSearchText(group: SourceFileGroup): string {
 
 function sourceFileGroupMatchesFilter(group: SourceFileGroup, mode: FileFilterMode): boolean {
   if (mode === "all") return true
-  const missingPair = sourceFileGroupHasMissingPair(group)
-  const parseError = group.files.some((file) => sourceFileParseIssue(file) !== null)
-  const parsing = group.files.some(sourceFileHasPendingDesktopParse)
-  if (mode === "attention") return missingPair || parseError || parsing
-  if (mode === "missing-pair") return missingPair
-  if (mode === "parse-error") return parseError
-  return parsing
+  if (mode === "attention") return group.pairStatus !== "ready"
+  if (mode === "missing-pair") return group.pairStatus === "missing-pair"
+  if (mode === "parse-error") return group.pairStatus === "parse-error"
+  return group.pairStatus === "parsing"
 }
 
 function sourceFileGroupCompare(left: SourceFileGroup, right: SourceFileGroup, mode: FileSortMode): number {
@@ -864,40 +862,14 @@ function sourceFileGroupCompare(left: SourceFileGroup, right: SourceFileGroup, m
 }
 
 function sourceFileGroupStatusRank(group: SourceFileGroup): number {
-  if (group.files.some((file) => sourceFileParseIssue(file) !== null)) return 0
-  if (sourceFileGroupHasMissingPair(group)) return 1
-  if (group.files.some(sourceFileHasPendingDesktopParse)) return 2
+  if (group.pairStatus === "parse-error") return 0
+  if (group.pairStatus === "missing-pair") return 1
+  if (group.pairStatus === "parsing") return 2
   return 3
-}
-
-function sourceFileGroupHasMissingPair(group: SourceFileGroup): boolean {
-  return group.hasParsedGasLog !== group.hasParsedSolutionLog
 }
 
 function alphaCompare(left: string, right: string): number {
   return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" })
-}
-
-function sourceFileHasPendingDesktopParse(file: SourceFile): boolean {
-  if (file.status !== "staged") return false
-  return (file.parse?.warnings ?? []).some((warning) => (
-    warning.code === "parse_deferred"
-    || warning.code === "parse_queued"
-    || warning.code === "parse_running"
-  ))
-}
-
-function sourceFileParseIssue(file: SourceFile): { file: SourceFile; message: string } | null {
-  if (!file.parse || file.parse.parsed || sourceFileHasPendingDesktopParse(file)) return null
-  const warning = file.parse.warnings.find((item) => !isPendingParseWarning(item.code))
-  return {
-    file,
-    message: warning?.message || "This source could not be parsed.",
-  }
-}
-
-function isPendingParseWarning(code: string): boolean {
-  return code === "parse_deferred" || code === "parse_queued" || code === "parse_running"
 }
 
 function RailSection({
