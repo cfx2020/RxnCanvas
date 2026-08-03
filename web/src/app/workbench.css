@@ -176,20 +176,22 @@ input:focus-visible,
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .project-rail-region-projects {
-  flex: 0 1 auto;
-  max-height: 45%;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: 74px;
+  max-height: min(34vh, 260px);
 }
 
 .project-rail-region-files {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
 }
 
 .project-rail-region > .rail-section {
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -198,7 +200,13 @@ input:focus-visible,
 .project-rail-region .rail-list {
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-behavior: auto;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  will-change: auto;
 }
 
 .brand-block {
@@ -10048,9 +10056,9 @@ select,
   width: var(--rxnflow-project-rail-width, 248px) !important;
   min-width: var(--rxnflow-project-rail-width, 248px) !important;
   max-width: var(--rxnflow-project-rail-width, 248px) !important;
-  transform: translateX(0) !important;
+  transform: none !important;
   transition: transform 190ms cubic-bezier(0.2, 0.72, 0.25, 1), opacity 150ms ease !important;
-  will-change: transform !important;
+  will-change: auto !important;
 }
 
 .project-rail-resize-handle {
@@ -12914,6 +12922,59 @@ select,
   }
 }
 
+/* 2026-08-02 project rail scroll reliability:
+   Style the real section scrollports and keep stationary-pointer hit testing
+   stable while draggable rows move underneath it. */
+.project-rail-region .rail-list {
+  padding-right: 6px !important;
+  overscroll-behavior-y: contain !important;
+  scroll-behavior: auto !important;
+  touch-action: pan-y !important;
+  scrollbar-gutter: stable !important;
+  scrollbar-color: rgba(76, 105, 113, 0.28) transparent !important;
+  scrollbar-width: thin !important;
+}
+
+.project-rail-region .rail-list::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+.project-rail-region .rail-list::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.project-rail-region .rail-list::-webkit-scrollbar-thumb {
+  min-height: 28px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: rgba(76, 105, 113, 0.28) !important;
+}
+
+.project-rail-region .rail-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(54, 87, 96, 0.44) !important;
+}
+
+.project-rail .rail-list,
+.project-rail .project-rail-item,
+.project-rail .project-rail-main,
+.project-rail .project-file-card,
+.project-rail .project-file-main {
+  cursor: default !important;
+}
+
+.app-shell.theme-dark .project-rail-region .rail-list {
+  scrollbar-color: rgba(154, 190, 198, 0.3) transparent !important;
+}
+
+.app-shell.theme-dark .project-rail-region .rail-list::-webkit-scrollbar-thumb {
+  background: rgba(154, 190, 198, 0.3) !important;
+}
+
+.app-shell.theme-dark .project-rail-region .rail-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(174, 216, 221, 0.46) !important;
+}
+
 @media (max-width: 960px) {
   .app-shell {
     min-width: 0 !important;
@@ -14619,11 +14680,11 @@ select,
 
 .project-rail .project-file-card {
   position: relative !important;
-  cursor: grab !important;
+  cursor: default !important;
 }
 
 .project-rail .project-file-card:active {
-  cursor: grabbing !important;
+  cursor: default !important;
 }
 
 .project-rail .project-file-progress {
@@ -15920,6 +15981,8 @@ select,
 
 .project-rail .rail-list {
   gap: 1px !important;
+  align-content: start !important;
+  grid-auto-rows: max-content !important;
 }
 
 .project-rail .rail-heading {
@@ -16145,6 +16208,9 @@ select,
   --rail-mint: rgba(197, 248, 235, 0.72);
   --rail-mint-strong: rgba(186, 244, 229, 0.86);
   --rail-mint-text: #0f7965;
+  --rail-hover: rgba(214, 233, 233, 0.9);
+  --rail-hover-text: #1c6259;
+  --rail-control-hover: rgba(209, 239, 233, 0.92);
   --rail-text: #263847;
   --rail-muted: #647887;
   width: var(--rxnflow-project-rail-width, 248px) !important;
@@ -16189,8 +16255,9 @@ select,
 .project-rail .rail-heading button:hover,
 .project-rail .rail-heading button:focus-visible,
 .project-rail .rail-heading button[aria-expanded="true"] {
-  background: rgba(226, 250, 245, 0.78) !important;
+  background: var(--rail-control-hover) !important;
   color: var(--rail-mint-text) !important;
+  box-shadow: none !important;
 }
 
 .project-rail .rail-list {
@@ -16264,7 +16331,17 @@ select,
 .project-rail .project-rail-item:hover,
 .project-rail .project-rail-item:focus-within,
 .project-rail .project-rail-item.has-open-actions {
-  background: rgba(255, 255, 255, 0.42) !important;
+  background: var(--rail-hover) !important;
+  box-shadow: none !important;
+}
+
+.project-rail .project-rail-item:hover .project-rail-main > span,
+.project-rail .project-rail-item:hover .project-rail-main > svg,
+.project-rail .project-rail-item:focus-within .project-rail-main > span,
+.project-rail .project-rail-item:focus-within .project-rail-main > svg,
+.project-rail .project-rail-item.has-open-actions .project-rail-main > span,
+.project-rail .project-rail-item.has-open-actions .project-rail-main > svg {
+  color: var(--rail-hover-text) !important;
 }
 
 .project-rail .project-rail-item.is-active {
@@ -16326,7 +16403,19 @@ select,
 
 .project-rail .project-file-card:hover,
 .project-rail .project-file-card:focus-within {
-  background: rgba(255, 255, 255, 0.42) !important;
+  background: var(--rail-hover) !important;
+  box-shadow: none !important;
+}
+
+.project-rail .project-file-card:hover .project-file-main > span:not(.project-file-kind-icon),
+.project-rail .project-file-card:focus-within .project-file-main > span:not(.project-file-kind-icon) {
+  color: var(--rail-hover-text) !important;
+}
+
+.project-rail .project-file-card:hover .project-file-kind-icon,
+.project-rail .project-file-card:focus-within .project-file-kind-icon {
+  background: rgba(196, 222, 224, 0.96) !important;
+  color: var(--rail-hover-text) !important;
 }
 
 .project-rail .project-file-card.is-active,
@@ -16375,11 +16464,21 @@ select,
   border-radius: 12px !important;
 }
 
+.project-rail .project-rail-settings:hover,
+.project-rail .project-rail-settings:focus-visible {
+  background: var(--rail-hover) !important;
+  color: var(--rail-hover-text) !important;
+  box-shadow: none !important;
+}
+
 .app-shell.theme-dark .project-rail,
 .app-shell.theme-dark .workspace:not(.is-left-collapsed) > .project-rail {
   --rail-mint: rgba(31, 96, 82, 0.46);
   --rail-mint-strong: rgba(42, 113, 94, 0.58);
   --rail-mint-text: #aef6e1;
+  --rail-hover: rgba(92, 139, 150, 0.22);
+  --rail-hover-text: #d7f5ed;
+  --rail-control-hover: rgba(48, 126, 108, 0.34);
   --rail-text: #d9e8f2;
   --rail-muted: #9db0bc;
   background: rgb(10, 23, 33) !important;
@@ -16407,6 +16506,279 @@ select,
 .app-shell.theme-dark .project-rail .source-browser-menus label:has(select:focus-visible) {
   background: rgba(197, 221, 235, 0.12) !important;
   box-shadow: 0 0 0 1px rgba(126, 232, 197, 0.22) !important;
+}
+
+/* 2026-08-02 compact project rail:
+   Protect the project switcher from long file lists and disclose file tools
+   from the section header so the primary rail stays dense and scannable. */
+.project-rail,
+.workspace:not(.is-left-collapsed) > .project-rail {
+  gap: 10px !important;
+  padding: 50px 10px 12px !important;
+}
+
+.project-rail-region-projects {
+  flex: 0 0 auto !important;
+  min-height: 74px !important;
+  max-height: min(34vh, 260px) !important;
+}
+
+.project-rail-region-files {
+  flex: 1 1 0 !important;
+}
+
+.project-rail .rail-section {
+  gap: 4px !important;
+}
+
+.project-rail .rail-heading {
+  min-height: 28px !important;
+  padding: 0 4px !important;
+  font-size: 10px !important;
+  font-weight: 820 !important;
+  letter-spacing: 0.14em !important;
+}
+
+.project-rail .rail-heading-actions {
+  flex-shrink: 0;
+  gap: 1px !important;
+}
+
+.project-rail .rail-heading button {
+  position: relative;
+  width: 24px !important;
+  min-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  border-radius: 6px !important;
+}
+
+.project-rail .rail-heading button.has-active-filter::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #1b9c82;
+  box-shadow: 0 0 0 2px rgba(245, 252, 252, 0.94);
+}
+
+.project-rail .rail-list {
+  gap: 1px !important;
+}
+
+.source-browser-popover {
+  position: absolute;
+  top: 32px;
+  right: 0;
+  z-index: 80;
+  width: 176px;
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid rgba(104, 134, 148, 0.18);
+  border-radius: 8px;
+  background: rgba(247, 252, 252, 0.97);
+  box-shadow: 0 14px 34px rgba(30, 59, 69, 0.16);
+  backdrop-filter: blur(20px);
+}
+
+.source-browser-popover--search {
+  right: 0;
+  left: 0;
+  width: auto;
+}
+
+.source-browser-popover .source-browser-search {
+  height: 28px !important;
+  border-radius: 6px !important;
+  background: rgba(78, 107, 122, 0.075) !important;
+}
+
+.source-browser-popover .source-browser-search input {
+  height: 26px !important;
+}
+
+.source-browser-menu {
+  display: grid;
+  gap: 2px;
+}
+
+.source-browser-menu > button {
+  min-width: 0;
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rail-text);
+  text-align: left;
+}
+
+.source-browser-menu > button:hover,
+.source-browser-menu > button:focus-visible {
+  outline: none;
+  background: rgba(78, 107, 122, 0.08);
+}
+
+.source-browser-menu > button[aria-checked="true"] {
+  background: rgba(31, 143, 122, 0.11);
+  color: var(--rail-mint-text);
+}
+
+.source-browser-menu-check {
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.source-browser-menu-label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 690;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-browser-menu-count {
+  color: var(--rail-muted);
+  font-size: 10px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.source-browser-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #8295a0;
+}
+
+.source-browser-status-dot.is-ready {
+  background: #20a485;
+}
+
+.source-browser-status-dot.is-attention,
+.source-browser-status-dot.is-missing {
+  background: #ee913a;
+}
+
+.source-browser-status-dot.is-parsing {
+  background: #3b8fd5;
+}
+
+.source-browser-status-dot.is-error {
+  background: #d95048;
+}
+
+.project-rail .project-rail-item {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 3px !important;
+  border-radius: 8px !important;
+}
+
+.project-rail .project-rail-main {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 4px !important;
+  gap: 7px !important;
+  border-radius: 7px !important;
+}
+
+.project-rail .project-rail-main > span {
+  font-size: 12px !important;
+  font-weight: 760 !important;
+}
+
+.project-rail .project-rail-main > svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.project-rail .project-file-card {
+  height: 29px !important;
+  min-height: 29px !important;
+  padding: 0 3px !important;
+  border-radius: 7px !important;
+}
+
+.project-rail .project-file-main {
+  height: 29px !important;
+  min-height: 29px !important;
+  grid-template-columns: 19px minmax(0, 1fr) auto !important;
+  gap: 6px !important;
+  padding: 0 5px !important;
+  border-radius: 6px !important;
+}
+
+.project-rail .project-file-main > span:not(.project-file-kind-icon) {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+
+.project-rail .project-file-kind-icon {
+  width: 19px !important;
+  height: 19px !important;
+  min-width: 19px !important;
+  border-radius: 5px !important;
+}
+
+.project-rail .project-file-kind-icon svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.project-rail .project-file-kind-icon.kind-gaussian::after {
+  right: -3px !important;
+  bottom: -3px !important;
+  width: 11px !important;
+  height: 11px !important;
+  border-width: 1px !important;
+  font-size: 7px !important;
+}
+
+.project-rail-footer {
+  padding-top: 4px !important;
+}
+
+.project-rail-settings {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 7px !important;
+  border-radius: 7px !important;
+}
+
+.app-shell.theme-dark .source-browser-popover {
+  border-color: rgba(143, 176, 190, 0.16);
+  background: rgba(13, 28, 38, 0.98);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.34);
+}
+
+.app-shell.theme-dark .source-browser-menu > button:hover,
+.app-shell.theme-dark .source-browser-menu > button:focus-visible {
+  background: rgba(197, 221, 235, 0.075);
+}
+
+.app-shell.theme-dark .source-browser-menu > button[aria-checked="true"] {
+  background: rgba(63, 196, 164, 0.15);
+}
+
+.app-shell.theme-dark .project-rail .rail-heading button.has-active-filter::after {
+  background: #73ddc0;
+  box-shadow: 0 0 0 2px rgba(13, 28, 38, 0.96);
 }
 
 /* 2026-07-10 scientific specimen node card.
@@ -17687,4 +18059,11 @@ select,
   .app-shell:has(.project-rail .project-rail-item.has-open-actions) .desktop-titlebar-shell .desktop-titlebar-tabs {
     left: var(--rxnflow-project-rail-width, 212px) !important;
   }
+}
+
+.project-rail .project-rail-region-files .rail-section:has(.project-file-card) .rail-list {
+  gap: 0 !important;
+  row-gap: 0 !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
 }

@@ -105,9 +105,9 @@ describe("ProjectRail", () => {
       sourceFile("queued", "Queued.log", deferredSource("Queued")),
     ])
 
+    expect(screen.queryByRole("searchbox", { name: "Search files" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Search files" }))
     expect(screen.getByRole("searchbox", { name: "Search files" })).toBeInTheDocument()
-    expect(screen.getByRole("combobox", { name: "Filter files" })).toBeInTheDocument()
-    expect(screen.getByRole("combobox", { name: "Sort files" })).toBeInTheDocument()
     expect(fileButtons()).toEqual([
       "Beta Gaussian",
       "Alpha.log Gaussian",
@@ -119,14 +119,18 @@ describe("ProjectRail", () => {
     expect(fileButtons()).toEqual(["Beta Gaussian"])
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search files" }), { target: { value: "" } })
-    fireEvent.change(screen.getByRole("combobox", { name: "Filter files" }), { target: { value: "missing-pair" } })
+    fireEvent.click(screen.getByRole("button", { name: "Filter files" }))
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Missing pair 1" }))
     expect(fileButtons()).toEqual(["Alpha.log Gaussian"])
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Filter files" }), { target: { value: "parse-error" } })
+    fireEvent.click(screen.getByRole("button", { name: "Filter files" }))
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Parse errors 1" }))
     expect(fileButtons()).toEqual(["Failed.log Gaussian"])
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Filter files" }), { target: { value: "all" } })
-    fireEvent.change(screen.getByRole("combobox", { name: "Sort files" }), { target: { value: "name" } })
+    fireEvent.click(screen.getByRole("button", { name: "Filter files" }))
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "All files 4" }))
+    fireEvent.click(screen.getByRole("button", { name: "Sort files" }))
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "File name" }))
     expect(fileButtons()).toEqual([
       "Alpha.log Gaussian",
       "Beta Gaussian",
@@ -135,7 +139,7 @@ describe("ProjectRail", () => {
     ])
   })
 
-  it("summarizes pair status and filters when a summary chip is clicked", () => {
+  it("shows status counts in the dedicated filter menu", () => {
     renderRail([
       sourceFile("beta-gas", "Beta.log", parsedSource("Beta")),
       sourceFile("beta-sol", "Beta-sol.log", parsedSource("Beta-sol")),
@@ -144,16 +148,18 @@ describe("ProjectRail", () => {
       sourceFile("queued", "Queued.log", deferredSource("Queued")),
     ])
 
-    const summary = screen.getByRole("group", { name: "File status summary" })
-    expect(within(summary).getByRole("button", { name: "Ready 1" })).toBeInTheDocument()
-    expect(within(summary).getByRole("button", { name: "Missing 1" })).toBeInTheDocument()
-    expect(within(summary).getByRole("button", { name: "Parsing 1" })).toBeInTheDocument()
-    expect(within(summary).getByRole("button", { name: "Failed 1" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Filter files" }))
+    const menu = screen.getByRole("menu", { name: "Filter files" })
+    expect(within(menu).getByRole("menuitemradio", { name: "Ready 1" })).toBeInTheDocument()
+    expect(within(menu).getByRole("menuitemradio", { name: "Missing pair 1" })).toBeInTheDocument()
+    expect(within(menu).getByRole("menuitemradio", { name: "Parsing 1" })).toBeInTheDocument()
+    expect(within(menu).getByRole("menuitemradio", { name: "Parse errors 1" })).toBeInTheDocument()
 
-    fireEvent.click(within(summary).getByRole("button", { name: "Ready 1" }))
+    fireEvent.click(within(menu).getByRole("menuitemradio", { name: "Ready 1" }))
     expect(fileButtons()).toEqual(["Beta Gaussian"])
 
-    fireEvent.click(within(summary).getByRole("button", { name: "Ready 1" }))
+    fireEvent.click(screen.getByRole("button", { name: "Filter files" }))
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Ready 1" }))
     expect(fileButtons()).toEqual([
       "Beta Gaussian",
       "Alpha.log Gaussian",
@@ -185,5 +191,30 @@ describe("ProjectRail", () => {
     const filesSection = screen.getByText("Files").closest(".rail-section") as HTMLElement
     fireEvent.click(within(filesSection).getByRole("button", { name: "Import files" }))
     expect(onImportFiles).toHaveBeenCalledWith("p1")
+  })
+
+  it("only enables native file dragging while a pointer drag is armed", () => {
+    renderRail([sourceFile("file-0", "File-0.log", parsedSource("File-0"))])
+
+    const firstFile = screen.getByRole("button", { name: /^File-0\.log Gaussian/ })
+    const fileCard = firstFile.closest(".project-file-card") as HTMLDivElement
+    const dataTransfer = {
+      effectAllowed: "none",
+      setData: vi.fn(),
+    }
+
+    expect(fileCard.draggable).toBe(false)
+    fireEvent.pointerDown(fileCard, { button: 0 })
+    expect(fileCard.draggable).toBe(true)
+    fireEvent.pointerUp(fileCard, { button: 0 })
+    expect(fileCard.draggable).toBe(false)
+
+    fireEvent.pointerDown(fileCard, { button: 0 })
+    fireEvent.dragStart(fileCard, { dataTransfer })
+    fireEvent.pointerUp(fileCard, { button: 0 })
+    expect(fileCard.draggable).toBe(true)
+    fireEvent.dragEnd(fileCard, { dataTransfer })
+    expect(fileCard.draggable).toBe(false)
+    expect(dataTransfer.setData).toHaveBeenCalled()
   })
 })

@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import { ArrowDownAZ, FilePlus2, Filter, Folder, FolderMinus, FolderOpen, FolderPlus, MoreHorizontal, Plus, Search, Settings2, Trash2, UploadCloud } from "lucide-react"
+import { ArrowDownAZ, Check, FilePlus2, Filter, Folder, FolderMinus, FolderOpen, FolderPlus, MoreHorizontal, Plus, Search, Settings2, Trash2, UploadCloud } from "lucide-react"
 import type { ProjectSummary, SourceFile } from "../domain/projectPackages"
 import type { CanvasTabState } from "./projectCanvasState"
 import {
@@ -21,6 +21,7 @@ const FILE_CONTEXT_MENU_HEIGHT = 68
 
 type FileFilterMode = "all" | "ready" | "attention" | "missing-pair" | "parse-error" | "parsing"
 type FileSortMode = "project" | "name" | "kind" | "status"
+type FileToolMode = "search" | "filter" | "sort"
 
 export type FileSelectionOptions = {
   additive?: boolean
@@ -86,8 +87,10 @@ export const ProjectRail = memo(function ProjectRail({
   const [canvasActionId, setCanvasActionId] = useState<string | null>(null)
   const [deleteConfirmProjectId, setDeleteConfirmProjectId] = useState<string | null>(null)
   const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null)
+  const [fileToolOpen, setFileToolOpen] = useState<FileToolMode | null>(null)
   const railRef = useRef<HTMLElement | null>(null)
   const fileContextMenuRef = useRef<HTMLDivElement | null>(null)
+  const fileToolsPanelRef = useRef<HTMLDivElement | null>(null)
   const selectedFileSet = useMemo(() => new Set(selectedFileIds), [selectedFileIds])
   const selectedFiles = useMemo(
     () => selectedFileIds
@@ -122,7 +125,7 @@ export const ProjectRail = memo(function ProjectRail({
   }, [canvasActionId, canvases, deleteConfirmProjectId, fileContextMenu, files, projectActionId, projects])
 
   useEffect(() => {
-    if (!workspaceMenuOpen && !projectCreatorOpen && !projectActionId && !canvasActionId && !deleteConfirmProjectId && !fileContextMenu) return
+    if (!workspaceMenuOpen && !projectCreatorOpen && !projectActionId && !canvasActionId && !deleteConfirmProjectId && !fileContextMenu && !fileToolOpen) return
 
     const closeTransientUi = () => {
       setWorkspaceMenuOpen(false)
@@ -130,6 +133,7 @@ export const ProjectRail = memo(function ProjectRail({
       setCanvasActionId(null)
       setDeleteConfirmProjectId(null)
       setFileContextMenu(null)
+      setFileToolOpen(null)
       if (projectCreatorOpen) closeProjectCreator()
     }
     const closeOnOutsidePointer = (event: globalThis.PointerEvent) => {
@@ -137,6 +141,9 @@ export const ProjectRail = memo(function ProjectRail({
       if (!(target instanceof Node)) return
       if (fileContextMenuRef.current?.contains(target)) return
       if (fileContextMenu) setFileContextMenu(null)
+      if (fileToolsPanelRef.current?.contains(target)) return
+      if (target instanceof Element && target.closest("[data-file-tool-trigger]")) return
+      if (fileToolOpen) setFileToolOpen(null)
       if (railRef.current?.contains(target)) return
       closeTransientUi()
     }
@@ -150,7 +157,7 @@ export const ProjectRail = memo(function ProjectRail({
       document.removeEventListener("pointerdown", closeOnOutsidePointer, true)
       document.removeEventListener("keydown", closeOnEscape)
     }
-  }, [canvasActionId, deleteConfirmProjectId, fileContextMenu, projectActionId, projectCreatorOpen, workspaceMenuOpen])
+  }, [canvasActionId, deleteConfirmProjectId, fileContextMenu, fileToolOpen, projectActionId, projectCreatorOpen, workspaceMenuOpen])
 
   const openFileContextMenu = (group: SourceFileGroup, event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -159,6 +166,7 @@ export const ProjectRail = memo(function ProjectRail({
     setProjectActionId(null)
     setCanvasActionId(null)
     setDeleteConfirmProjectId(null)
+    setFileToolOpen(null)
 
     const groupIsSelected = group.files.some((file) => selectedFileSet.has(file.id))
     const actionFiles = groupIsSelected && selectedFileGroupFiles.length > 0 ? selectedFileGroupFiles : group.files
@@ -216,7 +224,10 @@ export const ProjectRail = memo(function ProjectRail({
             actionLabel="Workspace actions"
             actionIcon={<Plus size={16} />}
             actionExpanded={workspaceMenuOpen}
-            onAction={() => setWorkspaceMenuOpen((current) => !current)}
+            onAction={() => {
+              setFileToolOpen(null)
+              setWorkspaceMenuOpen((current) => !current)
+            }}
           >
             {workspaceMenuOpen ? (
               <div className="workspace-action-menu" role="menu" aria-label="Workspace actions">
@@ -373,26 +384,107 @@ export const ProjectRail = memo(function ProjectRail({
         <div className="project-rail-region project-rail-region-files">
           <RailSection
             title="Files"
-            actionLabel="Import files"
-            actionIcon={<UploadCloud size={16} />}
-            onAction={() => onImportFiles(activeProjectId)}
             onDropFiles={(droppedFiles) => onDropProjectFiles(activeProjectId, droppedFiles)}
+            headingActions={(
+              <>
+                <button
+                  type="button"
+                  className={fileSearchQuery.length > 0 ? "has-active-filter" : undefined}
+                  data-file-tool-trigger
+                  aria-label="Search files"
+                  aria-expanded={fileToolOpen === "search"}
+                  aria-controls="file-search-tool"
+                  title="Search files"
+                  onClick={() => {
+                    setWorkspaceMenuOpen(false)
+                    setFileToolOpen((current) => current === "search" ? null : "search")
+                  }}
+                >
+                  <Search size={14} />
+                </button>
+                <button
+                  type="button"
+                  className={fileFilterMode !== "all" ? "has-active-filter" : undefined}
+                  data-file-tool-trigger
+                  aria-label="Filter files"
+                  aria-expanded={fileToolOpen === "filter"}
+                  aria-controls="file-filter-tool"
+                  title="Filter files"
+                  onClick={() => {
+                    setWorkspaceMenuOpen(false)
+                    setFileToolOpen((current) => current === "filter" ? null : "filter")
+                  }}
+                >
+                  <Filter size={14} />
+                </button>
+                <button
+                  type="button"
+                  className={fileSortMode !== "project" ? "has-active-filter" : undefined}
+                  data-file-tool-trigger
+                  aria-label="Sort files"
+                  aria-expanded={fileToolOpen === "sort"}
+                  aria-controls="file-sort-tool"
+                  title="Sort files"
+                  onClick={() => {
+                    setWorkspaceMenuOpen(false)
+                    setFileToolOpen((current) => current === "sort" ? null : "sort")
+                  }}
+                >
+                  <ArrowDownAZ size={14} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Import files"
+                  title="Import files"
+                  onClick={() => {
+                    setFileToolOpen(null)
+                    onImportFiles(activeProjectId)
+                  }}
+                >
+                  <UploadCloud size={15} />
+                </button>
+              </>
+            )}
+            toolbar={fileToolOpen ? (
+              <div
+                ref={fileToolsPanelRef}
+                id={`file-${fileToolOpen}-tool`}
+                className={`source-browser-popover source-browser-popover--${fileToolOpen}`}
+              >
+                {fileToolOpen === "search" ? (
+                  <label className="source-browser-search">
+                    <Search size={13} aria-hidden="true" />
+                    <input
+                      type="search"
+                      aria-label="Search files"
+                      value={fileSearchQuery}
+                      placeholder="Search files"
+                      autoFocus
+                      onChange={(event) => setFileSearchQuery(event.target.value)}
+                    />
+                    <span>{visibleFileGroups.length}/{fileGroups.length}</span>
+                  </label>
+                ) : fileToolOpen === "filter" ? (
+                  <FileFilterMenu
+                    groups={fileGroups}
+                    filterMode={fileFilterMode}
+                    onSelect={(mode) => {
+                      setFileFilterMode(mode)
+                      setFileToolOpen(null)
+                    }}
+                  />
+                ) : (
+                  <FileSortMenu
+                    sortMode={fileSortMode}
+                    onSelect={(mode) => {
+                      setFileSortMode(mode)
+                      setFileToolOpen(null)
+                    }}
+                  />
+                )}
+              </div>
+            ) : null}
           >
-            <SourceBrowserControls
-                query={fileSearchQuery}
-                filterMode={fileFilterMode}
-                sortMode={fileSortMode}
-                fileCount={files.length}
-                groupCount={fileGroups.length}
-                onQueryChange={setFileSearchQuery}
-                onFilterModeChange={setFileFilterMode}
-                onSortModeChange={setFileSortMode}
-            />
-            <FilePairSummaryBar
-              groups={fileGroups}
-              filterMode={fileFilterMode}
-              onFilterModeChange={setFileFilterMode}
-            />
             {files.length === 0 ? (
               <p className="rail-empty">No local files</p>
             ) : visibleFileGroups.length === 0 ? (
@@ -630,86 +722,14 @@ function ProjectRailItem({
   )
 }
 
-function SourceBrowserControls({
-  query,
-  filterMode,
-  sortMode,
-  fileCount,
-  groupCount,
-  onQueryChange,
-  onFilterModeChange,
-  onSortModeChange,
-}: {
-  query: string
-  filterMode: FileFilterMode
-  sortMode: FileSortMode
-  fileCount: number
-  groupCount: number
-  onQueryChange: (query: string) => void
-  onFilterModeChange: (mode: FileFilterMode) => void
-  onSortModeChange: (mode: FileSortMode) => void
-}) {
-  return (
-    <div className="source-browser-controls">
-      <label className="source-browser-search">
-        <Search size={13} aria-hidden="true" />
-        <input
-          type="search"
-          aria-label="Search files"
-          value={query}
-          placeholder="Search files"
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-        <span>{groupCount}/{fileCount}</span>
-      </label>
-      <div className="source-browser-menus">
-        <label>
-          <Filter size={13} aria-hidden="true" />
-          <select
-            aria-label="Filter files"
-            value={filterMode}
-            onChange={(event) => {
-              onFilterModeChange(event.target.value as FileFilterMode)
-              event.currentTarget.blur()
-            }}
-          >
-            <option value="all">All</option>
-            <option value="ready">Ready</option>
-            <option value="attention">Attention</option>
-            <option value="missing-pair">Missing pair</option>
-            <option value="parse-error">Errors</option>
-            <option value="parsing">Parsing</option>
-          </select>
-        </label>
-        <label>
-          <ArrowDownAZ size={13} aria-hidden="true" />
-          <select
-            aria-label="Sort files"
-            value={sortMode}
-            onChange={(event) => {
-              onSortModeChange(event.target.value as FileSortMode)
-              event.currentTarget.blur()
-            }}
-          >
-            <option value="project">Project</option>
-            <option value="name">Name</option>
-            <option value="kind">Kind</option>
-            <option value="status">Status</option>
-          </select>
-        </label>
-      </div>
-    </div>
-  )
-}
-
-function FilePairSummaryBar({
+function FileFilterMenu({
   groups,
   filterMode,
-  onFilterModeChange,
+  onSelect,
 }: {
   groups: SourceFileGroup[]
   filterMode: FileFilterMode
-  onFilterModeChange: (mode: FileFilterMode) => void
+  onSelect: (mode: FileFilterMode) => void
 }) {
   const counts = useMemo(() => {
     const tally: Record<SourceFilePairStatus, number> = {
@@ -721,29 +741,72 @@ function FilePairSummaryBar({
     for (const group of groups) tally[group.pairStatus] += 1
     return tally
   }, [groups])
-  const segments: { mode: FileFilterMode; label: string; count: number; tone: string }[] = [
+  const options: { mode: FileFilterMode; label: string; count: number; tone: string }[] = [
+    { mode: "all", label: "All files", count: groups.length, tone: "is-neutral" },
     { mode: "ready", label: "Ready", count: counts.ready, tone: "is-ready" },
-    { mode: "missing-pair", label: "Missing", count: counts["missing-pair"], tone: "is-missing" },
+    { mode: "attention", label: "Needs attention", count: groups.length - counts.ready, tone: "is-attention" },
+    { mode: "missing-pair", label: "Missing pair", count: counts["missing-pair"], tone: "is-missing" },
     { mode: "parsing", label: "Parsing", count: counts.parsing, tone: "is-parsing" },
-    { mode: "parse-error", label: "Failed", count: counts["parse-error"], tone: "is-error" },
+    { mode: "parse-error", label: "Parse errors", count: counts["parse-error"], tone: "is-error" },
   ]
   return (
-    <div className="file-pair-summary-bar" role="group" aria-label="File status summary">
-      {segments.map((segment) => {
-        const active = filterMode === segment.mode
+    <div className="source-browser-menu" role="menu" aria-label="Filter files">
+      {options.map((option) => {
+        const active = filterMode === option.mode
         return (
           <button
-            key={segment.mode}
+            key={option.mode}
             type="button"
-            className={`file-pair-summary-chip ${segment.tone}${active ? " is-active" : ""}`}
-            aria-pressed={active}
-            aria-label={`${segment.label} ${segment.count}`}
-            title={`${segment.label}: ${segment.count}${active ? " (showing only these)" : ""}`}
-            onClick={() => onFilterModeChange(active ? "all" : segment.mode)}
+            role="menuitemradio"
+            aria-checked={active}
+            aria-label={`${option.label} ${option.count}`}
+            onClick={() => onSelect(active && option.mode !== "all" ? "all" : option.mode)}
           >
-            <span className="file-pair-summary-dot" aria-hidden="true" />
-            <span className="file-pair-summary-label">{segment.label}</span>
-            <span className="file-pair-summary-count">{segment.count}</span>
+            <span className="source-browser-menu-check" aria-hidden="true">
+              {active ? <Check size={12} /> : null}
+            </span>
+            <span className="source-browser-menu-label">
+              <i className={`source-browser-status-dot ${option.tone}`} aria-hidden="true" />
+              {option.label}
+            </span>
+            <span className="source-browser-menu-count">{option.count}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function FileSortMenu({
+  sortMode,
+  onSelect,
+}: {
+  sortMode: FileSortMode
+  onSelect: (mode: FileSortMode) => void
+}) {
+  const options: { mode: FileSortMode; label: string }[] = [
+    { mode: "project", label: "Project order" },
+    { mode: "name", label: "File name" },
+    { mode: "kind", label: "File type" },
+    { mode: "status", label: "Status" },
+  ]
+  return (
+    <div className="source-browser-menu" role="menu" aria-label="Sort files">
+      {options.map((option) => {
+        const active = sortMode === option.mode
+        return (
+          <button
+            key={option.mode}
+            type="button"
+            role="menuitemradio"
+            aria-checked={active}
+            aria-label={option.label}
+            onClick={() => onSelect(option.mode)}
+          >
+            <span className="source-browser-menu-check" aria-hidden="true">
+              {active ? <Check size={12} /> : null}
+            </span>
+            <span className="source-browser-menu-label">{option.label}</span>
           </button>
         )
       })}
@@ -769,6 +832,7 @@ function ProjectFileRow({
   const { primaryFile } = group
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
   const suppressNextClickRef = useRef(false)
+  const dragInProgressRef = useRef(false)
   const parsing = group.hasPendingParse
   const parseIssue = group.files.map(sourceFileParseIssue).find((issue) => issue !== null) ?? null
   const parseIssueTitle = parseIssue ? `${parseIssue.file.name}: ${parseIssue.message}` : undefined
@@ -794,6 +858,7 @@ function ProjectFileRow({
   }
 
   const startDrag = (event: DragEvent<HTMLDivElement>) => {
+    dragInProgressRef.current = true
     const payloadFiles = filesForDrag.length > 0 ? filesForDrag : [primaryFile]
     const payload = payloadFiles.length === 1
       ? {
@@ -814,12 +879,39 @@ function ProjectFileRow({
     event.dataTransfer.setData("text/plain", payloadFiles.map((item) => projectFileDragPath(item)).join("\n"))
   }
 
+  const armDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.currentTarget.draggable = true
+  }
+
+  const disarmDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (dragInProgressRef.current) return
+    event.currentTarget.draggable = false
+  }
+
+  const cancelDrag = (event: PointerEvent<HTMLDivElement>) => {
+    dragInProgressRef.current = false
+    event.currentTarget.draggable = false
+  }
+
+  const finishDrag = (event: DragEvent<HTMLDivElement>) => {
+    dragInProgressRef.current = false
+    event.currentTarget.draggable = false
+  }
+
   return (
     <div
       className={`project-file-card${active ? " is-active" : ""}${selected ? " project-file-card--selected" : ""}${parsing ? " is-parsing" : ""}`}
-      draggable
+      draggable={false}
       onContextMenu={(event) => onOpenContextMenu(group, event)}
+      onPointerDown={armDrag}
+      onPointerUp={disarmDrag}
+      onPointerCancel={cancelDrag}
+      onPointerEnter={(event) => {
+        if (event.buttons === 0) cancelDrag(event)
+      }}
       onDragStart={startDrag}
+      onDragEnd={finishDrag}
     >
       <button
         type="button"
@@ -930,21 +1022,19 @@ function RailSection({
   actionIcon,
   actionExpanded,
   onAction,
-  secondaryActionLabel,
-  secondaryActionIcon,
-  onSecondaryAction,
+  headingActions,
   onDropFiles,
+  toolbar,
   children,
 }: {
   title: string
-  actionLabel: string
-  actionIcon: ReactNode
+  actionLabel?: string
+  actionIcon?: ReactNode
   actionExpanded?: boolean
-  onAction: () => void
-  secondaryActionLabel?: string
-  secondaryActionIcon?: ReactNode
-  onSecondaryAction?: () => void | Promise<void>
+  onAction?: () => void
+  headingActions?: ReactNode
   onDropFiles?: (files: File[]) => void
+  toolbar?: ReactNode
   children: ReactNode
 }) {
   const acceptDroppedFiles = (event: DragEvent<HTMLElement>) => {
@@ -971,27 +1061,20 @@ function RailSection({
       <div className="rail-heading">
         <span>{title}</span>
         <div className="rail-heading-actions">
-          {secondaryActionLabel && onSecondaryAction ? (
+          {headingActions ?? (actionLabel && onAction ? (
             <button
               type="button"
-              aria-label={secondaryActionLabel}
-              title={secondaryActionLabel}
-              onClick={onSecondaryAction}
+              aria-label={actionLabel}
+              aria-expanded={actionExpanded}
+              title={actionLabel}
+              onClick={onAction}
             >
-              {secondaryActionIcon}
+              {actionIcon}
             </button>
-          ) : null}
-          <button
-            type="button"
-            aria-label={actionLabel}
-            aria-expanded={actionExpanded}
-            title={actionLabel}
-            onClick={onAction}
-          >
-            {actionIcon}
-          </button>
+          ) : null)}
         </div>
       </div>
+      {toolbar}
       <div className="rail-list">{children}</div>
     </section>
   )

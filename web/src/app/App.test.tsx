@@ -1500,10 +1500,12 @@ describe("App", () => {
     expect(within(rail).queryByRole("button", { name: fileButtonName("Bfix6-ts-sol.log", "Gaussian") })).not.toBeInTheDocument()
 
     const row = groupedRowButton.closest(".project-file-card") as HTMLElement
-    expect(row).toHaveAttribute("draggable", "true")
+    expect(row).toHaveAttribute("draggable", "false")
     expect(row.querySelector(".project-file-phase-badges")).not.toBeInTheDocument()
 
     const dataTransfer = new TestDataTransfer()
+    fireEvent.pointerDown(row, { button: 0 })
+    expect(row).toHaveAttribute("draggable", "true")
     fireEvent.dragStart(row, { dataTransfer })
     const payload = JSON.parse(dataTransfer.getData("application/x-rxnflow-raw-file"))
 
@@ -1513,6 +1515,8 @@ describe("App", () => {
       expect.stringContaining("Bfix6-ts.log"),
       expect.stringContaining("Bfix6-ts-sol.log"),
     ])
+    fireEvent.dragEnd(row, { dataTransfer })
+    expect(row).toHaveAttribute("draggable", "false")
   })
 
   it("keeps failed browser-preview solution logs grouped but unavailable for solvation pairing", async () => {
