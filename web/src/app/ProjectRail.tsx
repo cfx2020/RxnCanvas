@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react"
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { ArrowDownAZ, Check, FilePlus2, Filter, Folder, FolderMinus, FolderOpen, FolderPlus, MoreHorizontal, Plus, Search, Settings2, Trash2, UploadCloud } from "lucide-react"
 import type { ProjectSummary, SourceFile } from "../domain/projectPackages"
@@ -18,10 +18,28 @@ import {
 
 const FILE_CONTEXT_MENU_WIDTH = 212
 const FILE_CONTEXT_MENU_HEIGHT = 68
+const PROJECT_REGION_SHARE_STORAGE_KEY = "rxnflow-project-rail-project-share"
+const DEFAULT_PROJECT_REGION_SHARE = 0.35
+const MIN_PROJECT_REGION_SHARE = 0.18
+const MAX_PROJECT_REGION_SHARE = 0.72
 
 type FileFilterMode = "all" | "ready" | "attention" | "missing-pair" | "parse-error" | "parsing"
 type FileSortMode = "project" | "name" | "kind" | "status"
 type FileToolMode = "search" | "filter" | "sort"
+
+function clampProjectRegionShare(value: number): number {
+  return Math.round(Math.min(MAX_PROJECT_REGION_SHARE, Math.max(MIN_PROJECT_REGION_SHARE, value)) * 100) / 100
+}
+
+function initialProjectRegionShare(): number {
+  if (typeof window === "undefined" || typeof window.localStorage?.getItem !== "function") {
+    return DEFAULT_PROJECT_REGION_SHARE
+  }
+  const storedValue = window.localStorage.getItem(PROJECT_REGION_SHARE_STORAGE_KEY)
+  if (storedValue === null) return DEFAULT_PROJECT_REGION_SHARE
+  const storedShare = Number(storedValue)
+  return Number.isFinite(storedShare) ? clampProjectRegionShare(storedShare) : DEFAULT_PROJECT_REGION_SHARE
+}
 
 export type FileSelectionOptions = {
   additive?: boolean
@@ -88,6 +106,7 @@ export const ProjectRail = memo(function ProjectRail({
   const [deleteConfirmProjectId, setDeleteConfirmProjectId] = useState<string | null>(null)
   const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null)
   const [fileToolOpen, setFileToolOpen] = useState<FileToolMode | null>(null)
+  const [projectRegionShare, setProjectRegionShare] = useState(initialProjectRegionShare)
   const railRef = useRef<HTMLElement | null>(null)
   const fileContextMenuRef = useRef<HTMLDivElement | null>(null)
   const fileToolsPanelRef = useRef<HTMLDivElement | null>(null)
@@ -112,6 +131,14 @@ export const ProjectRail = memo(function ProjectRail({
   const selectedFileGroupFiles = useMemo(() => fileGroups
     .filter((group) => group.files.some((file) => selectedFileSet.has(file.id)))
     .flatMap((group) => group.files), [fileGroups, selectedFileSet])
+  const railStyle = useMemo(() => ({
+    "--rxnflow-project-region-share": `${Math.round(projectRegionShare * 100)}%`,
+  } as CSSProperties), [projectRegionShare])
+
+  useEffect(() => {
+    if (typeof window.localStorage?.setItem !== "function") return
+    window.localStorage.setItem(PROJECT_REGION_SHARE_STORAGE_KEY, String(projectRegionShare))
+  }, [projectRegionShare])
 
   useEffect(() => {
     const projectIds = new Set(projects.map((project) => project.id))
@@ -215,9 +242,63 @@ export const ProjectRail = memo(function ProjectRail({
     }
   }
 
+  const resizeProjectRegionsFromKeyboard = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      setProjectRegionShare((current) => clampProjectRegionShare(current + 0.04))
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault()
+      setProjectRegionShare((current) => clampProjectRegionShare(current - 0.04))
+    } else if (event.key === "Home") {
+      event.preventDefault()
+      setProjectRegionShare(MIN_PROJECT_REGION_SHARE)
+    } else if (event.key === "End") {
+      event.preventDefault()
+      setProjectRegionShare(MAX_PROJECT_REGION_SHARE)
+    }
+  }
+
+  const startProjectRegionResize = (event: PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return
+    const rail = railRef.current
+    const projectsRegion = rail?.querySelector<HTMLElement>(".project-rail-region-projects")
+    const filesRegion = rail?.querySelector<HTMLElement>(".project-rail-region-files")
+    if (!rail || !projectsRegion || !filesRegion) return
+
+    event.preventDefault()
+    const startY = event.clientY
+    const startProjectHeight = projectsRegion.getBoundingClientRect().height
+    const totalRegionHeight = startProjectHeight + filesRegion.getBoundingClientRect().height
+    const minimumProjectHeight = 74
+    const maximumProjectHeight = Math.max(minimumProjectHeight, totalRegionHeight - 96)
+    const railStyles = window.getComputedStyle(rail)
+    const railContentHeight = Math.max(
+      1,
+      rail.clientHeight - Number.parseFloat(railStyles.paddingTop) - Number.parseFloat(railStyles.paddingBottom),
+    )
+
+    document.body.classList.add("is-resizing-project-rail-sections")
+    const moveProjectRegion = (moveEvent: globalThis.PointerEvent) => {
+      const nextHeight = Math.min(
+        maximumProjectHeight,
+        Math.max(minimumProjectHeight, startProjectHeight + moveEvent.clientY - startY),
+      )
+      setProjectRegionShare(clampProjectRegionShare(nextHeight / railContentHeight))
+    }
+    const stopProjectRegionResize = () => {
+      document.body.classList.remove("is-resizing-project-rail-sections")
+      window.removeEventListener("pointermove", moveProjectRegion)
+      window.removeEventListener("pointerup", stopProjectRegionResize)
+      window.removeEventListener("pointercancel", stopProjectRegionResize)
+    }
+    window.addEventListener("pointermove", moveProjectRegion)
+    window.addEventListener("pointerup", stopProjectRegionResize)
+    window.addEventListener("pointercancel", stopProjectRegionResize)
+  }
+
   return (
     <>
-      <aside className="project-rail" aria-label="Project rail" ref={railRef}>
+      <aside className="project-rail" aria-label="Project rail" ref={railRef} style={railStyle}>
         <div className="project-rail-region project-rail-region-projects">
           <RailSection
             title="Projects"
@@ -380,6 +461,21 @@ export const ProjectRail = memo(function ProjectRail({
           </RailSection>
 
         </div>
+
+        <div
+          className="project-rail-section-resizer"
+          role="separator"
+          aria-label="Resize Projects and Files panels"
+          aria-orientation="horizontal"
+          aria-valuemin={Math.round(MIN_PROJECT_REGION_SHARE * 100)}
+          aria-valuemax={Math.round(MAX_PROJECT_REGION_SHARE * 100)}
+          aria-valuenow={Math.round(projectRegionShare * 100)}
+          tabIndex={0}
+          title="Drag to resize Projects and Files"
+          onDoubleClick={() => setProjectRegionShare(DEFAULT_PROJECT_REGION_SHARE)}
+          onPointerDown={startProjectRegionResize}
+          onKeyDown={resizeProjectRegionsFromKeyboard}
+        />
 
         <div className="project-rail-region project-rail-region-files">
           <RailSection

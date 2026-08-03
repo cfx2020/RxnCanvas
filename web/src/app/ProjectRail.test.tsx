@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { SourceFile } from "../domain/projectPackages"
 import type { SourceParseResult } from "../domain/sourceParsers"
 import { ProjectRail } from "./ProjectRail"
@@ -94,6 +94,19 @@ function fileButtons() {
   return Array.from(filesSection.querySelectorAll(".project-file-main"))
     .map((button) => button.getAttribute("aria-label")?.split(",")[0])
 }
+
+beforeEach(() => {
+  const values = new Map<string, string>()
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+    },
+  })
+})
 
 describe("ProjectRail", () => {
   it("filters, searches, and sorts the compact source browser", () => {
@@ -216,5 +229,29 @@ describe("ProjectRail", () => {
     fireEvent.dragEnd(fileCard, { dataTransfer })
     expect(fileCard.draggable).toBe(false)
     expect(dataTransfer.setData).toHaveBeenCalled()
+  })
+
+  it("adjusts and persists the Projects and Files panel split", () => {
+    renderRail([sourceFile("file-0", "File-0.log", parsedSource("File-0"))])
+
+    const rail = screen.getByLabelText("Project rail")
+    const separator = screen.getByRole("separator", { name: "Resize Projects and Files panels" })
+
+    expect(separator).toHaveAttribute("aria-valuenow", "35")
+    expect(rail.style.getPropertyValue("--rxnflow-project-region-share")).toBe("35%")
+
+    fireEvent.keyDown(separator, { key: "ArrowDown" })
+    expect(separator).toHaveAttribute("aria-valuenow", "39")
+    expect(rail.style.getPropertyValue("--rxnflow-project-region-share")).toBe("39%")
+    expect(window.localStorage.getItem("rxnflow-project-rail-project-share")).toBe("0.39")
+
+    fireEvent.keyDown(separator, { key: "Home" })
+    expect(separator).toHaveAttribute("aria-valuenow", "18")
+
+    fireEvent.keyDown(separator, { key: "End" })
+    expect(separator).toHaveAttribute("aria-valuenow", "72")
+
+    fireEvent.doubleClick(separator)
+    expect(separator).toHaveAttribute("aria-valuenow", "35")
   })
 })

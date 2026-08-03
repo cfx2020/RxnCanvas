@@ -18067,3 +18067,119 @@ select,
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
 }
+
+.project-rail,
+.workspace:not(.is-left-collapsed) > .project-rail {
+  gap: 0 !important;
+}
+
+.project-rail-region-projects {
+  flex: 0 0 var(--rxnflow-project-region-share, 35%) !important;
+  min-height: 74px !important;
+  max-height: none !important;
+}
+
+.project-rail-region-files {
+  flex: 1 1 0 !important;
+  min-height: 96px !important;
+}
+
+.project-rail-section-resizer {
+  position: relative;
+  z-index: 18;
+  flex: 0 0 8px;
+  min-height: 8px;
+  width: 100%;
+  cursor: row-resize;
+  touch-action: none;
+  outline: none;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.project-rail-section-resizer::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 24px;
+  left: 24px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(95, 123, 137, 0.08);
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.project-rail-section-resizer:hover::before,
+.project-rail-section-resizer:focus-visible::before {
+  background: rgba(31, 143, 122, 0.42);
+  transform: scaleX(1.08);
+}
+
+.app-shell.theme-dark .project-rail-section-resizer::before {
+  background: rgba(151, 181, 197, 0.12);
+}
+
+.app-shell.theme-dark .project-rail-section-resizer:hover::before,
+.app-shell.theme-dark .project-rail-section-resizer:focus-visible::before {
+  background: rgba(126, 232, 197, 0.46);
+}
+
+body.is-resizing-project-rail-sections,
+body.is-resizing-project-rail-sections * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
+.workspace > .project-rail .project-canvas-list {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: calc(100% - 16px) !important;
+  box-sizing: border-box !important;
+}
+
+.project-rail .project-canvas-row-shell {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  grid-template-columns: minmax(0, 1fr) 28px !important;
+}
+
+.project-rail .project-canvas-more {
+  position: relative !important;
+  justify-self: end !important;
+  margin-right: 1px !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.project-rail .project-canvas-more::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.project-rail .project-canvas-more > svg {
+  position: relative;
+  z-index: 1;
+}
+
+.project-rail .project-canvas-more:hover,
+.project-rail .project-canvas-more:focus-visible,
+.project-rail .project-canvas-more[aria-expanded="true"] {
+  background: transparent !important;
+}
+
+.project-rail .project-canvas-more:hover::before,
+.project-rail .project-canvas-more:focus-visible::before,
+.project-rail .project-canvas-more[aria-expanded="true"]::before {
+  background: rgba(73, 103, 119, 0.12);
+}
+
+.app-shell.theme-dark .project-rail .project-canvas-more:hover::before,
+.app-shell.theme-dark .project-rail .project-canvas-more:focus-visible::before,
+.app-shell.theme-dark .project-rail .project-canvas-more[aria-expanded="true"]::before {
+  background: rgba(126, 232, 197, 0.14);
+}
