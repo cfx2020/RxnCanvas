@@ -432,7 +432,7 @@ export function startConnectionAction({
 }: {
   event: PointerEvent<HTMLElement>
   sourceId: string
-  stepRole?: Extract<EdgeStepRole, "addition" | "release">
+  stepRole?: Extract<EdgeStepRole, "addition">
   screenToWorld: ScreenToWorld
   appStateSetters: ProjectWorkspaceStateSetters
 }): void {
@@ -486,7 +486,7 @@ export function completeConnectionToNodeAction({
 }: {
   event: PointerEvent<HTMLElement>
   targetId: string
-  targetStepRole?: Extract<EdgeStepRole, "addition">
+  targetStepRole?: Extract<EdgeStepRole, "release">
   connectionDraft: ConnectionDraft | null
   nodes?: FlowNode[]
   edges: FlowEdge[]
@@ -497,7 +497,7 @@ export function completeConnectionToNodeAction({
   if (!transition) return
   event.stopPropagation()
   if (transition.target) {
-    const stepRole = targetStepRole ?? connectionDraft?.snapStepRole ?? connectionDraft?.stepRole
+    const stepRole = connectionDraft?.stepRole ?? targetStepRole ?? connectionDraft?.snapStepRole
     createConnectionEdgeAction({
       edges,
       nodes,

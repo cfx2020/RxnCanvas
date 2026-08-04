@@ -1759,13 +1759,15 @@ input:focus-visible,
 }
 
 .node-step-connector-addition {
-  left: -12px;
+  left: auto;
+  right: -12px;
   background: #1fa283;
   cursor: crosshair;
 }
 
 .node-step-connector-release {
-  right: -12px;
+  left: -12px;
+  right: auto;
   background: #d86756;
   cursor: crosshair;
 }
@@ -3823,11 +3825,13 @@ select,
 }
 
 .node-step-connector-addition {
-  left: -7px;
+  left: auto;
+  right: -7px;
 }
 
 .node-step-connector-release {
-  right: -7px;
+  left: -7px;
+  right: auto;
 }
 
 .edge-visible-path {
@@ -4038,7 +4042,7 @@ select,
 .reaction-node.is-selected .node-step-connector,
 .reaction-node:hover .node-step-connector,
 .reaction-node:focus-within .node-step-connector,
-.canvas-surface.is-connecting .reaction-node .node-step-connector-addition {
+.canvas-surface.is-connecting-path .reaction-node .node-step-connector-release {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(-50%) scale(1);
@@ -4356,7 +4360,7 @@ select,
 .reaction-node:hover .node-connector,
 .reaction-node:focus-within .node-connector,
 .canvas-surface.is-connecting .reaction-node .node-connector-in,
-.canvas-surface.is-connecting .reaction-node .node-step-connector-addition,
+.canvas-surface.is-connecting-path .reaction-node .node-step-connector-release,
 .reaction-node.is-selected .node-step-connector,
 .reaction-node:hover .node-step-connector,
 .reaction-node:focus-within .node-step-connector,
@@ -4379,11 +4383,13 @@ select,
 }
 
 .node-step-connector-addition {
-  left: -7px;
+  left: auto;
+  right: -7px;
 }
 
 .node-step-connector-release {
-  right: -7px;
+  left: -7px;
+  right: auto;
 }
 
 .node-barrier-handle {
@@ -11660,11 +11666,21 @@ select,
   stroke: rgba(15, 143, 116, 0.92) !important;
 }
 
+.connection-preview-path.is-release.is-snapped {
+  stroke: rgba(180, 88, 72, 0.92) !important;
+  filter: drop-shadow(0 0 7px rgba(180, 88, 72, 0.28)) !important;
+}
+
 .connection-preview-snap-halo {
   fill: rgba(31, 162, 131, 0.1) !important;
   stroke: rgba(31, 162, 131, 0.42) !important;
   stroke-width: 1.6px !important;
   pointer-events: none !important;
+}
+
+.connection-preview-snap-halo.is-release {
+  fill: rgba(180, 88, 72, 0.1) !important;
+  stroke: rgba(180, 88, 72, 0.42) !important;
 }
 
 .reaction-node.is-connection-snap-target .node-connector-in {
@@ -11680,16 +11696,16 @@ select,
   transform: translateY(-50%) scale(1.08) !important;
 }
 
-.reaction-node.is-connection-snap-target-addition .node-step-connector-addition {
+.reaction-node.is-connection-snap-target-release .node-step-connector-release {
   width: 16px !important;
   height: 16px !important;
   opacity: 1 !important;
   pointer-events: auto !important;
-  background: #1fa283 !important;
+  background: #b45a49 !important;
   box-shadow:
     0 0 0 6px rgba(255, 255, 255, 0.76),
-    0 0 0 13px rgba(31, 162, 131, 0.18),
-    0 16px 32px rgba(31, 162, 131, 0.28) !important;
+    0 0 0 13px rgba(180, 88, 72, 0.18),
+    0 16px 32px rgba(180, 88, 72, 0.28) !important;
   transform: translateY(-50%) scale(1.08) !important;
 }
 
@@ -13173,13 +13189,15 @@ select,
 
 .reaction-node .node-step-connector-addition {
   top: 68% !important;
-  left: -4px !important;
+  left: auto !important;
+  right: -4px !important;
   transform: translateY(-50%) !important;
 }
 
 .reaction-node .node-step-connector-release {
   top: 68% !important;
-  right: -4px !important;
+  left: -4px !important;
+  right: auto !important;
   transform: translateY(-50%) !important;
 }
 
@@ -13190,7 +13208,7 @@ select,
 .reaction-node:hover .node-step-connector,
 .reaction-node.is-selected .node-step-connector,
 .reaction-node:focus-within .node-step-connector,
-.canvas-surface.is-connecting .reaction-node .node-step-connector-addition {
+.canvas-surface.is-connecting-path .reaction-node .node-step-connector-release {
   opacity: 0.9 !important;
 }
 
@@ -17452,13 +17470,21 @@ select,
 }
 
 .app-shell .reaction-node .node-connector-in,
-.app-shell .reaction-node .node-step-connector-addition {
+.app-shell .reaction-node .node-step-connector-release {
   left: -4px !important;
 }
 
 .app-shell .reaction-node .node-connector-out,
-.app-shell .reaction-node .node-step-connector-release {
+.app-shell .reaction-node .node-step-connector-addition {
   right: -4px !important;
+}
+
+.app-shell .reaction-node .node-step-connector-addition {
+  left: auto !important;
+}
+
+.app-shell .reaction-node .node-step-connector-release {
+  right: auto !important;
 }
 
 .app-shell .reaction-node .node-step-connector-addition,
@@ -17472,7 +17498,7 @@ select,
 .app-shell .reaction-node:hover .node-connector,
 .app-shell .reaction-node.is-selected .node-connector,
 .app-shell .reaction-node:focus-within .node-connector,
-.canvas-surface.is-connecting .reaction-node .node-step-connector-addition {
+.canvas-surface.is-connecting-path .reaction-node .node-step-connector-release {
   opacity: 1 !important;
   border-color: rgba(39, 154, 128, 0.32) !important;
   background: rgba(222, 246, 240, 0.94) !important;
@@ -17711,13 +17737,21 @@ select,
 }
 
 .app-shell .reaction-node .node-connector-in,
-.app-shell .reaction-node .node-step-connector-addition {
+.app-shell .reaction-node .node-step-connector-release {
   left: -14px !important;
 }
 
 .app-shell .reaction-node .node-connector-out,
-.app-shell .reaction-node .node-step-connector-release {
+.app-shell .reaction-node .node-step-connector-addition {
   right: -14px !important;
+}
+
+.app-shell .reaction-node .node-step-connector-addition {
+  left: auto !important;
+}
+
+.app-shell .reaction-node .node-step-connector-release {
+  right: auto !important;
 }
 
 .app-shell .reaction-node .node-step-connector-addition,
@@ -17778,7 +17812,7 @@ select,
 .app-shell .reaction-node .node-connector:focus-visible::before,
 .app-shell .reaction-node .node-connector-out.is-keyboard-active::before,
 .app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
-.app-shell .reaction-node.is-connection-snap-target-addition .node-step-connector-addition::before {
+.app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
   opacity: 1;
   transform: translate(-50%, -50%) scaleY(1);
 }
@@ -17794,16 +17828,16 @@ select,
 }
 
 .app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
-.app-shell .reaction-node.is-connection-snap-target-addition .node-step-connector-addition::before {
+.app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
   height: 32px;
-  background: rgba(28, 165, 134, 0.92);
+  background: rgba(190, 91, 75, 0.92);
   box-shadow:
     0 0 0 2px rgba(255, 255, 255, 0.82),
-    0 0 0 8px rgba(39, 154, 128, 0.18),
-    0 0 22px rgba(28, 132, 109, 0.38);
+    0 0 0 8px rgba(190, 91, 75, 0.18),
+    0 0 22px rgba(155, 67, 55, 0.38);
 }
 
-.app-shell .reaction-node.is-connection-snap-target-addition .node-step-connector-addition::before {
+.app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
   height: 22px;
 }
 
@@ -17828,8 +17862,8 @@ select,
 .app-shell.theme-dark .reaction-node .node-connector:focus-visible::before,
 .app-shell.theme-dark .reaction-node .node-connector-out.is-keyboard-active::before,
 .app-shell.theme-dark .reaction-node.is-connection-snap-target .node-connector-in::before,
-.app-shell.theme-dark .reaction-node.is-connection-snap-target-addition .node-step-connector-addition::before {
-  background: rgba(91, 221, 188, 0.88);
+.app-shell.theme-dark .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
+  background: rgba(229, 132, 116, 0.9);
 }
 
 @media (prefers-reduced-motion: reduce) {

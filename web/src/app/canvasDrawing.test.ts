@@ -49,9 +49,9 @@ describe("canvasDrawing", () => {
     const target = flowNode("target", { x: 320, y: 80 })
 
     expect(createEdgeSegment(source, target, "addition").path)
-      .toBe("M 210 107 C 247.4 107, 282.6 149, 320 149")
-    expect(createEdgeSegment(source, target, "release").path)
       .toBe("M 210 69 C 247.4 69, 282.6 187, 320 187")
+    expect(createEdgeSegment(source, target, "release").path)
+      .toBe("M 210 107 C 247.4 107, 282.6 149, 320 149")
   })
 
   it("creates connection and barrier draft preview paths", () => {
@@ -59,8 +59,10 @@ describe("canvasDrawing", () => {
 
     expect(createConnectionPreviewPath(source, { x: 500, y: 180 }))
       .toBe("M 210 107 C 331.8 107, 378.2 180, 500 180")
-    expect(createConnectionPreviewPath(source, { x: 500, y: 180 }, "release"))
+    expect(createConnectionPreviewPath(source, { x: 500, y: 180 }, "addition"))
       .toBe("M 210 69 C 331.8 69, 378.2 180, 500 180")
+    expect(createConnectionPreviewPath(source, { x: 500, y: 180 }, "release"))
+      .toBe("M 210 107 C 331.8 107, 378.2 180, 500 180")
     expect(createBarrierDraftPreviewPath(source, { x: 250, y: 422 }))
       .toBe("M 105 222 C 105 294, 250 350, 250 422")
   })

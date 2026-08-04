@@ -33,11 +33,10 @@ export function createEdgeSegment(source: FlowNode, target: FlowNode, stepRole?:
   const horizontal = Math.abs(end.x - start.x)
   const vertical = Math.abs(end.y - start.y)
   const bend = clamp(Math.max(horizontal * 0.34, vertical * 0.2), 28, 96)
-  const controlFrom = { x: start.x + bend, y: start.y }
-  const controlTo = { x: end.x - bend, y: end.y }
+  const { controlFrom, controlTo } = edgeControlPoints(start, end, bend)
   const labelPoint = cubicBezierPoint(start, controlFrom, controlTo, end, 0.5)
   return {
-    path: cubicPath(start, end, bend),
+    path: cubicPath(start, end, controlFrom, controlTo),
     labelPoint: { x: labelPoint.x, y: labelPoint.y },
   }
 }
@@ -45,7 +44,8 @@ export function createEdgeSegment(source: FlowNode, target: FlowNode, stepRole?:
 export function createConnectionPreviewPath(source: FlowNode, current: Point, stepRole?: EdgeStepRole): string {
   const start = edgeSourceAnchor(source, stepRole)
   const bend = Math.max(80, Math.abs(current.x - start.x) * 0.42)
-  return cubicPath(start, current, bend)
+  const { controlFrom, controlTo } = edgeControlPoints(start, current, bend)
+  return cubicPath(start, current, controlFrom, controlTo)
 }
 
 export function createBarrierDraftPreviewPath(source: FlowNode, current: Point): string {
@@ -185,25 +185,35 @@ export function roundPathCoordinate(value: number): number {
 
 function edgeSourceAnchor(source: FlowNode, stepRole?: EdgeStepRole): Point {
   const size = flowNodeSize(source)
-  if (stepRole === "release") return stepConnectorAnchor(source, "release", size)
+  if (stepRole === "addition") return stepConnectorAnchor(source, "addition", size)
   return { x: source.position.x + size.width, y: source.position.y + size.height * 0.5 }
 }
 
 function edgeTargetAnchor(target: FlowNode, stepRole?: EdgeStepRole): Point {
   const size = flowNodeSize(target)
-  if (stepRole === "addition") return stepConnectorAnchor(target, "addition", size)
+  if (stepRole === "release") return stepConnectorAnchor(target, "release", size)
   return { x: target.position.x, y: target.position.y + size.height * 0.5 }
 }
 
 function stepConnectorAnchor(node: FlowNode, role: Extract<EdgeStepRole, "addition" | "release">, size = flowNodeSize(node)): Point {
   return {
-    x: role === "addition" ? node.position.x : node.position.x + size.width,
+    x: role === "addition" ? node.position.x + size.width : node.position.x,
     y: node.position.y + size.height * 0.5 - stepConnectorOffsetY,
   }
 }
 
-function cubicPath(start: Point, end: Point, bend: number): string {
-  return `M ${start.x} ${start.y} C ${start.x + bend} ${start.y}, ${end.x - bend} ${end.y}, ${end.x} ${end.y}`
+function edgeControlPoints(start: Point, end: Point, bend: number): {
+  controlFrom: Point
+  controlTo: Point
+} {
+  return {
+    controlFrom: { x: start.x + bend, y: start.y },
+    controlTo: { x: end.x - bend, y: end.y },
+  }
+}
+
+function cubicPath(start: Point, end: Point, controlFrom: Point, controlTo: Point): string {
+  return `M ${start.x} ${start.y} C ${controlFrom.x} ${controlFrom.y}, ${controlTo.x} ${controlTo.y}, ${end.x} ${end.y}`
 }
 
 function cubicBezierPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point {

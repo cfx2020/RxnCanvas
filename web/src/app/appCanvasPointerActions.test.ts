@@ -181,7 +181,7 @@ describe("appCanvasPointerActions", () => {
     expect(setNodes).toHaveBeenCalledTimes(1)
   })
 
-  it("marks a source node as an addition term when connecting to an addition connector", () => {
+  it("marks a source node as an addition term when connecting from its addition connector", () => {
     const cl: FlowNode = {
       ...nodes[0],
       id: "cl",
@@ -196,11 +196,11 @@ describe("appCanvasPointerActions", () => {
     completeConnectionToNodeAction({
       event: pointerEvent({ pointerId: 7 }),
       targetId: "node-b",
-      targetStepRole: "addition",
       connectionDraft: {
         pointerId: 7,
         sourceId: "cl",
         current: { x: 80, y: 120 },
+        stepRole: "addition",
       },
       nodes: canvasNodes,
       edges,
@@ -219,20 +219,20 @@ describe("appCanvasPointerActions", () => {
     })
   })
 
-  it("uses the addition magnet role when finishing a snapped window-level connection", () => {
-    const cl: FlowNode = {
+  it("uses the release magnet role when finishing a snapped window-level connection", () => {
+    const source: FlowNode = {
       ...nodes[0],
-      id: "cl",
-      label: "Cl",
+      id: "source",
+      label: "Source",
       position: { x: -160, y: 80 },
     }
-    const target: FlowNode = {
+    const n2: FlowNode = {
       ...nodes[1],
-      id: "target",
-      label: "Target",
+      id: "n2",
+      label: "N2",
       position: { x: 320, y: 80 },
     }
-    const canvasNodes = [cl, target]
+    const canvasNodes = [source, n2]
     const setNodes = vi.fn()
     const setEdges = vi.fn()
     const setConnectionDraft = vi.fn()
@@ -240,15 +240,15 @@ describe("appCanvasPointerActions", () => {
 
     finishConnectionDraftAtClientPointAction({
       pointerId: 7,
-      clientX: 323,
+      clientX: 322,
       clientY: 151,
       connectionDraft: {
         pointerId: 7,
-        sourceId: "cl",
-        current: { x: 323, y: 151 },
+        sourceId: "source",
+        current: { x: 322, y: 151 },
       },
       nodes: canvasNodes,
-      releasePoint: { x: 323, y: 151 },
+      releasePoint: { x: 322, y: 151 },
       connectionSnapRadiusWorld: 44,
       nodeIdSet: new Set(canvasNodes.map((node) => node.id)),
       edges: [],
@@ -258,18 +258,18 @@ describe("appCanvasPointerActions", () => {
     })
 
     expect(pushEditHistory).toHaveBeenCalledTimes(1)
-    expect(setNodes.mock.calls[0][0].find((node: FlowNode) => node.id === "cl")?.pathRole).toBe("participant")
+    expect(setNodes.mock.calls[0][0].find((node: FlowNode) => node.id === "n2")?.pathRole).toBe("participant")
     expect(setEdges).toHaveBeenCalledWith([{
       id: "edge-123",
-      sourceId: "cl",
-      targetId: "target",
+      sourceId: "source",
+      targetId: "n2",
       label: "path",
-      stepRole: "addition",
+      stepRole: "release",
     }])
     expect(setConnectionDraft).toHaveBeenCalledWith(null)
   })
 
-  it("marks a target node as a release term when connecting from a release connector", () => {
+  it("marks a target node as a release term when connecting to its release connector", () => {
     const n2: FlowNode = {
       ...nodes[0],
       id: "n2",
@@ -284,11 +284,11 @@ describe("appCanvasPointerActions", () => {
     completeConnectionToNodeAction({
       event: pointerEvent({ pointerId: 7 }),
       targetId: "n2",
+      targetStepRole: "release",
       connectionDraft: {
         pointerId: 7,
         sourceId: "node-b",
         current: { x: 180, y: -120 },
-        stepRole: "release",
       },
       nodes: canvasNodes,
       edges,
@@ -304,6 +304,43 @@ describe("appCanvasPointerActions", () => {
       targetId: "n2",
       label: "path",
       stepRole: "release",
+    })
+  })
+
+  it("keeps an addition role when its draft is released over a release connector", () => {
+    const cl: FlowNode = {
+      ...nodes[0],
+      id: "cl",
+      label: "Cl",
+      position: { x: 180, y: -120 },
+    }
+    const canvasNodes = [...nodes, cl]
+    const setNodes = vi.fn()
+    const setEdges = vi.fn()
+
+    completeConnectionToNodeAction({
+      event: pointerEvent({ pointerId: 7 }),
+      targetId: "node-b",
+      targetStepRole: "release",
+      connectionDraft: {
+        pointerId: 7,
+        sourceId: "cl",
+        current: { x: 80, y: 120 },
+        stepRole: "addition",
+      },
+      nodes: canvasNodes,
+      edges,
+      appStateSetters: appStateSetters({ setNodes, setEdges }),
+      pushEditHistory: vi.fn(),
+    })
+
+    expect(setNodes.mock.calls[0][0].find((node: FlowNode) => node.id === "cl")?.pathRole).toBe("participant")
+    expect(setEdges.mock.calls[0][0]).toContainEqual({
+      id: expect.stringMatching(/^edge-/),
+      sourceId: "cl",
+      targetId: "node-b",
+      label: "path",
+      stepRole: "addition",
     })
   })
 })

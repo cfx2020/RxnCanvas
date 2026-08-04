@@ -28,7 +28,7 @@ describe("canvasConnectionMagnetism", () => {
       x: 320,
       y: 187,
     })
-    expect(connectionTargetAnchor(flowNode("target", { x: 320, y: 80 }), "addition")).toEqual({
+    expect(connectionTargetAnchor(flowNode("target", { x: 320, y: 80 }), "release")).toEqual({
       x: 320,
       y: 149,
     })
@@ -57,7 +57,7 @@ describe("canvasConnectionMagnetism", () => {
     })).toBeNull()
   })
 
-  it("prefers the visible addition connector over the middle input port", () => {
+  it("finds the visible release connector on the target node", () => {
     const source = flowNode("source", { x: 0, y: 0 })
     const target = flowNode("target", { x: 320, y: 80 })
 
@@ -69,7 +69,24 @@ describe("canvasConnectionMagnetism", () => {
     })).toMatchObject({
       targetId: "target",
       point: { x: 320, y: 149 },
-      stepRole: "addition",
+      stepRole: "release",
+    })
+  })
+
+  it("falls back to the middle input while drafting an addition edge near a release connector", () => {
+    const source = flowNode("source", { x: 0, y: 0 })
+    const target = flowNode("target", { x: 320, y: 80 })
+
+    expect(nearestConnectionMagnetTarget({
+      nodes: [source, target],
+      sourceId: source.id,
+      current: { x: 322, y: 151 },
+      radius: 44,
+      sourceStepRole: "addition",
+    })).toMatchObject({
+      targetId: "target",
+      point: { x: 320, y: 187 },
+      stepRole: undefined,
     })
   })
 
@@ -106,7 +123,7 @@ describe("canvasConnectionMagnetism", () => {
     })
   })
 
-  it("stores addition snap role on draft endpoints and clears it when leaving the magnet", () => {
+  it("stores release snap role on draft endpoints and clears it when leaving the magnet", () => {
     const source = flowNode("source", { x: 0, y: 0 })
     const target = flowNode("target", { x: 320, y: 80 })
     const draft = { pointerId: 7, sourceId: source.id, current: { x: 10, y: 10 } }
@@ -114,7 +131,7 @@ describe("canvasConnectionMagnetism", () => {
     const snapped = updateConnectionDraftWithMagnetTarget({
       draft,
       pointerId: 7,
-      current: { x: 323, y: 151 },
+      current: { x: 322, y: 151 },
       nodes: [source, target],
       radius: 44,
     })
@@ -124,7 +141,7 @@ describe("canvasConnectionMagnetism", () => {
       sourceId: source.id,
       current: { x: 320, y: 149 },
       snapTargetId: target.id,
-      snapStepRole: "addition",
+      snapStepRole: "release",
     })
 
     expect(updateConnectionDraftWithMagnetTarget({

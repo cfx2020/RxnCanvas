@@ -1747,28 +1747,41 @@ describe("App", () => {
     }
   })
 
-  it("drags from a release connector to mark a released side species", () => {
+  it("drags from a middle output to a release connector to mark a released side species", () => {
     const { container } = render(<App />)
 
-    const releaseHandle = screen.getByRole("button", { name: "Release species after TS1 (Endo)" })
+    const startHandle = screen.getByRole("button", { name: "Start edge from TS1 (Endo)" })
     const targetNode = screen.getByRole("button", { name: "Node Exo Adduct" })
-    const restoreTargetHit = mockElementsFromPoint([targetNode])
+    const releaseHandle = screen.getByRole("button", { name: "Finish release edge at Exo Adduct" })
 
-    try {
-      dispatchPointer(releaseHandle, "pointerDown", { button: 0, clientX: 610, clientY: 320, pointerId: 83 })
-      expect(container.querySelector(".connection-preview-path.is-release")).toBeInTheDocument()
+    dispatchPointer(startHandle, "pointerDown", { button: 0, clientX: 610, clientY: 320, pointerId: 83 })
+    expect(container.querySelector(".connection-preview-path")).toBeInTheDocument()
 
-      dispatchPointer(window, "pointerMove", { button: 0, clientX: 850, clientY: 580, pointerId: 83 })
-      dispatchPointer(window, "pointerUp", { button: 0, clientX: 850, clientY: 580, pointerId: 83 })
+    dispatchPointer(releaseHandle, "pointerUp", { button: 0, clientX: 1040, clientY: 540, pointerId: 83 })
 
-      expect(screen.getByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct: Release path/ })).toBeInTheDocument()
-      expect(targetNode).toHaveClass("node-participant")
-      expect(targetNode).not.toHaveTextContent("PART")
-      expect(container.querySelector(".edge-role-release")).toBeInTheDocument()
-      expect(container.querySelector(".connection-preview-path")).not.toBeInTheDocument()
-    } finally {
-      restoreTargetHit()
-    }
+    expect(screen.getByRole("button", { name: /Edge TS1 \(Endo\) to Exo Adduct: Release path/ })).toBeInTheDocument()
+    expect(targetNode).toHaveClass("node-participant")
+    expect(targetNode).not.toHaveTextContent("PART")
+    expect(container.querySelector(".edge-role-release")).toBeInTheDocument()
+    expect(container.querySelector(".connection-preview-path")).not.toBeInTheDocument()
+  })
+
+  it("drags from an addition connector to a middle input", () => {
+    const { container } = render(<App />)
+
+    const sourceNode = screen.getByRole("button", { name: "Node Maleic Anhydride" })
+    const additionHandle = screen.getByRole("button", { name: "Start addition edge from Maleic Anhydride" })
+    const targetNode = screen.getByRole("button", { name: "Node Exo Adduct" })
+
+    dispatchPointer(additionHandle, "pointerDown", { button: 0, clientX: 410, clientY: 280, pointerId: 84 })
+    expect(container.querySelector(".connection-preview-path.is-addition")).toBeInTheDocument()
+
+    dispatchPointer(targetNode, "pointerUp", { button: 0, clientX: 850, clientY: 580, pointerId: 84 })
+
+    expect(screen.getByRole("button", { name: /Edge Maleic Anhydride to Exo Adduct: Addition path/ })).toBeInTheDocument()
+    expect(sourceNode).toHaveClass("node-participant")
+    expect(container.querySelector(".edge-role-addition")).toBeInTheDocument()
+    expect(container.querySelector(".connection-preview-path")).not.toBeInTheDocument()
   })
 
   it("creates a reaction edge with keyboard-accessible node handles", () => {

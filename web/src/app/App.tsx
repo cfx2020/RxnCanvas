@@ -1639,7 +1639,7 @@ export function App() {
     }
   }, [inspectorMode])
 
-  const startConnection = useCallback((event: PointerEvent<HTMLElement>, sourceId: string, stepRole?: "release") => {
+  const startConnection = useCallback((event: PointerEvent<HTMLElement>, sourceId: string, stepRole?: "addition") => {
     startConnectionAction({
       event,
       sourceId,
@@ -1658,7 +1658,7 @@ export function App() {
     })
   }, [appStateSetters, screenToWorld])
 
-  const completeConnectionToNode = useCallback((event: PointerEvent<HTMLElement>, targetId: string, targetStepRole?: "addition") => {
+  const completeConnectionToNode = useCallback((event: PointerEvent<HTMLElement>, targetId: string, targetStepRole?: "release") => {
     completeConnectionToNodeAction({
       event,
       targetId,

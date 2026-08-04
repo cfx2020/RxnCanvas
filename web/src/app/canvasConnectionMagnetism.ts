@@ -9,14 +9,14 @@ export type ConnectionMagnetTarget = {
   targetId: string
   point: Point
   distance: number
-  stepRole?: Extract<EdgeStepRole, "addition">
+  stepRole?: Extract<EdgeStepRole, "release">
 }
 
-export function connectionTargetAnchor(node: FlowNode, stepRole?: Extract<EdgeStepRole, "addition">): Point {
+export function connectionTargetAnchor(node: FlowNode, stepRole?: Extract<EdgeStepRole, "release">): Point {
   const size = flowNodeSize(node)
   return {
     x: node.position.x,
-    y: node.position.y + size.height * 0.5 - (stepRole === "addition" ? stepConnectorOffsetY : 0),
+    y: node.position.y + size.height * 0.5 - (stepRole === "release" ? stepConnectorOffsetY : 0),
   }
 }
 
@@ -31,7 +31,7 @@ export function nearestConnectionMagnetTarget({
   sourceId: string
   current: Point
   radius: number
-  sourceStepRole?: Extract<EdgeStepRole, "addition" | "release">
+  sourceStepRole?: Extract<EdgeStepRole, "addition">
 }): ConnectionMagnetTarget | null {
   let nearest: ConnectionMagnetTarget | null = null
 
@@ -43,7 +43,7 @@ export function nearestConnectionMagnetTarget({
       if (
         !nearest
         || distance < nearest.distance
-        || (distance === nearest.distance && candidate.stepRole === "addition" && nearest.stepRole !== "addition")
+        || (distance === nearest.distance && candidate.stepRole === "release" && nearest.stepRole !== "release")
       ) {
         nearest = {
           targetId: node.id,
@@ -60,11 +60,11 @@ export function nearestConnectionMagnetTarget({
 
 function connectionMagnetCandidates(
   node: FlowNode,
-  sourceStepRole?: Extract<EdgeStepRole, "addition" | "release">,
-): Array<{ point: Point; stepRole?: Extract<EdgeStepRole, "addition"> }> {
-  const candidates: Array<{ point: Point; stepRole?: Extract<EdgeStepRole, "addition"> }> = []
-  if (sourceStepRole !== "release" && node.pathRole !== "participant") {
-    candidates.push({ point: connectionTargetAnchor(node, "addition"), stepRole: "addition" })
+  sourceStepRole?: Extract<EdgeStepRole, "addition">,
+): Array<{ point: Point; stepRole?: Extract<EdgeStepRole, "release"> }> {
+  const candidates: Array<{ point: Point; stepRole?: Extract<EdgeStepRole, "release"> }> = []
+  if (sourceStepRole !== "addition") {
+    candidates.push({ point: connectionTargetAnchor(node, "release"), stepRole: "release" })
   }
   candidates.push({ point: connectionTargetAnchor(node) })
   return candidates

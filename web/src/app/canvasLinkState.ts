@@ -59,7 +59,7 @@ export function startConnectionDraftTransition(
   pointerId: number,
   sourceId: string,
   current: Point,
-  stepRole?: Extract<EdgeStepRole, "addition" | "release">,
+  stepRole?: Extract<EdgeStepRole, "addition">,
 ): StartConnectionDraftTransition {
   const connectionDraft: CanvasPointerDraft = { pointerId, sourceId, current }
   if (stepRole) connectionDraft.stepRole = stepRole
