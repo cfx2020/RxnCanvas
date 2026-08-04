@@ -7,6 +7,7 @@ import { Molecule3DmolViewer } from "./Molecule3DmolViewer"
 import { preload3Dmol } from "./Molecule3DmolViewer.loader"
 import { Molecule2DDepiction } from "./Molecule2DDepiction"
 import { preloadKetcherEditorHost } from "./KetcherEditorHost.loader"
+import { sourceFileDisplayGroupKey, sourceFileLooksLikeSolutionLog } from "./fileDisplay"
 
 export type InspectorMode = "inspector" | "export"
 
@@ -42,6 +43,7 @@ export const InspectorPanel = memo(function InspectorPanel({
         node={node}
         row={nodeRow}
         file={node ? sourceFileForNode(node, files) : file}
+        sourceFiles={node ? sourceFilesForNode(node, files) : sourceFilesForFile(file, files)}
         energyDisplayOptions={energyDisplayOptions}
         onOpenStructure={onOpenStructure}
         onReviewCandidates={onReviewCandidates}
@@ -55,6 +57,7 @@ function NodeInspector({
   node,
   row,
   file,
+  sourceFiles,
   energyDisplayOptions,
   onOpenStructure,
   onReviewCandidates,
@@ -63,6 +66,7 @@ function NodeInspector({
   node: FlowNode | null
   row: EnergyTableRow | null
   file: SourceFile | null
+  sourceFiles: SourceFile[]
   energyDisplayOptions: EnergyDisplayOptions
   onOpenStructure: (nodeId: string) => void
   onReviewCandidates: (fileId: string) => void
@@ -104,7 +108,7 @@ function NodeInspector({
             </dl>
           </section>
           <NodeSourceBrief
-            file={file}
+            files={sourceFiles}
             onReviewCandidates={onReviewCandidates}
             onOpenSourceFile={onOpenSourceFile}
           />
@@ -221,7 +225,7 @@ function NodeInspector({
       </section>
 
       <NodeSourceBrief
-        file={file}
+        files={sourceFiles}
         onReviewCandidates={onReviewCandidates}
         onOpenSourceFile={onOpenSourceFile}
       />
@@ -459,15 +463,15 @@ function parseGaussianFloat(value: string): number {
 }
 
 function NodeSourceBrief({
-  file,
+  files,
   onReviewCandidates,
   onOpenSourceFile,
 }: {
-  file: SourceFile | null
+  files: SourceFile[]
   onReviewCandidates: (fileId: string) => void
   onOpenSourceFile: (fileId: string) => void | Promise<void>
 }) {
-  if (!file) {
+  if (files.length === 0) {
     return (
       <section className="node-source-brief is-empty" aria-label="Source inspector">
         <FilePlus2 size={16} aria-hidden="true" />
@@ -475,32 +479,45 @@ function NodeSourceBrief({
       </section>
     )
   }
-  const canOpenRaw = Boolean(file.storedPath || file.sourcePath)
-  const candidateCount = file.parse?.objectCount ?? file.parse?.candidates?.length ?? 0
-
   return (
     <section className="node-source-brief" aria-label="Source inspector">
-      <div>
-        <span>Source</span>
-        <strong>{file.name}</strong>
-        <em>{file.kind} · {file.status}</em>
+      <div className="node-source-list">
+        <span className="node-source-heading">Source</span>
+        {files.map((file) => {
+          const canOpenRaw = Boolean(file.storedPath || file.sourcePath)
+          const candidateCount = file.parse?.objectCount ?? file.parse?.candidates?.length ?? 0
+          const sourceLabel = sourceFileLooksLikeSolutionLog(file) ? "Sol" : "Gas"
+          return (
+            <div className="node-source-row" key={file.id}>
+              <div>
+                <strong>{file.name}</strong>
+                <em>{sourceLabel} · {file.kind} · {file.status}</em>
+              </div>
+              <span className="node-source-actions">
+                {candidateCount > 1 ? (
+                  <button
+                    type="button"
+                    aria-label={files.length > 1 ? `Review candidates for ${file.name}` : "Review candidates"}
+                    title="Review candidates"
+                    onClick={() => onReviewCandidates(file.id)}
+                  >
+                    {candidateCount}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label={files.length > 1 ? `Open ${sourceLabel.toLowerCase()} source with external app` : "Open with external app"}
+                  disabled={!canOpenRaw}
+                  title={canOpenRaw ? "Open with external app" : "No project copy or source path is available"}
+                  onClick={() => void onOpenSourceFile(file.id)}
+                >
+                  <ExternalLink size={14} aria-hidden="true" />
+                </button>
+              </span>
+            </div>
+          )
+        })}
       </div>
-      <span className="node-source-actions">
-        {candidateCount > 1 ? (
-          <button type="button" aria-label="Review candidates" title="Review candidates" onClick={() => onReviewCandidates(file.id)}>
-            {candidateCount}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          aria-label="Open with external app"
-          disabled={!canOpenRaw}
-          title={canOpenRaw ? "Open with external app" : "No project copy or source path is available"}
-          onClick={() => void onOpenSourceFile(file.id)}
-        >
-          <ExternalLink size={14} aria-hidden="true" />
-        </button>
-      </span>
     </section>
   )
 }
@@ -914,6 +931,19 @@ function fallbackSourceFile(node: FlowNode): SourceFile {
 
 export function sourceFileForNode(node: FlowNode, files: SourceFile[]): SourceFile | null {
   return node.sourceFileId ? files.find((file) => file.id === node.sourceFileId) ?? null : null
+}
+
+export function sourceFilesForNode(node: FlowNode, files: SourceFile[]): SourceFile[] {
+  const file = sourceFileForNode(node, files)
+  return sourceFilesForFile(file, files)
+}
+
+function sourceFilesForFile(file: SourceFile | null, files: SourceFile[]): SourceFile[] {
+  if (!file) return []
+  const groupKey = sourceFileDisplayGroupKey(file)
+  return files
+    .filter((candidate) => sourceFileDisplayGroupKey(candidate) === groupKey)
+    .sort((left, right) => Number(sourceFileLooksLikeSolutionLog(left)) - Number(sourceFileLooksLikeSolutionLog(right)))
 }
 
 export function sourceCoordinatePreview(node: FlowNode, file: SourceFile | null) {

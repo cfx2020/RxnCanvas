@@ -5383,6 +5383,27 @@ select,
   padding: 8px 9px;
 }
 
+.node-source-list {
+  display: grid;
+  gap: 7px;
+}
+
+.node-source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.node-source-row > div {
+  min-width: 0;
+}
+
+.node-source-heading {
+  display: block;
+}
+
 .node-source-brief.is-empty {
   grid-template-columns: auto minmax(0, 1fr);
   color: #6e8294;

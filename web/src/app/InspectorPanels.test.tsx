@@ -7,6 +7,7 @@ import {
   InspectorPanel,
   StructurePreviewDialog,
   sourceFileForNode,
+  sourceFilesForNode,
 } from "./InspectorPanels"
 import { defaultEnergyDisplayOptions } from "./energyDisplay"
 import { candidateReviewKey, nodeKindFromCandidate, type CandidateReviewEntry } from "./importRegistration"
@@ -100,6 +101,16 @@ function sourceFile(parse = sourceParseResult()): SourceFile {
     status: "parsed",
     preview: "SCF Done: E(RwB97XD) = -100.1",
     parse,
+  }
+}
+
+function solutionSourceFile(): SourceFile {
+  return {
+    ...sourceFile(),
+    id: "source-a-sol",
+    name: "geometry-sol.log",
+    kind: "Gaussian",
+    storedPath: "sources/geometry-sol.log",
   }
 }
 
@@ -251,6 +262,38 @@ describe("InspectorPanels", () => {
     expect(screen.queryByText("gaussian-log-text-preview")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Review candidates" })).toBeInTheDocument()
     expect(onReviewCandidates).not.toHaveBeenCalled()
+  })
+
+  it("shows gas and solution source actions for a node", () => {
+    const gas = { ...sourceFile(), storedPath: "sources/geometry.log" }
+    const solution = solutionSourceFile()
+    const onOpenSourceFile = vi.fn()
+
+    expect(sourceFilesForNode(baseNode, [solution, gas])).toEqual([gas, solution])
+
+    render(
+      <InspectorPanel
+        node={baseNode}
+        file={gas}
+        rows={[]}
+        files={[solution, gas]}
+        energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
+        onReviewCandidates={vi.fn()}
+        onOpenStructure={vi.fn()}
+        onEdit2DStructure={vi.fn()}
+        onReset2DStructure={vi.fn()}
+        onOpenSourceFile={onOpenSourceFile}
+      />,
+    )
+
+    expect(screen.getByText("geometry.log")).toBeInTheDocument()
+    expect(screen.getByText("geometry-sol.log")).toBeInTheDocument()
+    const gasButton = screen.getByRole("button", { name: "Open gas source with external app" })
+    const solutionButton = screen.getByRole("button", { name: "Open sol source with external app" })
+    fireEvent.click(gasButton)
+    fireEvent.click(solutionButton)
+    expect(onOpenSourceFile).toHaveBeenNthCalledWith(1, gas.id)
+    expect(onOpenSourceFile).toHaveBeenNthCalledWith(2, solution.id)
   })
 
   it("keeps candidate review selection keys and display labels stable", () => {
