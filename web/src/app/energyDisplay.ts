@@ -194,18 +194,31 @@ export function energyTableRows(
   const baselineExpressionTerms = useModelBaselineTerms
     ? modelBaselineTerms ?? []
     : baselineNode ? model.termsByNodeId.get(baselineNode.id) ?? nodeSelfTerms(nodeById, baselineNode.id) : null
+  const standaloneBaselineTerms = baselineExpressionTerms?.length === 0 && baselineNode
+    ? nodeSelfTerms(nodeById, baselineNode.id)
+    : null
+  const standaloneBaselineTable = standaloneBaselineTerms
+    ? evaluateExpressionEnergyTable(standaloneBaselineTerms, nodeById)
+    : null
+  const standaloneBaselineKcal = standaloneBaselineTerms
+    ? evaluateExpressionKcal(standaloneBaselineTerms, nodeById, options)
+    : null
 
   return nodes.map((node) => {
     const role = model.roleByNodeId.get(node.id) ?? "standalone"
     const showInRelativeTable = model.relativeTableVisibilityByNodeId.get(node.id) ?? true
     const canCalculateRelative = showInRelativeTable && !relativeEnergyRoleIsTerm(role)
+    const useStandaloneBaseline = role === "standalone" && standaloneBaselineTerms !== null
     const expressionTerms = model.termsByNodeId.get(node.id) ?? nodeSelfTerms(nodeById, node.id)
     const expressionTable = expressionTableByNodeId.get(node.id) ?? null
     const expressionKcal = expressionKcalByNodeId.get(node.id) ?? null
-    const relativeEnergyTable = canCalculateRelative ? subtractEnergyTables(expressionTable, baselineTable) : null
-    const relative = !canCalculateRelative || typeof expressionKcal !== "number" || typeof baselineKcal !== "number"
+    const relativeBaselineTable = useStandaloneBaseline ? standaloneBaselineTable : baselineTable
+    const relativeBaselineKcal = useStandaloneBaseline ? standaloneBaselineKcal : baselineKcal
+    const relativeEnergyTable = canCalculateRelative ? subtractEnergyTables(expressionTable, relativeBaselineTable) : null
+    const relative = !canCalculateRelative || typeof expressionKcal !== "number" || typeof relativeBaselineKcal !== "number"
       ? null
-      : expressionKcal - baselineKcal
+      : expressionKcal - relativeBaselineKcal
+    const relativeBaselineExpressionTerms = useStandaloneBaseline ? standaloneBaselineTerms : baselineExpressionTerms
     return {
       nodeId: node.id,
       label: node.label,
@@ -222,7 +235,9 @@ export function energyTableRows(
       relativeRole: role,
       showInRelativeTable,
       expressionTerms,
-      relativeExpressionTerms: !canCalculateRelative || !baselineExpressionTerms ? [] : relativeExpressionTerms(expressionTerms, baselineExpressionTerms),
+      relativeExpressionTerms: !canCalculateRelative || !relativeBaselineExpressionTerms
+        ? []
+        : relativeExpressionTerms(expressionTerms, relativeBaselineExpressionTerms),
     }
   })
 }

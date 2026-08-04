@@ -250,6 +250,27 @@ describe("energyDisplay", () => {
     expect(rowById(connectedRows, "upper-product").relative).toBeCloseTo(130)
     expect(rowById(connectedRows, "lower-product").relative).toBeNull()
   })
+
+  it("keeps standalone nodes relative when a path edge introduces a zero expression", () => {
+    const nodes = [
+      irNode("base", "base", -100, -100),
+      irNode("connected", "connected", -99.9, -99.9),
+      irNode("standalone", "standalone", -99.8, -99.8),
+    ]
+
+    const rows = energyTableRows(nodes, defaultEnergyDisplayOptions, [edge("base", "connected")])
+
+    expect(rowById(rows, "base").relative).toBeCloseTo(0)
+    expect(rowById(rows, "connected").relative).toBeCloseTo(62.7509, 3)
+    expect(rowById(rows, "standalone").relative).toBeCloseTo(125.5019, 3)
+    expect((rowById(rows, "standalone").relativeEnergyTable?.gsolHartree ?? 0)).toBeCloseTo(0.2, 8)
+
+    const explicitlyRootedRows = energyTableRows(nodes, {
+      ...defaultEnergyDisplayOptions,
+      baselineNodeId: "base",
+    }, [edge("base", "connected")])
+    expect(rowById(explicitlyRootedRows, "standalone").relative).toBeCloseTo(125.5019, 3)
+  })
 })
 
 function irNode(
