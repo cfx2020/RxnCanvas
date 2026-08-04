@@ -207,13 +207,17 @@ describe("ProjectRail", () => {
   })
 
   it("only enables native file dragging while a pointer drag is armed", () => {
-    renderRail([sourceFile("file-0", "File-0.log", parsedSource("File-0"))])
+    renderRail([
+      sourceFile("file-0", "File-0.log", parsedSource("File-0")),
+      sourceFile("file-0-sol", "File-0-sol.log", parsedSource("File-0-sol")),
+    ])
 
-    const firstFile = screen.getByRole("button", { name: /^File-0\.log Gaussian/ })
+    const firstFile = screen.getByRole("button", { name: /^File-0 Gaussian/ })
     const fileCard = firstFile.closest(".project-file-card") as HTMLDivElement
     const dataTransfer = {
       effectAllowed: "none",
       setData: vi.fn(),
+      setDragImage: vi.fn(),
     }
 
     expect(fileCard.draggable).toBe(false)
@@ -226,9 +230,17 @@ describe("ProjectRail", () => {
     fireEvent.dragStart(fileCard, { dataTransfer })
     fireEvent.pointerUp(fileCard, { button: 0 })
     expect(fileCard.draggable).toBe(true)
+    expect(document.querySelector(".project-file-drag-ghost-label")?.textContent).toBe("File-0")
+    expect(document.querySelector(".project-file-drag-ghost")?.parentElement).toBe(document.body)
     fireEvent.dragEnd(fileCard, { dataTransfer })
     expect(fileCard.draggable).toBe(false)
     expect(dataTransfer.setData).toHaveBeenCalled()
+    expect(dataTransfer.setDragImage).toHaveBeenCalledWith(
+      expect.objectContaining({ className: "project-file-drag-ghost" }),
+      18,
+      18,
+    )
+    expect(document.querySelector(".project-file-drag-ghost")).toBeNull()
   })
 
   it("adjusts and persists the Projects and Files panel split", () => {

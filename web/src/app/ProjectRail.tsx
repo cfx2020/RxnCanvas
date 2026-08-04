@@ -929,6 +929,7 @@ function ProjectFileRow({
   const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
   const suppressNextClickRef = useRef(false)
   const dragInProgressRef = useRef(false)
+  const dragGhostRef = useRef<HTMLDivElement | null>(null)
   const parsing = group.hasPendingParse
   const parseIssue = group.files.map(sourceFileParseIssue).find((issue) => issue !== null) ?? null
   const parseIssueTitle = parseIssue ? `${parseIssue.file.name}: ${parseIssue.message}` : undefined
@@ -939,6 +940,13 @@ function ProjectFileRow({
     : undefined
   const fileStatusTitle = [missingPairTitle, parseIssueTitle].filter(Boolean).join(" - ") || undefined
   const fileAriaLabel = `${group.displayName} ${group.displayKind}${fileStatusTitle ? `, ${fileStatusTitle}` : ""}`
+
+  const removeDragGhost = () => {
+    dragGhostRef.current?.remove()
+    dragGhostRef.current = null
+  }
+
+  useEffect(() => () => removeDragGhost(), [])
 
   const selectFromEvent = (event: MouseEvent<HTMLButtonElement>) => {
     if (suppressNextClickRef.current) {
@@ -973,6 +981,33 @@ function ProjectFileRow({
     event.dataTransfer.effectAllowed = "copy"
     event.dataTransfer.setData(projectFileDragMimeType, JSON.stringify(payload))
     event.dataTransfer.setData("text/plain", payloadFiles.map((item) => projectFileDragPath(item)).join("\n"))
+
+    removeDragGhost()
+    const ghost = document.createElement("div")
+    ghost.className = "project-file-drag-ghost"
+    ghost.setAttribute("aria-hidden", "true")
+
+    const sourceIcon = event.currentTarget.querySelector<HTMLElement>(".project-file-kind-icon")
+    if (sourceIcon) {
+      const icon = sourceIcon.cloneNode(true)
+      if (icon instanceof HTMLElement) {
+        icon.className = `project-file-drag-ghost-icon kind-${group.displayKind.toLowerCase()}`
+      }
+      ghost.append(icon)
+    }
+
+    const label = document.createElement("span")
+    label.className = "project-file-drag-ghost-label"
+    label.textContent = selected && selectedFiles.length > 1
+      ? selectedFiles.map((item) => item.name).join(", ")
+      : group.displayName
+    ghost.append(label)
+
+    document.body.append(ghost)
+    dragGhostRef.current = ghost
+    if (typeof event.dataTransfer.setDragImage === "function") {
+      event.dataTransfer.setDragImage(ghost, 18, 18)
+    }
   }
 
   const armDrag = (event: PointerEvent<HTMLDivElement>) => {
@@ -988,11 +1023,13 @@ function ProjectFileRow({
   const cancelDrag = (event: PointerEvent<HTMLDivElement>) => {
     dragInProgressRef.current = false
     event.currentTarget.draggable = false
+    removeDragGhost()
   }
 
   const finishDrag = (event: DragEvent<HTMLDivElement>) => {
     dragInProgressRef.current = false
     event.currentTarget.draggable = false
+    removeDragGhost()
   }
 
   return (

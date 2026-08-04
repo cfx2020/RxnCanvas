@@ -16785,6 +16785,72 @@ select,
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.34);
 }
 
+.project-file-drag-ghost {
+  position: fixed;
+  top: -10000px;
+  left: -10000px;
+  z-index: 9999;
+  display: flex;
+  width: max-content;
+  min-width: 180px;
+  max-width: min(360px, calc(100vw - 32px));
+  height: 36px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px 0 9px;
+  overflow: hidden;
+  border: 1px solid rgba(31, 162, 131, 0.2);
+  border-radius: 16px;
+  background: rgba(226, 249, 244, 0.98);
+  box-shadow: none;
+  color: #0f6f61;
+  contain: strict;
+  isolation: isolate;
+  pointer-events: none;
+  user-select: none;
+}
+
+.project-file-drag-ghost-icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(196, 231, 224, 0.98);
+  color: #247f70;
+}
+
+.project-file-drag-ghost-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.project-file-drag-ghost-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 1;
+}
+
+.app-shell.theme-dark .project-file-drag-ghost {
+  border-color: rgba(126, 218, 203, 0.24);
+  background: rgba(24, 65, 69, 0.98);
+  box-shadow: none;
+  color: #c9f1e8;
+}
+
+.app-shell.theme-dark .project-file-drag-ghost-icon {
+  background: rgba(55, 111, 111, 0.98);
+  color: #b7eee1;
+}
+
 .app-shell.theme-dark .source-browser-menu > button:hover,
 .app-shell.theme-dark .source-browser-menu > button:focus-visible {
   background: rgba(197, 221, 235, 0.075);
