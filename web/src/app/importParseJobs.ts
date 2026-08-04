@@ -52,6 +52,14 @@ export function desktopImportFileWithReplacementIdentity(
   }
 }
 
+export function accumulatedDesktopImportFiles(
+  completedFilesById: Map<string, ImportSourceFile>,
+  parsedFiles: ImportSourceFile[],
+): ImportSourceFile[] {
+  for (const parsedFile of parsedFiles) completedFilesById.set(parsedFile.id, parsedFile)
+  return Array.from(completedFilesById.values())
+}
+
 function normalizedImportFileName(name: string): string {
   return name.trim().toLowerCase()
 }

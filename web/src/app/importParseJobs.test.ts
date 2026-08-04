@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import type { SourceParseResult } from "../domain/sourceParsers"
 import type { RxnflowDesktopApi } from "./appRuntimeEffects"
 import {
+  accumulatedDesktopImportFiles,
   createAnimationFrameBatcher,
   desktopImportFilesWithProjectTargets,
   desktopImportFileWithReplacementIdentity,
@@ -98,6 +99,17 @@ function flushPromises() {
 }
 
 describe("importParseJobs", () => {
+  it("keeps completed import results in later frame batches", () => {
+    const completedFilesById = new Map<string, ImportSourceFile>()
+    const first = { ...importSourceFile("first"), status: "parsed" as const, parse: parseResult("first") }
+    const second = { ...importSourceFile("second"), status: "parsed" as const, parse: parseResult("second") }
+    const updatedFirst = { ...first, checksum: `sha256:${"a".repeat(64)}` }
+
+    expect(accumulatedDesktopImportFiles(completedFilesById, [first])).toEqual([first])
+    expect(accumulatedDesktopImportFiles(completedFilesById, [second])).toEqual([first, second])
+    expect(accumulatedDesktopImportFiles(completedFilesById, [updatedFirst])).toEqual([updatedFirst, second])
+  })
+
   it("batches values queued in one animation frame by input order", async () => {
     let scheduledFrame: FrameRequestCallback | null = null
     const requestFrame = vi.fn((callback: FrameRequestCallback) => {

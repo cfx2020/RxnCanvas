@@ -232,6 +232,7 @@ import {
   toggleCandidateReviewSelectionAction,
 } from "./appImportActions"
 import {
+  accumulatedDesktopImportFiles,
   createAnimationFrameBatcher,
   desktopImportFilesWithProjectTargets,
   desktopImportFileWithReplacementIdentity,
@@ -1908,13 +1909,14 @@ export function App() {
     const replacementPlan = desktopImportFilesWithProjectTargets(importedFiles, projectFiles)
     let frameBatcher: AnimationFrameBatcher<ImportSourceFile> | null = null
     if (!autoRegister) {
+      const completedFilesById = new Map<string, ImportSourceFile>()
       frameBatcher = createAnimationFrameBatcher({
         onFlush: async (parsedFiles, lastQueuedFile) => {
           const currentBatcher = frameBatcher
           if (!currentBatcher || !desktopImportFrameBatchersRef.current.has(currentBatcher)) return
           await (stageSourceFilesForProjectRef.current ?? stageSourceFilesForProject)(
             projectId,
-            parsedFiles,
+            accumulatedDesktopImportFiles(completedFilesById, parsedFiles),
             {
               ...options,
               fileMode: "update",
