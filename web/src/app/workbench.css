@@ -16446,6 +16446,12 @@ select,
   box-shadow: none !important;
 }
 
+.project-rail .project-file-main:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+}
+
 .project-rail .project-file-card:hover .project-file-main > span:not(.project-file-kind-icon),
 .project-rail .project-file-card:focus-within .project-file-main > span:not(.project-file-kind-icon) {
   color: var(--rail-hover-text) !important;
@@ -16459,12 +16465,19 @@ select,
 
 .project-rail .project-file-card.is-active,
 .project-rail .project-file-card.project-file-card--selected {
-  background: var(--rail-mint-strong) !important;
+  background: var(--rail-hover) !important;
+  box-shadow: none !important;
 }
 
 .project-rail .project-file-card.is-active .project-file-main > span:not(.project-file-kind-icon),
 .project-rail .project-file-card.project-file-card--selected .project-file-main > span:not(.project-file-kind-icon) {
-  color: var(--rail-mint-text) !important;
+  color: var(--rail-hover-text) !important;
+}
+
+.project-rail .project-file-card.is-active .project-file-kind-icon,
+.project-rail .project-file-card.project-file-card--selected .project-file-kind-icon {
+  background: rgba(196, 222, 224, 0.96) !important;
+  color: var(--rail-hover-text) !important;
 }
 
 .project-rail .project-rail-item.is-active::before,
