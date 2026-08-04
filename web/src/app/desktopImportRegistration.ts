@@ -41,7 +41,24 @@ export async function automaticImportNodesFromPlan(
     "selected",
     importPlan.layout,
   )
-  return desktopNodes ?? importPlan.fallbackNodes
+  if (!desktopNodes) return importPlan.fallbackNodes
+
+  const desktopNodesBySource = new Map(
+    desktopNodes
+      .filter((node) => node.sourceFileId)
+      .map((node) => [importNodeSourceKey(node), node] as const),
+  )
+  const mergedNodes = importPlan.fallbackNodes.map((fallbackNode) => {
+    const desktopNode = desktopNodesBySource.get(importNodeSourceKey(fallbackNode))
+    if (!desktopNode) return fallbackNode
+    desktopNodesBySource.delete(importNodeSourceKey(fallbackNode))
+    return { ...desktopNode, position: fallbackNode.position }
+  })
+  return [...mergedNodes, ...desktopNodesBySource.values()]
+}
+
+function importNodeSourceKey(node: Pick<FlowNode, "sourceFileId" | "sourceCandidateId">): string {
+  return `${node.sourceFileId ?? ""}\u0000${node.sourceCandidateId ?? ""}`
 }
 
 export async function registeredOrFallbackNodesFromEntries(

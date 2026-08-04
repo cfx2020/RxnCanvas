@@ -111,12 +111,6 @@ export const ProjectRail = memo(function ProjectRail({
   const fileContextMenuRef = useRef<HTMLDivElement | null>(null)
   const fileToolsPanelRef = useRef<HTMLDivElement | null>(null)
   const selectedFileSet = useMemo(() => new Set(selectedFileIds), [selectedFileIds])
-  const selectedFiles = useMemo(
-    () => selectedFileIds
-      .map((id) => files.find((file) => file.id === id))
-      .filter((file): file is SourceFile => Boolean(file)),
-    [files, selectedFileIds],
-  )
   const fileGroups = useMemo(() => sourceFileGroupsForDisplay(files), [files])
   const [fileSearchQuery, setFileSearchQuery] = useState("")
   const [fileFilterMode, setFileFilterMode] = useState<FileFilterMode>("all")
@@ -591,11 +585,11 @@ export const ProjectRail = memo(function ProjectRail({
                 group={group}
                 active={group.files.some((file) => file.id === selectedFileId)}
                 selected={group.files.some((file) => selectedFileSet.has(file.id))}
-              selectedFiles={selectedFiles}
-              onSelect={onSelectFile}
-              onOpenContextMenu={openFileContextMenu}
-            />
-          ))}
+                selectedGroupFiles={selectedFileGroupFiles}
+                onSelect={onSelectFile}
+                onOpenContextMenu={openFileContextMenu}
+              />
+            ))}
           </RailSection>
         </div>
 
@@ -914,19 +908,19 @@ function ProjectFileRow({
   group,
   active,
   selected,
-  selectedFiles,
+  selectedGroupFiles,
   onSelect,
   onOpenContextMenu,
 }: {
   group: SourceFileGroup
   active: boolean
   selected: boolean
-  selectedFiles: SourceFile[]
+  selectedGroupFiles: SourceFile[]
   onSelect: (fileId: string, options?: FileSelectionOptions) => void
   onOpenContextMenu: (group: SourceFileGroup, event: MouseEvent<HTMLDivElement>) => void
 }) {
   const { primaryFile } = group
-  const filesForDrag = selected && selectedFiles.length > 1 ? selectedFiles : group.files
+  const filesForDrag = selected && selectedGroupFiles.length > 0 ? selectedGroupFiles : group.files
   const suppressNextClickRef = useRef(false)
   const dragInProgressRef = useRef(false)
   const dragGhostRef = useRef<HTMLDivElement | null>(null)
@@ -998,8 +992,8 @@ function ProjectFileRow({
 
     const label = document.createElement("span")
     label.className = "project-file-drag-ghost-label"
-    label.textContent = selected && selectedFiles.length > 1
-      ? selectedFiles.map((item) => item.name).join(", ")
+    label.textContent = selected && selectedGroupFiles.length > group.files.length
+      ? selectedGroupFiles.map((item) => item.name).join(", ")
       : group.displayName
     ghost.append(label)
 

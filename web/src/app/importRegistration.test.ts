@@ -392,6 +392,47 @@ describe("importRegistration", () => {
     })
   })
 
+  it("keeps paired fallback nodes when desktop registration handles other files", async () => {
+    const gas = { ...sourceFile("pair-gas", parseResult([candidate({ candidateId: "pair-gas", label: "Pair" })])), name: "pair.log" }
+    const solution = { ...sourceFile("pair-sol", parseResult([candidate({ candidateId: "pair-sol", label: "Pair solution" })])), name: "pair_sol.log" }
+    const single = { ...sourceFile("single", parseResult([candidate({ candidateId: "single", label: "Single" })])), name: "single.log" }
+    const plan = buildImportPlan([gas, solution, single], layout)
+    const desktopRegister = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        registeredObjects: [{
+          id: "desktop-single",
+          label: "Desktop Single",
+          formula: "C2H4",
+          kind: "product" as const,
+          method: "M06-2X",
+          solvent: "SMD",
+          energyGas: -10,
+          energySolution: -11,
+          energyUnit: "hartree" as const,
+          sourceStatus: "parsed" as const,
+          sourceFileId: "single",
+          sourceFileName: "single.log",
+          sourceCandidateId: "single",
+          sourceObjectIndex: 0,
+          parserId: "ipc",
+          parserVersion: "1",
+          roleHint: "final",
+          charge: 0,
+          spinMultiplicity: 1,
+        }],
+        files: [],
+      },
+    }))
+
+    const nodes = await automaticImportNodesFromPlan(desktopRegister, plan)
+
+    expect(nodes).toHaveLength(2)
+    expect(nodes.map((node) => node.label)).toEqual(["Pair", "Desktop Single"])
+    expect(nodes[0]).toMatchObject({ sourceFileId: "pair-gas", sourceCandidateId: "pair-gas", position: { x: 10, y: 20 } })
+    expect(nodes[1]).toMatchObject({ sourceFileId: "single", sourceCandidateId: "single", position: { x: 10, y: 280 } })
+  })
+
   it("selects source files by ids while preserving requested order and ignoring missing ids", () => {
     const files = [sourceFile("a"), sourceFile("b"), sourceFile("c")]
 

@@ -1519,6 +1519,46 @@ describe("App", () => {
     expect(row).toHaveAttribute("draggable", "false")
   })
 
+  it("drags all source files from Shift-selected structure rows", async () => {
+    render(<App />)
+
+    const input = screen.getByLabelText("Import calculation files")
+    const files = [
+      new File(["SCF Done: E(RwB97XD) = -101.0"], "Batch-a.log", { type: "text/plain" }),
+      new File(["SCF Done: E(RwB97XD) = -101.2"], "Batch-a_sol.log", { type: "text/plain" }),
+      new File(["SCF Done: E(RwB97XD) = -102.0"], "Batch-b.log", { type: "text/plain" }),
+      new File(["SCF Done: E(RwB97XD) = -102.2"], "Batch-b_sol.log", { type: "text/plain" }),
+    ]
+    await act(async () => {
+      fireEvent.change(input, { target: { files } })
+      await Promise.resolve()
+    })
+
+    const rail = screen.getByRole("complementary", { name: "Project rail" })
+    const firstButton = await within(rail).findByRole("button", { name: fileButtonName("Batch-a", "Gaussian") })
+    const secondButton = await within(rail).findByRole("button", { name: fileButtonName("Batch-b", "Gaussian") })
+    fireEvent.click(firstButton)
+    fireEvent.click(secondButton, { shiftKey: true })
+
+    const firstRow = firstButton.closest(".project-file-card") as HTMLElement
+    const secondRow = secondButton.closest(".project-file-card") as HTMLElement
+    expect(firstRow).toHaveClass("project-file-card--selected")
+    expect(secondRow).toHaveClass("project-file-card--selected")
+
+    const dataTransfer = new TestDataTransfer()
+    fireEvent.dragStart(secondRow, { dataTransfer })
+    const payload = JSON.parse(dataTransfer.getData("application/x-rxnflow-raw-file"))
+
+    expect(payload.kind).toBe("project-files")
+    expect(payload.files).toHaveLength(4)
+    expect(payload.files.map((file: { path: string }) => file.path)).toEqual(expect.arrayContaining([
+      expect.stringContaining("Batch-a.log"),
+      expect.stringContaining("Batch-a_sol.log"),
+      expect.stringContaining("Batch-b.log"),
+      expect.stringContaining("Batch-b_sol.log"),
+    ]))
+  })
+
   it("keeps failed browser-preview solution logs grouped but unavailable for solvation pairing", async () => {
     render(<App />)
 
