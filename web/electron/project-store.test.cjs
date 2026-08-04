@@ -337,6 +337,35 @@ test("planned source paths are stable for the same name and distinct after sanit
   )
 })
 
+test("keeps normal hyphenated and underscored solution log filenames without adding a hash", () => {
+  assert.equal(
+    defaultImportStoredPathForFile({ name: "7a-1fix-ts-sol.log" }, 0),
+    "sources/7a-1fix-ts-sol.log",
+  )
+  assert.equal(
+    defaultImportStoredPathForFile({ name: "7a-1fix-ts_sol.log" }, 0),
+    "sources/7a-1fix-ts_sol.log",
+  )
+})
+
+test("materializes an underscored solution log without adding a hash", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-underscore-sol-name-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "underscore-sol.rxnflow")
+  const sourcePath = path.join(tempDirectory, "7a-1fix-ts_sol.log")
+  fs.mkdirSync(projectDirectory, { recursive: true })
+  fs.writeFileSync(sourcePath, "solution source", "utf8")
+
+  const materialized = await materializeImportSourceFile(projectDirectory, {
+    id: "underscore-sol",
+    name: "7a-1fix-ts_sol.log",
+    sourcePath,
+  }, 0)
+
+  assert.equal(materialized.storedPath, "sources/7a-1fix-ts_sol.log")
+  assert.equal(fs.readFileSync(path.join(projectDirectory, materialized.storedPath), "utf8"), "solution source")
+})
+
 test("same-name imports replace the project source in request order", async (t) => {
   const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-import-collision-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))

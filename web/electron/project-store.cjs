@@ -778,12 +778,20 @@ function safeSourceFileName(file, index) {
   const normalizedOriginalName = path.basename(originalName).trim().toLowerCase()
   const extension = safeExtension(path.extname(originalName))
   const originalStem = path.basename(originalName, path.extname(originalName)).trim().toLowerCase()
-  const baseName = safeStem(originalStem) || "source"
+  const baseName = safeSourceStem(originalStem) || "source"
   const safeName = `${baseName}${extension}`
   const uniqueBaseName = normalizedOriginalName === safeName
     ? baseName
     : `${baseName}-${crypto.createHash("sha256").update(normalizedOriginalName).digest("hex").slice(0, 16)}`
   return `${uniqueBaseName}${extension}`
+}
+
+function safeSourceStem(value) {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "")
 }
 
 function withFileNameSuffix(fileName, suffix) {
