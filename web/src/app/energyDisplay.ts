@@ -165,7 +165,7 @@ export function energyTableRows(
   options: EnergyDisplayOptions,
   edges: FlowEdge[] = [],
 ): EnergyTableRow[] {
-  const model = deriveEnergyGraphModel(nodes, edges)
+  const model = deriveEnergyGraphModel(nodes, edges, options.baselineNodeId)
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   const baselineNode = relativeEnergyZeroNode(nodes, options, edges)
   const expressionTableByNodeId = new Map<string, ParsedEnergyTableData | null>()
@@ -197,11 +197,13 @@ export function energyTableRows(
 
   return nodes.map((node) => {
     const role = model.roleByNodeId.get(node.id) ?? "standalone"
+    const showInRelativeTable = model.relativeTableVisibilityByNodeId.get(node.id) ?? true
+    const canCalculateRelative = showInRelativeTable && !relativeEnergyRoleIsTerm(role)
     const expressionTerms = model.termsByNodeId.get(node.id) ?? nodeSelfTerms(nodeById, node.id)
     const expressionTable = expressionTableByNodeId.get(node.id) ?? null
     const expressionKcal = expressionKcalByNodeId.get(node.id) ?? null
-    const relativeEnergyTable = relativeEnergyRoleIsTerm(role) ? null : subtractEnergyTables(expressionTable, baselineTable)
-    const relative = relativeEnergyRoleIsTerm(role) || typeof expressionKcal !== "number" || typeof baselineKcal !== "number"
+    const relativeEnergyTable = canCalculateRelative ? subtractEnergyTables(expressionTable, baselineTable) : null
+    const relative = !canCalculateRelative || typeof expressionKcal !== "number" || typeof baselineKcal !== "number"
       ? null
       : expressionKcal - baselineKcal
     return {
@@ -218,9 +220,9 @@ export function energyTableRows(
       relativeEnergyTable,
       relative,
       relativeRole: role,
-      showInRelativeTable: model.relativeTableVisibilityByNodeId.get(node.id) ?? true,
+      showInRelativeTable,
       expressionTerms,
-      relativeExpressionTerms: relativeEnergyRoleIsTerm(role) || !baselineExpressionTerms ? [] : relativeExpressionTerms(expressionTerms, baselineExpressionTerms),
+      relativeExpressionTerms: !canCalculateRelative || !baselineExpressionTerms ? [] : relativeExpressionTerms(expressionTerms, baselineExpressionTerms),
     }
   })
 }
@@ -566,7 +568,11 @@ export function nodeFooterText(node: FlowNode): string {
   return "Registered"
 }
 
-function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGraphModel {
+function deriveEnergyGraphModel(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  selectedBaselineNodeId: string | null = null,
+): EnergyGraphModel {
   const defaultModel = defaultEnergyGraphModel(nodes)
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]))
@@ -581,6 +587,7 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
       && nodeById.has(edge.sourceId)
       && nodeById.has(edge.targetId)
   })
+  const pathEdgeNodeIds = new Set(pathEdges.flatMap((edge) => [edge.sourceId, edge.targetId]))
   const successors = new Map<string, string[]>()
   const predecessors = new Map<string, string[]>()
 
@@ -595,9 +602,15 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
   for (const list of successors.values()) list.sort((a, b) => (nodeOrder.get(a) ?? 0) - (nodeOrder.get(b) ?? 0))
 
   const hasPathConnectivity = pathEdges.length > 0
-  const mainPath = hasPathConnectivity && pathNodes.length > 0 ? longestDirectedPath(pathNodes, successors, predecessors) : []
+  const selectedPathComponentIds = selectedBaselineNodeId && pathNodes.some((node) => node.id === selectedBaselineNodeId)
+    ? connectedPathNodeIds(selectedBaselineNodeId, successors, predecessors)
+    : null
+  const modelPathNodes = selectedPathComponentIds
+    ? pathNodes.filter((node) => selectedPathComponentIds.has(node.id))
+    : pathNodes
+  const mainPath = hasPathConnectivity && modelPathNodes.length > 0 ? longestDirectedPath(modelPathNodes, successors, predecessors) : []
   const baselineId = mainPath[0]
-    ?? pathNodes.find((node) => nodeEnergyForRelative(node, defaultEnergyDisplayOptions.energySource) !== null)?.id
+    ?? modelPathNodes.find((node) => nodeEnergyForRelative(node, defaultEnergyDisplayOptions.energySource) !== null)?.id
     ?? defaultModel.defaultBaselineNodeId
   const additionsByPathNodeId = new Map<string, string[]>()
   const releasesAfterPathNodeId = new Map<string, string[]>()
@@ -671,7 +684,10 @@ function deriveEnergyGraphModel(nodes: FlowNode[], edges: FlowEdge[]): EnergyGra
 
   for (const node of pathNodes) {
     const context = contextByNodeId.get(node.id)
-    if (!context) continue
+    if (!context) {
+      if (pathEdgeNodeIds.has(node.id)) relativeTableVisibilityByNodeId.set(node.id, false)
+      continue
+    }
     if (node.id === baselineId && !pathStartsWithParticipantAddition) {
       roleByNodeId.set(node.id, "baseline")
       termsByNodeId.set(node.id, [])
@@ -855,6 +871,24 @@ function longestDirectedPath(
     if (betterPath(candidate, best)) best = candidate
   }
   return best
+}
+
+function connectedPathNodeIds(
+  startId: string,
+  successors: Map<string, string[]>,
+  predecessors: Map<string, string[]>,
+): Set<string> {
+  const connected = new Set<string>([startId])
+  const queue = [startId]
+  for (let index = 0; index < queue.length; index += 1) {
+    const nodeId = queue[index]
+    for (const adjacentId of [...(successors.get(nodeId) ?? []), ...(predecessors.get(nodeId) ?? [])]) {
+      if (connected.has(adjacentId)) continue
+      connected.add(adjacentId)
+      queue.push(adjacentId)
+    }
+  }
+  return connected
 }
 
 function uniqueNodeIds(nodeIds: string[], nodeOrder: Map<string, number>): string[] {

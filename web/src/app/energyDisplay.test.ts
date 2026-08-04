@@ -206,6 +206,50 @@ describe("energyDisplay", () => {
     ])
     expect(product.relative).toBeCloseTo(106)
   })
+
+  it("keeps branched expressions rooted at the selected zero while unrelated path fragments stay pending", () => {
+    const nodes: FlowNode[] = [
+      kcalNode("base", "shared baseline", 1000),
+      kcalNode("upper-ts", "singlet TS", 1030),
+      kcalNode("lower-ts", "triplet TS", 1020),
+      kcalNode("upper-product", "singlet product", 1100),
+      kcalNode("upper-tail", "singlet tail", 1110),
+      kcalNode("upper-end", "singlet end", 1120),
+      kcalNode("lower-product", "triplet product", 1090),
+      kcalNode("lower-tail", "triplet tail", 1100),
+      kcalNode("released", "released species", 40, "participant"),
+      kcalNode("upper-added", "singlet additive", 10, "participant"),
+      kcalNode("lower-added", "triplet additive", 5, "participant"),
+    ]
+    const edges: FlowEdge[] = [
+      edge("base", "upper-ts"),
+      edge("base", "lower-ts"),
+      edge("base", "released", "release"),
+      edge("upper-added", "upper-ts", "addition"),
+      edge("lower-added", "lower-ts", "addition"),
+      edge("upper-product", "upper-tail"),
+      edge("upper-tail", "upper-end"),
+      edge("lower-product", "lower-tail"),
+    ]
+    const options = { ...defaultEnergyDisplayOptions, baselineNodeId: "base" }
+
+    const disconnectedRows = energyTableRows(nodes, options, edges)
+    expect(rowById(disconnectedRows, "upper-ts").relative).toBeCloseTo(60)
+    expect(rowById(disconnectedRows, "lower-ts").relative).toBeCloseTo(55)
+    expect(rowById(disconnectedRows, "upper-product").relative).toBeNull()
+    expect(rowById(disconnectedRows, "lower-product").relative).toBeNull()
+    expect(rowById(disconnectedRows, "upper-product").showInRelativeTable).toBe(false)
+    expect(rowById(disconnectedRows, "lower-product").showInRelativeTable).toBe(false)
+
+    const connectedRows = energyTableRows(nodes, options, [
+      ...edges,
+      edge("upper-ts", "upper-product"),
+    ])
+    expect(rowById(connectedRows, "upper-ts").relative).toBeCloseTo(60)
+    expect(rowById(connectedRows, "lower-ts").relative).toBeCloseTo(55)
+    expect(rowById(connectedRows, "upper-product").relative).toBeCloseTo(130)
+    expect(rowById(connectedRows, "lower-product").relative).toBeNull()
+  })
 })
 
 function irNode(
