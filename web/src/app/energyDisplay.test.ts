@@ -207,7 +207,7 @@ describe("energyDisplay", () => {
     expect(product.relative).toBeCloseTo(106)
   })
 
-  it("keeps branched expressions rooted at the selected zero while unrelated path fragments stay pending", () => {
+  it("keeps branched expressions rooted at the selected zero while disconnected path fragments use standalone values", () => {
     const nodes: FlowNode[] = [
       kcalNode("base", "shared baseline", 1000),
       kcalNode("upper-ts", "singlet TS", 1030),
@@ -236,10 +236,10 @@ describe("energyDisplay", () => {
     const disconnectedRows = energyTableRows(nodes, options, edges)
     expect(rowById(disconnectedRows, "upper-ts").relative).toBeCloseTo(60)
     expect(rowById(disconnectedRows, "lower-ts").relative).toBeCloseTo(55)
-    expect(rowById(disconnectedRows, "upper-product").relative).toBeNull()
-    expect(rowById(disconnectedRows, "lower-product").relative).toBeNull()
-    expect(rowById(disconnectedRows, "upper-product").showInRelativeTable).toBe(false)
-    expect(rowById(disconnectedRows, "lower-product").showInRelativeTable).toBe(false)
+    expect(rowById(disconnectedRows, "upper-product").relative).toBeCloseTo(100)
+    expect(rowById(disconnectedRows, "lower-product").relative).toBeCloseTo(90)
+    expect(rowById(disconnectedRows, "upper-product").showInRelativeTable).toBe(true)
+    expect(rowById(disconnectedRows, "lower-product").showInRelativeTable).toBe(true)
 
     const connectedRows = energyTableRows(nodes, options, [
       ...edges,
@@ -248,7 +248,7 @@ describe("energyDisplay", () => {
     expect(rowById(connectedRows, "upper-ts").relative).toBeCloseTo(60)
     expect(rowById(connectedRows, "lower-ts").relative).toBeCloseTo(55)
     expect(rowById(connectedRows, "upper-product").relative).toBeCloseTo(130)
-    expect(rowById(connectedRows, "lower-product").relative).toBeNull()
+    expect(rowById(connectedRows, "lower-product").relative).toBeCloseTo(90)
   })
 
   it("keeps standalone nodes relative when a path edge introduces a zero expression", () => {
@@ -270,6 +270,38 @@ describe("energyDisplay", () => {
       baselineNodeId: "base",
     }, [edge("base", "connected")])
     expect(rowById(explicitlyRootedRows, "standalone").relative).toBeCloseTo(125.5019, 3)
+  })
+
+  it("restores disconnected stale participants to standalone relative energy", () => {
+    const nodes = [
+      kcalNode("base", "zero", 0),
+      kcalNode("released", "i3-2", 15, "participant"),
+    ]
+
+    const released = rowById(energyTableRows(nodes, defaultEnergyDisplayOptions), "released")
+
+    expect(released.relativeRole).toBe("standalone")
+    expect(released.showInRelativeTable).toBe(true)
+    expect(released.relative).toBeCloseTo(15)
+  })
+
+  it("ignores a stale participant role when current edges make the node a path point", () => {
+    const nodes = [
+      kcalNode("base", "base", 0),
+      kcalNode("additive", "6a", 10, "participant"),
+      kcalNode("target", "S-s-i8-fix-t-tsr", 40, "participant"),
+      kcalNode("next", "next", 50),
+    ]
+    const edges = [
+      edge("base", "target"),
+      edge("additive", "target", "addition"),
+      edge("target", "next"),
+    ]
+
+    const target = rowById(energyTableRows(nodes, defaultEnergyDisplayOptions, edges), "target")
+
+    expect(target.relativeRole).toBe("path-point")
+    expect(target.relative).toBeCloseTo(30)
   })
 })
 

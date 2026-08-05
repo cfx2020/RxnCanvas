@@ -1,4 +1,5 @@
 import type { FlowBarrier, FlowEdge, FlowNode } from "../domain/projectPackages"
+import { reconcileEdgeDerivedPathRoles } from "../domain/reactionGraphRoles"
 import { hasCanvasSelection, type CanvasSelectionIds } from "./canvasSelectionState"
 export * from "./canvasMutationState"
 export * from "./canvasKeyboardState"
@@ -59,13 +60,15 @@ export function deleteCanvasSelection(
   const selectedEdgeIdSet = new Set(selection.edgeIds)
   const selectedBarrierIdSet = new Set(selection.barrierIds)
 
-  return {
-    nodes: collections.nodes.filter((node) => !selectedNodeIdSet.has(node.id)),
-    edges: collections.edges.filter((edge) => (
+  const nodes = collections.nodes.filter((node) => !selectedNodeIdSet.has(node.id))
+  const edges = collections.edges.filter((edge) => (
       !selectedEdgeIdSet.has(edge.id)
       && !selectedNodeIdSet.has(edge.sourceId)
       && !selectedNodeIdSet.has(edge.targetId)
-    )),
+    ))
+  return {
+    nodes: reconcileEdgeDerivedPathRoles(nodes, edges),
+    edges,
     barriers: collections.barriers.filter((barrier) => (
       !selectedBarrierIdSet.has(barrier.id)
       && !selectedNodeIdSet.has(barrier.sourceId)

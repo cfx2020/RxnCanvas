@@ -1,5 +1,6 @@
 import type { PointerEvent } from "react"
 import type { CanvasViewport, EdgeStepRole, FlowBarrier, FlowEdge, FlowNode, Point } from "../domain/projectPackages"
+import { reconcileEdgeDerivedPathRoles } from "../domain/reactionGraphRoles"
 import {
   connectionSnapRadiusPx,
   nearestConnectionMagnetTarget,
@@ -274,13 +275,11 @@ export function createConnectionEdgeAction({
   if (!transition) return
   const createdEdgeId = `edge-${now}`
   pushEditHistory()
-  if (stepRole && nodes) {
-    const participantId = stepRole === "addition" ? sourceId : targetId
-    appStateSetters.setNodes(nodes.map((node) => node.id === participantId ? { ...node, pathRole: "participant" } : node))
-  }
-  appStateSetters.setEdges(stepRole
+  const nextEdges = stepRole
     ? transition.items.filter((edge) => !sideSpeciesEdgeInvolvingNode(edge, stepRole === "addition" ? sourceId : targetId) || edge.id === createdEdgeId)
-    : transition.items)
+    : transition.items
+  if (nodes) appStateSetters.setNodes(reconcileEdgeDerivedPathRoles(nodes, nextEdges))
+  appStateSetters.setEdges(nextEdges)
   applyCanvasSelectionState(appStateSetters, transition.selection)
   appStateSetters.setInspectorMode("inspector")
 }

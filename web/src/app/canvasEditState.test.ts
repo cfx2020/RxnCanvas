@@ -936,6 +936,21 @@ describe("canvasEditState", () => {
     expect(result.barriers).toEqual([])
   })
 
+  it("clears a participant role when its side-species edge is deleted", () => {
+    const releasedNode = { ...nodes[1], pathRole: "participant" as const }
+    const result = deleteCanvasSelection({
+      nodes: [nodes[0], releasedNode],
+      edges: [{ id: "release-edge", sourceId: "node-a", targetId: "node-b", label: "path", stepRole: "release" }],
+      barriers: [],
+    }, {
+      nodeIds: [],
+      edgeIds: ["release-edge"],
+      barrierIds: [],
+    })
+
+    expect(result.nodes.find((node) => node.id === "node-b")?.pathRole).toBeUndefined()
+  })
+
   it("builds delete-selection transitions with interaction cleanup", () => {
     expect(deleteCanvasSelectionTransition({ nodes, edges, barriers }, {
       nodeIds: [],

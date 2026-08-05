@@ -1,4 +1,5 @@
 import type { EdgeStepRole, FlowEdge, FlowNode, NodeKind } from "../domain/projectPackages"
+import { sideSpeciesParticipantNodeIds } from "../domain/reactionGraphRoles"
 import type { ParsedEnergyTableData, ParsedEnergyUnit } from "../domain/sourceParsers"
 
 export type EnergyDisplayOptions = {
@@ -402,7 +403,8 @@ export function formatKcalNumber(value: number): string {
 
 function pathNodeOrder(nodes: FlowNode[], edges: FlowEdge[]): string[] {
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
-  const pathNodes = nodes.filter((node) => node.pathRole !== "participant")
+  const participantIds = sideSpeciesParticipantNodeIds(edges)
+  const pathNodes = nodes.filter((node) => !participantIds.has(node.id))
   const pathNodeIds = new Set(pathNodes.map((node) => node.id))
   const pathEdges = edges.filter((edge) => {
     const role = edgeStepRole(edge)
@@ -440,11 +442,11 @@ function pathNodeOrder(nodes: FlowNode[], edges: FlowEdge[]): string[] {
   for (const node of pathNodes) visit(node.id)
   for (const edge of edges) {
     const role = edgeStepRole(edge)
-    if (role === "addition" && !seen.has(edge.sourceId) && nodeById.get(edge.sourceId)?.pathRole === "participant") {
+    if (role === "addition" && !seen.has(edge.sourceId) && participantIds.has(edge.sourceId)) {
       ordered.splice(Math.max(0, ordered.indexOf(edge.targetId)), 0, edge.sourceId)
       seen.add(edge.sourceId)
     }
-    if (role === "release" && !seen.has(edge.targetId) && nodeById.get(edge.targetId)?.pathRole === "participant") {
+    if (role === "release" && !seen.has(edge.targetId) && participantIds.has(edge.targetId)) {
       const sourceIndex = ordered.indexOf(edge.sourceId)
       ordered.splice(sourceIndex >= 0 ? sourceIndex + 1 : ordered.length, 0, edge.targetId)
       seen.add(edge.targetId)
@@ -591,7 +593,7 @@ function deriveEnergyGraphModel(
   const defaultModel = defaultEnergyGraphModel(nodes)
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]))
-  const participantIds = new Set(nodes.filter((node) => node.pathRole === "participant").map((node) => node.id))
+  const participantIds = sideSpeciesParticipantNodeIds(edges)
   const pathNodes = nodes.filter((node) => !participantIds.has(node.id))
   const pathEdges = edges.filter((edge) => {
     const role = edgeStepRole(edge)
@@ -602,7 +604,6 @@ function deriveEnergyGraphModel(
       && nodeById.has(edge.sourceId)
       && nodeById.has(edge.targetId)
   })
-  const pathEdgeNodeIds = new Set(pathEdges.flatMap((edge) => [edge.sourceId, edge.targetId]))
   const successors = new Map<string, string[]>()
   const predecessors = new Map<string, string[]>()
 
@@ -699,10 +700,7 @@ function deriveEnergyGraphModel(
 
   for (const node of pathNodes) {
     const context = contextByNodeId.get(node.id)
-    if (!context) {
-      if (pathEdgeNodeIds.has(node.id)) relativeTableVisibilityByNodeId.set(node.id, false)
-      continue
-    }
+    if (!context) continue
     if (node.id === baselineId && !pathStartsWithParticipantAddition) {
       roleByNodeId.set(node.id, "baseline")
       termsByNodeId.set(node.id, [])

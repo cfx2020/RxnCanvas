@@ -219,6 +219,43 @@ describe("appCanvasPointerActions", () => {
     })
   })
 
+  it("clears a stale participant role from the path target after reconnecting an addition", () => {
+    const additive: FlowNode = {
+      ...nodes[0],
+      id: "additive",
+      label: "6a",
+    }
+    const target: FlowNode = {
+      ...nodes[1],
+      id: "target",
+      label: "S-s-i8-fix-t-tsr",
+      pathRole: "participant",
+    }
+    const canvasNodes = [nodes[0], additive, target]
+    const canvasEdges: FlowEdge[] = [{ id: "edge-path", sourceId: "node-a", targetId: "target", label: "path" }]
+    const setNodes = vi.fn()
+    const setEdges = vi.fn()
+
+    completeConnectionToNodeAction({
+      event: pointerEvent({ pointerId: 7 }),
+      targetId: "target",
+      connectionDraft: {
+        pointerId: 7,
+        sourceId: "additive",
+        current: { x: 80, y: 120 },
+        stepRole: "addition",
+      },
+      nodes: canvasNodes,
+      edges: canvasEdges,
+      appStateSetters: appStateSetters({ setNodes, setEdges }),
+      pushEditHistory: vi.fn(),
+    })
+
+    const nextNodes = setNodes.mock.calls[0][0] as FlowNode[]
+    expect(nextNodes.find((node) => node.id === "additive")?.pathRole).toBe("participant")
+    expect(nextNodes.find((node) => node.id === "target")?.pathRole).toBeUndefined()
+  })
+
   it("uses the release magnet role when finishing a snapped window-level connection", () => {
     const source: FlowNode = {
       ...nodes[0],
