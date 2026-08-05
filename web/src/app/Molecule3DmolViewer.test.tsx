@@ -24,7 +24,6 @@ describe("Molecule3DmolViewer", () => {
     removeAllModels: ReturnType<typeof vi.fn>
     addModel: ReturnType<typeof vi.fn>
     setStyle: ReturnType<typeof vi.fn>
-    addStyle: ReturnType<typeof vi.fn>
     setClickable: ReturnType<typeof vi.fn>
     vibrate: ReturnType<typeof vi.fn>
     animate: ReturnType<typeof vi.fn>
@@ -42,7 +41,6 @@ describe("Molecule3DmolViewer", () => {
       removeAllModels: vi.fn(),
       addModel: vi.fn(),
       setStyle: vi.fn(),
-      addStyle: vi.fn(),
       setClickable: vi.fn((_selection, _clickable, callback) => {
         threeDMolMock.latestAtomClick = callback
       }),
@@ -103,14 +101,12 @@ describe("Molecule3DmolViewer", () => {
     })
 
     await waitFor(() => {
-      expect(viewerMock.addStyle).toHaveBeenCalledWith({ index: [1] }, selectedAtomHighlightStyle)
+      expect(viewerMock.setStyle).toHaveBeenCalledWith({ index: [1] }, selectedAtomHighlightStyle)
     })
     expect(selectedAtomHighlightStyle.sphere.scale).toBe(0.28)
-    expect(selectedAtomHighlightStyle.sphere.color).toBe("#9ad8ff")
-    expect(viewerMock.addStyle).not.toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ sphere: expect.objectContaining({ scale: 0.46 }) }),
-    )
+    expect(selectedAtomHighlightStyle.sphere.color).toBe("#94caff")
+    expect(selectedAtomHighlightStyle.sphere).not.toHaveProperty("colorscheme")
+    expect(selectedAtomHighlightStyle.stick).toEqual({ radius: 0.13, colorscheme: "Jmol" })
   })
 
   it("clears atom selection when the user clicks empty 3D canvas space", async () => {
@@ -152,6 +148,31 @@ describe("Molecule3DmolViewer", () => {
     act(() => {
       threeDMolMock.latestAtomClick?.({ index: 1 })
     })
+    fireEvent.click(viewer)
+
+    await waitFor(() => expect(screen.getByText("H2")).toBeInTheDocument())
+  })
+
+  it("keeps atom selection after dragging empty 3D canvas space", async () => {
+    render(
+      <Molecule3DmolViewer
+        atoms={atoms}
+        formula="CH3"
+        sourceName="fixture.log"
+      />,
+    )
+
+    const viewer = screen.getByTestId("molecule-3dmol-viewer")
+    await waitFor(() => expect(threeDMolMock.latestAtomClick).toBeTypeOf("function"))
+
+    act(() => {
+      threeDMolMock.latestAtomClick?.({ index: 1 })
+    })
+    await screen.findByText("H2")
+
+    fireEvent.pointerDown(viewer, { clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(viewer, { clientX: 116, clientY: 108 })
+    fireEvent.pointerUp(viewer, { clientX: 116, clientY: 108 })
     fireEvent.click(viewer)
 
     await waitFor(() => expect(screen.getByText("H2")).toBeInTheDocument())

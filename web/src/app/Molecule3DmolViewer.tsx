@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent } from "react"
 import type { CoordinateAtom, VibrationalMode } from "../domain/sourceParsers"
 import type { GLViewer } from "3dmol/build/types/GLViewer"
 import { StructureUnavailableIcon } from "./StructureUnavailableIcon"
@@ -20,12 +20,19 @@ type Molecule3DmolViewerProps = {
 type ViewerStatus = "loading" | "ready" | "unavailable" | "error"
 
 const baseAtomSphereScale = 0.28
-const selectedAtomHighlightColor = "#9ad8ff"
+const selectedAtomHighlightColor = "#94caff"
+const viewerDragThresholdPx = 4
 const nativeVibrationFrameCount = 30
 const nativeVibrationAmplitude = 0.45
 const nativeVibrationIntervalMs = 16
 
+const baseAtomStyle = {
+  stick: { radius: 0.13, colorscheme: "Jmol" },
+  sphere: { scale: baseAtomSphereScale, colorscheme: "Jmol" },
+} as const
+
 export const selectedAtomHighlightStyle = {
+  stick: baseAtomStyle.stick,
   sphere: {
     scale: baseAtomSphereScale,
     color: selectedAtomHighlightColor,
@@ -45,6 +52,8 @@ export function Molecule3DmolViewer({
   const latestSelectionRef = useRef<(atomIndex: number) => void>(() => undefined)
   const atomClickHandledRef = useRef(false)
   const blankClickSerialRef = useRef(0)
+  const viewerPointerStartRef = useRef<{ x: number; y: number } | null>(null)
+  const viewerDraggedRef = useRef(false)
   const [status, setStatus] = useState<ViewerStatus>("loading")
   const [selectedAtomIndices, setSelectedAtomIndices] = useState<number[]>([])
   const structureComment = `${sourceName} ${formula}`
@@ -107,11 +116,35 @@ export function Molecule3DmolViewer({
     setSelectedAtomIndices((currentAtomIndices) => nextStructureAtomSelection(currentAtomIndices, atomIndex))
   }
 
-  const handleViewerPointerDown = () => {
+  const handleViewerPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     atomClickHandledRef.current = false
+    viewerPointerStartRef.current = { x: event.clientX, y: event.clientY }
+    viewerDraggedRef.current = false
+  }
+
+  const handleViewerPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pointerStart = viewerPointerStartRef.current
+    if (!pointerStart || viewerDraggedRef.current) return
+    const deltaX = event.clientX - pointerStart.x
+    const deltaY = event.clientY - pointerStart.y
+    if (Math.hypot(deltaX, deltaY) >= viewerDragThresholdPx) viewerDraggedRef.current = true
+  }
+
+  const handleViewerPointerUp = () => {
+    viewerPointerStartRef.current = null
+  }
+
+  const handleViewerPointerCancel = () => {
+    viewerPointerStartRef.current = null
+    viewerDraggedRef.current = false
   }
 
   const handleViewerClick = () => {
+    if (viewerDraggedRef.current) {
+      viewerDraggedRef.current = false
+      atomClickHandledRef.current = false
+      return
+    }
     const clickSerial = blankClickSerialRef.current + 1
     blankClickSerialRef.current = clickSerial
     window.setTimeout(() => {
@@ -180,6 +213,9 @@ export function Molecule3DmolViewer({
         aria-label={`3Dmol ball-and-stick model with ${atoms.length} atoms`}
         data-testid="molecule-3dmol-viewer"
         onPointerDown={handleViewerPointerDown}
+        onPointerMove={handleViewerPointerMove}
+        onPointerUp={handleViewerPointerUp}
+        onPointerCancel={handleViewerPointerCancel}
         onClick={handleViewerClick}
       />
       {selectionReadout ? (
@@ -199,12 +235,9 @@ function renderXyz(
 ) {
   viewer.removeAllModels?.()
   viewer.addModel(xyz, "xyz")
-  viewer.setStyle({}, {
-    stick: { radius: 0.13, colorscheme: "Jmol" },
-    sphere: { scale: baseAtomSphereScale, colorscheme: "Jmol" },
-  })
+  viewer.setStyle({}, baseAtomStyle)
   if (selectedAtomIndices.length > 0) {
-    viewer.addStyle({ index: selectedAtomIndices }, selectedAtomHighlightStyle)
+    viewer.setStyle({ index: selectedAtomIndices }, selectedAtomHighlightStyle)
   }
   if (selectionRef) {
     viewer.setClickable?.({}, true, (atom: { serial?: number; index?: number }) => {
