@@ -7,6 +7,7 @@ import {
   endCanvasPointerAction,
   finishConnectionDraftAtClientPointAction,
   handleNodePointerDownAction,
+  handlePointerMoveAction,
 } from "./appCanvasPointerActions"
 import type { CanvasDragState } from "./canvasEditState"
 import type { CanvasEditSnapshot } from "./projectWorkspace"
@@ -179,6 +180,74 @@ describe("appCanvasPointerActions", () => {
 
     expect(pushEditHistory).not.toHaveBeenCalled()
     expect(setNodes).toHaveBeenCalledTimes(1)
+  })
+
+  it("snaps barrier drafts to the nearest target middle side", () => {
+    let barrierDraft = {
+      pointerId: 7,
+      sourceId: "node-a",
+      current: { x: 20, y: 30 },
+    }
+    const setBarrierDraft = vi.fn((updater) => {
+      barrierDraft = updater(barrierDraft)
+    })
+
+    handlePointerMoveAction({
+      pointerId: 7,
+      clientX: 288,
+      clientY: 229,
+      connectionDraft: null,
+      barrierDraft,
+      dragState: null,
+      nodes,
+      connectionSnapRadiusWorld: 44,
+      screenToWorld: (point) => point,
+      appStateSetters: appStateSetters({ setBarrierDraft }),
+    })
+
+    expect(barrierDraft).toEqual({
+      pointerId: 7,
+      sourceId: "node-a",
+      current: { x: 290, y: 227 },
+      snapTargetId: "node-b",
+      snapTargetSide: "right",
+    })
+  })
+
+  it("finishes a barrier from its magnetic middle-side target", () => {
+    const setBarriers = vi.fn()
+    const setBarrierDraft = vi.fn()
+    const pushEditHistory = vi.fn()
+
+    endCanvasPointerAction({
+      event: pointerEvent<HTMLDivElement>({ clientX: 288, clientY: 229 }),
+      dragState: null,
+      connectionDraft: null,
+      barrierDraft: {
+        pointerId: 7,
+        sourceId: "node-a",
+        current: { x: 290, y: 227 },
+        snapTargetId: "node-b",
+        snapTargetSide: "right",
+      },
+      nodes,
+      edges,
+      barriers: [],
+      selection: { nodeIds: [], edgeIds: [], barrierIds: [] },
+      nodeIdSet: new Set(nodes.map((node) => node.id)),
+      screenToWorld: (point) => point,
+      finishConnectionDraftAtClientPoint: vi.fn(),
+      barrierSnapRadiusWorld: 44,
+      appStateSetters: appStateSetters({ setBarriers, setBarrierDraft }),
+      pushEditHistory,
+    })
+
+    expect(pushEditHistory).toHaveBeenCalledTimes(1)
+    expect(setBarriers).toHaveBeenCalledWith([expect.objectContaining({
+      sourceId: "node-a",
+      targetId: "node-b",
+    })])
+    expect(setBarrierDraft).toHaveBeenCalledWith(null)
   })
 
   it("marks a source node as an addition term when connecting from its addition connector", () => {

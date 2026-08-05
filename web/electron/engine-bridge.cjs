@@ -1,5 +1,6 @@
 const { spawn } = require("node:child_process")
 const fs = require("node:fs")
+const os = require("node:os")
 const path = require("node:path")
 
 const defaultRepoRoot = path.resolve(__dirname, "..", "..")
@@ -9,6 +10,8 @@ const pendingRequests = []
 const workers = new Set()
 
 let dispatchScheduled = false
+let materializedCleanupRegistered = false
+let materializedPackagedEngine = null
 let shutdownPromise = null
 
 function getEngineStatus(options = {}) {
@@ -249,6 +252,7 @@ function shutdownEngineWorkers() {
     retireWorker(worker)
   }
   shutdownPromise = Promise.all(workerClosures).then(() => {
+    cleanupMaterializedPackagedEngine()
     shutdownPromise = null
   })
   return shutdownPromise
@@ -278,7 +282,7 @@ function resolveEngineCommand() {
   }
   const executableName = engineExecutableName()
   if (isPackagedAppRuntime() && process.resourcesPath) {
-    return [path.join(process.resourcesPath, "engine", executableName), []]
+    return [resolveMaterializedPackagedEngine(path.join(process.resourcesPath, "engine", executableName)), []]
   }
   const bundledEngine = bundledEngineCommand()
   if (bundledEngine) return bundledEngine
@@ -309,6 +313,42 @@ function isPackagedAppRuntime() {
   return __dirname.split(path.sep).includes("app.asar")
 }
 
+function resolveMaterializedPackagedEngine(sourcePath) {
+  if (materializedPackagedEngine?.sourcePath === sourcePath && fs.existsSync(materializedPackagedEngine.executablePath)) {
+    return materializedPackagedEngine.executablePath
+  }
+  const runtimeDirectory = path.join(os.tmpdir(), "rxnflow-engine-runtime", String(process.pid))
+  const executablePath = materializeEngineExecutable(sourcePath, runtimeDirectory)
+  materializedPackagedEngine = { executablePath, runtimeDirectory, sourcePath }
+  if (!materializedCleanupRegistered) {
+    materializedCleanupRegistered = true
+    process.once("exit", cleanupMaterializedPackagedEngine)
+  }
+  return executablePath
+}
+
+function materializeEngineExecutable(sourcePath, runtimeDirectory) {
+  fs.mkdirSync(runtimeDirectory, { recursive: true, mode: 0o700 })
+  const executablePath = path.join(runtimeDirectory, path.basename(sourcePath))
+  const temporaryPath = `${executablePath}.${process.pid}.${Date.now()}.tmp`
+  try {
+    fs.copyFileSync(sourcePath, temporaryPath)
+    if (process.platform !== "win32") fs.chmodSync(temporaryPath, 0o755)
+    fs.renameSync(temporaryPath, executablePath)
+  } finally {
+    fs.rmSync(temporaryPath, { force: true })
+  }
+  return executablePath
+}
+
+function cleanupMaterializedPackagedEngine() {
+  if (!materializedPackagedEngine) return
+  try {
+    fs.rmSync(materializedPackagedEngine.runtimeDirectory, { recursive: true, force: true })
+  } catch {}
+  materializedPackagedEngine = null
+}
+
 function engineEnvironment(repoRoot) {
   return {
     ...process.env,
@@ -320,6 +360,7 @@ function engineEnvironment(repoRoot) {
 
 module.exports = {
   getEngineStatus,
+  materializeEngineExecutable,
   runEngineRequest,
   shutdownEngineWorkers,
 }

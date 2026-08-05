@@ -4,7 +4,24 @@ const os = require("node:os")
 const path = require("node:path")
 const test = require("node:test")
 
-const { runEngineRequest, shutdownEngineWorkers } = require("./engine-bridge.cjs")
+const { materializeEngineExecutable, runEngineRequest, shutdownEngineWorkers } = require("./engine-bridge.cjs")
+
+test("materialized packaged engine remains stable when its source is replaced", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-engine-materialized-"))
+  const sourcePath = path.join(tempDir, "source", "rxnflow-engine")
+  const runtimeDirectory = path.join(tempDir, "runtime")
+  fs.mkdirSync(path.dirname(sourcePath), { recursive: true })
+  fs.writeFileSync(sourcePath, "engine-before-rebuild", "utf8")
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }))
+
+  const executablePath = materializeEngineExecutable(sourcePath, runtimeDirectory)
+  fs.writeFileSync(sourcePath, "engine-after-rebuild", "utf8")
+
+  assert.equal(fs.readFileSync(executablePath, "utf8"), "engine-before-rebuild")
+  if (process.platform !== "win32") {
+    assert.notEqual(fs.statSync(executablePath).mode & 0o111, 0)
+  }
+})
 
 test("engine worker pool reuses processes, recovers, and shuts down", async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-engine-pool-"))

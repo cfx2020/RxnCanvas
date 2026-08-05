@@ -9,6 +9,7 @@ export type ConnectionMagnetTarget = {
   targetId: string
   point: Point
   distance: number
+  side?: "left" | "right"
   stepRole?: Extract<EdgeStepRole, "release">
 }
 
@@ -26,18 +27,20 @@ export function nearestConnectionMagnetTarget({
   current,
   radius,
   sourceStepRole,
+  targetMode = "compatible",
 }: {
   nodes: FlowNode[]
   sourceId: string
   current: Point
   radius: number
   sourceStepRole?: Extract<EdgeStepRole, "addition">
+  targetMode?: "compatible" | "middle"
 }): ConnectionMagnetTarget | null {
   let nearest: ConnectionMagnetTarget | null = null
 
   for (const node of nodes) {
     if (node.id === sourceId) continue
-    for (const candidate of connectionMagnetCandidates(node, sourceStepRole)) {
+    for (const candidate of connectionMagnetCandidates(node, sourceStepRole, targetMode)) {
       const distance = Math.hypot(current.x - candidate.point.x, current.y - candidate.point.y)
       if (distance > radius) continue
       if (
@@ -49,6 +52,7 @@ export function nearestConnectionMagnetTarget({
           targetId: node.id,
           point: candidate.point,
           distance,
+          side: candidate.side,
           stepRole: candidate.stepRole,
         }
       }
@@ -61,9 +65,18 @@ export function nearestConnectionMagnetTarget({
 function connectionMagnetCandidates(
   node: FlowNode,
   sourceStepRole?: Extract<EdgeStepRole, "addition">,
-): Array<{ point: Point; stepRole?: Extract<EdgeStepRole, "release"> }> {
-  const candidates: Array<{ point: Point; stepRole?: Extract<EdgeStepRole, "release"> }> = []
-  if (sourceStepRole !== "addition") {
+  targetMode: "compatible" | "middle" = "compatible",
+): Array<{ point: Point; side?: "left" | "right"; stepRole?: Extract<EdgeStepRole, "release"> }> {
+  const candidates: Array<{ point: Point; side?: "left" | "right"; stepRole?: Extract<EdgeStepRole, "release"> }> = []
+  if (targetMode === "middle") {
+    const size = flowNodeSize(node)
+    const y = node.position.y + size.height * 0.5
+    return [
+      { point: { x: node.position.x, y }, side: "left" },
+      { point: { x: node.position.x + size.width, y }, side: "right" },
+    ]
+  }
+  if (targetMode === "compatible" && sourceStepRole !== "addition") {
     candidates.push({ point: connectionTargetAnchor(node, "release"), stepRole: "release" })
   }
   candidates.push({ point: connectionTargetAnchor(node) })
@@ -76,12 +89,14 @@ export function updateConnectionDraftWithMagnetTarget<TDraft extends CanvasPoint
   current,
   nodes,
   radius,
+  targetMode = "compatible",
 }: {
   draft: TDraft | null
   pointerId: number
   current: Point
   nodes: FlowNode[]
   radius: number
+  targetMode?: "compatible" | "middle"
 }): TDraft | null {
   if (draft?.pointerId !== pointerId) return draft
 
@@ -91,19 +106,30 @@ export function updateConnectionDraftWithMagnetTarget<TDraft extends CanvasPoint
     current,
     radius,
     sourceStepRole: draft.stepRole,
+    targetMode,
   })
 
   if (target) {
-    const { snapStepRole: _previousSnapStepRole, ...draftWithoutStepRole } = draft
+    const {
+      snapStepRole: _previousSnapStepRole,
+      snapTargetSide: _previousSnapTargetSide,
+      ...draftWithoutSnapState
+    } = draft
     return {
-      ...draftWithoutStepRole,
+      ...draftWithoutSnapState,
       current: target.point,
       snapTargetId: target.targetId,
+      ...(target.side ? { snapTargetSide: target.side } : {}),
       ...(target.stepRole ? { snapStepRole: target.stepRole } : {}),
     } as TDraft
   }
 
-  const { snapTargetId: _snapTargetId, snapStepRole: _snapStepRole, ...rest } = draft
+  const {
+    snapTargetId: _snapTargetId,
+    snapTargetSide: _snapTargetSide,
+    snapStepRole: _snapStepRole,
+    ...rest
+  } = draft
   return {
     ...rest,
     current,

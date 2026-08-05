@@ -17598,6 +17598,8 @@ select,
 .app-shell .reaction-node:hover .node-connector,
 .app-shell .reaction-node.is-selected .node-connector,
 .app-shell .reaction-node:focus-within .node-connector,
+.canvas-surface.is-connecting-barrier .reaction-node .node-connector-in,
+.canvas-surface.is-connecting-barrier .reaction-node .node-connector-out,
 .canvas-surface.is-connecting-path .reaction-node .node-step-connector-release {
   opacity: 1 !important;
   border-color: rgba(39, 154, 128, 0.32) !important;
@@ -17912,6 +17914,8 @@ select,
 .app-shell .reaction-node .node-connector:focus-visible::before,
 .app-shell .reaction-node .node-connector-out.is-keyboard-active::before,
 .app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
+.app-shell .reaction-node.is-barrier-snap-target-left .node-connector-in::before,
+.app-shell .reaction-node.is-barrier-snap-target-right .node-connector-out::before,
 .app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
   opacity: 1;
   transform: translate(-50%, -50%) scaleY(1);
@@ -17928,6 +17932,8 @@ select,
 }
 
 .app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
+.app-shell .reaction-node.is-barrier-snap-target-left .node-connector-in::before,
+.app-shell .reaction-node.is-barrier-snap-target-right .node-connector-out::before,
 .app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
   height: 32px;
   background: rgba(190, 91, 75, 0.92);
@@ -17962,6 +17968,8 @@ select,
 .app-shell.theme-dark .reaction-node .node-connector:focus-visible::before,
 .app-shell.theme-dark .reaction-node .node-connector-out.is-keyboard-active::before,
 .app-shell.theme-dark .reaction-node.is-connection-snap-target .node-connector-in::before,
+.app-shell.theme-dark .reaction-node.is-barrier-snap-target-left .node-connector-in::before,
+.app-shell.theme-dark .reaction-node.is-barrier-snap-target-right .node-connector-out::before,
 .app-shell.theme-dark .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
   background: rgba(229, 132, 116, 0.9);
 }

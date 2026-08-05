@@ -1596,6 +1596,7 @@ export function App() {
       nodeIdSet,
       screenToWorld,
       finishConnectionDraftAtClientPoint,
+      barrierSnapRadiusWorld: connectionSnapRadiusPx / viewport.zoom,
       appStateSetters,
       pushEditHistory,
     })
@@ -1614,6 +1615,7 @@ export function App() {
     nodes,
     pushEditHistory,
     screenToWorld,
+    viewport.zoom,
     selectedBarrierIds,
     selectedEdgeIds,
     selectedNodeIds,

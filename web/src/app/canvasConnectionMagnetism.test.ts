@@ -90,6 +90,37 @@ describe("canvasConnectionMagnetism", () => {
     })
   })
 
+  it("uses the nearest left or right middle port for barrier drafts", () => {
+    const source = flowNode("source", { x: 0, y: 0 })
+    const target = flowNode("target", { x: 320, y: 80 })
+
+    expect(nearestConnectionMagnetTarget({
+      nodes: [source, target],
+      sourceId: source.id,
+      current: { x: 322, y: 151 },
+      radius: 44,
+      targetMode: "middle",
+    })).toMatchObject({
+      targetId: "target",
+      point: { x: 320, y: 187 },
+      side: "left",
+      stepRole: undefined,
+    })
+
+    expect(nearestConnectionMagnetTarget({
+      nodes: [source, target],
+      sourceId: source.id,
+      current: { x: 528, y: 189 },
+      radius: 44,
+      targetMode: "middle",
+    })).toMatchObject({
+      targetId: "target",
+      point: { x: 530, y: 187 },
+      side: "right",
+      stepRole: undefined,
+    })
+  })
+
   it("snaps draft endpoints to ports and clears stale snap state outside the radius", () => {
     const source = flowNode("source", { x: 0, y: 0 })
     const target = flowNode("target", { x: 320, y: 80 })

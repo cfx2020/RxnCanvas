@@ -69,6 +69,7 @@ export type ConnectionDraft = {
   sourceId: string
   current: Point
   snapTargetId?: string
+  snapTargetSide?: "left" | "right"
   snapStepRole?: Extract<EdgeStepRole, "release">
   stepRole?: Extract<EdgeStepRole, "addition">
 }
@@ -77,6 +78,8 @@ export type BarrierDraft = {
   pointerId: number
   sourceId: string
   current: Point
+  snapTargetId?: string
+  snapTargetSide?: "left" | "right"
 }
 
 export type CanvasRawFileDrop =
@@ -298,6 +301,8 @@ export const CanvasSurface = memo(function CanvasSurface({
 
   const connectionSnapTargetId = connectionDraft?.snapTargetId ?? null
   const connectionSnapStepRole = connectionDraft?.snapStepRole ?? null
+  const barrierSnapTargetId = barrierDraft?.snapTargetId ?? null
+  const barrierSnapTargetSide = barrierDraft?.snapTargetSide ?? null
   const stableOnNodePointerDown = useLatestCallback(onNodePointerDown)
   const stableOnNodeResizePointerDown = useLatestCallback(onNodeResizePointerDown)
   const stableOnNodePointerUp = useLatestCallback(onNodePointerUp)
@@ -411,7 +416,7 @@ export const CanvasSurface = memo(function CanvasSurface({
   return (
     <div
       ref={canvasRef}
-      className={`canvas-surface ${tool === "pan" ? "is-panning" : tool === "text" ? "is-text-tool" : "is-selecting"}${rubberBandDraft ? " has-rubber-band" : ""}${connectionDraft ? ` is-connecting ${connectionDraft.stepRole === "addition" ? "is-connecting-addition" : "is-connecting-path"}` : ""}${connectionSnapTargetId ? " is-connection-snapped" : ""}`}
+      className={`canvas-surface ${tool === "pan" ? "is-panning" : tool === "text" ? "is-text-tool" : "is-selecting"}${rubberBandDraft ? " has-rubber-band" : ""}${connectionDraft ? ` is-connecting ${connectionDraft.stepRole === "addition" ? "is-connecting-addition" : "is-connecting-path"}` : ""}${barrierDraft ? " is-connecting-barrier" : ""}${connectionSnapTargetId || barrierSnapTargetId ? " is-connection-snapped" : ""}`}
       aria-label="Graph canvas surface"
       aria-keyshortcuts="Delete Backspace Escape ArrowUp ArrowDown ArrowLeft ArrowRight Meta+Z Control+Z Control+Y"
       tabIndex={0}
@@ -494,6 +499,7 @@ export const CanvasSurface = memo(function CanvasSurface({
             selected={selectedNodeIdSet.has(node.id)}
             connectionSnapTarget={connectionSnapTargetId === node.id}
             connectionSnapStepRole={connectionSnapTargetId === node.id ? connectionSnapStepRole : null}
+            barrierSnapTargetSide={barrierSnapTargetId === node.id ? barrierSnapTargetSide : null}
             keyboardConnectionActive={node.id === keyboardEdgeSourceId}
             inputConnected={connectedInputNodeIds.has(node.id)}
             outputConnected={connectedOutputNodeIds.has(node.id)}
@@ -810,6 +816,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   selected,
   connectionSnapTarget,
   connectionSnapStepRole,
+  barrierSnapTargetSide,
   keyboardConnectionActive,
   inputConnected,
   outputConnected,
@@ -839,6 +846,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
   selected: boolean
   connectionSnapTarget: boolean
   connectionSnapStepRole: Extract<EdgeStepRole, "release"> | null
+  barrierSnapTargetSide: "left" | "right" | null
   keyboardConnectionActive: boolean
   inputConnected: boolean
   outputConnected: boolean
@@ -922,7 +930,7 @@ const ReactionNodeCard = memo(function ReactionNodeCard({
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      className={`reaction-node node-${node.kind}${node.pathRole === "participant" ? " node-participant" : ""}${selected ? " is-selected" : ""}${connectionSnapTarget ? (connectionSnapStepRole === "release" ? " is-connection-snap-target-release" : " is-connection-snap-target") : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
+      className={`reaction-node node-${node.kind}${node.pathRole === "participant" ? " node-participant" : ""}${selected ? " is-selected" : ""}${connectionSnapTarget ? (connectionSnapStepRole === "release" ? " is-connection-snap-target-release" : " is-connection-snap-target") : ""}${barrierSnapTargetSide ? ` is-barrier-snap-target-${barrierSnapTargetSide}` : ""}${inputConnected ? " has-input-edge" : ""}${outputConnected ? " has-output-edge" : ""}`}
       aria-label={`Node ${node.label}`}
       data-flow-node-id={node.id}
       style={{
@@ -1169,6 +1177,7 @@ type ReactionNodeCardComparableProps = {
   selected: boolean
   connectionSnapTarget: boolean
   connectionSnapStepRole: Extract<EdgeStepRole, "release"> | null
+  barrierSnapTargetSide: "left" | "right" | null
   keyboardConnectionActive: boolean
   inputConnected: boolean
   outputConnected: boolean
@@ -1190,6 +1199,7 @@ function areReactionNodeCardPropsEqual(
     && previous.selected === next.selected
     && previous.connectionSnapTarget === next.connectionSnapTarget
     && previous.connectionSnapStepRole === next.connectionSnapStepRole
+    && previous.barrierSnapTargetSide === next.barrierSnapTargetSide
     && previous.keyboardConnectionActive === next.keyboardConnectionActive
     && previous.inputConnected === next.inputConnected
     && previous.outputConnected === next.outputConnected

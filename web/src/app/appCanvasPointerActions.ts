@@ -227,7 +227,16 @@ export function handlePointerMoveAction({
     return
   }
   if (move.kind === "barrier-draft") {
-    appStateSetters.setBarrierDraft(move.barrierDraft)
+    appStateSetters.setBarrierDraft((currentDraft) => (
+      updateConnectionDraftWithMagnetTarget({
+        draft: currentDraft,
+        pointerId,
+        current: worldPoint,
+        nodes,
+        radius: connectionSnapRadiusWorld,
+        targetMode: "middle",
+      })
+    ))
     return
   }
   if (move.kind === "none") return
@@ -360,6 +369,7 @@ export function endCanvasPointerAction({
   nodeIdSet,
   screenToWorld,
   finishConnectionDraftAtClientPoint,
+  barrierSnapRadiusWorld = connectionSnapRadiusPx,
   appStateSetters,
   pushEditHistory,
 }: {
@@ -374,6 +384,7 @@ export function endCanvasPointerAction({
   nodeIdSet: Set<string>
   screenToWorld: ScreenToWorld
   finishConnectionDraftAtClientPoint: (pointerId: number, clientX: number, clientY: number) => boolean
+  barrierSnapRadiusWorld?: number
   appStateSetters: ProjectWorkspaceStateSetters
   pushEditHistory: PushCanvasEditHistory
 }): void {
@@ -404,12 +415,20 @@ export function endCanvasPointerAction({
     finishConnectionDraftAtClientPoint(event.pointerId, event.clientX, event.clientY)
   }
   if (barrierDraft?.pointerId === event.pointerId) {
-    const targetId = flowNodeIdAtDocumentPoint({
-      clientX: event.clientX,
-      clientY: event.clientY,
-      excludedNodeId: barrierDraft.sourceId,
-      nodeIdSet,
+    const releasePoint = screenToWorld({ x: event.clientX, y: event.clientY })
+    const magneticTarget = nearestConnectionMagnetTarget({
+      nodes,
+      sourceId: barrierDraft.sourceId,
+      current: releasePoint,
+      radius: barrierSnapRadiusWorld,
+      targetMode: "middle",
     })
+    const targetId = magneticTarget?.targetId ?? flowNodeIdAtDocumentPoint({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        excludedNodeId: barrierDraft.sourceId,
+        nodeIdSet,
+      })
     const id = `barrier-${barrierDraft.sourceId}-${targetId ?? "missing"}-${Date.now()}`
     const transition = completeBarrierDraftTransition(barriers, id, barrierDraft, event.pointerId, targetId)
     if (transition?.creation) {
