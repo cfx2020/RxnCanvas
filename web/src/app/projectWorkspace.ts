@@ -9,6 +9,7 @@ import type {
   RxnFlowProjectPackage,
   SourceFile,
 } from "../domain/projectPackages"
+import { reconcileEdgeDerivedPathRoles } from "../domain/reactionGraphRoles"
 import { defaultEnergyDisplayOptions, type EnergyDisplayOptions } from "./energyDisplay"
 
 export type WorkbenchViewMode = "canvas" | "table"
@@ -259,9 +260,10 @@ export function canvasEditSnapshot(
   selectedBarrierIds: string[],
   annotations: CanvasAnnotation[] = [],
 ): CanvasEditSnapshot {
+  const clonedEdges = edges.map((edge) => ({ ...edge }))
   return {
-    nodes: cloneFlowNodes(nodes),
-    edges: edges.map((edge) => ({ ...edge })),
+    nodes: reconcileEdgeDerivedPathRoles(cloneFlowNodes(nodes), clonedEdges),
+    edges: clonedEdges,
     barriers: barriers.map((barrier) => ({ ...barrier })),
     annotations: cloneCanvasAnnotations(annotations),
     selectedNodeIds: [...selectedNodeIds],
@@ -285,11 +287,12 @@ export function restoreCanvasEditSnapshot(snapshot: CanvasEditSnapshot): CanvasE
 
 export function projectWorkspaceSnapshot(snapshot: ProjectWorkspaceSnapshot): ProjectWorkspaceSnapshot {
   const fallbackActiveCanvasId = snapshot.activeCanvasId || snapshot.canvases[0]?.id || "canvas-1"
+  const activeEdges = snapshot.edges.map((edge) => ({ ...edge }))
   const activeCanvasOverride = {
     id: fallbackActiveCanvasId,
     label: snapshot.canvases.find((canvas) => canvas.id === fallbackActiveCanvasId)?.label ?? "Untitled Study",
-    nodes: cloneFlowNodes(snapshot.nodes),
-    edges: snapshot.edges.map((edge) => ({ ...edge })),
+    nodes: reconcileEdgeDerivedPathRoles(cloneFlowNodes(snapshot.nodes), activeEdges),
+    edges: activeEdges,
     barriers: snapshot.barriers.map((barrier) => ({ ...barrier })),
     annotations: cloneCanvasAnnotations(snapshot.annotations ?? []),
     viewport: { ...snapshot.viewport },
@@ -621,11 +624,12 @@ export function cloneFlowNodes(nodes: FlowNode[]): FlowNode[] {
 }
 
 export function projectCanvasSnapshot(canvas: ProjectCanvasSnapshot): ProjectCanvasSnapshot {
+  const edges = canvas.edges.map((edge) => ({ ...edge }))
   return {
     id: canvas.id,
     label: canvas.label,
-    nodes: cloneFlowNodes(canvas.nodes),
-    edges: canvas.edges.map((edge) => ({ ...edge })),
+    nodes: reconcileEdgeDerivedPathRoles(cloneFlowNodes(canvas.nodes), edges),
+    edges,
     barriers: canvas.barriers.map((barrier) => ({ ...barrier })),
     annotations: cloneCanvasAnnotations(canvas.annotations ?? []),
     viewport: { ...canvas.viewport },

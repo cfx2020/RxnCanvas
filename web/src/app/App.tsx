@@ -90,6 +90,7 @@ import {
 } from "./fileDisplay"
 import {
   canvasEditSnapshot,
+  activeCanvasSnapshot,
   emptyProjectWorkspace,
   initialBarriers,
   initialEdges,
@@ -158,6 +159,11 @@ import {
 import { WorkbenchToolbar } from "./WorkbenchToolbar"
 import { CommandPalette, type WorkbenchCommand } from "./CommandPalette"
 import { loadWorkbenchLayoutPreference, saveWorkbenchLayoutPreference } from "./workbenchLayoutPreferences"
+import {
+  projectWorkspaceWithRefreshedSourceFiles,
+  refreshProjectSourceFiles,
+  sourceFileGroupIds,
+} from "./sourceFileRefresh"
 import {
   clampToolbarPlacement,
   defaultFloatingToolbarPlacement,
@@ -1041,6 +1047,15 @@ export function App() {
     applyProjectWorkspaceSnapshotState(appStateSetters, reconciledSnapshot, clearEditHistory)
   }, [appStateSetters, clearEditHistory])
 
+  const applySourceRefreshSnapshot = useCallback((snapshot: ProjectWorkspaceSnapshot) => {
+    setFiles(snapshot.files)
+    setNodes(snapshot.nodes)
+    setCanvasTabs((current) => current.map((tab) => {
+      const canvas = snapshot.canvases.find((item) => item.id === tab.id)
+      return canvas ? { ...tab, snapshot: canvasTabSnapshotFromState(canvas) } : tab
+    }))
+  }, [])
+
   const applyProjectTransition = useCallback((transition: ProjectTransitionApplication) => {
     const reconciledWorkspaces = Object.fromEntries(Object.entries(transition.workspaces).map(([projectId, snapshot]) => [
       projectId,
@@ -1807,17 +1822,33 @@ export function App() {
     })
   }, [activeProjectId, applyProjectTransition, currentProjectWorkspaceSnapshot, projectWorkspaces, projects, rememberProjectDirectory])
 
-  const stageSourceFiles = useCallback(async (importedFiles: ImportSourceFile[], options: StageSourceFilesOptions = {}) => {
+  const stageSourceFiles = useCallback(async (
+    importedFiles: ImportSourceFile[],
+    options: StageSourceFilesOptions = {},
+    snapshotOverride?: ProjectWorkspaceSnapshot,
+  ) => {
+    const currentSnapshot = snapshotOverride ?? currentProjectWorkspaceSnapshot()
+    const activeCanvas = activeCanvasSnapshot(currentSnapshot)
     await stageCurrentProjectSourceFilesAction({
       importedFiles,
       options,
       canvas: canvasRef.current,
       viewport,
-      currentSnapshot: currentProjectWorkspaceSnapshot(),
+      currentSnapshot,
       viewMode,
       registerImportCandidates: window.rxnflowDesktop?.registerImportCandidates,
       appStateSetters,
-      pushEditHistory,
+      pushEditHistory: snapshotOverride
+        ? () => pushEditHistory(canvasEditSnapshot(
+            activeCanvas.nodes,
+            activeCanvas.edges,
+            activeCanvas.barriers,
+            activeCanvas.selectedNodeIds,
+            activeCanvas.selectedEdgeIds,
+            activeCanvas.selectedBarrierIds,
+            activeCanvas.annotations ?? [],
+          ))
+        : pushEditHistory,
       setCandidateReview,
     })
   }, [appStateSetters, currentProjectWorkspaceSnapshot, pushEditHistory, viewMode, viewport])
@@ -1853,6 +1884,56 @@ export function App() {
   useEffect(() => {
     stageSourceFilesForProjectRef.current = stageSourceFilesForProject
   }, [stageSourceFilesForProject])
+
+  const refreshActiveProjectSourceSnapshot = useCallback(async (
+    forceFileIds: ReadonlySet<string> = new Set(),
+  ): Promise<{ snapshot: ProjectWorkspaceSnapshot; refreshedFileIds: Set<string> } | null> => {
+    const initialState = projectRestoreStateRef.current
+    if (!initialState) return null
+    const projectId = initialState.activeProjectId
+    const initialSnapshot = initialState.activeSnapshot
+    const refreshed = await refreshProjectSourceFiles({
+      desktopApi: window.rxnflowDesktop,
+      projectId,
+      projectDirectory: projectDirectoriesRef.current[projectId] ?? null,
+      files: initialSnapshot.files,
+      forceFileIds,
+    })
+    if (activeProjectIdRef.current !== projectId) return null
+    const latestState = projectRestoreStateRef.current
+    if (!latestState || latestState.activeProjectId !== projectId) return null
+    const snapshot = projectWorkspaceWithRefreshedSourceFiles(
+      latestState.activeSnapshot,
+      refreshed.files,
+      refreshed.refreshedFileIds,
+    )
+    if (snapshot !== latestState.activeSnapshot) {
+      projectRestoreStateRef.current = { ...latestState, activeSnapshot: snapshot }
+    }
+    return { snapshot, refreshedFileIds: refreshed.refreshedFileIds }
+  }, [])
+
+  useEffect(() => {
+    if (startupRestorePending || !window.rxnflowDesktop?.inspectProjectSourceFiles) return
+    let disposed = false
+    const refresh = () => {
+      void refreshActiveProjectSourceSnapshot().then((result) => {
+        if (disposed || !result || result.refreshedFileIds.size === 0) return
+        applySourceRefreshSnapshot(result.snapshot)
+      })
+    }
+    refresh()
+    window.addEventListener("focus", refresh)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh()
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      disposed = true
+      window.removeEventListener("focus", refresh)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [activeProjectId, applySourceRefreshSnapshot, refreshActiveProjectSourceSnapshot, startupRestorePending])
 
   useEffect(() => {
     appDisposedRef.current = false
@@ -2165,12 +2246,23 @@ export function App() {
       })
       return
     }
+    const groupFileIds = sourceFileGroupIds(files, drop.fileIds)
+    const refreshed = await refreshActiveProjectSourceSnapshot(groupFileIds)
+    const refreshedSnapshot = refreshed?.snapshot ?? currentProjectWorkspaceSnapshot()
     await handleCanvasRawFileDropAction({
-      drop,
-      files,
-      stageCurrentProjectSourceFiles: stageSourceFiles,
+      drop: { ...drop, fileIds: Array.from(groupFileIds) },
+      files: refreshedSnapshot.files,
+      stageCurrentProjectSourceFiles: (importedFiles, options) => stageSourceFiles(importedFiles, options, refreshedSnapshot),
     })
-  }, [activeProjectId, addImageAnnotations, files, runDesktopImportParseJob, stageSourceFiles])
+  }, [
+    activeProjectId,
+    addImageAnnotations,
+    currentProjectWorkspaceSnapshot,
+    files,
+    refreshActiveProjectSourceSnapshot,
+    runDesktopImportParseJob,
+    stageSourceFiles,
+  ])
 
   const pasteImagesFromSystemClipboard = useCallback(async () => {
     const imageFiles = await imageFilesFromSystemClipboard()
@@ -3483,6 +3575,7 @@ function sourceFileAutosaveSignature(file: SourceFile) {
     sourcePath: file.sourcePath,
     storedPath: file.storedPath,
     checksum: file.checksum,
+    parseChecksum: file.parseChecksum,
     parse: parse ? {
       parserId: parse.parserId,
       parserVersion: parse.parserVersion,
@@ -3634,10 +3727,13 @@ function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: str
   const nextFiles = files.map((file) => {
     const savedFile = savedFiles.get(file.id)
     if (!savedFile) return file
-    const parse = preferredAutosavedSourceParse(file.parse, savedFile.parse)
+    const parse = preferredAutosavedSourceParse(file, savedFile)
     const status = parse === savedFile.parse && parse !== file.parse
       ? savedFile.status
       : file.status
+    const parseChecksum = parse === savedFile.parse && parse !== file.parse
+      ? savedFile.parseChecksum
+      : file.parseChecksum ?? file.checksum
     const nextFile: SourceFile = {
       ...file,
       size: savedFile.size,
@@ -3645,6 +3741,7 @@ function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: str
       preview: savedFile.preview,
       storedPath: savedFile.storedPath,
       checksum: savedFile.checksum,
+      parseChecksum,
       sourcePath: savedFile.sourcePath,
       parse,
     }
@@ -3655,11 +3752,17 @@ function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: str
 }
 
 function preferredAutosavedSourceParse(
-  currentParse: SourceParseResult | undefined,
-  savedParse: SourceParseResult | undefined,
+  currentFile: SourceFile,
+  savedFile: SourceFile,
 ): SourceParseResult | undefined {
+  const currentParse = currentFile.parse
+  const savedParse = savedFile.parse
   if (!savedParse) return currentParse
   if (!currentParse) return savedParse
+  if (savedFile.parseChecksum && savedFile.parseChecksum === savedFile.checksum
+    && currentFile.parseChecksum !== savedFile.checksum) {
+    return savedParse
+  }
   const currentRank = sourceParseResolutionRank(currentParse)
   const savedRank = sourceParseResolutionRank(savedParse)
   return savedRank > currentRank ? savedParse : currentParse
@@ -3688,6 +3791,7 @@ function sourceFileMetadataMatches(left: SourceFile, right: SourceFile): boolean
     && left.preview === right.preview
     && left.storedPath === right.storedPath
     && left.checksum === right.checksum
+    && left.parseChecksum === right.parseChecksum
     && left.sourcePath === right.sourcePath
     && sourceParseAutosaveSignatureMatches(left.parse, right.parse)
 }

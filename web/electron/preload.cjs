@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("rxnflowDesktop", {
   },
   registerImportCandidates: (payload) => ipcRenderer.invoke("rxnflow:register-import-candidates", payload),
   parseSourcePreview: (payload) => ipcRenderer.invoke("rxnflow:parse-source-preview", payload),
+  inspectProjectSourceFiles: (payload) => ipcRenderer.invoke("rxnflow:inspect-project-source-files", payload),
   saveJsonSnapshot: (payload) => ipcRenderer.invoke("rxnflow:save-json-snapshot", payload),
   saveReportArtifact: (payload) => ipcRenderer.invoke("rxnflow:save-report-artifact", payload),
   createProjectFolder: (payload) => ipcRenderer.invoke("rxnflow:create-project-folder", payload),

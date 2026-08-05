@@ -373,6 +373,7 @@ function mergeDesktopImportResult(
     preview: string
     storedPath?: string
     checksum?: string
+    parseChecksum?: string
     parse?: SourceParseResult | null
     error?: {
       code: string
@@ -399,6 +400,7 @@ function mergeDesktopImportResult(
     sourcePath: file.storedPath ? undefined : source?.sourcePath,
     storedPath: file.storedPath ?? source?.storedPath,
     checksum: file.checksum ?? source?.checksum,
+    parseChecksum: file.parseChecksum ?? (file.parse && file.checksum ? file.checksum : source?.parseChecksum),
     parse,
   }
 }

@@ -122,6 +122,7 @@ export type SourceFile = {
   sourcePath?: string
   storedPath?: string
   checksum?: string
+  parseChecksum?: string
   parse?: SourceParseResult
 }
 
@@ -404,6 +405,7 @@ function normalizeProjectFile(file: SourceFile | Partial<SourceFile>, index: num
     sourcePath: typeof file.sourcePath === "string" ? file.sourcePath : undefined,
     storedPath: typeof file.storedPath === "string" ? file.storedPath : undefined,
     checksum: typeof file.checksum === "string" ? file.checksum : undefined,
+    parseChecksum: typeof file.parseChecksum === "string" ? file.parseChecksum : undefined,
     parse: normalizeSourceParseResult(file.parse),
   }
 }

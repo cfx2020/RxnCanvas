@@ -42,6 +42,7 @@ export function desktopImportSourceFilesFromFiles(files: DesktopSourceFile[], id
     sourcePath: file.sourcePath,
     storedPath: file.storedPath,
     checksum: file.checksum,
+    parseChecksum: file.parseChecksum,
     parse: file.parse,
   }))
 }

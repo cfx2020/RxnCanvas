@@ -10,6 +10,7 @@ export type DesktopSourceFile = {
   sourcePath?: string
   storedPath?: string
   checksum?: string
+  parseChecksum?: string
   parse?: SourceParseResult
 }
 
@@ -38,6 +39,7 @@ export type DesktopImportSourceFilesResponse =
           preview: string
           storedPath?: string
           checksum?: string
+          parseChecksum?: string
           parse?: SourceParseResult | null
           error?: {
             code: string

@@ -156,6 +156,7 @@ Floating toolbar 现在是紧凑胶囊样式：
 - `CoordinatePreview.vibrationModes`：随 `SourceFile.parse` 保存/恢复。project package normalization 会校验 mode shape，只保留 parser 顺序中第一个 mode 的完整位移，其余 mode 保存 frequency/kind/IR/Raman 等 metadata 并清空位移，从而让默认 3D 播放可直接恢复，同时避免全部 normal modes 把项目 JSON 放大到不可用量级。（`web/src/domain/sourceParsers.ts`; `web/src/domain/projectPackages.ts`; `web/src/domain/vibrations.ts`; `web/electron/project-store.cjs`）
 - `DesktopPreferences`：只属于本机运行时偏好，不进入 `RxnFlowProjectPackage`；Electron 存 userData，浏览器 fallback 使用 localStorage 保存外观/单位。（`web/src/app/desktopPreferences.ts`; `web/electron/preferences-store.cjs`）
 - `Desktop import parse queue`：不是持久化数据结构，而是桌面导入 runtime 队列。`importParseJobs.ts` 默认以 3 并发处理单文件 parser job；placeholder 先写入 `ProjectWorkspaceSnapshot.files`，每个 job 完成后通过 callback 回填 parse/storedPath/checksum。（`web/src/app/importParseJobs.ts:5-130`; `web/src/app/appImportActions.ts:33-74`）
+- `SourceFile.checksum / parseChecksum`：`checksum` 是项目 `sources/` 磁盘副本的当前 SHA-256，`parseChecksum` 是 `SourceFile.parse` 对应的 SHA-256。renderer 在窗口聚焦、项目激活和项目 source 拖入画布前通过 Electron 检查项目副本，只重解析发生变化或被强制校验的完整 gas/solution 分组；两者不一致时 parse 视为失效，不允许旧能量继续生成或刷新节点。（`web/src/app/sourceFileRefresh.ts`; `web/src/app/App.tsx`; `web/electron/main.cjs`; `web/electron/project-store.cjs`）
 
 当前持久化 / 恢复状态流：
 
@@ -170,6 +171,7 @@ Floating toolbar 现在是紧凑胶囊样式：
 - **startup restore 视为 one-shot IPC**：见 `.codestable/compound/2026-06-19-learning-startup-restore-one-shot-ipc.md`。这就是为什么恢复逻辑放在稳定 effect 入口，并在恢复后主动回写 active project directory runtime binding。
 - **原始 log/out/xyz 不是长期 authority，项目权威数据是结构化 project data**：见 `.codestable/compound/2026-06-06-decision-canonical-import-data.md`。当前桌面工作区虽然会复制 source 到 `sources/`，但保存/恢复权威仍是 `rxnflow-project` 结构、节点 provenance 和轻量 `importLedger`，而不是重新把 raw 文件当主数据模型。
 - **导入 UI 先反馈、解析结果后回填**：桌面 dialog/drop 不再读 head preview 来“提前猜”解析结果；Project Rail 的 placeholder/progress 是运行时反馈，权威 parse 仍来自 background import job 和 bundled Python engine。
+- **项目 source 副本与 parse 必须版本绑定**：长期读取和外部打开优先项目 `storedPath`；autosave 不得用残留外部 `sourcePath` 覆盖已有项目副本。磁盘 checksum 变化时必须重新解析，解析失败则清空旧 parse 并把关联节点降为 staged/pending，不能以旧能量假装成功。
 - **默认播放振动以有界结构化数据保存**：3D 播放和内联量测消费 `CoordinatePreview` / `VibrationalMode`，不在 `FlowNode` 上复制坐标或振动字段。项目保留第一个 mode 的完整位移、其余 mode 的 metadata；新导入和正常保存恢复不要求重新读取 raw log/out。2026-06-27 之前已被瘦身为空位移的项目仍可从工作区 source 补载一次，补载完成后 autosave signature 会识别首个 mode 位移从空到完整并写回项目。
 - **桌面偏好属于本机，不属于项目**：外部应用路径、appearance 和默认 energy unit 通过 Electron userData / browser fallback 保存，不能写入项目 JSON、source metadata 或导出包。
 

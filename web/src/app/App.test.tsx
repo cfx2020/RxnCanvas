@@ -274,6 +274,23 @@ function parsedGaussianSource(label: string) {
   } as const
 }
 
+function parsedGaussianStateSource(label: string, spinMultiplicity: number, energyGas: number) {
+  const parsed = parsedGaussianSource(label)
+  return {
+    ...parsed,
+    energyGas,
+    energySolution: null,
+    candidates: parsed.candidates.map((candidate) => ({
+      ...candidate,
+      spinMultiplicity,
+      energyGas,
+      energySolution: null,
+      energyTable: { egasHartree: energyGas },
+    })),
+    energyTable: { egasHartree: energyGas },
+  } as const
+}
+
 function unsupportedSource(label: string, message = "No supported parser recognized this source full-file.") {
   return {
     label,
@@ -2257,6 +2274,141 @@ describe("App", () => {
       expect(node).toBeDefined()
       expect(node?.style.transform).toContain(`translate(${expectedX}px, ${expectedY}px)`)
     })
+  })
+
+  it("reparses project gas and solution files before a canvas drop", async () => {
+    const oldChecksum = `sha256:${"1".repeat(64)}`
+    const gasChecksum = `sha256:${"2".repeat(64)}`
+    const newSolutionChecksum = `sha256:${"3".repeat(64)}`
+    const gasParse = parsedGaussianStateSource("Ni-ts", 1, -100)
+    const oldTripletSolutionParse = parsedGaussianStateSource("Ni-ts-sol", 3, -100.2)
+    const newSingletSolutionParse = parsedGaussianStateSource("Ni-ts-sol", 1, -100.4)
+    const projectPackage = {
+      schemaVersion: 1,
+      packageKind: "rxnflow-project",
+      project: { id: "ni-project", label: "Ni", meta: "saved" },
+      files: [
+        {
+          id: "ni-gas",
+          name: "Ni-ts.log",
+          kind: "Gaussian",
+          size: 100,
+          status: "parsed",
+          preview: "old gas preview",
+          storedPath: "sources/Ni-ts.log",
+          sourcePath: "/external/old/Ni-ts.log",
+          checksum: gasChecksum,
+          parseChecksum: gasChecksum,
+          parse: gasParse,
+        },
+        {
+          id: "ni-sol",
+          name: "Ni-ts_sol.log",
+          kind: "Gaussian",
+          size: 120,
+          status: "parsed",
+          preview: "old triplet solution preview",
+          storedPath: "sources/Ni-ts_sol.log",
+          sourcePath: "/external/old/Ni-ts_sol.log",
+          checksum: oldChecksum,
+          parseChecksum: oldChecksum,
+          parse: oldTripletSolutionParse,
+        },
+      ],
+      nodes: [],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      savedAt: "2026-08-05T00:00:00.000Z",
+    }
+    const inspectProjectSourceFiles = vi.fn(async () => ({
+      ok: true,
+      data: {
+        files: [
+          { id: "ni-gas", storedPath: "sources/Ni-ts.log", size: 100, checksum: gasChecksum },
+          { id: "ni-sol", storedPath: "sources/Ni-ts_sol.log", size: 140, checksum: newSolutionChecksum },
+        ],
+      },
+    }))
+    const parseSourcePreview = vi.fn(async (payload: { storedPath?: string }) => ({
+      ok: true,
+      data: payload.storedPath === "sources/Ni-ts_sol.log"
+        ? {
+            parse: newSingletSolutionParse,
+            size: 140,
+            checksum: newSolutionChecksum,
+            parseChecksum: newSolutionChecksum,
+          }
+        : {
+            parse: gasParse,
+            size: 100,
+            checksum: gasChecksum,
+            parseChecksum: gasChecksum,
+          },
+    }))
+    const openSourceFile = vi.fn().mockResolvedValue({ ok: true })
+    const autosaveProjectPackage = vi.fn(async (payload: { content: string }) => ({
+      canceled: false,
+      projectDirectory: "/Users/linsay/Documents/chemistry/Ni",
+      content: payload.content,
+      validation: null,
+    }))
+    installDesktopImportRuntime({
+      getStartupProjectContent: vi.fn().mockResolvedValue({
+        canceled: false,
+        content: JSON.stringify(projectPackage),
+        filePath: "/Users/linsay/Documents/chemistry/Ni/.rxnflow/project.json",
+        projectDirectory: "/Users/linsay/Documents/chemistry/Ni",
+        replaceProjects: true,
+        source: "startup",
+        validation: null,
+      }),
+      inspectProjectSourceFiles,
+      parseSourcePreview,
+      openSourceFile,
+      autosaveProjectPackage,
+    })
+
+    const { container } = render(<App />)
+
+    const groupedSourceButton = await screen.findByRole("button", { name: fileButtonName("Ni-ts", "Gaussian") })
+    await waitFor(() => {
+      expect(parseSourcePreview).toHaveBeenCalledWith(expect.objectContaining({
+        projectId: "ni-project",
+        storedPath: "sources/Ni-ts_sol.log",
+      }))
+    })
+
+    const dataTransfer = new TestDataTransfer()
+    const groupedSourceRow = groupedSourceButton.closest(".project-file-card") as HTMLElement
+    fireEvent.pointerDown(groupedSourceRow, { button: 0 })
+    fireEvent.dragStart(groupedSourceRow, { dataTransfer })
+    dispatchDrop(screen.getByLabelText("Graph canvas surface"), dataTransfer, 640, 360)
+
+    const importedNode = await screen.findByRole("button", { name: "Node Ni-ts" })
+    fireEvent.click(importedNode)
+    const inspector = screen.getByRole("complementary", { name: "Inspector" })
+    expect(within(inspector).getByText("Free energy").closest("div")).toHaveTextContent("-100.400000 Eh")
+    const sourceInspector = within(inspector).getByRole("region", { name: "Source inspector" })
+    expect(sourceInspector).toHaveTextContent("Ni-ts.log")
+    expect(sourceInspector).toHaveTextContent("Ni-ts_sol.log")
+    fireEvent.click(within(sourceInspector).getByRole("button", { name: "Open sol source with external app" }))
+    expect(openSourceFile).toHaveBeenLastCalledWith(expect.objectContaining({
+      projectId: "ni-project",
+      storedPath: "sources/Ni-ts_sol.log",
+    }))
+
+    await waitFor(() => expect(autosaveProjectPackage).toHaveBeenCalled(), { timeout: 2500 })
+    const savedPackages = autosaveProjectPackage.mock.calls.map(([payload]) => JSON.parse(payload.content))
+    const savedNode = savedPackages
+      .flatMap((savedPackage) => savedPackage.canvases?.flatMap((canvas: { nodes?: unknown[] }) => canvas.nodes ?? []) ?? savedPackage.nodes ?? [])
+      .find((node: { label?: string }) => node.label === "Ni-ts")
+    expect(savedNode).toMatchObject({
+      energyGas: -100,
+      energySolution: -100.4,
+      spinMultiplicity: 1,
+      sourceFileId: "ni-gas",
+    })
+    expect(container.querySelectorAll(".reaction-node[data-flow-node-id]")).toHaveLength(1)
   })
 
   it("drops external files onto the canvas at graph-space position", async () => {

@@ -7,6 +7,8 @@ const { recordRecentProjectState } = require("./recent-projects.cjs")
 
 const mainPath = path.join(__dirname, "main.cjs")
 const mainSource = fs.readFileSync(mainPath, "utf8")
+const preloadPath = path.join(__dirname, "preload.cjs")
+const preloadSource = fs.readFileSync(preloadPath, "utf8")
 
 function handlerSource(channel, nextChannel) {
   const start = mainSource.indexOf(`ipcMain.handle("${channel}"`)
@@ -82,4 +84,38 @@ test("project lifecycle generations invalidate only the deleted project", () => 
   assert.equal(lifecycle.invalidateProjectLifecycle("project-a"), 1)
   assert.equal(lifecycle.projectLifecycleGeneration("project-a"), 1)
   assert.equal(lifecycle.projectLifecycleGeneration("project-b"), 0)
+})
+
+test("project source inspection returns project-owned file metadata", () => {
+  const inspectionBody = handlerSource(
+    "rxnflow:inspect-project-source-files",
+    "rxnflow:save-json-snapshot",
+  )
+
+  assert.match(inspectionBody, /projectDirectoriesById\.get\(projectId\)/)
+  assert.match(inspectionBody, /isSafeProjectRelativePath\(storedPath\)/)
+  assert.match(inspectionBody, /sourceFileDiskMetadata\(path\.join\(projectDirectory, storedPath\)\)/)
+  assert.match(inspectionBody, /return \{ id, storedPath, \.\.\.metadata \}/)
+})
+
+test("source preview parsing prefers the project copy and returns its checksum", () => {
+  const previewBody = handlerSource(
+    "rxnflow:parse-source-preview",
+    "rxnflow:inspect-project-source-files",
+  )
+  const storedPathIndex = previewBody.indexOf("candidates.push(path.join(projectDirectory, storedPath))")
+  const sourcePathIndex = previewBody.indexOf("candidates.push(sourcePath)")
+
+  assert.notEqual(storedPathIndex, -1)
+  assert.notEqual(sourcePathIndex, -1)
+  assert.ok(storedPathIndex < sourcePathIndex)
+  assert.match(previewBody, /sourceFileDiskMetadata\(sourceFilePath\)/)
+  assert.match(previewBody, /parseChecksum: metadata\.checksum/)
+})
+
+test("preload exposes project source inspection to the renderer", () => {
+  assert.match(
+    preloadSource,
+    /inspectProjectSourceFiles: \(payload\) => ipcRenderer\.invoke\("rxnflow:inspect-project-source-files", payload\)/,
+  )
 })

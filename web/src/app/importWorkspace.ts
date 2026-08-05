@@ -398,10 +398,11 @@ export function projectWorkspaceWithImportPlan(
 export function reconcileProjectWorkspaceSourceNodes(
   snapshot: ProjectWorkspaceSnapshot,
   refreshedSourceFileIds: ReadonlySet<string> = new Set(),
+  refreshPairedGroups = false,
 ): ProjectWorkspaceSnapshot {
   const reconciledCanvases = snapshot.canvases.map((canvas) => ({
     ...canvas,
-    nodes: reconcileNodesWithPairedSourceFiles(canvas.nodes, snapshot.files, refreshedSourceFileIds),
+    nodes: reconcileNodesWithPairedSourceFiles(canvas.nodes, snapshot.files, refreshedSourceFileIds, refreshPairedGroups),
   }))
   const activeCanvas = reconciledCanvases.find((canvas) => canvas.id === snapshot.activeCanvasId)
     ?? reconciledCanvases[0]
@@ -424,8 +425,13 @@ function reconcileNodesWithPairedSourceFiles(
   nodes: FlowNode[],
   files: SourceFile[],
   refreshedSourceFileIds: ReadonlySet<string>,
+  refreshPairedGroups: boolean,
 ): FlowNode[] {
-  const parsedImports = files.flatMap((file, index) => file.parse ? [{ file, index, parsed: file.parse }] : [])
+  const parsedImports = files.flatMap((file, index) => (
+    file.parse && (!file.checksum || !file.parseChecksum || file.parseChecksum === file.checksum)
+      ? [{ file, index, parsed: file.parse }]
+      : []
+  ))
   const pairedNodeByGroupKey = new Map<string, FlowNode>()
   for (const [groupIndex, group] of parsedImportGroups(parsedImports).entries()) {
     if (!shouldPairParsedGroup(group)) continue
@@ -443,14 +449,18 @@ function reconcileNodesWithPairedSourceFiles(
   }
 
   const fileById = new Map(files.map((file) => [file.id, file]))
+  const refreshedGroupKeys = new Set(files
+    .filter((file) => refreshedSourceFileIds.has(file.id))
+    .map(sourceFileDisplayGroupKey))
   return nodes.map((node) => {
     if (!node.sourceFileId) return node
     const sourceFile = fileById.get(node.sourceFileId)
     if (!sourceFile) return node
-    const refreshedNode = refreshedSourceFileIds.has(sourceFile.id)
+    const sourceGroupKey = sourceFileDisplayGroupKey(sourceFile)
+    const refreshedNode = refreshedSourceFileIds.has(sourceFile.id) || (refreshPairedGroups && refreshedGroupKeys.has(sourceGroupKey))
       ? nodeWithRefreshedSourceData(node, sourceFile)
       : node
-    const pairedNode = pairedNodeByGroupKey.get(sourceFileDisplayGroupKey(sourceFile))
+    const pairedNode = pairedNodeByGroupKey.get(sourceGroupKey)
     if (!pairedNode) return refreshedNode
     return {
       ...refreshedNode,
@@ -466,7 +476,22 @@ function reconcileNodesWithPairedSourceFiles(
 
 function nodeWithRefreshedSourceData(node: FlowNode, file: SourceFile): FlowNode {
   const parsed = file.parse
-  if (!parsed?.parsed) return node
+  if (!parsed?.parsed || (file.checksum && file.parseChecksum && file.parseChecksum !== file.checksum)) {
+    return {
+      ...node,
+      formula: "pending",
+      method: "unassigned",
+      solvent: "unassigned",
+      energyGas: null,
+      energySolution: null,
+      energyTable: undefined,
+      parserId: parsed?.parserId ?? null,
+      parserVersion: parsed?.parserVersion ?? null,
+      charge: null,
+      spinMultiplicity: null,
+      sourceStatus: "staged",
+    }
+  }
   const candidates = parsed.candidates ?? []
   const candidate = candidates.find((item) => item.candidateId === node.sourceCandidateId)
     ?? candidates.find((item) => item.objectIndex === node.sourceObjectIndex)
@@ -586,6 +611,7 @@ export function parsedImportFiles(
 export function stagedSourceFile(file: ImportSourceFile, parsed: SourceParseResult): SourceFile {
   return normalizeSourceFileForPersistence({
     ...file,
+    parseChecksum: file.parseChecksum ?? (file.checksum && parsed.parsed ? file.checksum : undefined),
     parse: parsed,
     kind: parsed.sourceKind,
     status: parsed.parsed ? "parsed" : "staged",

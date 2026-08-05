@@ -13,6 +13,7 @@ const {
   resolveProjectStatePath,
   saveProjectContent,
   slimProjectPackageForPersistence,
+  sourceFileDiskMetadata,
 } = require("./project-store.cjs")
 const {
   loadRecentProjectsState,
@@ -1061,6 +1062,7 @@ async function parsedImportSourceFilePayloads({
       })
       return {
         ...importSourceFileRendererPayload(materialized),
+        parseChecksum: materialized.checksum,
         parse,
       }
     } catch (error) {
@@ -1201,7 +1203,51 @@ ipcMain.handle("rxnflow:parse-source-preview", async (_event, payload) => {
   }, { timeoutMs: 20000 })
   if (!response.ok) return response
   const parse = response.data?.files?.[0]?.parse ?? null
-  return { ok: true, data: { parse } }
+  const metadata = sourceFilePath
+    ? await sourceFileDiskMetadata(sourceFilePath).catch(() => null)
+    : null
+  return {
+    ok: true,
+    data: {
+      parse,
+      ...(metadata ? { ...metadata, parseChecksum: metadata.checksum } : {}),
+    },
+  }
+})
+
+ipcMain.handle("rxnflow:inspect-project-source-files", async (_event, payload) => {
+  const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
+  let projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
+  if (!projectDirectory && projectId) {
+    projectDirectory = await projectDirectoryFromActiveProjectPayload(projectId, payload)
+  }
+  if (!projectDirectory) {
+    return invalidEngineInput("Project source inspection requires an open project folder.")
+  }
+
+  const files = Array.isArray(payload?.files) ? payload.files : []
+  const inspected = await Promise.all(files.map(async (file) => {
+    const id = typeof file?.id === "string" ? file.id : null
+    const storedPath = typeof file?.storedPath === "string" ? file.storedPath : null
+    if (!id || !storedPath || !isSafeProjectRelativePath(storedPath)) return null
+    try {
+      const metadata = await sourceFileDiskMetadata(path.join(projectDirectory, storedPath))
+      return { id, storedPath, ...metadata }
+    } catch (error) {
+      return {
+        id,
+        storedPath,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }))
+
+  return {
+    ok: true,
+    data: {
+      files: inspected.filter(Boolean),
+    },
+  }
 })
 
 function importSourceFilePayload(file) {

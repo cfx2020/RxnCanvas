@@ -29,6 +29,7 @@ const {
   readProjectContent,
   saveProjectContent,
   saveProjectReportArtifact,
+  sourceFileDiskMetadata,
   withArchiveDestinationLock,
   withProjectSaveLock,
   writeProjectFileAtomically,
@@ -592,6 +593,40 @@ test("project save preserves an existing full source instead of replacing it wit
   assert.equal(savedFile.storedPath, storedPath)
 })
 
+test("project save keeps the stored project source ahead of a stale external source path", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-stored-source-authority-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+
+  const projectDirectory = path.join(tempDirectory, "stored-source-study.rxnflow")
+  const storedPath = "sources/solution.log"
+  const storedSourcePath = path.join(projectDirectory, storedPath)
+  const staleExternalPath = path.join(tempDirectory, "solution.log")
+  fs.mkdirSync(path.dirname(storedSourcePath), { recursive: true })
+  fs.writeFileSync(storedSourcePath, "new singlet source", "utf8")
+  fs.writeFileSync(staleExternalPath, "old triplet source", "utf8")
+
+  const saved = await saveProjectContent(projectDirectory, projectContent({
+    id: "solution-source",
+    name: "solution.log",
+    kind: "Gaussian",
+    size: 18,
+    status: "parsed",
+    preview: "",
+    sourcePath: staleExternalPath,
+    storedPath,
+    checksum: sha256("old triplet source"),
+    parse: { parsed: true, spinMultiplicity: 3 },
+  }), { previousProjectDirectory: projectDirectory })
+  const savedFile = JSON.parse(saved.content).files[0]
+
+  assert.equal(fs.readFileSync(storedSourcePath, "utf8"), "new singlet source")
+  assert.equal(savedFile.size, Buffer.byteLength("new singlet source"))
+  assert.equal(savedFile.checksum, sha256("new singlet source"))
+  assert.equal(savedFile.parseChecksum, sha256("old triplet source"))
+  assert.equal(savedFile.storedPath, storedPath)
+  assert.equal(savedFile.sourcePath, undefined)
+})
+
 test("project source hashes use a shared bounded fingerprint cache with safe invalidation", async (t) => {
   const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-hash-cache-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
@@ -687,6 +722,18 @@ test("project source hashes use a shared bounded fingerprint cache with safe inv
     const firstBefore = streamCount(paths[0].sourcePath)
     await rematerialize(projectDirectory, paths[0].sourcePath, paths[0].storedPath)
     assert.equal(streamCount(paths[0].sourcePath), firstBefore + 1)
+  })
+})
+
+test("source file disk metadata returns the current size and checksum", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-source-metadata-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const sourcePath = path.join(tempDirectory, "source.log")
+  fs.writeFileSync(sourcePath, "singlet source", "utf8")
+
+  assert.deepEqual(await sourceFileDiskMetadata(sourcePath), {
+    size: Buffer.byteLength("singlet source"),
+    checksum: sha256("singlet source"),
   })
 })
 

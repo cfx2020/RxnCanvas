@@ -313,10 +313,19 @@ async function persistSourceFile(projectDirectory, file, index, options) {
 
   const hashedFile = await sha256File(targetPath)
   const { sourcePath: _sourcePath, ...rest } = file
+  const checksum = `sha256:${hashedFile.digest}`
+  const parseChecksum = file?.parse
+    ? typeof file.parseChecksum === "string"
+      ? file.parseChecksum
+      : typeof file.checksum === "string"
+        ? file.checksum
+        : checksum
+    : undefined
   return {
     ...rest,
     size: hashedFile.size,
-    checksum: `sha256:${hashedFile.digest}`,
+    checksum,
+    ...(parseChecksum ? { parseChecksum } : {}),
     storedPath,
   }
 }
@@ -472,6 +481,14 @@ async function sha256File(filePath) {
   throw new Error(`Source file changed while computing its checksum: ${absolutePath}`)
 }
 
+async function sourceFileDiskMetadata(filePath) {
+  const hashedFile = await sha256File(filePath)
+  return {
+    size: hashedFile.size,
+    checksum: `sha256:${hashedFile.digest}`,
+  }
+}
+
 async function statFileFingerprint(absolutePath) {
   const stats = await fs.stat(absolutePath, { bigint: true })
   if (!stats.isFile()) throw new Error(`Source path is not a file: ${absolutePath}`)
@@ -568,12 +585,12 @@ async function pruneUnreferencedSourceFiles(projectDirectory, files) {
 
 async function resolveSourcePath(projectDirectory, file, previousProjectDirectory) {
   const candidates = []
-  if (typeof file?.sourcePath === "string" && file.sourcePath) {
-    candidates.push(file.sourcePath)
-  }
   if (typeof file?.storedPath === "string" && isSafeProjectPath(file.storedPath)) {
     if (previousProjectDirectory) candidates.push(path.join(previousProjectDirectory, file.storedPath))
     candidates.push(path.join(projectDirectory, file.storedPath))
+  }
+  if (typeof file?.sourcePath === "string" && file.sourcePath) {
+    candidates.push(file.sourcePath)
   }
 
   for (const candidate of candidates) {
@@ -855,6 +872,7 @@ module.exports = {
   saveProjectDirectory,
   saveProjectReportArtifact,
   slimProjectPackageForPersistence,
+  sourceFileDiskMetadata,
   sourcesDirectory,
   withArchiveDestinationLock,
   withProjectSaveLock,

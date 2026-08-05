@@ -51,7 +51,33 @@ export type RxnflowDesktopApi = {
     preview?: string
     storedPath?: string
     sourcePath?: string
-  }) => Promise<{ ok: boolean; data?: { parse?: SourceParseResult | null }; error?: { code: string; message: string } }>
+  }) => Promise<{
+    ok: boolean
+    data?: {
+      parse?: SourceParseResult | null
+      size?: number
+      checksum?: string
+      parseChecksum?: string
+    }
+    error?: { code: string; message: string }
+  }>
+  inspectProjectSourceFiles?: (payload: {
+    projectId: string
+    projectDirectory?: string | null
+    files: Array<{ id: string; storedPath: string }>
+  }) => Promise<{
+    ok: boolean
+    data?: {
+      files: Array<{
+        id: string
+        storedPath: string
+        size?: number
+        checksum?: string
+        error?: string
+      }>
+    }
+    error?: { code: string; message: string }
+  }>
   saveJsonSnapshot: (payload: { defaultName: string; content: string }) => Promise<{ canceled: boolean; filePath?: string }>
   saveReportArtifact: (payload: {
     defaultName: string
