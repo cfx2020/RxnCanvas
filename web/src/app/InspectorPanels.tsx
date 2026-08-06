@@ -14,6 +14,7 @@ export type InspectorMode = "inspector" | "export"
 import { candidateReviewKey, nodeKindFromCandidate, type CandidateReviewEntry, type CandidateReviewViewState } from "./importRegistration"
 
 export const InspectorPanel = memo(function InspectorPanel({
+  collapsed = false,
   node,
   file,
   rows,
@@ -25,6 +26,7 @@ export const InspectorPanel = memo(function InspectorPanel({
   onReset2DStructure,
   onOpenSourceFile,
 }: {
+  collapsed?: boolean
   node: FlowNode | null
   file: SourceFile | null
   rows: EnergyTableRow[]
@@ -38,7 +40,12 @@ export const InspectorPanel = memo(function InspectorPanel({
 }) {
   const nodeRow = node ? rows.find((row) => row.nodeId === node.id) ?? null : null
   return (
-    <aside className="inspector-panel" aria-label="Inspector">
+    <aside
+      className={`inspector-panel${collapsed ? " is-collapsed" : ""}`}
+      aria-label="Inspector"
+      aria-hidden={collapsed || undefined}
+      inert={collapsed || undefined}
+    >
       <NodeInspector
         node={node}
         row={nodeRow}

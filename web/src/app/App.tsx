@@ -418,6 +418,7 @@ function initialToolbarPlacement(): ToolbarPlacement {
 
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null)
+  const canvasWorldRef = useRef<HTMLDivElement | null>(null)
   const canvasStageRef = useRef<HTMLDivElement | null>(null)
   const toolbarRef = useRef<HTMLDivElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
@@ -629,6 +630,7 @@ export function App() {
   const pointerMoveFrameRef = useRef<number | null>(null)
   const pendingPointerMoveRef = useRef<{ pointerId: number; clientX: number; clientY: number } | null>(null)
   const liveViewportRef = useRef<CanvasViewport>(viewport)
+  const livePanActiveRef = useRef(false)
   const resizePreviewGeometryRef = useRef<NodeResizePreviewCache | null>(null)
 
   useLayoutEffect(() => {
@@ -639,21 +641,23 @@ export function App() {
     activeProjectIdRef.current = activeProjectId
   }, [activeProjectId])
 
-  const canvasWorldElement = useCallback(() => (
-    canvasRef.current?.querySelector<HTMLElement>(".canvas-world") ?? null
-  ), [])
+  const setCanvasLivePanActive = useCallback((active: boolean) => {
+    if (livePanActiveRef.current === active) return
+    livePanActiveRef.current = active
+    canvasRef.current?.classList.toggle("is-live-pan", active)
+  }, [])
 
   const previewCanvasViewport = useCallback((nextViewport: CanvasViewport) => {
     liveViewportRef.current = nextViewport
-    const world = canvasWorldElement()
+    const world = canvasWorldRef.current
     if (!world) return
-    canvasRef.current?.classList.add("is-live-pan")
+    setCanvasLivePanActive(true)
     world.style.transform = `translate(${nextViewport.x}px, ${nextViewport.y}px) scale(${nextViewport.zoom})`
-  }, [canvasWorldElement])
+  }, [setCanvasLivePanActive])
 
   const finishCanvasViewportPreview = useCallback(() => {
-    canvasRef.current?.classList.remove("is-live-pan")
-  }, [])
+    setCanvasLivePanActive(false)
+  }, [setCanvasLivePanActive])
 
   const commitMinimapViewport = useCallback((nextViewport: CanvasViewport) => {
     finishCanvasViewportPreview()
@@ -754,12 +758,13 @@ export function App() {
   }, [buildNodeDragPreviewCache, energyDisplayOptions, relativeEnergyByNodeId])
 
   const clearDragPreview = useCallback(() => {
-    canvasRef.current?.classList.remove("is-live-pan", "is-live-node-drag", "is-live-node-resize")
+    setCanvasLivePanActive(false)
+    canvasRef.current?.classList.remove("is-live-node-drag", "is-live-node-resize")
     dragPreviewNodeRef.current?.element?.classList.remove("is-live-dragging", "is-live-resizing")
     dragPreviewNodeRef.current = null
     dragPreviewGeometryRef.current = null
     resizePreviewGeometryRef.current = null
-  }, [])
+  }, [setCanvasLivePanActive])
 
   const startNodeResizePreview = useCallback((nodeId: string, originSize: SurfaceSize, element?: HTMLElement | null) => {
     const dragCache = buildNodeDragPreviewCache(nodeId, element)
@@ -1366,7 +1371,8 @@ export function App() {
     setViewport,
     getViewport: () => liveViewportRef.current,
     previewViewport: previewCanvasViewport,
-  }), [activeCanvasTabId, previewCanvasViewport, viewMode])
+    finishPreview: finishCanvasViewportPreview,
+  }), [activeCanvasTabId, finishCanvasViewportPreview, previewCanvasViewport, viewMode])
 
   const handleCanvasPointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
@@ -3328,6 +3334,7 @@ export function App() {
               <div className="workbench-view-pane canvas-view-pane">
                 <CanvasSurface
                   canvasRef={canvasRef}
+                  canvasWorldRef={canvasWorldRef}
                   nodes={nodes}
                   files={files}
                   edges={edges}
@@ -3417,23 +3424,22 @@ export function App() {
           </div>
         </section>
 
-        {rightSidebarOpen ? (
-          <InspectorPanel
-            node={selectedNode}
-            file={selectedFile}
-            rows={energyRows}
-            files={files}
-            energyDisplayOptions={energyDisplayOptions}
-            onReviewCandidates={reviewCandidatesForFile}
-            onOpenStructure={openStructurePreview}
-            onEdit2DStructure={(nodeId) => {
-              structureEditorReturnFocusRef.current = null
-              setStructureEditorNodeId(nodeId)
-            }}
-            onReset2DStructure={resetNodeManualStructure}
-            onOpenSourceFile={openSourceFileInSystemApp}
-          />
-        ) : null}
+        <InspectorPanel
+          collapsed={!rightSidebarOpen}
+          node={selectedNode}
+          file={selectedFile}
+          rows={energyRows}
+          files={files}
+          energyDisplayOptions={energyDisplayOptions}
+          onReviewCandidates={reviewCandidatesForFile}
+          onOpenStructure={openStructurePreview}
+          onEdit2DStructure={(nodeId) => {
+            structureEditorReturnFocusRef.current = null
+            setStructureEditorNodeId(nodeId)
+          }}
+          onReset2DStructure={resetNodeManualStructure}
+          onOpenSourceFile={openSourceFileInSystemApp}
+        />
       </main>
       {structurePreviewNode ? (
         <StructurePreviewDialog

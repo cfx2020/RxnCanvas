@@ -42,6 +42,7 @@ describe("appCanvasEffects", () => {
     canvas.getBoundingClientRect = vi.fn(() => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }))
     let viewport = { x: 0, y: 0, zoom: 1 }
     let preview = viewport
+    const finishPreview = vi.fn()
     const setViewport = vi.fn((updater) => {
       viewport = updater(viewport)
     })
@@ -52,6 +53,7 @@ describe("appCanvasEffects", () => {
       previewViewport: (next) => {
         preview = next
       },
+      finishPreview,
     })
 
     canvas.dispatchEvent(new WheelEvent("wheel", { clientX: 50, clientY: 60, deltaX: 5, deltaY: 10, cancelable: true }))
@@ -64,6 +66,7 @@ describe("appCanvasEffects", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 80))
     expect(setViewport).toHaveBeenCalledTimes(1)
     expect(viewport).toEqual(preview)
+    expect(finishPreview).toHaveBeenCalledTimes(1)
     dispose()
   })
 

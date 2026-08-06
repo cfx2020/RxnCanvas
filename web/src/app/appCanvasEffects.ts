@@ -14,11 +14,13 @@ export function subscribeCanvasWheel({
   setViewport,
   getViewport,
   previewViewport,
+  finishPreview,
 }: {
   canvas: HTMLDivElement | null
   setViewport: Setter<CanvasViewport>
   getViewport?: () => CanvasViewport
   previewViewport?: (viewport: CanvasViewport) => void
+  finishPreview?: () => void
 }): () => void {
   if (!canvas) return () => undefined
 
@@ -44,6 +46,7 @@ export function subscribeCanvasWheel({
     if (!committedViewport) return
     liveViewport = null
     setViewport(() => committedViewport)
+    finishPreview?.()
   }
 
   const scheduleCommit = () => {

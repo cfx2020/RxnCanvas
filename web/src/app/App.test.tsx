@@ -421,10 +421,13 @@ describe("App", () => {
   it("toggles the project rail and node inspector independently", () => {
     const { container } = render(<App />)
     const workspace = container.querySelector(".workspace") as HTMLElement
+    const inspector = container.querySelector(".inspector-panel") as HTMLElement
 
     expect(workspace).not.toHaveClass("is-left-collapsed")
     expect(workspace).not.toHaveClass("is-right-collapsed")
     expect(screen.getByRole("complementary", { name: "Inspector" })).toBeInTheDocument()
+    expect(inspector).not.toHaveAttribute("aria-hidden")
+    expect(inspector).not.toHaveAttribute("inert")
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse project sidebar" }))
 
@@ -440,6 +443,8 @@ describe("App", () => {
     expect(workspace).toHaveClass("is-right-collapsed")
     expect(screen.getByRole("complementary", { name: "Project rail" })).toBeInTheDocument()
     expect(screen.queryByRole("complementary", { name: "Inspector" })).not.toBeInTheDocument()
+    expect(inspector).toHaveAttribute("aria-hidden", "true")
+    expect(inspector).toHaveAttribute("inert")
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse project sidebar" }))
     expect(workspace).toHaveClass("is-left-collapsed", "is-right-collapsed")
@@ -448,6 +453,8 @@ describe("App", () => {
     expect(workspace).toHaveClass("is-left-collapsed")
     expect(workspace).not.toHaveClass("is-right-collapsed")
     expect(screen.getByRole("complementary", { name: "Inspector" })).toBeInTheDocument()
+    expect(inspector).not.toHaveAttribute("aria-hidden")
+    expect(inspector).not.toHaveAttribute("inert")
   })
 
   it("keeps non-desktop bridge workflows out of the active workbench", () => {
@@ -545,6 +552,8 @@ describe("App", () => {
         y: initialTranslate.y - 120,
       })
     })
+    expect(surface).toHaveClass("is-live-pan")
+    await waitFor(() => expect(surface).not.toHaveClass("is-live-pan"))
     expect(transformScale(world.style.transform)).toBe(initialScale)
 
     fireEvent.wheel(surface, { deltaY: -120, clientX: 700, clientY: 400, ctrlKey: true, cancelable: true })

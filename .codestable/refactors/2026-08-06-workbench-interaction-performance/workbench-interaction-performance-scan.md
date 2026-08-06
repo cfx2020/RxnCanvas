@@ -1,7 +1,7 @@
 ---
 doc_type: refactor-scan
 refactor: 2026-08-06-workbench-interaction-performance
-status: pending-user-selection
+status: user-reviewed
 scope: web/src/app/App.tsx、CanvasWorkspace.tsx、appCanvasEffects.ts、workbench.css 及对应 App/CanvasWorkspace/appCanvasEffects 测试
 summary: 发现 3 条性能优化点：侧栏布局动画 1 条、画布合成/DOM 热路径 2 条；不改变交互结果，只减少逐帧布局和查询
 ---
@@ -21,7 +21,7 @@ summary: 发现 3 条性能优化点：侧栏布局动画 1 条、画布合成/D
 
 ## 条目
 
-### #1 把侧栏收合动画从 grid 布局过渡改为 transform 抽屉动画
+### #1 把侧栏收合动画从 grid 布局过渡改为 transform 抽屉动画 ✓
 
 - **位置**：`web/src/app/workbench.css:3672`、`web/src/app/workbench.css:10078-10128`、`web/src/app/workbench.css:11309-11323`
 - **分类**：性能
@@ -33,7 +33,7 @@ summary: 发现 3 条性能优化点：侧栏布局动画 1 条、画布合成/D
 - **验证**：AI 自证（跑 `App.test.tsx`；CDP 对比 Layout/RecalcStyle 计数）｜ HUMAN（在桌面宽屏反复展开/收合左右侧栏，确认内容、点击区域和动画连续）
 - **范围**：约 25 行 / 1 文件
 
-### #2 缓存 canvas-world 引用并只在手势开始时切换 live-pan class
+### #2 缓存 canvas-world 引用并只在手势开始时切换 live-pan class ✓
 
 - **位置**：`web/src/app/App.tsx:642-658`
 - **分类**：性能
@@ -45,7 +45,7 @@ summary: 发现 3 条性能优化点：侧栏布局动画 1 条、画布合成/D
 - **验证**：AI 自证（新增/更新 preview 测试，跑 `App.test.tsx`、`CanvasWorkspace.test.tsx`、`appCanvasEffects.test.ts`）｜ HUMAN（连续拖动画布、滚轮平移和 pinch zoom，确认位置、缩放和结束后的持久化一致）
 - **范围**：约 20 行 / 1 文件 + 测试少量补充
 
-### #3 删除 CanvasSurface 重复的 mousemove hover 事件入口
+### #3 删除 CanvasSurface 重复的 mousemove hover 事件入口 ✓
 
 - **位置**：`web/src/app/CanvasWorkspace.tsx:381-430`
 - **分类**：性能

@@ -18325,3 +18325,51 @@ body.is-resizing-project-rail-sections * {
 .app-shell.theme-dark .project-rail .project-canvas-more[aria-expanded="true"]::before {
   background: rgba(126, 232, 197, 0.14);
 }
+
+/* 2026-08-06 interaction performance: keep sidebar motion on compositor-only
+   properties. The grid commits its final widths once; the rails provide the
+   visual slide without resizing the canvas on every animation frame. */
+.workspace {
+  transition: none !important;
+}
+
+@media (min-width: 1181px) {
+  .workspace {
+    position: relative;
+  }
+
+  .workspace.is-left-collapsed > .project-rail {
+    transform: translate3d(calc(-1 * var(--rxnflow-project-rail-width, 248px)), 0, 0) !important;
+  }
+
+  .workspace > .inspector-panel {
+    position: absolute !important;
+    top: var(--rxnflow-titlebar-height, 36px) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: var(--rxnflow-inspector-width, 288px) !important;
+    min-width: var(--rxnflow-inspector-width, 288px) !important;
+    max-width: var(--rxnflow-inspector-width, 288px) !important;
+    height: auto !important;
+    max-height: none !important;
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    transition:
+      transform 190ms cubic-bezier(0.2, 0.72, 0.25, 1),
+      opacity 150ms ease !important;
+  }
+
+  .workspace.is-right-collapsed > .inspector-panel {
+    transform: translate3d(100%, 0, 0) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace > .project-rail,
+  .workspace > .inspector-panel {
+    transition: none !important;
+  }
+}

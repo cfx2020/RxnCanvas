@@ -168,6 +168,7 @@ function canvasTextAnnotationWidth(text: string) {
 
 export const CanvasSurface = memo(function CanvasSurface({
   canvasRef,
+  canvasWorldRef,
   nodes,
   files,
   edges,
@@ -218,6 +219,7 @@ export const CanvasSurface = memo(function CanvasSurface({
   onDeleteAnnotation = () => undefined,
 }: {
   canvasRef: React.RefObject<HTMLDivElement | null>
+  canvasWorldRef?: React.RefObject<HTMLDivElement | null>
   nodes: FlowNode[]
   files: SourceFile[]
   edges: FlowEdge[]
@@ -386,10 +388,6 @@ export const CanvasSurface = memo(function CanvasSurface({
     onPointerMove(event)
   }
 
-  const handleSurfaceMouseMove = (event: MouseEvent<HTMLDivElement>) => {
-    stableOnHoverEdge(flowEdgeIdFromEventTarget(event.target))
-  }
-
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     if (!hasCanvasRawFileDrop(event.dataTransfer)) return
     event.preventDefault()
@@ -423,8 +421,7 @@ export const CanvasSurface = memo(function CanvasSurface({
       onPointerDown={onCanvasPointerDown}
       onKeyDown={handleSurfaceKeyDown}
       onPointerMove={handleSurfacePointerMove}
-      onMouseMove={handleSurfaceMouseMove}
-      onMouseLeave={() => stableOnHoverEdge(null)}
+      onPointerLeave={() => stableOnHoverEdge(null)}
       onPointerUp={onPointerEnd}
       onPointerCancel={onPointerEnd}
       onContextMenu={openSelectionContextMenu}
@@ -432,6 +429,7 @@ export const CanvasSurface = memo(function CanvasSurface({
       onDrop={handleDrop}
     >
       <div
+        ref={canvasWorldRef}
         className="canvas-world"
         style={{
           transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,

@@ -1,0 +1,35 @@
+refactor: 2026-08-06-workbench-interaction-performance
+design: workbench-interaction-performance-refactor-design.md
+status: completed
+
+steps:
+  - id: compositor-sidebar-animation
+    description: 将左右侧栏收合视觉动画迁移到 transform 和 opacity
+    method: M-L4-02
+    status: done
+    verification: 侧栏测试通过且浏览器采样不再逐帧触发布局
+
+  - id: cache-canvas-world
+    description: 缓存 canvas-world 引用并避免重复切换 live-pan class
+    method: M-L4-05
+    status: done
+    verification: wheel 和 pan 行为测试通过且高频预览只写 transform
+
+  - id: merge-hover-events
+    description: 用 pointermove 统一画布 edge hover 高频事件
+    method: M-L4-02
+    status: done
+    verification: edge hover 和 pointer 交互测试及浏览器验证通过
+
+checks:
+  - id: sidebar-behavior-equivalent
+    description: 左右侧栏最终宽度、可见性和点击区域不变
+    status: passed
+
+  - id: canvas-behavior-equivalent
+    description: 画布平移缩放、hover 和 viewport 提交行为不变
+    status: passed
+
+  - id: full-regression
+    description: Web 全量测试、构建和浏览器目视与性能验证通过
+    status: passed

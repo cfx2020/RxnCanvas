@@ -538,6 +538,7 @@ describe("CanvasWorkspace", () => {
   })
 
   it("reveals empty edge label affordances only when the curve is hovered", () => {
+    const onPointerMove = vi.fn()
     const source: FlowNode = {
       id: "source",
       label: "Reactant",
@@ -586,7 +587,7 @@ describe("CanvasWorkspace", () => {
         relativeZeroNodeId={null}
         onCanvasPointerDown={vi.fn()}
         onCanvasKeyDown={vi.fn()}
-        onPointerMove={vi.fn()}
+        onPointerMove={onPointerMove}
         onPointerEnd={vi.fn()}
         onNodePointerDown={vi.fn()}
         onNodeResizePointerDown={vi.fn()}
@@ -616,8 +617,12 @@ describe("CanvasWorkspace", () => {
     expect(labelAnchor).not.toHaveClass("is-hovered")
 
     const edgeCurve = screen.getByRole("button", { name: "Edge Reactant to Product: path" })
-    fireEvent.pointerEnter(edgeCurve)
+    fireEvent.mouseMove(edgeCurve)
+    expect(labelAnchor).not.toHaveClass("is-hovered")
+
+    fireEvent.pointerMove(edgeCurve, { pointerId: 4, clientX: 320, clientY: 180 })
     expect(labelAnchor).toHaveClass("is-hovered")
+    expect(onPointerMove).toHaveBeenCalledOnce()
 
     fireEvent.click(screen.getByRole("button", { name: "Add path label from Reactant to Product" }))
     expect(screen.getByRole("textbox", { name: "Path label" })).toBeInTheDocument()
