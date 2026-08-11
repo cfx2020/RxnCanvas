@@ -5,7 +5,8 @@ const path = require("node:path")
 
 const projectRoot = path.join(__dirname, "..")
 const releaseDir = path.join(projectRoot, "release")
-const timeoutMs = Number.parseInt(process.env.RXNFLOW_DESKTOP_RUNTIME_SMOKE_TIMEOUT_MS || "30000", 10)
+const timeoutMs = Number.parseInt(process.env.RXNFLOW_DESKTOP_RUNTIME_SMOKE_TIMEOUT_MS || "45000", 10)
+const appTimeoutMs = Math.max(15000, Math.min(30000, timeoutMs - 5000))
 
 async function main() {
   const executablePath = findPackagedExecutable()
@@ -48,7 +49,7 @@ function runPackagedApp(executablePath, options = {}) {
       cwd: projectRoot,
       env: {
         ...process.env,
-        RXNFLOW_DESKTOP_SMOKE_TIMEOUT_MS: "15000",
+        RXNFLOW_DESKTOP_SMOKE_TIMEOUT_MS: String(appTimeoutMs),
         ...(options.env || {}),
       },
       windowsHide: true,

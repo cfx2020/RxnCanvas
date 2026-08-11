@@ -197,6 +197,8 @@ function verifyRuntimeSmokeScript() {
   assert(mainSource.includes("node inspector and floating export trigger"), "Electron runtime smoke must verify active node inspector/export trigger")
   assert(mainSource.includes("PNG|XLSX|CDXML"), "Electron runtime smoke must verify active export menu formats")
   assert(mainSource.includes("inactiveExportFormats"), "Electron runtime smoke must guard inactive export formats")
+  assert(mainSource.includes("rendererReadyTimeoutMs"), "Electron runtime smoke must budget renderer readiness separately")
+  assert(smokeSource.includes("String(appTimeoutMs)"), "runtime smoke launcher must pass the packaged app timeout budget")
   assert(mainSource.includes("titleBarStyle: process.platform === \"darwin\" ? \"hidden\" : \"default\""), "macOS window must use hidden titlebar instead of hiddenInset")
   assert(mainSource.includes("trafficLightPosition: macTrafficLightPosition"), "macOS traffic lights must use a stable explicit position")
   assert(mainSource.includes("installMacWindowControls(window)"), "Electron main must keep native macOS window controls visible")

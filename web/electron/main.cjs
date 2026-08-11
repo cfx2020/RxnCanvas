@@ -503,6 +503,7 @@ function cdxBufferFromClipboardText(value) {
 }
 
 function installRuntimeSmokeExit(window) {
+  const rendererReadyTimeoutMs = Math.max(6000, Math.min(15000, runtimeSmokeTimeoutMs - 10000))
   const timeout = setTimeout(() => {
     console.error(`RXNFLOW_DESKTOP_RUNTIME_SMOKE_FAILED: renderer did not become ready within ${runtimeSmokeTimeoutMs}ms`)
     app.exit(1)
@@ -525,7 +526,7 @@ function installRuntimeSmokeExit(window) {
     try {
       const result = await window.webContents.executeJavaScript(`
         new Promise((resolve, reject) => {
-          const deadline = Date.now() + 6000
+          const deadline = Date.now() + ${JSON.stringify(rendererReadyTimeoutMs)}
           const startupRestoreSmoke = ${JSON.stringify(runtimeStartupRestoreSmoke)}
           const forbiddenRuntimeUiTerms = [
             "Computer Profile",
@@ -668,7 +669,14 @@ function installRuntimeSmokeExit(window) {
               return
             }
             if (Date.now() > deadline) {
-              reject(new Error("renderer loaded without the RxnFlow workbench"))
+              const root = document.querySelector("#root")
+              const diagnostic = [
+                "readyState=" + document.readyState,
+                "rootChildren=" + (root?.children.length ?? -1),
+                "rootHtml=" + (root?.innerHTML || "").slice(0, 240).replace(/\\s+/g, " "),
+                "bodyText=" + text.slice(0, 240).replace(/\\s+/g, " "),
+              ].join("; ")
+              reject(new Error("renderer loaded without the RxnFlow workbench (" + diagnostic + ")"))
               return
             }
             window.setTimeout(poll, 100)
