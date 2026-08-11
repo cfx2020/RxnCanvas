@@ -238,17 +238,24 @@ jobs:
           base_version="${tag_version%%-*}"
           [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
           test "$base_version" = "$app_version"
+          echo "RXNFLOW_APP_VERSION=$app_version" >> "$GITHUB_ENV"
           echo "RXNFLOW_RELEASE_VERSION=$tag_version" >> "$GITHUB_ENV"
           echo "RXNFLOW_RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
       - name: Assemble user-facing release assets
         run: |
           mkdir -p web/release-publish
-          find web/release-input/windows -type f -name '*.exe' -exec cp {} web/release-publish/ \;
+          installer="$(find web/release-input/windows -type f -name 'RxnFlow Setup *.exe' -print -quit)"
+          portable="$(find web/release-input/windows -type f -name 'RxnFlow *.exe' ! -name 'RxnFlow Setup *.exe' -print -quit)"
+          test -n "$installer"
+          test -n "$portable"
+          cp "$installer" "web/release-publish/RxnFlow-${RXNFLOW_APP_VERSION}-windows-x64-setup.exe"
+          cp "$portable" "web/release-publish/RxnFlow-${RXNFLOW_APP_VERSION}-windows-x64-portable.exe"
           find web/release-input/macos -type f -name '*.dmg' -exec cp {} web/release-publish/ \;
           find web/release-input/macos -type f -name '*-mac.zip' -exec cp {} web/release-publish/ \;
           test "$(find web/release-publish -maxdepth 1 -type f -name '*.exe' | wc -l)" -eq 2
           test "$(find web/release-publish -maxdepth 1 -type f -name '*.dmg' | wc -l)" -eq 1
           test "$(find web/release-publish -maxdepth 1 -type f -name '*-mac.zip' | wc -l)" -eq 1
+          test -z "$(find web/release-publish -maxdepth 1 -type f -name '* *')"
       - name: Generate unified checksums and release manifest
         working-directory: web
         env:

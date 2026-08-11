@@ -65,3 +65,5 @@ tags: [release, github-actions, provenance, tag, artifact]
 ## 6. 实施阶段补充证据
 
 `v0.1.0-beta.2` tag run 的 Windows job 连续两次在 NSIS silent installer 阶段精确达到默认 `60000ms` 后失败；同一提交的 `main` CI 曾通过，且两次失败都尚未进入 installed app runtime smoke。`web/electron/windows-installer-smoke.cjs` 因此需要把安装/卸载外层预算提高到 `180000ms`，首次应用启动仍使用独立且有上限的 `45000ms` engine cold-start 预算。该调整不跳过安装、启动或卸载检查，只适应 hosted runner 的解压和安全扫描延迟。
+
+`v0.1.0-beta.3` tag run 随后完整通过并自动创建 Release，但发布后核对发现 GitHub 将 Windows asset 文件名中的空格规范为点号，而 CI 生成的 checksum/manifest 仍记录原始空格名。修复需要在统一清单生成前，把 Windows installer/portable 显式复制为不含空格的稳定文件名，并让 tagged manifest 对任何含空白的 artifact 名称直接失败。

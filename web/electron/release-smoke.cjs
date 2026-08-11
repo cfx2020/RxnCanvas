@@ -180,7 +180,8 @@ function verifyReleaseManifestScript() {
   const sourceRevision = "0123456789abcdef0123456789abcdef01234567"
   try {
     fs.writeFileSync(path.join(releaseDir, `RxnFlow-${packageJson.version}-arm64.dmg`), "mac artifact")
-    fs.writeFileSync(path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe`), "windows artifact")
+    fs.writeFileSync(path.join(releaseDir, `RxnFlow-${packageJson.version}-windows-x64-setup.exe`), "windows setup artifact")
+    fs.writeFileSync(path.join(releaseDir, `RxnFlow-${packageJson.version}-windows-x64-portable.exe`), "windows portable artifact")
     execFileSync(process.execPath, [manifestScriptPath], {
       cwd: projectRoot,
       env: {
@@ -197,8 +198,27 @@ function verifyReleaseManifestScript() {
     assert(manifest.releaseVersion === releaseVersion, "release manifest must record the tagged beta version")
     assert(manifest.releaseTag === releaseTag, "release manifest must record the source tag")
     assert(manifest.sourceRevision === sourceRevision, "release manifest must record the CI source revision")
-    assert(manifest.artifacts.length === 2, "release manifest must include all assembled user-facing artifacts")
+    assert(manifest.artifacts.length === 3, "release manifest must include all assembled user-facing artifacts")
     assert(manifest.artifacts.every((artifact) => !artifact.name.endsWith(".blockmap")), "release manifest fixture must exclude blockmaps")
+    assert(manifest.artifacts.every((artifact) => !/\s/.test(artifact.name)), "tagged release artifact names must survive GitHub upload unchanged")
+
+    fs.writeFileSync(path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe`), "unsafe Windows artifact name")
+    let rejectedUnsafeName = false
+    try {
+      execFileSync(process.execPath, [manifestScriptPath], {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          RXNFLOW_RELEASE_DIR: releaseDir,
+          RXNFLOW_RELEASE_VERSION: releaseVersion,
+          RXNFLOW_RELEASE_TAG: releaseTag,
+        },
+        stdio: "ignore",
+      })
+    } catch {
+      rejectedUnsafeName = true
+    }
+    assert(rejectedUnsafeName, "tagged release manifest must reject artifact names containing whitespace")
   } finally {
     fs.rmSync(releaseDir, { recursive: true, force: true })
   }
@@ -316,6 +336,9 @@ function verifyReleaseWorkflow() {
     "actions/download-artifact@v4",
     "RXNFLOW_RELEASE_VERSION",
     "RXNFLOW_RELEASE_TAG",
+    "RXNFLOW_APP_VERSION",
+    "windows-x64-setup.exe",
+    "windows-x64-portable.exe",
     "contents: write",
     "gh release create",
     "--prerelease",

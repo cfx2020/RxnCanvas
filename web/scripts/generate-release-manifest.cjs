@@ -45,6 +45,13 @@ if (artifacts.length === 0) {
   throw new Error(`No RxnFlow ${appVersion} release artifacts found in ${releaseDir}`)
 }
 
+if (releaseTag) {
+  const unsafeArtifact = artifacts.find((artifact) => /\s/.test(artifact.name))
+  if (unsafeArtifact) {
+    throw new Error(`Tagged release artifact names must not contain whitespace: ${unsafeArtifact.name}`)
+  }
+}
+
 const manifest = {
   schemaVersion: 1,
   product: "RxnFlow",
