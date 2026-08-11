@@ -44,12 +44,12 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
       - name: Install renderer dependencies
         working-directory: web
         run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install chromium
       - name: Run Python core tests
         run: python3 -m unittest discover
       - name: Audit locked Python engine dependencies
@@ -88,6 +88,9 @@ jobs:
       - name: Install renderer dependencies
         working-directory: web
         run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install chromium
       - name: Build unsigned local macOS app
         working-directory: web
         run: npm run desktop:pack
@@ -114,6 +117,9 @@ jobs:
       - name: Install renderer dependencies
         working-directory: web
         run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install chromium
       - name: Build Windows unpacked app
         working-directory: web
         run: npm run desktop:pack:win
@@ -174,6 +180,9 @@ jobs:
       - name: Install renderer dependencies
         working-directory: web
         run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install chromium
       - name: Build signed macOS distribution artifacts
         working-directory: web
         run: npm run desktop:dist:mac
