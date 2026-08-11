@@ -18,6 +18,7 @@ function main() {
   verifyRuntimeSmokeScript()
   verifyWindowsInstallerSmokeScript()
   verifyMacSigningConfiguration()
+  verifyUnsignedMacBetaGuide()
   verifyReleaseWorkflow()
   verifyCurrentPlatformUnpackedApp()
   verifyWindowsUnpackedApp()
@@ -144,6 +145,8 @@ function verifyReleaseScripts() {
   assert(scripts["desktop:dist:mac"]?.includes("npm run desktop:engine"), "desktop:dist:mac must build the bundled Python engine")
   assert(scripts["desktop:dist:mac"]?.includes("electron-builder --mac"), "desktop:dist:mac missing")
   assert(scripts["desktop:dist:mac"]?.includes("--publish never"), "desktop:dist:mac must not publish local artifacts")
+  assert(scripts["desktop:dist:mac:unsigned"]?.includes("RXNFLOW_MAC_ADHOC_SIGN=1"), "desktop:dist:mac:unsigned must ad-hoc sign the macOS beta app")
+  assert(scripts["desktop:dist:mac:unsigned"]?.includes("--config.mac.identity=null"), "desktop:dist:mac:unsigned must skip Developer ID signing")
   assert(scripts["desktop:notarize:mac"] === "node scripts/notarize-mac.cjs", "desktop:notarize:mac missing")
   assert(scripts["desktop:runtime:smoke"] === "node electron/runtime-smoke.cjs", "desktop:runtime:smoke missing")
   assert(scripts["desktop:installer:smoke:win"] === "node electron/windows-installer-smoke.cjs", "desktop:installer:smoke:win missing")
@@ -223,8 +226,10 @@ function verifyRuntimeSmokeScript() {
 function verifyMacSigningConfiguration() {
   const entitlementsPath = path.join(projectRoot, "build", "entitlements.mac.plist")
   const notarizeScriptPath = path.join(projectRoot, "scripts", "notarize-mac.cjs")
+  const afterPackScriptPath = path.join(projectRoot, "scripts", "after-pack.cjs")
   assert(fs.existsSync(entitlementsPath), "missing build/entitlements.mac.plist")
   assert(fs.existsSync(notarizeScriptPath), "missing scripts/notarize-mac.cjs")
+  assert(fs.existsSync(afterPackScriptPath), "missing scripts/after-pack.cjs")
   const entitlements = fs.readFileSync(entitlementsPath, "utf8")
   assert(entitlements.includes("com.apple.security.cs.allow-jit"), "mac entitlements must allow Electron JIT")
   assert(entitlements.includes("com.apple.security.cs.disable-library-validation"), "mac entitlements must disable library validation for Electron")
@@ -234,6 +239,20 @@ function verifyMacSigningConfiguration() {
   }
   assert(notarizeScript.includes("notarytool"), "notarization script must submit with notarytool")
   assert(notarizeScript.includes("stapler"), "notarization script must staple accepted artifacts")
+  const afterPackScript = fs.readFileSync(afterPackScriptPath, "utf8")
+  assert(afterPackScript.includes("RXNFLOW_MAC_ADHOC_SIGN"), "after-pack hook must gate ad-hoc beta signing behind an explicit environment flag")
+  assert(afterPackScript.includes('"--sign"') && afterPackScript.includes('"-"'), "after-pack hook must use an ad-hoc signing identity")
+  assert(afterPackScript.includes('"--options"') && afterPackScript.includes('"runtime"'), "ad-hoc macOS beta must keep hardened runtime enabled")
+  assert(afterPackScript.includes('"--verify"') && afterPackScript.includes('"--strict"'), "after-pack hook must verify the ad-hoc signature")
+}
+
+function verifyUnsignedMacBetaGuide() {
+  const guidePath = path.join(projectRoot, "..", "docs", "user", "macos-unsigned-beta.md")
+  assert(fs.existsSync(guidePath), "missing docs/user/macos-unsigned-beta.md")
+  const guide = fs.readFileSync(guidePath, "utf8")
+  assert(guide.includes("xattr -dr com.apple.quarantine /Applications/RxnFlow.app"), "unsigned macOS beta guide must remove only the RxnFlow quarantine attribute")
+  assert(guide.includes("不要使用 `sudo spctl --master-disable`"), "unsigned macOS beta guide must reject disabling Gatekeeper globally")
+  assert(guide.includes("不是正式公开发行版"), "unsigned macOS beta guide must clearly label the artifact as non-production")
 }
 
 function verifyReleaseWorkflow() {
@@ -249,6 +268,10 @@ function verifyReleaseWorkflow() {
     "npm run desktop:pack:win",
     "npm run desktop:runtime:smoke",
     "npm run desktop:installer:smoke:win",
+    "unsigned_macos_beta",
+    "npm run desktop:dist:mac:unsigned",
+    "rxnflow-macos-unsigned-beta",
+    "docs/user/macos-unsigned-beta.md",
     "npm run desktop:notarize:mac",
     "npm run desktop:release:manifest",
     "SHA256SUMS.txt",

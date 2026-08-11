@@ -13,6 +13,7 @@ This is the desktop shell for the current React/Vite renderer. It is local-first
 - `npm run desktop:pack`: build an unsigned local unpacked app for the current platform.
 - `npm run desktop:pack:win`: build a Windows x64 unpacked app.
 - `npm run desktop:dist:mac`: build macOS `dmg` and `zip` artifacts.
+- `npm run desktop:dist:mac:unsigned`: build ad-hoc-signed, unnotarized macOS `dmg` and `zip` beta artifacts for trusted testers.
 - `npm run desktop:notarize:mac`: submit a signed macOS DMG to Apple notarization using `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD`, then staple the app and DMG.
 - `npm run desktop:dist:win`: build Windows x64 `nsis` and `portable` artifacts.
 - `npm run desktop:installer:smoke:win`: on Windows, silently install the NSIS setup into a temporary directory, launch the installed app with the runtime smoke flag, verify the smoke marker, then silently uninstall it. On non-Windows hosts this command is a no-op skip.

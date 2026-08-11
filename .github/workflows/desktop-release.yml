@@ -22,6 +22,11 @@ on:
         required: true
         default: false
         type: boolean
+      unsigned_macos_beta:
+        description: "Build an ad-hoc-signed, unnotarized macOS beta artifact for trusted testers."
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -148,6 +153,52 @@ jobs:
             web/release/SHA256SUMS.txt
             web/release/release-manifest.json
             web/legal/*third-party-licenses.json
+          if-no-files-found: error
+
+  macos-unsigned-beta:
+    name: macOS unsigned beta artifact
+    runs-on: macos-14
+    if: github.event_name == 'workflow_dispatch' && inputs.unsigned_macos_beta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install renderer dependencies
+        working-directory: web
+        run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install chromium
+      - name: Build ad-hoc signed macOS beta artifacts
+        working-directory: web
+        run: npm run desktop:dist:mac:unsigned
+      - name: Launch packaged macOS beta app
+        working-directory: web
+        run: npm run desktop:runtime:smoke
+      - name: Recheck release configuration and artifact shape
+        working-directory: web
+        run: npm run desktop:release:smoke
+      - name: Generate macOS beta checksums and release manifest
+        working-directory: web
+        run: npm run desktop:release:manifest
+      - name: Upload macOS unsigned beta artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rxnflow-macos-unsigned-beta
+          retention-days: 30
+          path: |
+            web/release/*.dmg
+            web/release/*.zip
+            web/release/SHA256SUMS.txt
+            web/release/release-manifest.json
+            web/legal/*third-party-licenses.json
+            docs/user/macos-unsigned-beta.md
           if-no-files-found: error
 
   macos-signed-notarized:

@@ -19,6 +19,7 @@
     "desktop:pack": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --mac dir --publish never --config.mac.identity=null",
     "desktop:pack:win": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --win --x64 --dir --publish never",
     "desktop:dist:mac": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --mac --publish never",
+    "desktop:dist:mac:unsigned": "npm run desktop:icons && npm run desktop:engine && npm run build && RXNFLOW_MAC_ADHOC_SIGN=1 electron-builder --mac --publish never --config.mac.identity=null",
     "desktop:notarize:mac": "node scripts/notarize-mac.cjs",
     "desktop:dist:win": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --win --x64 --publish never",
     "desktop:release:manifest": "node scripts/generate-release-manifest.cjs",
