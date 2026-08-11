@@ -61,3 +61,7 @@ tags: [release, github-actions, provenance, tag, artifact]
 ### 推荐方案
 
 **采用方案 B**。用户已确认撤回 `beta.1` 二进制附件且不移动旧 tag，之后以 `v0.1.0-beta.2` 对完整流水线做端到端验证。
+
+## 6. 实施阶段补充证据
+
+`v0.1.0-beta.2` tag run 的 Windows job 连续两次在 NSIS silent installer 阶段精确达到默认 `60000ms` 后失败；同一提交的 `main` CI 曾通过，且两次失败都尚未进入 installed app runtime smoke。`web/electron/windows-installer-smoke.cjs` 因此需要把安装/卸载外层预算提高到 `180000ms`，首次应用启动仍使用独立且有上限的 `45000ms` engine cold-start 预算。该调整不跳过安装、启动或卸载检查，只适应 hosted runner 的解压和安全扫描延迟。

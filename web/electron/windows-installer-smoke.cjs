@@ -6,7 +6,7 @@ const path = require("node:path")
 const projectRoot = path.join(__dirname, "..")
 const packageJson = require(path.join(projectRoot, "package.json"))
 const releaseDir = path.join(projectRoot, "release")
-const timeoutMs = Number.parseInt(process.env.RXNFLOW_WINDOWS_INSTALLER_SMOKE_TIMEOUT_MS || "60000", 10)
+const timeoutMs = Number.parseInt(process.env.RXNFLOW_WINDOWS_INSTALLER_SMOKE_TIMEOUT_MS || "180000", 10)
 const appTimeoutMs = Math.max(20000, Math.min(45000, timeoutMs - 10000))
 
 async function main() {
