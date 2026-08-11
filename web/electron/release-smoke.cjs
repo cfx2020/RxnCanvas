@@ -176,6 +176,8 @@ function verifyWindowsInstallerSmokeScript() {
   assert(source.includes("/D="), "Windows installer smoke must install into an isolated temp directory")
   assert(source.includes("--rxnflow-smoke-exit"), "Windows installer smoke must launch the installed app with runtime smoke flag")
   assert(source.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK"), "Windows installer smoke must verify the runtime smoke marker")
+  assert(source.includes("maxRetries"), "Windows installer smoke cleanup must retry transient Windows file locks")
+  assert(source.includes("cleanup deferred"), "Windows installer smoke cleanup must not hide a successful install lifecycle behind transient file locks")
 }
 
 function verifyRuntimeSmokeScript() {

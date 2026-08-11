@@ -46,7 +46,24 @@ async function main() {
     })
     console.log(`RxnFlow Windows installer smoke passed: ${path.relative(projectRoot, installerPath)}`)
   } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true })
+    cleanupTempRoot(tempRoot)
+  }
+}
+
+function cleanupTempRoot(tempRoot) {
+  try {
+    fs.rmSync(tempRoot, {
+      recursive: true,
+      force: true,
+      maxRetries: 8,
+      retryDelay: 250,
+    })
+  } catch (error) {
+    if (["EBUSY", "EPERM", "ENOTEMPTY"].includes(error?.code)) {
+      console.warn(`Windows installer smoke cleanup deferred: ${error.message}`)
+      return
+    }
+    throw error
   }
 }
 
