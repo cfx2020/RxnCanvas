@@ -1,4 +1,4 @@
-name: Desktop release verification
+name: Desktop verification and tagged beta release
 
 on:
   pull_request:
@@ -10,6 +10,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*-beta.*"
     paths:
       - ".github/workflows/desktop-release.yml"
       - "rxnflow/**"
@@ -158,7 +160,9 @@ jobs:
   macos-unsigned-beta:
     name: macOS unsigned beta artifact
     runs-on: macos-14
-    if: github.event_name == 'workflow_dispatch' && inputs.unsigned_macos_beta
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.unsigned_macos_beta) ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-beta.'))
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -200,6 +204,92 @@ jobs:
             web/legal/*third-party-licenses.json
             docs/user/macos-unsigned-beta.md
           if-no-files-found: error
+
+  publish-beta-release:
+    name: Publish tagged beta release
+    needs:
+      - core-and-renderer
+      - windows-runtime-and-installer
+      - macos-unsigned-beta
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-beta.')
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Download Windows release inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: rxnflow-windows-artifacts
+          path: web/release-input/windows
+      - name: Download macOS release inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: rxnflow-macos-unsigned-beta
+          path: web/release-input/macos
+      - name: Validate beta tag against app version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          app_version="$(node -p "require('./web/package.json').version")"
+          base_version="${tag_version%%-*}"
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
+          test "$base_version" = "$app_version"
+          echo "RXNFLOW_RELEASE_VERSION=$tag_version" >> "$GITHUB_ENV"
+          echo "RXNFLOW_RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+      - name: Assemble user-facing release assets
+        run: |
+          mkdir -p web/release-publish
+          find web/release-input/windows -type f -name '*.exe' -exec cp {} web/release-publish/ \;
+          find web/release-input/macos -type f -name '*.dmg' -exec cp {} web/release-publish/ \;
+          find web/release-input/macos -type f -name '*-mac.zip' -exec cp {} web/release-publish/ \;
+          test "$(find web/release-publish -maxdepth 1 -type f -name '*.exe' | wc -l)" -eq 2
+          test "$(find web/release-publish -maxdepth 1 -type f -name '*.dmg' | wc -l)" -eq 1
+          test "$(find web/release-publish -maxdepth 1 -type f -name '*-mac.zip' | wc -l)" -eq 1
+      - name: Generate unified checksums and release manifest
+        working-directory: web
+        env:
+          RXNFLOW_RELEASE_DIR: release-publish
+        run: npm run desktop:release:manifest
+      - name: Verify publish payload
+        working-directory: web/release-publish
+        run: |
+          sha256sum -c SHA256SUMS.txt
+          node -e "const m=require('./release-manifest.json'); if(m.releaseTag!==process.env.GITHUB_REF_NAME||m.releaseVersion!==process.env.RXNFLOW_RELEASE_VERSION||m.artifacts.some((a)=>a.name.endsWith('.blockmap'))) process.exit(1)"
+      - name: Create or update GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          This is a private RxnFlow beta release for testing, not a notarized production release.
+
+          ## Downloads
+
+          - macOS Apple Silicon: download the `.dmg` file. The `-mac.zip` file is an alternative package.
+          - Windows x64: download the `Setup` executable for installation, or the executable without `Setup` for portable use.
+          - Verify the selected installer against `SHA256SUMS.txt` before running it.
+
+          ## macOS first launch
+
+          The macOS build is ad-hoc signed with hardened runtime, but it is not signed with an Apple Developer ID or notarized by Apple. After moving `RxnFlow.app` to `/Applications`, run:
+
+          ```bash
+          xattr -dr com.apple.quarantine /Applications/RxnFlow.app
+          open /Applications/RxnFlow.app
+          ```
+
+          Do not disable Gatekeeper globally with `sudo spctl --master-disable`.
+          EOF
+          title="RxnFlow ${RXNFLOW_RELEASE_VERSION}"
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease
+            gh release upload "$GITHUB_REF_NAME" web/release-publish/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" web/release-publish/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$title" --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease
+          fi
 
   macos-signed-notarized:
     name: macOS signed notarized artifact

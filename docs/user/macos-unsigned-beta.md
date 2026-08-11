@@ -12,7 +12,7 @@ tags: [macos, beta, gatekeeper, install]
 
 ## 安装
 
-1. 从私有仓库的 Actions artifact 下载与机器架构匹配的 `.dmg` 或 `.zip`。
+1. 从私有仓库对应 Beta tag 的 GitHub Pre-release 下载与机器架构匹配的 `.dmg` 或 `.zip`。
 2. 解压或打开 DMG，把 `RxnFlow.app` 拖到 `Applications`。
 3. 第一次启动时，优先使用 Control-click `RxnFlow.app`，选择 **Open**。如果系统仍拦截，到 **System Settings > Privacy & Security**，在安全提示旁选择 **Open Anyway**。
 4. 如果应用仍被 quarantine 属性拦截，并且你确认文件来源可信，在 Terminal 执行：

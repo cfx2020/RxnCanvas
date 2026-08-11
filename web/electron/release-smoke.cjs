@@ -1,4 +1,5 @@
 const fs = require("node:fs")
+const os = require("node:os")
 const path = require("node:path")
 const { execFileSync } = require("node:child_process")
 
@@ -166,8 +167,41 @@ function verifyReleaseManifestScript() {
   assert(source.includes("sha256"), "release manifest must record SHA-256 digests")
   assert(source.includes("SHA256SUMS.txt"), "release manifest generator must write SHA256SUMS.txt")
   assert(source.includes("release-manifest.json"), "release manifest generator must write release-manifest.json")
+  assert(source.includes("RXNFLOW_RELEASE_VERSION"), "release manifest generator must record the tagged release version")
+  assert(source.includes("RXNFLOW_RELEASE_TAG"), "release manifest generator must record the release tag")
+  assert(source.includes("releaseVersion"), "release manifest must distinguish the release version from the app version")
+  assert(source.includes("releaseTag"), "release manifest must include its source tag")
   assert(source.includes("GITHUB_SHA"), "release manifest must accept the CI source revision")
-  assert(source.includes("entry.name.includes(packageJson.version)"), "release manifest must exclude artifacts from other versions")
+  assert(source.includes("entry.name.includes(appVersion)"), "release manifest must exclude artifacts from other app versions")
+
+  const releaseDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-release-manifest-"))
+  const releaseVersion = `${packageJson.version}-beta.999`
+  const releaseTag = `v${releaseVersion}`
+  const sourceRevision = "0123456789abcdef0123456789abcdef01234567"
+  try {
+    fs.writeFileSync(path.join(releaseDir, `RxnFlow-${packageJson.version}-arm64.dmg`), "mac artifact")
+    fs.writeFileSync(path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe`), "windows artifact")
+    execFileSync(process.execPath, [manifestScriptPath], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        GITHUB_SHA: sourceRevision,
+        RXNFLOW_RELEASE_DIR: releaseDir,
+        RXNFLOW_RELEASE_VERSION: releaseVersion,
+        RXNFLOW_RELEASE_TAG: releaseTag,
+      },
+      stdio: "ignore",
+    })
+    const manifest = JSON.parse(fs.readFileSync(path.join(releaseDir, "release-manifest.json"), "utf8"))
+    assert(manifest.version === packageJson.version, "release manifest app version must match package.json")
+    assert(manifest.releaseVersion === releaseVersion, "release manifest must record the tagged beta version")
+    assert(manifest.releaseTag === releaseTag, "release manifest must record the source tag")
+    assert(manifest.sourceRevision === sourceRevision, "release manifest must record the CI source revision")
+    assert(manifest.artifacts.length === 2, "release manifest must include all assembled user-facing artifacts")
+    assert(manifest.artifacts.every((artifact) => !artifact.name.endsWith(".blockmap")), "release manifest fixture must exclude blockmaps")
+  } finally {
+    fs.rmSync(releaseDir, { recursive: true, force: true })
+  }
 }
 
 function verifyWindowsInstallerSmokeScript() {
@@ -276,9 +310,26 @@ function verifyReleaseWorkflow() {
     "npm run desktop:release:manifest",
     "SHA256SUMS.txt",
     "release-manifest.json",
+    "v*-beta.*",
+    "publish-beta-release",
+    "actions/download-artifact@v4",
+    "RXNFLOW_RELEASE_VERSION",
+    "RXNFLOW_RELEASE_TAG",
+    "contents: write",
+    "gh release create",
+    "--prerelease",
   ]) {
     assert(workflow.includes(requiredText), `desktop release workflow missing ${requiredText}`)
   }
+
+  const publishJobStart = workflow.indexOf("  publish-beta-release:")
+  const signedJobStart = workflow.indexOf("  macos-signed-notarized:")
+  assert(publishJobStart >= 0 && signedJobStart > publishJobStart, "tagged beta publish job must be defined before notarized publishing")
+  const publishJob = workflow.slice(publishJobStart, signedJobStart)
+  assert(publishJob.includes("*.exe"), "tagged beta release must publish Windows executables")
+  assert(publishJob.includes("*.dmg"), "tagged beta release must publish a macOS DMG")
+  assert(publishJob.includes("*-mac.zip"), "tagged beta release must publish the alternative macOS ZIP")
+  assert(!publishJob.includes("*.blockmap"), "tagged beta release must not expose updater blockmaps")
 }
 
 function verifyCurrentPlatformUnpackedApp() {

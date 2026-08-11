@@ -4,10 +4,17 @@ const path = require("node:path")
 
 const projectRoot = path.join(__dirname, "..")
 const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
+const appVersion = packageJson.version
+const releaseVersion = process.env.RXNFLOW_RELEASE_VERSION || appVersion
+const releaseTag = process.env.RXNFLOW_RELEASE_TAG || null
 const releaseDir = process.env.RXNFLOW_RELEASE_DIR
   ? path.resolve(process.env.RXNFLOW_RELEASE_DIR)
   : path.join(projectRoot, "release")
 const artifactPattern = /\.(?:dmg|zip|exe|blockmap)$/i
+
+if (releaseTag && releaseTag !== `v${releaseVersion}`) {
+  throw new Error(`Release tag ${releaseTag} does not match release version ${releaseVersion}`)
+}
 
 function sha256(filePath) {
   const hash = crypto.createHash("sha256")
@@ -26,7 +33,7 @@ function sha256(filePath) {
 
 fs.mkdirSync(releaseDir, { recursive: true })
 const artifacts = fs.readdirSync(releaseDir, { withFileTypes: true })
-  .filter((entry) => entry.isFile() && artifactPattern.test(entry.name) && entry.name.includes(packageJson.version))
+  .filter((entry) => entry.isFile() && artifactPattern.test(entry.name) && entry.name.includes(appVersion))
   .map((entry) => {
     const filePath = path.join(releaseDir, entry.name)
     const stats = fs.statSync(filePath)
@@ -35,13 +42,15 @@ const artifacts = fs.readdirSync(releaseDir, { withFileTypes: true })
   .sort((left, right) => left.name.localeCompare(right.name))
 
 if (artifacts.length === 0) {
-  throw new Error(`No RxnFlow ${packageJson.version} release artifacts found in ${releaseDir}`)
+  throw new Error(`No RxnFlow ${appVersion} release artifacts found in ${releaseDir}`)
 }
 
 const manifest = {
   schemaVersion: 1,
   product: "RxnFlow",
-  version: packageJson.version,
+  version: appVersion,
+  releaseVersion,
+  releaseTag,
   generatedAt: new Date().toISOString(),
   sourceRevision: process.env.GITHUB_SHA || process.env.RXNFLOW_SOURCE_REVISION || null,
   artifacts,
