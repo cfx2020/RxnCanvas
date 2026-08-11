@@ -4,6 +4,7 @@ __pycache__/
 node_modules/
 web/dist/
 web/release/
+web/release-fixed-*/
 web/.engine-build/
 web/engine/rxnflow-engine
 web/engine/rxnflow-engine.exe
