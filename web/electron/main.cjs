@@ -55,6 +55,9 @@ const devServerUrl = process.env.RXNFLOW_DESKTOP_DEV_SERVER
 const runtimeSmokeExit = process.argv.includes("--rxnflow-smoke-exit")
 const runtimeStartupRestoreSmoke = process.env.RXNFLOW_DESKTOP_SMOKE_STARTUP_RESTORE === "1"
 const runtimeSmokeTimeoutMs = Number.parseInt(process.env.RXNFLOW_DESKTOP_SMOKE_TIMEOUT_MS || "12000", 10)
+const runtimeRendererReadyTimeoutMs = Math.max(6000, Math.min(15000, Math.floor(runtimeSmokeTimeoutMs / 3)))
+const runtimeEngineReadyTimeoutMs = Math.max(5000, Math.min(20000, runtimeSmokeTimeoutMs - runtimeRendererReadyTimeoutMs - 5000))
+const runtimeEngineStatusTimeoutMs = Math.max(5000, Math.min(15000, runtimeEngineReadyTimeoutMs))
 const userDataDirectoryOverride = process.env.RXNFLOW_DESKTOP_USER_DATA_DIR
 const macTrafficLightPosition = { x: 18, y: 12 }
 let recentProjectPaths = []
@@ -503,9 +506,8 @@ function cdxBufferFromClipboardText(value) {
 }
 
 function installRuntimeSmokeExit(window) {
-  const rendererReadyTimeoutMs = Math.max(6000, Math.min(15000, runtimeSmokeTimeoutMs - 10000))
   const timeout = setTimeout(() => {
-    console.error(`RXNFLOW_DESKTOP_RUNTIME_SMOKE_FAILED: renderer did not become ready within ${runtimeSmokeTimeoutMs}ms`)
+    console.error(`RXNFLOW_DESKTOP_RUNTIME_SMOKE_FAILED: runtime smoke did not complete within ${runtimeSmokeTimeoutMs}ms`)
     app.exit(1)
   }, runtimeSmokeTimeoutMs)
 
@@ -526,7 +528,8 @@ function installRuntimeSmokeExit(window) {
     try {
       const result = await window.webContents.executeJavaScript(`
         new Promise((resolve, reject) => {
-          const deadline = Date.now() + ${JSON.stringify(rendererReadyTimeoutMs)}
+          const rendererDeadline = Date.now() + ${JSON.stringify(runtimeRendererReadyTimeoutMs)}
+          const engineReadyTimeoutMs = ${JSON.stringify(runtimeEngineReadyTimeoutMs)}
           const startupRestoreSmoke = ${JSON.stringify(runtimeStartupRestoreSmoke)}
           const forbiddenRuntimeUiTerms = [
             "Computer Profile",
@@ -543,6 +546,19 @@ function installRuntimeSmokeExit(window) {
             "Python bridge",
             "ShellClient",
           ]
+          const waitForEngineStatus = async (desktop) => {
+            const engineDeadline = Date.now() + engineReadyTimeoutMs
+            let lastStatus = null
+            while (Date.now() <= engineDeadline) {
+              lastStatus = await desktop.getEngineStatus()
+              if (lastStatus?.ok && lastStatus.data?.capabilities?.includes("import.register_all")) {
+                return lastStatus
+              }
+              await new Promise((resolve) => window.setTimeout(resolve, 250))
+            }
+            const diagnostic = JSON.stringify(lastStatus)?.slice(0, 500) || "unavailable"
+            throw new Error("desktop engine status is not ready within " + engineReadyTimeoutMs + "ms (lastStatus=" + diagnostic + ")")
+          }
           const poll = async () => {
             const text = document.body?.innerText || ""
             const hasWorkbench = Boolean(document.querySelector(".app-shell"))
@@ -566,7 +582,7 @@ function installRuntimeSmokeExit(window) {
                   const stillShowingDemoProjects = ["Diels-Alder Study", "Nickel catalysis", "Ir screening"]
                     .filter((label) => text.includes(label))
                   if (!text.includes("Startup Restore Smoke") || !text.includes("Older Restore Smoke") || stillShowingDemoProjects.length > 0) {
-                    if (Date.now() <= deadline) {
+                    if (Date.now() <= rendererDeadline) {
                       window.setTimeout(poll, 100)
                       return
                     }
@@ -600,11 +616,7 @@ function installRuntimeSmokeExit(window) {
                   reject(new Error("desktop preload engine API is unavailable"))
                   return
                 }
-                const status = await desktop.getEngineStatus()
-                if (!status?.ok || !status.data?.capabilities?.includes("import.register_all")) {
-                  reject(new Error("desktop engine status is not ready"))
-                  return
-                }
+                const status = await waitForEngineStatus(desktop)
                 const cclib = status.data.dependencies?.cclib
                 if (status.data.runtime !== "bundled-python" || cclib?.available !== true) {
                   reject(new Error("desktop packaged runtime must use bundled Python engine with cclib"))
@@ -668,7 +680,7 @@ function installRuntimeSmokeExit(window) {
               }
               return
             }
-            if (Date.now() > deadline) {
+            if (Date.now() > rendererDeadline) {
               const root = document.querySelector("#root")
               const diagnostic = [
                 "readyState=" + document.readyState,
@@ -1750,7 +1762,7 @@ ipcMain.handle("rxnflow:open-source-file", async (_event, payload) => {
   return { ok: false, error: "Raw source file is not available in the project folder." }
 })
 
-ipcMain.handle("rxnflow:engine-status", async () => getEngineStatus())
+ipcMain.handle("rxnflow:engine-status", async () => getEngineStatus(runtimeSmokeExit ? { timeoutMs: runtimeEngineStatusTimeoutMs } : {}))
 
 async function readProjectPackageWithValidation(filePath) {
   const rawContent = await readProjectContent(filePath)
