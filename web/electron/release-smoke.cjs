@@ -111,14 +111,20 @@ function verifyDesktopIconAssets() {
 
 function verifyBuilderConfiguration() {
   const buildFiles = packageJson.build?.files ?? []
-  for (const requiredPattern of ["dist/**/*", "electron/**/*", "build/**/*", "package.json"]) {
+  for (const requiredPattern of ["dist/**/*", "electron/**/*", "build/icon.png", "build/icon.ico", "package.json"]) {
     assert(buildFiles.includes(requiredPattern), `build.files missing ${requiredPattern}`)
   }
+  assert(!buildFiles.includes("build/**/*"), "build.files must not pack all build-time resources into app.asar")
   assert(!buildFiles.includes("engine/**/*"), "engine executable must be copied as extraResources, not packed into app.asar")
   const extraResources = packageJson.build?.extraResources ?? []
   assert(extraResources.some((resource) => resource?.from === "engine" && resource?.to === "engine"), "build.extraResources must include engine/")
   assert(packageJson.build?.directories?.buildResources === "build", "buildResources must point to build")
   assert(packageJson.build?.icon === "build/icon.png", "build.icon must point to build/icon.png")
+  const electronLanguages = packageJson.build?.electronLanguages ?? []
+  for (const requiredLocale of ["en", "en-US", "zh-CN", "zh-TW", "zh_CN", "zh_TW"]) {
+    assert(electronLanguages.includes(requiredLocale), `build.electronLanguages missing ${requiredLocale}`)
+  }
+  assert(electronLanguages.length === 6, "build.electronLanguages must only retain English and Chinese locale variants")
 
   const macTargets = packageJson.build?.mac?.target ?? []
   assert(packageJson.build?.mac?.icon === "build/icon.icns", "mac icon must point to build/icon.icns")
@@ -138,6 +144,16 @@ function verifyBuilderConfiguration() {
 
 function verifyReleaseScripts() {
   const scripts = packageJson.scripts ?? {}
+  const bundleBudgetScriptPath = path.join(projectRoot, "scripts", "check-bundle-budgets.cjs")
+  const bundleBudgetTestPath = path.join(projectRoot, "scripts", "check-bundle-budgets.test.cjs")
+  assert(scripts.build === "tsc -b && vite build && node scripts/check-bundle-budgets.cjs", "build must enforce bundle budgets")
+  assert(scripts.test?.includes("node --test scripts/check-bundle-budgets.test.cjs"), "test must cover bundle budgets")
+  assert(fs.existsSync(bundleBudgetScriptPath), "missing bundle budget checker")
+  assert(fs.existsSync(bundleBudgetTestPath), "missing bundle budget checker tests")
+  const bundleBudgetSource = fs.readFileSync(bundleBudgetScriptPath, "utf8")
+  assert(bundleBudgetSource.includes("dist/.vite/manifest.json") || bundleBudgetSource.includes('".vite", "manifest.json"'), "bundle budget checker must read the Vite manifest")
+  assert(bundleBudgetSource.includes("node_modules/3dmol/build/3Dmol.js"), "bundle budget checker must track 3Dmol")
+  assert(bundleBudgetSource.includes("src/app/KetcherEditorHost.tsx"), "bundle budget checker must track Ketcher editor")
   assert(scripts["desktop:engine"] === "node scripts/build-engine.cjs", "desktop:engine must build the bundled Python engine")
   assert(scripts["desktop:pack"]?.includes("npm run desktop:engine"), "desktop:pack must build the bundled Python engine")
   assert(scripts["desktop:pack"]?.includes("electron-builder --mac dir"), "desktop:pack must build macOS unpacked app")
@@ -401,6 +417,54 @@ function verifyCurrentPlatformUnpackedApp() {
   assert(infoPlist.includes("icon.icns"), "Info.plist missing app icon reference")
   assert(fs.existsSync(enginePath), "mac unpacked app missing bundled rxnflow-engine")
   assert(fs.statSync(enginePath).mode & 0o111, "bundled rxnflow-engine is not executable")
+  verifyCurrentMacElectronLocales(appPath, asarPath)
+  verifyCurrentAsarBuildResources(asarPath)
+}
+
+function verifyCurrentMacElectronLocales(appPath, asarPath) {
+  if (fs.statSync(asarPath).mtimeMs < fs.statSync(packageJsonPath).mtimeMs) {
+    console.warn("Existing mac unpacked app predates the current locale config; rebuild with npm run desktop:pack to refresh it.")
+    return
+  }
+
+  const localeRoot = path.join(
+    appPath,
+    "Contents",
+    "Frameworks",
+    "Electron Framework.framework",
+    "Versions",
+    "A",
+    "Resources",
+  )
+  assert(fs.existsSync(localeRoot), "mac Electron Framework locale resources are missing")
+  const locales = fs.readdirSync(localeRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.endsWith(".lproj"))
+    .map((entry) => entry.name.slice(0, -".lproj".length))
+    .sort()
+  assert(locales.length > 0, "mac Electron Framework must retain at least one locale")
+  const unexpectedLocales = locales.filter((locale) => !["en", "zh_CN", "zh_TW"].includes(locale))
+  assert(unexpectedLocales.length === 0, `mac Electron Framework contains unexpected locales: ${unexpectedLocales.join(", ")}`)
+  for (const requiredLocale of ["en", "zh_CN", "zh_TW"]) {
+    assert(locales.includes(requiredLocale), `mac Electron Framework missing ${requiredLocale}.lproj`)
+  }
+}
+
+function verifyCurrentAsarBuildResources(asarPath) {
+  if (fs.statSync(asarPath).mtimeMs < fs.statSync(packageJsonPath).mtimeMs) {
+    console.warn("Existing app.asar predates the current runtime resource config; rebuild the unpacked app to refresh it.")
+    return
+  }
+
+  const asarCliPath = path.join(projectRoot, "node_modules", "@electron", "asar", "bin", "asar.js")
+  assert(fs.existsSync(asarCliPath), "@electron/asar CLI is required for packaged resource verification")
+  const entries = execFileSync(process.execPath, [asarCliPath, "list", asarPath], { encoding: "utf8" })
+    .split(/\r?\n/)
+    .filter(Boolean)
+  const buildEntries = entries.filter((entry) => entry.startsWith("/build/"))
+  assert(
+    buildEntries.join("\n") === ["/build/icon.ico", "/build/icon.png"].join("\n"),
+    `app.asar build resources must only contain runtime icons; found: ${buildEntries.join(", ")}`,
+  )
 }
 
 function readPlistValue(infoPlistPath, key) {

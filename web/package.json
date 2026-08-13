@@ -8,7 +8,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/check-bundle-budgets.cjs",
     "desktop": "npm run desktop:icons && npm run build && electron electron/main.cjs",
     "desktop:engine": "node scripts/build-engine.cjs",
     "desktop:icons": "node scripts/generate-icons.cjs",
@@ -23,7 +23,7 @@
     "desktop:notarize:mac": "node scripts/notarize-mac.cjs",
     "desktop:dist:win": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --win --x64 --publish never",
     "desktop:release:manifest": "node scripts/generate-release-manifest.cjs",
-    "test": "vitest run"
+    "test": "vitest run && node --test scripts/check-bundle-budgets.test.cjs"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -52,6 +52,14 @@
     "productName": "RxnFlow",
     "asar": true,
     "afterPack": "scripts/after-pack.cjs",
+    "electronLanguages": [
+      "en",
+      "en-US",
+      "zh-CN",
+      "zh-TW",
+      "zh_CN",
+      "zh_TW"
+    ],
     "directories": {
       "buildResources": "build",
       "output": "release"
@@ -60,7 +68,8 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "build/**/*",
+      "build/icon.png",
+      "build/icon.ico",
       "legal/**/*",
       "package.json"
     ],

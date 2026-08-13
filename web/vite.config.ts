@@ -13,6 +13,8 @@ export default defineConfig(({ mode }) => {
       "process.env": JSON.stringify({ NODE_ENV: nodeEnv }),
     },
     build: {
+      manifest: true,
+      chunkSizeWarningLimit: 17_000,
       modulePreload: {
         resolveDependencies(filename, deps) {
           if (filename.startsWith("KetcherEditorHost-")) return deps
@@ -29,7 +31,13 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: "jsdom",
-      exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**", "**/electron/**/*.test.cjs"],
+      exclude: [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/e2e/**",
+        "**/electron/**/*.test.cjs",
+        "**/scripts/**/*.test.cjs",
+      ],
       globals: true,
       setupFiles: ["./src/test/setup.ts"],
     },

@@ -1,0 +1,39 @@
+refactor: 2026-08-12-desktop-package-and-bundle-size
+design: desktop-package-and-bundle-size-refactor-design.md
+status: in-progress
+
+steps:
+  - id: trim-electron-locales
+    description: 仅保留英文、简体中文和繁体中文 Electron locale
+    method: M-L4-03
+    status: done
+    verification: release smoke 和 packaged runtime smoke 通过且 locale 体积下降约 45 MiB
+
+  - id: whitelist-runtime-build-assets
+    description: 将 ASAR 中的 build 目录收窄为运行时图标白名单
+    method: M-L3-07
+    status: done
+    verification: ASAR 只保留运行时图标且 macOS 和 Windows 图标链路不变
+
+  - id: enforce-entry-bundle-budgets
+    description: 用 Vite manifest 建立首屏和重型按需入口的 bundle 预算
+    method: M-L4-03
+    status: done
+    verification: 构建输出四类入口预算；浏览器实测首屏不请求 3Dmol 和 Ketcher，实现入口打开后才加载
+
+checks:
+  - id: package-size-reduced
+    description: macOS unpacked app 安装体积较基线减少约 47.7 MiB
+    status: done
+
+  - id: desktop-runtime-equivalent
+    description: macOS 和 Windows packaged runtime、系统图标及中英文环境行为不变
+    status: pending
+
+  - id: heavy-features-stay-lazy
+    description: Ketcher 和 3Dmol 保持按需加载且打开功能后的行为不变
+    status: done
+
+  - id: full-regression
+    description: Web 全量测试、生产构建、release smoke、macOS packaged runtime 和浏览器桌面/窄屏验证通过
+    status: done
