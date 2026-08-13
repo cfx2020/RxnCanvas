@@ -2,8 +2,9 @@ const crypto = require("node:crypto")
 const fsSync = require("node:fs")
 const fs = require("node:fs/promises")
 const path = require("node:path")
+const { pipeline } = require("node:stream/promises")
 const archiver = require("archiver")
-const extractZip = require("extract-zip")
+const yauzl = require("yauzl")
 
 const projectDirectoryExtension = ".rxnflow"
 const projectMetadataDirectory = ".rxnflow"
@@ -19,6 +20,9 @@ const maxProjectArchiveBytes = 2 * 1024 * 1024 * 1024
 const maxArchiveEntryBytes = 1024 * 1024 * 1024
 const maxArchiveExpandedBytes = 4 * 1024 * 1024 * 1024
 const maxArchiveEntries = 20_000
+const unixFileTypeMask = 0o170000
+const unixRegularFileType = 0o100000
+const unixDirectoryType = 0o040000
 const maxFileHashCacheEntries = 256
 const maxFileHashAttempts = 3
 const fileHashCache = new Map()
@@ -230,20 +234,8 @@ async function importProjectWorkspaceArchive(sourceArchivePath, targetProjectDir
   await fs.rm(temporaryDirectory, { recursive: true, force: true })
   await fs.mkdir(temporaryDirectory, { recursive: true })
 
-  let entryCount = 0
-  let expandedBytes = 0
   try {
-    await extractZip(archivePath, {
-      dir: temporaryDirectory,
-      onEntry: (entry) => {
-        entryCount += 1
-        const entryBytes = Number(entry.uncompressedSize) || 0
-        expandedBytes += entryBytes
-        if (entryCount > maxArchiveEntries) throw new Error(`RxnFlow project archive has too many entries (maximum ${maxArchiveEntries}).`)
-        if (entryBytes > maxArchiveEntryBytes) throw new Error(`RxnFlow project archive entry is too large: ${entry.fileName}`)
-        if (expandedBytes > maxArchiveExpandedBytes) throw new Error(`RxnFlow project archive expands beyond ${maxArchiveExpandedBytes} bytes.`)
-      },
-    })
+    await extractProjectWorkspaceArchive(archivePath, temporaryDirectory)
 
     const statePath = await resolveProjectStatePath(temporaryDirectory)
     await readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnFlow imported project state")
@@ -257,6 +249,73 @@ async function importProjectWorkspaceArchive(sourceArchivePath, targetProjectDir
     await fs.rm(temporaryDirectory, { recursive: true, force: true })
     throw error
   }
+}
+
+async function extractProjectWorkspaceArchive(archivePath, destinationDirectory) {
+  const zipFile = await yauzl.openPromise(archivePath, {
+    autoClose: true,
+    decodeStrings: true,
+    strictFileNames: true,
+    validateEntrySizes: true,
+  })
+  const extractedPaths = new Set()
+  let entryCount = 0
+  let expandedBytes = 0
+
+  for await (const entry of zipFile.eachEntry()) {
+    entryCount += 1
+    const entryBytes = Number(entry.uncompressedSize) || 0
+    expandedBytes += entryBytes
+    if (entryCount > maxArchiveEntries) throw new Error(`RxnFlow project archive has too many entries (maximum ${maxArchiveEntries}).`)
+    if (entryBytes > maxArchiveEntryBytes) throw new Error(`RxnFlow project archive entry is too large: ${entry.fileName}`)
+    if (expandedBytes > maxArchiveExpandedBytes) throw new Error(`RxnFlow project archive expands beyond ${maxArchiveExpandedBytes} bytes.`)
+
+    const directory = entry.fileName.endsWith("/")
+    assertSupportedArchiveEntryType(entry, directory)
+    const targetPath = archiveEntryTargetPath(destinationDirectory, entry.fileName)
+    const targetKey = archiveEntryPathKey(targetPath)
+    if (extractedPaths.has(targetKey)) throw new Error(`RxnFlow project archive contains a duplicate path: ${entry.fileName}`)
+    extractedPaths.add(targetKey)
+
+    if (directory) {
+      await fs.mkdir(targetPath, { recursive: true })
+      continue
+    }
+    if (!entry.canDecodeFileData()) throw new Error(`RxnFlow project archive uses an unsupported or encrypted entry: ${entry.fileName}`)
+    await fs.mkdir(path.dirname(targetPath), { recursive: true })
+    const readStream = await zipFile.openReadStreamPromise(entry)
+    const writeStream = fsSync.createWriteStream(targetPath, { flags: "wx", mode: 0o600 })
+    await pipeline(readStream, writeStream)
+  }
+}
+
+function assertSupportedArchiveEntryType(entry, directory) {
+  const platform = entry.versionMadeBy >>> 8
+  if (platform !== 3) return
+  const unixMode = entry.externalFileAttributes >>> 16
+  const fileType = unixMode & unixFileTypeMask
+  if (fileType === 0) return
+  const expectedType = directory ? unixDirectoryType : unixRegularFileType
+  if (fileType !== expectedType) {
+    throw new Error(`RxnFlow project archive contains a symbolic link or unsupported file type: ${entry.fileName}`)
+  }
+}
+
+function archiveEntryTargetPath(destinationDirectory, entryName) {
+  if (typeof entryName !== "string" || !entryName || entryName.includes("\0")) {
+    throw new Error("RxnFlow project archive contains an invalid entry path.")
+  }
+  const destinationRoot = path.resolve(destinationDirectory)
+  const targetPath = path.resolve(destinationRoot, ...entryName.split("/"))
+  if (targetPath === destinationRoot || !targetPath.startsWith(`${destinationRoot}${path.sep}`)) {
+    throw new Error(`RxnFlow project archive entry escapes the destination directory: ${entryName}`)
+  }
+  return targetPath
+}
+
+function archiveEntryPathKey(entryPath) {
+  const normalized = path.normalize(entryPath)
+  return process.platform === "win32" || process.platform === "darwin" ? normalized.toLowerCase() : normalized
 }
 
 function isProjectDirectoryPath(projectPath) {

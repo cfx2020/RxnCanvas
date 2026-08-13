@@ -109,6 +109,6 @@
   },
   "dependencies": {
     "archiver": "7.0.1",
-    "extract-zip": "2.0.1"
+    "yauzl": "3.4.0"
   }
 }

@@ -740,11 +740,6 @@
     "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
     "licenseFile": "node_modules/@types/use-sync-external-store/LICENSE"
   },
-  "@types/yauzl@2.10.3": {
-    "licenses": "MIT",
-    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
-    "licenseFile": "node_modules/@types/yauzl/LICENSE"
-  },
   "@vitejs/plugin-react@6.0.2": {
     "licenses": "MIT",
     "repository": "https://github.com/vitejs/vite-plugin-react",
@@ -1053,7 +1048,7 @@
     "repository": "https://github.com/thenativeweb/boolean",
     "licenseFile": "node_modules/boolean/LICENSE.txt"
   },
-  "brace-expansion@1.1.15": {
+  "brace-expansion@1.1.18": {
     "licenses": "MIT",
     "repository": "https://github.com/juliangruber/brace-expansion",
     "publisher": "Julian Gruber",
@@ -1061,15 +1056,7 @@
     "url": "http://juliangruber.com",
     "licenseFile": "node_modules/glob/node_modules/brace-expansion/LICENSE"
   },
-  "brace-expansion@2.1.1": {
-    "licenses": "MIT",
-    "repository": "https://github.com/juliangruber/brace-expansion",
-    "publisher": "Julian Gruber",
-    "email": "mail@juliangruber.com",
-    "url": "http://juliangruber.com",
-    "licenseFile": "node_modules/@electron/universal/node_modules/brace-expansion/LICENSE"
-  },
-  "brace-expansion@2.1.2": {
+  "brace-expansion@2.1.4": {
     "licenses": "MIT",
     "repository": "https://github.com/juliangruber/brace-expansion",
     "publisher": "Julian Gruber",
@@ -1077,17 +1064,10 @@
     "url": "http://juliangruber.com",
     "licenseFile": "node_modules/archiver-utils/node_modules/brace-expansion/LICENSE"
   },
-  "brace-expansion@5.0.6": {
+  "brace-expansion@5.0.9": {
     "licenses": "MIT",
     "repository": "https://github.com/juliangruber/brace-expansion",
     "licenseFile": "node_modules/brace-expansion/LICENSE"
-  },
-  "buffer-crc32@0.2.13": {
-    "licenses": "MIT",
-    "repository": "https://github.com/brianloveswords/buffer-crc32",
-    "publisher": "Brian J. Brennan",
-    "email": "brianloveswords@gmail.com",
-    "licenseFile": "node_modules/yauzl/node_modules/buffer-crc32/LICENSE"
   },
   "buffer-crc32@1.0.0": {
     "licenses": "MIT",
@@ -1826,7 +1806,7 @@
     "repository": "https://github.com/electron/windows-installer",
     "licenseFile": "node_modules/electron-winstaller/LICENSE"
   },
-  "electron@42.4.0": {
+  "electron@42.8.1": {
     "licenses": "MIT",
     "repository": "https://github.com/electron/electron",
     "publisher": "Electron Community",
@@ -1995,12 +1975,6 @@
     "publisher": "Sami Sayegh",
     "licenseFile": "node_modules/exponential-backoff/LICENSE"
   },
-  "extract-zip@2.0.1": {
-    "licenses": "BSD-2-Clause",
-    "repository": "https://github.com/maxogden/extract-zip",
-    "publisher": "max ogden",
-    "licenseFile": "node_modules/extract-zip/LICENSE"
-  },
   "fast-deep-equal@3.1.3": {
     "licenses": "MIT",
     "repository": "https://github.com/epoberezkin/fast-deep-equal",
@@ -2014,20 +1988,13 @@
     "url": "@mafintosh",
     "licenseFile": "node_modules/fast-fifo/LICENSE"
   },
-  "fast-uri@3.1.2": {
+  "fast-uri@3.1.5": {
     "licenses": "BSD-3-Clause",
     "repository": "https://github.com/fastify/fast-uri",
     "publisher": "Vincent Le Goff",
     "email": "vince.legoff@gmail.com",
     "url": "https://github.com/zekth",
     "licenseFile": "node_modules/fast-uri/LICENSE"
-  },
-  "fd-slicer@1.1.0": {
-    "licenses": "MIT",
-    "repository": "https://github.com/andrewrk/node-fd-slicer",
-    "publisher": "Andrew Kelley",
-    "email": "superjoe30@gmail.com",
-    "licenseFile": "node_modules/fd-slicer/LICENSE"
   },
   "fdir@6.5.0": {
     "licenses": "MIT",
@@ -2586,7 +2553,7 @@
     "publisher": "Simon Lydell",
     "licenseFile": "node_modules/js-tokens/LICENSE"
   },
-  "js-yaml@4.2.0": {
+  "js-yaml@4.3.1": {
     "licenses": "MIT",
     "repository": "https://github.com/nodeca/js-yaml",
     "publisher": "Vladimir Zapparov",
@@ -3077,7 +3044,7 @@
     "repository": "https://github.com/vercel/ms",
     "licenseFile": "node_modules/ms/license.md"
   },
-  "nanoid@3.3.15": {
+  "nanoid@3.3.18": {
     "licenses": "MIT",
     "repository": "https://github.com/ai/nanoid",
     "publisher": "Andrey Sitnik",
@@ -3360,7 +3327,7 @@
     "email": "ljharb@gmail.com",
     "licenseFile": "node_modules/possible-typed-array-names/LICENSE"
   },
-  "postcss@8.5.16": {
+  "postcss@8.5.26": {
     "licenses": "MIT",
     "repository": "https://github.com/postcss/postcss",
     "publisher": "Andrey Sitnik",
@@ -4074,7 +4041,7 @@
     "email": "mathiasbuus@gmail.com",
     "licenseFile": "node_modules/tar-stream/LICENSE"
   },
-  "tar@7.5.16": {
+  "tar@7.5.22": {
     "licenses": "BlueOak-1.0.0",
     "repository": "https://github.com/isaacs/node-tar",
     "publisher": "Isaac Z. Schlueter",
@@ -4225,12 +4192,12 @@
     "repository": "https://github.com/nodejs/undici",
     "licenseFile": "node_modules/undici-types/LICENSE"
   },
-  "undici@6.27.0": {
+  "undici@6.28.0": {
     "licenses": "MIT",
     "repository": "https://github.com/nodejs/undici",
     "licenseFile": "node_modules/node-gyp/node_modules/undici/LICENSE"
   },
-  "undici@7.28.0": {
+  "undici@7.29.0": {
     "licenses": "MIT",
     "repository": "https://github.com/nodejs/undici",
     "licenseFile": "node_modules/undici/LICENSE"
@@ -4503,7 +4470,7 @@
     "repository": "https://github.com/yargs/yargs",
     "licenseFile": "node_modules/yargs/LICENSE"
   },
-  "yauzl@2.10.0": {
+  "yauzl@3.4.0": {
     "licenses": "MIT",
     "repository": "https://github.com/thejoshwolfe/yauzl",
     "publisher": "Josh Wolfe",

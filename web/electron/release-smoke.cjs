@@ -110,6 +110,8 @@ function verifyDesktopIconAssets() {
 }
 
 function verifyBuilderConfiguration() {
+  assert(packageJson.dependencies?.yauzl === "3.4.0", "production project archive extraction must use yauzl 3.4.0")
+  assert(!packageJson.dependencies?.["extract-zip"], "vulnerable extract-zip must not remain a production dependency")
   const buildFiles = packageJson.build?.files ?? []
   for (const requiredPattern of ["dist/**/*", "electron/**/*", "build/icon.png", "build/icon.ico", "package.json"]) {
     assert(buildFiles.includes(requiredPattern), `build.files missing ${requiredPattern}`)

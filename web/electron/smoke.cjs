@@ -1,6 +1,7 @@
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
+const archiver = require("archiver")
 const { getEngineStatus, runEngineRequest, shutdownEngineWorkers } = require("./engine-bridge.cjs")
 const {
   exportManifestFile,
@@ -697,9 +698,48 @@ async function verifyProjectDirectoryStore() {
     if (!fs.existsSync(path.join(importedProjectPath, "sources", "gaussian.log"))) {
       throw new Error("Imported project archive did not restore source files")
     }
+
+    const symlinkArchivePath = path.join(tempDir, "symlink-escape.rxnflow.zip")
+    await writeSymlinkArchive(symlinkArchivePath, projectContent)
+    const symlinkImportPath = path.join(tempDir, "Symlink Escape")
+    const escapedFilePath = path.join(tempDir, "outside-project.log")
+    let symlinkArchiveRejected = false
+    try {
+      await importProjectWorkspaceArchive(symlinkArchivePath, symlinkImportPath)
+    } catch (error) {
+      symlinkArchiveRejected = /symbolic link or unsupported file type/.test(error instanceof Error ? error.message : String(error))
+    }
+    if (!symlinkArchiveRejected) {
+      throw new Error("Project archive import did not reject a symbolic link entry")
+    }
+    if (fs.existsSync(symlinkImportPath) || fs.existsSync(escapedFilePath)) {
+      throw new Error("Rejected symbolic link archive wrote files outside its temporary import directory")
+    }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })
   }
+}
+
+function writeSymlinkArchive(archivePath, projectContent) {
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(archivePath)
+    const archive = archiver("zip")
+    let settled = false
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      if (error) reject(error)
+      else resolve()
+    }
+    output.on("close", () => finish())
+    output.on("error", finish)
+    archive.on("warning", finish)
+    archive.on("error", finish)
+    archive.pipe(output)
+    archive.append(projectContent, { name: projectStateFile })
+    archive.symlink("sources/escape.log", "../../outside-project.log")
+    archive.finalize().catch(finish)
+  })
 }
 
 async function verifyEngineProjectCommands() {
