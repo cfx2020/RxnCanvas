@@ -16,6 +16,7 @@ web/test-results-local-http/
 output/
 .playwright-cli/
 .codestable/history/
+.codestable/
 *.tsbuildinfo
 *.rxnflow.zip
 /Ni-fxc/

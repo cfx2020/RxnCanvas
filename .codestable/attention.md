@@ -1,7 +1,0 @@
-# CodeStable Attention
-
-- 本项目的 CodeStable 根目录是 `.codestable/`。
-- 当前项目尚未上线，不需要兼容旧版本、旧 UI、旧数据或旧设计；以用户最新表述为准，必要时可以做破坏性更改、删除旧实现或重构既有方案。
-- Web 工作台预览必须从 `web/` 目录运行 `npm run dev`，再打开 `http://127.0.0.1:5173/`。
-- 涉及前端视觉、画布交互、图谱编辑或报告预览的改动，必须用浏览器验证。
-- Electron startup restore / recent project payload 是 one-shot；React 侧用稳定 effect + latest handler ref 处理，不要把恢复调用绑在会频繁重建的 callback dependency 上。
