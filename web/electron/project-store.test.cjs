@@ -26,6 +26,7 @@ const {
   exportProjectWorkspaceArchive,
   importProjectWorkspaceArchive,
   materializeImportSourceFile,
+  projectStoredPathForSourcePath,
   readProjectContent,
   saveProjectContent,
   saveProjectReportArtifact,
@@ -365,6 +366,67 @@ test("materializes an underscored solution log without adding a hash", async (t)
 
   assert.equal(materialized.storedPath, "sources/7a-1fix-ts_sol.log")
   assert.equal(fs.readFileSync(path.join(projectDirectory, materialized.storedPath), "utf8"), "solution source")
+})
+
+test("materializes a project-internal source in place without creating a suffixed copy", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-source-reparse-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "study.rxnflow")
+  const sourcePath = path.join(projectDirectory, "sources", "scan.log")
+  fs.mkdirSync(path.dirname(sourcePath), { recursive: true })
+  fs.writeFileSync(sourcePath, "project source", "utf8")
+
+  const materialized = await materializeImportSourceFile(projectDirectory, {
+    id: "scan",
+    name: "scan.log",
+    sourcePath,
+  }, 0)
+
+  assert.equal(projectStoredPathForSourcePath(projectDirectory, sourcePath), "sources/scan.log")
+  assert.equal(materialized.storedPath, "sources/scan.log")
+  assert.equal(fs.readFileSync(sourcePath, "utf8"), "project source")
+  assert.equal(fs.existsSync(path.join(projectDirectory, "sources", "scan-2.log")), false)
+})
+
+test("concurrent project-internal reparses survive interleaved project saves", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-source-batch-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "study.rxnflow")
+  const names = ["a.log", "b.log", "c.log", "d.log"]
+  fs.mkdirSync(path.join(projectDirectory, "sources"), { recursive: true })
+  names.forEach((name) => fs.writeFileSync(path.join(projectDirectory, "sources", name), `source ${name}`, "utf8"))
+  const stagedFiles = names.map((name, index) => ({
+    id: `file-${index}`,
+    name,
+    kind: "Gaussian",
+    size: Buffer.byteLength(`source ${name}`),
+    status: "staged",
+    preview: "",
+    storedPath: `sources/${name}`,
+    parse: { parsed: false },
+  }))
+
+  await saveProjectContent(projectDirectory, projectContentForFiles(stagedFiles))
+  const materialized = await Promise.all(names.map((name, index) => materializeImportSourceFile(projectDirectory, {
+    id: `file-${index}`,
+    name,
+    sourcePath: path.join(projectDirectory, "sources", name),
+  }, index)))
+  await Promise.all(materialized.map((file, index) => saveProjectContent(
+    projectDirectory,
+    projectContentForFiles(stagedFiles.map((staged, stagedIndex) => stagedIndex <= index ? {
+      ...staged,
+      ...materialized[stagedIndex],
+      status: "parsed",
+      parse: { parsed: true },
+    } : staged)),
+  )))
+
+  assert.deepEqual(materialized.map((file) => file.storedPath), names.map((name) => `sources/${name}`))
+  names.forEach((name) => {
+    assert.equal(fs.readFileSync(path.join(projectDirectory, "sources", name), "utf8"), `source ${name}`)
+    assert.equal(fs.existsSync(path.join(projectDirectory, "sources", name.replace(/\.log$/, "-2.log"))), false)
+  })
 })
 
 test("same-name imports replace the project source in request order", async (t) => {
@@ -747,11 +809,15 @@ function rematerialize(projectDirectory, sourcePath, storedPath) {
 }
 
 function projectContent(file) {
+  return projectContentForFiles(file ? [file] : [])
+}
+
+function projectContentForFiles(files) {
   return JSON.stringify({
     schemaVersion: 2,
     packageKind: "rxnflow-project",
     project: { id: "cache-study", label: "Cache Study", meta: "open" },
-    files: file ? [file] : [],
+    files,
     canvases: [{
       id: "canvas-1",
       label: "Canvas 1",

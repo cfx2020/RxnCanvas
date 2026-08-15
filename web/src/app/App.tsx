@@ -1995,7 +1995,8 @@ export function App() {
     const projectFiles = projectId === activeProjectId
       ? currentProjectWorkspaceSnapshot().files
       : projectWorkspaces[projectId]?.files ?? []
-    const replacementPlan = desktopImportFilesWithProjectTargets(importedFiles, projectFiles)
+    const projectDirectory = projectDirectoriesRef.current[projectId] ?? null
+    const replacementPlan = desktopImportFilesWithProjectTargets(importedFiles, projectFiles, projectDirectory)
     let frameBatcher: AnimationFrameBatcher<ImportSourceFile> | null = null
     if (!autoRegister) {
       const completedFilesById = new Map<string, ImportSourceFile>()
@@ -2026,7 +2027,7 @@ export function App() {
     const parseJob = desktopParsedImportSourceFiles({
       desktopApi,
       projectId,
-      projectDirectory: projectDirectoriesRef.current[projectId] ?? null,
+      projectDirectory,
       importedFiles: replacementPlan.files,
       rawFiles,
       referencedStoredPaths: referencedStoredPathsForProject({
@@ -2168,6 +2169,10 @@ export function App() {
     const rawFiles = Array.from(fileList)
     const useDesktopImportJob = Boolean(window.rxnflowDesktop?.importSourceFiles)
     const desktopApi = window.rxnflowDesktop
+    const projectFiles = projectId === activeProjectId
+      ? currentProjectWorkspaceSnapshot().files
+      : projectWorkspaces[projectId]?.files ?? []
+    const projectDirectory = projectDirectoriesRef.current[projectId] ?? null
     const importedFiles = await importFilesForProjectAction({
       fileList: rawFiles,
       projectId,
@@ -2179,13 +2184,16 @@ export function App() {
             return sourcePath ? { sourcePath } : undefined
           }
         : undefined,
+      prepareImportedFiles: useDesktopImportJob
+        ? (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files
+        : undefined,
       stageOptions: {
         autoRegister: false,
         parseMode: useDesktopImportJob ? "defer" : "fallback",
       },
     })
     if (useDesktopImportJob) runDesktopImportParseJob(projectId, importedFiles, { autoRegister: false }, rawFiles)
-  }, [activeProjectId, runDesktopImportParseJob, stageSourceFilesForProject])
+  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, runDesktopImportParseJob, stageSourceFilesForProject])
 
   const updateTextAnnotation = useCallback((annotationId: string, text: string) => {
     const nextText = text.trim()
@@ -2239,12 +2247,17 @@ export function App() {
             return sourcePath ? { sourcePath } : undefined
           },
         })
-        await stageSourceFiles(importedFiles.map(deferredDesktopImportPlaceholder), {
+        const projectTargetedFiles = desktopImportFilesWithProjectTargets(
+          importedFiles,
+          files,
+          projectDirectoriesRef.current[activeProjectId] ?? null,
+        ).files
+        await stageSourceFiles(projectTargetedFiles.map(deferredDesktopImportPlaceholder), {
           ...transition.options,
           autoRegister: false,
           parseMode: "defer",
         })
-        runDesktopImportParseJob(activeProjectId, importedFiles, transition.options, sourceFiles)
+        runDesktopImportParseJob(activeProjectId, projectTargetedFiles, transition.options, sourceFiles)
         return
       }
       await handleCanvasRawFileDropAction({
@@ -2333,17 +2346,24 @@ export function App() {
 
   const importDesktopFiles = useCallback(async (projectId = activeProjectId) => {
     const useDesktopImportJob = Boolean(window.rxnflowDesktop?.importSourceFiles)
+    const projectFiles = projectId === activeProjectId
+      ? currentProjectWorkspaceSnapshot().files
+      : projectWorkspaces[projectId]?.files ?? []
+    const projectDirectory = projectDirectoriesRef.current[projectId] ?? null
     const importedFiles = await importDesktopFilesAction({
       projectId,
       chooseFiles: window.rxnflowDesktop?.chooseFiles,
       stageSourceFilesForProject,
+      prepareImportedFiles: useDesktopImportJob
+        ? (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files
+        : undefined,
       stageOptions: {
         autoRegister: false,
         parseMode: useDesktopImportJob ? "defer" : "fallback",
       },
     })
     if (useDesktopImportJob) runDesktopImportParseJob(projectId, importedFiles, { autoRegister: false })
-  }, [activeProjectId, runDesktopImportParseJob, stageSourceFilesForProject])
+  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, runDesktopImportParseJob, stageSourceFilesForProject])
 
   const openImportPicker = useCallback((projectId = activeProjectId) => {
     openImportPickerAction({
@@ -4166,7 +4186,7 @@ function referencedStoredPathsForProject({
 }
 
 function desktopImportFailureShouldRemovePlaceholder(file: ImportSourceFile): boolean {
-  return Boolean(desktopImportParseRejectionWarning(file))
+  return file.projectSourceReparse !== true && Boolean(desktopImportParseRejectionWarning(file))
 }
 
 function shouldRemoveFailedDesktopImportFile(file: SourceFile, failedImport: ImportSourceFile): boolean {

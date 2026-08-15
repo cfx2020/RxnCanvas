@@ -13,20 +13,41 @@ export type DesktopImportReplacementTarget = {
 export function desktopImportFilesWithProjectTargets(
   importedFiles: ImportSourceFile[],
   existingFiles: SourceFile[],
+  projectDirectory?: string | null,
 ): {
   files: ImportSourceFile[]
   replacementsByImportId: Map<string, DesktopImportReplacementTarget>
 } {
   const existingByName = new Map<string, SourceFile>()
+  const existingByStoredPath = new Map<string, SourceFile>()
   for (const file of existingFiles) {
     if (!file.storedPath) continue
     const key = normalizedImportFileName(file.name)
     if (!existingByName.has(key)) existingByName.set(key, file)
+    existingByStoredPath.set(normalizedStoredPath(file.storedPath), file)
   }
 
   const replacementsByImportId = new Map<string, DesktopImportReplacementTarget>()
   const files = importedFiles.map((file) => {
-    const existing = existingByName.get(normalizedImportFileName(file.name))
+    const projectStoredPath = desktopProjectStoredPathForSourcePath(projectDirectory, file.sourcePath)
+    const existing = (projectStoredPath ? existingByStoredPath.get(normalizedStoredPath(projectStoredPath)) : undefined)
+      ?? existingByName.get(normalizedImportFileName(file.name))
+    if (projectStoredPath && existing?.storedPath) {
+      return {
+        ...file,
+        id: existing.id,
+        name: existing.name,
+        storedPath: existing.storedPath,
+        projectSourceReparse: true,
+      }
+    }
+    if (projectStoredPath) {
+      return {
+        ...file,
+        storedPath: projectStoredPath,
+        projectSourceReparse: true,
+      }
+    }
     if (!existing?.storedPath) return file
     replacementsByImportId.set(file.id, {
       fileId: existing.id,
@@ -62,6 +83,34 @@ export function accumulatedDesktopImportFiles(
 
 function normalizedImportFileName(name: string): string {
   return name.trim().toLowerCase()
+}
+
+function normalizedStoredPath(storedPath: string): string {
+  return storedPath.replaceAll("\\", "/").toLowerCase()
+}
+
+export function desktopProjectStoredPathForSourcePath(
+  projectDirectory: string | null | undefined,
+  sourcePath: string | null | undefined,
+): string {
+  if (!projectDirectory || !sourcePath) return ""
+  const projectRoot = normalizedDesktopAbsolutePath(projectDirectory)
+  const normalizedSource = normalizedDesktopAbsolutePath(sourcePath)
+  const sourcesPrefix = `${projectRoot}/sources/`
+  const caseInsensitive = /^[a-z]:\//i.test(projectRoot)
+  const comparableSource = caseInsensitive ? normalizedSource.toLowerCase() : normalizedSource
+  const comparablePrefix = caseInsensitive ? sourcesPrefix.toLowerCase() : sourcesPrefix
+  if (!comparableSource.startsWith(comparablePrefix)) return ""
+
+  const relativeSourcePath = normalizedSource.slice(sourcesPrefix.length)
+  const segments = relativeSourcePath.split("/")
+  if (segments.length === 0 || segments.some((segment) => !segment || segment === "." || segment === "..")) return ""
+  return `sources/${relativeSourcePath}`
+}
+
+function normalizedDesktopAbsolutePath(value: string): string {
+  const normalized = value.trim().replaceAll("\\", "/").replace(/\/{2,}/g, "/")
+  return normalized.length > 1 ? normalized.replace(/\/$/, "") : normalized
 }
 
 export type AnimationFrameBatcher<T> = {
@@ -243,6 +292,7 @@ async function desktopParsedImportSourceFile({
   source: ImportSourceFile
   rawFile: File | undefined
 }): Promise<ImportSourceFile> {
+  const preserveStoredPath = source.projectSourceReparse === true
   try {
     const payloadFile = await desktopImportPayloadFile(desktopApi, source, rawFile)
     const response = await importSourceFiles({ projectId, projectDirectory, referencedStoredPaths, files: [payloadFile] })
@@ -251,20 +301,21 @@ async function desktopParsedImportSourceFile({
         source,
         response.error.message,
         response.error.code,
+        preserveStoredPath,
       )
     }
     if (!Array.isArray(response.data.files)) {
-      return desktopImportFailureResult(source, "The desktop parser did not return import data for this file.", "import_preview_missing")
+      return desktopImportFailureResult(source, "The desktop parser did not return import data for this file.", "import_preview_missing", preserveStoredPath)
     }
 
     const file = response.data.files[0]
     if (!file) {
-      return desktopImportFailureResult(source, "The desktop parser did not return import data for this file.", "import_preview_missing")
+      return desktopImportFailureResult(source, "The desktop parser did not return import data for this file.", "import_preview_missing", preserveStoredPath)
     }
 
     const merged = mergeDesktopImportResult(source, file)
     if (file.error) {
-      return desktopImportFailureResult(merged, file.error.message, file.error.code)
+      return desktopImportFailureResult(merged, file.error.message, file.error.code, preserveStoredPath)
     }
     if (!file.parse) {
       const warning = file.error
@@ -273,7 +324,7 @@ async function desktopParsedImportSourceFile({
           code: "import_preview_missing",
           message: "The desktop parser did not return import data for this file.",
         }
-      return desktopImportFailureResult(merged, warning.message, warning.code)
+      return desktopImportFailureResult(merged, warning.message, warning.code, preserveStoredPath)
     }
     return merged
   } catch (error) {
@@ -281,6 +332,7 @@ async function desktopParsedImportSourceFile({
       source,
       error instanceof Error ? error.message : "The desktop parser could not finish this import file.",
       "import_parse_failed",
+      preserveStoredPath,
     )
   }
 }
@@ -310,10 +362,11 @@ function desktopImportFailureResult(
   source: ImportSourceFile,
   message: string,
   code: string,
+  preserveStoredPath = false,
 ): ImportSourceFile {
   const failedSource = { ...source }
   delete failedSource.sourcePath
-  delete failedSource.storedPath
+  if (!preserveStoredPath) delete failedSource.storedPath
   delete failedSource.checksum
   return {
     ...failedSource,

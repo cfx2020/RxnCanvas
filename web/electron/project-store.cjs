@@ -498,6 +498,10 @@ async function reserveImportStoredPath(projectDirectory, file, index) {
   if (typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)) {
     return { storedPath: toProjectPath(file.storedPath), createdPlaceholder: false }
   }
+  const projectStoredPath = projectStoredPathForSourcePath(projectDirectory, file?.sourcePath)
+  if (projectStoredPath) {
+    return { storedPath: projectStoredPath, createdPlaceholder: false }
+  }
 
   const sourceRoot = path.join(projectDirectory, sourcesDirectory)
   await fs.mkdir(sourceRoot, { recursive: true })
@@ -516,6 +520,16 @@ async function reserveImportStoredPath(projectDirectory, file, index) {
       suffix += 1
     }
   }
+}
+
+function projectStoredPathForSourcePath(projectDirectory, sourcePath) {
+  if (typeof sourcePath !== "string" || !path.isAbsolute(sourcePath)) return null
+  const projectRoot = path.resolve(projectDirectory)
+  const absoluteSourcePath = path.resolve(sourcePath)
+  const relativePath = path.relative(projectRoot, absoluteSourcePath)
+  if (!isSafeStoredSourcePath(relativePath)) return null
+  const storedPath = toProjectPath(relativePath)
+  return path.resolve(projectRoot, storedPath) === absoluteSourcePath ? storedPath : null
 }
 
 function defaultImportStoredPathForFile(file, index) {
@@ -924,6 +938,7 @@ module.exports = {
   projectDirectoryExtension,
   projectManifestFile,
   projectMetadataDirectory,
+  projectStoredPathForSourcePath,
   projectStateFile,
   readProjectContent,
   resolveProjectStatePath,

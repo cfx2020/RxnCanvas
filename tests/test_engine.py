@@ -13,14 +13,30 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from rxnflow import demo_flow, export_flow_json
-from rxnflow.engine import MAX_SOURCE_FILE_BYTES, EV_TO_HARTREE, parse_source_file, parse_source_preview, validate_project_content
+from rxnflow.engine import MAX_SOURCE_FILE_BYTES, parse_source_file, parse_source_preview, validate_project_content
 from rxnflow import engine
 from rxnflow.engine_ipc import ENGINE_VERSION, handle_request
 
 
+FAKE_CCLIB_HARTREE_TO_EV = 27.21138505
+
+
+def fake_cclib_scf_energy(hartree: float) -> float:
+    return hartree * FAKE_CCLIB_HARTREE_TO_EV
+
+
+def fake_cclib_convertor(value: float, fromunits: str, tounits: str) -> float:
+    if (fromunits, tounits) != ("eV", "hartree"):
+        raise KeyError(f"Unsupported fake cclib conversion: {fromunits} -> {tounits}")
+    return value / FAKE_CCLIB_HARTREE_TO_EV
+
+
 def fake_cclib_module(data: SimpleNamespace, parser_name: str = "Gaussian") -> SimpleNamespace:
     parser_type = type(parser_name, (), {"parse": lambda self: data})
-    return SimpleNamespace(io=SimpleNamespace(ccopen=lambda _path, quiet=True: parser_type()))
+    return SimpleNamespace(
+        io=SimpleNamespace(ccopen=lambda _path, quiet=True: parser_type()),
+        parser=SimpleNamespace(utils=SimpleNamespace(convertor=fake_cclib_convertor)),
+    )
 
 
 def large_orca_characterization_text(iterations: int = 96) -> str:
@@ -538,7 +554,7 @@ class EngineSmokeTest(unittest.TestCase):
                     [0.0, 0.0, 0.96],
                     [0.92, 0.0, -0.24],
                 ]],
-                scfenergies=[-76.5 / EV_TO_HARTREE],
+                scfenergies=[fake_cclib_scf_energy(-76.5)],
                 freeenergy=-76.39,
                 vibfreqs=[-123.4],
                 vibdisps=[[
@@ -578,6 +594,14 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertAlmostEqual(parsed.energyTable.egasHartree if parsed.energyTable else 0, -76.5)
         self.assertAlmostEqual(parsed.energyTable.ggasHartree if parsed.energyTable else 0, -76.39)
 
+    def test_cclib_scf_conversion_preserves_large_gaussian_energy(self) -> None:
+        expected = -1779.40423117
+        fake_data = SimpleNamespace(scfenergies=[fake_cclib_scf_energy(expected)])
+
+        actual = engine.cclib_last_scf_hartree(fake_data, fake_cclib_convertor)
+
+        self.assertAlmostEqual(actual or 0, expected, places=10)
+
     def test_cclib_full_file_falls_back_to_gaussian_text_vibration_modes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source_path = Path(directory) / "cclib-gaussian-text-vibrations.log"
@@ -607,7 +631,7 @@ class EngineSmokeTest(unittest.TestCase):
                     [0.0, 0.0, 0.96],
                     [0.92, 0.0, -0.24],
                 ]],
-                scfenergies=[-76.5 / EV_TO_HARTREE],
+                scfenergies=[fake_cclib_scf_energy(-76.5)],
                 charge=0,
                 mult=1,
                 metadata={"methods": ["B3LYP"]},
@@ -637,7 +661,7 @@ class EngineSmokeTest(unittest.TestCase):
             fake_data = SimpleNamespace(
                 atomnos=[8, 1, 1],
                 atomcoords=[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.96], [0.92, 0.0, -0.24]]],
-                scfenergies=[-76.5 / EV_TO_HARTREE],
+                scfenergies=[fake_cclib_scf_energy(-76.5)],
                 charge=0,
                 mult=1,
                 metadata={"methods": ["DFT"]},
@@ -687,7 +711,7 @@ class EngineSmokeTest(unittest.TestCase):
             fake_data = SimpleNamespace(
                 atomnos=[8, 1, 1],
                 atomcoords=[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.96], [0.92, 0.0, -0.24]]],
-                scfenergies=[-76.5 / EV_TO_HARTREE],
+                scfenergies=[fake_cclib_scf_energy(-76.5)],
                 vibfreqs=[-222.2],
                 vibdisps=[[[0.02, 0.0, 0.0], [-0.02, 0.0, 0.0], [0.0, 0.02, 0.0]]],
                 charge=0,
@@ -740,7 +764,7 @@ class EngineSmokeTest(unittest.TestCase):
                     [0.0, 0.0, 0.96],
                     [0.92, 0.0, -0.24],
                 ]],
-                scfenergies=[-76.5 / EV_TO_HARTREE],
+                scfenergies=[fake_cclib_scf_energy(-76.5)],
                 charge=0,
                 mult=1,
                 nbasis=3957,
@@ -829,7 +853,7 @@ class EngineSmokeTest(unittest.TestCase):
                 encoding="utf8",
             )
             fake_data = SimpleNamespace(
-                scfenergies=[-76.5 / EV_TO_HARTREE],
+                scfenergies=[fake_cclib_scf_energy(-76.5)],
                 freeenergy=-76.39,
                 nbasis=7,
                 metadata={"methods": ["B3LYP"]},

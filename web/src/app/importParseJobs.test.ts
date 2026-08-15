@@ -7,6 +7,7 @@ import {
   desktopImportFilesWithProjectTargets,
   desktopImportFileWithReplacementIdentity,
   desktopParsedImportSourceFiles,
+  desktopProjectStoredPathForSourcePath,
 } from "./importParseJobs"
 import type { ImportSourceFile } from "./importRegistration"
 
@@ -91,6 +92,43 @@ describe("desktop same-name source replacement", () => {
       ...incoming,
       storedPath: undefined,
     }, replacement).id).toBe("incoming")
+  })
+
+  it("treats files dragged from the active project sources directory as in-place reparses", () => {
+    const projectDirectory = "/Users/linsay/Documents/chemistry/Ni"
+    const existing = {
+      ...importSourceFile("existing"),
+      name: "7a-1fix-ts.log",
+      storedPath: "sources/7a-1fix-ts-2.log",
+    }
+    const incoming = {
+      ...importSourceFile("incoming"),
+      name: "7a-1fix-ts-2.log",
+      sourcePath: `${projectDirectory}/sources/7a-1fix-ts-2.log`,
+    }
+
+    const prepared = desktopImportFilesWithProjectTargets([incoming], [existing], projectDirectory)
+
+    expect(prepared.files[0]).toMatchObject({
+      id: "existing",
+      name: "7a-1fix-ts.log",
+      sourcePath: `${projectDirectory}/sources/7a-1fix-ts-2.log`,
+      storedPath: "sources/7a-1fix-ts-2.log",
+      projectSourceReparse: true,
+    })
+    expect(prepared.replacementsByImportId.size).toBe(0)
+  })
+
+  it("assigns an existing project-relative path to an unregistered project source", () => {
+    const projectDirectory = "C:\\Studies\\Ni"
+    const sourcePath = "C:\\Studies\\Ni\\sources\\new\\scan.log"
+    const [prepared] = desktopImportFilesWithProjectTargets([{
+      ...importSourceFile("incoming"),
+      sourcePath,
+    }], [], projectDirectory).files
+
+    expect(desktopProjectStoredPathForSourcePath(projectDirectory, sourcePath)).toBe("sources/new/scan.log")
+    expect(prepared.storedPath).toBe("sources/new/scan.log")
   })
 })
 
@@ -289,6 +327,30 @@ describe("importParseJobs", () => {
       message: "Engine unavailable.",
       target: "failed.log",
     }])
+  })
+
+  it("keeps the stored path when an in-project reparse fails", async () => {
+    const source = {
+      ...importSourceFile("project-source"),
+      sourcePath: "/tmp/study/sources/project-source.log",
+      storedPath: "sources/project-source.log",
+      projectSourceReparse: true,
+    }
+    const importSourceFiles = vi.fn(async () => ({
+      ok: false as const,
+      error: { code: "engine_down", message: "Engine unavailable." },
+    }))
+
+    const [parsedFile] = await desktopParsedImportSourceFiles({
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      projectId: "p1",
+      projectDirectory: "/tmp/study",
+      importedFiles: [source],
+    })
+
+    expect(parsedFile.sourcePath).toBeUndefined()
+    expect(parsedFile.storedPath).toBe("sources/project-source.log")
+    expect(parsedFile.status).toBe("staged")
   })
 
   it("stops pending progress without keeping successful import metadata when the backend returns no parse", async () => {

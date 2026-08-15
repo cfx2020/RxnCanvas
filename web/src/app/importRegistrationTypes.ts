@@ -122,6 +122,7 @@ export type RegisterImportCandidates = (payload: DesktopImportRegistrationPayloa
 
 export type ImportSourceFile = SourceFile & {
   parse?: SourceParseResult
+  projectSourceReparse?: boolean
 }
 
 export type ParsedImportFile = {

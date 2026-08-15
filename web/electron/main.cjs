@@ -9,6 +9,7 @@ const {
   exportProjectWorkspaceArchive,
   importProjectWorkspaceArchive,
   materializeImportSourceFile,
+  projectStoredPathForSourcePath,
   readProjectContent,
   resolveProjectStatePath,
   saveProjectContent,
@@ -960,7 +961,7 @@ ipcMain.handle("rxnflow:show-import-issues", async (event, payload) => {
 })
 
 ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
-  const files = Array.isArray(payload?.files)
+  let files = Array.isArray(payload?.files)
     ? payload.files.map(importSourceFilePayload).filter(Boolean)
     : []
   if (files.length === 0) {
@@ -971,6 +972,13 @@ ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
   let projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
   if (!projectDirectory && projectId) {
     projectDirectory = await projectDirectoryFromActiveProjectPayload(projectId, payload)
+  }
+  if (projectDirectory) {
+    files = files.map((file) => {
+      if (file.storedPath) return file
+      const storedPath = projectStoredPathForSourcePath(projectDirectory, file.sourcePath)
+      return storedPath ? { ...file, storedPath } : file
+    })
   }
   const warnings = []
   if (!projectDirectory) {

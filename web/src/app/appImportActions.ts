@@ -218,6 +218,7 @@ export async function importFilesForProjectAction({
   stageSourceFilesForProject,
   previewMode = "full",
   prepareFile,
+  prepareImportedFiles,
   stageOptions = { autoRegister: false },
 }: {
   fileList: FileList | File[]
@@ -225,9 +226,11 @@ export async function importFilesForProjectAction({
   stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
   previewMode?: "full" | "head" | "none"
   prepareFile?: (file: File, index: number) => Partial<ImportSourceFile> | undefined
+  prepareImportedFiles?: (files: ImportSourceFile[]) => ImportSourceFile[]
   stageOptions?: StageSourceFilesOptions
 }): Promise<ImportSourceFile[]> {
-  const importedFiles = await browserImportSourceFilesFromFiles(fileList, "file", { previewMode, prepareFile })
+  const selectedFiles = await browserImportSourceFilesFromFiles(fileList, "file", { previewMode, prepareFile })
+  const importedFiles = prepareImportedFiles?.(selectedFiles) ?? selectedFiles
   const stagedFiles = stageOptions.parseMode === "defer"
     ? importedFiles.map(deferredDesktopImportPlaceholder)
     : importedFiles
@@ -258,26 +261,28 @@ export async function importDesktopFilesAction({
   projectId,
   chooseFiles,
   stageSourceFilesForProject,
+  prepareImportedFiles,
   stageOptions = { autoRegister: false },
 }: {
   projectId: string
   chooseFiles: (() => Promise<Parameters<typeof desktopImportFilesTransition>[0]>) | undefined
   stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
+  prepareImportedFiles?: (files: ImportSourceFile[]) => ImportSourceFile[]
   stageOptions?: StageSourceFilesOptions
 }): Promise<ImportSourceFile[]> {
   const transition = desktopImportFilesTransition(await chooseFiles?.())
   if (!transition) return []
+  const importedFiles = prepareImportedFiles?.(transition.importedFiles) ?? transition.importedFiles
   const stagedFiles = stageOptions.parseMode === "defer"
-    ? transition.importedFiles.map(deferredDesktopImportPlaceholder)
-    : transition.importedFiles
+    ? importedFiles.map(deferredDesktopImportPlaceholder)
+    : importedFiles
   await stageSourceFilesForProject(projectId, stagedFiles, stageOptions)
-  return transition.importedFiles
+  return importedFiles
 }
 
 export function deferredDesktopImportPlaceholder(file: ImportSourceFile): ImportSourceFile {
   const {
     sourcePath: _sourcePath,
-    storedPath: _storedPath,
     checksum: _checksum,
     ...placeholder
   } = file

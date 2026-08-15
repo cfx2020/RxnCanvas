@@ -573,7 +573,7 @@ def parse_cclib_full_file(
         else full_text
     )
     method = method_basis_label_from_text(source_kind, method_text) or cclib_method_from_data(data) or text_result.method
-    energy_table = cclib_energy_table_from_data(name, data)
+    energy_table = cclib_energy_table_from_data(name, data, cclib.parser.utils.convertor)
     energy_gas = energy_table.egasHartree if energy_table is not None else None
     energy_solution = (
         energy_table.ggasHartree
@@ -863,8 +863,8 @@ def optional_list_float(values: list[float], index: int) -> float | None:
     return values[index] if index < len(values) else None
 
 
-def cclib_energy_table_from_data(name: str, data: Any) -> ParsedEnergyTableData | None:
-    scf_hartree = cclib_last_scf_hartree(data)
+def cclib_energy_table_from_data(name: str, data: Any, unit_convertor: Any) -> ParsedEnergyTableData | None:
+    scf_hartree = cclib_last_scf_hartree(data, unit_convertor)
     free_energy = cclib_free_energy_hartree(data)
     basis_functions = optional_int_from_any(getattr(data, "nbasis", None))
     is_solution = looks_like_solution_log_name(name)
@@ -886,13 +886,13 @@ def cclib_energy_table_from_data(name: str, data: Any) -> ParsedEnergyTableData 
     return table if energy_table_has_value(table) else None
 
 
-def cclib_last_scf_hartree(data: Any) -> float | None:
+def cclib_last_scf_hartree(data: Any, unit_convertor: Any) -> float | None:
     scfenergies = getattr(data, "scfenergies", None)
     if scfenergies is None or len(scfenergies) == 0:
         return None
     try:
-        return float(scfenergies[-1]) * EV_TO_HARTREE
-    except (TypeError, ValueError):
+        return float(unit_convertor(float(scfenergies[-1]), "eV", "hartree"))
+    except (KeyError, TypeError, ValueError):
         return None
 
 

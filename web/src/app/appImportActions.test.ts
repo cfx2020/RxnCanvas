@@ -88,6 +88,26 @@ describe("appImportActions", () => {
     expect(importedFiles[0].sourcePath).toBe("/Users/linsay/Gaussian/finder.log")
   })
 
+  it("keeps confirmed project stored paths in deferred placeholders", async () => {
+    const stageSourceFilesForProject = vi.fn()
+    const importedFiles = await importFilesForProjectAction({
+      fileList: [new File([""], "project.log")],
+      projectId: "p5",
+      stageSourceFilesForProject,
+      previewMode: "none",
+      prepareFile: () => ({ sourcePath: "/Users/linsay/Study/sources/project.log" }),
+      prepareImportedFiles: (files) => files.map((file) => ({ ...file, storedPath: "sources/project.log" })),
+      stageOptions: { autoRegister: false, parseMode: "defer" },
+    })
+
+    expect(stageSourceFilesForProject.mock.calls[0][1][0]).toMatchObject({
+      name: "project.log",
+      storedPath: "sources/project.log",
+    })
+    expect(stageSourceFilesForProject.mock.calls[0][1][0].sourcePath).toBeUndefined()
+    expect(importedFiles[0].sourcePath).toBe("/Users/linsay/Study/sources/project.log")
+  })
+
   it("keeps native paths out of deferred desktop dialog placeholders", async () => {
     const stageSourceFilesForProject = vi.fn()
     const importedFiles = await importDesktopFilesAction({
