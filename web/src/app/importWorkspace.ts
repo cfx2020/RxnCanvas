@@ -273,8 +273,11 @@ export function sourceFilesWithImportPlan(
 ): SourceFile[] {
   const stagedById = new Map(importPlan.stagedFiles.map((file) => [file.id, file]))
   const replacementByKey = new Map(importPlan.stagedFiles.map((file) => [sourceFileReplacementKey(file), file]))
+  const stableResolvedReplacementIds = stableResolvedReplacementIdsForImport(currentFiles, importPlan.stagedFiles)
   const withoutStaleReplacedFiles = currentFiles.filter((file) => {
     if (stagedById.has(file.id)) return true
+    const stableReplacementId = stableResolvedReplacementIds.get(sourceFileReplacementKey(file))
+    if (stableReplacementId && sourceFileIsResolvedImport(file)) return false
     const replacement = replacementByKey.get(sourceFileReplacementKey(file))
     if (!replacement) return true
     return !sourceFileShouldYieldToReplacement(file, replacement)
@@ -329,7 +332,6 @@ function sourceFileShouldYieldToReplacement(file: SourceFile, replacement: Sourc
 }
 
 function sourceFileIsPendingImportPlaceholder(file: SourceFile): boolean {
-  if (file.storedPath) return false
   if (file.status !== "staged") return false
   const parse = file.parse
   return Boolean(parse && parseWasDeferred(parse))
@@ -346,6 +348,34 @@ function sourceFileResolvedReplacementAlreadyExists(file: SourceFile, resolvedRe
   return sourceFileIsResolvedImport(file) && resolvedReplacementKeys.has(sourceFileReplacementKey(file))
 }
 
+function stableResolvedReplacementIdsForImport(
+  currentFiles: SourceFile[],
+  stagedFiles: SourceFile[],
+): Map<string, string> {
+  const currentIds = new Set(currentFiles.map((file) => file.id))
+  const stableIdsByKey = new Map<string, string>()
+  for (const file of stagedFiles) {
+    if (!currentIds.has(file.id) || !sourceFileIsResolvedImport(file)) continue
+    const key = sourceFileReplacementKey(file)
+    if (!stableIdsByKey.has(key)) stableIdsByKey.set(key, file.id)
+  }
+  return stableIdsByKey
+}
+
+function sourceFileIdReplacementsForImport(
+  currentFiles: SourceFile[],
+  stagedFiles: SourceFile[],
+): Map<string, string> {
+  const stableIdsByKey = stableResolvedReplacementIdsForImport(currentFiles, stagedFiles)
+  const replacements = new Map<string, string>()
+  for (const file of currentFiles) {
+    if (!sourceFileIsResolvedImport(file)) continue
+    const stableId = stableIdsByKey.get(sourceFileReplacementKey(file))
+    if (stableId && stableId !== file.id) replacements.set(file.id, stableId)
+  }
+  return replacements
+}
+
 export function projectWorkspaceWithImportPlan(
   targetSnapshot: ProjectWorkspaceSnapshot,
   importedFiles: ImportSourceFile[],
@@ -356,6 +386,11 @@ export function projectWorkspaceWithImportPlan(
   const fileMode = options.fileMode ?? "prepend"
   const activeCanvas = activeCanvasSnapshot(targetSnapshot)
   const nextFiles = sourceFilesWithImportPlan(targetSnapshot.files, importPlan, fileMode)
+  const sourceFileIdReplacements = sourceFileIdReplacementsForImport(targetSnapshot.files, importPlan.stagedFiles)
+  const remapNodeSourceFile = (node: FlowNode): FlowNode => {
+    const sourceFileId = node.sourceFileId ? sourceFileIdReplacements.get(node.sourceFileId) : undefined
+    return sourceFileId ? { ...node, sourceFileId } : node
+  }
   const replacementSourceFileIds = new Set(importPlan.stagedFiles
     .filter((stagedFile) => targetSnapshot.files.some((currentFile) => (
       currentFile.id !== stagedFile.id
@@ -384,15 +419,42 @@ export function projectWorkspaceWithImportPlan(
     selectedBarrierIds: suppressedAutoNodeSourceFileIds.size > 0 ? activeCanvas.selectedBarrierIds : [],
     viewport: activeCanvas.viewport,
   })
-  return reconcileProjectWorkspaceSourceNodes(projectWorkspaceSnapshot({
-    ...workspaceWithActiveCanvas,
-    files: nextFiles,
-    selectedFileId: importedFiles[0]?.id ?? null,
-    selectedFileIds: importedFiles[0]?.id ? [importedFiles[0].id] : [],
-    lastSelectedFileId: importedFiles[0]?.id ?? null,
-    inspectorMode: "inspector",
-    viewMode: options.viewMode ?? "canvas",
-  }), new Set(importPlan.stagedFiles.map((file) => file.id)))
+  const remappedCanvases = workspaceWithActiveCanvas.canvases.map((canvas) => ({
+    ...canvas,
+    nodes: canvas.nodes.map(remapNodeSourceFile),
+  }))
+  const remappedActiveCanvas = remappedCanvases.find((canvas) => canvas.id === workspaceWithActiveCanvas.activeCanvasId)
+    ?? remappedCanvases[0]
+  const workspaceWithRemappedSourceIds = remappedActiveCanvas
+    ? projectWorkspaceSnapshot({
+        ...workspaceWithActiveCanvas,
+        files: nextFiles,
+        canvases: remappedCanvases,
+        activeCanvasId: remappedActiveCanvas.id,
+        nodes: remappedActiveCanvas.nodes,
+        edges: remappedActiveCanvas.edges,
+        barriers: remappedActiveCanvas.barriers,
+        annotations: remappedActiveCanvas.annotations ?? [],
+        viewport: remappedActiveCanvas.viewport,
+        selectedNodeIds: remappedActiveCanvas.selectedNodeIds,
+        selectedEdgeIds: remappedActiveCanvas.selectedEdgeIds,
+        selectedBarrierIds: remappedActiveCanvas.selectedBarrierIds,
+        selectedFileId: importedFiles[0]?.id ?? null,
+        selectedFileIds: importedFiles[0]?.id ? [importedFiles[0].id] : [],
+        lastSelectedFileId: importedFiles[0]?.id ?? null,
+        inspectorMode: "inspector",
+        viewMode: options.viewMode ?? "canvas",
+      })
+    : projectWorkspaceSnapshot({
+        ...workspaceWithActiveCanvas,
+        files: nextFiles,
+        selectedFileId: importedFiles[0]?.id ?? null,
+        selectedFileIds: importedFiles[0]?.id ? [importedFiles[0].id] : [],
+        lastSelectedFileId: importedFiles[0]?.id ?? null,
+        inspectorMode: "inspector",
+        viewMode: options.viewMode ?? "canvas",
+      })
+  return reconcileProjectWorkspaceSourceNodes(workspaceWithRemappedSourceIds, new Set(importPlan.stagedFiles.map((file) => file.id)))
 }
 
 export function reconcileProjectWorkspaceSourceNodes(

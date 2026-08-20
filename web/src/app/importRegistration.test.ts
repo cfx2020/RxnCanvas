@@ -961,6 +961,71 @@ describe("importRegistration", () => {
     ])
   })
 
+  it("replaces a deferred placeholder even when it keeps the project stored path", () => {
+    const pendingSol = {
+      ...sourceFile("incoming-sol", deferredParseResult()),
+      name: "s-s-i8-fix-t-tsr-radNi_sol.log",
+      storedPath: "sources/s-s-i8-fix-t-tsr-radni_sol.log",
+    }
+    const existingSol = {
+      ...sourceFile("stable-sol", parseResult([candidate({ label: "old-sol", energyGas: -10 })])),
+      name: "s-s-i8-fix-t-tsr-radNi_sol.log",
+      status: "parsed" as const,
+      storedPath: "sources/s-s-i8-fix-t-tsr-radni_sol.log",
+    }
+    const refreshedSol = {
+      ...sourceFile("stable-sol", parseResult([candidate({ label: "new-sol", energyGas: -20 })])),
+      name: "s-s-i8-fix-t-tsr-radNi_sol.log",
+      status: "parsed" as const,
+      storedPath: "sources/s-s-i8-fix-t-tsr-radni_sol.log",
+    }
+    const plan = buildImportPlan([refreshedSol], layout)
+
+    expect(sourceFilesWithImportPlan([pendingSol, existingSol], plan, "update").map((file) => file.id)).toEqual(["stable-sol"])
+  })
+
+  it("collapses resolved same-name source copies when the stable record is refreshed", () => {
+    const stableSol = {
+      ...sourceFile("stable-sol", parseResult([candidate({ label: "new-sol", energyGas: -20 })])),
+      name: "s-s-i8-fix-t-tsr-radNi_sol.log",
+      status: "parsed" as const,
+      storedPath: "sources/s-s-i8-fix-t-tsr-radni_sol.log",
+    }
+    const duplicateSol = {
+      ...sourceFile("duplicate-sol", parseResult([candidate({ label: "old-sol", energyGas: -10 })])),
+      name: "s-s-i8-fix-t-tsr-radNi_sol.log",
+      status: "parsed" as const,
+      storedPath: "sources/s-s-i8-fix-t-tsr-radni_sol-2.log",
+    }
+    const plan = buildImportPlan([stableSol], layout)
+    const next = projectWorkspaceWithImportPlan(
+      workspaceSnapshot({
+        files: [stableSol, duplicateSol],
+        nodes: [{
+          id: "duplicate-node",
+          label: "Duplicate",
+          formula: "C2H4",
+          kind: "intermediate" as const,
+          method: "DFT",
+          solvent: "SMD",
+          energyGas: -10,
+          energySolution: null,
+          energyUnit: "hartree" as const,
+          sourceStatus: "parsed" as const,
+          sourceFileId: "duplicate-sol",
+          position: { x: 1, y: 2 },
+        }],
+      }),
+      [stableSol],
+      plan,
+      [],
+      { fileMode: "update" },
+    )
+
+    expect(next.files.map((file) => file.id)).toEqual(["stable-sol"])
+    expect(next.nodes[0]).toMatchObject({ sourceFileId: "stable-sol" })
+  })
+
   it("ignores stale same-name desktop parse completions after a duplicate import already resolved", () => {
     const parsedSol = {
       ...sourceFile("fresh-sol", parseResult([candidate({ label: "7a-1fix-tsf-sol" })])),
