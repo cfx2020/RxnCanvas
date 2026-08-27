@@ -38,6 +38,22 @@ defaults:
     shell: bash
 
 jobs:
+  prepare-beta-release:
+    name: Prepare tagged beta release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft prerelease for tagged builds
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-beta.')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "RxnFlow ${GITHUB_REF_NAME#v}" --notes "Release build in progress." --draft --prerelease
+          fi
+
   core-and-renderer:
     name: Core and renderer smoke
     runs-on: macos-14
@@ -110,7 +126,10 @@ jobs:
 
   windows-runtime-and-installer:
     name: Windows runtime and installer smoke
+    needs: prepare-beta-release
     runs-on: windows-latest
+    permissions:
+      contents: write
     defaults:
       run:
         shell: pwsh
@@ -146,9 +165,7 @@ jobs:
         working-directory: web
         run: npm run desktop:release:manifest
       - name: Upload Windows artifacts
-        if: >-
-          github.event_name == 'workflow_dispatch' ||
-          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: rxnflow-windows-artifacts
@@ -160,10 +177,29 @@ jobs:
             web/release/release-manifest.json
             web/legal/*third-party-licenses.json
           if-no-files-found: error
+      - name: Upload tagged Windows beta assets
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-beta.')
+        working-directory: web
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $appVersion = node -p "require('./package.json').version"
+          $installer = Get-ChildItem release -Filter "RxnFlow Setup $appVersion.exe" | Select-Object -First 1
+          $portable = Get-ChildItem release -Filter "RxnFlow $appVersion.exe" | Select-Object -First 1
+          if (-not $installer -or -not $portable) { throw "Windows release artifacts are missing" }
+          New-Item -ItemType Directory -Force release-publish | Out-Null
+          $setupTarget = "release-publish/RxnFlow-$appVersion-windows-x64-setup.exe"
+          $portableTarget = "release-publish/RxnFlow-$appVersion-windows-x64-portable.exe"
+          Copy-Item $installer.FullName $setupTarget
+          Copy-Item $portable.FullName $portableTarget
+          gh release upload $env:GITHUB_REF_NAME $setupTarget $portableTarget --repo $env:GITHUB_REPOSITORY --clobber
 
   macos-unsigned-beta:
     name: macOS unsigned beta artifact
+    needs: prepare-beta-release
     runs-on: macos-14
+    permissions:
+      contents: write
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.unsigned_macos_beta) ||
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-beta.'))
@@ -196,6 +232,7 @@ jobs:
         working-directory: web
         run: npm run desktop:release:manifest
       - name: Upload macOS unsigned beta artifacts
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: rxnflow-macos-unsigned-beta
@@ -208,6 +245,17 @@ jobs:
             web/legal/*third-party-licenses.json
             docs/user/macos-unsigned-beta.md
           if-no-files-found: error
+      - name: Upload tagged macOS beta assets
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-beta.')
+        working-directory: web
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          app_version="$(node -p "require('./package.json').version")"
+          mkdir -p release-publish
+          cp "release/RxnFlow-${app_version}-arm64.dmg" release-publish/
+          cp "release/RxnFlow-${app_version}-arm64-mac.zip" release-publish/
+          gh release upload "$GITHUB_REF_NAME" release-publish/* --repo "$GITHUB_REPOSITORY" --clobber
 
   publish-beta-release:
     name: Publish tagged beta release
@@ -218,23 +266,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-beta.')
     permissions:
-      actions: read
       contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Download Windows release inputs
-        uses: actions/download-artifact@v4
-        with:
-          name: rxnflow-windows-artifacts
-          path: web/release-input/windows
-      - name: Download macOS release inputs
-        uses: actions/download-artifact@v4
-        with:
-          name: rxnflow-macos-unsigned-beta
-          path: web/release-input/macos
       - name: Validate beta tag against app version
         run: |
           tag_version="${GITHUB_REF_NAME#v}"
@@ -245,17 +282,13 @@ jobs:
           echo "RXNFLOW_APP_VERSION=$app_version" >> "$GITHUB_ENV"
           echo "RXNFLOW_RELEASE_VERSION=$tag_version" >> "$GITHUB_ENV"
           echo "RXNFLOW_RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
-      - name: Assemble user-facing release assets
+      - name: Download user-facing release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p web/release-publish
-          installer="$(find web/release-input/windows -type f -name 'RxnFlow Setup *.exe' -print -quit)"
-          portable="$(find web/release-input/windows -type f -name 'RxnFlow *.exe' ! -name 'RxnFlow Setup *.exe' -print -quit)"
-          test -n "$installer"
-          test -n "$portable"
-          cp "$installer" "web/release-publish/RxnFlow-${RXNFLOW_APP_VERSION}-windows-x64-setup.exe"
-          cp "$portable" "web/release-publish/RxnFlow-${RXNFLOW_APP_VERSION}-windows-x64-portable.exe"
-          find web/release-input/macos -type f -name '*.dmg' -exec cp {} web/release-publish/ \;
-          find web/release-input/macos -type f -name '*-mac.zip' -exec cp {} web/release-publish/ \;
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --dir web/release-publish --pattern "RxnFlow-${RXNFLOW_APP_VERSION}-*"
           test "$(find web/release-publish -maxdepth 1 -type f -name '*.exe' | wc -l)" -eq 2
           test "$(find web/release-publish -maxdepth 1 -type f -name '*.dmg' | wc -l)" -eq 1
           test "$(find web/release-publish -maxdepth 1 -type f -name '*-mac.zip' | wc -l)" -eq 1
@@ -295,12 +328,11 @@ jobs:
           Do not disable Gatekeeper globally with `sudo spctl --master-disable`.
           EOF
           title="RxnFlow ${RXNFLOW_RELEASE_VERSION}"
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease
-            gh release upload "$GITHUB_REF_NAME" web/release-publish/* --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" web/release-publish/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$title" --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease
-          fi
+          gh release upload "$GITHUB_REF_NAME" \
+            web/release-publish/SHA256SUMS.txt web/release-publish/release-manifest.json \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "$title" --notes-file "$RUNNER_TEMP/release-notes.md" --draft=false --prerelease
 
   macos-signed-notarized:
     name: macOS signed notarized artifact

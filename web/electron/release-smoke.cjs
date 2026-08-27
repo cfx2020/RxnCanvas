@@ -350,8 +350,9 @@ function verifyReleaseWorkflow() {
     "SHA256SUMS.txt",
     "release-manifest.json",
     "v*-beta.*",
+    "prepare-beta-release",
     "publish-beta-release",
-    "actions/download-artifact@v4",
+    "gh release download",
     "RXNFLOW_RELEASE_VERSION",
     "RXNFLOW_RELEASE_TAG",
     "RXNFLOW_APP_VERSION",
@@ -359,6 +360,7 @@ function verifyReleaseWorkflow() {
     "windows-x64-portable.exe",
     "contents: write",
     "gh release create",
+    "gh release upload",
     "--prerelease",
   ]) {
     assert(workflow.includes(requiredText), `desktop release workflow missing ${requiredText}`)
