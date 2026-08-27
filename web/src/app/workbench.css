@@ -18380,3 +18380,215 @@ body.is-resizing-project-rail-sections * {
     transition: none !important;
   }
 }
+
+/* Responsive sidebar contract: keep one complete project rail on compact
+   windows. It is hidden off-canvas and opens from the left edge or the
+   titlebar button; there is no icon-only placeholder column. */
+.app-shell {
+  --rxnflow-inspector-width: var(--rxnflow-inspector-live-width, 380px) !important;
+}
+
+.inspector-panel {
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.inspector-resize-handle {
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: -7px !important;
+  z-index: 160 !important;
+  width: 14px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  cursor: col-resize !important;
+  touch-action: none !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+.inspector-resize-handle::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  right: 6px !important;
+  bottom: 0 !important;
+  width: 2px !important;
+  border-radius: 999px !important;
+  background: rgba(31, 162, 131, 0) !important;
+  transition: background 140ms ease, box-shadow 140ms ease !important;
+}
+
+.inspector-resize-handle:hover::after,
+.inspector-resize-handle:focus-visible::after {
+  background: rgba(31, 162, 131, 0.55) !important;
+  box-shadow: 0 0 0 4px rgba(31, 162, 131, 0.12) !important;
+}
+
+.workspace:not(.is-right-collapsed) .inspector-panel {
+  width: var(--rxnflow-inspector-width, 380px) !important;
+  max-width: var(--rxnflow-inspector-width, 380px) !important;
+  overflow-x: visible !important;
+  clip-path: none !important;
+}
+
+.workspace:not(.is-right-collapsed) .inspector-panel .node-panel-section-heading strong,
+.workspace:not(.is-right-collapsed) .inspector-panel .node-summary-grid dd,
+.workspace:not(.is-right-collapsed) .inspector-panel .node-overview-grid dd {
+  max-width: 100% !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+@media (max-width: 1180px) {
+  .app-shell.is-compact-layout .workspace {
+    grid-template-columns: 0 minmax(0, 1fr) var(--rxnflow-inspector-width, 380px) !important;
+    min-width: 0 !important;
+  }
+
+  .app-shell.is-compact-layout .workspace.is-right-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+  }
+
+  .app-shell.is-compact-layout .workspace > .project-rail {
+    position: fixed !important;
+    top: 0 !important;
+    right: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    z-index: 2900 !important;
+    width: var(--rxnflow-project-rail-width, 212px) !important;
+    min-width: var(--rxnflow-project-rail-width, 212px) !important;
+    max-width: var(--rxnflow-project-rail-width, 212px) !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    padding: 50px 14px 18px !important;
+    align-items: stretch !important;
+    border-radius: 0 18px 18px 0 !important;
+    box-shadow: 24px 0 68px rgba(22, 48, 58, 0.2) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: translateX(-100%) !important;
+    transition: transform 190ms cubic-bezier(0.2, 0.72, 0.25, 1) !important;
+  }
+
+  .app-shell.is-compact-layout.is-compact-left-open .workspace > .project-rail {
+    transform: translateX(0) !important;
+  }
+
+  .app-shell.is-compact-layout .workspace > .project-rail::after {
+    content: none !important;
+  }
+
+  .app-shell.is-compact-layout .workspace > .project-rail .brand-block,
+  .app-shell.is-compact-layout .workspace > .project-rail .rail-heading,
+  .app-shell.is-compact-layout .workspace > .project-rail .rail-heading-actions,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-scroll,
+  .app-shell.is-compact-layout .workspace > .project-rail .rail-section,
+  .app-shell.is-compact-layout .workspace > .project-rail .rail-list,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-project-group,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-canvas-list {
+    width: 100% !important;
+    justify-content: initial !important;
+    justify-items: stretch !important;
+  }
+
+  .app-shell.is-compact-layout .workspace > .project-rail .brand-block div:not(.brand-mark),
+  .app-shell.is-compact-layout .workspace > .project-rail .rail-heading > span,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-main span,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-main em,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-file-main span,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-file-main em,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-file-phase-badges,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-file-remove,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-settings span {
+    display: initial !important;
+  }
+
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-item,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-main,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-file-card,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-file-main,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-settings,
+  .app-shell.is-compact-layout .workspace > .project-rail .rail-heading button {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-item,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-main,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-file-card,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-file-main {
+    place-items: stretch !important;
+    padding: initial !important;
+  }
+
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-main,
+  .app-shell.is-compact-layout .workspace > .project-rail .project-file-main {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    justify-content: start !important;
+    gap: 10px !important;
+  }
+
+  .app-shell.is-compact-layout .workspace > .project-rail .project-rail-resize-handle {
+    display: none !important;
+  }
+
+  .compact-left-rail-hover-zone {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    z-index: 2899 !important;
+    width: 14px !important;
+    pointer-events: auto !important;
+  }
+
+  .app-shell.is-compact-layout .desktop-titlebar-shell .left-sidebar-fixed-toggle {
+    display: grid !important;
+    left: var(--rxnflow-titlebar-left-button-left, 19px) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  .app-shell.is-compact-layout .inspector-panel {
+    width: var(--rxnflow-inspector-width, 380px) !important;
+    max-width: var(--rxnflow-inspector-width, 380px) !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-shell.is-compact-layout .workspace,
+  .app-shell.is-compact-layout .workspace.is-right-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+  }
+
+  .app-shell.is-compact-layout .workspace:not(.is-right-collapsed) > .inspector-panel {
+    position: fixed !important;
+    top: var(--rxnflow-titlebar-height, 48px) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    z-index: 1450 !important;
+    width: min(var(--rxnflow-inspector-width, 380px), calc(100vw - 20px)) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 20px) !important;
+    height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
+    max-height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector-resize-handle::after,
+  .app-shell.is-compact-layout .workspace > .project-rail {
+    transition: none !important;
+  }
+}

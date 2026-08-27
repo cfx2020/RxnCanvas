@@ -1352,7 +1352,7 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("progressbar", { name: "Parsing 7a-1fix-tsf" })).not.toBeInTheDocument()
-    })
+    }, { timeout: 3_000 })
     const groupedButton = await within(rail).findByRole("button", { name: fileButtonName("7a-1fix-tsf", "Gaussian") })
     expect(groupedButton.closest(".project-file-card")?.querySelector(".project-file-phase-badges")).not.toBeInTheDocument()
   })

@@ -71,6 +71,8 @@ export const ProjectRail = memo(function ProjectRail({
   maxWidth,
   onResizePointerDown,
   onResizeStep,
+  onCompactMouseEnter,
+  onCompactMouseLeave,
 }: {
   projects: ProjectSummary[]
   activeProjectId: string
@@ -96,6 +98,8 @@ export const ProjectRail = memo(function ProjectRail({
   maxWidth?: number
   onResizePointerDown?: (event: PointerEvent<HTMLElement>) => void
   onResizeStep?: (nextWidth: number) => void
+  onCompactMouseEnter?: () => void
+  onCompactMouseLeave?: () => void
 }) {
   const [projectCreatorOpen, setProjectCreatorOpen] = useState(false)
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
@@ -292,7 +296,14 @@ export const ProjectRail = memo(function ProjectRail({
 
   return (
     <>
-      <aside className="project-rail" aria-label="Project rail" ref={railRef} style={railStyle}>
+      <aside
+        className="project-rail"
+        aria-label="Project rail"
+        ref={railRef}
+        style={railStyle}
+        onMouseEnter={onCompactMouseEnter}
+        onMouseLeave={onCompactMouseLeave}
+      >
         <div className="project-rail-region project-rail-region-projects">
           <RailSection
             title="Projects"

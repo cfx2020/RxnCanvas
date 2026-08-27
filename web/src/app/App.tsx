@@ -310,8 +310,12 @@ type NodeResizePreviewCache = NodeDragPreviewCache & {
 
 const energyUnitStorageKey = "rxnflow-energy-output-unit"
 const projectRailWidthStorageKey = "rxnflow-project-rail-width"
+const inspectorWidthStorageKey = "rxnflow-inspector-width"
 const projectRailMinWidth = 212
 const projectRailMaxWidth = 360
+const inspectorMinWidth = 320
+const inspectorMaxWidth = 520
+const inspectorDefaultWidth = 380
 
 type ProjectAutosaveInput = {
   project: ProjectSummary
@@ -390,6 +394,16 @@ function initialProjectRailWidth(): number {
   return Number.isFinite(storedWidth)
     ? clamp(storedWidth, projectRailMinWidth, projectRailMaxWidth)
     : projectRailMinWidth
+}
+
+function initialInspectorWidth(): number {
+  if (typeof window === "undefined" || typeof window.localStorage?.getItem !== "function") {
+    return inspectorDefaultWidth
+  }
+  const storedWidth = Number(window.localStorage.getItem(inspectorWidthStorageKey))
+  return Number.isFinite(storedWidth)
+    ? clamp(storedWidth, inspectorMinWidth, inspectorMaxWidth)
+    : inspectorDefaultWidth
 }
 
 function initialToolbarPlacement(): ToolbarPlacement {
@@ -473,6 +487,13 @@ export function App() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(initialLayoutPreference.leftSidebarOpen)
   const [projectRailWidth, setProjectRailWidth] = useState(() => initialProjectRailWidth())
   const [rightSidebarOpen, setRightSidebarOpen] = useState(initialLayoutPreference.rightSidebarOpen)
+  const [inspectorWidth, setInspectorWidth] = useState(() => initialInspectorWidth())
+  const [isCompactLayout, setIsCompactLayout] = useState(() => (
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(max-width: 1180px)").matches
+      : false
+  ))
+  const [compactLeftRailOpen, setCompactLeftRailOpen] = useState(false)
   const [canvasTabs, setCanvasTabs] = useState<CanvasTabState[]>(() => initialCanvasTabs(initialProjects[0].label))
   const [activeCanvasTabId, setActiveCanvasTabId] = useState("canvas-1")
   const [keyboardEdgeSourceId, setKeyboardEdgeSourceId] = useState<string | null>(null)
@@ -604,7 +625,8 @@ export function App() {
   const [desktopWindowState, setDesktopWindowState] = useState({ isFullScreen: false, isMaximized: false })
   const appShellStyle = useMemo(() => ({
     "--rxnflow-project-rail-width": `${projectRailWidth}px`,
-  } as CSSProperties), [projectRailWidth])
+    "--rxnflow-inspector-live-width": `${inspectorWidth}px`,
+  } as CSSProperties), [inspectorWidth, projectRailWidth])
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes])
   const energyRowsSignature = useMemo(
     () => buildEnergyRowsSignature(nodes, edges, energyDisplayOptions),
@@ -864,6 +886,20 @@ export function App() {
     if (typeof window.localStorage?.setItem !== "function") return
     window.localStorage.setItem(projectRailWidthStorageKey, String(projectRailWidth))
   }, [projectRailWidth])
+
+  useEffect(() => {
+    if (typeof window.localStorage?.setItem !== "function") return
+    window.localStorage.setItem(inspectorWidthStorageKey, String(inspectorWidth))
+  }, [inspectorWidth])
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return
+    const media = window.matchMedia("(max-width: 1180px)")
+    const update = () => setIsCompactLayout(media.matches)
+    update()
+    media.addEventListener?.("change", update)
+    return () => media.removeEventListener?.("change", update)
+  }, [])
 
   useEffect(() => {
     if (!tableDrawerOpen) return
@@ -3052,6 +3088,10 @@ export function App() {
     setProjectRailWidth(clamp(nextWidth, projectRailMinWidth, projectRailMaxWidth))
   }, [])
 
+  const setClampedInspectorWidth = useCallback((nextWidth: number) => {
+    setInspectorWidth(clamp(nextWidth, inspectorMinWidth, inspectorMaxWidth))
+  }, [])
+
   const startProjectRailResize = useCallback((event: PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -3069,6 +3109,24 @@ export function App() {
     window.addEventListener("pointerup", stopProjectRailResize)
     window.addEventListener("pointercancel", stopProjectRailResize)
   }, [projectRailWidth, setClampedProjectRailWidth])
+
+  const startInspectorResize = useCallback((event: PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = inspectorWidth
+    const moveInspector = (moveEvent: globalThis.PointerEvent) => {
+      setClampedInspectorWidth(startWidth - (moveEvent.clientX - startX))
+    }
+    const stopInspectorResize = () => {
+      window.removeEventListener("pointermove", moveInspector)
+      window.removeEventListener("pointerup", stopInspectorResize)
+      window.removeEventListener("pointercancel", stopInspectorResize)
+    }
+    window.addEventListener("pointermove", moveInspector)
+    window.addEventListener("pointerup", stopInspectorResize)
+    window.addEventListener("pointercancel", stopInspectorResize)
+  }, [inspectorWidth, setClampedInspectorWidth])
 
   const openSettings = useCallback((returnFocusTo?: HTMLElement | null) => {
     const activeElement = document.activeElement
@@ -3103,6 +3161,8 @@ export function App() {
       maxWidth={projectRailMaxWidth}
       onResizePointerDown={startProjectRailResize}
       onResizeStep={setClampedProjectRailWidth}
+      onCompactMouseEnter={() => setCompactLeftRailOpen(true)}
+      onCompactMouseLeave={() => setCompactLeftRailOpen(false)}
     />
   )
 
@@ -3148,7 +3208,8 @@ export function App() {
     return () => window.removeEventListener("keydown", handleCommandKey)
   }, [appModalOpen, commandPaletteOpen, workbenchCommands])
 
-  const appShellClassName = `app-shell theme-${theme}${isMacDesktop ? " is-macos-desktop" : ""}${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}${desktopWindowState.isFullScreen ? " is-window-fullscreen" : ""}${desktopWindowState.isMaximized ? " is-window-maximized" : ""}${desktopWindowState.isFullScreen || desktopWindowState.isMaximized ? " is-window-edge-to-edge" : ""}${tableDrawerOpen || structurePreviewNode || structureEditorNode ? " has-overlay-view" : ""}`
+  const leftSidebarVisible = isCompactLayout ? compactLeftRailOpen : leftSidebarOpen
+  const appShellClassName = `app-shell theme-${theme}${isMacDesktop ? " is-macos-desktop" : ""}${isCompactLayout ? " is-compact-layout" : ""}${isCompactLayout && compactLeftRailOpen ? " is-compact-left-open" : ""}${leftSidebarVisible ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}${desktopWindowState.isFullScreen ? " is-window-fullscreen" : ""}${desktopWindowState.isMaximized ? " is-window-maximized" : ""}${desktopWindowState.isFullScreen || desktopWindowState.isMaximized ? " is-window-edge-to-edge" : ""}${tableDrawerOpen || structurePreviewNode || structureEditorNode ? " has-overlay-view" : ""}`
 
   if (startupRestorePending) {
     return (
@@ -3196,10 +3257,16 @@ export function App() {
         <button
           type="button"
           className="window-icon-button left-sidebar-fixed-toggle"
-          aria-label={leftSidebarOpen ? "Collapse project sidebar" : "Expand project sidebar"}
-          title={leftSidebarOpen ? "Collapse project sidebar" : "Expand project sidebar"}
-          aria-pressed={leftSidebarOpen}
-          onClick={() => setLeftSidebarOpen((current) => !current)}
+          aria-label={leftSidebarVisible ? "Collapse project sidebar" : "Expand project sidebar"}
+          title={leftSidebarVisible ? "Collapse project sidebar" : "Expand project sidebar"}
+          aria-pressed={leftSidebarVisible}
+          onClick={() => {
+            if (isCompactLayout) {
+              setCompactLeftRailOpen((current) => !current)
+            } else {
+              setLeftSidebarOpen((current) => !current)
+            }
+          }}
         >
           <PanelLeft size={16} />
         </button>
@@ -3313,7 +3380,14 @@ export function App() {
         </div>
       ) : null}
 
-      <main className={`workspace${leftSidebarOpen ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}`}>
+      <main className={`workspace${leftSidebarVisible ? "" : " is-left-collapsed"}${rightSidebarOpen ? "" : " is-right-collapsed"}`}>
+        {isCompactLayout ? (
+          <div
+            className="compact-left-rail-hover-zone"
+            aria-hidden="true"
+            onMouseEnter={() => setCompactLeftRailOpen(true)}
+          />
+        ) : null}
         {renderProjectRail()}
 
         <section className={`workbench-shell view-canvas${tableDrawerOpen ? " has-table-drawer" : ""}`} aria-label="Reaction flow workspace">
@@ -3459,6 +3533,11 @@ export function App() {
           }}
           onReset2DStructure={resetNodeManualStructure}
           onOpenSourceFile={openSourceFileInSystemApp}
+          width={inspectorWidth}
+          minWidth={inspectorMinWidth}
+          maxWidth={inspectorMaxWidth}
+          onResizePointerDown={startInspectorResize}
+          onResizeStep={setClampedInspectorWidth}
         />
       </main>
       {structurePreviewNode ? (

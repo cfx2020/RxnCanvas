@@ -148,6 +148,43 @@ describe("InspectorPanels", () => {
     expect(heavyEditorPreloadMocks.preload3Dmol).toHaveBeenCalledTimes(2)
   })
 
+  it("exposes an adjustable inspector separator for pointer and keyboard resizing", () => {
+    const onResizeStep = vi.fn()
+    render(
+      <InspectorPanel
+        node={baseNode}
+        file={sourceFile()}
+        rows={[]}
+        files={[sourceFile()]}
+        energyDisplayOptions={{ ...defaultEnergyDisplayOptions }}
+        onReviewCandidates={vi.fn()}
+        onOpenStructure={vi.fn()}
+        onEdit2DStructure={vi.fn()}
+        onReset2DStructure={vi.fn()}
+        onOpenSourceFile={vi.fn()}
+        width={380}
+        minWidth={320}
+        maxWidth={520}
+        onResizePointerDown={vi.fn()}
+        onResizeStep={onResizeStep}
+      />,
+    )
+
+    const separator = screen.getByRole("separator", { name: "Resize inspector" })
+    expect(separator).toHaveAttribute("aria-valuenow", "380")
+    expect(separator).toHaveAttribute("aria-valuemin", "320")
+    expect(separator).toHaveAttribute("aria-valuemax", "520")
+
+    fireEvent.keyDown(separator, { key: "ArrowLeft" })
+    expect(onResizeStep).toHaveBeenCalledWith(392)
+    fireEvent.keyDown(separator, { key: "ArrowRight" })
+    expect(onResizeStep).toHaveBeenCalledWith(368)
+    fireEvent.keyDown(separator, { key: "Home" })
+    expect(onResizeStep).toHaveBeenCalledWith(320)
+    fireEvent.keyDown(separator, { key: "End" })
+    expect(onResizeStep).toHaveBeenCalledWith(520)
+  })
+
   it("waits for Ketcher hover intent, cancels on leave, and preloads immediately on focus", () => {
     vi.useFakeTimers()
     const view = render(

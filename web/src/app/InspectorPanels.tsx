@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
 import { ChevronDown, ExternalLink, FilePlus2, Maximize2, PanelRight, Pause, PencilLine, Play, RotateCcw, X } from "lucide-react"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
 import { classifyComputationTermination, type ParseCandidate, type SourceParseResult, type VibrationalMode } from "../domain/sourceParsers"
@@ -25,6 +25,11 @@ export const InspectorPanel = memo(function InspectorPanel({
   onEdit2DStructure,
   onReset2DStructure,
   onOpenSourceFile,
+  width,
+  minWidth,
+  maxWidth,
+  onResizePointerDown,
+  onResizeStep,
 }: {
   collapsed?: boolean
   node: FlowNode | null
@@ -37,15 +42,53 @@ export const InspectorPanel = memo(function InspectorPanel({
   onEdit2DStructure: (nodeId: string) => void
   onReset2DStructure: (nodeId: string) => void
   onOpenSourceFile: (fileId: string) => void | Promise<void>
+  width?: number
+  minWidth?: number
+  maxWidth?: number
+  onResizePointerDown?: (event: PointerEvent<HTMLElement>) => void
+  onResizeStep?: (nextWidth: number) => void
 }) {
   const nodeRow = node ? rows.find((row) => row.nodeId === node.id) ?? null : null
+  const resizeFromKeyboard = (event: KeyboardEvent<HTMLElement>) => {
+    if (!onResizeStep || typeof width !== "number") return
+    if (event.key === "ArrowLeft") {
+      event.preventDefault()
+      onResizeStep(width + 12)
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault()
+      onResizeStep(width - 12)
+    } else if (event.key === "Home" && typeof minWidth === "number") {
+      event.preventDefault()
+      onResizeStep(minWidth)
+    } else if (event.key === "End" && typeof maxWidth === "number") {
+      event.preventDefault()
+      onResizeStep(maxWidth)
+    }
+  }
+  const panelStyle = width ? ({ "--rxnflow-inspector-width": `${width}px` } as CSSProperties) : undefined
   return (
     <aside
       className={`inspector-panel${collapsed ? " is-collapsed" : ""}`}
       aria-label="Inspector"
       aria-hidden={collapsed || undefined}
       inert={collapsed || undefined}
+      style={panelStyle}
     >
+      {onResizePointerDown ? (
+        <div
+          className="inspector-resize-handle"
+          role="separator"
+          aria-label="Resize inspector"
+          aria-orientation="vertical"
+          aria-valuemin={minWidth}
+          aria-valuemax={maxWidth}
+          aria-valuenow={width}
+          tabIndex={0}
+          title="Drag to resize inspector"
+          onPointerDown={onResizePointerDown}
+          onKeyDown={resizeFromKeyboard}
+        />
+      ) : null}
       <NodeInspector
         node={node}
         row={nodeRow}
