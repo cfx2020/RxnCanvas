@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
 import { ChevronDown, ExternalLink, FilePlus2, Maximize2, PanelRight, Pause, PencilLine, Play, RotateCcw, X } from "lucide-react"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
-import { classifyComputationTermination, type ParseCandidate, type SourceParseResult, type VibrationalMode } from "../domain/sourceParsers"
+import type { ParseCandidate, SourceParseResult, VibrationalMode } from "../domain/sourceParseTypes"
 import { type EnergyDisplayOptions, type EnergyExpressionTerm, type EnergyTableRow, formatEnergy, formatRelativeEnergy } from "./energyDisplay"
 import { Molecule3DmolViewer } from "./Molecule3DmolViewer"
 import { preload3Dmol } from "./Molecule3DmolViewer.loader"
@@ -350,19 +350,12 @@ type NodeComputationOverview = {
 }
 
 function nodeComputationOverview(node: FlowNode, file: SourceFile | null): NodeComputationOverview {
-  const sourceText = file?.preview ?? ""
-  const methodBasis = methodBasisFromNodeAndSource(node, sourceText)
-  const termination = file?.parse?.terminationStatus
-    ? {
-        label: file.parse.terminationLabel ?? file.parse.terminationStatus,
-        status: file.parse.terminationStatus,
-      }
-    : classifyComputationTermination(sourceText)
+  const methodBasis = splitMethodBasis(node.method)
+  const terminationStatus = file?.parse?.terminationStatus ?? "unknown"
   const energyHartree = node.energyTable?.egasHartree
     ?? (node.energyUnit === "hartree" ? node.energyGas : null)
   const freeEnergyHartree = node.energyTable?.gsolHartree
     ?? node.energyTable?.ggasHartree
-    ?? numberFromLastMatch(sourceText, /Sum of electronic and thermal Free Energies=\s*([-+]?\d+(?:\.\d+)?(?:[EeDd][-+]?\d+)?)/gi)
     ?? (node.energyUnit === "hartree" ? node.energySolution : null)
 
   return {
@@ -373,10 +366,10 @@ function nodeComputationOverview(node: FlowNode, file: SourceFile | null): NodeC
     multiplicity: multiplicityLabel(node),
     energy: formatHartreeOrEnergy(energyHartree, node.energyGas, node.energyUnit),
     freeEnergy: formatHartreeOrEnergy(freeEnergyHartree, node.energySolution, node.energyUnit),
-    jobCpuTime: file?.parse?.jobCpuTime ?? jobCpuTimeFromSource(sourceText),
-    elapsedTime: file?.parse?.elapsedTime ?? elapsedTimeFromSource(sourceText),
-    terminationLabel: termination.label,
-    terminationStatus: termination.status,
+    jobCpuTime: file?.parse?.jobCpuTime ?? null,
+    elapsedTime: file?.parse?.elapsedTime ?? null,
+    terminationLabel: file?.parse?.terminationLabel ?? terminationStatus,
+    terminationStatus,
   }
 }
 
@@ -417,37 +410,11 @@ function formulaAtomCount(formula: string): number | null {
   return matched ? count : null
 }
 
-function methodBasisFromNodeAndSource(node: FlowNode, sourceText: string): { method: string; basisSet: string | null } {
-  const inlineMethodBasis = splitMethodBasis(node.method)
-  const sourceBasis = sourceBasisFromText(sourceText)
-  const sourceMethodBasis = sourceMethodBasisFromRoute(sourceText)
-  return {
-    method: inlineMethodBasis.method || sourceMethodBasis?.method || node.method || "unavailable",
-    basisSet: inlineMethodBasis.basisSet ?? sourceMethodBasis?.basisSet ?? sourceBasis,
-  }
-}
-
 function splitMethodBasis(value: string): { method: string; basisSet: string | null } {
   const trimmed = value.trim()
   const slash = trimmed.match(/^([^/\s]+)\s*\/\s*(\S.+)$/)
   if (!slash) return { method: trimmed || "unavailable", basisSet: null }
   return { method: slash[1], basisSet: slash[2].trim() || null }
-}
-
-function sourceMethodBasisFromRoute(sourceText: string): { method: string; basisSet: string } | null {
-  for (const match of sourceText.matchAll(/^\s*#\S*\s+(.+)$/gim)) {
-    const route = match[1]
-    const methodBasis = route.match(/\b([A-Za-z][A-Za-z0-9+_.-]*)\s*\/\s*([A-Za-z0-9+*(),_.\-[\]]+)/)
-    if (methodBasis) return { method: methodBasis[1], basisSet: methodBasis[2] }
-  }
-  return null
-}
-
-function sourceBasisFromText(sourceText: string): string | null {
-  return firstTrimmedMatch(sourceText, /Standard basis:\s*(.+)$/gim)
-    ?? firstTrimmedMatch(sourceText, /General basis read from cards:\s*(.+)$/gim)
-    ?? firstTrimmedMatch(sourceText, /AO basis set\s*\w*:\s*(.+)$/gim)
-    ?? null
 }
 
 function chargeLabel(node: FlowNode): string {
@@ -470,46 +437,6 @@ function formatHartreeOrEnergy(
 ): string {
   if (typeof hartreeValue === "number" && Number.isFinite(hartreeValue)) return `${hartreeValue.toFixed(6)} Eh`
   return formatEnergy(fallbackValue, fallbackUnit)
-}
-
-function jobCpuTimeFromSource(sourceText: string): string | null {
-  return normalizedRuntimeFromLine(firstTrimmedMatch(sourceText, /^Job cpu time:\s*(.+)$/gim))
-}
-
-function elapsedTimeFromSource(sourceText: string): string | null {
-  return normalizedRuntimeFromLine(firstTrimmedMatch(sourceText, /^Elapsed time:\s*(.+)$/gim))
-    ?? normalizedRuntimeFromLine(firstTrimmedMatch(sourceText, /^TOTAL RUN TIME:\s*(.+)$/gim))
-    ?? elapsedTimeFromGaussianFooter(sourceText)
-}
-
-function normalizedRuntimeFromLine(value: string | null): string | null {
-  if (!value) return null
-  const trimmed = value.replace(/\s+/g, " ").replace(/\.$/, "").trim()
-  const gaussian = trimmed.match(/(\d+)\s+days?\s+(\d+)\s+hours?\s+(\d+)\s+minutes?\s+([\d.]+)\s+seconds?/i)
-  if (gaussian) return `${gaussian[1]}d ${gaussian[2]}h ${gaussian[3]}m ${gaussian[4]}s`
-  return trimmed || null
-}
-
-function elapsedTimeFromGaussianFooter(sourceText: string): string | null {
-  const match = Array.from(sourceText.matchAll(/Elapsed time:\s*(\d+)\s+days?\s+(\d+)\s+hours?\s+(\d+)\s+minutes?\s+([\d.]+)\s+seconds?/gim)).at(-1)
-  if (!match) return null
-  return `${match[1]}d ${match[2]}h ${match[3]}m ${match[4]}s`
-}
-
-function firstTrimmedMatch(sourceText: string, pattern: RegExp): string | null {
-  const match = Array.from(sourceText.matchAll(pattern)).at(-1)
-  return match?.[1]?.trim() || null
-}
-
-function numberFromLastMatch(sourceText: string, pattern: RegExp): number | null {
-  const value = firstTrimmedMatch(sourceText, pattern)
-  if (!value) return null
-  const parsed = parseGaussianFloat(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function parseGaussianFloat(value: string): number {
-  return Number.parseFloat(value.replace(/[Dd]/g, "E"))
 }
 
 function NodeSourceBrief({

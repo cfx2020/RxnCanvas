@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent } from "react"
-import type { CoordinateAtom, VibrationalMode } from "../domain/sourceParsers"
+import type { CoordinateAtom, VibrationalMode } from "../domain/sourceParseTypes"
 import type { GLViewer } from "3dmol/build/types/GLViewer"
 import { StructureUnavailableIcon } from "./StructureUnavailableIcon"
 import {

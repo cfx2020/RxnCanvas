@@ -1,0 +1,20 @@
+RxnFlow project-authored parser fixture; illustrative values, not a computed result.
+O   R   C   A
+Program Version 5.0.4
+! B3LYP def2-SVP
+ Density Functional B3LYP
+ Total Charge           Charge          ....    0
+ Multiplicity           Mult            ....    1
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+O      0.000000    0.000000    0.000000
+H      0.000000    0.000000    0.960000
+H      0.920000    0.000000   -0.240000
+
+SCF CONVERGED AFTER 10 CYCLES
+Total Energy       :          -76.34567890 Eh           -2077.47334 eV
+Last Energy change         ...    0.0000000000  Tolerance : 0.0000000100
+
+FINAL SINGLE POINT ENERGY     -76.34567890
+****ORCA TERMINATED NORMALLY****
+TOTAL RUN TIME: 0 days 0 hours 0 minutes 1 seconds 0 msec

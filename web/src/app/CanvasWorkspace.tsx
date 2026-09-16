@@ -11,7 +11,7 @@ import {
 } from "react"
 import { Maximize2, UploadCloud, ZoomIn, ZoomOut } from "lucide-react"
 import type { CanvasAnnotation, CanvasViewport, EdgeStepRole, FlowBarrier, FlowEdge, FlowNode, Point, SourceFile } from "../domain/projectPackages"
-import type { CoordinatePreview } from "../domain/sourceParsers"
+import type { CoordinatePreview } from "../domain/sourceParseTypes"
 import {
   clamp,
   createMinimapGeometry,

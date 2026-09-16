@@ -1,12 +1,35 @@
 import react from "@vitejs/plugin-react"
+import { createRequire } from "node:module"
+import type { Plugin } from "vite"
 import { defineConfig } from "vitest/config"
+
+const require = createRequire(import.meta.url)
+
+function browserEngine(): Plugin {
+  const { createBrowserEngineMiddleware } = require("./scripts/browser-engine.cjs")
+  const { prepareDevEngine } = require("./scripts/dev-engine.cjs")
+  const { shutdownEngineWorkers } = require("./electron/engine-bridge.cjs")
+  return {
+    name: "rxnflow-python-engine",
+    configureServer(server) {
+      prepareDevEngine()
+      server.middlewares.use(createBrowserEngineMiddleware())
+      server.httpServer?.once("close", () => void shutdownEngineWorkers())
+    },
+    configurePreviewServer(server) {
+      prepareDevEngine()
+      server.middlewares.use(createBrowserEngineMiddleware())
+      server.httpServer.once("close", () => void shutdownEngineWorkers())
+    },
+  }
+}
 
 export default defineConfig(({ mode }) => {
   const nodeEnv = mode === "production" ? "production" : "development"
 
   return {
     base: "./",
-    plugins: [react()],
+    plugins: [react(), ...(mode === "test" ? [] : [browserEngine()])],
     define: {
       global: "globalThis",
       "process.env.NODE_ENV": JSON.stringify(nodeEnv),

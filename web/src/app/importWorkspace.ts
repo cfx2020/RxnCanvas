@@ -1,5 +1,5 @@
 import { normalizeSourceFileForPersistence, type FlowNode, type Point, type SourceFile } from "../domain/projectPackages"
-import { parseSourcePreview, type ParsedEnergyTableData, type SourceParseResult } from "../domain/sourceParsers"
+import type { ParsedEnergyTableData, SourceParseResult } from "../domain/sourceParseTypes"
 import { candidateReviewEntries, candidateReviewStateFromPlan } from "./candidateReview"
 import { automaticImportNodesFromPlan } from "./desktopImportRegistration"
 import { nodeFromCandidate, nodeFromParsedFallback } from "./importNodes"
@@ -27,6 +27,7 @@ import {
 import { importLayoutFromPoint } from "./importLayout"
 import {
   activeCanvasSnapshot,
+  projectCanvasSnapshot,
   projectWorkspaceSnapshot,
   projectWorkspaceWithActiveCanvas,
   type ProjectWorkspaceSnapshot,
@@ -97,9 +98,8 @@ export function canvasRawFileDropImportTransition(
 export function buildImportPlan(
   importedFiles: ImportSourceFile[],
   layout: ImportPlan["layout"],
-  options: { parseMode?: "fallback" | "defer" } = {},
 ): ImportPlan {
-  const parsedImports = parsedImportFiles(importedFiles, options.parseMode)
+  const parsedImports = parsedImportFiles(importedFiles)
   const stagedFiles = parsedImports.map(({ file, parsed }) => stagedSourceFile(file, parsed))
   const importGroups = parsedImportGroups(parsedImports)
   const autoEntries = importGroups.flatMap((group) => automaticEntriesForParsedGroup(group))
@@ -385,6 +385,10 @@ export function projectWorkspaceWithImportPlan(
 ): ProjectWorkspaceSnapshot {
   const fileMode = options.fileMode ?? "prepend"
   const activeCanvas = activeCanvasSnapshot(targetSnapshot)
+  const targetCanvas = options.targetCanvasId
+    ? targetSnapshot.canvases.find((canvas) => canvas.id === options.targetCanvasId)
+    : null
+  const importCanvas = targetCanvas ? projectCanvasSnapshot(targetCanvas) : activeCanvas
   const nextFiles = sourceFilesWithImportPlan(targetSnapshot.files, importPlan, fileMode)
   const sourceFileIdReplacements = sourceFileIdReplacementsForImport(targetSnapshot.files, importPlan.stagedFiles)
   const remapNodeSourceFile = (node: FlowNode): FlowNode => {
@@ -398,36 +402,41 @@ export function projectWorkspaceWithImportPlan(
       && sourceFileReplacementKey(currentFile) === sourceFileReplacementKey(stagedFile)
     )))
     .map((file) => file.id))
-  const existingNodeSourceFileIds = new Set(activeCanvas.nodes
+  const existingNodeSourceFileIds = new Set(importCanvas.nodes
     .map((node) => node.sourceFileId)
     .filter((sourceFileId): sourceFileId is string => Boolean(sourceFileId)))
   const suppressedAutoNodeSourceFileIds = new Set([...replacementSourceFileIds]
     .filter((sourceFileId) => existingNodeSourceFileIds.has(sourceFileId)))
-  const appendedAutoNodes = autoNodes.filter((node) => (
-    !node.sourceFileId || !suppressedAutoNodeSourceFileIds.has(node.sourceFileId)
-  ))
-  const workspaceWithActiveCanvas = projectWorkspaceWithActiveCanvas(targetSnapshot, {
-    ...activeCanvas,
+  const appendedAutoNodes = options.targetCanvasId && !targetCanvas
+    ? []
+    : autoNodes.filter((node) => (
+        !node.sourceFileId || !suppressedAutoNodeSourceFileIds.has(node.sourceFileId)
+      ))
+  const updatedImportCanvas = {
+    ...importCanvas,
     nodes: [
-      ...activeCanvas.nodes,
+      ...importCanvas.nodes,
       ...appendedAutoNodes,
     ],
     selectedNodeIds: appendedAutoNodes[0]?.id
       ? [appendedAutoNodes[0].id]
-      : suppressedAutoNodeSourceFileIds.size > 0 ? activeCanvas.selectedNodeIds : [],
-    selectedEdgeIds: suppressedAutoNodeSourceFileIds.size > 0 ? activeCanvas.selectedEdgeIds : [],
-    selectedBarrierIds: suppressedAutoNodeSourceFileIds.size > 0 ? activeCanvas.selectedBarrierIds : [],
-    viewport: activeCanvas.viewport,
-  })
-  const remappedCanvases = workspaceWithActiveCanvas.canvases.map((canvas) => ({
+      : suppressedAutoNodeSourceFileIds.size > 0 ? importCanvas.selectedNodeIds : [],
+    selectedEdgeIds: suppressedAutoNodeSourceFileIds.size > 0 ? importCanvas.selectedEdgeIds : [],
+    selectedBarrierIds: suppressedAutoNodeSourceFileIds.size > 0 ? importCanvas.selectedBarrierIds : [],
+    viewport: importCanvas.viewport,
+  }
+  const canvasesWithImport = targetSnapshot.canvases.map((canvas) => (
+    canvas.id === updatedImportCanvas.id ? updatedImportCanvas : canvas
+  ))
+  const remappedCanvases = canvasesWithImport.map((canvas) => ({
     ...canvas,
     nodes: canvas.nodes.map(remapNodeSourceFile),
   }))
-  const remappedActiveCanvas = remappedCanvases.find((canvas) => canvas.id === workspaceWithActiveCanvas.activeCanvasId)
+  const remappedActiveCanvas = remappedCanvases.find((canvas) => canvas.id === targetSnapshot.activeCanvasId)
     ?? remappedCanvases[0]
   const workspaceWithRemappedSourceIds = remappedActiveCanvas
     ? projectWorkspaceSnapshot({
-        ...workspaceWithActiveCanvas,
+        ...targetSnapshot,
         files: nextFiles,
         canvases: remappedCanvases,
         activeCanvasId: remappedActiveCanvas.id,
@@ -446,7 +455,7 @@ export function projectWorkspaceWithImportPlan(
         viewMode: options.viewMode ?? "canvas",
       })
     : projectWorkspaceSnapshot({
-        ...workspaceWithActiveCanvas,
+        ...targetSnapshot,
         files: nextFiles,
         selectedFileId: importedFiles[0]?.id ?? null,
         selectedFileIds: importedFiles[0]?.id ? [importedFiles[0].id] : [],
@@ -616,6 +625,23 @@ export function candidateReviewRegistrationApplyTransition(
   }
 }
 
+export function rebasePreparedProjectWorkspaceImport(
+  prepared: PreparedProjectWorkspaceImport,
+  targetSnapshot: ProjectWorkspaceSnapshot,
+  options: ProjectWorkspaceImportOptions = {},
+): PreparedProjectWorkspaceImport {
+  return {
+    ...prepared,
+    snapshot: projectWorkspaceWithImportPlan(
+      targetSnapshot,
+      prepared.importPlan.stagedFiles,
+      prepared.importPlan,
+      prepared.autoNodes,
+      options,
+    ),
+  }
+}
+
 export async function prepareProjectWorkspaceImport({
   targetSnapshot,
   importedFiles,
@@ -629,7 +655,7 @@ export async function prepareProjectWorkspaceImport({
 }): Promise<PreparedProjectWorkspaceImport | null> {
   if (importedFiles.length === 0) return null
 
-  const importPlan = buildImportPlan(importedFiles, layout, { parseMode: options.parseMode })
+  const importPlan = buildImportPlan(importedFiles, layout)
   const autoRegister = options.autoRegister ?? true
   const reviewState = autoRegister ? candidateReviewStateFromPlan(importPlan) : null
   const autoNodes = autoRegister
@@ -653,14 +679,9 @@ export async function prepareProjectWorkspaceImport({
 
 export function parsedImportFiles(
   importedFiles: ImportSourceFile[],
-  parseMode: "fallback" | "defer" = "fallback",
 ): ImportPlan["parsedImports"] {
   return importedFiles.map((file, index) => {
-    const parsed = file.parse ?? (
-      parseMode === "defer"
-        ? deferredSourceParseResult(file)
-        : parseSourcePreview({ name: file.name, preview: file.preview })
-    )
+    const parsed = file.parse ?? deferredSourceParseResult(file)
     const stagedFile = stagedSourceFile(file, parsed)
     return {
       file: stagedFile,
@@ -697,12 +718,12 @@ function deferredSourceParseResult(file: ImportSourceFile): SourceParseResult {
     objectCount: 0,
     warnings: [{
       code: "parse_deferred",
-      message: "Source file is waiting for the desktop parser job.",
+      message: "Source file is waiting for the Python parser job.",
       target: file.name,
     }],
     candidates: [],
     coordinatePreview: null,
-    parseScope: "preview",
+    parseScope: "full-file",
     confidence: "low",
     terminationStatus: "unknown",
     terminationLabel: "unknown",

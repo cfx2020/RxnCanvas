@@ -9,7 +9,7 @@ import {
 } from "../app/energyDisplay"
 import { composeChemDrawEnergyDiagramCdxml, type ChemDrawCdxmlSideSpecies } from "./chemdrawCdxmlComposer"
 import type { EdgeStepRole, NodeKind, NodePathRole } from "./projectPackages"
-import type { ParsedEnergyTableData, ParsedEnergyUnit } from "./sourceParsers"
+import type { ParsedEnergyTableData, ParsedEnergyUnit } from "./sourceParseTypes"
 
 export type ReportExportFormat = "png" | "cdxml" | "xlsx"
 

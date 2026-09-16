@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import type { CoordinateAtom } from "../domain/sourceParsers"
+import type { CoordinateAtom } from "../domain/sourceParseTypes"
 import { StructureUnavailableIcon } from "./StructureUnavailableIcon"
 
 type Molecule2DDepictionProps = {

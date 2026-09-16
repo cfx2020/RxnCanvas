@@ -3,13 +3,13 @@ import type {
   RxnFlowProjectCanvas,
   SourceFile,
 } from "../domain/projectPackages"
-import type { SourceParseResult } from "../domain/sourceParsers"
+import type { SourceParseResult } from "../domain/sourceParseTypes"
 import { downloadText } from "./browserDownloads"
 import {
-  browserPreviewEngineStatus,
   engineStatusFailure,
   type DesktopEngineStatus,
 } from "./desktopRuntime"
+import { getBrowserEngineStatus } from "./browserEngine"
 import type {
   DesktopPreferences,
   SourceOpenerProfile,
@@ -412,15 +412,9 @@ export function watchDesktopEngineStatus({
   setEngineStatus: (status: DesktopEngineStatus | null) => void
 }): () => void {
   let canceled = false
-  if (!desktopApi?.getEngineStatus) {
-    setEngineStatus(browserPreviewEngineStatus())
-    return () => {
-      canceled = true
-    }
-  }
-
   setEngineStatus(null)
-  void desktopApi.getEngineStatus().then((status) => {
+  const statusRequest = desktopApi?.getEngineStatus ? desktopApi.getEngineStatus() : getBrowserEngineStatus()
+  void statusRequest.then((status) => {
     if (!canceled) setEngineStatus(status)
   }).catch((error: unknown) => {
     if (canceled) return

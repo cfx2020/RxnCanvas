@@ -1,6 +1,6 @@
 import type { EdgeStepRole, FlowEdge, FlowNode, NodeKind } from "../domain/projectPackages"
 import { sideSpeciesParticipantNodeIds } from "../domain/reactionGraphRoles"
-import type { ParsedEnergyTableData, ParsedEnergyUnit } from "../domain/sourceParsers"
+import type { ParsedEnergyTableData, ParsedEnergyUnit } from "../domain/sourceParseTypes"
 
 export type EnergyDisplayOptions = {
   baselineNodeId: string | null

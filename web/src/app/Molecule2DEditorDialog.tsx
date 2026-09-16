@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, use
 import type { ClipboardEvent as ReactClipboardEvent, ErrorInfo, KeyboardEvent as ReactKeyboardEvent, LazyExoticComponent, MouseEvent as ReactMouseEvent, ReactNode } from "react"
 import type { Ketcher } from "ketcher-core"
 import type { FlowNode, ManualStructurePayload } from "../domain/projectPackages"
-import type { CoordinateAtom } from "../domain/sourceParsers"
+import type { CoordinateAtom } from "../domain/sourceParseTypes"
 import { molfileFromAtoms } from "./Molecule2DDepiction"
 import { loadKetcherEditorHostModule } from "./KetcherEditorHost.loader"
 

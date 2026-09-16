@@ -1,5 +1,5 @@
 import type { FlowNode, NodeKind, Point, SourceFile } from "../domain/projectPackages"
-import type { ParseCandidate, ParsedEnergyTableData, ParsedEnergyUnit, SourceParseResult } from "../domain/sourceParsers"
+import type { ParseCandidate, ParsedEnergyTableData, ParsedEnergyUnit, SourceParseResult } from "../domain/sourceParseTypes"
 import type { ProjectWorkspaceSnapshot } from "./projectWorkspace"
 
 export type DesktopSourceFile = {
@@ -170,7 +170,8 @@ export type StageSourceFilesOptions = {
   layout?: ImportNodeLayout
   fileMode?: "prepend" | "update"
   autoRegister?: boolean
-  parseMode?: "fallback" | "defer"
+  targetCanvasId?: string
+  activateProject?: boolean
 }
 
 export type PendingImportProjectTransition = {
@@ -238,7 +239,7 @@ export type ProjectWorkspaceImportOptions = {
   fileMode?: "prepend" | "update"
   viewMode?: ProjectWorkspaceSnapshot["viewMode"]
   autoRegister?: boolean
-  parseMode?: "fallback" | "defer"
+  targetCanvasId?: string
 }
 
 export type PrepareProjectWorkspaceImportOptions = ProjectWorkspaceImportOptions & {

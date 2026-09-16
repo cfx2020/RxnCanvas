@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { FlowBarrier, FlowEdge, FlowNode, RxnFlowProjectPackage, SourceFile } from "../domain/projectPackages"
-import type { SourceParseResult } from "../domain/sourceParsers"
+import type { SourceParseResult } from "../domain/sourceParseTypes"
 import { defaultEnergyDisplayOptions } from "./energyDisplay"
 import {
   canvasEditSnapshot,

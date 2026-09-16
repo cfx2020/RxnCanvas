@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
-import type { ParseCandidate, SourceParseResult } from "../domain/sourceParsers"
+import type { ParseCandidate, SourceParseResult } from "../domain/sourceParseTypes"
 import {
   CandidateReviewSheet,
   InspectorPanel,

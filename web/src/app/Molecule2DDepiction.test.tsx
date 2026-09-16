@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { Molecule2DDepiction, inferDepictionBonds, molfileFromAtoms, svgFromMolfile } from "./Molecule2DDepiction"
-import type { CoordinateAtom } from "../domain/sourceParsers"
+import type { CoordinateAtom } from "../domain/sourceParseTypes"
 
 const waterAtoms: CoordinateAtom[] = [
   { element: "O", x: 0, y: 0, z: 0 },

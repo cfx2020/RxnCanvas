@@ -11568,6 +11568,28 @@ select,
   --structure-right-rail: var(--rxnflow-inspector-width, 288px) !important;
 }
 
+@media (max-width: 1180px) {
+  .structure-preview-scrim {
+    z-index: 3000;
+  }
+
+  .structure-preview-scrim.has-left-sidebar {
+    --structure-left-rail: 0px;
+  }
+}
+
+@media (max-width: 960px) {
+  .structure-preview-scrim.has-right-sidebar {
+    --structure-right-rail: 0px !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .structure-preview-body {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
 /* 2026-06-26 inline canvas label editing: capsules are text-sized and centered in their SVG anchors. */
 .edge-label,
 .edge-label-editor input,

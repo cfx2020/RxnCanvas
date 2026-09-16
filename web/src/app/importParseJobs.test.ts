@@ -1,15 +1,21 @@
 import { describe, expect, it, vi } from "vitest"
-import type { SourceParseResult } from "../domain/sourceParsers"
+import type { SourceParseResult } from "../domain/sourceParseTypes"
 import type { RxnflowDesktopApi } from "./appRuntimeEffects"
 import {
   accumulatedDesktopImportFiles,
   createAnimationFrameBatcher,
   desktopImportFilesWithProjectTargets,
   desktopImportFileWithReplacementIdentity,
-  desktopParsedImportSourceFiles,
+  parsedImportSourceFiles,
   desktopProjectStoredPathForSourcePath,
 } from "./importParseJobs"
 import type { ImportSourceFile } from "./importRegistration"
+import { BrowserEngineError, parseBrowserSourceFile } from "./browserEngine"
+
+vi.mock("./browserEngine", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./browserEngine")>(),
+  parseBrowserSourceFile: vi.fn(),
+}))
 
 function importSourceFile(id: string): ImportSourceFile {
   return {
@@ -137,6 +143,30 @@ function flushPromises() {
 }
 
 describe("importParseJobs", () => {
+  it("parses browser Files through the same ordered queue and isolates individual failures", async () => {
+    const rawFiles = ["a", "b", "c"].map((name) => new File(["complete bytes"], `${name}.log`))
+    vi.mocked(parseBrowserSourceFile)
+      .mockResolvedValueOnce(parseResult("a"))
+      .mockRejectedValueOnce(new BrowserEngineError("engine_unavailable", "Python unavailable."))
+      .mockResolvedValueOnce(parseResult("c"))
+    const onFileParsed = vi.fn()
+
+    const results = await parsedImportSourceFiles({
+      desktopApi: undefined,
+      projectId: "browser",
+      importedFiles: ["a", "b", "c"].map(importSourceFile),
+      rawFiles,
+      concurrency: 1,
+      onFileParsed,
+    })
+
+    expect(results.map((file) => file.id)).toEqual(["a", "b", "c"])
+    expect(results.map((file) => file.parse?.parsed)).toEqual([true, false, true])
+    expect(results[1].parse?.warnings[0].code).toBe("engine_unavailable")
+    expect(vi.mocked(parseBrowserSourceFile).mock.calls.map(([file]) => file)).toEqual(rawFiles)
+    expect(onFileParsed).toHaveBeenCalledTimes(3)
+  })
+
   it("keeps completed import results in later frame batches", () => {
     const completedFilesById = new Map<string, ImportSourceFile>()
     const first = { ...importSourceFile("first"), status: "parsed" as const, parse: parseResult("first") }
@@ -238,7 +268,7 @@ describe("importParseJobs", () => {
     const onFileParsed = vi.fn()
     const importedFiles = ["a", "b", "c", "d"].map(importSourceFile)
 
-    const job = desktopParsedImportSourceFiles({
+    const job = parsedImportSourceFiles({
       desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
       projectId: "p1",
       projectDirectory: "/tmp/p1.rxnflow",
@@ -316,7 +346,7 @@ describe("importParseJobs", () => {
       error: { code: "engine_down", message: "Engine unavailable." },
     }))
 
-    const [parsedFile] = await desktopParsedImportSourceFiles({
+    const [parsedFile] = await parsedImportSourceFiles({
       desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
       projectId: "p1",
       importedFiles: [source],
@@ -341,7 +371,7 @@ describe("importParseJobs", () => {
       error: { code: "engine_down", message: "Engine unavailable." },
     }))
 
-    const [parsedFile] = await desktopParsedImportSourceFiles({
+    const [parsedFile] = await parsedImportSourceFiles({
       desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
       projectId: "p1",
       projectDirectory: "/tmp/study",
@@ -383,7 +413,7 @@ describe("importParseJobs", () => {
       }],
     }))
 
-    const [parsedFile] = await desktopParsedImportSourceFiles({
+    const [parsedFile] = await parsedImportSourceFiles({
       desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
       projectId: "p1",
       importedFiles: [source],
@@ -438,7 +468,7 @@ describe("importParseJobs", () => {
       },
     }))
 
-    const [parsedFile] = await desktopParsedImportSourceFiles({
+    const [parsedFile] = await parsedImportSourceFiles({
       desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
       projectId: "p1",
       importedFiles: [source],
@@ -487,7 +517,7 @@ describe("importParseJobs", () => {
       },
     }))
 
-    const [parsedFile] = await desktopParsedImportSourceFiles({
+    const [parsedFile] = await parsedImportSourceFiles({
       desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
       projectId: "p1",
       importedFiles: [source],

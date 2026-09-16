@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest"
 import {
-  handleCanvasRawFileDropAction,
+  handleCanvasProjectFileDropAction,
   importDesktopFilesAction,
   importFilesForProjectAction,
   openImportPickerAction,
+  stageSourceFilesForProjectAction,
   toggleCandidateReviewSelectionAction,
 } from "./appImportActions"
+import { emptyProjectWorkspace } from "./projectWorkspace"
 
 describe("appImportActions", () => {
   it("opens browser picker and stores pending project without desktop runtime", () => {
@@ -74,9 +76,8 @@ describe("appImportActions", () => {
       fileList: [new File([""], "finder.log")],
       projectId: "p5",
       stageSourceFilesForProject,
-      previewMode: "none",
       prepareFile: () => ({ sourcePath: "/Users/linsay/Gaussian/finder.log" }),
-      stageOptions: { autoRegister: false, parseMode: "defer" },
+      stageOptions: { autoRegister: false },
     })
 
     expect(stageSourceFilesForProject).toHaveBeenCalledTimes(1)
@@ -94,10 +95,9 @@ describe("appImportActions", () => {
       fileList: [new File([""], "project.log")],
       projectId: "p5",
       stageSourceFilesForProject,
-      previewMode: "none",
       prepareFile: () => ({ sourcePath: "/Users/linsay/Study/sources/project.log" }),
       prepareImportedFiles: (files) => files.map((file) => ({ ...file, storedPath: "sources/project.log" })),
-      stageOptions: { autoRegister: false, parseMode: "defer" },
+      stageOptions: { autoRegister: false },
     })
 
     expect(stageSourceFilesForProject.mock.calls[0][1][0]).toMatchObject({
@@ -117,7 +117,7 @@ describe("appImportActions", () => {
         files: [{ name: "dialog.log", size: 5, preview: "", sourcePath: "/Users/linsay/Gaussian/dialog.log" }],
       })),
       stageSourceFilesForProject,
-      stageOptions: { autoRegister: false, parseMode: "defer" },
+      stageOptions: { autoRegister: false },
     })
 
     expect(stageSourceFilesForProject).toHaveBeenCalledTimes(1)
@@ -131,7 +131,7 @@ describe("appImportActions", () => {
 
   it("stages project-file drops with update mode", async () => {
     const stageCurrentProjectSourceFiles = vi.fn()
-    await handleCanvasRawFileDropAction({
+    await handleCanvasProjectFileDropAction({
       drop: { kind: "project-files", fileIds: ["file-1"], position: { x: 20, y: 30 } },
       files: [{ id: "file-1", name: "a.log", kind: "Gaussian", size: 1, status: "parsed", preview: "" }],
       stageCurrentProjectSourceFiles,
@@ -140,6 +140,47 @@ describe("appImportActions", () => {
     expect(stageCurrentProjectSourceFiles.mock.calls[0][0][0].id).toBe("file-1")
     expect(stageCurrentProjectSourceFiles.mock.calls[0][1].fileMode).toBe("update")
     expect(stageCurrentProjectSourceFiles.mock.calls[0][1].autoRegister).toBe(true)
+  })
+
+  it("stores deferred completion without reactivating its project", async () => {
+    const viewport = { x: 0, y: 0, zoom: 1 }
+    const projectOne = emptyProjectWorkspace(viewport, "Project one")
+    const projectTwo = emptyProjectWorkspace(viewport, "Project two")
+    const applyDeferredProjectWorkspace = vi.fn()
+    const applyProjectTransition = vi.fn()
+    const stageCurrentProjectSourceFiles = vi.fn()
+
+    await stageSourceFilesForProjectAction({
+      projectId: "p1",
+      importedFiles: [{
+        id: "parsed-file",
+        name: "parsed.log",
+        kind: "Gaussian",
+        size: 42,
+        status: "parsed",
+        preview: "",
+      }],
+      options: { autoRegister: false, fileMode: "update", activateProject: false },
+      activeProjectId: "p2",
+      projects: [
+        { id: "p1", label: "Project one", meta: "open" },
+        { id: "p2", label: "Project two", meta: "open" },
+      ],
+      workspaces: { p1: projectOne, p2: projectTwo },
+      currentSnapshot: projectTwo,
+      emptyViewport: viewport,
+      canvas: null,
+      registerImportCandidates: undefined,
+      stageCurrentProjectSourceFiles,
+      applyProjectTransition,
+      applyDeferredProjectWorkspace,
+      setCandidateReview: vi.fn(),
+    })
+
+    expect(applyDeferredProjectWorkspace).toHaveBeenCalledTimes(1)
+    expect(applyDeferredProjectWorkspace.mock.calls[0][0]).toBe("p1")
+    expect(applyProjectTransition).not.toHaveBeenCalled()
+    expect(stageCurrentProjectSourceFiles).not.toHaveBeenCalled()
   })
 
   it("leaves null candidate review unchanged", () => {

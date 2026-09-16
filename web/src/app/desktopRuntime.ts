@@ -16,16 +16,6 @@ export type DesktopEngineStatus =
       }
     }
 
-export function browserPreviewEngineStatus(): DesktopEngineStatus {
-  return {
-    ok: false,
-    error: {
-      code: "browser_preview",
-      message: "Browser preview",
-    },
-  }
-}
-
 export function engineStatusFailure(error: unknown): DesktopEngineStatus {
   return {
     ok: false,

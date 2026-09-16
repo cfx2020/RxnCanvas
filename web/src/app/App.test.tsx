@@ -1,6 +1,18 @@
 import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { StrictMode } from "react"
 import { App } from "./App"
+import { BrowserEngineError, parseBrowserSourceFile } from "./browserEngine"
+import type { SourceParseResult } from "../domain/sourceParseTypes"
+import type { DesktopImportSourceFilesPayload } from "./importRegistration"
+
+vi.mock("./browserEngine", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./browserEngine")>(),
+  parseBrowserSourceFile: vi.fn(),
+  getBrowserEngineStatus: vi.fn(async () => ({
+    ok: true,
+    data: { status: "ready", engineVersion: "test", capabilities: ["import.full_file"] },
+  })),
+}))
 
 function transformScale(transform: string): number {
   const match = transform.match(/scale\(([^)]+)\)/)
@@ -219,7 +231,7 @@ function desktopImportResponse(
   }
 }
 
-function parsedOrcaSource(label: string) {
+function parsedOrcaSource(label: string): SourceParseResult {
   return {
     label,
     sourceKind: "ORCA",
@@ -258,10 +270,10 @@ function parsedOrcaSource(label: string) {
     terminationLabel: "normal",
     jobCpuTime: null,
     elapsedTime: null,
-  } as const
+  }
 }
 
-function parsedGaussianSource(label: string) {
+function parsedGaussianSource(label: string): SourceParseResult {
   return {
     ...parsedOrcaSource(label),
     sourceKind: "Gaussian",
@@ -271,7 +283,7 @@ function parsedGaussianSource(label: string) {
       ...candidate,
       method: "wB97X-D",
     })),
-  } as const
+  }
 }
 
 function parsedGaussianStateSource(label: string, spinMultiplicity: number, energyGas: number) {
@@ -291,7 +303,7 @@ function parsedGaussianStateSource(label: string, spinMultiplicity: number, ener
   } as const
 }
 
-function unsupportedSource(label: string, message = "No supported parser recognized this source full-file.") {
+function unsupportedSource(label: string, message = "No supported parser recognized this source full-file."): SourceParseResult {
   return {
     label,
     sourceKind: "Raw",
@@ -320,7 +332,7 @@ function unsupportedSource(label: string, message = "No supported parser recogni
     terminationLabel: "unknown",
     jobCpuTime: null,
     elapsedTime: null,
-  } as const
+  }
 }
 
 function failedGaussianSource(label: string, code = "parse_failed", message = "The desktop parser could not parse this Gaussian log.") {
@@ -355,6 +367,19 @@ function errorTerminatedGaussianSource(
 }
 
 describe("App", () => {
+  beforeEach(() => {
+    vi.mocked(parseBrowserSourceFile).mockReset().mockImplementation(async (file) => {
+      const label = file.name.replace(/\.[^.]+$/, "")
+      const parse = file.name.endsWith(".out") ? parsedOrcaSource(label) : parsedGaussianSource(label)
+      return {
+        ...parse,
+        energySolution: null,
+        energyTable: { egasHartree: parse.energyGas },
+        candidates: parse.candidates.map((candidate) => ({ ...candidate, energySolution: null })),
+      }
+    })
+  })
+
   afterEach(() => {
     Reflect.deleteProperty(window, "rxnflowDesktop")
   })
@@ -1585,7 +1610,7 @@ describe("App", () => {
     ]))
   })
 
-  it("keeps failed browser-preview solution logs grouped but unavailable for solvation pairing", async () => {
+  it("keeps failed browser solution logs grouped but unavailable for solvation pairing", async () => {
     render(<App />)
 
     const input = screen.getByLabelText("Import calculation files")
@@ -1607,13 +1632,14 @@ describe("App", () => {
     expect(node.querySelector(":scope > .node-status-light-corner.status-light-missing")).toBeInTheDocument()
 
     await act(async () => {
+      vi.mocked(parseBrowserSourceFile).mockResolvedValueOnce(unsupportedSource("i1p6-sol"))
       fireEvent.change(input, { target: { files: [solutionLog] } })
       await Promise.resolve()
     })
 
     const groupedRowButton = await within(rail).findByRole("button", { name: fileButtonName("i1p6", "Gaussian") })
     expect(groupedRowButton).toBeInTheDocument()
-    expect(groupedRowButton).toHaveAttribute("aria-label", expect.stringContaining("No supported parser recognized this source preview."))
+    expect(groupedRowButton).toHaveAttribute("aria-label", expect.stringContaining("No supported parser recognized this source full-file."))
     const groupedRow = groupedRowButton.closest(".project-file-card") as HTMLElement
     expect(groupedRow.querySelector(".project-file-phase-badges.has-parse-error")).toBeInTheDocument()
     expect(within(rail).queryByRole("button", { name: fileButtonName("i1p6.log", "Gaussian") })).not.toBeInTheDocument()
@@ -2148,6 +2174,19 @@ describe("App", () => {
   })
 
   it("parses local files in the browser workbench", async () => {
+    const atoms = [
+      { element: "O", x: 0, y: 0, z: 0 },
+      { element: "H", x: 0, y: 0, z: 0.96 },
+      { element: "H", x: 0.92, y: 0, z: -0.24 },
+    ]
+    const coordinatePreview = { atoms, atomCount: 3, has3d: true, elements: ["H", "O"], previewKind: "text" }
+    const parse = parsedOrcaSource("orca-water")
+    vi.mocked(parseBrowserSourceFile).mockResolvedValueOnce({
+      ...parse,
+      formula: "H2O",
+      coordinatePreview,
+      candidates: parse.candidates.map((candidate) => ({ ...candidate, formula: "H2O", coordinatePreview })),
+    })
     render(<App />)
 
     const input = screen.getByLabelText("Import calculation files")
@@ -2173,6 +2212,8 @@ describe("App", () => {
     })
 
     const sourceButton = await screen.findByRole("button", { name: fileButtonName("orca-water.out", "ORCA") })
+    await waitFor(() => expect(screen.queryByRole("progressbar", { name: "Parsing orca-water.out" })).not.toBeInTheDocument())
+    expect(parseBrowserSourceFile).toHaveBeenCalledWith(file)
     expect(sourceButton).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Node orca-water" })).not.toBeInTheDocument()
     fireEvent.click(sourceButton)
@@ -2502,6 +2543,19 @@ describe("App", () => {
   })
 
   it("contains and queues multi-candidate review before registering nodes", async () => {
+    const parse = parsedOrcaSource("path")
+    vi.mocked(parseBrowserSourceFile).mockResolvedValueOnce({
+      ...parse,
+      sourceKind: "MAPLE",
+      parserId: "maple-output-text-full-file",
+      objectCount: 2,
+      candidates: ["Frame 1", "Frame 2"].map((label, index) => ({
+        ...parse.candidates[0],
+        candidateId: `candidate-${index + 1}`,
+        objectIndex: index,
+        label,
+      })),
+    })
     render(<App />)
 
     const input = screen.getByLabelText("Import calculation files")
@@ -4068,6 +4122,18 @@ describe("App", () => {
       value: {
         platform: "darwin",
         chooseFiles,
+        importSourceFiles: vi.fn(async (payload: DesktopImportSourceFilesPayload) => ({
+          ok: true,
+          data: {
+            files: payload.files.map((file) => ({
+              ...file,
+              sourcePath: undefined,
+              storedPath: "sources/01-desktop-out-desktop.out",
+              checksum: `sha256:${"a".repeat(64)}`,
+              parse: parsedOrcaSource("engine-preview"),
+            })),
+          },
+        })),
         getEngineStatus: vi.fn().mockResolvedValue({
           ok: true,
           data: {
@@ -4094,8 +4160,9 @@ describe("App", () => {
     await waitFor(() => expect(autosaveProjectPackage).toHaveBeenCalled(), { timeout: 2500 })
     expect(JSON.parse(autosaveProjectPackage.mock.calls[0][0].content).files[0]).toMatchObject({
       name: "desktop.out",
-      sourcePath: "/external/desktop.out",
+      storedPath: "sources/01-desktop-out-desktop.out",
     })
+    expect(JSON.parse(autosaveProjectPackage.mock.calls[0][0].content).files[0].sourcePath).toBeUndefined()
 
     fireEvent.click(screen.getByRole("button", { name: fileButtonName("desktop.out", "ORCA") }))
     const inspector = screen.getByRole("complementary", { name: "Inspector" })
@@ -4104,6 +4171,18 @@ describe("App", () => {
     expect(sourceInspector).toHaveTextContent("desktop.out")
     expect(within(sourceInspector).getByRole("button", { name: "Open with external app" })).toBeEnabled()
     expect(screen.queryByText("sources/01-desktop-out-desktop.out")).not.toBeInTheDocument()
+  })
+
+  it("ends browser import progress and reports a Python service failure without registering a node", async () => {
+    vi.mocked(parseBrowserSourceFile).mockRejectedValueOnce(new BrowserEngineError("engine_unavailable", "Python unavailable."))
+    render(<App />)
+    const file = new File(["SCF Done: E(RB3LYP) = -76.4 A.U."], "offline.log")
+    fireEvent.change(screen.getByLabelText("Import calculation files"), { target: { files: [file] } })
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Import failed" })
+    expect(dialog).toHaveTextContent("Python unavailable.")
+    expect(screen.queryByRole("progressbar", { name: "Parsing offline.log" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Node offline" })).not.toBeInTheDocument()
   })
 
   it("keeps canceled Electron report exports out of the export summary", async () => {

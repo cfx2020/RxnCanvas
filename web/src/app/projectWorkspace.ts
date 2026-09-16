@@ -73,6 +73,7 @@ export const initialFiles: SourceFile[] = [
     size: 482_000,
     status: "parsed",
     preview: "SCF Done: E(RwB97XD) = -232.487921 A.U.\nZero-point correction = 0.184729\nThermal correction to Gibbs Free Energy = 0.209114",
+    parse: demoSourceParse("gaussian", "Gaussian", "wB97X-D", -232.487921, null),
   },
   {
     id: "orca-out",
@@ -81,6 +82,7 @@ export const initialFiles: SourceFile[] = [
     size: 366_400,
     status: "parsed",
     preview: "FINAL SINGLE POINT ENERGY     -231.884002\nG-E(el) = 0.000000\nCPCM SOLVATION ENERGY = -0.010241",
+    parse: demoSourceParse("orca", "ORCA", "ORCA single point", -231.884002, null),
   },
   {
     id: "maple-path",
@@ -89,8 +91,30 @@ export const initialFiles: SourceFile[] = [
     size: 241_900,
     status: "parsed",
     preview: "IRC point 01 energy -231.900117\nIRC point 02 energy -231.895011\nIRC point 03 energy -231.913448",
+    parse: demoSourceParse("maple-path", "MAPLE", "MAPLE path", -231.913448, null),
   },
 ]
+
+function demoSourceParse(label: string, sourceKind: string, method: string, energyGas: number, energySolution: number | null): NonNullable<SourceFile["parse"]> {
+  return {
+    label,
+    sourceKind,
+    formula: "pending",
+    kind: "intermediate",
+    method,
+    solvent: "unassigned",
+    energyGas,
+    energySolution,
+    energyUnit: "hartree",
+    parsed: true,
+    parserId: "demo",
+    parserVersion: null,
+    objectCount: 1,
+    warnings: [],
+    candidates: [],
+    coordinatePreview: null,
+  }
+}
 
 export const initialNodes: FlowNode[] = [
   {

@@ -527,6 +527,22 @@ function installRuntimeSmokeExit(window) {
 
   window.webContents.once("did-finish-load", async () => {
     try {
+      const directory = await fs.mkdtemp(path.join(app.getPath("temp"), "rxnflow-runtime-source-"))
+      let sourceParse
+      try {
+        const sourcePath = path.join(directory, "runtime-smoke.xyz")
+        await fs.writeFile(sourcePath, "2\nenergy=-1.0 hartree\nH 0 0 0\nH 0 0 0.74\n")
+        const response = await runEngineRequest({
+          command: "import.preview",
+          files: [{ name: "runtime-smoke.xyz", sourcePath }],
+        })
+        sourceParse = response.ok ? response.data?.files?.[0]?.parse : null
+        if (!sourceParse?.parsed || sourceParse.parseScope !== "full-file") {
+          throw new Error("desktop runtime full-file parsing smoke failed")
+        }
+      } finally {
+        await fs.rm(directory, { recursive: true, force: true })
+      }
       const result = await window.webContents.executeJavaScript(`
         new Promise((resolve, reject) => {
           const rendererDeadline = Date.now() + ${JSON.stringify(runtimeRendererReadyTimeoutMs)}
@@ -627,12 +643,13 @@ function installRuntimeSmokeExit(window) {
                   mode: "all",
                   files: [{
                     id: "runtime-smoke-log",
-                    name: "runtime-smoke.log",
-                    size: 31,
-                    preview: "SCF Done: E(RwB97XD) = -100.0",
+                    name: "runtime-smoke.xyz",
+                    size: 48,
+                    preview: "",
+                    parse: ${JSON.stringify(sourceParse)},
                   }],
                 })
-                if (!registered?.ok || registered.data?.registeredObjects?.[0]?.parserId !== "gaussian-log-text-preview") {
+                if (!registered?.ok || registered.data?.registeredObjects?.[0]?.parserId !== "xyz-text-full-file") {
                   reject(new Error("desktop engine registration smoke failed"))
                   return
                 }
@@ -2124,5 +2141,5 @@ app.on("before-quit", () => {
 })
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit()
+  if (devServerUrl || process.platform !== "darwin") app.quit()
 })

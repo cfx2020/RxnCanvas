@@ -1,5 +1,5 @@
 import type { FlowNode, NodeKind, SourceFile } from "../domain/projectPackages"
-import type { ParseCandidate, ParsedEnergyUnit, SourceParseResult } from "../domain/sourceParsers"
+import type { ParseCandidate, ParsedEnergyUnit, SourceParseResult } from "../domain/sourceParseTypes"
 import { importNodeId, importNodePosition } from "./importLayout"
 import type { ImportNodeLayout, RegisteredImportObject } from "./importRegistrationTypes"
 

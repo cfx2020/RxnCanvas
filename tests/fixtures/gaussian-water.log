@@ -1,0 +1,25 @@
+RxnFlow project-authored parser fixture; illustrative values, not a computed result.
+ Gaussian, Inc.
+ #p B3LYP/def2SVP
+
+ Symbolic Z-matrix:
+ Charge = 0 Multiplicity = 1
+ O 0.000000 0.000000 0.000000
+ H 0.000000 0.000000 0.960000
+ H 0.920000 0.000000 -0.240000
+
+ Standard orientation:
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0        0.000000    0.000000    0.000000
+      2          1           0        0.000000    0.000000    0.960000
+      3          1           0        0.920000    0.000000   -0.240000
+ ---------------------------------------------------------------------
+ NBasis =    24
+ SCF Done:  E(RB3LYP) =  -76.4310000000     A.U. after   10 cycles
+ Sum of electronic and thermal Free Energies=             -76.400000
+ Job cpu time:       0 days  0 hours  0 minutes 12.0 seconds.
+ Elapsed time:       0 days  0 hours  0 minutes  3.0 seconds.
+ Normal termination of Gaussian 16 at Sun Sep 6 00:00:00 2026.

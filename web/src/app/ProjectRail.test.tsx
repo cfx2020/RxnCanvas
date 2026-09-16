@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { SourceFile } from "../domain/projectPackages"
-import type { SourceParseResult } from "../domain/sourceParsers"
+import type { SourceParseResult } from "../domain/sourceParseTypes"
 import { ProjectRail } from "./ProjectRail"
 
 function sourceFile(id: string, name: string, parse?: SourceParseResult): SourceFile {

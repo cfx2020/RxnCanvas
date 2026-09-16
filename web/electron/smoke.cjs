@@ -2,6 +2,7 @@ const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
 const archiver = require("archiver")
+const assert = require("node:assert/strict")
 const { getEngineStatus, runEngineRequest, shutdownEngineWorkers } = require("./engine-bridge.cjs")
 const {
   exportManifestFile,
@@ -34,6 +35,7 @@ const requiredFiles = [
   path.join(__dirname, "project-store.cjs"),
   path.join(__dirname, "..", "dist", "index.html"),
 ]
+const fixtureDirectory = path.resolve(__dirname, "../../tests/fixtures")
 
 async function main() {
   for (const file of requiredFiles) {
@@ -60,8 +62,8 @@ async function main() {
 
   const previewFile = {
     id: "smoke-log",
-    name: "smoke.log",
-    preview: "SCF Done: E(RwB97XD) = -100.0",
+    name: "gaussian-water.log",
+    sourcePath: path.join(fixtureDirectory, "gaussian-water.log"),
   }
   const preview = await runEngineRequest({
     command: "import.preview",
@@ -71,7 +73,8 @@ async function main() {
   if (
     !preview.ok
     || smokeParse?.sourceKind !== "Gaussian"
-    || smokeParse?.parserId !== "gaussian-log-text-preview"
+    || smokeParse?.parserId !== "gaussian-log-cclib+rxnflow-text-full-file"
+    || smokeParse?.parseScope !== "full-file"
     || smokeParse?.objectCount !== 1
     || !Array.isArray(smokeParse?.candidates)
     || smokeParse.candidates.length !== 1
@@ -175,206 +178,46 @@ async function verifyLocalEngineFailureMode() {
 }
 
 async function verifyLocalEngineParserCoverage() {
-  const sourceFile = {
-    id: "local-log",
-    name: "local.log",
-    preview: "SCF Done: E(RwB97XD) = -100.0",
+  const fixtures = [
+    ["gaussian-water.log", "Gaussian", -76.431, 3],
+    ["orca-water.out", "ORCA", -76.34567890, 3],
+    ["h2.xyz", "XYZ", -0.05512398326348249, 2],
+    ["ase-h2.xyz", "extxyz", -0.05512398326348249, 2],
+    ["path.xyz", "MAPLE", -11, 2],
+  ]
+  for (const [name, sourceKind, energy, atomCount] of fixtures) {
+    const result = await runEngineRequest({
+      command: "import.preview",
+      files: [{ name, sourcePath: path.join(fixtureDirectory, name) }],
+    }, { timeoutMs: 5000 })
+    assert.equal(result.ok, true, JSON.stringify(result))
+    const parse = result.data.files[0].parse
+    assert.equal(parse.parsed, true, JSON.stringify(parse))
+    assert.equal(parse.parseScope, "full-file")
+    assert.equal(parse.sourceKind, sourceKind)
+    assert.ok(Math.abs(parse.energyGas - energy) < 1e-12)
+    assert.equal(parse.coordinatePreview.atomCount, atomCount)
+    if (sourceKind === "Gaussian" || sourceKind === "ORCA") {
+      assert.ok(parse.parserId.includes("cclib"))
+      assert.equal(parse.candidates[0].charge, 0)
+      assert.equal(parse.candidates[0].spinMultiplicity, 1)
+      assert.equal(parse.coordinatePreview.atoms[0].element, "O")
+    }
+    if (sourceKind === "MAPLE") assert.deepEqual(parse.candidates.map((candidate) => candidate.label), ["Image 1", "Image 2"])
+    if (sourceKind === "extxyz") assert.ok(parse.warnings.some((warning) => warning.code === "unit_assumed"))
   }
-  const preview = await runEngineRequest({
+  const invalidSource = await runEngineRequest({
     command: "import.preview",
-    files: [sourceFile],
-  }, { timeoutMs: 5000 })
-  if (
-    !preview.ok
-    || preview.data?.files?.[0]?.parse?.sourceKind !== "Gaussian"
-    || preview.data.files[0].parse?.parserId !== "gaussian-log-text-preview"
-  ) {
-    throw new Error(`RxnFlow local import.preview smoke failed: ${JSON.stringify(preview)}`)
-  }
-
-  const extxyzPreview = await runEngineRequest({
+    files: [{ name: "invalid.xyz", sourcePath: path.join(fixtureDirectory, "invalid.xyz") }],
+  })
+  assert.equal(invalidSource.data.files[0].parse.parsed, false)
+  assert.equal(invalidSource.data.files[0].parse.warnings[0].code, "parse_failed")
+  const previewOnly = await runEngineRequest({
     command: "import.preview",
-    files: [{
-      id: "local-extxyz",
-      name: "h2.xyz",
-      preview: [
-        "2",
-        'Properties=species:S:1:pos:R:3 energy=-1.5 charge=0 spin_multiplicity=1 label="h2-extxyz"',
-        "H 0.0 0.0 0.0",
-        "H 0.0 0.0 0.74",
-      ].join("\n"),
-    }],
-  }, { timeoutMs: 5000 })
-  const extxyzParse = extxyzPreview.data?.files?.[0]?.parse
-  if (
-    !extxyzPreview.ok
-    || extxyzParse?.sourceKind !== "extxyz"
-    || extxyzParse?.parserId !== "xyz-ase-text-preview"
-    || extxyzParse?.candidates?.[0]?.charge !== 0
-    || extxyzParse?.candidates?.[0]?.spinMultiplicity !== 1
-    || Math.abs((extxyzParse?.energyGas ?? 0) - -0.05512398326348249) > 1e-12
-    || !extxyzParse?.warnings?.some((warning) => warning.code === "unit_assumed")
-  ) {
-    throw new Error(`RxnFlow local extxyz import.preview smoke failed: ${JSON.stringify(extxyzPreview)}`)
-  }
-
-  const xyzPreview = await runEngineRequest({
-    command: "import.preview",
-    files: [{
-      id: "local-xyz",
-      name: "h2.xyz",
-      preview: [
-        "2",
-        "energy=-1.5 eV",
-        "H 0.0 0.0 0.0",
-        "H 0.0 0.0 0.74",
-      ].join("\n"),
-    }],
-  }, { timeoutMs: 5000 })
-  const xyzParse = xyzPreview.data?.files?.[0]?.parse
-  if (
-    !xyzPreview.ok
-    || xyzParse?.sourceKind !== "XYZ"
-    || Math.abs((xyzParse?.energyGas ?? 0) - -0.05512398326348249) > 1e-12
-    || xyzParse?.warnings?.some((warning) => warning.code === "unit_assumed")
-  ) {
-    throw new Error(`RxnFlow local XYZ energy-unit smoke failed: ${JSON.stringify(xyzPreview)}`)
-  }
-
-  const badXyzPreview = await runEngineRequest({
-    command: "import.preview",
-    files: [{
-      id: "local-bad-xyz",
-      name: "xyz-bad-atom-count.xyz",
-      preview: [
-        "3",
-        "bad atom count",
-        "H 0.0 0.0 0.0",
-      ].join("\n"),
-    }],
-  }, { timeoutMs: 5000 })
-  const badXyzParse = badXyzPreview.data?.files?.[0]?.parse
-  if (
-    !badXyzPreview.ok
-    || badXyzParse?.parsed !== false
-    || badXyzParse?.sourceKind !== "XYZ"
-    || badXyzParse?.parserId !== "xyz-text-preview"
-    || badXyzParse?.warnings?.[0]?.code !== "parse_failed"
-  ) {
-    throw new Error(`RxnFlow local bad XYZ parse-failed smoke failed: ${JSON.stringify(badXyzPreview)}`)
-  }
-
-  const maplePreview = await runEngineRequest({
-    command: "import.preview",
-    files: [{
-      id: "local-maple-xyz",
-      name: "path.xyz",
-      preview: [
-        "2",
-        "Image 1 Energy=-10.0",
-        "H 0.0 0.0 0.0",
-        "H 0.0 0.0 0.7",
-        "2",
-        "Image 2 Energy=-11.0",
-        "H 0.0 0.0 0.0",
-        "H 0.0 0.0 0.8",
-      ].join("\n"),
-    }],
-  }, { timeoutMs: 5000 })
-  const mapleParse = maplePreview.data?.files?.[0]?.parse
-  if (
-    !maplePreview.ok
-    || mapleParse?.sourceKind !== "MAPLE"
-    || mapleParse?.candidates?.[0]?.label !== "Image 1"
-    || mapleParse?.candidates?.[1]?.label !== "Image 2"
-    || mapleParse?.warnings?.some((warning) => warning.code === "unit_assumed")
-  ) {
-    throw new Error(`RxnFlow local MAPLE trajectory label smoke failed: ${JSON.stringify(maplePreview)}`)
-  }
-
-  const orcaPreview = await runEngineRequest({
-    command: "import.preview",
-    files: [{
-      id: "local-orca",
-      name: "water.out",
-      preview: [
-        "! B3LYP def2-SVP Opt",
-        "* xyz 0 1",
-        "O 0.0 0.0 0.0",
-        "H 0.0 0.0 0.96",
-        "H 0.92 0.0 -0.24",
-        "*",
-        "CARTESIAN COORDINATES (ANGSTROEM)",
-        "---------------------------------",
-        "O      0.000000    0.000000    0.000000",
-        "H      0.000000    0.000000    0.960000",
-        "H      0.920000    0.000000   -0.240000",
-        "---------------------------------",
-        "Total Charge           Charge          ....    0",
-        "Multiplicity           Mult            ....    1",
-        "TOTAL SCF ENERGY",
-        "Total Energy       :          -76.34567890 Eh           -2077.47334 eV",
-      ].join("\n"),
-    }],
-  }, { timeoutMs: 5000 })
-  const orcaParse = orcaPreview.data?.files?.[0]?.parse
-  if (
-    !orcaPreview.ok
-    || orcaParse?.sourceKind !== "ORCA"
-    || orcaParse?.formula !== "H2O"
-    || Math.abs((orcaParse?.energyGas ?? 0) - -76.34567890) > 1e-12
-    || orcaParse?.coordinatePreview?.atomCount !== 3
-    || orcaParse?.coordinatePreview?.atoms?.[0]?.element !== "O"
-    || Math.abs((orcaParse?.coordinatePreview?.atoms?.[1]?.z ?? 0) - 0.96) > 1e-12
-    || orcaParse?.candidates?.[0]?.charge !== 0
-    || orcaParse?.candidates?.[0]?.spinMultiplicity !== 1
-  ) {
-    throw new Error(`RxnFlow local ORCA geometry smoke failed: ${JSON.stringify(orcaPreview)}`)
-  }
-
-  const irPreview = await runEngineRequest({
-    command: "import.preview",
-    files: [{
-      id: "local-ir",
-      name: "ir-complex.log",
-      preview: [
-        "Stoichiometry C2H6IrN",
-        "Input orientation:",
-        "---------------------------------------------------------------------",
-        "Center     Atomic      Atomic             Coordinates (Angstroms)",
-        "Number     Number       Type             X           Y           Z",
-        "---------------------------------------------------------------------",
-        "     1         77           0        0.000000    0.000000    0.000000",
-        "     2          6           0        1.900000    0.000000    0.000000",
-        "     3          7           0       -1.800000    0.000000    0.000000",
-        "---------------------------------------------------------------------",
-        "SCF Done: E(RwB97XD) = -4749.26415609 A.U.",
-      ].join("\n"),
-    }],
-  }, { timeoutMs: 5000 })
-  const irParse = irPreview.data?.files?.[0]?.parse
-  if (
-    !irPreview.ok
-    || irParse?.coordinatePreview?.elements?.join("|") !== "C|Ir|N"
-    || irParse?.coordinatePreview?.atoms?.[0]?.element !== "Ir"
-  ) {
-    throw new Error(`RxnFlow local Gaussian Ir coordinate smoke failed: ${JSON.stringify(irPreview)}`)
-  }
-
-  const registered = await runEngineRequest({
-    command: "import.register_all",
-    files: [{
-      ...sourceFile,
-      parse: preview.data.files[0].parse,
-    }],
-  }, { timeoutMs: 5000 })
-  if (
-    !registered.ok
-    || registered.data?.registeredObjects?.length !== 1
-    || registered.data.registeredObjects[0]?.parserId !== "gaussian-log-text-preview"
-  ) {
-    throw new Error(`RxnFlow local import.register_all smoke failed: ${JSON.stringify(registered)}`)
-  }
+    files: [{ name: "missing.log", preview: "SCF Done: E(RB3LYP) = -100.0 A.U." }],
+  })
+  assert.equal(previewOnly.data.files[0].parse.parsed, false)
+  assert.equal(previewOnly.data.files[0].parse.warnings[0].code, "full_file_required")
 
   const invalidProject = await runEngineRequest({
     command: "project.validate",

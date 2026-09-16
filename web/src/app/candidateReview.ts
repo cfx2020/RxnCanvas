@@ -1,5 +1,5 @@
 import type { SourceFile } from "../domain/projectPackages"
-import type { SourceParseResult } from "../domain/sourceParsers"
+import type { SourceParseResult } from "../domain/sourceParseTypes"
 import type {
   CandidateReviewEntry,
   CandidateReviewState,

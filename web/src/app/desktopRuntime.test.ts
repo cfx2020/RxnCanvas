@@ -1,17 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { browserPreviewEngineStatus, engineStatusFailure } from "./desktopRuntime"
+import { engineStatusFailure } from "./desktopRuntime"
 
 describe("desktopRuntime", () => {
-  it("builds browser preview engine status", () => {
-    expect(browserPreviewEngineStatus()).toEqual({
-      ok: false,
-      error: {
-        code: "browser_preview",
-        message: "Browser preview",
-      },
-    })
-  })
-
   it("normalizes engine status failures", () => {
     expect(engineStatusFailure(new Error("boom"))).toEqual({
       ok: false,

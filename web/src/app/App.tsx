@@ -30,7 +30,7 @@ import {
   type ProjectSummary,
   type SourceFile,
 } from "../domain/projectPackages"
-import { parseSourcePreview, type ParsedEnergyUnit, type SourceParseResult } from "../domain/sourceParsers"
+import type { ParsedEnergyUnit, SourceParseResult } from "../domain/sourceParseTypes"
 import {
   autoLayoutFlowNodes,
   clamp,
@@ -77,9 +77,12 @@ import {
   browserImportSourceFilesFromFiles,
   canvasRawFileDropImportTransition,
   pendingImportProjectTransition,
+  projectWorkspaceImportApplyTransition,
+  rebasePreparedProjectWorkspaceImport,
   reconcileProjectWorkspaceSourceNodes,
   type CandidateReviewState,
   type ImportSourceFile,
+  type PreparedProjectWorkspaceImport,
   type StageSourceFilesOptions,
 } from "./importRegistration"
 import {
@@ -174,6 +177,7 @@ import {
 import type { SurfaceSize } from "./canvasGeometry"
 import {
   applyCanvasSelectionState,
+  applyImportedWorkspaceSnapshotState,
   applyProjectTransitionState,
   applyProjectWorkspaceSnapshotState,
   type ProjectTransitionApplication,
@@ -226,8 +230,8 @@ import {
   startConnectionAction,
 } from "./appCanvasPointerActions"
 import {
-  deferredDesktopImportPlaceholder,
-  handleCanvasRawFileDropAction,
+  deferredImportPlaceholder,
+  handleCanvasProjectFileDropAction,
   importDesktopFilesAction,
   importFilesForProjectAction,
   openImportPickerAction,
@@ -242,7 +246,7 @@ import {
   createAnimationFrameBatcher,
   desktopImportFilesWithProjectTargets,
   desktopImportFileWithReplacementIdentity,
-  desktopParsedImportSourceFiles,
+  parsedImportSourceFiles,
   desktopSourceFilePathForRawFile,
   type AnimationFrameBatcher,
 } from "./importParseJobs"
@@ -445,6 +449,7 @@ export function App() {
   const autosaveInFlightRef = useRef(false)
   const autosaveQueueRef = useRef(new Map<string, ProjectAutosaveInput>())
   const activeProjectIdRef = useRef(initialProjects[0].id)
+  const activeCanvasTabIdRef = useRef("canvas-1")
   const projectLifecycleGenerationRef = useRef(new Map<string, number>())
   const projectForgetInFlightRef = useRef(new Set<string>())
   const projectRestoreStateRef = useRef<ProjectRestoreRuntimeState | null>(null)
@@ -662,6 +667,10 @@ export function App() {
   useLayoutEffect(() => {
     activeProjectIdRef.current = activeProjectId
   }, [activeProjectId])
+
+  useLayoutEffect(() => {
+    activeCanvasTabIdRef.current = activeCanvasTabId
+  }, [activeCanvasTabId])
 
   const setCanvasLivePanActive = useCallback((active: boolean) => {
     if (livePanActiveRef.current === active) return
@@ -1112,10 +1121,68 @@ export function App() {
       },
       activeSnapshot,
     }
+    projectRestoreStateRef.current = {
+      projects: reconciledTransition.projects ?? projectRestoreStateRef.current?.projects ?? projects,
+      workspaces: reconciledTransition.workspaces,
+      activeProjectId: reconciledTransition.activeProjectId,
+      activeSnapshot,
+    }
     setCanvasTabs(canvasTabsFromProjectCanvases(activeSnapshot.canvases))
     setActiveCanvasTabId(activeSnapshot.activeCanvasId)
     applyProjectTransitionState(appStateSetters, reconciledTransition, clearEditHistory)
-  }, [appStateSetters, clearEditHistory])
+  }, [appStateSetters, clearEditHistory, projects])
+
+  const saveProjectWorkspace = useCallback((projectId: string, snapshot: ProjectWorkspaceSnapshot) => {
+    const reconciledSnapshot = reconcileProjectWorkspaceSourceNodes(snapshot)
+    setProjectWorkspaces((current) => {
+      if (!Object.prototype.hasOwnProperty.call(current, projectId)) return current
+      const next = { ...current, [projectId]: reconciledSnapshot }
+      const latestState = projectRestoreStateRef.current
+      if (latestState) {
+        projectRestoreStateRef.current = {
+          ...latestState,
+          workspaces: next,
+          activeSnapshot: latestState.activeProjectId === projectId
+            ? reconciledSnapshot
+            : latestState.activeSnapshot,
+        }
+      }
+      return next
+    })
+  }, [])
+
+  const applyDeferredProjectWorkspace = useCallback((
+    projectId: string,
+    prepared: PreparedProjectWorkspaceImport,
+    options: StageSourceFilesOptions,
+  ) => {
+    const latestState = projectRestoreStateRef.current
+    const latestSnapshot = latestState?.activeProjectId === projectId
+      ? latestState.activeSnapshot
+      : latestState?.workspaces[projectId]
+    if (!latestSnapshot) return
+    const rebasedPrepared = rebasePreparedProjectWorkspaceImport(prepared, latestSnapshot, options)
+    if (activeProjectIdRef.current !== projectId) {
+      saveProjectWorkspace(projectId, rebasedPrepared.snapshot)
+      return
+    }
+    const transition = projectWorkspaceImportApplyTransition(rebasedPrepared)
+    setCanvasTabs((current) => current.map((tab) => {
+      const canvas = transition.snapshot.canvases.find((item) => item.id === tab.id)
+      return canvas ? { ...tab, snapshot: canvasTabSnapshotFromState(canvas) } : tab
+    }))
+    const targetCanvasIsActive = !options.targetCanvasId
+      || activeCanvasTabIdRef.current === options.targetCanvasId
+    if (targetCanvasIsActive && transition.reviewState) setCandidateReview(transition.reviewState)
+    if (targetCanvasIsActive && transition.shouldPushEditHistory) pushEditHistory()
+    if (latestState?.activeProjectId === projectId) {
+      projectRestoreStateRef.current = { ...latestState, activeSnapshot: transition.snapshot }
+    }
+    applyImportedWorkspaceSnapshotState(appStateSetters, {
+      snapshot: transition.snapshot,
+      keyboardEdgeSourceId: transition.keyboardEdgeSourceId,
+    })
+  }, [appStateSetters, pushEditHistory, saveProjectWorkspace])
 
   const switchCanvasTab = useCallback((tabId: string) => {
     const currentSnapshot = currentCanvasTabSnapshot()
@@ -1902,23 +1969,31 @@ export function App() {
     importedFiles: ImportSourceFile[],
     options: StageSourceFilesOptions = {},
   ) => {
+    const latestState = projectRestoreStateRef.current ?? {
+      projects,
+      workspaces: projectWorkspaces,
+      activeProjectId,
+      activeSnapshot: currentProjectWorkspaceSnapshot(),
+    }
     await stageSourceFilesForProjectAction({
       projectId,
       importedFiles,
       options,
-      activeProjectId,
-      projects,
-      workspaces: projectWorkspaces,
-      currentSnapshot: currentProjectWorkspaceSnapshot(),
+      activeProjectId: latestState.activeProjectId,
+      projects: latestState.projects,
+      workspaces: latestState.workspaces,
+      currentSnapshot: latestState.activeSnapshot,
       emptyViewport: defaultCanvasViewport(canvasRef.current),
       canvas: canvasRef.current,
       registerImportCandidates: window.rxnflowDesktop?.registerImportCandidates,
       stageCurrentProjectSourceFiles: stageSourceFiles,
       applyProjectTransition,
+      applyDeferredProjectWorkspace,
       setCandidateReview,
     })
   }, [
     activeProjectId,
+    applyDeferredProjectWorkspace,
     applyProjectTransition,
     currentProjectWorkspaceSnapshot,
     projectWorkspaces,
@@ -1992,7 +2067,7 @@ export function App() {
     const rollbackTargets = removedFiles.filter(Boolean)
     if (rollbackTargets.length === 0) return
     const shouldRemove = (file: SourceFile) => rollbackTargets.some((target) => shouldRemoveFailedDesktopImportFile(file, target))
-    if (projectId === activeProjectId) {
+    if (projectId === activeProjectIdRef.current) {
       setFiles((current) => {
         const next = current.filter((file) => !shouldRemove(file))
         return next.length === current.length ? current : next
@@ -2003,30 +2078,37 @@ export function App() {
         if (!workspace) return current
         const nextFiles = workspace.files.filter((file) => !shouldRemove(file))
         if (nextFiles.length === workspace.files.length) return current
-        return {
+        const next = {
           ...current,
           [projectId]: {
             ...workspace,
             files: nextFiles,
           },
         }
+        const latestState = projectRestoreStateRef.current
+        if (latestState) {
+          projectRestoreStateRef.current = { ...latestState, workspaces: next }
+        }
+        return next
       })
     }
-    const rollbackIds = new Set(rollbackTargets.map((file) => file.id))
-    setSelectedFileIds((current) => current.filter((id) => !rollbackIds.has(id)))
-    setSelectedFileId((current) => current && rollbackIds.has(current) ? null : current)
-    setLastSelectedFileId((current) => current && rollbackIds.has(current) ? null : current)
-    setInspectorMode("inspector")
-  }, [activeProjectId])
+    if (activeProjectIdRef.current === projectId) {
+      const rollbackIds = new Set(rollbackTargets.map((file) => file.id))
+      setSelectedFileIds((current) => current.filter((id) => !rollbackIds.has(id)))
+      setSelectedFileId((current) => current && rollbackIds.has(current) ? null : current)
+      setLastSelectedFileId((current) => current && rollbackIds.has(current) ? null : current)
+      setInspectorMode("inspector")
+    }
+  }, [])
 
-  const runDesktopImportParseJob = useCallback((
+  const runImportParseJob = useCallback((
     projectId: string,
     importedFiles: ImportSourceFile[],
     options: StageSourceFilesOptions = {},
     rawFiles: File[] = [],
   ) => {
     const desktopApi = window.rxnflowDesktop
-    if (!desktopApi?.importSourceFiles || importedFiles.length === 0) return
+    if (importedFiles.length === 0) return
     const autoRegister = options.autoRegister === true
     const projectFiles = projectId === activeProjectId
       ? currentProjectWorkspaceSnapshot().files
@@ -2047,10 +2129,11 @@ export function App() {
               ...options,
               fileMode: "update",
               autoRegister: false,
-              parseMode: "defer",
+              activateProject: false,
             },
           )
           if (!desktopImportFrameBatchersRef.current.has(currentBatcher)) return
+          if (activeProjectIdRef.current !== projectId) return
           const selectedFileId = lastQueuedFile.id
           setSelectedFileIds([selectedFileId])
           setSelectedFileId(selectedFileId)
@@ -2060,7 +2143,7 @@ export function App() {
       desktopImportFrameBatchersRef.current.add(frameBatcher)
     }
 
-    const parseJob = desktopParsedImportSourceFiles({
+    const parseJob = parsedImportSourceFiles({
       desktopApi,
       projectId,
       projectDirectory,
@@ -2073,16 +2156,17 @@ export function App() {
         workspaces: projectWorkspaces,
       }),
       onFileParsed: async (parsedFile, index) => {
+        if (appDisposedRef.current) return
         const replacementTarget = replacementPlan.replacementsByImportId.get(parsedFile.id)
         const restoreReplacementSelection = () => {
-          if (!replacementTarget) return
+          if (!replacementTarget || activeProjectIdRef.current !== projectId) return
           setSelectedFileIds((current) => Array.from(new Set(current.map((id) => (
             id === parsedFile.id ? replacementTarget.fileId : id
           )))))
           setSelectedFileId((current) => current === parsedFile.id ? replacementTarget.fileId : current)
           setLastSelectedFileId((current) => current === parsedFile.id ? replacementTarget.fileId : current)
         }
-        if (desktopImportFailureShouldRemovePlaceholder(parsedFile)) {
+        if (desktopApi && desktopImportFailureShouldRemovePlaceholder(parsedFile)) {
           if (!frameBatcher) {
             restoreReplacementSelection()
             removePendingImportFile(projectId, parsedFile, importedFiles[index] ?? parsedFile)
@@ -2111,7 +2195,7 @@ export function App() {
           ...options,
           fileMode: "update",
           autoRegister: true,
-          parseMode: "defer",
+          activateProject: false,
         })
       },
     })
@@ -2127,7 +2211,7 @@ export function App() {
             title: entries.some((entry) => entry.code === "unsupported_format") ? "Unsupported import format" : "Import failed",
             entries,
           }
-          if (desktopApi.showImportIssues) {
+          if (desktopApi?.showImportIssues) {
             void desktopApi.showImportIssues(issue).catch(() => {
               if (!appDisposedRef.current) setImportIssueDialog(issue)
             })
@@ -2151,7 +2235,7 @@ export function App() {
           issues: [{
             severity: "warning",
             code: "import_parse_failed",
-            message: reportedError instanceof Error ? reportedError.message : "The desktop parser could not finish this import job.",
+            message: reportedError instanceof Error ? reportedError.message : "The Python parser could not finish this import job.",
           }],
         })
       } finally {
@@ -2203,7 +2287,6 @@ export function App() {
 
   const importFiles = useCallback(async (fileList: FileList | File[], projectId = activeProjectId) => {
     const rawFiles = Array.from(fileList)
-    const useDesktopImportJob = Boolean(window.rxnflowDesktop?.importSourceFiles)
     const desktopApi = window.rxnflowDesktop
     const projectFiles = projectId === activeProjectId
       ? currentProjectWorkspaceSnapshot().files
@@ -2213,23 +2296,21 @@ export function App() {
       fileList: rawFiles,
       projectId,
       stageSourceFilesForProject,
-      previewMode: useDesktopImportJob ? "none" : "full",
-      prepareFile: useDesktopImportJob
+      prepareFile: desktopApi
         ? (file) => {
             const sourcePath = desktopSourceFilePathForRawFile(desktopApi, file)
             return sourcePath ? { sourcePath } : undefined
           }
         : undefined,
-      prepareImportedFiles: useDesktopImportJob
+      prepareImportedFiles: desktopApi
         ? (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files
         : undefined,
       stageOptions: {
         autoRegister: false,
-        parseMode: useDesktopImportJob ? "defer" : "fallback",
       },
     })
-    if (useDesktopImportJob) runDesktopImportParseJob(projectId, importedFiles, { autoRegister: false }, rawFiles)
-  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, runDesktopImportParseJob, stageSourceFilesForProject])
+    runImportParseJob(projectId, importedFiles, { autoRegister: false }, rawFiles)
+  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, runImportParseJob, stageSourceFilesForProject])
 
   const updateTextAnnotation = useCallback((annotationId: string, text: string) => {
     const nextText = text.trim()
@@ -2272,52 +2353,45 @@ export function App() {
       const sourceFiles = drop.files.filter((file) => !isCanvasImageFile(file))
       if (imageFiles.length > 0) await addImageAnnotations(imageFiles, drop.position)
       if (sourceFiles.length === 0) return
-      if (window.rxnflowDesktop?.importSourceFiles) {
-        const transition = canvasRawFileDropImportTransition({ ...drop, files: sourceFiles }, files)
-        if (!transition || transition.kind !== "external-files") return
-        const desktopApi = window.rxnflowDesktop
-        const importedFiles = await browserImportSourceFilesFromFiles(transition.files, transition.idPrefix, {
-          previewMode: "none",
-          prepareFile: (file) => {
-            const sourcePath = desktopSourceFilePathForRawFile(desktopApi, file)
-            return sourcePath ? { sourcePath } : undefined
-          },
-        })
-        const projectTargetedFiles = desktopImportFilesWithProjectTargets(
-          importedFiles,
-          files,
-          projectDirectoriesRef.current[activeProjectId] ?? null,
-        ).files
-        await stageSourceFiles(projectTargetedFiles.map(deferredDesktopImportPlaceholder), {
-          ...transition.options,
-          autoRegister: false,
-          parseMode: "defer",
-        })
-        runDesktopImportParseJob(activeProjectId, projectTargetedFiles, transition.options, sourceFiles)
-        return
-      }
-      await handleCanvasRawFileDropAction({
-        drop: { ...drop, files: sourceFiles },
-        files,
-        stageCurrentProjectSourceFiles: stageSourceFiles,
+      const transition = canvasRawFileDropImportTransition({ ...drop, files: sourceFiles }, files)
+      if (!transition || transition.kind !== "external-files") return
+      const desktopApi = window.rxnflowDesktop
+      const importedFiles = browserImportSourceFilesFromFiles(transition.files, transition.idPrefix, {
+        prepareFile: (file) => {
+          const sourcePath = desktopSourceFilePathForRawFile(desktopApi, file)
+          return sourcePath ? { sourcePath } : undefined
+        },
       })
+      const projectTargetedFiles = desktopApi
+        ? desktopImportFilesWithProjectTargets(importedFiles, files, projectDirectoriesRef.current[activeProjectId] ?? null).files
+        : importedFiles
+      await stageSourceFiles(projectTargetedFiles.map(deferredImportPlaceholder), {
+        ...transition.options,
+        autoRegister: false,
+        targetCanvasId: activeCanvasTabId,
+      })
+      runImportParseJob(activeProjectId, projectTargetedFiles, {
+        ...transition.options,
+        targetCanvasId: activeCanvasTabId,
+      }, sourceFiles)
       return
     }
     const groupFileIds = sourceFileGroupIds(files, drop.fileIds)
     const refreshed = await refreshActiveProjectSourceSnapshot(groupFileIds)
     const refreshedSnapshot = refreshed?.snapshot ?? currentProjectWorkspaceSnapshot()
-    await handleCanvasRawFileDropAction({
+    await handleCanvasProjectFileDropAction({
       drop: { ...drop, fileIds: Array.from(groupFileIds) },
       files: refreshedSnapshot.files,
       stageCurrentProjectSourceFiles: (importedFiles, options) => stageSourceFiles(importedFiles, options, refreshedSnapshot),
     })
   }, [
     activeProjectId,
+    activeCanvasTabId,
     addImageAnnotations,
     currentProjectWorkspaceSnapshot,
     files,
     refreshActiveProjectSourceSnapshot,
-    runDesktopImportParseJob,
+    runImportParseJob,
     stageSourceFiles,
   ])
 
@@ -2381,7 +2455,6 @@ export function App() {
   }, [])
 
   const importDesktopFiles = useCallback(async (projectId = activeProjectId) => {
-    const useDesktopImportJob = Boolean(window.rxnflowDesktop?.importSourceFiles)
     const projectFiles = projectId === activeProjectId
       ? currentProjectWorkspaceSnapshot().files
       : projectWorkspaces[projectId]?.files ?? []
@@ -2390,16 +2463,13 @@ export function App() {
       projectId,
       chooseFiles: window.rxnflowDesktop?.chooseFiles,
       stageSourceFilesForProject,
-      prepareImportedFiles: useDesktopImportJob
-        ? (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files
-        : undefined,
+      prepareImportedFiles: (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files,
       stageOptions: {
         autoRegister: false,
-        parseMode: useDesktopImportJob ? "defer" : "fallback",
       },
     })
-    if (useDesktopImportJob) runDesktopImportParseJob(projectId, importedFiles, { autoRegister: false })
-  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, runDesktopImportParseJob, stageSourceFilesForProject])
+    runImportParseJob(projectId, importedFiles, { autoRegister: false })
+  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, runImportParseJob, stageSourceFilesForProject])
 
   const openImportPicker = useCallback((projectId = activeProjectId) => {
     openImportPickerAction({
@@ -2876,16 +2946,10 @@ export function App() {
           return parse
         }
       } catch {
-        // Browser fallback below can still parse the in-memory preview sample.
+        return null
       }
     }
-    if (!file.preview) return null
-    const parse = parseSourcePreview({ name: file.name, preview: file.preview })
-    setFiles((current) => current.map((item) => item.id === file.id
-      ? normalizeSourceFileForPersistence({ ...item, parse, kind: parse.sourceKind, status: parse.parsed ? "parsed" : item.status })
-      : item,
-    ))
-    return parse
+    return null
   }, [activeProjectId])
 
   const setRelativeEnergyZeroFromNode = useCallback((nodeId: string) => {

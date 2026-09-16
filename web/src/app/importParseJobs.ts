@@ -1,9 +1,10 @@
-import type { SourceParseResult } from "../domain/sourceParsers"
+import type { SourceParseResult } from "../domain/sourceParseTypes"
 import type { SourceFile } from "../domain/projectPackages"
 import type { RxnflowDesktopApi } from "./appRuntimeEffects"
 import type { ImportSourceFile } from "./importRegistration"
+import { BrowserEngineError, parseBrowserSourceFile } from "./browserEngine"
 
-const defaultDesktopImportConcurrency = 3
+const defaultImportConcurrency = 3
 
 export type DesktopImportReplacementTarget = {
   fileId: string
@@ -200,13 +201,13 @@ export function createAnimationFrameBatcher<T>({
   }
 }
 
-export async function desktopParsedImportSourceFiles({
+export async function parsedImportSourceFiles({
   desktopApi,
   projectId,
   projectDirectory,
   importedFiles,
   rawFiles = [],
-  concurrency = defaultDesktopImportConcurrency,
+  concurrency = defaultImportConcurrency,
   referencedStoredPaths = [],
   onFileParsed,
 }: {
@@ -219,8 +220,7 @@ export async function desktopParsedImportSourceFiles({
   referencedStoredPaths?: string[]
   onFileParsed?: (parsedFile: ImportSourceFile, index: number) => void | Promise<void>
 }): Promise<ImportSourceFile[]> {
-  const importSourceFiles = desktopApi?.importSourceFiles
-  if (!desktopApi || !importSourceFiles || importedFiles.length === 0) return []
+  if (importedFiles.length === 0) return []
 
   const results: Array<ImportSourceFile | undefined> = new Array(importedFiles.length)
   const workerCount = Math.min(importedFiles.length, normalizedImportConcurrency(concurrency))
@@ -245,15 +245,21 @@ export async function desktopParsedImportSourceFiles({
       const index = nextIndex
       nextIndex += 1
       const source = importedFiles[index]
-      const parsedFile = await desktopParsedImportSourceFile({
-        desktopApi,
-        importSourceFiles,
-        projectId,
-        projectDirectory,
-        referencedStoredPaths,
-        source,
-        rawFile: rawFiles[index],
-      })
+      const parsedFile = desktopApi
+        ? desktopApi.importSourceFiles
+          ? await desktopParsedImportSourceFile({
+              desktopApi,
+              importSourceFiles: desktopApi.importSourceFiles,
+              projectId,
+              projectDirectory,
+              referencedStoredPaths,
+              source,
+              rawFile: rawFiles[index],
+            })
+          : source.parse
+            ? source
+            : importFailureResult(source, "The desktop parser is unavailable.", "engine_unavailable")
+        : await browserParsedImportSourceFile(source, rawFiles[index])
       results[index] = parsedFile
       emitParsedFile(parsedFile, index)
     }
@@ -297,7 +303,7 @@ async function desktopParsedImportSourceFile({
     const payloadFile = await desktopImportPayloadFile(desktopApi, source, rawFile)
     const response = await importSourceFiles({ projectId, projectDirectory, referencedStoredPaths, files: [payloadFile] })
     if (!response.ok) {
-      return desktopImportFailureResult(
+      return importFailureResult(
         source,
         response.error.message,
         response.error.code,
@@ -305,17 +311,17 @@ async function desktopParsedImportSourceFile({
       )
     }
     if (!Array.isArray(response.data.files)) {
-      return desktopImportFailureResult(source, "The desktop parser did not return import data for this file.", "import_preview_missing", preserveStoredPath)
+      return importFailureResult(source, "The desktop parser did not return import data for this file.", "import_preview_missing", preserveStoredPath)
     }
 
     const file = response.data.files[0]
     if (!file) {
-      return desktopImportFailureResult(source, "The desktop parser did not return import data for this file.", "import_preview_missing", preserveStoredPath)
+      return importFailureResult(source, "The desktop parser did not return import data for this file.", "import_preview_missing", preserveStoredPath)
     }
 
     const merged = mergeDesktopImportResult(source, file)
     if (file.error) {
-      return desktopImportFailureResult(merged, file.error.message, file.error.code, preserveStoredPath)
+      return importFailureResult(merged, file.error.message, file.error.code, preserveStoredPath)
     }
     if (!file.parse) {
       const warning = file.error
@@ -324,11 +330,11 @@ async function desktopParsedImportSourceFile({
           code: "import_preview_missing",
           message: "The desktop parser did not return import data for this file.",
         }
-      return desktopImportFailureResult(merged, warning.message, warning.code, preserveStoredPath)
+      return importFailureResult(merged, warning.message, warning.code, preserveStoredPath)
     }
     return merged
   } catch (error) {
-    return desktopImportFailureResult(
+    return importFailureResult(
       source,
       error instanceof Error ? error.message : "The desktop parser could not finish this import file.",
       "import_parse_failed",
@@ -337,8 +343,29 @@ async function desktopParsedImportSourceFile({
   }
 }
 
+async function browserParsedImportSourceFile(source: ImportSourceFile, rawFile: File | undefined): Promise<ImportSourceFile> {
+  if (!rawFile) return importFailureResult(source, "A complete source file is required for parsing.", "full_file_required")
+  try {
+    const parse = await parseBrowserSourceFile(rawFile)
+    if (parse.terminationStatus === "error" || parse.terminationStatus === "running") {
+      return importFailureResult(
+        { ...source, parse, kind: parse.sourceKind },
+        parse.terminationStatus === "error" ? "Calculation output ended with error termination." : "Calculation output is incomplete or still running.",
+        parse.terminationStatus === "error" ? "calculation_error_termination" : "calculation_incomplete",
+      )
+    }
+    return { ...source, parse, kind: parse.sourceKind, status: parse.parsed ? "parsed" : "staged" }
+  } catch (error) {
+    return importFailureResult(
+      source,
+      error instanceof Error ? error.message : "The Python parser could not finish this import file.",
+      error instanceof BrowserEngineError ? error.code : "import_parse_failed",
+    )
+  }
+}
+
 function normalizedImportConcurrency(concurrency: number): number {
-  if (!Number.isFinite(concurrency)) return defaultDesktopImportConcurrency
+  if (!Number.isFinite(concurrency)) return defaultImportConcurrency
   return Math.max(1, Math.min(8, Math.floor(concurrency)))
 }
 
@@ -358,7 +385,7 @@ async function desktopImportPayloadFile(
   }
 }
 
-function desktopImportFailureResult(
+function importFailureResult(
   source: ImportSourceFile,
   message: string,
   code: string,
@@ -371,11 +398,11 @@ function desktopImportFailureResult(
   return {
     ...failedSource,
     status: "staged",
-    parse: failedDesktopParseResult(source, message, code),
+    parse: failedParseResult(source, message, code),
   }
 }
 
-function failedDesktopParseResult(
+function failedParseResult(
   source: ImportSourceFile,
   message: string,
   code: string,

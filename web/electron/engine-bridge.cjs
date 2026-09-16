@@ -284,25 +284,11 @@ function resolveEngineCommand() {
   if (isPackagedAppRuntime() && process.resourcesPath) {
     return [resolveMaterializedPackagedEngine(path.join(process.resourcesPath, "engine", executableName)), []]
   }
-  const bundledEngine = bundledEngineCommand()
-  if (bundledEngine) return bundledEngine
-  return [process.env.RXNFLOW_PYTHON || "python3", ["-m", "rxnflow.engine_ipc"]]
-}
-
-function bundledEngineCommand() {
-  const executableName = engineExecutableName()
-  const candidates = [
-    process.resourcesPath ? path.join(process.resourcesPath, "engine", executableName) : null,
-    path.join(__dirname, "..", "engine", executableName),
-  ].filter(Boolean)
-  const enginePath = candidates.find((candidate) => {
-    try {
-      return fs.statSync(candidate).isFile()
-    } catch {
-      return false
-    }
-  })
-  return enginePath ? [enginePath, []] : null
+  const venv = path.join(defaultRepoRoot, "web", ".engine-build", "dev-venv")
+  const venvPython = process.platform === "win32" ? path.join(venv, "Scripts", "python.exe") : path.join(venv, "bin", "python")
+  const python = process.env.RXNFLOW_PYTHON
+    || (fs.existsSync(venvPython) ? venvPython : process.platform === "win32" ? "python" : "python3")
+  return [python, ["-m", "rxnflow.engine_ipc"]]
 }
 
 function engineExecutableName() {

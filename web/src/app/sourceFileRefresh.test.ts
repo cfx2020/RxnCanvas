@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import type { SourceFile } from "../domain/projectPackages"
-import type { SourceParseResult } from "../domain/sourceParsers"
+import type { SourceParseResult } from "../domain/sourceParseTypes"
 import type { RxnflowDesktopApi } from "./appRuntimeEffects"
 import {
   mergeRefreshedProjectSourceFiles,

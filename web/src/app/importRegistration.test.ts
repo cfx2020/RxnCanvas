@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { defaultEnergyDisplayOptions } from "./energyDisplay"
 import type { SourceFile } from "../domain/projectPackages"
 import type { ProjectWorkspaceSnapshot } from "./projectWorkspace"
-import type { ParseCandidate, SourceParseResult } from "../domain/sourceParsers"
+import type { ParseCandidate, SourceParseResult } from "../domain/sourceParseTypes"
 import {
   browserImportSourceFilesFromFiles,
   canvasRawFileDropImportTransition,
@@ -29,12 +29,12 @@ import {
   pendingImportProjectTransition,
   prepareProjectWorkspaceImport,
   projectWorkspaceImportApplyTransition,
+  rebasePreparedProjectWorkspaceImport,
   reconcileProjectWorkspaceSourceNodes,
   projectWorkspaceWithImportPlan,
   projectWorkspaceWithRegisteredImportNodes,
   registeredOrFallbackNodesFromEntries,
   sourceFilesFromIds,
-  sourcePreviewSample,
   sourceFilesWithImportPlan,
   toggleCandidateReviewSelection,
   type CandidateReviewEntry,
@@ -531,6 +531,166 @@ describe("importRegistration", () => {
 
     next.nodes[0].position.x = 999
     expect(targetSnapshot.nodes[0].position.x).toBe(1)
+  })
+
+  it("keeps deferred canvas imports on their original canvas", () => {
+    const imported = sourceFile("deferred-canvas", parseResult([
+      candidate({ candidateId: "only", roleHint: "final" }),
+    ]))
+    const plan = buildImportPlan([imported], layout)
+    const canvasOne = workspaceSnapshot({
+      nodes: [],
+      selectedNodeIds: [],
+    }).canvases[0]
+    const canvasTwo = {
+      ...canvasOne,
+      id: "canvas-2",
+      label: "画布 2",
+    }
+    const targetSnapshot = workspaceSnapshot({
+      canvases: [canvasOne, canvasTwo],
+      activeCanvasId: "canvas-2",
+      nodes: canvasTwo.nodes,
+      edges: canvasTwo.edges,
+      barriers: canvasTwo.barriers,
+      selectedNodeIds: canvasTwo.selectedNodeIds,
+      selectedEdgeIds: canvasTwo.selectedEdgeIds,
+      selectedBarrierIds: canvasTwo.selectedBarrierIds,
+    })
+
+    const next = projectWorkspaceWithImportPlan(
+      targetSnapshot,
+      [imported],
+      plan,
+      plan.fallbackNodes,
+      { targetCanvasId: "canvas-1" },
+    )
+
+    expect(next.activeCanvasId).toBe("canvas-2")
+    expect(next.nodes).toEqual([])
+    expect(next.canvases.find((canvas) => canvas.id === "canvas-1")?.nodes.map((node) => node.id))
+      .toEqual(["imported-deferred-canvas-only-test"])
+    expect(next.canvases.find((canvas) => canvas.id === "canvas-2")?.nodes).toEqual([])
+  })
+
+  it("does not redirect deferred nodes after their target canvas is deleted", () => {
+    const imported = sourceFile("deleted-canvas", parseResult([
+      candidate({ candidateId: "only", roleHint: "final" }),
+    ]))
+    const plan = buildImportPlan([imported], layout)
+    const targetSnapshot = workspaceSnapshot()
+
+    const next = projectWorkspaceWithImportPlan(
+      targetSnapshot,
+      [imported],
+      plan,
+      plan.fallbackNodes,
+      { targetCanvasId: "deleted-canvas" },
+    )
+
+    expect(next.files.map((file) => file.id)).toEqual(["deleted-canvas"])
+    expect(next.nodes).toEqual([])
+  })
+
+  it("rebases delayed registration onto the latest canvas state", async () => {
+    const imported = sourceFile("delayed-canvas", parseResult([
+      candidate({ candidateId: "only", roleHint: "final" }),
+    ]))
+    let resolveRegistration!: (value: {
+      ok: true
+      data: {
+        registeredObjects: RegisteredImportObject[]
+        files: []
+      }
+    }) => void
+    const registration = new Promise<{
+      ok: true
+      data: {
+        registeredObjects: RegisteredImportObject[]
+        files: []
+      }
+    }>((resolve) => {
+      resolveRegistration = resolve
+    })
+    const canvasOne = workspaceSnapshot({ nodes: [], selectedNodeIds: [] }).canvases[0]
+    const canvasTwo = {
+      ...canvasOne,
+      id: "canvas-2",
+      label: "Canvas 2",
+      nodes: [{
+        id: "canvas-2-edit",
+        label: "Canvas 2 edit",
+        formula: "H2",
+        kind: "intermediate" as const,
+        method: "DFT",
+        solvent: "none",
+        energyGas: null,
+        energySolution: null,
+        energyUnit: "hartree" as const,
+        position: { x: 40, y: 50 },
+      }],
+    }
+    const initialSnapshot = workspaceSnapshot({
+      canvases: [canvasOne, { ...canvasTwo, nodes: [] }],
+      activeCanvasId: "canvas-1",
+      nodes: canvasOne.nodes,
+    })
+    const preparing = prepareProjectWorkspaceImport({
+      targetSnapshot: initialSnapshot,
+      importedFiles: [imported],
+      layout,
+      options: {
+        targetCanvasId: "canvas-1",
+        registerImportCandidates: () => registration,
+      },
+    })
+    const latestSnapshot = workspaceSnapshot({
+      canvases: [canvasOne, canvasTwo],
+      activeCanvasId: "canvas-2",
+      nodes: canvasTwo.nodes,
+      selectedNodeIds: [],
+    })
+
+    resolveRegistration({
+      ok: true,
+      data: {
+        registeredObjects: [{
+          id: "registered-delayed",
+          label: "Delayed product",
+          formula: "C2H4",
+          kind: "product",
+          method: "M06-2X",
+          solvent: "SMD",
+          energyGas: -10,
+          energySolution: -11,
+          energyUnit: "hartree",
+          sourceStatus: "parsed",
+          sourceFileId: imported.id,
+          sourceFileName: imported.name,
+          sourceCandidateId: "only",
+          sourceObjectIndex: 0,
+          parserId: "ipc",
+          parserVersion: "1",
+          roleHint: "final",
+          charge: 0,
+          spinMultiplicity: 1,
+        }],
+        files: [],
+      },
+    })
+    const prepared = await preparing
+    expect(prepared).not.toBeNull()
+
+    const rebased = rebasePreparedProjectWorkspaceImport(
+      prepared!,
+      latestSnapshot,
+      { targetCanvasId: "canvas-1" },
+    )
+
+    expect(rebased.snapshot.activeCanvasId).toBe("canvas-2")
+    expect(rebased.snapshot.nodes.map((node) => node.id)).toEqual(["canvas-2-edit"])
+    expect(rebased.snapshot.canvases.find((canvas) => canvas.id === "canvas-1")?.nodes.map((node) => node.id))
+      .toEqual(["imported-registered-delayed-test"])
   })
 
   it("refreshes existing canvas nodes when a matching solution log is imported later", () => {
@@ -1327,10 +1487,10 @@ describe("importRegistration", () => {
     const browserFiles = await browserImportSourceFilesFromFiles([new File(["abc"], "orca.out")])
     const noPreviewFile = new File(["should not be read"], "queued.log")
     const textSpy = vi.spyOn(noPreviewFile, "text")
-    const noPreviewFiles = await browserImportSourceFilesFromFiles([noPreviewFile], "file", { previewMode: "none" })
+    const noPreviewFiles = browserImportSourceFilesFromFiles([noPreviewFile], "file")
     const desktopFiles = desktopImportSourceFilesFromFiles([{ name: "scan.xyz", size: 3, preview: "2\nenergy=-1\nH 0 0 0\nH 0 0 1" }])
 
-    expect(browserFiles[0]).toMatchObject({ id: "file-1234-0", kind: "ORCA", preview: "abc" })
+    expect(browserFiles[0]).toMatchObject({ id: "file-1234-0", kind: "ORCA", preview: "" })
     expect(noPreviewFiles[0]).toMatchObject({ id: "file-1234-0", kind: "Gaussian", preview: "" })
     expect(textSpy).not.toHaveBeenCalled()
     expect(desktopFiles[0]).toMatchObject({ id: "desktop-file-1234-0", kind: "XYZ", status: "staged" })
@@ -1342,31 +1502,7 @@ describe("importRegistration", () => {
     })
   })
 
-  it("keeps focused Gaussian markers when sampling large source previews", () => {
-    const head = "Gaussian header\n".padEnd(70 * 1024, ".")
-    const filler = "\n".padEnd(620 * 1024, "x")
-    const focused = [
-      " Charge =  1 Multiplicity = 1",
-      " Stoichiometry    C113H76IrN4O(1+)",
-      "                          Input orientation:",
-      " ---------------------------------------------------------------------",
-      " Center     Atomic      Atomic             Coordinates (Angstroms)",
-      " Number     Number       Type             X           Y           Z",
-      " ---------------------------------------------------------------------",
-      "      1         77           0        0.000000    0.000000    0.000000",
-      " ---------------------------------------------------------------------",
-      " SCF Done:  E(RwB97XD) =  -4749.26415609     A.U. after   20 cycles",
-    ].join("\n")
-    const sample = sourcePreviewSample(`${head}${filler}${focused}`)
-
-    expect(sample.length).toBeLessThan(512 * 1024)
-    expect(sample).toContain("Gaussian header")
-    expect(sample).toContain("Stoichiometry    C113H76IrN4O(1+)")
-    expect(sample).toContain("Input orientation:")
-    expect(sample).toContain("SCF Done")
-  })
-
-  it("samples large browser files without reading the entire file into memory", async () => {
+  it("stages large browser files without reading or sampling them", async () => {
     const largeFile = new File([
       "Gaussian header\n".padEnd(64 * 1024, "."),
       "middle".padEnd(520 * 1024, "x"),
@@ -1377,10 +1513,8 @@ describe("importRegistration", () => {
     const [source] = await browserImportSourceFilesFromFiles([largeFile])
 
     expect(textSpy).not.toHaveBeenCalled()
-    expect(source.preview).toContain("Gaussian header")
-    expect(source.preview).toContain("preview skipped")
-    expect(source.preview).toContain("SCF Done")
-    expect(source.preview.length).toBeLessThanOrEqual(512 * 1024 + 160)
+    expect(source.preview).toBe("")
+    expect(source.size).toBe(largeFile.size)
   })
 
   it("keeps import layout math deterministic for canvas and dropped points", () => {

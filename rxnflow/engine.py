@@ -365,54 +365,39 @@ def export_flow_json(flow: ReactionFlow) -> str:
 
 
 def preview_sources(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Parse Electron import sources.
-
-    Desktop callers should pass sourcePath so the engine reads the complete
-    calculation output. The renderer still receives only the preview sample.
-    """
+    """Parse complete files supplied by a platform adapter."""
 
     previews: list[dict[str, Any]] = []
     for file in files:
         name = str(file.get("name") or "source")
-        preview = str(file.get("preview") or "")
         source_path = optional_string(file.get("sourcePath"))
         previews.append({
             "name": name,
-            "parse": asdict(parse_source_file(name, preview, source_path)),
+            "parse": asdict(parse_source_file(name, source_path)),
         })
     return previews
 
 
-def parse_source_file(name: str, preview: str, source_path: str | None = None) -> SourceParseResult:
+def parse_source_file(name: str, source_path: str | None) -> SourceParseResult:
     if not source_path:
-        return parse_source_preview(name, preview, parse_scope="preview", confidence="low")
+        return unreadable_source_result(name, "full_file_required", "A complete source file is required for parsing.")
     try:
         expanded_path = Path(source_path).expanduser()
         source_size = expanded_path.stat().st_size
         if source_size > MAX_SOURCE_FILE_BYTES:
-            fallback = parse_source_preview(name, preview, parse_scope="preview", confidence="low")
-            return append_parse_warning(
-                fallback,
-                ParseWarning(
-                    "source_file_too_large",
-                    f"Source file is {source_size} bytes; full-file parsing is limited to {MAX_SOURCE_FILE_BYTES} bytes.",
-                    source_path,
-                ),
+            return unreadable_source_result(
+                name,
+                "source_file_too_large",
+                f"Source file is {source_size} bytes; full-file parsing is limited to {MAX_SOURCE_FILE_BYTES} bytes.",
             )
         full_text = expanded_path.read_text(encoding="utf8", errors="replace")
     except OSError as exc:
-        fallback = parse_source_preview(name, preview, parse_scope="preview", confidence="low")
-        return append_parse_warning(
-            fallback,
-            ParseWarning(
-                "full_file_read_failed",
-                f"Could not read full source file; parser used the preview sample. {exc}",
-                source_path,
-            ),
-        )
+        return unreadable_source_result(name, "full_file_read_failed", f"Could not read the complete source file. {exc}")
     text_context = _parse_source_text_context(name, full_text, parse_scope="full-file", confidence="high")
     text_result = text_context.result
-    if not should_try_cclib(name, full_text):
+    if text_result.sourceKind in {"MAPLE", "XYZ", "extxyz"}:
+        return text_result
+    if text_result.sourceKind not in {"Gaussian", "ORCA"} and not name.lower().endswith((".log", ".out", ".orca")):
         return text_result
     cclib_result, cclib_warning = parse_cclib_full_file(name, source_path, full_text, text_context)
     if cclib_result is None:
@@ -420,8 +405,22 @@ def parse_source_file(name: str, preview: str, source_path: str | None = None) -
     return merge_cclib_text_result(cclib_result, text_result)
 
 
-def append_parse_warning(result: SourceParseResult, warning: ParseWarning) -> SourceParseResult:
-    return replace(result, warnings=(*result.warnings, warning))
+def unreadable_source_result(name: str, code: str, message: str) -> SourceParseResult:
+    return SourceParseResult(
+        label=basename_without_extension(name),
+        sourceKind="Raw",
+        formula="pending",
+        kind=infer_node_kind(name),
+        method="unparsed source",
+        solvent="unassigned",
+        energyGas=None,
+        energySolution=None,
+        energyUnit="hartree",
+        parsed=False,
+        warnings=(ParseWarning(code, message, name),),
+        parseScope="full-file",
+        confidence="low",
+    )
 
 
 def cclib_required_failed_source_result(
@@ -460,26 +459,6 @@ def cclib_required_failed_source_result(
         terminationLabel=text_result.terminationLabel,
         jobCpuTime=text_result.jobCpuTime,
         elapsedTime=text_result.elapsedTime,
-    )
-
-
-def should_try_cclib(name: str, full_text: str) -> bool:
-    """Return True when a full source looks like a cclib-supported output."""
-
-    lower_name = name.lower()
-    if not lower_name.endswith((".log", ".out", ".orca")):
-        return False
-    head = full_text[:12000].lower()
-    return any(
-        marker in head
-        for marker in (
-            "entering gaussian system",
-            "gaussian",
-            "scf done:",
-            "o   r   c   a",
-            "orca terminated",
-            "final single point energy",
-        )
     )
 
 
@@ -1084,7 +1063,7 @@ def source_parse_result_from_file_payload(file: dict[str, Any]) -> SourceParseRe
     parse_payload = file.get("parse")
     if isinstance(parse_payload, dict):
         return source_parse_result_from_payload(parse_payload, str(file.get("name") or "source"))
-    return parse_source_preview(str(file.get("name") or "source"), str(file.get("preview") or ""))
+    return parse_source_file(str(file.get("name") or "source"), optional_string(file.get("sourcePath")))
 
 
 def source_parse_result_from_payload(payload: dict[str, Any], source_name: str) -> SourceParseResult:
@@ -2255,7 +2234,7 @@ def _parse_source_text_context(
             source_kind="extxyz",
             kind=guessed_kind,
             solvent="unassigned",
-            parser_id="xyz-ase-text-preview",
+            parser_id=parser_id_for_scope("xyz-ase-text", parse_scope),
             parser_version=PARSER_VERSION,
             candidates=extxyz[0],
             warnings=extxyz[1],
@@ -2272,7 +2251,7 @@ def _parse_source_text_context(
             source_kind="MAPLE",
             kind=guessed_kind,
             solvent="unassigned",
-            parser_id="maple-output-text-preview",
+            parser_id=parser_id_for_scope("maple-output-text", parse_scope),
             parser_version=PARSER_VERSION,
             candidates=maple[0],
             warnings=maple[1],
@@ -2289,7 +2268,7 @@ def _parse_source_text_context(
             source_kind="XYZ",
             kind=guessed_kind,
             solvent="unassigned",
-            parser_id="xyz-text-preview",
+            parser_id=parser_id_for_scope("xyz-text", parse_scope),
             parser_version=PARSER_VERSION,
             candidates=xyz[0],
             warnings=xyz[1],
@@ -2304,7 +2283,7 @@ def _parse_source_text_context(
             label=label,
             source_kind="XYZ",
             kind=guessed_kind,
-            parser_id="xyz-text-preview",
+            parser_id=parser_id_for_scope("xyz-text", parse_scope),
             parser_version=PARSER_VERSION,
             warning=ParseWarning("parse_failed", "XYZ atom count does not match the number of coordinate lines.", name),
             parse_scope=parse_scope,

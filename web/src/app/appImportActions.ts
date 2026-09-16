@@ -24,6 +24,7 @@ import {
   type DesktopImportRegistrationPayload,
   type DesktopImportRegistrationResponse,
   type ImportSourceFile,
+  type PreparedProjectWorkspaceImport,
   type StageSourceFilesOptions,
 } from "./importRegistration"
 import { applyImportedWorkspaceSnapshotState, type ProjectWorkspaceStateSetters, type ProjectTransitionApplication } from "./appStateAppliers"
@@ -61,7 +62,13 @@ export async function stageCurrentProjectSourceFilesAction({
     targetSnapshot: currentSnapshot,
     importedFiles,
     layout: importLayout,
-    options: { fileMode, viewMode, registerImportCandidates, autoRegister, parseMode: options.parseMode },
+    options: {
+      fileMode,
+      viewMode,
+      registerImportCandidates,
+      autoRegister,
+      targetCanvasId: options.targetCanvasId,
+    },
   })
   if (!prepared) return
   const transition = projectWorkspaceImportApplyTransition(prepared)
@@ -86,6 +93,7 @@ export async function stageSourceFilesForProjectAction({
   registerImportCandidates,
   stageCurrentProjectSourceFiles,
   applyProjectTransition,
+  applyDeferredProjectWorkspace,
   setCandidateReview,
 }: {
   projectId: string
@@ -100,30 +108,43 @@ export async function stageSourceFilesForProjectAction({
   registerImportCandidates: RegisterImportCandidates
   stageCurrentProjectSourceFiles: (importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
   applyProjectTransition: (transition: ProjectTransitionApplication) => void
+  applyDeferredProjectWorkspace: (
+    projectId: string,
+    prepared: PreparedProjectWorkspaceImport,
+    options: StageSourceFilesOptions,
+  ) => void
   setCandidateReview: (review: CandidateReviewState | null) => void
 }): Promise<void> {
-  if (projectId === activeProjectId) {
+  if (projectId === activeProjectId && options.activateProject !== false) {
     await stageCurrentProjectSourceFiles(importedFiles, options)
     return
   }
   if (importedFiles.length === 0 || !projects.some((project) => project.id === projectId)) return
 
-  const targetSnapshot = workspaces[projectId]
-    ? projectWorkspaceSnapshot(workspaces[projectId])
-    : emptyProjectWorkspace(emptyViewport)
-  const targetCanvas = activeCanvasSnapshot(targetSnapshot)
+  const targetSnapshot = projectId === activeProjectId
+    ? projectWorkspaceSnapshot(currentSnapshot)
+    : workspaces[projectId]
+      ? projectWorkspaceSnapshot(workspaces[projectId])
+      : emptyProjectWorkspace(emptyViewport)
+  const targetCanvas = options.targetCanvasId
+    ? targetSnapshot.canvases.find((item) => item.id === options.targetCanvasId) ?? activeCanvasSnapshot(targetSnapshot)
+    : activeCanvasSnapshot(targetSnapshot)
   const prepared = await prepareProjectWorkspaceImport({
     targetSnapshot,
     importedFiles,
-    layout: importLayoutFromCanvas(canvas, targetCanvas.viewport),
+    layout: options.layout ?? importLayoutFromCanvas(canvas, targetCanvas.viewport),
     options: {
       registerImportCandidates,
       autoRegister: options.autoRegister ?? true,
       fileMode: options.fileMode,
-      parseMode: options.parseMode,
+      targetCanvasId: options.targetCanvasId,
     },
   })
   if (!prepared) return
+  if (options.activateProject === false) {
+    applyDeferredProjectWorkspace(projectId, prepared, options)
+    return
+  }
   const transition = saveAndActivateProjectWorkspaceTransition({
     workspaces,
     activeProjectId,
@@ -216,7 +237,6 @@ export async function importFilesForProjectAction({
   fileList,
   projectId,
   stageSourceFilesForProject,
-  previewMode = "full",
   prepareFile,
   prepareImportedFiles,
   stageOptions = { autoRegister: false },
@@ -224,36 +244,28 @@ export async function importFilesForProjectAction({
   fileList: FileList | File[]
   projectId: string
   stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
-  previewMode?: "full" | "head" | "none"
   prepareFile?: (file: File, index: number) => Partial<ImportSourceFile> | undefined
   prepareImportedFiles?: (files: ImportSourceFile[]) => ImportSourceFile[]
   stageOptions?: StageSourceFilesOptions
 }): Promise<ImportSourceFile[]> {
-  const selectedFiles = await browserImportSourceFilesFromFiles(fileList, "file", { previewMode, prepareFile })
+  const selectedFiles = browserImportSourceFilesFromFiles(fileList, "file", { prepareFile })
   const importedFiles = prepareImportedFiles?.(selectedFiles) ?? selectedFiles
-  const stagedFiles = stageOptions.parseMode === "defer"
-    ? importedFiles.map(deferredDesktopImportPlaceholder)
-    : importedFiles
+  const stagedFiles = importedFiles.map(deferredImportPlaceholder)
   await stageSourceFilesForProject(projectId, stagedFiles, stageOptions)
   return importedFiles
 }
 
-export async function handleCanvasRawFileDropAction({
+export async function handleCanvasProjectFileDropAction({
   drop,
   files,
   stageCurrentProjectSourceFiles,
 }: {
-  drop: CanvasRawFileDrop
+  drop: Extract<CanvasRawFileDrop, { kind: "project-files" }>
   files: SourceFile[]
   stageCurrentProjectSourceFiles: (importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
 }): Promise<void> {
   const transition = canvasRawFileDropImportTransition(drop, files)
-  if (!transition) return
-  if (transition.kind === "external-files") {
-    const importedFiles = await browserImportSourceFilesFromFiles(transition.files, transition.idPrefix)
-    await stageCurrentProjectSourceFiles(importedFiles, transition.options)
-    return
-  }
+  if (!transition || transition.kind !== "project-files") return
   await stageCurrentProjectSourceFiles(transition.files, transition.options)
 }
 
@@ -273,14 +285,12 @@ export async function importDesktopFilesAction({
   const transition = desktopImportFilesTransition(await chooseFiles?.())
   if (!transition) return []
   const importedFiles = prepareImportedFiles?.(transition.importedFiles) ?? transition.importedFiles
-  const stagedFiles = stageOptions.parseMode === "defer"
-    ? importedFiles.map(deferredDesktopImportPlaceholder)
-    : importedFiles
+  const stagedFiles = importedFiles.map(deferredImportPlaceholder)
   await stageSourceFilesForProject(projectId, stagedFiles, stageOptions)
   return importedFiles
 }
 
-export function deferredDesktopImportPlaceholder(file: ImportSourceFile): ImportSourceFile {
+export function deferredImportPlaceholder(file: ImportSourceFile): ImportSourceFile {
   const {
     sourcePath: _sourcePath,
     checksum: _checksum,

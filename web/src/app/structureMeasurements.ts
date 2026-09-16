@@ -1,4 +1,4 @@
-import type { CoordinateAtom } from "../domain/sourceParsers"
+import type { CoordinateAtom } from "../domain/sourceParseTypes"
 
 export type StructureMeasurementMode = "distance" | "angle" | "dihedral" | null
 

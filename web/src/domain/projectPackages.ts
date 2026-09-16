@@ -1,4 +1,4 @@
-import type { CoordinatePreview, ParseCandidate, ParsedEnergyTableData, ParsedEnergyUnit, SourceParseResult } from "./sourceParsers"
+import type { CoordinatePreview, ParseCandidate, ParsedEnergyTableData, ParsedEnergyUnit, SourceParseResult } from "./sourceParseTypes"
 import { compactVibrationalModesForPersistence, normalizeVibrationalModes } from "./vibrations"
 
 const maxCanvasImageDataUrlLength = 14 * 1024 * 1024
@@ -406,7 +406,7 @@ function normalizeProjectFile(file: SourceFile | Partial<SourceFile>, index: num
     storedPath: typeof file.storedPath === "string" ? file.storedPath : undefined,
     checksum: typeof file.checksum === "string" ? file.checksum : undefined,
     parseChecksum: typeof file.parseChecksum === "string" ? file.parseChecksum : undefined,
-    parse: normalizeSourceParseResult(file.parse),
+    parse: normalizeSourceParseResult(file.parse, Boolean(file.storedPath)),
   }
 }
 
@@ -708,32 +708,32 @@ function finiteNonZeroNumberOrUndefined(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value !== 0 ? value : undefined
 }
 
-function normalizeSourceParseResult(value: unknown): SourceParseResult | undefined {
+function normalizeSourceParseResult(value: unknown, compactVibrations: boolean): SourceParseResult | undefined {
   if (!isObject(value)) return undefined
   if (typeof value.label !== "string" || typeof value.sourceKind !== "string") return undefined
   const parse = value as SourceParseResult
   const payloadWarnings = Array.isArray(parse.warnings) ? parse.warnings : []
   const warnings = [...payloadWarnings]
   const candidates = Array.isArray(parse.candidates)
-    ? parse.candidates.map((candidate) => normalizeParseCandidate(candidate, warnings))
+    ? parse.candidates.map((candidate) => normalizeParseCandidate(candidate, warnings, compactVibrations))
     : []
   return {
     ...parse,
     warnings,
     candidates,
-    coordinatePreview: normalizeCoordinatePreview(parse.coordinatePreview, warnings),
+    coordinatePreview: normalizeCoordinatePreview(parse.coordinatePreview, warnings, compactVibrations),
   }
 }
 
-function normalizeParseCandidate(candidate: ParseCandidate, warnings: SourceParseResult["warnings"]): ParseCandidate {
+function normalizeParseCandidate(candidate: ParseCandidate, warnings: SourceParseResult["warnings"], compactVibrations: boolean): ParseCandidate {
   return {
     ...candidate,
     warnings: Array.isArray(candidate.warnings) ? candidate.warnings : [],
-    coordinatePreview: normalizeCoordinatePreview(candidate.coordinatePreview, warnings),
+    coordinatePreview: normalizeCoordinatePreview(candidate.coordinatePreview, warnings, compactVibrations),
   }
 }
 
-function normalizeCoordinatePreview(value: CoordinatePreview | null | undefined, warnings: SourceParseResult["warnings"]): CoordinatePreview | null {
+function normalizeCoordinatePreview(value: CoordinatePreview | null | undefined, warnings: SourceParseResult["warnings"], compactVibrations: boolean): CoordinatePreview | null {
   if (!isObject(value)) return null
   const atomCount = finiteNumberOrUndefined(value.atomCount)
   if (atomCount === undefined) return null
@@ -744,7 +744,9 @@ function normalizeCoordinatePreview(value: CoordinatePreview | null | undefined,
     atomCount,
     has3d: Boolean(value.has3d) || Boolean(value.atoms?.length),
     elements: Array.isArray(value.elements) ? value.elements.filter((element) => typeof element === "string") : [],
-    ...(normalized.modes.length > 0 ? { vibrationModes: compactVibrationalModesForPersistence(normalized.modes) } : { vibrationModes: undefined }),
+    ...(normalized.modes.length > 0
+      ? { vibrationModes: compactVibrations ? compactVibrationalModesForPersistence(normalized.modes) : normalized.modes }
+      : { vibrationModes: undefined }),
   }
 }
 

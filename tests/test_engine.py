@@ -366,22 +366,28 @@ class EngineSmokeTest(unittest.TestCase):
                 encoding="utf8",
             )
 
-            response = handle_request({
-                "command": "import.preview",
-                "files": [{
-                    "name": "late-gaussian.log",
-                    "size": source_path.stat().st_size,
-                    "preview": "No final energy in this preview.",
-                    "sourcePath": str(source_path),
-                }],
-            })
+            data = SimpleNamespace(
+                scfenergies=[fake_cclib_scf_energy(-76.431)],
+                freeenergy=-76.4,
+                nbasis=42,
+            )
+            with patch.dict(sys.modules, {"cclib": fake_cclib_module(data)}):
+                response = handle_request({
+                    "command": "import.preview",
+                    "files": [{
+                        "name": "late-gaussian.log",
+                        "size": source_path.stat().st_size,
+                        "preview": "No final energy in this preview.",
+                        "sourcePath": str(source_path),
+                    }],
+                })
 
         self.assertTrue(response["ok"])
         parse = response["data"]["files"][0]["parse"]
         self.assertTrue(parse["parsed"])
         self.assertEqual(parse["parseScope"], "full-file")
         self.assertEqual(parse["confidence"], "high")
-        self.assertEqual(parse["parserId"], "gaussian-log-text-full-file")
+        self.assertEqual(parse["parserId"], "gaussian-log-cclib+rxnflow-text-full-file")
         self.assertAlmostEqual(parse["energyGas"], -76.431)
         self.assertEqual(parse["energyTable"]["gasBasisFunctions"], 42)
         self.assertAlmostEqual(parse["energyTable"]["ggasHartree"], -76.4)
@@ -395,12 +401,48 @@ class EngineSmokeTest(unittest.TestCase):
 
             parsed = parse_source_file(
                 "oversized.log",
-                "Stoichiometry H2O\nSCF Done: E(RB3LYP) = -76.431 A.U.",
                 str(source_path),
             )
 
-        self.assertEqual(parsed.parseScope, "preview")
+        self.assertFalse(parsed.parsed)
+        self.assertIsNone(parsed.energyGas)
+        self.assertEqual(parsed.parseScope, "full-file")
         self.assertIn("source_file_too_large", [warning.code for warning in parsed.warnings])
+
+    def test_engine_never_parses_preview_when_the_complete_source_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for source_path in (None, str(Path(directory) / "missing.log")):
+                with self.subTest(source_path=source_path):
+                    response = handle_request({
+                        "command": "import.preview",
+                        "files": [{
+                            "name": "missing.log",
+                            "preview": "SCF Done: E(RB3LYP) = -76.431 A.U.",
+                            "sourcePath": source_path,
+                        }],
+                    })
+                    parsed = response["data"]["files"][0]["parse"]
+                    self.assertFalse(parsed["parsed"])
+                    self.assertIsNone(parsed["energyGas"])
+                    self.assertFalse(parsed["candidates"])
+                    self.assertEqual(parsed["parseScope"], "full-file")
+
+    def test_cclib_failure_cannot_be_bypassed_by_late_gaussian_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "late.log"
+            source_path.write_text(
+                "padding\n" * 10000 + "SCF Done: E(RB3LYP) = -76.431 A.U.\n",
+                encoding="utf8",
+            )
+            with patch.dict(sys.modules, {"cclib": None}):
+                response = handle_request({
+                    "command": "import.preview",
+                    "files": [{"name": source_path.name, "sourcePath": str(source_path)}],
+                })
+            parsed = response["data"]["files"][0]["parse"]
+            self.assertFalse(parsed["parsed"])
+            self.assertIsNone(parsed["energyGas"])
+            self.assertIn("cclib_unavailable", [warning["code"] for warning in parsed["warnings"]])
 
     def test_engine_import_preview_does_not_mark_intermediate_gaussian_normal_as_final(self) -> None:
         parsed = parse_source_preview(
@@ -573,7 +615,7 @@ class EngineSmokeTest(unittest.TestCase):
             previous = sys.modules.get("cclib", sentinel)
             sys.modules["cclib"] = fake_cclib
             try:
-                parsed = parse_source_file("cclib-gaussian.log", "", str(source_path))
+                parsed = parse_source_file("cclib-gaussian.log", str(source_path))
             finally:
                 if previous is sentinel:
                     sys.modules.pop("cclib", None)
@@ -641,7 +683,7 @@ class EngineSmokeTest(unittest.TestCase):
             previous = sys.modules.get("cclib", sentinel)
             sys.modules["cclib"] = fake_cclib
             try:
-                parsed = parse_source_file("cclib-gaussian-text-vibrations.log", "", str(source_path))
+                parsed = parse_source_file("cclib-gaussian-text-vibrations.log", str(source_path))
             finally:
                 if previous is sentinel:
                     sys.modules.pop("cclib", None)
@@ -677,7 +719,7 @@ class EngineSmokeTest(unittest.TestCase):
                     patch.object(engine, "gaussian_vibrational_modes_from_text", wraps=engine.gaussian_vibrational_modes_from_text) as text_vibrations,
                     patch.object(engine, "computation_metadata_from_source", wraps=engine.computation_metadata_from_source) as computation_scan,
                 ):
-                    parsed = parse_source_file(source_path.name, "", str(source_path))
+                    parsed = parse_source_file(source_path.name, str(source_path))
             finally:
                 if previous is sentinel:
                     sys.modules.pop("cclib", None)
@@ -728,7 +770,7 @@ class EngineSmokeTest(unittest.TestCase):
                     patch.object(engine, "gaussian_vibration_index", wraps=engine.gaussian_vibration_index) as vibration_index,
                     patch.object(engine, "gaussian_vibrational_modes_from_text", wraps=engine.gaussian_vibrational_modes_from_text) as text_vibrations,
                 ):
-                    parsed = parse_source_file(source_path.name, "", str(source_path))
+                    parsed = parse_source_file(source_path.name, str(source_path))
             finally:
                 if previous is sentinel:
                     sys.modules.pop("cclib", None)
@@ -775,7 +817,7 @@ class EngineSmokeTest(unittest.TestCase):
             previous = sys.modules.get("cclib", sentinel)
             sys.modules["cclib"] = fake_cclib
             try:
-                parsed = parse_source_file("generic-dft.log", "", str(source_path))
+                parsed = parse_source_file("generic-dft.log", str(source_path))
             finally:
                 if previous is sentinel:
                     sys.modules.pop("cclib", None)
@@ -816,7 +858,7 @@ class EngineSmokeTest(unittest.TestCase):
             previous = sys.modules.get("cclib", sentinel)
             sys.modules["cclib"] = fake_cclib
             try:
-                parsed = parse_source_file("cclib-missing-energy.log", "", str(source_path))
+                parsed = parse_source_file("cclib-missing-energy.log", str(source_path))
             finally:
                 if previous is sentinel:
                     sys.modules.pop("cclib", None)
@@ -863,7 +905,7 @@ class EngineSmokeTest(unittest.TestCase):
             previous = sys.modules.get("cclib", sentinel)
             sys.modules["cclib"] = fake_cclib
             try:
-                parsed = parse_source_file("cclib-missing-coordinates.log", "", str(source_path))
+                parsed = parse_source_file("cclib-missing-coordinates.log", str(source_path))
             finally:
                 if previous is sentinel:
                     sys.modules.pop("cclib", None)
@@ -891,7 +933,7 @@ class EngineSmokeTest(unittest.TestCase):
             previous = sys.modules.get("cclib", sentinel)
             sys.modules["cclib"] = fake_cclib
             try:
-                parsed = parse_source_file("failed-gaussian.log", "", str(source_path))
+                parsed = parse_source_file("failed-gaussian.log", str(source_path))
             finally:
                 if previous is sentinel:
                     sys.modules.pop("cclib", None)
@@ -1419,16 +1461,17 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(gaussian.coordinatePreview.atomCount if gaussian.coordinatePreview else 0, 3)
 
     def test_engine_ipc_import_preview(self) -> None:
-        preview = handle_request({
-            "command": "import.preview",
-            "files": [{
-                "name": "desktop.log",
-                "preview": "SCF Done: E(RwB97XD) = -100.0",
-            }],
-        })
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "desktop.xyz"
+            source_path.write_text("2\nenergy=-100.0 hartree\nH 0 0 0\nH 0 0 0.7\n", encoding="utf8")
+            preview = handle_request({
+                "command": "import.preview",
+                "files": [{"name": "desktop.xyz", "sourcePath": str(source_path)}],
+            })
         self.assertTrue(preview["ok"])
-        self.assertEqual(preview["data"]["files"][0]["parse"]["sourceKind"], "Gaussian")
+        self.assertEqual(preview["data"]["files"][0]["parse"]["sourceKind"], "XYZ")
         self.assertEqual(preview["data"]["files"][0]["parse"]["energyGas"], -100.0)
+        self.assertEqual(preview["data"]["files"][0]["parse"]["parseScope"], "full-file")
 
         invalid = handle_request({"command": "import.preview"})
         self.assertFalse(invalid["ok"])
@@ -1449,7 +1492,13 @@ class EngineSmokeTest(unittest.TestCase):
                 "H 0.0 0.0 0.8",
             ]),
         }
-        preview = handle_request({"command": "import.preview", "files": [source_file]})
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / source_file["name"]
+            source_path.write_text(source_file["preview"], encoding="utf8")
+            preview = handle_request({
+                "command": "import.preview",
+                "files": [{**source_file, "sourcePath": str(source_path)}],
+            })
         self.assertTrue(preview["ok"])
         source_with_parse = {
             **source_file,
@@ -1471,7 +1520,7 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(selected_object["label"], "Image 2")
         self.assertEqual(selected_object["kind"], "product")
         self.assertEqual(selected_object["sourceObjectIndex"], 1)
-        self.assertEqual(selected_object["parserId"], "maple-output-text-preview")
+        self.assertEqual(selected_object["parserId"], "maple-output-text-full-file")
         self.assertEqual(selected["data"]["files"][0]["registeredObjectIds"], [selected_object["id"]])
 
         negative_index = handle_request({

@@ -361,7 +361,7 @@ describe("project packages", () => {
     })
   })
 
-  it("keeps only the first valid vibration displacement payload during package parse", () => {
+  it.each([true, false])("preserves usable vibration data after reload (stored source: %s)", (hasStoredSource) => {
     const parseWithVibration = {
       label: "gaussian",
       sourceKind: "Gaussian",
@@ -435,7 +435,7 @@ describe("project packages", () => {
       schemaVersion: 2,
       packageKind: "rxnflow-project",
       project,
-      files: [{ ...files[0], parse: parseWithVibration }],
+      files: [{ ...files[0], storedPath: hasStoredSource ? files[0].storedPath : undefined, parse: parseWithVibration }],
       canvases: [{
         id: "canvas-a",
         label: "Path A",
@@ -467,7 +467,10 @@ describe("project packages", () => {
       modeId: "mode-2-real-10.00",
       frequencyCm1: 10,
       kind: "real",
-      displacements: [],
+      displacements: hasStoredSource ? [] : [
+        { atomIndex: 0, dx: 0, dy: 0.1, dz: 0 },
+        { atomIndex: 1, dx: 0, dy: -0.1, dz: 0 },
+      ],
     })
     expect(parsed?.files[0]?.parse?.warnings.map((warning) => warning.code)).toContain("vibration_shape_mismatch")
   })
