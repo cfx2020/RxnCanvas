@@ -13,6 +13,7 @@ import io
 import json
 import math
 import re
+import tempfile
 from dataclasses import asdict, dataclass, replace
 from collections import Counter, OrderedDict
 from pathlib import Path
@@ -464,11 +465,43 @@ def cclib_required_failed_source_result(
 
 def cclib_read_full_file(cclib_module: Any, source_path: str) -> tuple[Any | None, str]:
     path = str(Path(source_path).expanduser())
-    parser = cclib_module.io.ccopen(path, quiet=True)
-    if parser is None:
-        return None, "Computational"
-    data = parser.parse()
-    return data, cclib_source_kind_from_parser(parser, data)
+    normalized_path = normalized_cclib_source_path(path)
+    try:
+        parser = cclib_module.io.ccopen(normalized_path, quiet=True)
+        if parser is None:
+            return None, "Computational"
+        data = parser.parse()
+        return data, cclib_source_kind_from_parser(parser, data)
+    finally:
+        if normalized_path != path:
+            Path(normalized_path).unlink(missing_ok=True)
+
+
+def normalized_cclib_source_path(source_path: str) -> str:
+    """Return a temporary cclib input with Gaussian overflow fields blanked."""
+
+    source = Path(source_path)
+    text = source.read_text(encoding="utf8", errors="replace")
+    normalized_lines: list[str] = []
+    changed = False
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith("Rotational constants (GHZ):"):
+            normalized = re.sub(r"(?<!\S)\*{3,}(?!\S)", "nan", line)
+            changed = changed or normalized != line
+            normalized_lines.append(normalized)
+        else:
+            normalized_lines.append(line)
+    if not changed:
+        return source_path
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf8",
+        suffix=source.suffix or ".log",
+        prefix="rxnflow-cclib-",
+        delete=False,
+    ) as handle:
+        handle.write("".join(normalized_lines))
+        return handle.name
 
 
 def cclib_source_kind_from_parser(parser: Any, data: Any) -> str:

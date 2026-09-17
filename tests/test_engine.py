@@ -636,6 +636,28 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertAlmostEqual(parsed.energyTable.egasHartree if parsed.energyTable else 0, -76.5)
         self.assertAlmostEqual(parsed.energyTable.ggasHartree if parsed.energyTable else 0, -76.39)
 
+    def test_cclib_source_normalization_handles_gaussian_rotational_constant_overflow(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "overflow.log"
+            source_path.write_text(
+                "\n".join([
+                    "Rotational constants (GHZ):      ************     0.59762     0.59762",
+                    "     An expanding polynomial of degree 16 produced********",
+                    "**********************************************************************",
+                ]),
+                encoding="utf8",
+            )
+
+            normalized_path = engine.normalized_cclib_source_path(str(source_path))
+            try:
+                normalized = Path(normalized_path).read_text(encoding="utf8")
+            finally:
+                Path(normalized_path).unlink(missing_ok=True)
+
+        self.assertIn("Rotational constants (GHZ):      nan     0.59762     0.59762", normalized)
+        self.assertIn("produced********", normalized)
+        self.assertIn("**********************************************************************", normalized)
+
     def test_cclib_scf_conversion_preserves_large_gaussian_energy(self) -> None:
         expected = -1779.40423117
         fake_data = SimpleNamespace(scfenergies=[fake_cclib_scf_energy(expected)])
