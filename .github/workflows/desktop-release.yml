@@ -79,6 +79,9 @@ jobs:
         run: |
           python3 -m pip install pip-audit==2.9.0
           python3 -m pip_audit -r web/engine-requirements.lock
+      - name: Prepare development Python engine
+        working-directory: web
+        run: node -e "require('./scripts/dev-engine.cjs').prepareDevEngine()"
       - name: Run renderer tests
         working-directory: web
         run: npm run test

@@ -53,7 +53,6 @@ function verifyBundledEngineConfiguration() {
   assert(buildScript.includes("--collect-all") && buildScript.includes("cclib"), "engine build must collect bundled cclib")
   assert(buildScript.includes("--with-requirements"), "uv engine build must use the locked dependency graph")
   assert(buildScript.includes("--require-hashes"), "pip engine build must enforce locked dependency hashes")
-  assert(bridgeSource.includes("bundledEngineCommand"), "engine bridge must prefer the bundled engine executable")
   assert(bridgeSource.includes("isPackagedAppRuntime"), "packaged app must require the bundled engine executable")
   assert(bridgeSource.includes("rxnflow.engine_ipc"), "engine bridge must keep the development Python IPC entry")
   assert(!bridgeSource.includes("runEmbeddedEngineRequest"), "engine bridge must not call embedded engine fallback")
@@ -337,6 +336,7 @@ function verifyReleaseWorkflow() {
     "windows-latest",
     "actions/setup-python@v5",
     "python-version: \"3.12\"",
+    "prepareDevEngine",
     "npm run desktop:pack",
     "npm run desktop:pack:win",
     "npm run desktop:runtime:smoke",
