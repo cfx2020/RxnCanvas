@@ -3004,7 +3004,7 @@ describe("App", () => {
     expect(screen.getByRole("complementary", { name: "Inspector" })).toHaveTextContent("engine-preview")
   })
 
-  it("keeps parsed desktop imports when a stale autosave response returns later", async () => {
+  it("defers desktop autosave until the parser job has completed", async () => {
     const importJob = deferred<any>()
     const autosaveJob = deferred<void>()
     const chooseFiles = vi.fn().mockResolvedValue({
@@ -3025,6 +3025,14 @@ describe("App", () => {
           ...rest,
           storedPath: "sources/race.log",
           checksum: `sha256:${"7".repeat(64)}`,
+          status: "staged",
+          parse: {
+            ...(file.parse as Record<string, unknown>),
+            parsed: false,
+            warnings: [{ code: "parse_deferred", message: "waiting" }],
+            candidates: [],
+            coordinatePreview: null,
+          },
         }
       })
       const staleContent = JSON.stringify(projectPackage)
@@ -3063,8 +3071,8 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: fileButtonName("race.log", "Gaussian") })).toBeInTheDocument()
     expect(screen.getByRole("progressbar", { name: "Parsing race.log" })).toBeInTheDocument()
-    await waitFor(() => expect(autosaveProjectPackage).toHaveBeenCalled(), { timeout: 2500 })
-    expect(JSON.parse(autosaveProjectPackage.mock.calls[0][0].content).files[0].parse.warnings[0].code).toBe("parse_deferred")
+    await new Promise((resolve) => window.setTimeout(resolve, 1000))
+    expect(autosaveProjectPackage).not.toHaveBeenCalled()
 
     const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
     await act(async () => {
@@ -3083,10 +3091,13 @@ describe("App", () => {
         },
       })
       await Promise.resolve()
+      await Promise.resolve()
     })
 
     expect(await screen.findByRole("button", { name: fileButtonName("race.log", "ORCA") })).toBeInTheDocument()
     expect(screen.queryByRole("progressbar", { name: "Parsing race.log" })).not.toBeInTheDocument()
+    await waitFor(() => expect(autosaveProjectPackage).toHaveBeenCalledTimes(1), { timeout: 2500 })
+    expect(JSON.parse(autosaveProjectPackage.mock.calls[0][0].content).files[0].parse.parsed).toBe(true)
 
     await act(async () => {
       autosaveJob.resolve()

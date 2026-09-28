@@ -240,6 +240,7 @@ export async function importFilesForProjectAction({
   prepareFile,
   prepareImportedFiles,
   stageOptions = { autoRegister: false },
+  beforeStage,
 }: {
   fileList: FileList | File[]
   projectId: string
@@ -247,10 +248,12 @@ export async function importFilesForProjectAction({
   prepareFile?: (file: File, index: number) => Partial<ImportSourceFile> | undefined
   prepareImportedFiles?: (files: ImportSourceFile[]) => ImportSourceFile[]
   stageOptions?: StageSourceFilesOptions
+  beforeStage?: () => void
 }): Promise<ImportSourceFile[]> {
   const selectedFiles = browserImportSourceFilesFromFiles(fileList, "file", { prepareFile })
   const importedFiles = prepareImportedFiles?.(selectedFiles) ?? selectedFiles
   const stagedFiles = importedFiles.map(deferredImportPlaceholder)
+  beforeStage?.()
   await stageSourceFilesForProject(projectId, stagedFiles, stageOptions)
   return importedFiles
 }
@@ -275,17 +278,20 @@ export async function importDesktopFilesAction({
   stageSourceFilesForProject,
   prepareImportedFiles,
   stageOptions = { autoRegister: false },
+  beforeStage,
 }: {
   projectId: string
   chooseFiles: (() => Promise<Parameters<typeof desktopImportFilesTransition>[0]>) | undefined
   stageSourceFilesForProject: (projectId: string, importedFiles: ImportSourceFile[], options?: StageSourceFilesOptions) => Promise<void>
   prepareImportedFiles?: (files: ImportSourceFile[]) => ImportSourceFile[]
   stageOptions?: StageSourceFilesOptions
+  beforeStage?: () => void
 }): Promise<ImportSourceFile[]> {
   const transition = desktopImportFilesTransition(await chooseFiles?.())
   if (!transition) return []
   const importedFiles = prepareImportedFiles?.(transition.importedFiles) ?? transition.importedFiles
   const stagedFiles = importedFiles.map(deferredImportPlaceholder)
+  beforeStage?.()
   await stageSourceFilesForProject(projectId, stagedFiles, stageOptions)
   return importedFiles
 }

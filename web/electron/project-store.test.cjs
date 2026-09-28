@@ -320,8 +320,10 @@ test("archive destination failures release only their target lock", async () => 
   assert.ok(events.includes("other-start"))
 })
 
-test("planned source paths are stable for the same name and distinct after sanitization", () => {
-  assert.equal(
+test("planned source paths preserve the original filename casing", () => {
+  assert.equal(defaultImportStoredPathForFile({ name: "Bfix8-ts.log" }, 0), "sources/Bfix8-ts.log")
+  assert.equal(defaultImportStoredPathForFile({ name: "Bfix6-ts1.LOG" }, 0), "sources/Bfix6-ts1.LOG")
+  assert.notEqual(
     defaultImportStoredPathForFile({ name: "OPT.LOG" }, 0),
     defaultImportStoredPathForFile({ name: "opt.log" }, 1),
   )
@@ -626,6 +628,32 @@ test("pending preview-only imports stay pending without a fake stored path", asy
   assert.equal(savedFile.storedPath, undefined)
   assert.equal(savedFile.checksum, undefined)
   assert.equal(fs.existsSync(path.join(projectDirectory, "sources", "pending.log")), false)
+})
+
+test("failed parsed imports do not create a source file", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-failed-parse-source-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+
+  const projectDirectory = path.join(tempDirectory, "failed-parse-study.rxnflow")
+  const saved = await saveProjectContent(projectDirectory, projectContent({
+    id: "failed-parse",
+    name: "Bfix8-ts.log",
+    kind: "Gaussian",
+    size: 800_000,
+    status: "parsed",
+    preview: "failed calculation",
+    storedPath: "sources/Bfix8-ts.log",
+    parse: {
+      parsed: true,
+      terminationStatus: "error",
+      warnings: [{ code: "parse_failed", message: "Calculation output ended with error termination." }],
+    },
+  }))
+  const savedFile = JSON.parse(saved.content).files[0]
+
+  assert.equal(savedFile.storedPath, undefined)
+  assert.equal(savedFile.checksum, undefined)
+  assert.equal(fs.existsSync(path.join(projectDirectory, "sources", "Bfix8-ts.log")), false)
 })
 
 test("project save preserves an existing full source instead of replacing it with preview", async (t) => {

@@ -329,6 +329,8 @@ type ProjectAutosaveInput = {
   lifecycleGeneration: number
 }
 
+type AutosaveRunner = (requestedInput?: ProjectAutosaveInput) => Promise<void>
+
 type ProjectRestoreRuntimeState = {
   projects: ProjectSummary[]
   workspaces: Record<string, ProjectWorkspaceSnapshot>
@@ -448,6 +450,8 @@ export function App() {
   const autosaveInputRef = useRef<ProjectAutosaveInput | null>(null)
   const autosaveInFlightRef = useRef(false)
   const autosaveQueueRef = useRef(new Map<string, ProjectAutosaveInput>())
+  const autosaveImportDepthRef = useRef(new Map<string, number>())
+  const autosaveRunnerRef = useRef<AutosaveRunner | null>(null)
   const activeProjectIdRef = useRef(initialProjects[0].id)
   const activeCanvasTabIdRef = useRef("canvas-1")
   const projectLifecycleGenerationRef = useRef(new Map<string, number>())
@@ -530,6 +534,33 @@ export function App() {
   const [toolbarPlacement, setToolbarPlacement] = useState<ToolbarPlacement>(() => initialToolbarPlacement())
   const [toolbarMetrics, setToolbarMetrics] = useState<ToolbarMetrics | null>(null)
   const [startupRestorePending, setStartupRestorePending] = useState(() => Boolean(window.rxnflowDesktop?.getStartupProjectContent))
+
+  const beginAutosaveImportGate = useCallback((projectId: string) => {
+    autosaveImportDepthRef.current.set(
+      projectId,
+      (autosaveImportDepthRef.current.get(projectId) ?? 0) + 1,
+    )
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      const depth = autosaveImportDepthRef.current.get(projectId) ?? 0
+      if (depth > 1) {
+        autosaveImportDepthRef.current.set(projectId, depth - 1)
+        return
+      }
+      autosaveImportDepthRef.current.delete(projectId)
+      window.setTimeout(() => {
+        if (appDisposedRef.current || autosaveImportDepthRef.current.has(projectId)) return
+        const latestInput = autosaveInputRef.current?.project.id === projectId
+          ? autosaveInputRef.current
+          : autosaveQueueRef.current.get(projectId)
+        if (!latestInput) return
+        autosaveQueueRef.current.delete(projectId)
+        void autosaveRunnerRef.current?.(latestInput)
+      }, 0)
+    }
+  }, [])
 
   useEffect(() => {
     saveWorkbenchLayoutPreference({ schemaVersion: 1, leftSidebarOpen, rightSidebarOpen })
@@ -2060,6 +2091,8 @@ export function App() {
       appDisposedRef.current = true
       for (const batcher of desktopImportFrameBatchersRef.current) batcher.cancel()
       desktopImportFrameBatchersRef.current.clear()
+      autosaveImportDepthRef.current.clear()
+      autosaveQueueRef.current.clear()
     }
   }, [])
 
@@ -2106,9 +2139,11 @@ export function App() {
     importedFiles: ImportSourceFile[],
     options: StageSourceFilesOptions = {},
     rawFiles: File[] = [],
+    releaseAutosaveImportGate?: () => void,
   ) => {
     const desktopApi = window.rxnflowDesktop
     if (importedFiles.length === 0) return
+    const releaseGate = releaseAutosaveImportGate ?? beginAutosaveImportGate(projectId)
     const autoRegister = options.autoRegister === true
     const projectFiles = projectId === activeProjectId
       ? currentProjectWorkspaceSnapshot().files
@@ -2243,9 +2278,10 @@ export function App() {
           frameBatcher.cancel()
           desktopImportFrameBatchersRef.current.delete(frameBatcher)
         }
+        releaseGate()
       }
     })()
-  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, removePendingImportFile, stageSourceFilesForProject])
+  }, [activeProjectId, beginAutosaveImportGate, currentProjectWorkspaceSnapshot, projectWorkspaces, removePendingImportFile, stageSourceFilesForProject])
 
   const reviewCandidatesForFile = useCallback((fileId: string) => {
     reviewCandidatesForFileAction({
@@ -2292,25 +2328,37 @@ export function App() {
       ? currentProjectWorkspaceSnapshot().files
       : projectWorkspaces[projectId]?.files ?? []
     const projectDirectory = projectDirectoriesRef.current[projectId] ?? null
-    const importedFiles = await importFilesForProjectAction({
-      fileList: rawFiles,
-      projectId,
-      stageSourceFilesForProject,
-      prepareFile: desktopApi
-        ? (file) => {
-            const sourcePath = desktopSourceFilePathForRawFile(desktopApi, file)
-            return sourcePath ? { sourcePath } : undefined
-          }
-        : undefined,
-      prepareImportedFiles: desktopApi
-        ? (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files
-        : undefined,
-      stageOptions: {
-        autoRegister: false,
-      },
-    })
-    runImportParseJob(projectId, importedFiles, { autoRegister: false }, rawFiles)
-  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, runImportParseJob, stageSourceFilesForProject])
+    const releaseAutosaveImportGate = { current: null as (() => void) | null }
+    let gateTransferred = false
+    try {
+      const importedFiles = await importFilesForProjectAction({
+        fileList: rawFiles,
+        projectId,
+        stageSourceFilesForProject,
+        prepareFile: desktopApi
+          ? (file) => {
+              const sourcePath = desktopSourceFilePathForRawFile(desktopApi, file)
+              return sourcePath ? { sourcePath } : undefined
+            }
+          : undefined,
+        prepareImportedFiles: desktopApi
+          ? (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files
+          : undefined,
+        stageOptions: {
+          autoRegister: false,
+        },
+        beforeStage: () => {
+          releaseAutosaveImportGate.current = beginAutosaveImportGate(projectId)
+        },
+      })
+      if (importedFiles.length === 0) return
+      const releaseGate = releaseAutosaveImportGate.current ?? beginAutosaveImportGate(projectId)
+      runImportParseJob(projectId, importedFiles, { autoRegister: false }, rawFiles, releaseGate)
+      gateTransferred = true
+    } finally {
+      if (!gateTransferred) releaseAutosaveImportGate.current?.()
+    }
+  }, [activeProjectId, beginAutosaveImportGate, currentProjectWorkspaceSnapshot, projectWorkspaces, runImportParseJob, stageSourceFilesForProject])
 
   const updateTextAnnotation = useCallback((annotationId: string, text: string) => {
     const nextText = text.trim()
@@ -2365,15 +2413,21 @@ export function App() {
       const projectTargetedFiles = desktopApi
         ? desktopImportFilesWithProjectTargets(importedFiles, files, projectDirectoriesRef.current[activeProjectId] ?? null).files
         : importedFiles
-      await stageSourceFiles(projectTargetedFiles.map(deferredImportPlaceholder), {
-        ...transition.options,
-        autoRegister: false,
-        targetCanvasId: activeCanvasTabId,
-      })
-      runImportParseJob(activeProjectId, projectTargetedFiles, {
-        ...transition.options,
-        targetCanvasId: activeCanvasTabId,
-      }, sourceFiles)
+      const releaseAutosaveImportGate = beginAutosaveImportGate(activeProjectId)
+      try {
+        await stageSourceFiles(projectTargetedFiles.map(deferredImportPlaceholder), {
+          ...transition.options,
+          autoRegister: false,
+          targetCanvasId: activeCanvasTabId,
+        })
+        runImportParseJob(activeProjectId, projectTargetedFiles, {
+          ...transition.options,
+          targetCanvasId: activeCanvasTabId,
+        }, sourceFiles, releaseAutosaveImportGate)
+      } catch (error) {
+        releaseAutosaveImportGate()
+        throw error
+      }
       return
     }
     const groupFileIds = sourceFileGroupIds(files, drop.fileIds)
@@ -2388,6 +2442,7 @@ export function App() {
     activeProjectId,
     activeCanvasTabId,
     addImageAnnotations,
+    beginAutosaveImportGate,
     currentProjectWorkspaceSnapshot,
     files,
     refreshActiveProjectSourceSnapshot,
@@ -2459,17 +2514,29 @@ export function App() {
       ? currentProjectWorkspaceSnapshot().files
       : projectWorkspaces[projectId]?.files ?? []
     const projectDirectory = projectDirectoriesRef.current[projectId] ?? null
-    const importedFiles = await importDesktopFilesAction({
-      projectId,
-      chooseFiles: window.rxnflowDesktop?.chooseFiles,
-      stageSourceFilesForProject,
-      prepareImportedFiles: (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files,
-      stageOptions: {
-        autoRegister: false,
-      },
-    })
-    runImportParseJob(projectId, importedFiles, { autoRegister: false })
-  }, [activeProjectId, currentProjectWorkspaceSnapshot, projectWorkspaces, runImportParseJob, stageSourceFilesForProject])
+    const releaseAutosaveImportGate = { current: null as (() => void) | null }
+    let gateTransferred = false
+    try {
+      const importedFiles = await importDesktopFilesAction({
+        projectId,
+        chooseFiles: window.rxnflowDesktop?.chooseFiles,
+        stageSourceFilesForProject,
+        prepareImportedFiles: (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files,
+        stageOptions: {
+          autoRegister: false,
+        },
+        beforeStage: () => {
+          releaseAutosaveImportGate.current = beginAutosaveImportGate(projectId)
+        },
+      })
+      if (importedFiles.length === 0) return
+      const releaseGate = releaseAutosaveImportGate.current ?? beginAutosaveImportGate(projectId)
+      runImportParseJob(projectId, importedFiles, { autoRegister: false }, [], releaseGate)
+      gateTransferred = true
+    } finally {
+      if (!gateTransferred) releaseAutosaveImportGate.current?.()
+    }
+  }, [activeProjectId, beginAutosaveImportGate, currentProjectWorkspaceSnapshot, projectWorkspaces, runImportParseJob, stageSourceFilesForProject])
 
   const openImportPicker = useCallback((projectId = activeProjectId) => {
     openImportPickerAction({
@@ -2633,6 +2700,11 @@ export function App() {
       autosaveQueueRef.current.delete(input.project.id)
       return
     }
+    if ((autosaveImportDepthRef.current.get(input.project.id) ?? 0) > 0) {
+      autosaveQueueRef.current.delete(input.project.id)
+      autosaveQueueRef.current.set(input.project.id, input)
+      return
+    }
     if (autosaveKey === autosaveKeysRef.current.get(input.project.id)) {
       autosaveQueueRef.current.delete(input.project.id)
       return
@@ -2693,6 +2765,8 @@ export function App() {
       }
     }
   }, [rememberProjectDirectory])
+
+  autosaveRunnerRef.current = runAutosaveProject
 
   useEffect(() => {
     const previousInput = autosaveInputRef.current

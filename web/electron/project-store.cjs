@@ -25,6 +25,19 @@ const unixRegularFileType = 0o100000
 const unixDirectoryType = 0o040000
 const maxFileHashCacheEntries = 256
 const maxFileHashAttempts = 3
+const rejectedSourceParseWarningCodes = new Set([
+  "unsupported_format",
+  "parse_failed",
+  "import_parse_failed",
+  "cclib_parse_empty",
+  "cclib_parse_failed",
+  "cclib_unavailable",
+  "full_file_read_failed",
+  "source_file_too_large",
+  "source_materialize_failed",
+  "import_preview_missing",
+  "import_preview_failed",
+])
 const fileHashCache = new Map()
 const sourceMaterializationTails = new Map()
 const projectSaveTails = new Map()
@@ -350,8 +363,27 @@ function parseProjectPackageContent(content) {
 
 async function persistSourceFile(projectDirectory, file, index, options) {
   const storedPath = sourceStoredPathForFile(file, index, options.usedStoredPaths)
-  options.usedStoredPaths?.add(storedPath)
   const targetPath = path.join(projectDirectory, storedPath)
+  if (!sourceFileRequiresStoredContent(file)) {
+    const { sourcePath: _sourcePath, storedPath: _computedStoredPath, checksum: _checksum, ...rest } = file
+    if (typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)) {
+      const existingPath = path.join(projectDirectory, toProjectPath(file.storedPath))
+      try {
+        const hashedFile = await sha256File(existingPath)
+        options.usedStoredPaths?.add(sourceStoredPathKey(file.storedPath))
+        return {
+          ...rest,
+          size: hashedFile.size,
+          checksum: `sha256:${hashedFile.digest}`,
+          storedPath: toProjectPath(file.storedPath),
+        }
+      } catch {
+        // A failed new import has no source to preserve.
+      }
+    }
+    return rest
+  }
+  options.usedStoredPaths?.add(sourceStoredPathKey(storedPath))
   const sourcePath = await resolveSourcePath(projectDirectory, file, options.previousProjectDirectory)
 
   await fs.mkdir(path.dirname(targetPath), { recursive: true })
@@ -610,23 +642,33 @@ function invalidateFileHash(filePath) {
 }
 
 function sourceFileRequiresStoredContent(file) {
+  const parse = file?.parse
+  if (parse && typeof parse === "object") {
+    if (parse.terminationStatus === "error" || parse.terminationStatus === "running") return false
+    if (Array.isArray(parse.warnings) && parse.warnings.some((warning) => rejectedSourceParseWarningCodes.has(warning?.code))) return false
+  }
   return file?.status === "ready" || file?.status === "parsed" || file?.parse?.parsed === true
 }
 
 function sourceStoredPathForFile(file, index, usedStoredPaths) {
   if (typeof file?.storedPath === "string" && isSafeStoredSourcePath(file.storedPath)) {
     const storedPath = toProjectPath(file.storedPath)
-    if (!usedStoredPaths?.has(storedPath)) return storedPath
+    if (!usedStoredPaths?.has(sourceStoredPathKey(storedPath))) return storedPath
   }
 
   const baseName = safeSourceFileName(file, index)
   let storedPath = toProjectPath(path.join(sourcesDirectory, baseName))
   let suffix = 2
-  while (usedStoredPaths?.has(storedPath)) {
+  while (usedStoredPaths?.has(sourceStoredPathKey(storedPath))) {
     storedPath = toProjectPath(path.join(sourcesDirectory, withFileNameSuffix(baseName, suffix)))
     suffix += 1
   }
   return storedPath
+}
+
+function sourceStoredPathKey(storedPath) {
+  const normalized = toProjectPath(storedPath)
+  return process.platform === "win32" || process.platform === "darwin" ? normalized.toLowerCase() : normalized
 }
 
 async function pruneUnreferencedSourceFiles(projectDirectory, files) {
@@ -634,7 +676,7 @@ async function pruneUnreferencedSourceFiles(projectDirectory, files) {
     (Array.isArray(files) ? files : [])
       .map((file) => file?.storedPath)
       .filter(isSafeStoredSourcePath)
-      .map(toProjectPath),
+      .map(sourceStoredPathKey),
   )
   const sourceRoot = path.join(projectDirectory, sourcesDirectory)
   let dirents
@@ -647,7 +689,7 @@ async function pruneUnreferencedSourceFiles(projectDirectory, files) {
   await Promise.all(dirents.map(async (dirent) => {
     if (!dirent.isFile()) return
     const storedPath = toProjectPath(path.join(sourcesDirectory, dirent.name))
-    if (referenced.has(storedPath)) return
+    if (referenced.has(sourceStoredPathKey(storedPath))) return
     const sourcePath = path.join(sourceRoot, dirent.name)
     await fs.unlink(sourcePath).then(
       () => invalidateFileHash(sourcePath),
@@ -865,23 +907,9 @@ function writeProjectWorkspaceArchive(projectDirectory, archivePath, additionalE
 
 function safeSourceFileName(file, index) {
   const originalName = typeof file?.name === "string" && file.name ? file.name : `source-${index + 1}.txt`
-  const normalizedOriginalName = path.basename(originalName).trim().toLowerCase()
-  const extension = safeExtension(path.extname(originalName))
-  const originalStem = path.basename(originalName, path.extname(originalName)).trim().toLowerCase()
-  const baseName = safeSourceStem(originalStem) || "source"
-  const safeName = `${baseName}${extension}`
-  const uniqueBaseName = normalizedOriginalName === safeName
-    ? baseName
-    : `${baseName}-${crypto.createHash("sha256").update(normalizedOriginalName).digest("hex").slice(0, 16)}`
-  return `${uniqueBaseName}${extension}`
-}
-
-function safeSourceStem(value) {
-  return String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^[-_]+|[-_]+$/g, "")
+  const baseName = originalName.split(/[\\/]/).pop() ?? ""
+  const safeName = baseName.replace(/[\0<>:"|?*]/g, "-")
+  return safeName && safeName !== "." && safeName !== ".." ? safeName : `source-${index + 1}.txt`
 }
 
 function withFileNameSuffix(fileName, suffix) {
