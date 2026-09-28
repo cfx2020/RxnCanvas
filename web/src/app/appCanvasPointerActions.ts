@@ -103,6 +103,7 @@ export function handleNodePointerDownAction({
   nodes,
   edges,
   barriers,
+  reservedIds,
   screenToWorld,
   appStateSetters,
   pushEditHistory,
@@ -114,6 +115,7 @@ export function handleNodePointerDownAction({
   nodes: FlowNode[]
   edges: FlowEdge[]
   barriers: FlowBarrier[]
+  reservedIds: CanvasSelectionIds
   screenToWorld: ScreenToWorld
   appStateSetters: ProjectWorkspaceStateSetters
   pushEditHistory: PushCanvasEditHistory
@@ -143,7 +145,7 @@ export function handleNodePointerDownAction({
     const copyResult = pasteCanvasClipboardPayload(
       { nodes, edges, barriers },
       payload,
-      { pasteIndex: 1, offsetStep: { x: 0, y: 0 }, preserveLabels: true },
+      { pasteIndex: 1, offsetStep: { x: 0, y: 0 }, reservedIds },
     )
     if (copyResult) {
       pushEditHistory()

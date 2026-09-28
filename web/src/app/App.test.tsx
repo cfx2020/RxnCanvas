@@ -1046,6 +1046,42 @@ describe("App", () => {
     expect(screen.queryByText("No local files")).not.toBeInTheDocument()
   })
 
+  it("renames a canvas tab in place", () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: "New canvas" }))
+
+    const tabList = screen.getByRole("tablist", { name: "Project canvases" })
+    fireEvent.doubleClick(within(tabList).getByRole("tab", { name: "Diels-Alder Study 1" }))
+    const input = screen.getByRole("textbox", { name: "Rename canvas Diels-Alder Study 1" })
+    fireEvent.change(input, { target: { value: "Alternative route" } })
+    fireEvent.blur(input)
+
+    expect(within(tabList).getByRole("tab", { name: "Alternative route" })).toHaveAttribute("aria-selected", "true")
+  })
+
+  it("pastes copied nodes with project-wide unique ids across canvases", () => {
+    render(<App />)
+
+    const surface = screen.getByLabelText("Graph canvas surface")
+    fireEvent.keyDown(surface, { key: "a", metaKey: true })
+    fireEvent.keyDown(surface, { key: "c", metaKey: true })
+    fireEvent.keyDown(surface, { key: "v", metaKey: true })
+    const sameCanvasCopy = surface.querySelector('[data-flow-node-id="butadiene-copy"]')
+    expect(sameCanvasCopy).toBeInTheDocument()
+    expect(sameCanvasCopy).toHaveTextContent("1,3-Butadiene")
+    expect(sameCanvasCopy).not.toHaveTextContent("copy")
+
+    fireEvent.click(screen.getByRole("button", { name: "New canvas" }))
+    const target = screen.getByLabelText("Graph canvas surface")
+    fireEvent.keyDown(target, { key: "v", metaKey: true })
+
+    const crossCanvasCopy = target.querySelector('[data-flow-node-id="butadiene-copy-2"]')
+    expect(crossCanvasCopy).toBeInTheDocument()
+    expect(crossCanvasCopy).toHaveTextContent("1,3-Butadiene")
+    expect(crossCanvasCopy).not.toHaveTextContent("copy")
+    expect(target.querySelector('[data-flow-node-id="butadiene-copy"]')).not.toBeInTheDocument()
+  })
+
   it("imports dropped local files into an inactive project row", async () => {
     render(<App />)
 

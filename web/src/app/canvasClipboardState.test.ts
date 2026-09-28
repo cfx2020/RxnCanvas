@@ -114,7 +114,7 @@ describe("canvasClipboardState", () => {
     ])
     expect(result?.collections.nodes.at(-2)?.position).toEqual({ x: 58, y: 68 })
     expect(result?.collections.nodes.at(-1)?.position).toEqual({ x: 128, y: 168 })
-    expect(result?.collections.nodes.at(-2)?.label).toBe("A copy")
+    expect(result?.collections.nodes.at(-2)?.label).toBe("A")
     expect(result?.collections.edges.at(-1)).toEqual({
       id: "edge-ab-copy",
       sourceId: "node-a-copy",
@@ -150,7 +150,36 @@ describe("canvasClipboardState", () => {
     expect(secondPaste?.selection.barrierIds).toEqual(["barrier-ab-copy-2"])
   })
 
-  it("can preserve node labels for modifier drag copies", () => {
+  it("avoids ids already used on another canvas in the same project", () => {
+    const payload = copyCanvasSelection(collections, {
+      nodeIds: ["node-a", "node-b"],
+      edgeIds: [],
+      barrierIds: [],
+    })
+    const result = pasteCanvasClipboard(
+      { nodes: [], edges: [], barriers: [] },
+      payload,
+      {
+        reservedIds: {
+          nodeIds: ["node-a", "node-b", "node-a-copy", "node-b-copy"],
+          edgeIds: ["edge-ab", "edge-ab-copy"],
+          barrierIds: ["barrier-ab", "barrier-ab-copy"],
+        },
+      },
+    )
+
+    expect(result?.selection).toEqual({
+      nodeIds: ["node-a-copy-2", "node-b-copy-2"],
+      edgeIds: ["edge-ab-copy-2"],
+      barrierIds: ["barrier-ab-copy-2"],
+    })
+    expect(result?.collections.edges[0]).toMatchObject({
+      sourceId: "node-a-copy-2",
+      targetId: "node-b-copy-2",
+    })
+  })
+
+  it("preserves node labels for every copy path", () => {
     const payload = copyCanvasSelection(collections, {
       nodeIds: ["node-a", "node-b"],
       edgeIds: [],
@@ -158,7 +187,6 @@ describe("canvasClipboardState", () => {
     })
     const result = pasteCanvasClipboard(collections, payload, {
       offsetStep: { x: 0, y: 0 },
-      preserveLabels: true,
     })
 
     expect(result?.collections.nodes.at(-2)?.label).toBe("A")

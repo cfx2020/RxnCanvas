@@ -22,7 +22,7 @@ export type PasteCanvasClipboardResult = {
 export type PasteCanvasClipboardOptions = {
   pasteIndex?: number
   offsetStep?: Point
-  preserveLabels?: boolean
+  reservedIds?: CanvasSelectionIds
 }
 
 const defaultOffsetStep: Point = { x: 48, y: 48 }
@@ -78,9 +78,9 @@ export function pasteCanvasClipboard(
     x: offsetStep.x * pasteIndex,
     y: offsetStep.y * pasteIndex,
   }
-  const usedNodeIds = new Set(collections.nodes.map((node) => node.id))
-  const usedEdgeIds = new Set(collections.edges.map((edge) => edge.id))
-  const usedBarrierIds = new Set(collections.barriers.map((barrier) => barrier.id))
+  const usedNodeIds = new Set([...collections.nodes.map((node) => node.id), ...(options.reservedIds?.nodeIds ?? [])])
+  const usedEdgeIds = new Set([...collections.edges.map((edge) => edge.id), ...(options.reservedIds?.edgeIds ?? [])])
+  const usedBarrierIds = new Set([...collections.barriers.map((barrier) => barrier.id), ...(options.reservedIds?.barrierIds ?? [])])
   const nodeIdMap = new Map<string, string>()
 
   const pastedNodes = payload.nodes.map((node) => {
@@ -90,7 +90,6 @@ export function pasteCanvasClipboard(
     return {
       ...cloneNode(node),
       id: nextId,
-      label: options.preserveLabels ? node.label : nextCopiedLabel(node.label),
       position: {
         x: node.position.x + offset.x,
         y: node.position.y + offset.y,
@@ -145,8 +144,4 @@ function nextAvailableId(baseId: string, usedIds: Set<string>): string {
   let index = 2
   while (usedIds.has(`${baseId}-${index}`)) index += 1
   return `${baseId}-${index}`
-}
-
-function nextCopiedLabel(label: string): string {
-  return label.endsWith(" copy") ? label : `${label} copy`
 }

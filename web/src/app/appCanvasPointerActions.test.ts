@@ -110,6 +110,11 @@ describe("appCanvasPointerActions", () => {
       nodes,
       edges,
       barriers,
+      reservedIds: {
+        nodeIds: ["node-a-copy", "node-b-copy"],
+        edgeIds: ["edge-ab-copy"],
+        barrierIds: ["barrier-ab-copy"],
+      },
       screenToWorld: () => ({ x: 20, y: 30 }),
       appStateSetters: setters,
       pushEditHistory,
@@ -121,23 +126,23 @@ describe("appCanvasPointerActions", () => {
     expect(copiedNodes.map((node) => [node.id, node.label, node.position])).toEqual([
       ["node-a", "A", { x: 10, y: 20 }],
       ["node-b", "B", { x: 80, y: 120 }],
-      ["node-a-copy", "A", { x: 10, y: 20 }],
-      ["node-b-copy", "B", { x: 80, y: 120 }],
+      ["node-a-copy-2", "A", { x: 10, y: 20 }],
+      ["node-b-copy-2", "B", { x: 80, y: 120 }],
     ])
     expect(setEdges).toHaveBeenCalledWith([
       ...edges,
-      { id: "edge-ab-copy", sourceId: "node-a-copy", targetId: "node-b-copy", label: "path" },
+      { id: "edge-ab-copy-2", sourceId: "node-a-copy-2", targetId: "node-b-copy-2", label: "path" },
     ])
     expect(setBarriers).toHaveBeenCalledWith([
       ...barriers,
-      { id: "barrier-ab-copy", sourceId: "node-a-copy", targetId: "node-b-copy", label: "12.3" },
+      { id: "barrier-ab-copy-2", sourceId: "node-a-copy-2", targetId: "node-b-copy-2", label: "12.3" },
     ])
     expect(setDragState).toHaveBeenCalledWith(expect.objectContaining({
       kind: "node",
       mode: "copy",
       subjects: [
-        { nodeId: "node-a-copy", origin: { x: 10, y: 20 } },
-        { nodeId: "node-b-copy", origin: { x: 80, y: 120 } },
+        { nodeId: "node-a-copy-2", origin: { x: 10, y: 20 } },
+        { nodeId: "node-b-copy-2", origin: { x: 80, y: 120 } },
       ],
     }))
   })

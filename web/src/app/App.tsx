@@ -644,6 +644,11 @@ export function App() {
     activeTabId: activeCanvasTabId,
     activeSnapshot: currentCanvasSnapshot,
   }), [activeCanvasTabId, canvasTabs, currentCanvasSnapshot])
+  const projectGraphIds = useMemo(() => ({
+    nodeIds: projectCanvases.flatMap((canvas) => canvas.nodes.map((node) => node.id)),
+    edgeIds: projectCanvases.flatMap((canvas) => canvas.edges.map((edge) => edge.id)),
+    barrierIds: projectCanvases.flatMap((canvas) => canvas.barriers.map((barrier) => barrier.id)),
+  }), [projectCanvases])
   const openCanvasTabs = useMemo(() => canvasTabs.filter((tab) => !tab.closed), [canvasTabs])
   const autosaveInput = useMemo<ProjectAutosaveInput>(() => ({
     project: activeProject,
@@ -1556,6 +1561,7 @@ export function App() {
         nodes,
         edges,
         barriers,
+        reservedIds: projectGraphIds,
         screenToWorld,
         appStateSetters,
         pushEditHistory,
@@ -1569,6 +1575,7 @@ export function App() {
       edges,
       isMacCopyDragPlatform,
       nodes,
+      projectGraphIds,
       pushEditHistory,
       screenToWorld,
       selectedBarrierIds,
@@ -3117,7 +3124,7 @@ export function App() {
     const result = pasteCanvasClipboardPayload(
       { nodes, edges, barriers },
       canvasClipboardRef.current,
-      { pasteIndex },
+      { pasteIndex, reservedIds: projectGraphIds },
     )
     if (!result) {
       void pasteImagesFromSystemClipboard()
@@ -3130,7 +3137,7 @@ export function App() {
     applyCanvasSelectionState(appStateSetters, result.selection)
     appStateSetters.setInspectorMode("inspector")
     canvasClipboardPasteIndexRef.current = pasteIndex
-  }, [appStateSetters, barriers, edges, nodes, pasteImagesFromSystemClipboard, pushEditHistory])
+  }, [appStateSetters, barriers, edges, nodes, pasteImagesFromSystemClipboard, projectGraphIds, pushEditHistory])
 
   const cutCanvasSelection = useCallback(() => {
     const selection = {
@@ -4114,20 +4121,6 @@ function projectForgetFailureValidation(projectLabel: string): ProjectValidation
   }
 }
 
-function estimatedTabInputTextWidth(text: string): number {
-  return Array.from(text).reduce((width, char) => {
-    if (/\s/.test(char)) return width + 4
-    if (/[\u3400-\u9fff]/.test(char)) return width + 12
-    if (/[A-Z0-9Δ‡+=./()[\]{}–—-]/.test(char)) return width + 8.2
-    return width + 6.8
-  }, 0)
-}
-
-function canvasTabInputWidth(value: string, placeholder: string): number {
-  const text = value.length > 0 ? value : (placeholder.trim() || "Canvas")
-  return clamp(Math.ceil(estimatedTabInputTextWidth(text) + 34), 76, 210)
-}
-
 function CanvasTabBar({
   tabs,
   activeTabId,
@@ -4145,6 +4138,18 @@ function CanvasTabBar({
 }) {
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [draftLabel, setDraftLabel] = useState("")
+  const tabListRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const list = tabListRef.current
+    const active = list?.querySelector<HTMLElement>(".canvas-tab-shell.is-active")
+    if (!list || !active) return
+    if (active.offsetLeft < list.scrollLeft) {
+      list.scrollLeft = active.offsetLeft
+    } else if (active.offsetLeft + active.offsetWidth > list.scrollLeft + list.clientWidth) {
+      list.scrollLeft = active.offsetLeft + active.offsetWidth - list.clientWidth
+    }
+  }, [activeTabId, tabs.length])
 
   const beginRename = (tab: CanvasTabState) => {
     setEditingTabId(tab.id)
@@ -4159,7 +4164,7 @@ function CanvasTabBar({
 
   return (
     <nav className="canvas-tab-bar" aria-label="Canvas tabs">
-      <div className="canvas-tab-list" role="tablist" aria-label="Project canvases">
+      <div ref={tabListRef} className="canvas-tab-list" role="tablist" aria-label="Project canvases">
         {tabs.map((tab) => {
           const editing = editingTabId === tab.id
           return (
@@ -4169,9 +4174,6 @@ function CanvasTabBar({
                   className="canvas-tab-input"
                   aria-label={`Rename canvas ${tab.label}`}
                   value={draftLabel}
-                  style={{
-                    "--canvas-tab-input-width": `${canvasTabInputWidth(draftLabel, tab.label)}px`,
-                  } as CSSProperties}
                   onChange={(event) => setDraftLabel(event.currentTarget.value)}
                   onBlur={() => submitRename(tab)}
                   onKeyDown={(event) => {
@@ -4207,7 +4209,7 @@ function CanvasTabBar({
                     onCloseTab(tab.id)
                   }}
                 >
-                  ×
+                  <X size={14} aria-hidden="true" />
                 </button>
               ) : null}
             </span>

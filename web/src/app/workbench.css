@@ -3877,64 +3877,6 @@ select,
 }
 
 /* 2026-06-18 Notion-style page tabs, node ports, dense table view. */
-.canvas-tab-bar {
-  position: absolute;
-  z-index: 12;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 42px;
-  display: flex;
-  align-items: stretch;
-  border-bottom: 1px solid rgba(126, 152, 169, 0.14);
-  background: rgba(255, 255, 255, 0.48);
-  backdrop-filter: blur(20px);
-  user-select: none;
-}
-
-.canvas-tab-list {
-  display: flex;
-  align-items: stretch;
-  min-width: 0;
-  padding-left: 12px;
-}
-
-.canvas-tab,
-.canvas-tab-add {
-  min-width: 44px;
-  height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-right: 1px solid rgba(126, 152, 169, 0.12);
-  border-radius: 0;
-  background: transparent;
-  color: #5f7286;
-}
-
-.canvas-tab {
-  max-width: 210px;
-  padding: 0 18px;
-  font-size: 13px;
-  font-weight: 760;
-  white-space: nowrap;
-}
-
-.canvas-tab.is-active {
-  background: rgba(255, 255, 255, 0.72);
-  color: #203146;
-  box-shadow: inset 0 -2px 0 rgba(31, 162, 131, 0.56);
-}
-
-.canvas-tab:hover,
-.canvas-tab-add:hover,
-.canvas-tab:focus-visible,
-.canvas-tab-add:focus-visible {
-  outline: none;
-  background: rgba(240, 248, 250, 0.86);
-  color: #0f7965;
-}
 
 .canvas-stage .floating-toolbar {
   top: 58px;
@@ -4107,8 +4049,6 @@ select,
   transform: translateY(-0.5px) scaleX(1.08);
 }
 
-.theme-dark .canvas-tab-bar,
-.theme-dark .canvas-tab.is-active,
 .theme-dark .workbench-energy-table-panel {
   border-color: rgba(145, 180, 199, 0.16);
   background: rgba(17, 29, 40, 0.88);
@@ -4135,48 +4075,6 @@ select,
 .traffic-lights,
 .traffic-lights * {
   -webkit-app-region: no-drag;
-}
-
-.canvas-tab-bar {
-  height: 40px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-}
-
-.canvas-tab-kicker {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  border-radius: 8px;
-  padding: 0 7px;
-  color: #66798b;
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.02em;
-}
-
-.canvas-tab-list {
-  padding-left: 0;
-}
-
-.canvas-tab,
-.canvas-tab-add {
-  height: 32px;
-  border: 0;
-  border-radius: 9px;
-}
-
-.canvas-tab {
-  padding: 0 12px;
-  font-size: 12px;
-  font-weight: 780;
-}
-
-.canvas-tab.is-active {
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.78), 0 8px 22px rgba(58, 85, 104, 0.08);
 }
 
 .canvas-stage .floating-toolbar {
@@ -4439,10 +4337,6 @@ select,
   background: rgba(48, 67, 82, 0.96);
 }
 
-.theme-dark .canvas-tab-kicker {
-  color: #9eb3c3;
-}
-
 .node-header-actions {
   display: grid;
   grid-template-columns: auto 30px;
@@ -4550,38 +4444,6 @@ select,
 }
 
 .workspace-topbar-actions {
-  flex: 0 0 auto;
-}
-
-.canvas-tab-bar {
-  position: static;
-  inset: auto;
-  z-index: auto;
-  flex: 1 1 auto;
-  height: 100%;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  backdrop-filter: none;
-  overflow: hidden;
-}
-
-.canvas-tab-list {
-  min-width: 0;
-  max-width: 100%;
-  height: 100%;
-  gap: 2px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.canvas-tab-list::-webkit-scrollbar {
-  display: none;
-}
-
-.canvas-tab,
-.canvas-tab-add {
   flex: 0 0 auto;
 }
 
@@ -6186,15 +6048,12 @@ select,
 }
 
 /* 2026-06-23 UI polish: draggable chrome, tighter toolbar, node/file/tab refinements. */
-.workspace-topbar,
-.canvas-tab-bar {
+.workspace-topbar {
   -webkit-app-region: drag;
 }
 .workspace-topbar button,
 .workspace-topbar input,
 .workspace-topbar select,
-.canvas-tab-bar button,
-.canvas-tab-bar input,
 .right-sidebar-fixed-toggle,
 .project-rail,
 .inspector-panel,
@@ -6414,56 +6273,6 @@ select,
   min-width: 42px;
 }
 
-.canvas-tab-shell {
-  position: relative;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  border-right: 1px solid rgba(126, 152, 169, 0.12);
-}
-.canvas-tab-shell .canvas-tab {
-  border-right: 0;
-  padding-right: 30px;
-}
-.canvas-tab-shell.is-active {
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: inset 0 -2px 0 rgba(31, 162, 131, 0.56);
-}
-.canvas-tab-shell.is-active .canvas-tab {
-  background: transparent;
-  box-shadow: none;
-}
-.canvas-tab-close {
-  position: absolute;
-  right: 5px;
-  width: 20px;
-  height: 20px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #7a8d9d;
-  font-size: 16px;
-  line-height: 1;
-}
-.canvas-tab-close:hover,
-.canvas-tab-close:focus-visible {
-  outline: none;
-  background: rgba(255, 106, 92, 0.12);
-  color: #bf3a2f;
-}
-.canvas-tab-input {
-  width: var(--canvas-tab-input-width, 156px);
-  height: 30px;
-  margin: 0 28px 0 8px;
-  border: 1px solid rgba(31, 162, 131, 0.28);
-  border-radius: 9px;
-  padding: 0 8px;
-  background: rgba(255, 255, 255, 0.9);
-  color: #203146;
-  font-size: 13px;
-  font-weight: 800;
-}
-
 .workbench-view-track {
   position: absolute;
   inset: 0;
@@ -6629,7 +6438,6 @@ select,
   color: #68e0bd;
 }
 .theme-dark .project-file-action-menu,
-.theme-dark .canvas-tab-input,
 .theme-dark .edge-label-editor input {
   border-color: rgba(145, 180, 199, 0.18);
   background: rgba(17, 29, 40, 0.96);
@@ -7424,107 +7232,6 @@ select,
   color: inherit !important;
 }
 
-.canvas-tab-bar {
-  height: 38px !important;
-  padding: 0 8px !important;
-}
-
-.canvas-tab-list {
-  align-items: center !important;
-  gap: 6px !important;
-}
-
-.canvas-tab-shell {
-  position: relative !important;
-  height: 30px !important;
-  min-width: 0 !important;
-  border: 1px solid rgba(126, 152, 169, 0.15) !important;
-  border-radius: 999px !important;
-  background: rgba(247, 251, 252, 0.78) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
-  overflow: hidden !important;
-}
-
-.canvas-tab-shell.is-active {
-  border-color: rgba(31, 162, 131, 0.28) !important;
-  background: linear-gradient(180deg, rgba(240, 255, 251, 0.96), rgba(224, 250, 245, 0.82)) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 8px 20px rgba(31, 162, 131, 0.12) !important;
-}
-
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  max-width: 176px !important;
-  height: 28px !important;
-  min-height: 28px !important;
-  border: 0 !important;
-  border-radius: 999px !important;
-  padding: 0 30px 0 13px !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  color: #40566b !important;
-  font-size: 12px !important;
-  font-weight: 820 !important;
-  line-height: 28px !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-}
-
-.canvas-tab-shell.is-active .canvas-tab {
-  color: #173449 !important;
-}
-
-.canvas-tab-shell .canvas-tab:hover,
-.canvas-tab-shell .canvas-tab:focus-visible {
-  outline: none !important;
-  color: #0f7965 !important;
-}
-
-.canvas-tab-close {
-  top: 50% !important;
-  right: 5px !important;
-  transform: translateY(-50%) !important;
-  width: 20px !important;
-  height: 20px !important;
-  border-radius: 999px !important;
-  opacity: 0 !important;
-  transition: opacity 120ms ease, background 120ms ease, color 120ms ease !important;
-}
-
-.canvas-tab-shell:hover .canvas-tab-close,
-.canvas-tab-shell:focus-within .canvas-tab-close,
-.canvas-tab-shell.is-active .canvas-tab-close,
-.canvas-tab-close:focus-visible {
-  opacity: 1 !important;
-}
-
-.canvas-tab-add {
-  width: 30px !important;
-  min-width: 30px !important;
-  height: 30px !important;
-  min-height: 30px !important;
-  border: 1px solid rgba(126, 152, 169, 0.15) !important;
-  border-radius: 999px !important;
-  background: rgba(247, 251, 252, 0.78) !important;
-  color: #63778b !important;
-}
-
-.canvas-tab-add:hover,
-.canvas-tab-add:focus-visible {
-  outline: none !important;
-  border-color: rgba(31, 162, 131, 0.28) !important;
-  background: rgba(226, 250, 245, 0.94) !important;
-  color: #0f7965 !important;
-}
-
-.canvas-tab-input {
-  width: var(--canvas-tab-input-width, 148px) !important;
-  height: 26px !important;
-  margin: 0 28px 0 8px !important;
-  border-radius: 999px !important;
-  font-size: 12px !important;
-}
-
 .theme-dark .workspace-action-menu,
 .theme-dark .project-action-menu,
 .theme-dark .project-file-action-menu,
@@ -7566,38 +7273,9 @@ select,
   color: #9ff0d8 !important;
 }
 
-.theme-dark .canvas-tab-shell,
-.theme-dark .canvas-tab-add {
-  border-color: rgba(145, 180, 199, 0.14) !important;
-  background: rgba(23, 37, 49, 0.78) !important;
-  color: #aebfcd !important;
-}
-
-.theme-dark .canvas-tab-shell.is-active {
-  border-color: rgba(104, 224, 189, 0.26) !important;
-  background: linear-gradient(180deg, rgba(31, 74, 67, 0.94), rgba(27, 55, 53, 0.86)) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 20px rgba(0, 0, 0, 0.2) !important;
-}
-
-.theme-dark .canvas-tab-shell .canvas-tab,
-.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  color: #dceaf4 !important;
-}
-
-.theme-dark .canvas-tab-add:hover,
-.theme-dark .canvas-tab-add:focus-visible {
-  background: rgba(30, 109, 94, 0.36) !important;
-  color: #bdf7e8 !important;
-}
-
 @media (max-width: 980px) {
   .workspace-topbar-left {
     padding-left: 44px !important;
-  }
-
-  .canvas-tab-shell .canvas-tab,
-  .canvas-tab-shell.is-active .canvas-tab {
-    max-width: 150px !important;
   }
 }
 
@@ -7671,9 +7349,7 @@ select,
   -webkit-app-region: no-drag !important;
 }
 
-.workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list {
+.workspace-topbar-left {
   -webkit-app-region: drag !important;
 }
 
@@ -7682,10 +7358,6 @@ select,
   max-width: calc(100% - 168px) !important;
 }
 
-.canvas-tab-shell,
-.canvas-tab-shell *,
-.canvas-tab-add,
-.canvas-tab-input,
 .workspace-topbar button,
 .workspace-topbar input,
 .workspace-topbar select {
@@ -7966,108 +7638,9 @@ select,
   color: #183247 !important;
 }
 
-.canvas-tab-bar {
-  height: 48px !important;
-  padding: 0 8px 0 10px !important;
-  overflow: visible !important;
-}
-
-.canvas-tab-list {
-  align-items: flex-end !important;
-  height: 48px !important;
-  gap: 4px !important;
-  overflow: visible !important;
-}
-
-.canvas-tab-shell {
-  height: 38px !important;
-  border-color: transparent !important;
-  border-radius: 16px 16px 0 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  overflow: visible !important;
-}
-
-.canvas-tab-shell.is-active {
-  border-color: rgba(126, 152, 169, 0.14) !important;
-  border-bottom-color: transparent !important;
-  background: rgba(247, 252, 253, 0.88) !important;
-  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.72), 0 10px 26px rgba(62, 92, 108, 0.08) !important;
-}
-
-.canvas-tab-shell.is-active::after {
-  content: "" !important;
-  position: absolute !important;
-  left: -1px !important;
-  right: -1px !important;
-  bottom: -1px !important;
-  height: 2px !important;
-  background: rgba(247, 252, 253, 0.96) !important;
-  pointer-events: none !important;
-}
-
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  height: 37px !important;
-  min-height: 37px !important;
-  line-height: 37px !important;
-  border-radius: 16px 16px 0 0 !important;
-  padding: 0 30px 0 14px !important;
-  background: transparent !important;
-  color: #53677a !important;
-  font-size: 13px !important;
-  font-weight: 820 !important;
-}
-
-.canvas-tab-shell:not(.is-active) .canvas-tab:hover,
-.canvas-tab-shell:not(.is-active) .canvas-tab:focus-visible {
-  background: rgba(68, 87, 103, 0.08) !important;
-  color: #183247 !important;
-}
-
-.canvas-tab-shell.is-active .canvas-tab {
-  color: #173449 !important;
-}
-
-.canvas-tab-close {
-  top: 18px !important;
-  right: 6px !important;
-  width: 22px !important;
-  height: 22px !important;
-  color: #748699 !important;
-}
-
-.canvas-tab-close:hover,
-.canvas-tab-close:focus-visible {
-  background: rgba(68, 87, 103, 0.1) !important;
-  color: #183247 !important;
-}
-
-.canvas-tab-add {
-  width: 34px !important;
-  min-width: 34px !important;
-  height: 34px !important;
-  min-height: 34px !important;
-  margin-bottom: 2px !important;
-  border-color: transparent !important;
-  border-radius: 12px !important;
-  background: transparent !important;
-  color: #607487 !important;
-  box-shadow: none !important;
-}
-
-.canvas-tab-add:hover,
-.canvas-tab-add:focus-visible {
-  border-color: transparent !important;
-  background: rgba(68, 87, 103, 0.1) !important;
-  color: #183247 !important;
-}
-
 .theme-dark .left-sidebar-fixed-toggle,
 .theme-dark .project-rail-hover-trigger,
-.theme-dark .project-rail,
-.theme-dark .canvas-tab-shell,
-.theme-dark .canvas-tab-add {
+.theme-dark .project-rail {
   border-color: transparent !important;
   background: transparent !important;
   box-shadow: none !important;
@@ -8078,8 +7651,7 @@ select,
 }
 
 .theme-dark .left-sidebar-fixed-toggle,
-.theme-dark .project-rail-hover-trigger,
-.theme-dark .canvas-tab-add {
+.theme-dark .project-rail-hover-trigger {
   color: #c9d7e2 !important;
 }
 
@@ -8098,9 +7670,7 @@ select,
 .theme-dark .project-file-more[aria-expanded="true"],
 .theme-dark .project-canvas-more:hover,
 .theme-dark .project-canvas-more:focus-visible,
-.theme-dark .project-canvas-more[aria-expanded="true"],
-.theme-dark .canvas-tab-add:hover,
-.theme-dark .canvas-tab-add:focus-visible {
+.theme-dark .project-canvas-more[aria-expanded="true"] {
   background: rgba(196, 215, 228, 0.13) !important;
   color: #f2f7fb !important;
 }
@@ -8131,8 +7701,7 @@ select,
 
 .theme-dark .project-rail-main,
 .theme-dark .project-file-main,
-.theme-dark .project-canvas-row,
-.theme-dark .canvas-tab-shell .canvas-tab {
+.theme-dark .project-canvas-row {
   color: inherit !important;
 }
 
@@ -8145,17 +7714,6 @@ select,
   border-color: rgba(12, 24, 34, 0.98) !important;
   background: #21bd98 !important;
   color: #06221c !important;
-}
-
-.theme-dark .canvas-tab-shell.is-active {
-  border-color: rgba(145, 180, 199, 0.12) !important;
-  border-bottom-color: transparent !important;
-  background: rgba(14, 28, 39, 0.94) !important;
-  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.04), 0 10px 26px rgba(0, 0, 0, 0.18) !important;
-}
-
-.theme-dark .canvas-tab-shell.is-active::after {
-  background: rgba(14, 28, 39, 0.96) !important;
 }
 
 /* 2026-06-24 UIUXpro compact titlebar correction: reduce vertical chrome cost
@@ -8204,14 +7762,11 @@ select,
   z-index: 0 !important;
 }
 
-.workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list {
+.workspace-topbar-left {
   height: 46px !important;
 }
 
-.workspace-topbar-left,
-.canvas-tab-bar {
+.workspace-topbar-left {
   position: relative !important;
   z-index: 1 !important;
 }
@@ -8222,116 +7777,6 @@ select,
   right: 14px !important;
   left: auto !important;
   z-index: 102 !important;
-}
-
-.canvas-tab-list {
-  gap: 6px !important;
-  align-items: flex-end !important;
-}
-
-.canvas-tab-shell {
-  position: relative !important;
-  height: 40px !important;
-  min-width: 136px !important;
-  max-width: 216px !important;
-  border: 0 !important;
-  border-radius: 17px 17px 0 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  overflow: visible !important;
-}
-
-.canvas-tab-shell.is-active {
-  margin-bottom: -1px !important;
-  background: var(--rxnflow-canvas-surface) !important;
-  border: 0 !important;
-  box-shadow: 0 -5px 16px rgba(54, 83, 100, 0.055) !important;
-}
-
-.canvas-tab-shell.is-active::after {
-  display: none !important;
-}
-
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  height: 40px !important;
-  min-height: 40px !important;
-  border-radius: 17px 17px 0 0 !important;
-  padding: 0 34px 0 18px !important;
-  background: transparent !important;
-  color: #637789 !important;
-  font-size: 13px !important;
-  font-weight: 800 !important;
-  line-height: 40px !important;
-}
-
-.canvas-tab-shell:not(.is-active):hover,
-.canvas-tab-shell:not(.is-active):focus-within {
-  background: var(--rxnflow-titlebar-hover) !important;
-}
-
-.canvas-tab-shell:not(.is-active) .canvas-tab:hover,
-.canvas-tab-shell:not(.is-active) .canvas-tab:focus-visible,
-.canvas-tab-shell:not(.is-active):hover .canvas-tab,
-.canvas-tab-shell:not(.is-active):focus-within .canvas-tab {
-  color: #26394d !important;
-}
-
-.canvas-tab-shell.is-active .canvas-tab {
-  color: #173449 !important;
-}
-
-.canvas-tab-close {
-  top: 50% !important;
-  right: 8px !important;
-  width: 22px !important;
-  height: 22px !important;
-  border-radius: 8px !important;
-  transform: translateY(-50%) !important;
-  opacity: 0 !important;
-  color: #748699 !important;
-  transition:
-    opacity 120ms ease,
-    background-color 120ms ease,
-    color 120ms ease !important;
-}
-
-.canvas-tab-shell:hover .canvas-tab-close,
-.canvas-tab-shell:focus-within .canvas-tab-close,
-.canvas-tab-shell.is-active .canvas-tab-close,
-.canvas-tab-close:focus-visible {
-  opacity: 1 !important;
-}
-
-.canvas-tab-add {
-  width: 38px !important;
-  min-width: 38px !important;
-  height: 38px !important;
-  min-height: 38px !important;
-  position: relative !important;
-  margin-left: 10px !important;
-  margin-bottom: 1px !important;
-  border: 0 !important;
-  border-radius: 13px !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.canvas-tab-add::before {
-  content: "" !important;
-  position: absolute !important;
-  left: -6px !important;
-  top: 9px !important;
-  width: 1px !important;
-  height: 20px !important;
-  border-radius: 999px !important;
-  background: var(--rxnflow-titlebar-divider) !important;
-  pointer-events: none !important;
-}
-
-.canvas-tab-add:hover,
-.canvas-tab-add:focus-visible {
-  background: var(--rxnflow-titlebar-hover) !important;
 }
 
 .canvas-stage,
@@ -8362,36 +7807,6 @@ select,
   background: var(--rxnflow-titlebar-surface) !important;
   border-bottom: 0 !important;
   box-shadow: none !important;
-}
-
-.theme-dark .canvas-tab-shell.is-active {
-  background: var(--rxnflow-canvas-surface) !important;
-  border: 0 !important;
-  box-shadow: 0 -5px 16px rgba(0, 0, 0, 0.18) !important;
-}
-
-.theme-dark .canvas-tab-shell .canvas-tab,
-.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  color: #c9d7e2 !important;
-}
-
-.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  color: #f2f7fb !important;
-}
-
-.theme-dark .canvas-tab-shell:not(.is-active):hover,
-.theme-dark .canvas-tab-shell:not(.is-active):focus-within {
-  background: var(--rxnflow-titlebar-hover) !important;
-}
-
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:hover,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:focus-visible,
-.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab,
-.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab,
-.theme-dark .canvas-tab-add:hover,
-.theme-dark .canvas-tab-add:focus-visible {
-  background: var(--rxnflow-titlebar-hover) !important;
-  color: #f2f7fb !important;
 }
 
 /* 2026-06-24 surface unification fix: keep the canvas texture visible and make
@@ -8436,23 +7851,6 @@ select,
 .workbench-view-pane,
 .canvas-view-pane {
   background: transparent !important;
-}
-
-.canvas-tab-shell.is-active,
-.theme-dark .canvas-tab-shell.is-active {
-  background-color: var(--rxnflow-canvas-base) !important;
-  background-image: none !important;
-}
-
-.canvas-tab-shell:not(.is-active),
-.canvas-tab-shell:not(.is-active) .canvas-tab {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.canvas-tab-shell:not(.is-active):hover,
-.canvas-tab-shell:not(.is-active):focus-within {
-  background: var(--rxnflow-titlebar-hover) !important;
 }
 
 .floating-toolbar {
@@ -8663,41 +8061,12 @@ select,
   padding-left: var(--rxnflow-left-collapsed-tab-reserve) !important;
 }
 
-/* 2026-06-25 inactive tab hover cleanup: the inactive tab shell owns the hover
-   state layer. Inner text/close controls should not paint a second rounded
-   hover patch, otherwise moving from the label to “×” creates stacked pills. */
-.canvas-tab-shell:not(.is-active) .canvas-tab:hover,
-.canvas-tab-shell:not(.is-active) .canvas-tab:focus-visible,
-.canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
-.canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
-  background: transparent !important;
-}
-
-.canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
-.canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
-  color: #26394d !important;
-}
-
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:hover,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:focus-visible,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
-  background: transparent !important;
-}
-
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
-  color: #f2f7fb !important;
-}
-
 /* 2026-06-25 native titlebar contract: Electron hidden titlebars only drag
    where the DOM explicitly opts in. Keep chrome backgrounds / empty gaps as
    drag regions and carve out only real controls as no-drag, matching the
    native Codex-style behavior instead of relying on a few custom hitboxes. */
 .app-shell {
   --rxnflow-titlebar-height: 40px;
-  --rxnflow-titlebar-tab-height: 36px;
-  --rxnflow-titlebar-tab-radius: 14px;
   --rxnflow-titlebar-tab-add-size: 34px;
   --rxnflow-titlebar-control-top: 5px;
   --rxnflow-sidebar-flyout-top: 35px;
@@ -8715,45 +8084,10 @@ select,
   app-region: drag !important;
 }
 
-.workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list {
+.workspace-topbar-left {
   height: var(--rxnflow-titlebar-height) !important;
   -webkit-app-region: drag !important;
   app-region: drag !important;
-}
-
-.canvas-tab-shell {
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  border-radius: var(--rxnflow-titlebar-tab-radius) var(--rxnflow-titlebar-tab-radius) 0 0 !important;
-}
-
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  min-height: var(--rxnflow-titlebar-tab-height) !important;
-  border-radius: var(--rxnflow-titlebar-tab-radius) var(--rxnflow-titlebar-tab-radius) 0 0 !important;
-  padding: 0 32px 0 16px !important;
-  line-height: var(--rxnflow-titlebar-tab-height) !important;
-}
-
-.canvas-tab-close {
-  right: 7px !important;
-  width: 20px !important;
-  height: 20px !important;
-  border-radius: 7px !important;
-}
-
-.canvas-tab-add {
-  width: var(--rxnflow-titlebar-tab-add-size) !important;
-  min-width: var(--rxnflow-titlebar-tab-add-size) !important;
-  height: var(--rxnflow-titlebar-tab-add-size) !important;
-  min-height: var(--rxnflow-titlebar-tab-add-size) !important;
-  margin-bottom: 1px !important;
-}
-
-.canvas-tab-add::before {
-  top: 7px !important;
 }
 
 .left-sidebar-fixed-toggle,
@@ -8794,10 +8128,6 @@ select,
   app-region: drag !important;
 }
 
-.canvas-tab-shell,
-.canvas-tab-shell *,
-.canvas-tab-add,
-.canvas-tab-input,
 .workspace-topbar button,
 .workspace-topbar input,
 .workspace-topbar select,
@@ -9071,7 +8401,6 @@ select,
    actions and canvas tabs all live in that row instead of stacking chrome rows. */
 .app-shell {
   --rxnflow-titlebar-height: 48px;
-  --rxnflow-titlebar-tab-height: 40px;
   --rxnflow-titlebar-tab-add-size: 38px;
   --rxnflow-titlebar-control-top: 10px;
   --rxnflow-sidebar-flyout-top: 40px;
@@ -9093,30 +8422,8 @@ select,
   align-items: stretch !important;
 }
 
-.workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list {
+.workspace-topbar-left {
   height: var(--rxnflow-titlebar-height) !important;
-}
-
-.canvas-tab-list {
-  align-items: flex-end !important;
-}
-
-.canvas-tab-shell,
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  min-height: var(--rxnflow-titlebar-tab-height) !important;
-  line-height: var(--rxnflow-titlebar-tab-height) !important;
-}
-
-.canvas-tab-add {
-  width: var(--rxnflow-titlebar-tab-add-size) !important;
-  min-width: var(--rxnflow-titlebar-tab-add-size) !important;
-  height: var(--rxnflow-titlebar-tab-add-size) !important;
-  min-height: var(--rxnflow-titlebar-tab-add-size) !important;
-  margin-bottom: 1px !important;
 }
 
 .project-rail,
@@ -9343,26 +8650,6 @@ select,
   border-color: #214d43 !important;
 }
 
-/* 2026-06-26 inactive dark tab hover: the tab shell must be the only hover
-   surface. A previous dark rule also painted the inner .canvas-tab whenever the
-   shell hovered, so the label side and the close-button side looked like two
-   stacked layers. */
-.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab,
-.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:hover,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:focus-visible,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.theme-dark .canvas-tab-shell:not(.is-active):hover,
-.theme-dark .canvas-tab-shell:not(.is-active):focus-within {
-  background: var(--rxnflow-titlebar-hover) !important;
-  box-shadow: none !important;
-}
-
 /* 2026-06-26 node coefficient badge optical centering: the badge lives inside
    a scaled canvas, so default font line boxes sit visibly low. Keep the pill as
    the button surface and apply one measured optical offset to the ×/number run. */
@@ -9434,8 +8721,7 @@ select,
 }
 
 .workspace-topbar,
-.workspace-topbar-left,
-.canvas-tab-bar {
+.workspace-topbar-left {
   position: relative !important;
   z-index: 100 !important;
 }
@@ -9576,9 +8862,7 @@ select,
    surface plus the selected tab surface so tab contrast comes from one clear
    layer instead of stacked translucent rectangles. */
 .workspace-topbar,
-.theme-dark .workspace-topbar,
-.canvas-tab-bar,
-.theme-dark .canvas-tab-bar {
+.theme-dark .workspace-topbar {
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
@@ -9589,41 +8873,6 @@ select,
   display: none !important;
   content: none !important;
   background: transparent !important;
-}
-
-.canvas-tab-shell.is-active,
-.theme-dark .canvas-tab-shell.is-active {
-  background: rgba(22, 43, 58, 0.96) !important;
-  background-color: rgba(22, 43, 58, 0.96) !important;
-  background-image: none !important;
-  border: 1px solid rgba(145, 180, 199, 0.12) !important;
-  border-bottom-color: transparent !important;
-  box-shadow: none !important;
-}
-
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active {
-  background: rgba(247, 252, 253, 0.96) !important;
-  background-color: rgba(247, 252, 253, 0.96) !important;
-  border-color: rgba(126, 152, 169, 0.16) !important;
-  border-bottom-color: transparent !important;
-}
-
-.canvas-tab-shell.is-active::after,
-.theme-dark .canvas-tab-shell.is-active::after {
-  display: none !important;
-  content: none !important;
-  background: transparent !important;
-}
-
-.canvas-tab-shell.is-active .canvas-tab,
-.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  background: transparent !important;
-  box-shadow: none !important;
-  color: #f2f7fb !important;
-}
-
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active .canvas-tab {
-  color: #173449 !important;
 }
 
 /* 2026-06-26 export popover redesign: make Export feel like a compact
@@ -10152,9 +9401,7 @@ select,
 
 .workspace-topbar,
 .workspace-topbar-left,
-.canvas-tab-bar,
-.theme-dark .workspace-topbar,
-.theme-dark .canvas-tab-bar {
+.theme-dark .workspace-topbar {
   border-bottom-color: transparent !important;
 }
 
@@ -10181,7 +9428,6 @@ select,
    native titlebar tab instead of a tall toolbar row. */
 .app-shell {
   --rxnflow-titlebar-height: 44px !important;
-  --rxnflow-titlebar-tab-height: 34px !important;
   --rxnflow-titlebar-tab-add-size: 32px !important;
   --rxnflow-titlebar-control-top: 7px !important;
   --rxnflow-sidebar-flyout-top: 38px !important;
@@ -10202,32 +9448,9 @@ select,
 }
 
 .workspace-topbar,
-.workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list {
+.workspace-topbar-left {
   height: var(--rxnflow-titlebar-height) !important;
   min-height: var(--rxnflow-titlebar-height) !important;
-}
-
-.canvas-tab-shell,
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  min-height: var(--rxnflow-titlebar-tab-height) !important;
-  line-height: var(--rxnflow-titlebar-tab-height) !important;
-}
-
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-}
-
-.canvas-tab-add {
-  width: var(--rxnflow-titlebar-tab-add-size) !important;
-  min-width: var(--rxnflow-titlebar-tab-add-size) !important;
-  height: var(--rxnflow-titlebar-tab-add-size) !important;
-  min-height: var(--rxnflow-titlebar-tab-add-size) !important;
 }
 
 .left-sidebar-fixed-toggle,
@@ -10296,188 +9519,24 @@ select,
   border-right-color: transparent !important;
 }
 
-/* 2026-06-26 Chrome-style canvas tabs: active canvas tabs become the top edge
-   of the canvas surface, with small bottom shoulders that curve into the
-   workbench. Inactive tabs stay in the titlebar layer and always expose their
-   close affordance at low contrast, matching Chrome's tab model. */
-.app-shell {
-  --rxnflow-chrome-tabbar-surface: rgba(230, 234, 242, 0.68);
-  --rxnflow-chrome-tab-muted-text: #4f6173;
-  --rxnflow-chrome-tab-active-text: #172f43;
-}
-
-.theme-dark {
-  --rxnflow-chrome-tabbar-surface: rgba(19, 31, 43, 0.72);
-  --rxnflow-chrome-tab-muted-text: #b8c9d6;
-  --rxnflow-chrome-tab-active-text: #f2f7fb;
-}
-
-.workspace-topbar,
-.canvas-tab-bar {
-  background: var(--rxnflow-chrome-tabbar-surface) !important;
+.workspace-topbar {
+  background: var(--canvas-tab-strip-surface) !important;
   backdrop-filter: blur(18px) !important;
 }
 
 .workspace-topbar::after {
   background: transparent !important;
 }
-
-.canvas-tab-list {
-  align-items: flex-end !important;
-  gap: 4px !important;
-}
-
-.canvas-tab-shell {
-  isolation: isolate !important;
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  min-width: 150px !important;
-  max-width: 224px !important;
-  margin-bottom: 0 !important;
-  border: 0 !important;
-  border-radius: 16px 16px 0 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  overflow: visible !important;
-}
-
-.canvas-tab-shell:not(.is-active) {
-  background: transparent !important;
-}
-
-.canvas-tab-shell:not(.is-active):hover,
-.canvas-tab-shell:not(.is-active):focus-within {
-  background: rgba(255, 255, 255, 0.32) !important;
-}
-
-.theme-dark .canvas-tab-shell:not(.is-active):hover,
-.theme-dark .canvas-tab-shell:not(.is-active):focus-within {
-  background: rgba(196, 215, 228, 0.11) !important;
-}
-
-.canvas-tab-shell.is-active {
-  z-index: 3 !important;
-  margin-bottom: -1px !important;
-  background: var(--rxnflow-canvas-base) !important;
-  border-radius: 17px 17px 0 0 !important;
-  box-shadow: none !important;
-}
-
-.canvas-tab-shell.is-active::before,
-.canvas-tab-shell.is-active::after {
-  content: "" !important;
-  display: block !important;
-  position: absolute !important;
-  bottom: 0 !important;
-  width: 16px !important;
-  height: 16px !important;
-  pointer-events: none !important;
-  z-index: -1 !important;
-}
-
-.canvas-tab-shell.is-active::before {
-  left: -16px !important;
-  background: radial-gradient(circle at 0 0, transparent 15.5px, var(--rxnflow-canvas-base) 16px) !important;
-}
-
-.canvas-tab-shell.is-active::after {
-  right: -16px !important;
-  background: radial-gradient(circle at 100% 0, transparent 15.5px, var(--rxnflow-canvas-base) 16px) !important;
-}
-
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  min-height: var(--rxnflow-titlebar-tab-height) !important;
-  border: 0 !important;
-  border-radius: 16px 16px 0 0 !important;
-  padding: 0 34px 0 18px !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  color: var(--rxnflow-chrome-tab-muted-text) !important;
-  font-size: 13px !important;
-  font-weight: 760 !important;
-  line-height: var(--rxnflow-titlebar-tab-height) !important;
-}
-
-.canvas-tab-shell.is-active .canvas-tab {
-  color: var(--rxnflow-chrome-tab-active-text) !important;
-}
-
-.canvas-tab-close {
-  top: 50% !important;
-  right: 8px !important;
-  transform: translateY(-50%) !important;
-  width: 22px !important;
-  height: 22px !important;
-  border: 0 !important;
-  border-radius: 999px !important;
-  background: transparent !important;
-  color: var(--rxnflow-chrome-tab-muted-text) !important;
-  opacity: 0.72 !important;
-  display: inline-grid !important;
-  place-items: center !important;
-  line-height: 1 !important;
-  transition:
-    opacity 120ms ease,
-    background-color 120ms ease,
-    color 120ms ease !important;
-}
-
-.canvas-tab-shell.is-active .canvas-tab-close,
-.canvas-tab-shell:hover .canvas-tab-close,
-.canvas-tab-shell:focus-within .canvas-tab-close,
-.canvas-tab-close:focus-visible {
-  opacity: 1 !important;
-}
-
-.canvas-tab-close:hover,
-.canvas-tab-close:focus-visible {
-  outline: none !important;
-  background: rgba(68, 87, 103, 0.12) !important;
-  color: #182c3f !important;
-}
-
-.theme-dark .canvas-tab-close:hover,
-.theme-dark .canvas-tab-close:focus-visible {
-  background: rgba(196, 215, 228, 0.14) !important;
-  color: #f2f7fb !important;
-}
-
-.canvas-tab-add {
-  margin-left: 8px !important;
-  margin-bottom: 1px !important;
-  border-radius: 12px !important;
-}
-
-.app-shell .canvas-tab-shell.is-active,
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
-.app-shell.theme-dark .canvas-tab-shell.is-active {
-  background: var(--rxnflow-canvas-base) !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-
-.app-shell .canvas-tab-shell.is-active .canvas-tab,
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active .canvas-tab,
-.app-shell.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  color: var(--rxnflow-chrome-tab-active-text) !important;
-}
-
-/* 2026-06-26 Chrome tab cleanup pass: remove the extra local tabbar
-   translucency layers and reserve block next to the left rail. A single
-   titlebar surface sits behind the tabs; the active tab and its two shoulders
-   are painted with the exact canvas base color so the seam is clean. */
 .workspace:not(.is-left-collapsed) .workspace-topbar-left {
   margin-left: 0 !important;
   padding-left: 0 !important;
 }
 
 .app-shell::before {
-  background: var(--rxnflow-chrome-tabbar-surface) !important;
+  background: var(--canvas-tab-strip-surface) !important;
 }
 
 .workspace-topbar,
-.canvas-tab-bar,
 .workspace-topbar-left {
   background: transparent !important;
   background-image: none !important;
@@ -10488,107 +9547,9 @@ select,
 .workspace-topbar {
   padding-left: 0 !important;
 }
-
-.canvas-tab-bar {
-  left: 0 !important;
-  width: 100% !important;
-  padding: 0 12px !important;
-}
-
-.canvas-tab-list {
-  gap: 2px !important;
-  padding-left: 0 !important;
-  align-items: flex-end !important;
-}
-
-.canvas-tab-shell {
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  margin-bottom: 0 !important;
-  border-radius: 16px 16px 0 0 !important;
-}
-
-.app-shell .canvas-tab-shell.is-active,
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
-.app-shell.theme-dark .canvas-tab-shell.is-active {
-  margin-bottom: 0 !important;
-  background-color: var(--rxnflow-canvas-base) !important;
-  background-image: none !important;
-  border: 0 !important;
-  border-radius: 16px 16px 0 0 !important;
-}
-
-.canvas-tab-shell.is-active::before,
-.canvas-tab-shell.is-active::after {
-  content: "" !important;
-  display: block !important;
-  position: absolute !important;
-  bottom: 0 !important;
-  width: 16px !important;
-  height: 16px !important;
-  background: transparent !important;
-  background-image: none !important;
-  pointer-events: none !important;
-  z-index: -1 !important;
-}
-
-.canvas-tab-shell.is-active::before {
-  left: -16px !important;
-  right: auto !important;
-  border-bottom-right-radius: 16px !important;
-  box-shadow: 8px 8px 0 8px var(--rxnflow-canvas-base) !important;
-}
-
-.canvas-tab-shell.is-active::after {
-  right: -16px !important;
-  left: auto !important;
-  border-bottom-left-radius: 16px !important;
-  box-shadow: -8px 8px 0 8px var(--rxnflow-canvas-base) !important;
-}
-
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  border-radius: 16px 16px 0 0 !important;
-}
-
-/* 2026-06-26 seamless Chrome tab join: let the active tab overpaint the first
-   pixels of the canvas so there is no titlebar/canvas hairline at its bottom.
-   Also move the add-tab separator away from the active tab shoulder. */
 .workspace-topbar,
-.workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list {
+.workspace-topbar-left {
   overflow: visible !important;
-}
-
-.app-shell .canvas-tab-shell.is-active,
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
-.app-shell.theme-dark .canvas-tab-shell.is-active {
-  box-shadow: 0 2px 0 0 var(--rxnflow-canvas-base) !important;
-}
-
-.canvas-tab-add {
-  margin-left: 22px !important;
-}
-
-.canvas-tab-add::before {
-  left: -10px !important;
-}
-
-.app-shell .canvas-tab-shell.is-active,
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
-.app-shell.theme-dark .canvas-tab-shell.is-active {
-  box-shadow: 0 1px 0 0 var(--rxnflow-canvas-base) !important;
-}
-
-/* 2026-06-26 Chrome color continuity correction: keep the canvas flat and let
-   the active tab share the exact same surface token. This avoids both the
-   earlier white join band and the gradient-vs-tab color mismatch. */
-.app-shell {
-  --rxnflow-chrome-active-tab-surface: var(--rxnflow-canvas-base);
-}
-
-.theme-dark {
-  --rxnflow-chrome-active-tab-surface: var(--rxnflow-canvas-base);
 }
 
 .canvas-stage {
@@ -10607,29 +9568,6 @@ select,
 .canvas-stage::after {
   content: none !important;
   display: none !important;
-}
-
-.app-shell .canvas-tab-shell.is-active,
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
-.app-shell.theme-dark .canvas-tab-shell.is-active {
-  background-color: var(--rxnflow-chrome-active-tab-surface) !important;
-  box-shadow: 0 1px 0 0 var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-.canvas-tab-shell.is-active::before {
-  box-shadow: 8px 8px 0 8px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-.canvas-tab-shell.is-active::after {
-  box-shadow: -8px 8px 0 8px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-.canvas-tab-add {
-  margin-left: 30px !important;
-}
-
-.canvas-tab-add::before {
-  left: -12px !important;
 }
 
 /* 2026-06-26 classic export menu: reduce the export popover to a native-feeling
@@ -10798,71 +9736,6 @@ select,
   }
 }
 
-/* 2026-06-26 Chrome tab hover tuning: inactive tabs should read as a clear
-   hover pill, not as a faint smear that almost touches the active canvas tab. */
-.app-shell {
-  --rxnflow-chrome-tab-hover-surface: rgba(204, 214, 231, 0.82);
-  --rxnflow-chrome-tab-hover-border: rgba(123, 143, 166, 0.16);
-  --rxnflow-chrome-tab-hover-text: #172c40;
-}
-
-.theme-dark {
-  --rxnflow-chrome-tab-hover-surface: rgba(72, 91, 108, 0.58);
-  --rxnflow-chrome-tab-hover-border: rgba(161, 190, 210, 0.14);
-  --rxnflow-chrome-tab-hover-text: #f3f8fc;
-}
-
-.canvas-tab-list {
-  gap: 18px !important;
-}
-
-.canvas-tab-shell:not(.is-active) {
-  z-index: 1 !important;
-  border-radius: 16px !important;
-  overflow: hidden !important;
-  transition:
-    background-color 100ms ease,
-    box-shadow 100ms ease,
-    color 100ms ease !important;
-}
-
-.canvas-tab-shell:not(.is-active):hover,
-.canvas-tab-shell:not(.is-active):focus-within {
-  background: var(--rxnflow-chrome-tab-hover-surface) !important;
-  box-shadow:
-    inset 0 0 0 1px var(--rxnflow-chrome-tab-hover-border),
-    0 1px 2px rgba(32, 49, 64, 0.06) !important;
-}
-
-.canvas-tab-shell:not(.is-active) .canvas-tab {
-  border-radius: 16px !important;
-}
-
-.canvas-tab-shell:not(.is-active):hover .canvas-tab,
-.canvas-tab-shell:not(.is-active):focus-within .canvas-tab {
-  color: var(--rxnflow-chrome-tab-hover-text) !important;
-}
-
-.canvas-tab-shell.is-active {
-  z-index: 3 !important;
-}
-
-.canvas-tab-shell.is-active::before,
-.canvas-tab-shell.is-active::after {
-  width: 10px !important;
-  height: 10px !important;
-}
-
-.canvas-tab-shell.is-active::before {
-  left: -10px !important;
-  box-shadow: 5px 5px 0 5px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-.canvas-tab-shell.is-active::after {
-  right: -10px !important;
-  box-shadow: -5px 5px 0 5px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
 /* 2026-06-26 continuous expanded sidebars: the global titlebar tint should sit
    behind the expanded left/right rails, not over their top 44px. Otherwise the
    sidebar reads as "titlebar strip + content strip" instead of one native pane. */
@@ -10889,307 +9762,19 @@ select,
   background: rgba(12, 24, 34, 0.78) !important;
 }
 
-/* 2026-06-26 Chrome tab strip continuity pass: tabs should behave like one
-   connected strip with curved joins. Avoid isolated pill islands, remove the
-   add-tab divider, and let the active tab shoulders softly consume the small
-   inter-tab gutter. */
-.app-shell {
-  --rxnflow-chrome-tab-hover-surface: rgba(199, 210, 229, 0.74);
-  --rxnflow-chrome-tab-hover-border: rgba(112, 132, 157, 0.14);
-  --rxnflow-chrome-tabbar-surface: rgba(228, 235, 242, 0.78);
-}
-
-.theme-dark {
-  --rxnflow-chrome-tab-hover-surface: rgba(70, 88, 106, 0.54);
-  --rxnflow-chrome-tab-hover-border: rgba(161, 190, 210, 0.12);
-  --rxnflow-chrome-tabbar-surface: rgba(18, 30, 42, 0.78);
-}
-
 .app-shell::before {
-  background: var(--rxnflow-chrome-tabbar-surface) !important;
+  background: var(--canvas-tab-strip-surface) !important;
 }
-
-.canvas-tab-list {
-  gap: 6px !important;
-}
-
-.canvas-tab-shell {
-  min-width: 156px !important;
-}
-
-.canvas-tab-shell:not(.is-active) {
-  border-radius: 15px !important;
-  overflow: hidden !important;
-}
-
-.canvas-tab-shell:not(.is-active):hover,
-.canvas-tab-shell:not(.is-active):focus-within {
-  background: var(--rxnflow-chrome-tab-hover-surface) !important;
-  box-shadow: inset 0 0 0 1px var(--rxnflow-chrome-tab-hover-border) !important;
-}
-
-.canvas-tab-shell.is-active {
-  border-radius: 16px 16px 0 0 !important;
-}
-
-.canvas-tab-shell.is-active::before,
-.canvas-tab-shell.is-active::after {
-  width: 14px !important;
-  height: 14px !important;
-}
-
-.canvas-tab-shell.is-active::before {
-  left: -14px !important;
-  box-shadow: 7px 7px 0 7px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-.canvas-tab-shell.is-active::after {
-  right: -14px !important;
-  box-shadow: -7px 7px 0 7px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-.canvas-tab-add {
-  margin-left: 4px !important;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.canvas-tab-add::before {
-  content: none !important;
-  display: none !important;
-}
-
-/* 2026-06-26 Chrome inactive-tab hover baseline: inactive hover tabs should
-   float inside the tab strip with a small bottom gutter. Only the active tab
-   attaches to the canvas surface. */
-.canvas-tab-shell:not(.is-active) {
-  height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
-  min-height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
-  margin-bottom: 4px !important;
-}
-
-.canvas-tab-shell:not(.is-active) .canvas-tab {
-  height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
-  min-height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
-  line-height: calc(var(--rxnflow-titlebar-tab-height) - 4px) !important;
-}
-
-/* 2026-06-26 Chrome tab radius tuning: avoid capsule-shaped inactive hover
-   tabs. Chrome's tab hover reads as a rounded rectangle with flatter sides,
-   while only the active tab uses curved shoulders into the content surface. */
-.canvas-tab-shell:not(.is-active),
-.canvas-tab-shell:not(.is-active) .canvas-tab {
-  border-radius: 10px !important;
-}
-
-.canvas-tab-shell.is-active,
-.canvas-tab-shell.is-active .canvas-tab {
-  border-radius: 13px 13px 0 0 !important;
-}
-
-.canvas-tab-shell.is-active::before,
-.canvas-tab-shell.is-active::after {
-  width: 12px !important;
-  height: 12px !important;
-}
-
-.canvas-tab-shell.is-active::before {
-  left: -12px !important;
-  box-shadow: 6px 6px 0 6px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-.canvas-tab-shell.is-active::after {
-  right: -12px !important;
-  box-shadow: -6px 6px 0 6px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-/* 2026-06-26 tab radius unification: inactive hover tabs and the active tab
-   must share the same corner curvature. Earlier higher-specificity active-tab
-   rules kept the active shell at 16px while inactive hover had 10px. */
-.app-shell {
-  --rxnflow-chrome-tab-radius: 12px;
-}
-
-.app-shell .canvas-tab-shell:not(.is-active),
-.app-shell .canvas-tab-shell:not(.is-active) .canvas-tab,
-.app-shell:not(.theme-dark) .canvas-tab-shell:not(.is-active),
-.app-shell:not(.theme-dark) .canvas-tab-shell:not(.is-active) .canvas-tab,
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active),
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab {
-  border-radius: var(--rxnflow-chrome-tab-radius) !important;
-}
-
-.app-shell .canvas-tab-shell.is-active,
-.app-shell .canvas-tab-shell.is-active .canvas-tab,
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active,
-.app-shell:not(.theme-dark) .canvas-tab-shell.is-active .canvas-tab,
-.app-shell.theme-dark .canvas-tab-shell.is-active,
-.app-shell.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  border-radius: var(--rxnflow-chrome-tab-radius) var(--rxnflow-chrome-tab-radius) 0 0 !important;
-}
-
-/* 2026-06-26 inactive tab hover 4px inset: keep the inactive tab in the same
-   34px slot as active tabs, but draw the hover surface 4px inset on every side.
-   This avoids a tall capsule and matches Chrome's inset hover geometry. */
-.canvas-tab-shell:not(.is-active) {
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  min-height: var(--rxnflow-titlebar-tab-height) !important;
-  margin-bottom: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  overflow: visible !important;
-}
-
-.canvas-tab-shell:not(.is-active)::before {
-  content: "" !important;
-  position: absolute !important;
-  inset: 4px !important;
-  border-radius: var(--rxnflow-chrome-tab-radius) !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  pointer-events: none !important;
-  z-index: -1 !important;
-  transition: background-color 100ms ease, box-shadow 100ms ease !important;
-}
-
-.canvas-tab-shell:not(.is-active):hover::before,
-.canvas-tab-shell:not(.is-active):focus-within::before {
-  background: var(--rxnflow-chrome-tab-hover-surface) !important;
-  box-shadow: inset 0 0 0 1px var(--rxnflow-chrome-tab-hover-border) !important;
-}
-
-.canvas-tab-shell:not(.is-active):hover,
-.canvas-tab-shell:not(.is-active):focus-within {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.canvas-tab-shell:not(.is-active) .canvas-tab {
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  min-height: var(--rxnflow-titlebar-tab-height) !important;
-  line-height: var(--rxnflow-titlebar-tab-height) !important;
-  padding-left: 18px !important;
-  padding-right: 34px !important;
-}
-
-/* 2026-06-26 compact Chrome tabbar slot: shrink the titlebar slot itself.
-   Keep the inactive hover layer 4px away vertically, but tighten the horizontal
-   gutter so the pill does not look over-padded compared with Chrome. */
 .app-shell {
   --rxnflow-titlebar-height: 36px !important;
-  --rxnflow-titlebar-tab-height: 32px !important;
   --rxnflow-titlebar-tab-add-size: 28px !important;
   --rxnflow-titlebar-control-top: 3px !important;
-}
-
-.canvas-tab-shell:not(.is-active) {
-  height: var(--rxnflow-titlebar-height) !important;
-  min-height: var(--rxnflow-titlebar-height) !important;
-  margin-bottom: 0 !important;
-}
-
-.canvas-tab-shell:not(.is-active) .canvas-tab {
-  height: var(--rxnflow-titlebar-height) !important;
-  min-height: var(--rxnflow-titlebar-height) !important;
-  line-height: var(--rxnflow-titlebar-height) !important;
-}
-
-.canvas-tab-shell:not(.is-active)::before {
-  inset: 4px !important;
-}
-
-.canvas-tab-add {
-  margin-bottom: 4px !important;
 }
 
 @media (max-width: 1100px) {
   .app-shell {
     --rxnflow-titlebar-left-button-left: 19px !important;
   }
-}
-
-/* 2026-06-26 Chrome hover gap correction: keep the hover capsule's visible
-   gap equal on every side. The tab strip still needs 12px of left padding so a
-   first active tab's shoulder can curve cleanly, but when the first tab is
-   inactive the hover surface should extend back over that reserved shoulder
-   gutter, leaving the same 4px gap as the top/bottom. The 12px inter-tab gap
-   gives the same 4px air between an inactive hover capsule and the neighboring
-   active-tab shoulder. */
-.canvas-tab-list {
-  gap: 12px !important;
-}
-
-.canvas-tab-list > .canvas-tab-shell:first-child:not(.is-active)::before {
-  left: -8px !important;
-}
-
-/* 2026-06-26 Chrome hover optical correction: compare the inactive hover
-   surface against the neighboring tab body, not only against the active
-   shoulder curve. Extend the hover skin into the shared shoulder gutter on
-   both sides where needed, and make the corners a little squarer. */
-.app-shell {
-  --rxnflow-chrome-tab-radius: 9px !important;
-}
-
-.canvas-tab-shell:not(.is-active):has(+ .canvas-tab-shell.is-active)::before {
-  right: -8px !important;
-}
-
-.canvas-tab-shell.is-active + .canvas-tab-shell:not(.is-active)::before {
-  left: -8px !important;
-}
-
-.canvas-tab-shell.is-active::before,
-.canvas-tab-shell.is-active::after {
-  width: 10px !important;
-  height: 10px !important;
-}
-
-.canvas-tab-shell.is-active::before {
-  left: -10px !important;
-  box-shadow: 5px 5px 0 5px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-.canvas-tab-shell.is-active::after {
-  right: -10px !important;
-  box-shadow: -5px 5px 0 5px var(--rxnflow-chrome-active-tab-surface) !important;
-}
-
-
-/* 2026-06-26 tab hover color + add-button placement: use the same quiet
-   titlebar hover tint as the add-tab button, and pull the add button back
-   toward the active tab after the larger inter-tab gap used for hover spacing. */
-.app-shell {
-  --rxnflow-chrome-tab-hover-surface: var(--rxnflow-titlebar-hover) !important;
-  --rxnflow-chrome-tab-hover-border: transparent !important;
-}
-
-.canvas-tab-shell:not(.is-active):hover::before,
-.canvas-tab-shell:not(.is-active):focus-within::before {
-  box-shadow: none !important;
-}
-
-.canvas-tab-shell.is-active + .canvas-tab-add {
-  margin-left: -2px !important;
-}
-
-
-/* 2026-06-26 tab text baseline alignment: inactive tab shells occupy the full
-   36px titlebar slot while active tabs start 4px lower and are 32px tall. Make
-   the inactive inner button use the same 32px line box at the same y=4 origin,
-   so label / close glyph share the active tab's optical baseline without
-   changing the hover capsule geometry. */
-.canvas-tab-shell:not(.is-active) .canvas-tab {
-  height: var(--rxnflow-titlebar-tab-height) !important;
-  min-height: var(--rxnflow-titlebar-tab-height) !important;
-  margin-top: 4px !important;
-  line-height: var(--rxnflow-titlebar-tab-height) !important;
-  transform: none !important;
-}
-
-.canvas-tab-shell:not(.is-active) .canvas-tab-close {
-  top: calc(50% + 2px) !important;
 }
 
 /* 2026-06-26 macOS chrome alignment: keep the compact 36px titlebar's
@@ -12159,10 +10744,6 @@ select,
   color: #dceaf4;
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
-
-/* 2026-06-26 dark tab contrast fix: the tab shell owns the selected/hover
-   layer. Inner tab and close buttons must stay transparent, otherwise dark
-   mode paints nested rounded rectangles around the label and the × control. */
 .theme-dark {
   --rxnflow-titlebar-surface: rgb(10, 23, 33);
   --rxnflow-titlebar-hover: rgba(69, 91, 109, 0.34);
@@ -12172,97 +10753,9 @@ select,
 .theme-dark .workspace-topbar {
   background: var(--rxnflow-titlebar-surface) !important;
 }
-
-.theme-dark .canvas-tab-shell,
-.theme-dark .canvas-tab-shell .canvas-tab,
-.theme-dark .canvas-tab-shell .canvas-tab-close {
-  box-shadow: none !important;
-}
-
-.theme-dark .canvas-tab-shell.is-active {
-  border-color: transparent !important;
-  background: var(--rxnflow-canvas-base) !important;
-  box-shadow: none !important;
-}
-
-.theme-dark .canvas-tab-shell.is-active .canvas-tab,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab,
-.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab,
-.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:hover,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab:focus-visible,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
-.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
-  background: transparent !important;
-}
-
-.theme-dark .canvas-tab-shell:not(.is-active):hover,
-.theme-dark .canvas-tab-shell:not(.is-active):focus-within {
-  background: var(--rxnflow-titlebar-hover) !important;
-  box-shadow: none !important;
-}
-
-.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab,
-.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab,
-.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab-close,
-.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab-close {
-  color: #edf5fb !important;
-}
-
-/* Final dark-tab cascade guard: older Chrome-join rules use
-   `.app-shell.theme-dark ...` and can otherwise reintroduce a bottom shadow or
-   paint both shell hover + inset hover. In dark mode, keep one active surface
-   and one inactive hover skin only. */
 .app-shell.theme-dark {
   --rxnflow-titlebar-surface: rgb(10, 23, 33);
   --rxnflow-titlebar-hover: rgba(74, 96, 114, 0.32);
-  --rxnflow-chrome-tab-hover-surface: var(--rxnflow-titlebar-hover) !important;
-  --rxnflow-chrome-tab-hover-border: transparent !important;
-}
-
-.app-shell.theme-dark .canvas-tab-shell.is-active {
-  background: var(--rxnflow-canvas-base) !important;
-  box-shadow: none !important;
-}
-
-.app-shell.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  border-radius: var(--rxnflow-chrome-tab-radius) var(--rxnflow-chrome-tab-radius) 0 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.app-shell.theme-dark .canvas-tab-shell.is-active::before {
-  box-shadow: 5px 5px 0 5px var(--rxnflow-canvas-base) !important;
-}
-
-.app-shell.theme-dark .canvas-tab-shell.is-active::after {
-  box-shadow: -5px 5px 0 5px var(--rxnflow-canvas-base) !important;
-}
-
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active),
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active):hover,
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active):focus-within,
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab,
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active):hover .canvas-tab,
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active):focus-within .canvas-tab,
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close,
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:hover,
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active) .canvas-tab-close:focus-visible {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active):hover::before,
-.app-shell.theme-dark .canvas-tab-shell:not(.is-active):focus-within::before {
-  background: var(--rxnflow-chrome-tab-hover-surface) !important;
-  box-shadow: none !important;
-}
-
-/* 2026-06-26 dark chrome parity + native drag final guard.
-   Keep dark chrome as flat as light mode: no separate right-side slab, and use
-   hole-based hit testing so only real controls are no-drag. */
-.app-shell.theme-dark {
-  --rxnflow-chrome-tabbar-surface: var(--rxnflow-canvas-base) !important;
 }
 
 .app-shell::before,
@@ -12278,8 +10771,6 @@ select,
 
 .workspace-topbar,
 .workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list,
 .window-action-drag-gap,
 .project-rail,
 .project-rail .rail-section,
@@ -12291,7 +10782,6 @@ select,
 
 .app-shell.theme-dark .workspace-topbar,
 .app-shell.theme-dark .workspace-topbar-left,
-.app-shell.theme-dark .canvas-tab-bar,
 .app-shell.theme-dark .workspace-topbar-actions,
 .app-shell.theme-dark .desktop-window-actions {
   background: transparent !important;
@@ -12322,10 +10812,6 @@ select,
 .workspace-topbar select,
 .workspace-topbar textarea,
 .workspace-topbar [role="button"],
-.canvas-tab-shell,
-.canvas-tab-shell *,
-.canvas-tab-add,
-.canvas-tab-input,
 .left-sidebar-fixed-toggle,
 .project-rail-hover-trigger,
 .workspace-topbar-actions > button,
@@ -13101,11 +11587,6 @@ select,
     padding-left: 54px !important;
   }
 
-  .canvas-tab-shell .canvas-tab,
-  .canvas-tab-shell.is-active .canvas-tab {
-    max-width: clamp(104px, 30vw, 150px) !important;
-  }
-
   .floating-toolbar {
     max-width: calc(100% - 18px) !important;
   }
@@ -13780,97 +12261,6 @@ select,
   }
 }
 
-/* 2026-06-27 overlay tab join fix: when a blurred table / structure overlay is
-   open, the active Chrome-style tab must stop drawing its canvas-join shoulders.
-   Otherwise the tab's pseudo corner feet sit on top of the scrim and read as
-   stray white blobs next to the tab, as seen when opening Structure or Table. */
-.app-shell.has-overlay-view .canvas-tab-shell.is-active,
-.app-shell.has-overlay-view .canvas-tab-shell.is-active .canvas-tab,
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active,
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  border-radius: var(--rxnflow-chrome-tab-radius) !important;
-}
-
-.app-shell.has-overlay-view .canvas-tab-shell.is-active {
-  margin-bottom: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.app-shell.has-overlay-view .canvas-tab-shell.is-active .canvas-tab {
-  height: calc(var(--rxnflow-titlebar-height) - 8px) !important;
-  min-height: calc(var(--rxnflow-titlebar-height) - 8px) !important;
-  line-height: calc(var(--rxnflow-titlebar-height) - 8px) !important;
-  margin: 4px 0 !important;
-  background: rgba(247, 252, 253, 0.94) !important;
-  box-shadow: inset 0 0 0 1px rgba(126, 152, 169, 0.14) !important;
-}
-
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  background: rgba(22, 39, 53, 0.94) !important;
-  box-shadow: inset 0 0 0 1px rgba(145, 180, 199, 0.12) !important;
-}
-
-.app-shell.has-overlay-view .canvas-tab-shell.is-active::before,
-.app-shell.has-overlay-view .canvas-tab-shell.is-active::after,
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active::before,
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active::after {
-  content: none !important;
-  display: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-
-/* 2026-06-27 fixed Chrome tab slot: overlay mode moves the visible active-tab
-   paint from the outer shell to the inner button so the canvas-join shoulders
-   disappear. Keep the shell as a fixed Chrome-like tab slot and force the
-   inner button to fill it; otherwise short labels such as “Ir” collapse to
-   text width when Table / Structure overlays are open. Tabs only compress when
-   there are enough open tabs to exhaust the strip width. */
-.app-shell {
-  --rxnflow-canvas-tab-width: 174px;
-  --rxnflow-canvas-tab-min-width: 112px;
-  --rxnflow-canvas-tab-max-width: 174px;
-}
-
-.canvas-tab-list {
-  display: flex !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
-}
-
-.canvas-tab-shell {
-  flex: 0 1 var(--rxnflow-canvas-tab-width) !important;
-  width: var(--rxnflow-canvas-tab-width) !important;
-  min-width: var(--rxnflow-canvas-tab-min-width) !important;
-  max-width: var(--rxnflow-canvas-tab-max-width) !important;
-}
-
-.canvas-tab-shell .canvas-tab,
-.canvas-tab-shell.is-active .canvas-tab {
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  justify-content: flex-start !important;
-}
-
-.canvas-tab-add {
-  flex: 0 0 var(--rxnflow-titlebar-tab-add-size, 28px) !important;
-}
-
-@media (max-width: 760px) {
-  .app-shell {
-    --rxnflow-canvas-tab-width: 148px;
-    --rxnflow-canvas-tab-min-width: 96px;
-    --rxnflow-canvas-tab-max-width: 148px;
-  }
-}
-
 /* 2026-06-27 titlebar no-drag island final guard:
    The titlebar backing pseudo-element is visual only. If it participates in
    Electron app-region hit testing, it can win over fixed action buttons after a
@@ -13939,17 +12329,11 @@ select,
   app-region: no-drag !important;
 }
 
-.workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list {
+.workspace-topbar-left {
   -webkit-app-region: drag !important;
   app-region: drag !important;
 }
 
-.canvas-tab-shell,
-.canvas-tab-shell *,
-.canvas-tab-add,
-.canvas-tab-input,
 .workspace-topbar-actions,
 .workspace-topbar-actions *,
 .left-sidebar-fixed-toggle,
@@ -14128,35 +12512,6 @@ select,
   box-shadow: 0 10px 26px rgba(20, 32, 43, 0.22);
 }
 
-/* The overlay tab should meet the blurred workbench without Chrome-tab
-   shoulder feet or rounded bottom corners. */
-.app-shell.has-overlay-view .canvas-tab-shell.is-active,
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active {
-  height: calc(var(--rxnflow-titlebar-height) - 4px) !important;
-  margin-top: 4px !important;
-  margin-bottom: 0 !important;
-  border-radius: var(--rxnflow-chrome-tab-radius) var(--rxnflow-chrome-tab-radius) 0 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.app-shell.has-overlay-view .canvas-tab-shell.is-active .canvas-tab,
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active .canvas-tab {
-  height: 100% !important;
-  min-height: 100% !important;
-  line-height: calc(var(--rxnflow-titlebar-height) - 4px) !important;
-  margin: 0 !important;
-  border-radius: var(--rxnflow-chrome-tab-radius) var(--rxnflow-chrome-tab-radius) 0 0 !important;
-}
-
-.app-shell.has-overlay-view .canvas-tab-shell.is-active::before,
-.app-shell.has-overlay-view .canvas-tab-shell.is-active::after,
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active::before,
-.app-shell.has-overlay-view.theme-dark .canvas-tab-shell.is-active::after {
-  content: none !important;
-  display: none !important;
-}
-
 /* 2026-06-27 left-collapsed canvas fill fix:
    Keep the collapsed titlebar tabs safely to the right of the traffic lights
    and sidebar button, but do not reserve that gutter in the workspace grid.
@@ -14214,9 +12569,7 @@ select,
 
 
 .workspace-topbar,
-.workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list {
+.workspace-topbar-left {
   -webkit-app-region: drag !important;
   app-region: drag !important;
 }
@@ -14240,10 +12593,6 @@ select,
 
 .left-sidebar-fixed-toggle,
 .left-sidebar-fixed-toggle *,
-.canvas-tab-shell,
-.canvas-tab-shell *,
-.canvas-tab-add,
-.canvas-tab-input,
 .workspace-topbar button,
 .workspace-topbar input,
 .workspace-topbar select,
@@ -14278,9 +12627,7 @@ select,
 
 
 .workspace-topbar,
-.workspace-topbar-left,
-.canvas-tab-bar,
-.canvas-tab-list {
+.workspace-topbar-left {
   z-index: 1200 !important;
 }
 
@@ -14339,28 +12686,12 @@ select,
 /* 2026-06-27 unified titlebar drag contract, topbar specificity guard. */
 .app-shell .workspace-topbar,
 .app-shell .workspace-topbar-left,
-.app-shell .canvas-tab-bar,
-.app-shell .canvas-tab-list,
 .app-shell.theme-dark .workspace-topbar,
 .app-shell.theme-dark .workspace-topbar-left,
-.app-shell.theme-dark .canvas-tab-bar,
-.app-shell.theme-dark .canvas-tab-list,
 .workspace.is-right-collapsed .workspace-topbar,
 .workspace:not(.is-right-collapsed) .workspace-topbar {
   -webkit-app-region: drag !important;
   app-region: drag !important;
-}
-
-.app-shell .canvas-tab-shell,
-.app-shell .canvas-tab-shell *,
-.app-shell .canvas-tab-add,
-.app-shell .canvas-tab-input,
-.app-shell.theme-dark .canvas-tab-shell,
-.app-shell.theme-dark .canvas-tab-shell *,
-.app-shell.theme-dark .canvas-tab-add,
-.app-shell.theme-dark .canvas-tab-input {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
 }
 
 /* 2026-06-27 native Electron titlebar contract reset.
@@ -14427,8 +12758,6 @@ select,
 }
 
 .desktop-titlebar-shell .workspace-topbar-left,
-.desktop-titlebar-shell .canvas-tab-bar,
-.desktop-titlebar-shell .canvas-tab-list,
 .desktop-titlebar-shell .workspace-topbar-actions,
 .desktop-titlebar-shell .workspace-topbar-actions.desktop-window-actions,
 .desktop-titlebar-shell .desktop-window-actions {
@@ -14436,9 +12765,7 @@ select,
   app-region: drag !important;
 }
 
-.desktop-titlebar-shell .workspace-topbar-left,
-.desktop-titlebar-shell .canvas-tab-bar,
-.desktop-titlebar-shell .canvas-tab-list {
+.desktop-titlebar-shell .workspace-topbar-left {
   height: var(--rxnflow-titlebar-height, 48px) !important;
   pointer-events: auto !important;
 }
@@ -14464,11 +12791,7 @@ select,
 .desktop-titlebar-shell input,
 .desktop-titlebar-shell select,
 .desktop-titlebar-shell textarea,
-.desktop-titlebar-shell [role="button"],
-.desktop-titlebar-shell .canvas-tab-shell,
-.desktop-titlebar-shell .canvas-tab-shell *,
-.desktop-titlebar-shell .canvas-tab-add,
-.desktop-titlebar-shell .canvas-tab-input {
+.desktop-titlebar-shell [role="button"] {
   pointer-events: auto !important;
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
@@ -18612,5 +16935,202 @@ body.is-resizing-project-rail-sections * {
   .inspector-resize-handle::after,
   .app-shell.is-compact-layout .workspace > .project-rail {
     transition: none !important;
+  }
+}
+
+/* Canvas tabs use one fixed slot model in every workbench state. */
+.app-shell {
+  --canvas-tab-surface: var(--rxnflow-canvas-base);
+  --canvas-tab-strip-surface: rgba(228, 235, 242, 0.78);
+  --canvas-tab-text: #506579;
+  --canvas-tab-active-text: #183247;
+  --canvas-tab-hover: rgba(68, 87, 103, 0.09);
+}
+
+.app-shell.theme-dark {
+  --canvas-tab-strip-surface: var(--rxnflow-canvas-base);
+  --canvas-tab-text: #b8c9d6;
+  --canvas-tab-active-text: #f2f7fb;
+  --canvas-tab-hover: rgba(196, 215, 228, 0.12);
+}
+
+.canvas-tab-bar {
+  position: relative !important;
+  inset: auto !important;
+  display: flex !important;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100% !important;
+  height: var(--rxnflow-titlebar-height) !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  background: transparent !important;
+  overflow: hidden !important;
+}
+
+.canvas-tab-list {
+  display: flex !important;
+  flex: 1 1 auto;
+  align-items: flex-end !important;
+  gap: 2px !important;
+  min-width: 0 !important;
+  height: var(--rxnflow-titlebar-height) !important;
+  padding: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+}
+
+.canvas-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.canvas-tab-shell {
+  position: relative;
+  display: flex;
+  flex: 0 1 174px;
+  align-items: center;
+  min-width: 96px;
+  max-width: 174px;
+  height: calc(var(--rxnflow-titlebar-height) - 4px);
+  margin-top: 4px;
+  border: 0;
+  border-radius: 9px 9px 0 0;
+  background: transparent;
+  color: var(--canvas-tab-text);
+  transition: background-color 120ms ease;
+}
+
+.canvas-tab-shell.is-active {
+  z-index: 1;
+  background: var(--canvas-tab-surface);
+  color: var(--canvas-tab-active-text);
+}
+
+.canvas-tab-shell:not(.is-active):hover,
+.canvas-tab-shell:not(.is-active):focus-within {
+  background: var(--canvas-tab-hover);
+}
+
+.canvas-tab-shell::before,
+.canvas-tab-shell::after,
+.canvas-tab-add::before {
+  content: none;
+}
+
+.canvas-tab-shell .canvas-tab {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 32px 0 14px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: calc(var(--rxnflow-titlebar-height) - 4px);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.canvas-tab-shell .canvas-tab:focus-visible,
+.canvas-tab-close:focus-visible,
+.canvas-tab-add:focus-visible {
+  outline: 2px solid #188773;
+  outline-offset: -3px;
+}
+
+.canvas-tab-close {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.canvas-tab-close:hover,
+.canvas-tab-close:focus-visible {
+  background: var(--canvas-tab-hover);
+  opacity: 1;
+}
+
+.canvas-tab-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: calc(100% - 34px);
+  height: 26px;
+  margin: 0 28px 0 6px;
+  padding: 0 6px;
+  border: 1px solid #188773;
+  border-radius: 5px;
+  background: var(--canvas-tab-surface);
+  color: var(--canvas-tab-active-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.canvas-tab-add {
+  display: grid;
+  flex: 0 0 30px;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: 0 0 2px 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--canvas-tab-text);
+}
+
+.canvas-tab-add:hover,
+.canvas-tab-add:focus-visible {
+  background: var(--canvas-tab-hover);
+}
+
+.app-shell.theme-dark .project-validation-notice li {
+  color: #c7d7e3;
+}
+
+.project-validation-notice li span {
+  overflow-wrap: anywhere;
+}
+
+.canvas-tab-shell,
+.canvas-tab-shell *,
+.canvas-tab-add {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
+@media (max-width: 760px) {
+  .app-shell .desktop-titlebar-shell .desktop-titlebar-tabs,
+  .app-shell.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
+    left: 58px !important;
+    right: 116px !important;
+    padding: 0 2px !important;
+  }
+
+  .app-shell.is-macos-desktop .desktop-titlebar-shell .desktop-titlebar-tabs,
+  .app-shell.is-macos-desktop.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
+    left: 150px !important;
+  }
+
+  .canvas-tab-shell {
+    flex-basis: 144px;
+    min-width: 90px;
   }
 }
