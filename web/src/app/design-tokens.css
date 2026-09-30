@@ -1,0 +1,65 @@
+:root {
+  --font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "Cascadia Mono", "Roboto Mono", ui-monospace, monospace;
+  --rxn-bg: #edf3f6;
+  --rxn-surface: rgba(249, 252, 253, 0.88);
+  --rxn-surface-solid: #f8fbfc;
+  --rxn-surface-raised: #ffffff;
+  --rxn-surface-muted: #e6eef1;
+  --rxn-ink: #193040;
+  --rxn-ink-strong: #102535;
+  --rxn-ink-muted: #657988;
+  --rxn-ink-faint: #8799a5;
+  --rxn-line: rgba(126, 152, 169, 0.2);
+  --rxn-line-strong: rgba(126, 152, 169, 0.34);
+  --rxn-accent: #167e68;
+  --rxn-accent-strong: #0e604f;
+  --rxn-accent-soft: #d8f1ea;
+  --rxn-warning: #b16e18;
+  --rxn-warning-soft: #fff0d5;
+  --rxn-danger: #b5473a;
+  --rxn-danger-soft: #fbe4df;
+  --rxn-focus: rgba(22, 126, 104, 0.24);
+  --rxn-shadow-sm: 0 4px 14px rgba(34, 64, 79, 0.08);
+  --rxn-shadow-panel: 0 18px 46px rgba(34, 64, 79, 0.12);
+  --rxn-shadow-float: 0 22px 58px rgba(34, 64, 79, 0.18);
+  --rxn-radius-sm: 8px;
+  --rxn-radius-md: 12px;
+  --rxn-radius-lg: 16px;
+  --rxn-radius-pill: 999px;
+  --rxn-control-height: 34px;
+  --rxn-control-height-compact: 30px;
+  --rxn-space-1: 4px;
+  --rxn-space-2: 8px;
+  --rxn-space-3: 12px;
+  --rxn-space-4: 16px;
+  --rxn-space-5: 20px;
+  --rxn-space-6: 24px;
+  --rxn-transition-fast: 140ms ease;
+  --rxn-transition-standard: 180ms ease;
+}
+
+.theme-dark {
+  --rxn-bg: #0d1821;
+  --rxn-surface: rgba(17, 29, 40, 0.84);
+  --rxn-surface-solid: #101f2a;
+  --rxn-surface-raised: #192b38;
+  --rxn-surface-muted: #1c2e3b;
+  --rxn-ink: #dceaf4;
+  --rxn-ink-strong: #f1f7fb;
+  --rxn-ink-muted: #93a9ba;
+  --rxn-ink-faint: #748b9c;
+  --rxn-line: rgba(145, 180, 199, 0.18);
+  --rxn-line-strong: rgba(145, 180, 199, 0.3);
+  --rxn-accent: #62d4b3;
+  --rxn-accent-strong: #9cf0d6;
+  --rxn-accent-soft: rgba(34, 117, 100, 0.42);
+  --rxn-warning: #f2bd68;
+  --rxn-warning-soft: rgba(177, 110, 24, 0.22);
+  --rxn-danger: #f18d80;
+  --rxn-danger-soft: rgba(181, 71, 58, 0.24);
+  --rxn-focus: rgba(98, 212, 179, 0.3);
+  --rxn-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.16);
+  --rxn-shadow-panel: 0 18px 46px rgba(0, 0, 0, 0.24);
+  --rxn-shadow-float: 0 22px 58px rgba(0, 0, 0, 0.34);
+}

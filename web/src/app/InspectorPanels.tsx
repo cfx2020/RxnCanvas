@@ -251,10 +251,7 @@ function NodeInspector({
 
       <section className="node-panel-card node-structure-card" aria-label="Structure views">
         <div className="node-panel-section-heading">
-          <div>
-            <span>Structure</span>
-            <strong>Preview</strong>
-          </div>
+          <span>Structure</span>
         </div>
         <button
           type="button"
@@ -299,9 +296,15 @@ function NodeEnergyCalculation({
     : null
   return (
     <div className="node-energy-calculation" aria-label={`${symbol} calculation`}>
-      <span>{symbol} =</span>
+      <span className="node-energy-symbol">{symbol}</span>
+      <span className="node-energy-equals" aria-hidden="true">=</span>
       <code>{expression}</code>
-      {value ? <strong>= {value}</strong> : null}
+      {value ? (
+        <>
+          <span className="node-energy-result-equals" aria-hidden="true">=</span>
+          <strong>{value}</strong>
+        </>
+      ) : null}
     </div>
   )
 }

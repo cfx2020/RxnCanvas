@@ -764,23 +764,24 @@ describe("App", () => {
     const settingsTrigger = screen.getByRole("button", { name: "Settings" })
     fireEvent.click(settingsTrigger)
     const settings = screen.getByRole("dialog", { name: "Settings" })
-    const closeSettings = within(settings).getByRole("button", { name: "Close settings" })
-    const unitSelect = within(settings).getByRole("combobox", { name: "Energy unit" })
+    const themeSettings = within(settings).getByRole("button", { name: /Theme/ })
     expect(settings).toHaveAttribute("aria-modal", "true")
-    expect(closeSettings).toHaveFocus()
-    expect(within(unitSelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "kcal",
-      "Eh",
-      "kJ",
+    expect(themeSettings).toHaveFocus()
+    fireEvent.click(within(settings).getByRole("button", { name: /Energy unit/ }))
+    const units = within(settings).getByRole("group", { name: "Energy unit" })
+    expect(within(units).getAllByRole("button").map((option) => option.textContent)).toEqual([
+      "kcal/mol", "Hartree (Eh)", "kJ/mol",
     ])
-
-    fireEvent.keyDown(closeSettings, { key: "Tab", shiftKey: true })
-    expect(unitSelect).toHaveFocus()
-    fireEvent.keyDown(unitSelect, { key: "Tab" })
-    expect(closeSettings).toHaveFocus()
+    const lastUnit = within(units).getByRole("button", { name: "kJ/mol" })
+    themeSettings.focus()
+    fireEvent.keyDown(themeSettings, { key: "Tab", shiftKey: true })
+    expect(lastUnit).toHaveFocus()
+    fireEvent.keyDown(lastUnit, { key: "Tab" })
+    expect(themeSettings).toHaveFocus()
 
     fireEvent.change(energySelect, { target: { value: "gas" } })
-    fireEvent.change(unitSelect, { target: { value: "hartree" } })
+    fireEvent.click(within(units).getByRole("button", { name: "Hartree (Eh)" }))
+    expect(within(units).getByRole("button", { name: "Hartree (Eh)" })).toHaveAttribute("aria-pressed", "true")
 
     expect(screen.getAllByText("0.000000 Eh").length).toBeGreaterThan(0)
     fireEvent.keyDown(window, { key: "t" })
@@ -788,7 +789,7 @@ describe("App", () => {
     expect(screen.queryByRole("region", { name: "Energy table" })).not.toBeInTheDocument()
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument()
 
-    fireEvent.keyDown(closeSettings, { key: "Escape" })
+    fireEvent.keyDown(themeSettings, { key: "Escape" })
     expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument()
     expect(settingsTrigger).toHaveFocus()
   })
@@ -823,9 +824,9 @@ describe("App", () => {
     fireEvent.click(within(palette).getByRole("button", { name: /Open Settings/ }))
 
     const settings = screen.getByRole("dialog", { name: "Settings" })
-    const closeSettings = within(settings).getByRole("button", { name: "Close settings" })
-    expect(closeSettings).toHaveFocus()
-    fireEvent.keyDown(closeSettings, { key: "Escape" })
+    const themeSettings = within(settings).getByRole("button", { name: /Theme/ })
+    expect(themeSettings).toHaveFocus()
+    fireEvent.keyDown(themeSettings, { key: "Escape" })
     expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument()
     expect(settingsTrigger).toHaveFocus()
   })
@@ -2636,7 +2637,7 @@ describe("App", () => {
     expect(screen.queryByRole("dialog", { name: "Import candidates" })).not.toBeInTheDocument()
     expect(document.querySelectorAll('[aria-modal="true"]')).toHaveLength(1)
 
-    fireEvent.keyDown(within(settings).getByRole("button", { name: "Close settings" }), { key: "Escape" })
+    fireEvent.keyDown(within(settings).getByRole("button", { name: /Theme/ }), { key: "Escape" })
     reopenedDialog = await screen.findByRole("dialog", { name: "Import candidates" })
     const queuedCloseCandidates = within(reopenedDialog).getByRole("button", { name: "Close import candidates" })
     expect(queuedCloseCandidates).toHaveFocus()

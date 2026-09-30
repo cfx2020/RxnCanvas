@@ -319,7 +319,7 @@ const projectRailMinWidth = 212
 const projectRailMaxWidth = 360
 const inspectorMinWidth = 320
 const inspectorMaxWidth = 520
-const inspectorDefaultWidth = 380
+const inspectorDefaultWidth = 340
 
 type ProjectAutosaveInput = {
   project: ProjectSummary
@@ -406,7 +406,7 @@ function initialInspectorWidth(): number {
   if (typeof window === "undefined" || typeof window.localStorage?.getItem !== "function") {
     return inspectorDefaultWidth
   }
-  const storedWidth = Number(window.localStorage.getItem(inspectorWidthStorageKey))
+  const storedWidth = Number(window.localStorage.getItem(inspectorWidthStorageKey) ?? inspectorDefaultWidth)
   return Number.isFinite(storedWidth)
     ? clamp(storedWidth, inspectorMinWidth, inspectorMaxWidth)
     : inspectorDefaultWidth
@@ -3307,7 +3307,7 @@ export function App() {
       onResizePointerDown={startProjectRailResize}
       onResizeStep={setClampedProjectRailWidth}
       onCompactMouseEnter={() => setCompactLeftRailOpen(true)}
-      onCompactMouseLeave={() => setCompactLeftRailOpen(false)}
+      onCompactMouseLeave={() => { if (!settingsOpen) setCompactLeftRailOpen(false) }}
     />
   )
 

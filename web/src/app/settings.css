@@ -1,0 +1,58 @@
+.settings-dismiss {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  -webkit-app-region: no-drag;
+}
+.settings-menu {
+  position: fixed;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  color: var(--rxn-ink);
+  font: 650 12px/1.4 var(--font-ui);
+}
+.settings-menu-root,
+.settings-menu-options {
+  width: 204px;
+  box-sizing: border-box;
+  padding: 5px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--rxn-surface-solid);
+  box-shadow: var(--rxn-shadow-panel);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+.settings-menu-options { width: 190px; }
+.settings-menu button {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+}
+.settings-menu button:hover,
+.settings-menu button[aria-expanded="true"] { background: var(--rxn-surface-muted); }
+.settings-menu button:focus-visible { outline: 2px solid var(--rxn-accent); outline-offset: -2px; }
+.settings-menu button:disabled { opacity: .45; cursor: default; background: transparent; }
+.settings-menu-category { display: flex; width: 100%; align-items: center; gap: 9px; padding: 8px 9px; min-height: 32px; }
+.settings-menu-category > span { flex: 1; min-width: 0; }
+.settings-menu-category svg { flex-shrink: 0; }
+.settings-menu-category.starts-group { margin-top: 9px; position: relative; }
+.settings-menu-category.starts-group::before { content: ""; position: absolute; top: -5px; left: 12px; right: 12px; height: 1px; background: var(--rxn-line); }
+.settings-menu-option { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 9px; min-height: 32px; }
+.settings-menu-option span { flex: 1; }
+.settings-menu-option[aria-pressed="true"] { color: var(--rxn-accent-strong); }
+.settings-menu-opener p { color: var(--rxn-ink-muted); font-size: 12px; margin: 8px 12px; }
+.settings-menu-opener strong { display: block; overflow-wrap: anywhere; font-weight: 500; margin: 8px 12px 16px; }
+@media (max-width: 580px) {
+  .settings-menu { flex-direction: column; align-items: stretch; gap: 8px; width: min(220px, calc(100vw - 24px)); overflow-y: auto; padding: 2px; }
+  .settings-menu-root, .settings-menu-options { width: 100%; flex-shrink: 0; box-sizing: border-box; box-shadow: var(--rxn-shadow-sm); }
+}
