@@ -14,10 +14,11 @@ from tests.test_engine import large_gaussian_characterization_text
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Repeatable Gaussian preview parser timing baseline; no absolute-time assertion.")
+    parser = argparse.ArgumentParser(description="Repeatable Gaussian preview parser timing baseline with a p95 budget.")
     parser.add_argument("--sections", type=int, default=176)
     parser.add_argument("--samples", type=int, default=7)
     parser.add_argument("--parses-per-sample", type=int, default=10)
+    parser.add_argument("--max-p95-ms", type=float, default=250.0)
     args = parser.parse_args()
     source = large_gaussian_characterization_text(args.sections)
 
@@ -37,13 +38,19 @@ def main() -> None:
         raise RuntimeError("Gaussian benchmark result changed; run characterization tests before comparing timings.")
     ordered = sorted(samples_ms)
     p95_index = min(len(ordered) - 1, round(0.95 * (len(ordered) - 1)))
+    p95_ms = round(ordered[p95_index], 3)
+    if p95_ms > args.max_p95_ms:
+        raise RuntimeError(
+            f"Gaussian parser p95 budget exceeded: {p95_ms:.3f} ms > {args.max_p95_ms:.3f} ms."
+        )
     print(json.dumps({
         "sections": args.sections,
         "sourceCharacters": len(source),
         "samples": args.samples,
         "parsesPerSample": args.parses_per_sample,
         "medianMsPerParse": round(statistics.median(samples_ms), 3),
-        "p95MsPerParse": round(ordered[p95_index], 3),
+        "p95MsPerParse": p95_ms,
+        "p95BudgetMs": args.max_p95_ms,
         "minMsPerParse": round(min(samples_ms), 3),
         "resultFingerprint": {
             "energyGas": result.energyGas,

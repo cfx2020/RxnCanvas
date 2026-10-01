@@ -85,12 +85,18 @@ jobs:
       - name: Run renderer tests
         working-directory: web
         run: npm run test
+      - name: Run parser performance budget
+        working-directory: web
+        run: npm run perf:parser
       - name: Audit production renderer dependencies
         working-directory: web
         run: npm audit --omit=dev
-      - name: Build renderer
+      - name: Run bundle performance budget
         working-directory: web
-        run: npm run build
+        run: npm run perf:bundle
+      - name: Run browser performance budget
+        working-directory: web
+        run: npm run perf:e2e
       - name: Run Electron shell smoke
         working-directory: web
         run: npm run desktop:smoke

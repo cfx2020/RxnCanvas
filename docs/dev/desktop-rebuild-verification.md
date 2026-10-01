@@ -23,6 +23,9 @@ cd web && npm run desktop:pack
 cd web && npm run desktop:runtime:smoke
 cd web && npm run desktop:pack:win
 cd web && npm run desktop:installer:smoke:win
+cd web && npm run perf:parser
+cd web && npm run perf:bundle
+cd web && npm run perf:e2e
 python3 .codestable/tools/validate-yaml.py --file .codestable/roadmap/rxnflow-desktop-canvas-rebuild/rxnflow-desktop-canvas-rebuild-items.yaml --yaml-only
 ```
 
@@ -31,6 +34,18 @@ python3 .codestable/tools/validate-yaml.py --file .codestable/roadmap/rxnflow-de
 当前 `web/package.json` 的自动化 Web 入口只有 `npm run test` 和 `npm run build`。仓库目前没有 `test:e2e` 或 `test:e2e:local-http` script，也没有 `web/playwright.config.ts`、`web/playwright.local-http.config.ts` 或 `web/e2e/` 测试目录。Playwright 依赖仍用于 `desktop:icons` 的浏览器渲染，不代表当前存在 Web E2E harness。
 
 需要检查真实浏览器渲染时，使用下方的 `npm run dev` 预览流程配合 Playwright CLI 或手动检查；不要把 `.codestable/features/` 下历史验收文档中的 `test:e2e` 命令当作当前可执行入口。
+
+## 性能验证
+
+性能入口复用现有 benchmark 和 bundle checker，不改变 parser 或画布实现：
+
+| 命令 | 当前预算 |
+| --- | --- |
+| `npm run perf:parser` | Gaussian p95 ≤ 250 ms；ORCA p95 ≤ 250 ms |
+| `npm run perf:bundle` | 首屏静态 bundle ≤ 1.10 MiB raw；3Dmol、Ketcher 保持动态加载和各自现有预算 |
+| `npm run perf:e2e` | 画布拖动 RAF p95 ≤ 50 ms；长帧（>50 ms）≤ 2；侧栏动画 `LayoutCount` ≤ 80、`RecalcStyleCount` ≤ 80 |
+
+`perf:bundle` 执行完整 renderer build，因此也会运行现有 bundle budget checker。`perf:e2e` 会启动隔离的 Vite 端口 `5175`，使用 Chromium CDP Performance metrics；它需要先通过 `npx playwright install chromium` 安装浏览器。
 
 ## UI 检查
 
