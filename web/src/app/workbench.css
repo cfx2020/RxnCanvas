@@ -14195,7 +14195,7 @@ body.is-resizing-project-rail-sections * {
 }
 
 .workspace:not(.is-right-collapsed) .inspector-panel {
-  padding: 24px 16px 30px !important;
+  padding: 24px 22px 30px !important;
 }
 
 .node-panel-summary {
@@ -14226,14 +14226,21 @@ body.is-resizing-project-rail-sections * {
 }
 
 .node-summary-grid dt {
-  font-size: var(--rxn-font-body) !important;
-  letter-spacing: 0.07em !important;
+  font-size: var(--rxn-font-ui) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em !important;
   line-height: 1.25 !important;
 }
 
 .node-summary-grid dd {
   font-size: var(--rxn-font-body) !important;
+  font-weight: 720 !important;
   line-height: 1.3 !important;
+  text-align: right !important;
+}
+
+.node-summary-grid .formula-with-mass {
+  justify-content: flex-end !important;
 }
 
 .node-energy-calculation {
