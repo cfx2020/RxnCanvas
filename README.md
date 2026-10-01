@@ -35,6 +35,8 @@ npm run dev
 
 Open `http://127.0.0.1:5173/` for the Web workbench. Desktop verification commands are documented in [desktop rebuild verification](docs/dev/desktop-rebuild-verification.md).
 
+The current `web/` package exposes `npm run test` and `npm run build` as its automated Web checks. It does not currently provide a `test:e2e` script, Playwright config, or `web/e2e/` suite; older CodeStable acceptance notes that mention those entries are historical records, not runnable commands.
+
 ## Data and privacy
 
 RxnFlow currently operates locally and does not include accounts, cloud sync or telemetry. See [PRIVACY.md](PRIVACY.md) for file locations and network behavior.
