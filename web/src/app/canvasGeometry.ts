@@ -144,8 +144,8 @@ export function viewportFromCanvasWheel(
   if (!zoomGesture) {
     return {
       ...current,
-      x: current.x + delta.x,
-      y: current.y + delta.y,
+      x: current.x - delta.x,
+      y: current.y - delta.y,
     }
   }
 

@@ -60,7 +60,7 @@ describe("appCanvasEffects", () => {
     canvas.dispatchEvent(new WheelEvent("wheel", { clientX: 50, clientY: 60, deltaX: 7, deltaY: 11, cancelable: true }))
 
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
-    expect(preview).toEqual({ x: 12, y: 21, zoom: 1 })
+    expect(preview).toEqual({ x: -12, y: -21, zoom: 1 })
     expect(setViewport).not.toHaveBeenCalled()
 
     await new Promise((resolve) => window.setTimeout(resolve, 80))

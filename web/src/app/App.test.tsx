@@ -554,17 +554,7 @@ describe("App", () => {
 
     const surface = container.querySelector(".canvas-surface") as HTMLElement
     const world = container.querySelector(".canvas-world") as HTMLElement
-    vi.spyOn(surface, "getBoundingClientRect").mockReturnValue({
-      x: 0,
-      y: 0,
-      left: 0,
-      top: 0,
-      right: 1000,
-      bottom: 800,
-      width: 1000,
-      height: 800,
-      toJSON: () => ({}),
-    } as DOMRect)
+    mockSurfaceRect(surface)
 
     const initialScale = transformScale(world.style.transform)
     const initialTranslate = transformTranslate(world.style.transform)
@@ -573,8 +563,8 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(transformTranslate(world.style.transform)).toEqual({
-        x: initialTranslate.x + 18,
-        y: initialTranslate.y - 120,
+        x: initialTranslate.x - 18,
+        y: initialTranslate.y + 120,
       })
     })
     expect(surface).toHaveClass("is-live-pan")
@@ -595,23 +585,13 @@ describe("App", () => {
 
     const remountedSurface = container.querySelector(".canvas-surface") as HTMLElement
     const remountedWorld = container.querySelector(".canvas-world") as HTMLElement
-    vi.spyOn(remountedSurface, "getBoundingClientRect").mockReturnValue({
-      x: 0,
-      y: 0,
-      left: 0,
-      top: 0,
-      right: 1000,
-      bottom: 800,
-      width: 1000,
-      height: 800,
-      toJSON: () => ({}),
-    } as DOMRect)
+    mockSurfaceRect(remountedSurface)
     const remountedTranslate = transformTranslate(remountedWorld.style.transform)
     fireEvent.wheel(remountedSurface, { deltaX: -12, deltaY: 36, clientX: 700, clientY: 400, cancelable: true })
     await waitFor(() => {
       expect(transformTranslate(remountedWorld.style.transform)).toEqual({
-        x: remountedTranslate.x - 12,
-        y: remountedTranslate.y + 36,
+        x: remountedTranslate.x + 12,
+        y: remountedTranslate.y - 36,
       })
     })
   })

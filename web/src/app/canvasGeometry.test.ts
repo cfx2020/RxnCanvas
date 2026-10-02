@@ -83,8 +83,8 @@ describe("canvasGeometry", () => {
     })
     expect(viewportFromCanvasWheel(viewport, { x: 20, y: 40 }, { x: 500, y: 320 }, { x: 18, y: -24 }, false)).toEqual({
       zoom: 0.5,
-      x: 118,
-      y: 26,
+      x: 82,
+      y: 74,
     })
     const zoomed = viewportFromCanvasWheel(viewport, { x: 20, y: 40 }, { x: 500, y: 320 }, { x: 0, y: -120 }, true)
     expect(zoomed.zoom).toBeCloseTo(0.55)
