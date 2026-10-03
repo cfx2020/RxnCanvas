@@ -317,9 +317,9 @@ const projectRailWidthStorageKey = "rxnflow-project-rail-width"
 const inspectorWidthStorageKey = "rxnflow-inspector-width"
 const projectRailMinWidth = 212
 const projectRailMaxWidth = 360
-const inspectorMinWidth = 320
+const inspectorMinWidth = 248
 const inspectorMaxWidth = 520
-const inspectorDefaultWidth = 340
+const inspectorDefaultWidth = 280
 
 type ProjectAutosaveInput = {
   project: ProjectSummary

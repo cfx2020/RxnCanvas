@@ -30,7 +30,7 @@ Shared values live in [`web/src/app/tokens.css`](../../web/src/app/tokens.css). 
 | Control heights | `--rxn-control-height`: 34px; `--rxn-control-height-compact`: 30px |
 | Motion | `--rxn-transition-fast/standard`: 140 / 180ms; respect `prefers-reduced-motion` |
 
-Use 12px for dense menu labels, 10–11px for secondary metadata, 13px for inspector values and 19px for the selected-node title. Micro type is only for canvas annotations at their native scale. Existing optical exceptions such as 10.5px are retained until their component is redesigned. Prefer the spacing scale; small optical icon offsets may remain literal values.
+Use 12px for dense menu labels, 10–11px for secondary metadata, 12px for inspector values and 14px for the selected-node title. The inspector defaults to 280px wide, resizes from 248–520px, and uses 28px minimum fact rows with 20px horizontal padding. Inspector labels use weight 700; values, calculation text, source names and the structure action use 750. Micro type is only for canvas annotations at their native scale. Existing optical exceptions such as 10.5px are retained until their component is redesigned. Prefer the spacing scale; small optical icon offsets may remain literal values.
 
 ## Layering and window widths
 

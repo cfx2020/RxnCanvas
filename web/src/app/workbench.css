@@ -13523,7 +13523,7 @@ body.is-resizing-project-rail-sections * {
    windows. It is hidden off-canvas and opens from the left edge or the
    titlebar button; there is no icon-only placeholder column. */
 .app-shell {
-  --rxnflow-inspector-width: var(--rxnflow-inspector-live-width, 380px) !important;
+  --rxnflow-inspector-width: var(--rxnflow-inspector-live-width, 280px) !important;
 }
 
 .inspector-panel {
@@ -13566,8 +13566,8 @@ body.is-resizing-project-rail-sections * {
 }
 
 .workspace:not(.is-right-collapsed) .inspector-panel {
-  width: var(--rxnflow-inspector-width, 380px) !important;
-  max-width: var(--rxnflow-inspector-width, 380px) !important;
+  width: var(--rxnflow-inspector-width, 280px) !important;
+  max-width: var(--rxnflow-inspector-width, 280px) !important;
   overflow-x: visible !important;
   clip-path: none !important;
 }
@@ -13585,7 +13585,7 @@ body.is-resizing-project-rail-sections * {
 
 @media (max-width: 1180px) {
   .app-shell.is-compact-layout .workspace {
-    grid-template-columns: 0 minmax(0, 1fr) var(--rxnflow-inspector-width, 380px) !important;
+    grid-template-columns: 0 minmax(0, 1fr) var(--rxnflow-inspector-width, 280px) !important;
     min-width: 0 !important;
   }
 
@@ -13698,8 +13698,8 @@ body.is-resizing-project-rail-sections * {
   }
 
   .app-shell.is-compact-layout .inspector-panel {
-    width: var(--rxnflow-inspector-width, 380px) !important;
-    max-width: var(--rxnflow-inspector-width, 380px) !important;
+    width: var(--rxnflow-inspector-width, 280px) !important;
+    max-width: var(--rxnflow-inspector-width, 280px) !important;
   }
 }
 
@@ -13716,7 +13716,7 @@ body.is-resizing-project-rail-sections * {
     bottom: 0 !important;
     left: auto !important;
     z-index: var(--rxn-z-inspector) !important;
-    width: min(var(--rxnflow-inspector-width, 380px), calc(100vw - 20px)) !important;
+    width: min(var(--rxnflow-inspector-width, 280px), calc(100vw - 20px)) !important;
     min-width: 0 !important;
     max-width: calc(100vw - 20px) !important;
     height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
@@ -13909,11 +13909,8 @@ body.is-resizing-project-rail-sections * {
   app-region: no-drag !important;
 }
 
-/* 2026-09 inspector refinement:
-   keep the information hierarchy flat and let dividers do the grouping. */
 .inspector-panel {
   gap: 0 !important;
-  padding: 22px 18px 28px !important;
   background: var(--rxn-surface-solid) !important;
   box-shadow: inset 1px 0 0 var(--rxn-line) !important;
 }
@@ -13933,98 +13930,112 @@ body.is-resizing-project-rail-sections * {
 }
 
 .node-panel-summary {
-  padding: 0 0 20px !important;
+  padding: 0 0 12px !important;
 }
 
 .node-panel-section-heading {
-  margin-bottom: 20px !important;
+  margin-bottom: 12px !important;
 }
 
 .node-panel-section-heading span,
 .node-source-heading {
   color: var(--rxn-ink-muted) !important;
-  font-size: var(--rxn-font-small) !important;
-  font-weight: 850 !important;
-  letter-spacing: 0.08em !important;
   text-transform: uppercase !important;
+  font-size: var(--rxn-font-small) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.07em !important;
 }
 
 .node-panel-section-heading strong {
-  margin-top: 5px !important;
   color: var(--rxn-ink-strong) !important;
-  font-size: var(--rxn-font-heading) !important;
-  font-weight: 850 !important;
-  line-height: 1.16 !important;
+  margin-top: 4px !important;
+  font-size: var(--rxn-font-label) !important;
+  font-weight: var(--rxn-weight-strong) !important;
+  line-height: 1.3 !important;
 }
 
 .node-summary-grid {
-  gap: 3px !important;
+  gap: 0 !important;
 }
 
 .node-summary-grid div {
-  min-height: 38px !important;
-  grid-template-columns: 106px minmax(0, 1fr) !important;
-  gap: 12px !important;
   align-items: baseline !important;
   border-bottom: 0 !important;
-  padding: 8px 0 !important;
+  min-height: 28px !important;
+  grid-template-columns: 108px minmax(0, 1fr) !important;
+  gap: 8px !important;
+  padding: 4px 0 !important;
 }
 
 .node-summary-grid dt {
   padding: 0 !important;
   color: var(--rxn-ink-muted) !important;
-  font-size: var(--rxn-font-ui) !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.07em !important;
-  line-height: 1.25 !important;
   text-transform: uppercase !important;
+  line-height: 1.25 !important;
+  font-size: var(--rxn-font-small) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
 }
 
 .node-summary-grid dd {
   color: var(--rxn-ink-strong) !important;
-  font-size: var(--rxn-font-label) !important;
-  font-weight: 780 !important;
   line-height: 1.3 !important;
+  text-align: right !important;
+  font-size: var(--rxn-font-ui) !important;
+  font-weight: 750 !important;
 }
 
 .node-energy-calculation {
-  margin-top: 14px !important;
   border-top: 1px solid var(--rxn-line) !important;
-  padding-top: 16px !important;
+  grid-template-columns: max-content max-content minmax(0, 1fr) !important;
+  column-gap: 6px !important;
+  row-gap: 2px !important;
+  margin-top: 10px !important;
+  padding-top: 10px !important;
 }
 
 .node-energy-calculation span {
   color: var(--rxn-ink-muted) !important;
-  font-size: var(--rxn-font-small) !important;
-  font-weight: 850 !important;
-  letter-spacing: 0.08em !important;
+  line-height: 1.3 !important;
+  font-size: var(--rxn-font-ui) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
 }
 
 .node-energy-calculation code {
   color: var(--rxn-ink) !important;
+  grid-column: 3 !important;
+  line-height: 1.3 !important;
   font-size: var(--rxn-font-ui) !important;
-  font-weight: 760 !important;
+  font-weight: 750 !important;
 }
 
 .node-energy-calculation strong {
   color: var(--rxn-accent-strong) !important;
-  font-size: var(--rxn-font-body) !important;
+  grid-column: 3 !important;
+  line-height: 1.3 !important;
+  font-size: var(--rxn-font-ui) !important;
+  font-weight: 750 !important;
 }
 
 .node-structure-card {
   border-top: 1px solid var(--rxn-line) !important;
-  padding: 20px 0 !important;
+  padding: 12px 0 !important;
 }
 
 .node-structure-card .node-panel-section-heading {
-  margin-bottom: 12px !important;
+  margin-bottom: 8px !important;
 }
 
 .node-structure-open-button {
-  border: 1px solid var(--rxn-line) !important;
-  border-radius: var(--rxn-radius-md) !important;
-  background: var(--rxn-surface-raised) !important;
-  box-shadow: var(--rxn-shadow-sm) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: radial-gradient(circle at 18% 18%, rgba(200, 240, 231, 0.52), transparent 42%),
+    rgba(246, 251, 252, 0.78) !important;
+  min-height: 44px !important;
+  gap: 8px !important;
+  padding: 8px !important;
+  border-radius: var(--rxn-radius-sm) !important;
 }
 
 .node-structure-open-button:hover,
@@ -14036,32 +14047,35 @@ body.is-resizing-project-rail-sections * {
 
 .node-source-brief {
   border-top: 1px solid var(--rxn-line) !important;
-  padding: 20px 0 0 !important;
+  padding: 12px 0 0 !important;
 }
 
 .node-source-list {
-  gap: 10px !important;
+  gap: 4px !important;
 }
 
 .node-source-heading {
   display: block !important;
-  margin-bottom: 2px !important;
+  margin-bottom: 0 !important;
 }
 
 .node-source-row {
-  min-height: 44px !important;
-  border-bottom: 1px solid var(--rxn-line) !important;
-  padding: 7px 0 !important;
+  padding: 4px 0 !important;
+  border-bottom: 0 !important;
+  min-height: 36px !important;
 }
 
 .node-source-row strong {
   color: var(--rxn-ink-strong) !important;
-  font-size: var(--rxn-font-body) !important;
+  line-height: 1.22 !important;
+  font-size: var(--rxn-font-ui) !important;
+  font-weight: 750 !important;
 }
 
 .node-source-row em {
   color: var(--rxn-ink-muted) !important;
-  font-size: var(--rxn-font-small) !important;
+  line-height: 1.2 !important;
+  font-size: var(--rxn-font-caption) !important;
 }
 
 .floating-toolbar button {
@@ -14096,84 +14110,8 @@ body.is-resizing-project-rail-sections * {
     0 7px 18px rgba(0, 0, 0, 0.2) !important;
 }
 
-/* 2026-09 inspector density and divider alignment:
-   keep the inspector close to the original scan density and make both
-   sidebar resize affordances use the same continuous rail geometry. */
 .workspace:not(.is-right-collapsed) .inspector-panel {
-  padding: 16px 14px 22px !important;
-}
-
-.node-panel-summary {
-  padding-bottom: 14px !important;
-}
-
-.node-panel-section-heading {
-  margin-bottom: 12px !important;
-}
-
-.node-panel-section-heading span,
-.node-source-heading {
-  font-size: var(--rxn-font-caption) !important;
-  letter-spacing: 0.07em !important;
-}
-
-.node-panel-section-heading strong {
-  font-size: var(--rxn-font-large) !important;
-}
-
-.node-summary-grid {
-  gap: 0 !important;
-}
-
-.node-summary-grid div {
-  min-height: 30px !important;
-  grid-template-columns: 94px minmax(0, 1fr) !important;
-  gap: 10px !important;
-  padding: 5px 0 !important;
-}
-
-.node-summary-grid dt {
-  font-size: var(--rxn-font-caption) !important;
-  letter-spacing: 0.05em !important;
-}
-
-.node-summary-grid dd {
-  font-size: var(--rxn-font-ui) !important;
-  line-height: 1.24 !important;
-}
-
-.node-energy-calculation {
-  margin-top: 10px !important;
-  padding-top: 10px !important;
-}
-
-.node-structure-card {
-  padding: 14px 0 !important;
-}
-
-.node-structure-card .node-panel-section-heading {
-  margin-bottom: 10px !important;
-}
-
-.node-source-brief {
-  padding-top: 14px !important;
-}
-
-.node-source-list {
-  gap: 6px !important;
-}
-
-.node-source-row {
-  min-height: 36px !important;
-  padding: 5px 0 !important;
-}
-
-.node-source-row strong {
-  font-size: var(--rxn-font-ui) !important;
-}
-
-.node-source-row em {
-  font-size: var(--rxn-font-caption) !important;
+  padding: 16px var(--rxn-space-5) 20px !important;
 }
 
 .inspector-resize-handle {
@@ -14189,71 +14127,8 @@ body.is-resizing-project-rail-sections * {
   width: 2px !important;
 }
 
-/* Inspector spacing follows the resizable panel width. */
-.app-shell {
-  --rxnflow-inspector-width: var(--rxnflow-inspector-live-width, 340px) !important;
-}
-
-.workspace:not(.is-right-collapsed) .inspector-panel {
-  padding: 24px 22px 30px !important;
-}
-
-.node-panel-summary {
-  padding-bottom: 20px !important;
-}
-
-.node-panel-section-heading {
-  margin-bottom: 18px !important;
-}
-
-.node-panel-section-heading span,
-.node-source-heading {
-  font-size: var(--rxn-font-ui) !important;
-  letter-spacing: 0.08em !important;
-}
-
-.node-panel-section-heading strong {
-  margin-top: 6px !important;
-  font-size: var(--rxn-font-title) !important;
-  line-height: 1.18 !important;
-}
-
-.node-summary-grid div {
-  min-height: 38px !important;
-  grid-template-columns: 140px minmax(0, 1fr) !important;
-  gap: 10px !important;
-  padding: 7px 0 !important;
-}
-
-.node-summary-grid dt {
-  font-size: var(--rxn-font-ui) !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.03em !important;
-  line-height: 1.25 !important;
-}
-
-.node-summary-grid dd {
-  font-size: var(--rxn-font-body) !important;
-  font-weight: 720 !important;
-  line-height: 1.3 !important;
-  text-align: right !important;
-}
-
 .node-summary-grid .formula-with-mass {
   justify-content: flex-end !important;
-}
-
-.node-energy-calculation {
-  margin-top: 14px !important;
-  padding-top: 14px !important;
-  grid-template-columns: max-content max-content minmax(0, 1fr) !important;
-  column-gap: 6px !important;
-  row-gap: 2px !important;
-}
-
-.node-energy-calculation span {
-  font-size: var(--rxn-font-body) !important;
-  line-height: 1.3 !important;
 }
 
 .node-energy-symbol {
@@ -14271,62 +14146,10 @@ body.is-resizing-project-rail-sections * {
   justify-self: start !important;
 }
 
-.node-energy-calculation code {
-  grid-column: 3 !important;
-  font-size: var(--rxn-font-body) !important;
-  line-height: 1.3 !important;
-}
-
-.node-energy-calculation strong {
-  grid-column: 3 !important;
-  font-size: var(--rxn-font-body) !important;
-  line-height: 1.3 !important;
-}
-
-.node-structure-card {
-  padding: 20px 0 !important;
-}
-
-.node-structure-card .node-panel-section-heading {
-  margin-bottom: 12px !important;
-}
-
-.node-source-brief {
-  padding-top: 20px !important;
-}
-
-.node-source-list {
-  gap: 10px !important;
-}
-
-.node-source-row {
-  min-height: 44px !important;
-  padding: 7px 0 !important;
-}
-
-.node-source-row strong {
-  font-size: var(--rxn-font-body) !important;
-}
-
-.node-source-row em {
-  font-size: var(--rxn-font-small) !important;
-}
-
-/* 2026-09 structure action cleanup:
-   keep the action readable as a quiet filled control without a second frame. */
-.node-structure-open-button {
-  border: 0 !important;
-  box-shadow: none !important;
-  background:
-    radial-gradient(circle at 18% 18%, rgba(200, 240, 231, 0.52), transparent 42%),
-    rgba(246, 251, 252, 0.78) !important;
-}
-
 .node-structure-open-button:hover {
   border: 0 !important;
   box-shadow: none !important;
-  background:
-    radial-gradient(circle at 18% 18%, rgba(174, 238, 223, 0.64), transparent 42%),
+  background: radial-gradient(circle at 18% 18%, rgba(174, 238, 223, 0.64), transparent 42%),
     rgba(238, 249, 249, 0.96) !important;
 }
 
@@ -14338,56 +14161,25 @@ body.is-resizing-project-rail-sections * {
 }
 
 .node-structure-open-icon {
-  background:
-    radial-gradient(circle at 28% 22%, rgba(221, 247, 241, 0.9), transparent 58%),
+  background: radial-gradient(circle at 28% 22%, rgba(221, 247, 241, 0.9), transparent 58%),
     rgba(221, 247, 241, 0.82) !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: var(--rxn-radius-control) !important;
 }
 
 .theme-dark .node-structure-open-button {
-  background:
-    radial-gradient(circle at 18% 18%, rgba(58, 160, 132, 0.22), transparent 42%),
+  background: radial-gradient(circle at 18% 18%, rgba(58, 160, 132, 0.22), transparent 42%),
     rgba(21, 35, 47, 0.74) !important;
 }
 
 .theme-dark .node-structure-open-button:hover {
-  background:
-    radial-gradient(circle at 18% 18%, rgba(58, 160, 132, 0.32), transparent 42%),
+  background: radial-gradient(circle at 18% 18%, rgba(58, 160, 132, 0.32), transparent 42%),
     rgba(25, 43, 56, 0.94) !important;
 }
 
 .theme-dark .node-structure-open-icon {
   background: rgba(34, 51, 65, 0.82) !important;
-}
-
-/* 2026-09 source row refinement:
-   keep the heading and file metadata in one compact reading group, with a
-   clearer but still quiet external-open affordance. */
-.node-source-brief {
-  padding-top: 10px !important;
-}
-
-.node-source-list {
-  gap: 4px !important;
-}
-
-.node-source-heading {
-  margin-bottom: 0 !important;
-}
-
-.node-source-row {
-  min-height: 40px !important;
-  padding: 4px 0 !important;
-  border-bottom: 0 !important;
-}
-
-.node-source-row strong {
-  font-size: var(--rxn-font-large) !important;
-  line-height: 1.22 !important;
-}
-
-.node-source-row em {
-  font-size: var(--rxn-font-small) !important;
-  line-height: 1.2 !important;
 }
 
 .node-source-actions button[aria-label*="Open"] {
@@ -14422,6 +14214,17 @@ body.is-resizing-project-rail-sections * {
 .theme-dark .node-source-actions button[aria-label*="Open"]:focus-visible {
   background: rgba(43, 91, 86, 0.9) !important;
   color: #d1fff2 !important;
+}
+
+.node-panel-section-heading .termination-pill {
+  font-size: var(--rxn-font-caption) !important;
+  min-height: 20px !important;
+  padding: 0 8px !important;
+}
+
+.node-structure-open-copy strong {
+  font-size: var(--rxn-font-ui) !important;
+  font-weight: 750 !important;
 }
 
 @media (max-width: 760px) {
