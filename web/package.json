@@ -38,7 +38,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "3dmol": "^2.5.5",
-    "electron": "^42.4.0",
+    "electron": "^42.11.10",
     "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
     "ketcher-core": "^3.15.0",
@@ -50,7 +50,7 @@
     "react-dom": "^19.2.7",
     "typescript": "^6.0.3",
     "vite": "^8.0.13",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.11"
   },
   "build": {
     "appId": "com.rxnflow.app",

@@ -85,12 +85,15 @@ jobs:
       - name: Run renderer tests
         working-directory: web
         run: npm run test
+      - name: Run Electron regression tests
+        working-directory: web
+        run: node --test electron/*.test.cjs
       - name: Run parser performance budget
         working-directory: web
         run: npm run perf:parser
-      - name: Audit production renderer dependencies
+      - name: Audit all npm dependencies
         working-directory: web
-        run: npm audit --omit=dev
+        run: npm audit
       - name: Run bundle performance budget
         working-directory: web
         run: npm run perf:bundle

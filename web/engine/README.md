@@ -1,4 +1,8 @@
-`npm run desktop:engine` writes the bundled RxnFlow Python engine executable
-here as `rxnflow-engine` (`rxnflow-engine.exe` on Windows). Packaged Electron
-apps load this executable from app resources; development runs can still spawn
-`python3 -m rxnflow.engine_ipc` when this file has not been built.
+`npm run desktop:engine` writes the bundled PyInstaller Python+cclib executable
+here as `rxnflow-engine` (`rxnflow-engine.exe` on Windows). Packaged Electron apps
+load it from application resources.
+
+Development runs Python source through `python -m rxnflow.engine_ipc` using the
+pinned environment prepared by `scripts/dev-engine.cjs`, or an explicit
+`RXNFLOW_PYTHON` / `RXNFLOW_ENGINE_COMMAND` override. It does not select this
+previously built binary. See [Python development](../../docs/dev/python-parser.md).

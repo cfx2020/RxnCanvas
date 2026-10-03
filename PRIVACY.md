@@ -1,6 +1,6 @@
 # RxnFlow Privacy Statement
 
-Last updated: 2026-07-10
+Last updated: 2026-10-02
 
 RxnFlow 0.1.0 is a local-first desktop application. It does not currently provide user accounts, cloud synchronization, advertising, analytics or telemetry.
 
@@ -17,7 +17,11 @@ Project archives are created only when the user requests an export. Opening a `.
 
 ## Network behavior
 
-The packaged application does not require a network service for normal project editing or parsing. Arbitrary network loading is disabled in the packaged macOS application, and renderer navigation/new-window creation is blocked. A Help action may open an explicitly configured documentation URL in the system browser.
+The packaged application does not require a network service for normal project editing or parsing. Arbitrary network loading is disabled in the packaged macOS application, and renderer navigation/new-window creation is blocked. The Help menu provides a local About dialog.
+
+Browser development uses same-origin loopback endpoints to send complete file bytes
+to the local Python engine. Temporary uploads are removed after parsing. First-time
+development dependency installation requires network access.
 
 ## External applications
 

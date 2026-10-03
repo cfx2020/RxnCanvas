@@ -746,42 +746,42 @@
     "publisher": "Evan You",
     "licenseFile": "node_modules/@vitejs/plugin-react/LICENSE"
   },
-  "@vitest/expect@4.1.6": {
+  "@vitest/expect@4.1.11": {
     "licenses": "MIT",
     "repository": "https://github.com/vitest-dev/vitest",
     "licenseFile": "node_modules/@vitest/expect/LICENSE"
   },
-  "@vitest/mocker@4.1.6": {
+  "@vitest/mocker@4.1.11": {
     "licenses": "MIT",
     "repository": "https://github.com/vitest-dev/vitest",
     "licenseFile": "node_modules/@vitest/mocker/LICENSE"
   },
-  "@vitest/pretty-format@4.1.6": {
+  "@vitest/pretty-format@4.1.11": {
     "licenses": "MIT",
     "repository": "https://github.com/vitest-dev/vitest",
     "licenseFile": "node_modules/@vitest/pretty-format/LICENSE"
   },
-  "@vitest/runner@4.1.6": {
+  "@vitest/runner@4.1.11": {
     "licenses": "MIT",
     "repository": "https://github.com/vitest-dev/vitest",
     "licenseFile": "node_modules/@vitest/runner/LICENSE"
   },
-  "@vitest/snapshot@4.1.6": {
+  "@vitest/snapshot@4.1.11": {
     "licenses": "MIT",
     "repository": "https://github.com/vitest-dev/vitest",
     "licenseFile": "node_modules/@vitest/snapshot/LICENSE"
   },
-  "@vitest/spy@4.1.6": {
+  "@vitest/spy@4.1.11": {
     "licenses": "MIT",
     "repository": "https://github.com/vitest-dev/vitest",
     "licenseFile": "node_modules/@vitest/spy/LICENSE"
   },
-  "@vitest/utils@4.1.6": {
+  "@vitest/utils@4.1.11": {
     "licenses": "MIT",
     "repository": "https://github.com/vitest-dev/vitest",
     "licenseFile": "node_modules/@vitest/utils/LICENSE"
   },
-  "@xmldom/xmldom@0.8.13": {
+  "@xmldom/xmldom@0.8.15": {
     "licenses": "MIT",
     "repository": "https://github.com/xmldom/xmldom",
     "licenseFile": "node_modules/@xmldom/xmldom/LICENSE"
@@ -1048,7 +1048,7 @@
     "repository": "https://github.com/thenativeweb/boolean",
     "licenseFile": "node_modules/boolean/LICENSE.txt"
   },
-  "brace-expansion@1.1.18": {
+  "brace-expansion@1.1.21": {
     "licenses": "MIT",
     "repository": "https://github.com/juliangruber/brace-expansion",
     "publisher": "Julian Gruber",
@@ -1056,7 +1056,7 @@
     "url": "http://juliangruber.com",
     "licenseFile": "node_modules/glob/node_modules/brace-expansion/LICENSE"
   },
-  "brace-expansion@2.1.4": {
+  "brace-expansion@2.1.7": {
     "licenses": "MIT",
     "repository": "https://github.com/juliangruber/brace-expansion",
     "publisher": "Julian Gruber",
@@ -1064,7 +1064,7 @@
     "url": "http://juliangruber.com",
     "licenseFile": "node_modules/archiver-utils/node_modules/brace-expansion/LICENSE"
   },
-  "brace-expansion@5.0.9": {
+  "brace-expansion@5.0.12": {
     "licenses": "MIT",
     "repository": "https://github.com/juliangruber/brace-expansion",
     "licenseFile": "node_modules/brace-expansion/LICENSE"
@@ -1165,7 +1165,7 @@
     "publisher": "sheetjs",
     "licenseFile": "node_modules/cfb/LICENSE"
   },
-  "chai@6.2.2": {
+  "chai@6.3.0": {
     "licenses": "MIT",
     "repository": "https://github.com/chaijs/chai",
     "publisher": "Jake Luer",
@@ -1806,7 +1806,7 @@
     "repository": "https://github.com/electron/windows-installer",
     "licenseFile": "node_modules/electron-winstaller/LICENSE"
   },
-  "electron@42.8.1": {
+  "electron@42.11.10": {
     "licenses": "MIT",
     "repository": "https://github.com/electron/electron",
     "publisher": "Electron Community",
@@ -1988,7 +1988,7 @@
     "url": "@mafintosh",
     "licenseFile": "node_modules/fast-fifo/LICENSE"
   },
-  "fast-uri@3.1.5": {
+  "fast-uri@3.1.8": {
     "licenses": "BSD-3-Clause",
     "repository": "https://github.com/fastify/fast-uri",
     "publisher": "Vincent Le Goff",
@@ -2553,7 +2553,7 @@
     "publisher": "Simon Lydell",
     "licenseFile": "node_modules/js-tokens/LICENSE"
   },
-  "js-yaml@4.3.1": {
+  "js-yaml@4.3.2": {
     "licenses": "MIT",
     "repository": "https://github.com/nodeca/js-yaml",
     "publisher": "Vladimir Zapparov",
@@ -4103,7 +4103,7 @@
     "publisher": "Superchupu",
     "licenseFile": "node_modules/tinyglobby/LICENSE"
   },
-  "tinyrainbow@3.1.0": {
+  "tinyrainbow@3.2.0": {
     "licenses": "MIT",
     "repository": "https://github.com/tinylibs/tinyrainbow",
     "licenseFile": "node_modules/tinyrainbow/LICENCE"
@@ -4192,12 +4192,12 @@
     "repository": "https://github.com/nodejs/undici",
     "licenseFile": "node_modules/undici-types/LICENSE"
   },
-  "undici@6.28.0": {
+  "undici@6.29.0": {
     "licenses": "MIT",
     "repository": "https://github.com/nodejs/undici",
     "licenseFile": "node_modules/node-gyp/node_modules/undici/LICENSE"
   },
-  "undici@7.29.0": {
+  "undici@7.30.0": {
     "licenses": "MIT",
     "repository": "https://github.com/nodejs/undici",
     "licenseFile": "node_modules/undici/LICENSE"
@@ -4301,7 +4301,7 @@
     "publisher": "Evan You",
     "licenseFile": "node_modules/vite/LICENSE.md"
   },
-  "vitest@4.1.6": {
+  "vitest@4.1.11": {
     "licenses": "MIT",
     "repository": "https://github.com/vitest-dev/vitest",
     "publisher": "Anthony Fu",

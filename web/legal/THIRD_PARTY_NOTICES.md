@@ -6,7 +6,7 @@ Principal components include:
 
 | Component | Version | License |
 |---|---:|---|
-| Electron | 42.8.1 | MIT |
+| Electron | 42.11.10 | MIT |
 | React / React DOM | 19.2.7 | MIT |
 | 3Dmol.js | 2.5.5 | BSD-3-Clause |
 | Ketcher core/react/standalone | 3.15.0 | Apache-2.0 |

@@ -6,7 +6,7 @@ Version: **0.1.0**
 
 ## Current scope
 
-- Import lightweight Gaussian, ORCA, XYZ/extxyz and MAPLE-style text outputs.
+- Import Gaussian, ORCA, XYZ/extxyz and MAPLE-style text outputs through the shared Python engine.
 - Review multi-structure parser candidates before registering nodes.
 - Edit multi-canvas reaction graphs with nodes, edges, barriers, text and image annotations.
 - Inspect 2D structures, 3D coordinates and the primary vibrational mode when displacement data is available.
@@ -29,13 +29,28 @@ python3 -m unittest discover
 cd web
 npm ci
 npm run test
+node --test electron/*.test.cjs
 npm run build
 npm run dev
 ```
 
 Open `http://127.0.0.1:5173/` for the Web workbench. Desktop verification commands are documented in [desktop rebuild verification](docs/dev/desktop-rebuild-verification.md).
 
-The current `web/` package exposes `npm run test` and `npm run build` as its automated Web checks. It does not currently provide a `test:e2e` script, Playwright config, or `web/e2e/` suite; older CodeStable acceptance notes that mention those entries are historical records, not runnable commands.
+`npm run test` runs frontend and selected script tests; Electron regression tests
+run separately with `node --test electron/*.test.cjs`. Parser, bundle and browser
+performance checks are available as `perf:parser`, `perf:bundle`, and `perf:e2e`.
+See the verification guide for coverage and prerequisites.
+
+Browser development uploads complete file bytes to the same-origin local Python
+parser. Initial dependency setup may need network access; serving `dist/` alone
+does not provide parsing. See [Python parser development](docs/dev/python-parser.md).
+
+## Release status
+
+As of 2026-10-02, [v0.1.0-beta.12](https://github.com/cfx2020/rxnflow/releases/tag/v0.1.0-beta.12)
+is a private prerelease with macOS arm64 and Windows x64 downloads. Its Windows
+installer and macOS runtime passed CI; the macOS Beta is ad-hoc signed and
+unnotarized. Current source changes require their own release verification.
 
 ## Data and privacy
 

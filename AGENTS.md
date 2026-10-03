@@ -10,13 +10,13 @@
 
 ## 架构约束
 
-- 当前项目尚未上线，不需要考虑旧版本、旧 UI、旧数据或旧设计的兼容性；以用户最新表述为准，必要时可以直接做破坏性更改、删除旧实现或重构既有方案。
+- 当前项目尚未发布正式版，不需要考虑旧版本、旧 UI、旧数据或旧设计的兼容性；以用户最新表述为准，必要时可以直接做破坏性更改、删除旧实现或重构既有方案。
 - 优先保持领域核心、平台壳层、UI、导入解析、导出报告之间解耦。
 - 领域核心不得依赖具体 UI 框架、桌面运行时或部署平台。
 - Web、macOS app、Windows exe、Linux CLI 等端侧能力应通过薄壳层适配共享核心能力。
 - 解析器按插件化方向设计，避免把 Gaussian、ORCA、MAPLE/ASE 等格式逻辑混在同一个大函数里。
 - 图谱编辑状态、化学对象登记、能量计算和报告导出应使用明确的数据结构与接口契约，方便 agent 和测试直接操作。
-- 技术栈尚未正式拍板前，不要引入会强绑定单一端形态的框架决策。
+- 当前技术栈为 React + TypeScript + Vite + npm、Electron 桌面壳与 Python/cclib 引擎；保持 UI、壳层和解析边界清晰。
 
 ## 代码规范
 
@@ -30,7 +30,8 @@
 
 - 新功能、大需求拆解、bug 修复、重构和知识沉淀优先走 `.codestable/` 下对应流程。
 - `.codestable/architecture/` 只记录已落地现状；未落地的方案规划放在 `.codestable/roadmap/`。
-- roadmap 的接口契约是后续 feature design 的硬约束，feature 中不得绕开或私自改写。
+- 用户确认的新 roadmap 接口契约约束对应 feature；已完成记录不构成新的待办。当前功能和测试入口先查 `.codestable/architecture/` 与 `docs/dev/desktop-rebuild-verification.md`，再核对代码。
+- 文档只能将代码已有能力写为现状；过时规划、已删除模块和未采用方案不能推导为“尚待恢复”的需求。
 - 发现值得长期保留的选型、踩坑、模式或调研结论时，提示用户是否沉淀到 `.codestable/compound/`。
 
 ## 禁止事项
@@ -54,12 +55,14 @@
 - 运行 Web 工作台开发服务：`cd web && npm run dev`
 - 运行 Web 前端测试：`cd web && npm run test`
 - 运行 Web 前端构建：`cd web && npm run build`
-- 校验 CodeStable YAML：`python3 .codestable/tools/validate-yaml.py --file <path> --yaml-only`
+- 运行 Electron 回归测试：`cd web && node --test electron/*.test.cjs`（不包含在 `npm run test` 中）
+- 校验 Markdown frontmatter：`python3 .codestable/tools/validate-yaml.py --file <path.md>`
+- 校验纯 YAML：`python3 .codestable/tools/validate-yaml.py --file <path.yaml> --yaml-only`
 
-## 已知待决策
+## 当前实现与文档入口
 
-- 长期主技术栈与包管理方式；当前 Web app shell 已采用 React + TypeScript + Vite + npm。
-- 化学对象与反应图谱的持久化格式。
-- 多端共享核心的语言/runtime 边界。
-- 首批支持的计算输出格式版本与解析容错策略。
-- ChemDraw/CDXML 导出的生成策略和第三方依赖边界。
+- 工作台：React + TypeScript + Vite + npm；macOS/Windows：Electron；解析：Python+cclib。浏览器开发服务与桌面端使用同一 Python 引擎。
+- 项目主格式：工作区文件夹内 `.rxnflow/project.json`、`.rxnflow/manifest.json`、`sources/`、`exports/`；支持 `.rxnflow.zip` 导入导出。
+- 导出：renderer 生成 PNG/CDXML/XLSX，CDXML 包含 Ketcher 结构片段和项目组合逻辑。
+- 支持格式与可信边界：`docs/user/supported-import-formats.md`。
+- 架构：`.codestable/architecture/ARCHITECTURE.md`；发布验证：`docs/dev/desktop-rebuild-verification.md`。
