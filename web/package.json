@@ -52,6 +52,11 @@
     "vite": "^8.0.13",
     "vitest": "^4.1.11"
   },
+  "overrides": {
+    "global-agent@^3.0.0": {
+      "roarr": "6.0.0"
+    }
+  },
   "build": {
     "appId": "com.rxnflow.app",
     "productName": "RxnFlow",
