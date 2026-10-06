@@ -1,61 +1,102 @@
 # RxnFlow
 
-RxnFlow is a local-first desktop workbench for registering computational chemistry results, assembling reaction-path graphs, inspecting structures and energies, and exporting visual reports.
+**把计算化学结果整理成可编辑的反应路径图。**
 
-Version: **0.1.0**
+RxnFlow 是面向计算化学研究者的本地桌面工作台。导入已有计算输出后，你可以检查分子结构与能量、组装反应路径、比较相对能量和能垒，再导出用于汇报、制图或进一步分析的文件。
 
-## Current scope
+[下载测试版](https://github.com/cfx2020/rxnflow/releases) · [使用指南](docs/user/desktop-canvas-workbench.md) · [支持的导入格式](docs/user/supported-import-formats.md)
 
-- Import Gaussian, ORCA, XYZ/extxyz and MAPLE-style text outputs through the shared Python engine.
-- Review multi-structure parser candidates before registering nodes.
-- Edit multi-canvas reaction graphs with nodes, edges, barriers, text and image annotations.
-- Inspect 2D structures, 3D coordinates and the primary vibrational mode when displacement data is available.
-- Export PNG, CDXML and XLSX reports.
-- Store projects as local workspace folders and exchange them as `.rxnflow.zip` archives.
+## 视频介绍
 
-Import support is intentionally conservative. Exact program versions and task types that have not been validated with a real fixture are considered experimental; see [supported import formats](docs/user/supported-import-formats.md).
+[![RxnFlow 宣传视频：从计算文件到反应路径](docs/assets/rxnflow-promo-cover.jpg)](docs/assets/rxnflow-promo.mp4)
 
-## Development
+## 你可以用它做什么
 
-Requirements:
+- **整理计算结果**：导入 Gaussian.log 等文件，在登记前核对候选结构、能量和解析提示。
+- **绘制反应路径**：把文件拖入画布创建节点，连接反应步骤、标记能垒，添加文字与图片；同一项目可用多个画布整理不同路径。
+- **比较路径能量**：设置能量零点和物种系数，在 ΔEgas / ΔGsol 之间切换，并通过绝对、相对能量表检查数值。
+- **检查分子结构**：查看与编辑 2D 结构，旋转查看 3D 坐标，量测键长、键角和二面角；有位移数据时可播放默认振动模式。
+- **导出图表与数据**：生成 PNG 图片、可在 ChemDraw 中继续编辑的 CDXML，以及包含能量表和来源信息的 XLSX。
 
-- Node.js 22 or newer
-- npm
-- Python 3.12 or 3.13
-- `uv` for reproducible bundled-engine builds
+使用前需要准备由 Gaussian 等外部软件生成的计算结果。RxnFlow 负责结果整理与可视化，不运行量化计算任务。
 
-```bash
-python3 -m unittest discover
-cd web
-npm ci
-npm run test
-node --test electron/*.test.cjs
-npm run build
-npm run dev
-```
+## 下载与安装
 
-Open `http://127.0.0.1:5173/` for the Web workbench. Desktop verification commands are documented in [desktop rebuild verification](docs/dev/desktop-rebuild-verification.md).
+目前提供 **Beta 测试版**，尚未发布正式版。前往 [Releases](https://github.com/cfx2020/rxnflow/releases)，查看对应版本说明并选择与你的电脑匹配的安装包。私有测试阶段需要仓库访问权限。
 
-`npm run test` runs frontend and selected script tests; Electron regression tests
-run separately with `node --test electron/*.test.cjs`. Parser, bundle and browser
-performance checks are available as `perf:parser`, `perf:bundle`, and `perf:e2e`.
-See the verification guide for coverage and prerequisites.
+| 平台 | 安装包 | 安装方式 |
+| --- | --- | --- |
+| macOS · Apple Silicon（arm64） | `.dmg` 或 `.zip` | 打开 DMG 或解压 ZIP，将 `RxnFlow.app` 拖入「应用程序」 |
+| Windows · x64 | `setup.exe` 或 `portable.exe` | 运行安装程序，或直接启动便携版 |
 
-Browser development uploads complete file bytes to the same-origin local Python
-parser. Initial dependency setup may need network access; serving `dist/` alone
-does not provide parsing. See [Python parser development](docs/dev/python-parser.md).
+桌面安装包已包含解析引擎，**无需另行安装 Python 或 Node.js**。正常导入、编辑和导出可在本机离线完成。
 
-## Release status
+macOS Beta 尚未经过 Apple 公证，首次启动可能被系统拦截。请按 [macOS 测试版安装说明](docs/user/macos-unsigned-beta.md)操作。
 
-As of 2026-10-02, [v0.1.0-beta.12](https://github.com/cfx2020/rxnflow/releases/tag/v0.1.0-beta.12)
-is a private prerelease with macOS arm64 and Windows x64 downloads. Its Windows
-installer and macOS runtime passed CI; the macOS Beta is ad-hoc signed and
-unnotarized. Current source changes require their own release verification.
+## 从计算文件到反应图
 
-## Data and privacy
+### 1. 创建项目
 
-RxnFlow currently operates locally and does not include accounts, cloud sync or telemetry. See [PRIVACY.md](PRIVACY.md) for file locations and network behavior.
+在左侧 **Projects** 的 `+` 菜单中选择 **New blank project**，创建用于保存本次研究的项目文件夹。已有项目可通过 **Use existing folder** 打开。
 
-## License and notices
+### 2. 导入并检查结果
 
-RxnFlow itself is currently distributed as all rights reserved; no open-source license is granted. Bundled third-party components retain their own licenses. See [LICENSE](LICENSE) and [third-party notices](web/legal/THIRD_PARTY_NOTICES.md).
+通过 **Import files** 或文件拖放导入计算输出。如果一个文件包含多个候选结构，先检查结构、能量与警告，再选择需要登记的候选。文件列表支持搜索、筛选及 gas/sol 文件分组。
+
+### 3. 组装反应路径
+
+把文件或文件组从列表拖到画布，创建反应物、中间体、过渡态等节点。通过节点连接锚点组装路径，按需要加入或释放物种，并添加能垒、文字和图片标注。
+
+节点支持拖动、复制粘贴和撤销重做；多条路径可以放在不同画布中，共用项目里的计算文件。
+
+### 4. 核对能量与结构
+
+在节点上下文菜单中设置**能量零点与系数**，通过工具条选择 **ΔEgas** 或 **ΔGsol**，在 **Settings** 中设置显示单位。用 **Table view** 检查绝对与相对能量，Inspector 可查看对应表达式。
+
+选择节点后，通过 **Open structure** 检查 2D/3D 结构。检查过渡态时，应核对默认播放的振动模式是否与原始计算结果中的目标虚频对应。
+
+### 5. 导出结果
+
+根据用途选择导出格式：
+
+| 格式 | 用途 |
+| --- | --- |
+| **PNG** | 将反应能量图插入演示文稿或报告 |
+| **CDXML** | 在 ChemDraw 中继续编辑图与结构 |
+| **XLSX** | 核对、整理绝对/相对能量、导入文件和元数据 |
+
+完整操作说明见[工作台使用指南](docs/user/desktop-canvas-workbench.md)。
+
+## 支持哪些计算文件
+
+| 来源 | 当前支持情况 |
+| --- | --- |
+| Gaussian `.log` / `.out` | 实验性支持结构、能量、热化学校正及部分频率/振动信息 |
+| ORCA `.out` | 实验性支持结构、能量及部分溶剂和计算信息 |
+| XYZ / ASE extxyz | 支持基础单帧、多帧坐标及可识别的能量信息 |
+| MAPLE 风格文本输出 | 实验性支持可识别的多帧结构、路径点与能量 |
+
+不同程序版本和任务组合的解析覆盖程度不同；“实验性”不代表所有输出都能正确识别。用于研究结论或报告前，请核对原始输出中的最终结构、方法、单位与热化学校正。CSV 和普通文本可预览，但不保证能生成化学节点。
+
+具体字段、文件大小限制及常见解析问题见[支持的导入格式](docs/user/supported-import-formats.md)。
+
+## 保存、备份与分享
+
+桌面端会将编辑内容**自动保存到你选择的项目文件夹**，导入的原始计算文件副本保存在其中的 `sources/`，导出结果保存在 `exports/`。
+
+- **继续编辑**：从最近项目或 **Use existing folder** 重新打开项目。
+- **备份或换机**：备份整个项目文件夹，或导出 `.rxnflow.zip` 项目包。
+- **分享项目**：发送 `.rxnflow.zip`；打开项目包时，应用会在压缩包旁创建新的工作区并恢复内容。
+- **整理侧栏**：**Remove from sidebar** 只移除列表中的引用，不删除磁盘上的项目文件夹。
+
+项目包可包含原始计算文件，分享前请确认其中的数据适合提供给接收者。
+
+## 隐私与许可
+
+RxnFlow 当前无需账号，不提供云同步，也不收集遥测或自动上传计算数据。文件位置和网络行为详见[隐私说明](PRIVACY.md)。
+
+RxnFlow 当前保留所有权利，未授予开源许可；所包含的第三方组件遵循各自许可证。详见 [LICENSE](LICENSE) 和[第三方声明](web/legal/THIRD_PARTY_NOTICES.md)。
+
+## 开发资料
+
+如需从源码运行、调试或打包，请参阅[开发与验证指南](docs/dev/desktop-rebuild-verification.md)、[Python 解析环境](docs/dev/python-parser.md)和[架构说明](.codestable/architecture/ARCHITECTURE.md)。
