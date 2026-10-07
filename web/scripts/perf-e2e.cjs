@@ -36,22 +36,6 @@ async function main() {
         page.on("console", (message) => {
           if (message.type() === "error") consoleErrors.push(`console: ${message.text()}`)
         })
-        await page.addInitScript(() => {
-          window.__rxnflowPerf = { measuring: false, lastRaf: null, intervals: [], longFrames: 0 }
-          const nativeRequestAnimationFrame = window.requestAnimationFrame.bind(window)
-          window.requestAnimationFrame = (callback) => nativeRequestAnimationFrame((timestamp) => {
-            const state = window.__rxnflowPerf
-            if (state.measuring) {
-              if (state.lastRaf !== null) {
-                const interval = timestamp - state.lastRaf
-                state.intervals.push(interval)
-                if (interval > 50) state.longFrames += 1
-              }
-              state.lastRaf = timestamp
-            }
-            callback(timestamp)
-          })
-        })
         await page.goto(baseUrl, { waitUntil: "networkidle" })
         await page.getByRole("button", { name: "Collapse project sidebar" }).or(
           page.getByRole("button", { name: "Expand project sidebar" }),
@@ -71,12 +55,7 @@ async function main() {
         await node.scrollIntoViewIfNeeded()
         const box = await node.boundingBox()
         if (!box) throw new Error("Could not locate a visible reaction node for the drag measurement.")
-        await page.evaluate(() => {
-          window.__rxnflowPerf.measuring = true
-          window.__rxnflowPerf.lastRaf = null
-          window.__rxnflowPerf.intervals = []
-          window.__rxnflowPerf.longFrames = 0
-        })
+        await page.evaluate(startFrameMeasurement)
         const startX = box.x + box.width / 2
         const startY = box.y + box.height / 2
         await page.mouse.move(startX, startY)
@@ -87,20 +66,11 @@ async function main() {
         }
         await page.mouse.up()
         await page.waitForTimeout(120)
-        const drag = await page.evaluate(() => {
-          window.__rxnflowPerf.measuring = false
-          const intervals = window.__rxnflowPerf.intervals.slice()
-          const ordered = intervals.slice().sort((a, b) => a - b)
-          const p95Index = Math.min(ordered.length - 1, Math.ceil(ordered.length * 0.95) - 1)
-          return {
-            frameCount: intervals.length,
-            minIntervalMs: ordered.length ? Number(ordered[0].toFixed(3)) : null,
-            medianIntervalMs: ordered.length ? Number(ordered[Math.floor(ordered.length / 2)].toFixed(3)) : null,
-            p95IntervalMs: ordered.length ? Number(ordered[p95Index].toFixed(3)) : null,
-            maxIntervalMs: ordered.length ? Number(ordered[ordered.length - 1].toFixed(3)) : null,
-            longFrameCount: window.__rxnflowPerf.longFrames,
-          }
-        })
+        const drag = await page.evaluate(stopFrameMeasurement)
+        const finalBox = await node.boundingBox()
+        if (!finalBox || Math.hypot(finalBox.x - box.x, finalBox.y - box.y) < 1) {
+          throw new Error("Drag measurement did not move the reaction node.")
+        }
 
         const metrics = {
           raf: drag,
@@ -121,6 +91,33 @@ async function main() {
     }
   } finally {
     await stopServer(server)
+  }
+}
+
+function startFrameMeasurement() {
+  const state = { frame: null, lastRaf: null, intervals: [] }
+  window.__rxnflowPerf = state
+  // Input events may be sparse even while the browser keeps rendering frames.
+  function sample(timestamp) {
+    if (state.lastRaf !== null) state.intervals.push(timestamp - state.lastRaf)
+    state.lastRaf = timestamp
+    state.frame = window.requestAnimationFrame(sample)
+  }
+  state.frame = window.requestAnimationFrame(sample)
+}
+
+function stopFrameMeasurement() {
+  const state = window.__rxnflowPerf
+  window.cancelAnimationFrame(state.frame)
+  const ordered = state.intervals.slice().sort((a, b) => a - b)
+  const p95Index = Math.min(ordered.length - 1, Math.ceil(ordered.length * 0.95) - 1)
+  return {
+    frameCount: ordered.length,
+    minIntervalMs: ordered.length ? Number(ordered[0].toFixed(3)) : null,
+    medianIntervalMs: ordered.length ? Number(ordered[Math.floor(ordered.length / 2)].toFixed(3)) : null,
+    p95IntervalMs: ordered.length ? Number(ordered[p95Index].toFixed(3)) : null,
+    maxIntervalMs: ordered.length ? Number(ordered[ordered.length - 1].toFixed(3)) : null,
+    longFrameCount: ordered.filter((interval) => interval > 50).length,
   }
 }
 
@@ -184,7 +181,11 @@ function assertBudgets(metrics) {
   if (failures.length > 0) throw new Error(failures.join("\n"))
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error)
-  process.exit(1)
-})
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error)
+    process.exit(1)
+  })
+}
+
+module.exports = { startFrameMeasurement, stopFrameMeasurement, assertBudgets }
