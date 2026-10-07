@@ -535,10 +535,10 @@ function installRuntimeSmokeExit(window) {
         const response = await runEngineRequest({
           command: "import.preview",
           files: [{ name: "runtime-smoke.xyz", sourcePath }],
-        })
+        }, { timeoutMs: runtimeEngineReadyTimeoutMs })
         sourceParse = response.ok ? response.data?.files?.[0]?.parse : null
         if (!sourceParse?.parsed || sourceParse.parseScope !== "full-file") {
-          throw new Error("desktop runtime full-file parsing smoke failed")
+          throw new Error(`desktop runtime full-file parsing smoke failed: ${JSON.stringify(response.error || sourceParse)}`)
         }
       } finally {
         await fs.rm(directory, { recursive: true, force: true })
