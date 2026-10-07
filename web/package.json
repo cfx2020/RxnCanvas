@@ -1,7 +1,7 @@
 {
   "name": "rxnflow-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first reaction canvas workbench for RxnFlow.",
   "author": "RxnFlow",
   "type": "module",
@@ -28,7 +28,7 @@
     "perf:parser": "python3 ../tests/benchmarks/gaussian_parser_benchmark.py && python3 ../tests/benchmarks/orca_parser_benchmark.py",
     "perf:bundle": "npm run build",
     "perf:e2e": "node scripts/perf-e2e.cjs",
-    "test": "vitest run && node --test scripts/check-bundle-budgets.test.cjs scripts/browser-engine.test.cjs scripts/perf-e2e.test.cjs"
+    "test": "vitest run && node --test scripts/check-bundle-budgets.test.cjs scripts/browser-engine.test.cjs scripts/perf-e2e.test.cjs scripts/generate-release-notes.test.cjs"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

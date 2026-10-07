@@ -281,6 +281,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -319,26 +321,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
-          This is a private RxnFlow beta release for testing, not a notarized production release.
-
-          ## Downloads
-
-          - macOS Apple Silicon: download the `.dmg` file. The `-mac.zip` file is an alternative package.
-          - Windows x64: download the `Setup` executable for installation, or the executable without `Setup` for portable use.
-          - Verify the selected installer against `SHA256SUMS.txt` before running it.
-
-          ## macOS first launch
-
-          The macOS build is ad-hoc signed with hardened runtime, but it is not signed with an Apple Developer ID or notarized by Apple. After moving `RxnFlow.app` to `/Applications`, run:
-
-          ```bash
-          xattr -dr com.apple.quarantine /Applications/RxnFlow.app
-          open /Applications/RxnFlow.app
-          ```
-
-          Do not disable Gatekeeper globally with `sudo spctl --master-disable`.
-          EOF
+          node web/scripts/generate-release-notes.cjs > "$RUNNER_TEMP/release-notes.md"
           title="RxnFlow ${RXNFLOW_RELEASE_VERSION}"
           gh release upload "$GITHUB_REF_NAME" \
             web/release-publish/SHA256SUMS.txt web/release-publish/release-manifest.json \
