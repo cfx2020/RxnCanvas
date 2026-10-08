@@ -8,7 +8,7 @@ RxnFlow 是面向计算化学研究者的本地桌面工作台。导入已有计
 
 ## 视频介绍
 
-[![RxnFlow 宣传视频：从计算文件到反应路径](docs/assets/rxnflow-promo-cover.jpg)](docs/assets/rxnflow-promo.mp4)
+https://github.com/user-attachments/assets/f99bb474-fdc2-4ba1-96f0-a34dd83f4b77
 
 ## 你可以用它做什么
 
