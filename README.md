@@ -1,10 +1,24 @@
-# RxnFlow
+<h1 align="center">
+  <img src="docs/assets/readme-hero.svg" alt="RxnFlow — 计算化学反应路径工作台" width="100%">
+</h1>
 
-**把计算化学结果整理成可编辑的反应路径图。**
+<p align="center">
+  <strong>把计算化学结果整理成可编辑的反应路径图。</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/cfx2020/rxnflow/releases"><img src="https://img.shields.io/badge/Release-Beta-377AD5?style=flat-square&amp;labelColor=25354A" alt="Beta 测试版"></a>
+  <a href="#下载与安装"><img src="https://img.shields.io/badge/macOS-Apple_Silicon-377AD5?style=flat-square&amp;labelColor=25354A&amp;logo=apple&amp;logoColor=white" alt="macOS · Apple Silicon"></a>
+  <a href="#下载与安装"><img src="https://img.shields.io/badge/Windows-x64-258985?style=flat-square&amp;labelColor=25354A&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTF2MTFIMHpNMTMgMGgxMXYxMUgxM3pNMCAxM2gxMXYxMUgwek0xMyAxM2gxMXYxMUgxM3oiLz48L3N2Zz4%3D" alt="Windows · x64"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/cfx2020/rxnflow/releases"><strong>下载测试版</strong></a> &nbsp;·&nbsp;
+  <a href="docs/user/desktop-canvas-workbench.md">使用指南</a> &nbsp;·&nbsp;
+  <a href="docs/user/supported-import-formats.md">支持的导入格式</a>
+</p>
 
 RxnFlow 是面向计算化学研究者的本地桌面工作台。导入已有计算输出后，你可以检查分子结构与能量、组装反应路径、比较相对能量和能垒，再导出用于汇报、制图或进一步分析的文件。
-
-[下载测试版](https://github.com/cfx2020/rxnflow/releases) · [使用指南](docs/user/desktop-canvas-workbench.md) · [支持的导入格式](docs/user/supported-import-formats.md)
 
 ## 视频介绍
 
