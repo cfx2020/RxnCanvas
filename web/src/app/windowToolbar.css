@@ -156,7 +156,7 @@
   background: transparent;
   color: inherit;
   font-size: var(--rxn-font-body);
-  font-weight: 500;
+  font-weight: var(--rxn-weight-strong);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -190,6 +190,7 @@
   color: var(--rxn-ink-strong);
   font: inherit;
   font-size: var(--rxn-font-body);
+  font-weight: var(--rxn-weight-strong);
 }
 
 .canvas-tab-add {

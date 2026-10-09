@@ -356,7 +356,7 @@
   display: block;
   color: #75899a;
   font-size: var(--rxn-font-small);
-  font-weight: 850;
+  font-weight: var(--rxn-weight-strong);
   letter-spacing: 0;
   text-transform: uppercase;
 }
