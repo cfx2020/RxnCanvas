@@ -1724,6 +1724,34 @@ describe("App", () => {
     expect(openStructure).toHaveFocus()
   })
 
+  it.each([false, true])("syncs the inspector when opening a node card structure preview (pending edge: %s)", (pendingEdge) => {
+    render(<App />)
+    const inspector = screen.getByRole("complementary", { name: "Inspector" })
+    expect(inspector).toHaveTextContent("TS1 (Endo)")
+    const edges = document.querySelectorAll('[aria-label^="Edge "]')
+    expect(edges.length).toBeGreaterThan(0)
+    if (pendingEdge) {
+      const connector = screen.getByRole("button", { name: "Start edge from TS1 (Endo)" })
+      fireEvent.keyDown(connector, { key: "Enter" })
+      expect(connector).toHaveAttribute("aria-pressed", "true")
+    }
+
+    const opener = screen.getByRole("button", { name: "Open 3D Structure for Endo Adduct" })
+    opener.focus()
+    fireEvent.click(opener)
+
+    const dialog = screen.getByRole("dialog", { name: "3D Structure" })
+    expect(dialog).toHaveTextContent("Endo Adduct")
+    expect(inspector).toHaveTextContent("Endo Adduct")
+    expect(document.querySelectorAll('[aria-label^="Edge "]')).toHaveLength(edges.length)
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close 3D Structure" }))
+    expect(screen.getByRole("button", { name: "Node Endo Adduct" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "Node TS1 (Endo)" })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: "Start edge from TS1 (Endo)" })).toHaveAttribute("aria-pressed", "false")
+    expect(opener).toHaveFocus()
+  })
+
   it("preserves the original structure opener through the 3D to 2D handoff", async () => {
     render(<App />)
 

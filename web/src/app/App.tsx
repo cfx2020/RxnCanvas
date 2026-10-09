@@ -574,9 +574,6 @@ export function App() {
     }
     if (projectDirectory === null) delete projectDirectoriesRef.current[projectId]
   }, [])
-  const openStructurePreview = useCallback((nodeId: string) => {
-    setStructurePreviewNodeId(nodeId)
-  }, [])
   const handleRenameRequestHandled = useCallback((nodeId: string) => {
     setRenameEditingNodeId((current) => current === nodeId ? null : current)
   }, [])
@@ -1064,6 +1061,13 @@ export function App() {
   const applyCanvasSelection = useCallback((selection: CanvasSelectionIds) => {
     applyCanvasSelectionState(appStateSetters, selection)
   }, [appStateSetters])
+
+  const openStructurePreview = useCallback((nodeId: string) => {
+    applyCanvasSelection({ nodeIds: [nodeId], edgeIds: [], barrierIds: [] })
+    setKeyboardEdgeSourceId(null)
+    setInspectorMode("inspector")
+    setStructurePreviewNodeId(nodeId)
+  }, [applyCanvasSelection])
 
   const currentEditSnapshot = useCallback(
     () => canvasEditSnapshot(nodes, edges, barriers, selectedNodeIds, selectedEdgeIds, selectedBarrierIds, annotations),
