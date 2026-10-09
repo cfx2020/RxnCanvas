@@ -107,36 +107,6 @@
   font-weight: 850;
 }
 
-.floating-export-trigger {
-  position: absolute;
-  z-index: 12;
-  top: 18px;
-  right: 18px;
-  width: 52px;
-  height: 52px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(126, 152, 169, 0.2);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.76);
-  color: #27374b;
-  box-shadow:
-    0 24px 80px rgba(54, 74, 88, 0.13),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(24px);
-}
-
-.floating-export-trigger:hover,
-.floating-export-trigger:focus-visible {
-  outline: none;
-  background: rgba(225, 243, 247, 0.94);
-  color: #0f7965;
-  box-shadow:
-    0 24px 80px rgba(54, 74, 88, 0.16),
-    0 0 0 4px rgba(31, 162, 131, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.86);
-}
-
 .export-float-panel {
   position: absolute;
   z-index: 13;

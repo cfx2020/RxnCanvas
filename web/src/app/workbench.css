@@ -7,14 +7,6 @@
     min-height: 980px;
   }
 
-  .window-bar {
-    grid-template-columns: 110px 1fr;
-  }
-
-  .window-actions {
-    display: none;
-  }
-
   .workspace {
     min-height: 936px;
     grid-template-columns: 72px minmax(0, 1fr);
@@ -139,10 +131,6 @@
     max-width: none;
     justify-content: flex-start;
     scrollbar-width: none;
-  }
-
-  .floating-export-trigger {
-    right: 16px;
   }
 
   .export-float-panel {
@@ -409,27 +397,6 @@
   }
 }
 
-.theme-toggle-button {
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid rgba(126, 152, 169, 0.22);
-  border-radius: 999px;
-  padding: 0 10px;
-  background: rgba(255, 255, 255, 0.62);
-  color: #41576b;
-  font-size: var(--rxn-font-ui);
-  font-weight: 800;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-}
-
-.theme-toggle-button:hover,
-.theme-toggle-button:focus-visible {
-  background: rgba(230, 246, 247, 0.92);
-  color: #107964;
-}
-
 .workbench-energy-table-header-actions {
   display: inline-flex;
   align-items: center;
@@ -471,11 +438,9 @@
   color: #d9e7f2;
 }
 
-.theme-dark .window-bar,
 .theme-dark .project-rail,
 .theme-dark .inspector-panel,
 .theme-dark .floating-toolbar,
-.theme-dark .floating-export-trigger,
 .theme-dark .export-float-panel,
 .theme-dark .reaction-node,
 .theme-dark .project-validation-notice,
@@ -498,7 +463,6 @@
   background-image: radial-gradient(rgba(170, 207, 224, 0.16) 1px, transparent 1px);
 }
 
-.theme-dark .window-title,
 .theme-dark .brand-block strong,
 .theme-dark .section-title,
 .theme-dark .selected-title,
@@ -513,7 +477,6 @@
   color: #edf7ff;
 }
 
-.theme-dark .window-actions,
 .theme-dark .brand-block span,
 .theme-dark .rail-heading,
 .theme-dark .project-rail-main em,
@@ -551,7 +514,6 @@
 .theme-dark .toolbar-select-group,
 .theme-dark .toolbar-select-group select,
 .theme-dark .toolbar-zoom-readout,
-.theme-dark .theme-toggle-button,
 .theme-dark .engine-status-pill,
 .theme-dark .workbench-energy-table-mode {
   border-color: rgba(145, 180, 199, 0.16);
@@ -568,8 +530,6 @@
 .theme-dark .project-file-card.is-selected,
 .theme-dark .floating-toolbar button:hover,
 .theme-dark .floating-toolbar button.is-active,
-.theme-dark .floating-export-trigger:hover,
-.theme-dark .theme-toggle-button:hover,
 .theme-dark .workbench-energy-table-mode button:hover,
 .theme-dark .workbench-energy-table-mode-button--active {
   background: rgba(30, 109, 94, 0.36) !important;
@@ -722,7 +682,6 @@
 
 /* 2026-06-18 UI polish pass: Codex-style chrome/sidebar behavior and compact node cards. */
 .app-shell,
-.window-bar,
 .floating-toolbar,
 .project-rail,
 .inspector-panel,
@@ -742,59 +701,6 @@ select,
 .workbench-energy-table {
   user-select: text;
   -webkit-user-select: text;
-}
-
-.window-bar {
-  grid-template-columns: 180px minmax(160px, 1fr) minmax(360px, max-content);
-  -webkit-app-region: drag;
-}
-
-.window-title,
-.window-actions,
-.window-actions button,
-.window-actions select,
-.traffic-lights {
-  -webkit-app-region: no-drag;
-}
-
-.window-icon-button {
-  width: 34px;
-  height: 30px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid rgba(126, 152, 169, 0.18);
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.58);
-  color: #52687c;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
-}
-
-.window-icon-button:hover,
-.window-icon-button:focus-visible,
-.window-icon-button[aria-pressed="true"] {
-  outline: none;
-  border-color: rgba(31, 162, 131, 0.28);
-  background: rgba(221, 247, 241, 0.86);
-  color: #0f7965;
-}
-
-.window-actions .floating-export-trigger {
-  position: static;
-  z-index: auto;
-  width: 34px;
-  height: 30px;
-  border-radius: 11px;
-  padding: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
-  backdrop-filter: none;
-}
-
-.window-project-label {
-  display: inline-block;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .workspace {
@@ -981,20 +887,6 @@ select,
   background: rgba(248, 252, 252, 0.78);
   font-size: var(--rxn-font-small);
   box-shadow: 0 8px 22px rgba(63, 91, 106, 0.08);
-}
-
-.theme-dark .window-icon-button,
-.theme-dark .window-actions .floating-export-trigger {
-  border-color: rgba(145, 180, 199, 0.16);
-  background: rgba(28, 43, 56, 0.74);
-  color: #dceaf4;
-}
-
-.theme-dark .window-icon-button:hover,
-.theme-dark .window-icon-button:focus-visible,
-.theme-dark .window-icon-button[aria-pressed="true"] {
-  background: rgba(30, 109, 94, 0.36);
-  color: #bdf7e8;
 }
 
 .theme-dark .node-header-actions,
@@ -1186,23 +1078,6 @@ select,
 .theme-dark .canvas-stage.view-table,
 .theme-dark .table-view-pane {
   background: #0b151e;
-}
-
-/* 2026-06-18 Notion/node/table polish final pass. */
-.window-bar {
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.window-title {
-  -webkit-app-region: drag;
-}
-
-.window-actions,
-.window-actions *,
-.traffic-lights,
-.traffic-lights * {
-  -webkit-app-region: no-drag;
 }
 
 .canvas-stage .floating-toolbar {
@@ -1544,37 +1419,6 @@ select,
   overflow: hidden;
 }
 
-.workspace-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  min-width: 0;
-  padding: 8px 18px 8px 14px;
-  border-bottom: 1px solid rgba(126, 152, 169, 0.14);
-  background: rgba(255, 255, 255, 0.54);
-  backdrop-filter: blur(24px);
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.workspace-topbar-left,
-.workspace-topbar-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.workspace-topbar-left {
-  flex: 1 1 auto;
-  overflow: hidden;
-}
-
-.workspace-topbar-actions {
-  flex: 0 0 auto;
-}
-
 .floating-toolbar {
   position: relative;
   top: auto;
@@ -1670,7 +1514,6 @@ select,
   backdrop-filter: blur(10px);
 }
 
-.theme-dark .workspace-topbar,
 .theme-dark .floating-toolbar,
 .theme-dark .workbench-energy-table-panel {
   border-color: rgba(145, 180, 199, 0.14);
@@ -1683,24 +1526,6 @@ select,
 
 .theme-dark .workbench-energy-table thead th {
   background: rgba(18, 31, 43, 0.96);
-}
-
-/* 2026-06-19 workbench regression fixes: compact topbar actions and single-row node chrome. */
-.workspace-topbar-actions {
-  flex: 0 0 auto;
-  overflow: visible;
-}
-
-.workspace-topbar-actions .window-icon-button {
-  position: static;
-  flex: 0 0 auto;
-  inset: auto;
-  z-index: auto;
-  width: 34px;
-  height: 30px;
-  border-radius: 11px;
-  padding: 0;
-  transform: none;
 }
 
 .node-header {
@@ -2585,10 +2410,6 @@ select,
     grid-template-rows: 48px auto auto minmax(0, 1fr);
   }
 
-  .workspace-topbar {
-    padding-right: 12px;
-  }
-
   .floating-toolbar {
     padding-inline: 12px;
   }
@@ -2602,82 +2423,6 @@ select,
 .workbench-shell {
   position: relative;
   grid-template-rows: 48px auto auto minmax(0, 1fr);
-}
-
-.workspace.is-left-collapsed .workspace-topbar {
-  padding-left: 108px;
-}
-
-.workspace-topbar-actions {
-  padding-right: 48px;
-}
-
-.right-sidebar-fixed-toggle {
-  position: fixed !important;
-  top: 10px !important;
-  right: 18px !important;
-  z-index: 58 !important;
-  width: 34px !important;
-  height: 30px !important;
-  border-radius: 12px !important;
-  box-shadow: 0 12px 28px rgba(45, 85, 96, 0.16) !important;
-}
-
-.project-rail-hover {
-  position: fixed;
-  top: 52px;
-  left: 12px;
-  bottom: 14px;
-  z-index: 54;
-  width: 46px;
-  pointer-events: none;
-}
-
-.project-rail-hover-trigger {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(126, 152, 169, 0.2);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.82);
-  color: #40566b;
-  box-shadow: 0 16px 36px rgba(46, 74, 89, 0.18);
-  backdrop-filter: blur(18px);
-  pointer-events: auto;
-}
-
-.project-rail-hover-trigger:hover,
-.project-rail-hover-trigger:focus-visible,
-.project-rail-hover.is-open .project-rail-hover-trigger {
-  outline: none;
-  border-color: rgba(31, 162, 131, 0.32);
-  background: rgba(226, 250, 245, 0.94);
-  color: #0f7965;
-}
-
-.project-rail-hover-panel {
-  position: absolute;
-  top: -42px;
-  left: 0;
-  width: 264px;
-  max-height: calc(100vh - 24px);
-  overflow: hidden;
-  border: 1px solid rgba(126, 152, 169, 0.18);
-  border-radius: 22px;
-  background: rgba(247, 252, 253, 0.94);
-  box-shadow: 0 30px 80px rgba(31, 55, 70, 0.28);
-  backdrop-filter: blur(26px);
-  pointer-events: auto;
-}
-
-.project-rail-hover-panel .project-rail {
-  width: 100%;
-  height: calc(100vh - 24px);
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  box-shadow: none;
 }
 
 .floating-toolbar {
@@ -3076,9 +2821,6 @@ select,
   transform: translate(-50%, -50%);
 }
 
-.theme-dark .right-sidebar-fixed-toggle,
-.theme-dark .project-rail-hover-trigger,
-.theme-dark .project-rail-hover-panel,
 .theme-dark .floating-toolbar {
   border-color: rgba(145, 180, 199, 0.16);
   background: rgba(17, 29, 40, 0.86);
@@ -3116,10 +2858,6 @@ select,
     --structure-left-rail: 72px;
   }
 
-  .workspace.is-left-collapsed .workspace-topbar {
-    padding-left: 96px;
-  }
-
   .floating-toolbar {
     max-width: calc(100% - 28px);
   }
@@ -3128,15 +2866,6 @@ select,
 /* Final polish after visual QA: keep meta rows clean and overflow-safe. */
 .floating-toolbar {
   justify-content: flex-start;
-}
-
-.project-rail-hover-panel {
-  top: 0;
-  max-height: calc(100vh - 64px);
-}
-
-.project-rail-hover-panel .project-rail {
-  height: calc(100vh - 64px);
 }
 
 .node-energy-strip.node-card-meta-row {
@@ -3174,15 +2903,6 @@ select,
   right: auto !important;
   transform: none !important;
 }
-
-/* 2026-06-23 UI polish: draggable chrome, tighter toolbar, node/file/tab refinements. */
-.workspace-topbar {
-  -webkit-app-region: drag;
-}
-.workspace-topbar button,
-.workspace-topbar input,
-.workspace-topbar select,
-.right-sidebar-fixed-toggle,
 .project-rail,
 .inspector-panel,
 .floating-toolbar,
@@ -3319,23 +3039,6 @@ select,
 .project-file-action-menu button:focus-visible {
   outline: none;
   background: rgba(255, 106, 92, 0.12);
-}
-
-.theme-toggle-button {
-  width: 34px;
-  min-width: 34px;
-  padding: 0;
-  justify-content: center;
-}
-.theme-toggle-button span {
-  display: none;
-}
-.workspace-topbar-actions {
-  gap: 7px;
-}
-.workspace-topbar-actions .engine-status-pill,
-.workspace-topbar-actions .engine-status {
-  max-width: 132px;
 }
 
 .floating-toolbar {
@@ -3587,66 +3290,6 @@ select,
   padding-top: 64px !important;
 }
 
-.project-rail-hover {
-  top: 64px !important;
-}
-
-.project-rail-hover-panel {
-  top: 0 !important;
-  max-height: calc(100vh - 78px) !important;
-}
-
-.project-rail-hover-panel .project-rail {
-  height: calc(100vh - 78px) !important;
-  padding-top: 18px !important;
-}
-
-.workspace-topbar-actions {
-  position: fixed !important;
-  top: 10px !important;
-  right: 62px !important;
-  z-index: 96 !important;
-  gap: 8px !important;
-  padding-right: 0 !important;
-  -webkit-app-region: no-drag;
-}
-
-.workspace-topbar-actions .engine-status-pill,
-.workspace-topbar-actions .engine-status {
-  display: none !important;
-}
-
-.right-sidebar-fixed-toggle {
-  z-index: 100 !important;
-}
-
-.theme-toggle-button,
-.workspace-topbar-actions .floating-export-trigger {
-  position: static !important;
-  inset: auto !important;
-  width: 34px !important;
-  min-width: 34px !important;
-  height: 30px !important;
-  min-height: 30px !important;
-  border-radius: 12px !important;
-  padding: 0 !important;
-  display: inline-grid !important;
-  place-items: center !important;
-  background: rgba(255, 255, 255, 0.72) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76), 0 10px 24px rgba(45, 85, 96, 0.12) !important;
-  backdrop-filter: blur(18px);
-}
-
-.theme-toggle-button span {
-  display: none !important;
-}
-
-.theme-dark .theme-toggle-button,
-.theme-dark .workspace-topbar-actions .floating-export-trigger {
-  background: rgba(17, 29, 40, 0.86) !important;
-  color: #dceaf4 !important;
-}
-
 .reaction-node {
   padding: 14px 14px 10px !important;
 }
@@ -3810,117 +3453,9 @@ select,
   box-shadow: 0 0 0 2px rgba(17, 29, 40, 0.92) !important;
 }
 
-/* 2026-06-24 Codex-style titlebar alignment: sidebar toggles belong to the
-   sidebar chrome, and right-side chrome actions live as one fixed cluster. */
-.left-sidebar-fixed-toggle,
-.project-rail-hover-trigger,
-.workspace-topbar-actions .right-sidebar-fixed-toggle {
-  width: 34px !important;
-  min-width: 34px !important;
-  height: 30px !important;
-  min-height: 30px !important;
-  border: 1px solid rgba(126, 152, 169, 0.22) !important;
-  border-radius: 12px !important;
-  padding: 0 !important;
-  display: inline-grid !important;
-  place-items: center !important;
-  background: rgba(255, 255, 255, 0.72) !important;
-  color: #40566b !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76), 0 10px 24px rgba(45, 85, 96, 0.12) !important;
-  backdrop-filter: blur(18px);
-  -webkit-app-region: no-drag;
-}
-
-.left-sidebar-fixed-toggle {
-  position: fixed !important;
-  top: 12px !important;
-  left: 104px !important;
-  z-index: 102 !important;
-}
-
-.project-rail-hover {
-  top: 12px !important;
-  left: 104px !important;
-  bottom: auto !important;
-  z-index: 102 !important;
-  width: 40px !important;
-  height: 32px !important;
-}
-
-.project-rail-hover-panel {
-  top: 40px !important;
-  left: -92px !important;
-  max-height: calc(100vh - 58px) !important;
-}
-
-.project-rail-hover-panel .project-rail {
-  height: calc(100vh - 58px) !important;
-  padding-top: 18px !important;
-}
-
 .project-rail,
 .inspector-panel {
   padding-top: 50px !important;
-}
-
-.workspace-topbar-actions {
-  position: fixed !important;
-  top: 12px !important;
-  right: 14px !important;
-  z-index: 102 !important;
-  gap: 7px !important;
-  padding: 0 !important;
-  overflow: visible !important;
-  -webkit-app-region: no-drag;
-}
-
-.workspace-topbar-actions .right-sidebar-fixed-toggle {
-  position: static !important;
-  inset: auto !important;
-  z-index: auto !important;
-  transform: none !important;
-}
-
-.theme-toggle-button,
-.workspace-topbar-actions .floating-export-trigger {
-  width: 34px !important;
-  min-width: 34px !important;
-  height: 30px !important;
-  min-height: 30px !important;
-}
-
-.left-sidebar-fixed-toggle:hover,
-.left-sidebar-fixed-toggle:focus-visible,
-.project-rail-hover-trigger:hover,
-.project-rail-hover-trigger:focus-visible,
-.project-rail-hover.is-open .project-rail-hover-trigger,
-.workspace-topbar-actions .right-sidebar-fixed-toggle:hover,
-.workspace-topbar-actions .right-sidebar-fixed-toggle:focus-visible,
-.workspace-topbar-actions .right-sidebar-fixed-toggle[aria-pressed="true"] {
-  outline: none !important;
-  border-color: rgba(31, 162, 131, 0.32) !important;
-  background: rgba(226, 250, 245, 0.94) !important;
-  color: #0f7965 !important;
-}
-
-.theme-dark .left-sidebar-fixed-toggle,
-.theme-dark .project-rail-hover-trigger,
-.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle {
-  border-color: rgba(145, 180, 199, 0.16) !important;
-  background: rgba(17, 29, 40, 0.86) !important;
-  color: #dceaf4 !important;
-}
-
-.theme-dark .left-sidebar-fixed-toggle:hover,
-.theme-dark .left-sidebar-fixed-toggle:focus-visible,
-.theme-dark .project-rail-hover-trigger:hover,
-.theme-dark .project-rail-hover-trigger:focus-visible,
-.theme-dark .project-rail-hover.is-open .project-rail-hover-trigger,
-.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle:hover,
-.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle:focus-visible,
-.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle[aria-pressed="true"] {
-  background: rgba(30, 109, 94, 0.36) !important;
-  color: #bdf7e8 !important;
 }
 
 /* 2026-06-24 node inspector density fix: avoid clipping long formulas and
@@ -4401,180 +3936,6 @@ select,
   color: #9ff0d8 !important;
 }
 
-@media (max-width: 980px) {
-  .workspace-topbar-left {
-    padding-left: 44px !important;
-  }
-}
-
-/* Keep real macOS/Electron clicks on the button element itself. Without this,
-   the pointer target can be the nested SVG, which is fragile inside hidden
-   titlebar/no-drag regions and made the right-sidebar toggle feel dead after
-   collapsing in the packaged app. */
-.workspace-topbar-actions button > svg,
-.workspace-topbar-actions button > span,
-.left-sidebar-fixed-toggle > svg,
-.project-rail-hover-trigger > svg {
-  pointer-events: none !important;
-  -webkit-app-region: no-drag;
-}
-
-/* 2026-06-24 packaged macOS chrome hitboxes: when the right inspector is
-   collapsed these controls sit entirely in the hidden-titlebar area. Give the
-   cluster and each actual button its own no-drag hit region instead of relying
-   on the parent only, otherwise real macOS clicks can be treated as titlebar
-   drags and all three controls appear dead. */
-.desktop-window-actions,
-.workspace-topbar-actions,
-.workspace-topbar-actions > button,
-.workspace-topbar-actions .theme-toggle-button,
-.workspace-topbar-actions .floating-export-trigger,
-.workspace-topbar-actions .right-sidebar-fixed-toggle {
-  pointer-events: auto !important;
-  -webkit-app-region: no-drag !important;
-}
-
-.desktop-window-actions,
-.workspace-topbar-actions {
-  z-index: 1000 !important;
-  isolation: isolate !important;
-}
-
-.workspace-topbar-actions > button {
-  position: relative !important;
-  z-index: 1 !important;
-}
-
-.workspace-topbar-actions > .right-sidebar-fixed-toggle {
-  z-index: 1 !important;
-}
-
-.workspace-topbar-actions > button > svg,
-.workspace-topbar-actions > button > span {
-  pointer-events: none !important;
-  -webkit-app-region: no-drag !important;
-}
-
-/* When the inspector is collapsed, the workbench topbar expands to the window
-   edge. The tab bar itself is a drag region, so it was still sitting underneath
-   the fixed right chrome buttons. DOM hit-testing saw the buttons, but native
-   macOS/Electron mouse input was captured by the underlying drag region after
-   the first collapse click. Keep the draggable topbar out from under the
-   right-side action cluster entirely. */
-.workspace.is-right-collapsed .workspace-topbar {
-  margin-right: 152px !important;
-}
-
-/* 2026-06-24 Codex-style titlebar chrome: keep the visual topbar continuous
-   and make the drag map hole-based instead of carving out one large blank
-   rectangle. The topbar paints edge-to-edge; only the tab area and the tiny
-   gaps between right-side buttons are draggable. */
-.workspace.is-right-collapsed .workspace-topbar {
-  margin-right: 0 !important;
-}
-
-.workspace-topbar {
-  -webkit-app-region: no-drag !important;
-}
-
-.workspace-topbar-left {
-  -webkit-app-region: drag !important;
-}
-
-.workspace.is-right-collapsed .workspace-topbar-left {
-  flex: 0 1 calc(100% - 168px) !important;
-  max-width: calc(100% - 168px) !important;
-}
-
-.workspace-topbar button,
-.workspace-topbar input,
-.workspace-topbar select {
-  -webkit-app-region: no-drag !important;
-}
-
-.workspace-topbar-actions {
-  gap: 0 !important;
-  -webkit-app-region: drag !important;
-}
-
-.window-action-drag-gap {
-  flex: 0 0 7px;
-  width: 7px;
-  height: 30px;
-  align-self: center;
-  pointer-events: auto;
-  -webkit-app-region: drag !important;
-}
-
-.workspace-topbar-actions .theme-toggle-button,
-.workspace-topbar-actions .floating-export-trigger,
-.workspace-topbar-actions .right-sidebar-fixed-toggle,
-.workspace-topbar-actions .floating-export-trigger[aria-pressed="true"],
-.workspace-topbar-actions .right-sidebar-fixed-toggle[aria-pressed="true"] {
-  border-color: transparent !important;
-  background: transparent !important;
-  color: #4c6174 !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-}
-
-.workspace-topbar-actions .theme-toggle-button:hover,
-.workspace-topbar-actions .theme-toggle-button:focus-visible,
-.workspace-topbar-actions .floating-export-trigger:hover,
-.workspace-topbar-actions .floating-export-trigger:focus-visible,
-.workspace-topbar-actions .right-sidebar-fixed-toggle:hover,
-.workspace-topbar-actions .right-sidebar-fixed-toggle:focus-visible {
-  outline: none !important;
-  border-color: transparent !important;
-  background: rgba(68, 87, 103, 0.1) !important;
-  color: #183247 !important;
-  box-shadow: none !important;
-}
-
-.theme-dark .workspace-topbar-actions .theme-toggle-button,
-.theme-dark .workspace-topbar-actions .floating-export-trigger,
-.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle,
-.theme-dark .workspace-topbar-actions .floating-export-trigger[aria-pressed="true"],
-.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle[aria-pressed="true"] {
-  border-color: transparent !important;
-  background: transparent !important;
-  color: #c9d7e2 !important;
-  box-shadow: none !important;
-}
-
-.theme-dark .workspace-topbar-actions .theme-toggle-button:hover,
-.theme-dark .workspace-topbar-actions .theme-toggle-button:focus-visible,
-.theme-dark .workspace-topbar-actions .floating-export-trigger:hover,
-.theme-dark .workspace-topbar-actions .floating-export-trigger:focus-visible,
-.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle:hover,
-.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle:focus-visible {
-  background: rgba(196, 215, 228, 0.13) !important;
-  color: #f2f7fb !important;
-}
-
-/* 2026-06-24 UIUxpro pass: make the left chrome, sidebar rows and canvas tabs
-   follow the same state-layer model as the Codex-style right chrome. */
-.left-sidebar-fixed-toggle,
-.project-rail-hover-trigger {
-  border-color: transparent !important;
-  background: transparent !important;
-  color: #4c6174 !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-}
-
-.left-sidebar-fixed-toggle:hover,
-.left-sidebar-fixed-toggle:focus-visible,
-.project-rail-hover-trigger:hover,
-.project-rail-hover-trigger:focus-visible,
-.project-rail-hover.is-open .project-rail-hover-trigger {
-  outline: none !important;
-  border-color: transparent !important;
-  background: rgba(68, 87, 103, 0.1) !important;
-  color: #183247 !important;
-  box-shadow: none !important;
-}
-
 .project-rail {
   padding-inline: 14px !important;
   background: rgba(248, 252, 253, 0.72) !important;
@@ -4766,8 +4127,6 @@ select,
   color: #183247 !important;
 }
 
-.theme-dark .left-sidebar-fixed-toggle,
-.theme-dark .project-rail-hover-trigger,
 .theme-dark .project-rail {
   border-color: transparent !important;
   background: transparent !important;
@@ -4778,16 +4137,6 @@ select,
   background: rgba(12, 24, 34, 0.78) !important;
 }
 
-.theme-dark .left-sidebar-fixed-toggle,
-.theme-dark .project-rail-hover-trigger {
-  color: #c9d7e2 !important;
-}
-
-.theme-dark .left-sidebar-fixed-toggle:hover,
-.theme-dark .left-sidebar-fixed-toggle:focus-visible,
-.theme-dark .project-rail-hover-trigger:hover,
-.theme-dark .project-rail-hover-trigger:focus-visible,
-.theme-dark .project-rail-hover.is-open .project-rail-hover-trigger,
 .theme-dark .rail-heading button:hover,
 .theme-dark .rail-heading button:focus-visible,
 .theme-dark .project-rail-action:hover,
@@ -4843,68 +4192,20 @@ select,
   background: #21bd98 !important;
   color: #06221c !important;
 }
-
-/* 2026-06-24 UIUXpro compact titlebar correction: reduce vertical chrome cost
-   and make the active tab share the canvas surface so the canvas feels pulled
-   out from the selected tab instead of sitting under a separate chunky bar. */
 .app-shell {
   --rxnflow-canvas-surface: rgba(247, 252, 253, 0.96);
   --rxnflow-titlebar-surface: rgba(242, 248, 250, 0.62);
-  --rxnflow-titlebar-hover: rgba(68, 87, 103, 0.075);
   --rxnflow-tab-muted: rgba(68, 87, 103, 0.035);
-  --rxnflow-titlebar-divider: rgba(126, 152, 169, 0.18);
 }
 
 .theme-dark {
   --rxnflow-canvas-surface: rgba(14, 28, 39, 0.96);
   --rxnflow-titlebar-surface: rgba(13, 26, 36, 0.62);
-  --rxnflow-titlebar-hover: rgba(196, 215, 228, 0.12);
   --rxnflow-tab-muted: rgba(196, 215, 228, 0.055);
-  --rxnflow-titlebar-divider: rgba(145, 180, 199, 0.14);
 }
 
 .workbench-shell {
   grid-template-rows: 46px auto auto minmax(0, 1fr) !important;
-}
-
-.workspace-topbar {
-  position: relative !important;
-  min-height: 46px !important;
-  height: 46px !important;
-  padding: 0 16px 0 12px !important;
-  background: var(--rxnflow-titlebar-surface) !important;
-  border-bottom: 0 !important;
-  box-shadow: none !important;
-  isolation: isolate !important;
-}
-
-.workspace-topbar::after {
-  content: "" !important;
-  position: absolute !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  height: 1px !important;
-  background: var(--rxnflow-titlebar-divider) !important;
-  pointer-events: none !important;
-  z-index: 0 !important;
-}
-
-.workspace-topbar-left {
-  height: 46px !important;
-}
-
-.workspace-topbar-left {
-  position: relative !important;
-  z-index: 1 !important;
-}
-
-.workspace-topbar-actions {
-  position: fixed !important;
-  top: 12px !important;
-  right: 14px !important;
-  left: auto !important;
-  z-index: 102 !important;
 }
 
 .canvas-stage,
@@ -4912,29 +4213,9 @@ select,
   background: var(--rxnflow-canvas-surface) !important;
 }
 
-.left-sidebar-fixed-toggle,
-.project-rail-hover {
-  top: 8px !important;
-}
-
-.project-rail-hover-panel {
-  top: 36px !important;
-  max-height: calc(100vh - 54px) !important;
-}
-
-.project-rail-hover-panel .project-rail {
-  height: calc(100vh - 54px) !important;
-}
-
 .project-rail,
 .inspector-panel {
   padding-top: 46px !important;
-}
-
-.theme-dark .workspace-topbar {
-  background: var(--rxnflow-titlebar-surface) !important;
-  border-bottom: 0 !important;
-  box-shadow: none !important;
 }
 
 /* 2026-06-24 surface unification fix: keep the canvas texture visible and make
@@ -5170,67 +4451,15 @@ select,
   background: rgba(196, 215, 228, 0.12) !important;
   color: #f2f7fb !important;
 }
-
-/* 2026-06-25 titlebar control alignment: left chrome controls and the right
-   window-action cluster share one vertical metric, and the collapsed left rail
-   reserves enough tabbar space so its trigger never covers canvas tabs. */
 .app-shell {
   --rxnflow-titlebar-control-top: 8px;
-  --rxnflow-left-collapsed-tab-reserve: 132px;
 }
-
-.left-sidebar-fixed-toggle,
-.project-rail-hover,
-.workspace-topbar-actions {
-  top: var(--rxnflow-titlebar-control-top) !important;
-}
-
-.workspace.is-left-collapsed .workspace-topbar-left {
-  padding-left: var(--rxnflow-left-collapsed-tab-reserve) !important;
-}
-
-/* 2026-06-25 native titlebar contract: Electron hidden titlebars only drag
-   where the DOM explicitly opts in. Keep chrome backgrounds / empty gaps as
-   drag regions and carve out only real controls as no-drag, matching the
-   native Codex-style behavior instead of relying on a few custom hitboxes. */
 .app-shell {
-  --rxnflow-titlebar-height: 40px;
-  --rxnflow-titlebar-tab-add-size: 34px;
   --rxnflow-titlebar-control-top: 5px;
-  --rxnflow-sidebar-flyout-top: 35px;
-  --rxnflow-sidebar-flyout-height-gap: 51px;
 }
 
 .workbench-shell {
   grid-template-rows: var(--rxnflow-titlebar-height) auto auto minmax(0, 1fr) !important;
-}
-
-.workspace-topbar {
-  min-height: var(--rxnflow-titlebar-height) !important;
-  height: var(--rxnflow-titlebar-height) !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.workspace-topbar-left {
-  height: var(--rxnflow-titlebar-height) !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.left-sidebar-fixed-toggle,
-.project-rail-hover,
-.workspace-topbar-actions {
-  top: var(--rxnflow-titlebar-control-top) !important;
-}
-
-.project-rail-hover-panel {
-  top: var(--rxnflow-sidebar-flyout-top) !important;
-  max-height: calc(100vh - var(--rxnflow-sidebar-flyout-height-gap)) !important;
-}
-
-.project-rail-hover-panel .project-rail {
-  height: calc(100vh - var(--rxnflow-sidebar-flyout-height-gap)) !important;
 }
 
 .project-rail,
@@ -5249,22 +4478,6 @@ select,
   app-region: no-drag !important;
 }
 
-.workspace-topbar-actions,
-.window-action-drag-gap,
-.project-rail-hover {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.workspace-topbar button,
-.workspace-topbar input,
-.workspace-topbar select,
-.workspace-topbar textarea,
-.workspace-topbar [role="button"],
-.left-sidebar-fixed-toggle,
-.project-rail-hover-trigger,
-.workspace-topbar-actions > button,
-.workspace-topbar-actions button,
 .project-rail button,
 .project-rail input,
 .project-rail select,
@@ -5289,23 +4502,9 @@ select,
 }
 
 .project-rail,
-.inspector-panel,
-.project-rail-hover {
+.inspector-panel {
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
-}
-
-.workspace-topbar-actions .engine-status-pill,
-.workspace-topbar-actions .engine-status,
-.workspace-topbar-actions .window-action-drag-gap {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-@media (max-width: 1100px) {
-  .workspace-topbar-left {
-    padding-left: 72px !important;
-  }
 }
 
 /* 2026-06-25 coefficient badge typography: keep the × glyph and number on the
@@ -5530,13 +4729,6 @@ select,
   color: var(--rxn-ink);
 }
 
-.window-bar,
-.workspace-topbar {
-  border-color: var(--rxn-line);
-  background: var(--rxn-surface);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.22);
-}
-
 .project-rail,
 .inspector-panel {
   border-color: var(--rxn-line);
@@ -5544,7 +4736,6 @@ select,
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.36);
 }
 
-.window-icon-button,
 .project-file-more,
 .project-file-remove,
 .node-panel-icon-button,
@@ -5558,9 +4749,6 @@ select,
   box-shadow: var(--rxn-shadow-sm);
 }
 
-.window-icon-button:hover,
-.window-icon-button:focus-visible,
-.window-icon-button[aria-pressed="true"],
 .project-file-more:hover,
 .project-file-more:focus-visible,
 .project-file-more[aria-expanded="true"],
@@ -5710,8 +4898,6 @@ input:focus-visible,
   outline-color: var(--rxn-focus);
 }
 
-.theme-dark .window-bar,
-.theme-dark .workspace-topbar,
 .theme-dark .project-rail,
 .theme-dark .inspector-panel,
 .theme-dark .floating-toolbar {
@@ -5720,7 +4906,6 @@ input:focus-visible,
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.theme-dark .window-icon-button,
 .theme-dark .project-file-more,
 .theme-dark .project-file-remove,
 .theme-dark .node-panel-icon-button,
@@ -5752,17 +4937,8 @@ input:focus-visible,
   background: var(--rxn-accent-soft) !important;
   color: var(--rxn-accent-strong) !important;
 }
-
-/* 2026-06-25 macOS titlebar hitboxes: keep the action buttons out of the
-   draggable region while preserving narrow draggable gaps between them. The
-   titlebar itself is a single 48px row: traffic lights, side toggles, right
-   actions and canvas tabs all live in that row instead of stacking chrome rows. */
 .app-shell {
-  --rxnflow-titlebar-height: 48px;
-  --rxnflow-titlebar-tab-add-size: 38px;
   --rxnflow-titlebar-control-top: 10px;
-  --rxnflow-sidebar-flyout-top: 40px;
-  --rxnflow-sidebar-flyout-height-gap: 58px;
 }
 
 .workspace {
@@ -5773,103 +4949,9 @@ input:focus-visible,
   grid-template-rows: var(--rxnflow-titlebar-height) auto auto minmax(0, 1fr) !important;
 }
 
-.workspace-topbar {
-  min-height: var(--rxnflow-titlebar-height) !important;
-  height: var(--rxnflow-titlebar-height) !important;
-  padding: 0 16px 0 12px !important;
-  align-items: stretch !important;
-}
-
-.workspace-topbar-left {
-  height: var(--rxnflow-titlebar-height) !important;
-}
-
 .project-rail,
 .inspector-panel {
   padding-top: var(--rxnflow-titlebar-height) !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.project-rail-hover-panel {
-  top: var(--rxnflow-sidebar-flyout-top) !important;
-  max-height: calc(100vh - var(--rxnflow-sidebar-flyout-height-gap)) !important;
-}
-
-.project-rail-hover-panel .project-rail {
-  height: calc(100vh - var(--rxnflow-sidebar-flyout-height-gap)) !important;
-}
-
-.left-sidebar-fixed-toggle,
-.project-rail-hover,
-.workspace-topbar-actions {
-  top: var(--rxnflow-titlebar-control-top) !important;
-}
-
-.left-sidebar-fixed-toggle,
-.project-rail-hover-trigger,
-.desktop-window-actions,
-.workspace-topbar-actions,
-.workspace-topbar-actions > button,
-.workspace-topbar-actions button,
-.workspace-topbar-actions .theme-toggle-button,
-.workspace-topbar-actions .floating-export-trigger,
-.workspace-topbar-actions .right-sidebar-fixed-toggle {
-  pointer-events: auto !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.workspace-topbar-actions {
-  align-items: center !important;
-  z-index: 1200 !important;
-  isolation: isolate !important;
-}
-
-.workspace-topbar-actions > button,
-.project-rail-hover-trigger {
-  position: relative !important;
-  z-index: 1 !important;
-}
-
-.left-sidebar-fixed-toggle {
-  position: fixed !important;
-  z-index: 1200 !important;
-}
-
-.workspace-topbar-actions .engine-status-pill,
-.workspace-topbar-actions .engine-status,
-.workspace-topbar-actions .window-action-drag-gap {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.workspace-topbar-actions > button > svg,
-.workspace-topbar-actions > button > span,
-.left-sidebar-fixed-toggle > svg,
-.project-rail-hover-trigger > svg {
-  pointer-events: none !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-
-/* 2026-06-26 native titlebar hit-test fix: when the left sidebar is collapsed,
-   reserve tab space with margin instead of padding. Padding keeps the draggable
-   tab-list box underneath the fixed left sidebar trigger, and Electron's native
-   hit-test then treats the trigger area as a drag region even though the button
-   visually hovers. */
-.workspace.is-left-collapsed .workspace-topbar-left {
-  margin-left: var(--rxnflow-left-collapsed-tab-reserve) !important;
-  padding-left: 0 !important;
-}
-
-
-/* 2026-06-26 native titlebar hit-test fix, part 2: the topbar itself spans
-   beneath the fixed sidebar and right-action buttons when sidebars collapse.
-   Do not mark the whole topbar as drag; only its safe child tab/list areas may
-   opt into dragging. */
-.workspace-topbar {
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
 }
@@ -6053,77 +5135,9 @@ input:focus-visible,
   font-weight: 900 !important;
   letter-spacing: -0.03em !important;
 }
-
-/* 2026-06-26 native titlebar map cleanup: paint one continuous titlebar
-   surface edge-to-edge, keep the right action wrapper click-safe, and expose
-   explicit drag gaps between buttons. This avoids Electron treating the button
-   pixels as native titlebar drag regions after sidebar collapse. */
 .app-shell {
   position: relative !important;
   --rxnflow-project-rail-width: 212px;
-  --rxnflow-titlebar-left-button-left: calc(var(--rxnflow-project-rail-width) + 12px);
-  --rxnflow-titlebar-left-button-reserve: 44px;
-}
-
-.app-shell::before {
-  content: "" !important;
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: var(--rxnflow-titlebar-height, 48px) !important;
-  background: var(--rxnflow-titlebar-surface) !important;
-  border-bottom: 1px solid var(--rxnflow-titlebar-divider) !important;
-  pointer-events: none !important;
-  z-index: 80 !important;
-}
-
-.workspace-topbar,
-.workspace-topbar-left {
-  position: relative !important;
-  z-index: 100 !important;
-}
-
-.workspace-topbar-actions,
-.desktop-window-actions {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.workspace-topbar-actions > button,
-.workspace-topbar-actions button,
-.workspace-topbar-actions .theme-toggle-button,
-.workspace-topbar-actions .floating-export-trigger,
-.workspace-topbar-actions .right-sidebar-fixed-toggle {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.workspace-topbar-actions .window-action-drag-gap {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.left-sidebar-fixed-toggle {
-  left: var(--rxnflow-titlebar-left-button-left) !important;
-}
-
-.workspace:not(.is-left-collapsed) .workspace-topbar-left {
-  margin-left: var(--rxnflow-titlebar-left-button-reserve) !important;
-  padding-left: 0 !important;
-}
-
-/* Electron native hit-testing still lets an underlying draggable tab strip win
-   if that strip geometrically extends beneath fixed chrome buttons. Reserve
-   the right action cluster in the tab strip's own box, especially after the
-   left rail collapses and the tab strip shifts right. */
-.workspace.is-left-collapsed .workspace-topbar-left {
-  max-width: calc(100% - var(--rxnflow-left-collapsed-tab-reserve) - 168px) !important;
-  flex-basis: calc(100% - var(--rxnflow-left-collapsed-tab-reserve) - 168px) !important;
 }
 
 /* 2026-06-26 toolbar energy selector flattening: the Energy/Unit controls were
@@ -6212,64 +5226,6 @@ input:focus-visible,
 .theme-dark .toolbar-energy-chip .toolbar-select-group.toolbar-select-compact select:focus-visible {
   background: rgba(48, 180, 150, 0.16) !important;
   color: #d7fff5 !important;
-}
-
-/* 2026-06-26 titlebar tab layer flattening: the macOS titlebar surface is
-   already painted by .app-shell::before. Do not paint another topbar slab or
-   an extra tabbar strip underneath the active tab; keep only the titlebar
-   surface plus the selected tab surface so tab contrast comes from one clear
-   layer instead of stacked translucent rectangles. */
-.workspace-topbar,
-.theme-dark .workspace-topbar {
-  background: transparent !important;
-  background-color: transparent !important;
-  background-image: none !important;
-  box-shadow: none !important;
-}
-
-.workspace-topbar::after {
-  display: none !important;
-  content: none !important;
-  background: transparent !important;
-}
-
-/* 2026-06-26 export popover redesign: make Export feel like a compact
-   titlebar-attached hover layer instead of a separate floating card. The only
-   persistent chrome is the button; the sheet sits directly below it with one
-   surface, one connector, and the same state-layer language used by tabs and
-   toolbar chips. */
-.workspace-topbar-actions .floating-export-trigger {
-  overflow: visible !important;
-  transition: background 170ms ease, color 170ms ease, box-shadow 170ms ease, transform 170ms ease !important;
-}
-
-.workspace-topbar-actions .floating-export-trigger[aria-pressed="true"] {
-  background: rgba(68, 87, 103, 0.11) !important;
-  color: #173449 !important;
-}
-
-.theme-dark .workspace-topbar-actions .floating-export-trigger[aria-pressed="true"] {
-  background: rgba(196, 215, 228, 0.13) !important;
-  color: #f2f7fb !important;
-}
-
-.workspace-topbar-actions .floating-export-trigger[aria-pressed="true"]::after {
-  content: "" !important;
-  position: absolute !important;
-  left: 50% !important;
-  bottom: -7px !important;
-  width: 18px !important;
-  height: 4px !important;
-  border-radius: 999px !important;
-  background: rgba(31, 162, 131, 0.58) !important;
-  box-shadow: 0 0 18px rgba(31, 162, 131, 0.24) !important;
-  transform: translateX(-50%) !important;
-  pointer-events: none !important;
-}
-
-.theme-dark .workspace-topbar-actions .floating-export-trigger[aria-pressed="true"]::after {
-  background: rgba(105, 225, 190, 0.64) !important;
-  box-shadow: 0 0 18px rgba(105, 225, 190, 0.24) !important;
 }
 
 .export-float-panel {
@@ -6614,7 +5570,6 @@ input:focus-visible,
     animation: none !important;
   }
 
-  .workspace-topbar-actions .floating-export-trigger,
   .export-float-header button,
   .export-float-panel .export-format-option,
   .export-float-panel .export-field input,
@@ -6636,50 +5591,6 @@ input:focus-visible,
   .export-float-panel::before {
     right: 64px !important;
   }
-}
-
-/* 2026-06-26 Codex-style fixed sidebar chrome: use one persistent left
-   sidebar button beside the traffic lights. Opening/collapsing moves the rail
-   as a sheet; the button itself never jumps between the rail edge and the
-   collapsed titlebar. Also keep side rails as continuous surfaces instead of
-   drawing hard seams through the native titlebar area. */
-.app-shell {
-  --rxnflow-titlebar-left-button-left: 104px !important;
-  --rxnflow-titlebar-left-button-reserve: 44px !important;
-}
-
-.left-sidebar-fixed-toggle {
-  left: var(--rxnflow-titlebar-left-button-left) !important;
-  top: var(--rxnflow-titlebar-control-top) !important;
-  position: fixed !important;
-  z-index: 1300 !important;
-  pointer-events: auto !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.left-sidebar-fixed-toggle[aria-pressed="true"],
-.left-sidebar-fixed-toggle:hover,
-.left-sidebar-fixed-toggle:focus-visible {
-  outline: none !important;
-  border-color: transparent !important;
-  background: rgba(68, 87, 103, 0.1) !important;
-  color: #183247 !important;
-  box-shadow: none !important;
-}
-
-.theme-dark .left-sidebar-fixed-toggle[aria-pressed="true"],
-.theme-dark .left-sidebar-fixed-toggle:hover,
-.theme-dark .left-sidebar-fixed-toggle:focus-visible {
-  background: rgba(196, 215, 228, 0.13) !important;
-  color: #f2f7fb !important;
-}
-
-.project-rail-hover,
-.project-rail-hover-panel,
-.project-rail-hover-trigger {
-  display: none !important;
-  pointer-events: none !important;
 }
 
 .workspace {
@@ -6753,27 +5664,6 @@ input:focus-visible,
   background: var(--rxnflow-titlebar-surface) !important;
 }
 
-.app-shell::before {
-  border-bottom-color: transparent !important;
-}
-
-.workspace-topbar,
-.workspace-topbar-left,
-.theme-dark .workspace-topbar {
-  border-bottom-color: transparent !important;
-}
-
-.workspace:not(.is-left-collapsed) .workspace-topbar-left {
-  margin-left: var(--rxnflow-titlebar-left-button-reserve) !important;
-  padding-left: 0 !important;
-}
-
-.workspace.is-left-collapsed .workspace-topbar-left {
-  margin-left: var(--rxnflow-left-collapsed-tab-reserve) !important;
-  max-width: calc(100% - var(--rxnflow-left-collapsed-tab-reserve) - 168px) !important;
-  flex-basis: calc(100% - var(--rxnflow-left-collapsed-tab-reserve) - 168px) !important;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .project-rail {
     transition: none !important;
@@ -6785,11 +5675,7 @@ input:focus-visible,
    The tab strip is also tightened so the selected tab reads like a compact
    native titlebar tab instead of a tall toolbar row. */
 .app-shell {
-  --rxnflow-titlebar-height: 44px !important;
-  --rxnflow-titlebar-tab-add-size: 32px !important;
   --rxnflow-titlebar-control-top: 7px !important;
-  --rxnflow-sidebar-flyout-top: 38px !important;
-  --rxnflow-sidebar-flyout-height-gap: 54px !important;
   --rxnflow-sidebar-divider: rgba(126, 152, 169, 0.18);
   --rxnflow-inspector-surface: rgb(247, 252, 253);
   --rxnflow-inspector-divider: rgba(118, 144, 160, 0.22);
@@ -6803,17 +5689,6 @@ input:focus-visible,
 
 .workbench-shell {
   grid-template-rows: var(--rxnflow-titlebar-height) auto auto minmax(0, 1fr) !important;
-}
-
-.workspace-topbar,
-.workspace-topbar-left {
-  height: var(--rxnflow-titlebar-height) !important;
-  min-height: var(--rxnflow-titlebar-height) !important;
-}
-
-.left-sidebar-fixed-toggle,
-.workspace-topbar-actions {
-  top: var(--rxnflow-titlebar-control-top) !important;
 }
 
 .project-rail,
@@ -6831,29 +5706,8 @@ input:focus-visible,
 .inspector-panel {
   padding-top: var(--rxnflow-titlebar-height) !important;
 }
-
-.app-shell::before {
-  height: var(--rxnflow-titlebar-height) !important;
-}
-
-/* 2026-06-26 titlebar control final alignment: the fixed sidebar button is a
-   toggle, not a selected tab, so its expanded state should not stay highlighted.
-   Nudge all titlebar controls down to visually share the native traffic-light
-   centerline in the packaged macOS shell. */
 .app-shell {
   --rxnflow-titlebar-control-top: 10px !important;
-}
-
-.left-sidebar-fixed-toggle[aria-pressed="true"]:not(:hover):not(:focus-visible) {
-  border-color: transparent !important;
-  background: transparent !important;
-  color: #4c6174 !important;
-  box-shadow: none !important;
-}
-
-.theme-dark .left-sidebar-fixed-toggle[aria-pressed="true"]:not(:hover):not(:focus-visible) {
-  background: transparent !important;
-  color: #c9d7e2 !important;
 }
 
 /* 2026-06-26 continuous rail divider: keep the sidebar/canvas separator attached
@@ -6877,39 +5731,6 @@ input:focus-visible,
   border-right-color: transparent !important;
 }
 
-.workspace-topbar {
-  background: var(--canvas-tab-strip-surface) !important;
-  backdrop-filter: blur(18px) !important;
-}
-
-.workspace-topbar::after {
-  background: transparent !important;
-}
-.workspace:not(.is-left-collapsed) .workspace-topbar-left {
-  margin-left: 0 !important;
-  padding-left: 0 !important;
-}
-
-.app-shell::before {
-  background: var(--canvas-tab-strip-surface) !important;
-}
-
-.workspace-topbar,
-.workspace-topbar-left {
-  background: transparent !important;
-  background-image: none !important;
-  backdrop-filter: none !important;
-  box-shadow: none !important;
-}
-
-.workspace-topbar {
-  padding-left: 0 !important;
-}
-.workspace-topbar,
-.workspace-topbar-left {
-  overflow: visible !important;
-}
-
 .canvas-stage {
   background-color: var(--rxnflow-canvas-base) !important;
   background-image: none !important;
@@ -6924,13 +5745,6 @@ input:focus-visible,
 }
 
 .canvas-stage::after {
-  content: none !important;
-  display: none !important;
-}
-
-/* 2026-06-26 classic export menu: reduce the export popover to a native-feeling
-   menu with only the three report formats. No header, no card stack, no form. */
-.workspace-topbar-actions .floating-export-trigger[aria-pressed="true"]::after {
   content: none !important;
   display: none !important;
 }
@@ -7093,10 +5907,6 @@ input:focus-visible,
     width: min(206px, calc(100vw - 24px)) !important;
   }
 }
-
-/* 2026-06-26 continuous expanded sidebars: the global titlebar tint should sit
-   behind the expanded left/right rails, not over their top 44px. Otherwise the
-   sidebar reads as "titlebar strip + content strip" instead of one native pane. */
 .workspace:not(.is-left-collapsed) .project-rail,
 .workspace:not(.is-right-collapsed) .inspector-panel {
   z-index: 90 !important;
@@ -7119,26 +5929,9 @@ input:focus-visible,
 .theme-dark .workspace:not(.is-right-collapsed) .inspector-panel {
   background: rgba(12, 24, 34, 0.78) !important;
 }
-
-.app-shell::before {
-  background: var(--canvas-tab-strip-surface) !important;
-}
 .app-shell {
-  --rxnflow-titlebar-height: 36px !important;
-  --rxnflow-titlebar-tab-add-size: 28px !important;
   --rxnflow-titlebar-control-top: 3px !important;
 }
-
-@media (max-width: 1100px) {
-  .app-shell {
-    --rxnflow-titlebar-left-button-left: 19px !important;
-  }
-}
-
-/* 2026-06-26 macOS chrome alignment: keep the compact 36px titlebar's
-   controls on one centerline. Electron moves the native traffic lights to
-   y=12 in the desktop shell, so the DOM chrome can stay at the web metric
-   instead of being pushed visibly low. */
 .app-shell.is-macos-desktop {
   --rxnflow-titlebar-control-top: 3px !important;
 }
@@ -7949,32 +6742,11 @@ input:focus-visible,
 }
 .theme-dark {
   --rxnflow-titlebar-surface: rgb(10, 23, 33);
-  --rxnflow-titlebar-hover: rgba(69, 91, 109, 0.34);
-  --rxnflow-titlebar-divider: rgba(145, 180, 199, 0.1);
-}
-
-.theme-dark .workspace-topbar {
-  background: var(--rxnflow-titlebar-surface) !important;
 }
 .app-shell.theme-dark {
   --rxnflow-titlebar-surface: rgb(10, 23, 33);
-  --rxnflow-titlebar-hover: rgba(74, 96, 114, 0.32);
 }
 
-.app-shell::before,
-.app-shell.theme-dark::before {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.app-shell.theme-dark::before {
-  background: var(--rxnflow-canvas-base) !important;
-  border-bottom-color: transparent !important;
-}
-
-.workspace-topbar,
-.workspace-topbar-left,
-.window-action-drag-gap,
 .project-rail,
 .project-rail .rail-section,
 .project-rail .rail-list,
@@ -7983,42 +6755,6 @@ input:focus-visible,
   app-region: drag !important;
 }
 
-.app-shell.theme-dark .workspace-topbar,
-.app-shell.theme-dark .workspace-topbar-left,
-.app-shell.theme-dark .workspace-topbar-actions,
-.app-shell.theme-dark .desktop-window-actions {
-  background: transparent !important;
-  background-color: transparent !important;
-  background-image: none !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-}
-
-.workspace-topbar-actions,
-.desktop-window-actions,
-.app-shell.theme-dark .workspace-topbar-actions,
-.app-shell.theme-dark .desktop-window-actions {
-  background: transparent !important;
-  background-color: transparent !important;
-  background-image: none !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-  pointer-events: auto !important;
-}
-
-.workspace-topbar button,
-.workspace-topbar input,
-.workspace-topbar select,
-.workspace-topbar textarea,
-.workspace-topbar [role="button"],
-.left-sidebar-fixed-toggle,
-.project-rail-hover-trigger,
-.workspace-topbar-actions > button,
-.workspace-topbar-actions button,
 .export-float-panel,
 .project-rail button,
 .project-rail input,
@@ -8042,38 +6778,6 @@ input:focus-visible,
 .structure-preview-dialog {
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
-}
-
-/* 2026-06-27 Electron titlebar hit-test guard: the right action cluster must
-   never be a draggable parent. In packaged macOS, a fixed parent marked drag can
-   keep swallowing child button hover/clicks after the right sidebar toggles.
-   Keep only the explicit spacer/status atoms draggable; every real button is a
-   stable no-drag island. */
-.workspace-topbar-actions,
-.desktop-window-actions,
-.app-shell.theme-dark .workspace-topbar-actions,
-.app-shell.theme-dark .desktop-window-actions {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-  pointer-events: auto !important;
-}
-
-.workspace-topbar-actions > button,
-.workspace-topbar-actions button,
-.workspace-topbar-actions .theme-toggle-button,
-.workspace-topbar-actions .floating-export-trigger,
-.workspace-topbar-actions .right-sidebar-fixed-toggle {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-  pointer-events: auto !important;
-}
-
-.workspace-topbar-actions .engine-status-pill,
-.workspace-topbar-actions .engine-status,
-.workspace-topbar-actions .window-action-drag-gap {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-  pointer-events: auto !important;
 }
 
 /* Dark rail row alignment/contrast: one row layer, one text baseline. */
@@ -8780,15 +7484,6 @@ input:focus-visible,
     display: none !important;
   }
 
-  .workspace-topbar {
-    min-width: 0 !important;
-  }
-
-  .workspace-topbar-left {
-    min-width: 0 !important;
-    padding-left: 54px !important;
-  }
-
   .floating-toolbar {
     max-width: calc(100% - 18px) !important;
   }
@@ -8996,10 +7691,6 @@ input:focus-visible,
     min-width: 42px !important;
     max-width: 42px !important;
   }
-
-  .workspace-topbar-left {
-    padding-left: 48px !important;
-  }
 }
 
 /* 2026-09 settings hierarchy reset:
@@ -9054,57 +7745,6 @@ input:focus-visible,
   }
 }
 
-/* 2026-06-27 titlebar no-drag island final guard:
-   The titlebar backing pseudo-element is visual only. If it participates in
-   Electron app-region hit testing, it can win over fixed action buttons after a
-   sidebar/export/theme state change and the buttons become draggable window
-   chrome. Treat the fixed titlebar controls as complete no-drag islands,
-   including the tiny spacers between icons; the tab strip and empty topbar
-   remain the native drag affordance. */
-.app-shell::before,
-.app-shell.theme-dark::before {
-  -webkit-app-region: initial !important;
-  app-region: initial !important;
-  pointer-events: none !important;
-}
-
-.left-sidebar-fixed-toggle,
-.left-sidebar-fixed-toggle[aria-pressed="true"],
-.left-sidebar-fixed-toggle[aria-pressed="false"],
-.left-sidebar-fixed-toggle:hover,
-.left-sidebar-fixed-toggle:focus-visible,
-.workspace-topbar-actions,
-.workspace-topbar-actions.desktop-window-actions,
-.desktop-window-actions,
-.workspace-topbar-actions > button,
-.workspace-topbar-actions button,
-.workspace-topbar-actions .theme-toggle-button,
-.workspace-topbar-actions .floating-export-trigger,
-.workspace-topbar-actions .floating-export-trigger[aria-pressed="true"],
-.workspace-topbar-actions .floating-export-trigger[aria-pressed="false"],
-.workspace-topbar-actions .right-sidebar-fixed-toggle,
-.workspace-topbar-actions .right-sidebar-fixed-toggle[aria-pressed="true"],
-.workspace-topbar-actions .right-sidebar-fixed-toggle[aria-pressed="false"] {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-  pointer-events: auto !important;
-}
-
-.left-sidebar-fixed-toggle *,
-.workspace-topbar-actions > button *,
-.workspace-topbar-actions button * {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.workspace-topbar-actions .window-action-drag-gap,
-.workspace-topbar-actions .engine-status-pill,
-.workspace-topbar-actions .engine-status {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-  pointer-events: auto !important;
-}
-
 /* 2026-06-27 native drag-map hardening:
    Electron/macOS does not behave like normal DOM hit testing when an underlying
    draggable region geometrically overlaps a no-drag button. The real mouse can
@@ -9113,24 +7753,7 @@ input:focus-visible,
    strip is allowed to be draggable. This removes the project rail under the
    left sidebar toggle and the collapsed topbar under the right actions from the
    native drag region. */
-.project-rail,
-.workspace-topbar,
-.workspace-topbar::before,
-.workspace-topbar::after,
-.app-shell.theme-dark .workspace-topbar {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.workspace-topbar-left {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.workspace-topbar-actions,
-.workspace-topbar-actions *,
-.left-sidebar-fixed-toggle,
-.left-sidebar-fixed-toggle * {
+.project-rail {
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
 }
@@ -9304,14 +7927,6 @@ input:focus-visible,
   pointer-events: none;
   box-shadow: 0 10px 26px rgba(20, 32, 43, 0.22);
 }
-
-/* 2026-06-27 left-collapsed canvas fill fix:
-   Keep the collapsed titlebar tabs safely to the right of the traffic lights
-   and sidebar button, but do not reserve that gutter in the workspace grid.
-   Reserving it in the grid pushes the canvas itself right and exposes a tall
-   non-canvas color block. Codex/Chrome-like behavior is split: titlebar content
-   stops at the control gutter, while the canvas continues sliding left and
-   covers the area below. */
 .workspace.is-left-collapsed {
   grid-template-columns:
     0
@@ -9324,303 +7939,6 @@ input:focus-visible,
     0
     minmax(0, 1fr)
     0 !important;
-}
-
-.workspace.is-left-collapsed .workspace-topbar {
-  padding-left: 0 !important;
-}
-
-.workspace-topbar-left {
-  transition:
-    margin-left 180ms ease,
-    max-width 180ms ease,
-    flex-basis 180ms ease !important;
-  will-change: margin-left, max-width, flex-basis;
-}
-
-.workspace.is-left-collapsed .workspace-topbar-left {
-  margin-left: var(--rxnflow-left-collapsed-tab-reserve, 132px) !important;
-  padding-left: 0 !important;
-  max-width: calc(100% - var(--rxnflow-left-collapsed-tab-reserve, 132px) - 168px) !important;
-  flex-basis: calc(100% - var(--rxnflow-left-collapsed-tab-reserve, 132px) - 168px) !important;
-}
-
-@media (max-width: 760px) {
-  .workspace.is-left-collapsed .workspace-topbar-left {
-    margin-left: calc(var(--rxnflow-titlebar-left-button-left, 19px) + 42px) !important;
-    max-width: calc(100% - var(--rxnflow-titlebar-left-button-left, 19px) - 150px) !important;
-    flex-basis: calc(100% - var(--rxnflow-titlebar-left-button-left, 19px) - 150px) !important;
-  }
-}
-
-/* 2026-06-27 unified native titlebar drag contract.
-   One stable, state-independent titlebar drag surface spans the whole window.
-   Sidebar expanded/collapsed layouts must not change native hit testing:
-   empty titlebar pixels drag the window; only real controls opt out. */
-
-
-
-
-.workspace-topbar,
-.workspace-topbar-left {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.workspace-topbar {
-  z-index: 100 !important;
-}
-
-.workspace-topbar-actions,
-.workspace-topbar-actions.desktop-window-actions,
-.desktop-window-actions {
-  z-index: 1300 !important;
-  pointer-events: auto !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.left-sidebar-fixed-toggle {
-  z-index: 1300 !important;
-}
-
-.left-sidebar-fixed-toggle,
-.left-sidebar-fixed-toggle *,
-.workspace-topbar button,
-.workspace-topbar input,
-.workspace-topbar select,
-.workspace-topbar textarea,
-.workspace-topbar [role="button"],
-.workspace-topbar-actions > button,
-.workspace-topbar-actions > button *,
-.workspace-topbar-actions button,
-.workspace-topbar-actions button *,
-.workspace-topbar-actions .theme-toggle-button,
-.workspace-topbar-actions .theme-toggle-button *,
-.workspace-topbar-actions .floating-export-trigger,
-.workspace-topbar-actions .floating-export-trigger *,
-.workspace-topbar-actions .right-sidebar-fixed-toggle,
-.workspace-topbar-actions .right-sidebar-fixed-toggle * {
-  pointer-events: auto !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.workspace-topbar-actions .window-action-drag-gap,
-.workspace-topbar-actions .engine-status-pill,
-.workspace-topbar-actions .engine-status {
-  pointer-events: auto !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-/* 2026-06-27 unified titlebar z-order correction:
-   keep the drag surface above sidebar panes as well, while actual tabs and
-   fixed titlebar controls stay above it as no-drag interactive islands. */
-
-
-.workspace-topbar,
-.workspace-topbar-left {
-  z-index: 1200 !important;
-}
-
-.workspace-topbar-actions,
-.workspace-topbar-actions.desktop-window-actions,
-.desktop-window-actions,
-.left-sidebar-fixed-toggle {
-  z-index: 1300 !important;
-}
-
-/* 2026-06-27 unified titlebar drag contract, theme-specific specificity guard. */
-.app-shell .workspace-topbar-actions,
-.app-shell .workspace-topbar-actions.desktop-window-actions,
-.app-shell .desktop-window-actions,
-.app-shell.theme-dark .workspace-topbar-actions,
-.app-shell.theme-dark .workspace-topbar-actions.desktop-window-actions,
-.app-shell.theme-dark .desktop-window-actions {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.app-shell .workspace-topbar-actions > button,
-.app-shell .workspace-topbar-actions > button *,
-.app-shell .workspace-topbar-actions button,
-.app-shell .workspace-topbar-actions button *,
-.app-shell .workspace-topbar-actions .theme-toggle-button,
-.app-shell .workspace-topbar-actions .theme-toggle-button *,
-.app-shell .workspace-topbar-actions .floating-export-trigger,
-.app-shell .workspace-topbar-actions .floating-export-trigger *,
-.app-shell .workspace-topbar-actions .right-sidebar-fixed-toggle,
-.app-shell .workspace-topbar-actions .right-sidebar-fixed-toggle *,
-.app-shell.theme-dark .workspace-topbar-actions > button,
-.app-shell.theme-dark .workspace-topbar-actions > button *,
-.app-shell.theme-dark .workspace-topbar-actions button,
-.app-shell.theme-dark .workspace-topbar-actions button *,
-.app-shell.theme-dark .workspace-topbar-actions .theme-toggle-button,
-.app-shell.theme-dark .workspace-topbar-actions .theme-toggle-button *,
-.app-shell.theme-dark .workspace-topbar-actions .floating-export-trigger,
-.app-shell.theme-dark .workspace-topbar-actions .floating-export-trigger *,
-.app-shell.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle,
-.app-shell.theme-dark .workspace-topbar-actions .right-sidebar-fixed-toggle * {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.app-shell .workspace-topbar-actions .window-action-drag-gap,
-.app-shell .workspace-topbar-actions .engine-status-pill,
-.app-shell .workspace-topbar-actions .engine-status,
-.app-shell.theme-dark .workspace-topbar-actions .window-action-drag-gap,
-.app-shell.theme-dark .workspace-topbar-actions .engine-status-pill,
-.app-shell.theme-dark .workspace-topbar-actions .engine-status {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-/* 2026-06-27 unified titlebar drag contract, topbar specificity guard. */
-.app-shell .workspace-topbar,
-.app-shell .workspace-topbar-left,
-.app-shell.theme-dark .workspace-topbar,
-.app-shell.theme-dark .workspace-topbar-left,
-.workspace.is-right-collapsed .workspace-topbar,
-.workspace:not(.is-right-collapsed) .workspace-topbar {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-/* 2026-06-27 native Electron titlebar contract reset.
-   Single contract: the whole fixed titlebar is native drag; only real controls
-   and editable tabs are no-drag islands. Sidebar open/collapsed state must not
-   add separate drag slabs above the titlebar. */
-.desktop-titlebar-drag-surface,
-.right-titlebar-drag-bridge {
-  display: none !important;
-  pointer-events: none !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.desktop-titlebar-shell {
-  position: fixed !important;
-  inset: 0 0 auto 0 !important;
-  height: var(--rxnflow-titlebar-height, 48px) !important;
-  z-index: var(--rxn-z-titlebar) !important;
-  pointer-events: auto !important;
-  background: transparent !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.workspace-topbar-placeholder {
-  visibility: hidden !important;
-  pointer-events: none !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.app-shell {
-  --rxnflow-right-titlebar-action-reserve: 130px;
-  --rxnflow-left-collapsed-workbench-reserve: calc(
-    var(--rxnflow-titlebar-left-button-left, 104px) + var(--rxnflow-titlebar-tab-add-size, 28px)
-  );
-}
-
-.desktop-titlebar-shell .desktop-titlebar-tabs {
-  position: absolute !important;
-  top: 0 !important;
-  left: var(--rxnflow-project-rail-width, 212px) !important;
-  right: var(--rxnflow-inspector-width, 288px) !important;
-  height: var(--rxnflow-titlebar-height, 48px) !important;
-  min-height: var(--rxnflow-titlebar-height, 48px) !important;
-  padding: 0 16px 0 12px !important;
-  pointer-events: auto !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.app-shell.is-right-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
-  right: var(--rxnflow-right-titlebar-action-reserve, 130px) !important;
-}
-
-.app-shell.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
-  left: var(--rxnflow-left-collapsed-workbench-reserve, 132px) !important;
-}
-
-.app-shell.is-window-edge-to-edge {
-  --rxnflow-titlebar-left-button-left: 12px;
-  --rxnflow-left-collapsed-workbench-reserve: 58px;
-}
-
-.desktop-titlebar-shell .workspace-topbar-left,
-.desktop-titlebar-shell .workspace-topbar-actions,
-.desktop-titlebar-shell .workspace-topbar-actions.desktop-window-actions,
-.desktop-titlebar-shell .desktop-window-actions {
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-.desktop-titlebar-shell .workspace-topbar-left {
-  height: var(--rxnflow-titlebar-height, 48px) !important;
-  pointer-events: auto !important;
-}
-
-.desktop-titlebar-shell .workspace-topbar-actions,
-.desktop-titlebar-shell .workspace-topbar-actions.desktop-window-actions,
-.desktop-titlebar-shell .desktop-window-actions {
-  position: fixed !important;
-  top: var(--rxnflow-titlebar-control-top, 10px) !important;
-  right: 14px !important;
-  z-index: 2 !important;
-  pointer-events: auto !important;
-}
-
-.desktop-titlebar-shell .left-sidebar-fixed-toggle {
-  position: fixed !important;
-  left: var(--rxnflow-titlebar-left-button-left, 104px) !important;
-  top: var(--rxnflow-titlebar-control-top, 10px) !important;
-  z-index: 2 !important;
-}
-
-.desktop-titlebar-shell button,
-.desktop-titlebar-shell input,
-.desktop-titlebar-shell select,
-.desktop-titlebar-shell textarea,
-.desktop-titlebar-shell [role="button"] {
-  pointer-events: auto !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-.desktop-titlebar-shell .window-action-drag-gap,
-.desktop-titlebar-shell .engine-status-pill,
-.desktop-titlebar-shell .engine-status {
-  pointer-events: auto !important;
-  -webkit-app-region: drag !important;
-  app-region: drag !important;
-}
-
-/* 2026-06-27 titlebar placeholder is layout-only, never a native hit-test region. */
-.app-shell .workspace-topbar-placeholder,
-.app-shell.theme-dark .workspace-topbar-placeholder,
-.workbench-shell > .workspace-topbar-placeholder {
-  visibility: hidden !important;
-  pointer-events: none !important;
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
-}
-
-/* 2026-06-27 full-screen/zoomed titlebar leading edge: when macOS window
-   controls no longer reserve the leading inset, place the sidebar toggle at
-   the true window edge. */
-.app-shell.is-window-edge-to-edge .desktop-titlebar-shell .left-sidebar-fixed-toggle,
-.app-shell.is-window-fullscreen .desktop-titlebar-shell .left-sidebar-fixed-toggle,
-.app-shell.is-window-maximized .desktop-titlebar-shell .left-sidebar-fixed-toggle {
-  left: 12px !important;
-}
-
-.app-shell.is-window-edge-to-edge.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs,
-.app-shell.is-window-fullscreen.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs,
-.app-shell.is-window-maximized.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
-  left: 58px !important;
 }
 
 /* 2026-06-27 edge labels: empty Add label capsules should be contextual.
@@ -9808,10 +8126,6 @@ input:focus-visible,
 
   .workspace:not(.is-left-collapsed) > .project-rail .project-rail-resize-handle {
     display: none !important;
-  }
-
-  .app-shell:not(.is-left-collapsed) .desktop-titlebar-shell .desktop-titlebar-tabs {
-    left: var(--rxnflow-left-collapsed-workbench-reserve, 58px) !important;
   }
 }
 
@@ -10047,28 +8361,6 @@ input:focus-visible,
   box-shadow: 0 0 0 4px rgba(246, 160, 78, 0.18), 0 0 18px rgba(246, 160, 78, 0.3) !important;
 }
 
-/* 2026-06-28 macOS zoomed-window chrome guard:
-   A double-click zoom keeps the native traffic lights visible, so the sidebar
-   toggle must keep the same leading reserve instead of moving to x=12. */
-.app-shell.is-macos-desktop.is-window-edge-to-edge,
-.app-shell.is-macos-desktop.is-window-fullscreen,
-.app-shell.is-macos-desktop.is-window-maximized {
-  --rxnflow-titlebar-left-button-left: 104px !important;
-  --rxnflow-left-collapsed-workbench-reserve: 150px !important;
-}
-
-.app-shell.is-macos-desktop.is-window-edge-to-edge .desktop-titlebar-shell .left-sidebar-fixed-toggle,
-.app-shell.is-macos-desktop.is-window-fullscreen .desktop-titlebar-shell .left-sidebar-fixed-toggle,
-.app-shell.is-macos-desktop.is-window-maximized .desktop-titlebar-shell .left-sidebar-fixed-toggle {
-  left: var(--rxnflow-titlebar-left-button-left, 104px) !important;
-}
-
-.app-shell.is-macos-desktop.is-window-edge-to-edge.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs,
-.app-shell.is-macos-desktop.is-window-fullscreen.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs,
-.app-shell.is-macos-desktop.is-window-maximized.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
-  left: var(--rxnflow-left-collapsed-workbench-reserve, 150px) !important;
-}
-
 /* 2026-07-10 workbench interaction foundation */
 .command-palette-backdrop {
   position: fixed;
@@ -10168,7 +8460,6 @@ input:focus-visible,
 }
 
 .floating-toolbar button:focus-visible,
-.window-icon-button:focus-visible,
 .reaction-node button:focus-visible,
 .reaction-node[role="button"]:focus-visible,
 .canvas-context-menu button:focus-visible {
@@ -10509,9 +8800,7 @@ input:focus-visible,
    titlebar strip. Keep one native scroll container and compact, fixed-height
    rows so trackpad scrolling and file dragging do not fight Electron hit tests. */
 .project-rail,
-.project-rail *,
-.project-rail-hover-panel .project-rail,
-.project-rail-hover-panel .project-rail * {
+.project-rail * {
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
 }
@@ -12350,10 +10639,6 @@ input:focus-visible,
 }
 
 @media (max-width: 960px) {
-  .desktop-titlebar-shell .workspace-topbar-actions.desktop-window-actions {
-    right: max(10px, env(safe-area-inset-right, 0px)) !important;
-    max-width: calc(100vw - 68px) !important;
-  }
 
   .workspace:not(.is-left-collapsed) > .project-rail {
     position: fixed !important;
@@ -12417,15 +10702,6 @@ input:focus-visible,
   .workspace > .project-rail:focus-within {
     transform: translateX(0) !important;
     box-shadow: 24px 0 68px rgba(22, 48, 58, 0.2) !important;
-  }
-
-  .desktop-titlebar-shell .left-sidebar-fixed-toggle {
-    display: none !important;
-  }
-
-  .app-shell.is-macos-desktop .desktop-titlebar-shell .desktop-titlebar-tabs,
-  .app-shell.is-macos-desktop.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
-    left: 104px !important;
   }
 
   .app-shell.theme-dark .workspace > .project-rail::after {
@@ -13004,120 +11280,6 @@ input:focus-visible,
   transform: translateY(-50%) !important;
 }
 
-.app-shell .reaction-node .node-connector::before,
-.app-shell.theme-light .reaction-node .node-connector::before,
-.app-shell.theme-dark .reaction-node .node-connector::before {
-  content: "";
-  position: absolute;
-  inset: auto !important;
-  top: 50% !important;
-  right: auto !important;
-  bottom: auto !important;
-  left: 50% !important;
-  width: 4px;
-  height: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.86);
-  border-radius: 999px;
-  background: rgba(42, 135, 119, 0.78);
-  box-shadow:
-    0 0 0 1px rgba(36, 103, 92, 0.15),
-    0 0 12px rgba(31, 141, 119, 0.2);
-  opacity: 0;
-  transform: translate(-50%, -50%) scaleY(0.62);
-  transform-origin: center;
-  pointer-events: none;
-  transition:
-    opacity 90ms ease-out,
-    transform 170ms cubic-bezier(.22, 1, .36, 1),
-    background 140ms ease,
-    box-shadow 160ms ease;
-}
-
-.app-shell .reaction-node .node-step-connector::before {
-  height: 18px;
-}
-
-.app-shell .reaction-node:hover .node-connector::before,
-.app-shell .reaction-node:focus-within .node-connector::before {
-  opacity: 0.82;
-  transform: translate(-50%, -50%) scaleY(0.92);
-}
-
-.app-shell .reaction-node:hover .node-step-connector-release::before,
-.app-shell .reaction-node:focus-within .node-step-connector-release::before {
-  background: rgba(190, 91, 75, 0.72);
-}
-
-.app-shell .reaction-node .node-connector:hover::before,
-.app-shell .reaction-node .node-connector:focus-visible::before,
-.app-shell .reaction-node .node-connector-out.is-keyboard-active::before,
-.app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
-.app-shell .reaction-node.is-barrier-snap-target-left .node-connector-in::before,
-.app-shell .reaction-node.is-barrier-snap-target-right .node-connector-out::before,
-.app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
-  opacity: 1;
-  transform: translate(-50%, -50%) scaleY(1);
-}
-
-.app-shell .reaction-node .node-connector:hover::before,
-.app-shell .reaction-node .node-connector:focus-visible::before,
-.app-shell .reaction-node .node-connector-out.is-keyboard-active::before {
-  background: rgba(35, 151, 126, 0.78);
-  box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.72),
-    0 0 0 6px rgba(39, 154, 128, 0.15),
-    0 0 18px rgba(31, 125, 105, 0.32);
-}
-
-.app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
-.app-shell .reaction-node.is-barrier-snap-target-left .node-connector-in::before,
-.app-shell .reaction-node.is-barrier-snap-target-right .node-connector-out::before,
-.app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
-  height: 32px;
-  background: rgba(190, 91, 75, 0.92);
-  box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.82),
-    0 0 0 8px rgba(190, 91, 75, 0.18),
-    0 0 22px rgba(155, 67, 55, 0.38);
-}
-
-.app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
-  height: 22px;
-}
-
-.app-shell .reaction-node .node-step-connector-release:hover::before,
-.app-shell .reaction-node .node-step-connector-release:focus-visible::before {
-  background: rgba(190, 91, 75, 0.82);
-  box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.72),
-    0 0 0 6px rgba(190, 91, 75, 0.14),
-    0 0 18px rgba(155, 67, 55, 0.3);
-}
-
-.app-shell.theme-dark .reaction-node .node-connector::before {
-  border-color: rgba(218, 239, 235, 0.36);
-  background: rgba(121, 202, 184, 0.82);
-  box-shadow:
-    0 0 0 1px rgba(3, 14, 15, 0.3),
-    0 0 14px rgba(74, 216, 181, 0.22);
-}
-
-.app-shell.theme-dark .reaction-node .node-connector:hover::before,
-.app-shell.theme-dark .reaction-node .node-connector:focus-visible::before,
-.app-shell.theme-dark .reaction-node .node-connector-out.is-keyboard-active::before,
-.app-shell.theme-dark .reaction-node.is-connection-snap-target .node-connector-in::before,
-.app-shell.theme-dark .reaction-node.is-barrier-snap-target-left .node-connector-in::before,
-.app-shell.theme-dark .reaction-node.is-barrier-snap-target-right .node-connector-out::before,
-.app-shell.theme-dark .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
-  background: rgba(229, 132, 116, 0.9);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-shell .reaction-node .node-connector::before {
-    transition: none !important;
-  }
-}
-
 /* 2026-07-13 responsive sidebar contract.
    Narrow layouts use explicit, independent left/right states. The project
    rail opens as a real drawer when its titlebar button is pressed; the node
@@ -13160,19 +11322,6 @@ input:focus-visible,
     visibility: hidden !important;
     pointer-events: none !important;
     transform: translateX(-100%) !important;
-  }
-
-  .app-shell.is-macos-desktop {
-    --rxnflow-titlebar-left-button-left: 104px !important;
-    --rxnflow-left-collapsed-workbench-reserve: 150px !important;
-  }
-
-  .app-shell.is-macos-desktop .desktop-titlebar-shell .left-sidebar-fixed-toggle {
-    left: var(--rxnflow-titlebar-left-button-left, 104px) !important;
-  }
-
-  .app-shell.is-macos-desktop .desktop-titlebar-shell .desktop-titlebar-tabs {
-    left: var(--rxnflow-left-collapsed-workbench-reserve, 150px) !important;
   }
 }
 
@@ -13317,28 +11466,114 @@ input:focus-visible,
     transform: translateX(0) !important;
     box-shadow: 24px 0 68px rgba(22, 48, 58, 0.2) !important;
   }
+}
 
-  .desktop-titlebar-shell .left-sidebar-fixed-toggle {
-    display: grid !important;
-    left: calc(var(--rxnflow-project-rail-width, 212px) / 2 - 17px) !important;
-    opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-  }
+.app-shell .reaction-node .node-connector::before,
+.app-shell.theme-light .reaction-node .node-connector::before,
+.app-shell.theme-dark .reaction-node .node-connector::before {
+  content: "";
+  position: absolute;
+  inset: auto !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: 50% !important;
+  width: 4px;
+  height: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 999px;
+  background: rgba(42, 135, 119, 0.78);
+  box-shadow:
+    0 0 0 1px rgba(36, 103, 92, 0.15),
+    0 0 12px rgba(31, 141, 119, 0.2);
+  opacity: 0;
+  transform: translate(-50%, -50%) scaleY(0.62);
+  transform-origin: center;
+  pointer-events: none;
+  transition:
+    opacity 90ms ease-out,
+    transform 170ms cubic-bezier(.22, 1, .36, 1),
+    background 140ms ease,
+    box-shadow 160ms ease;
+}
 
-  .app-shell:has(.project-rail:hover) .desktop-titlebar-shell .left-sidebar-fixed-toggle,
-  .app-shell:has(.project-rail:focus-within) .desktop-titlebar-shell .left-sidebar-fixed-toggle,
-  .app-shell:has(.project-rail .project-rail-item.has-open-actions) .desktop-titlebar-shell .left-sidebar-fixed-toggle {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-  }
+.app-shell .reaction-node .node-step-connector::before {
+  height: 18px;
+}
 
-  .app-shell:has(.project-rail:hover) .desktop-titlebar-shell .desktop-titlebar-tabs,
-  .app-shell:has(.project-rail:focus-within) .desktop-titlebar-shell .desktop-titlebar-tabs,
-  .app-shell:has(.project-rail .project-rail-item.has-open-actions) .desktop-titlebar-shell .desktop-titlebar-tabs {
-    left: var(--rxnflow-project-rail-width, 212px) !important;
-  }
+.app-shell .reaction-node:hover .node-connector::before,
+.app-shell .reaction-node:focus-within .node-connector::before {
+  opacity: 0.82;
+  transform: translate(-50%, -50%) scaleY(0.92);
+}
+
+.app-shell .reaction-node:hover .node-step-connector-release::before,
+.app-shell .reaction-node:focus-within .node-step-connector-release::before {
+  background: rgba(190, 91, 75, 0.72);
+}
+
+.app-shell .reaction-node .node-connector:hover::before,
+.app-shell .reaction-node .node-connector:focus-visible::before,
+.app-shell .reaction-node .node-connector-out.is-keyboard-active::before,
+.app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
+.app-shell .reaction-node.is-barrier-snap-target-left .node-connector-in::before,
+.app-shell .reaction-node.is-barrier-snap-target-right .node-connector-out::before,
+.app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
+  opacity: 1;
+  transform: translate(-50%, -50%) scaleY(1);
+}
+
+.app-shell .reaction-node .node-connector:hover::before,
+.app-shell .reaction-node .node-connector:focus-visible::before,
+.app-shell .reaction-node .node-connector-out.is-keyboard-active::before {
+  background: rgba(35, 151, 126, 0.78);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.72),
+    0 0 0 6px rgba(39, 154, 128, 0.15),
+    0 0 18px rgba(31, 125, 105, 0.32);
+}
+
+.app-shell .reaction-node.is-connection-snap-target .node-connector-in::before,
+.app-shell .reaction-node.is-barrier-snap-target-left .node-connector-in::before,
+.app-shell .reaction-node.is-barrier-snap-target-right .node-connector-out::before,
+.app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
+  height: 32px;
+  background: rgba(190, 91, 75, 0.92);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.82),
+    0 0 0 8px rgba(190, 91, 75, 0.18),
+    0 0 22px rgba(155, 67, 55, 0.38);
+}
+
+.app-shell .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
+  height: 22px;
+}
+
+.app-shell .reaction-node .node-step-connector-release:hover::before,
+.app-shell .reaction-node .node-step-connector-release:focus-visible::before {
+  background: rgba(190, 91, 75, 0.82);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.72),
+    0 0 0 6px rgba(190, 91, 75, 0.14),
+    0 0 18px rgba(155, 67, 55, 0.3);
+}
+
+.app-shell.theme-dark .reaction-node .node-connector::before {
+  border-color: rgba(218, 239, 235, 0.36);
+  background: rgba(121, 202, 184, 0.82);
+  box-shadow:
+    0 0 0 1px rgba(3, 14, 15, 0.3),
+    0 0 14px rgba(74, 216, 181, 0.22);
+}
+
+.app-shell.theme-dark .reaction-node .node-connector:hover::before,
+.app-shell.theme-dark .reaction-node .node-connector:focus-visible::before,
+.app-shell.theme-dark .reaction-node .node-connector-out.is-keyboard-active::before,
+.app-shell.theme-dark .reaction-node.is-connection-snap-target .node-connector-in::before,
+.app-shell.theme-dark .reaction-node.is-barrier-snap-target-left .node-connector-in::before,
+.app-shell.theme-dark .reaction-node.is-barrier-snap-target-right .node-connector-out::before,
+.app-shell.theme-dark .reaction-node.is-connection-snap-target-release .node-step-connector-release::before {
+  background: rgba(229, 132, 116, 0.9);
 }
 
 .project-rail .project-rail-region-files .rail-section:has(.project-file-card) .rail-list {
@@ -13458,17 +11693,17 @@ body.is-resizing-project-rail-sections * {
   background: rgba(73, 103, 119, 0.12);
 }
 
-.app-shell.theme-dark .project-rail .project-canvas-more:hover::before,
-.app-shell.theme-dark .project-rail .project-canvas-more:focus-visible::before,
-.app-shell.theme-dark .project-rail .project-canvas-more[aria-expanded="true"]::before {
-  background: rgba(126, 232, 197, 0.14);
-}
-
 .workspace {
   transition: grid-template-columns 190ms cubic-bezier(0.2, 0.72, 0.25, 1) !important;
 }
 
 @media (min-width: 1181px) {
+
+.app-shell.theme-dark .project-rail .project-canvas-more:hover::before,
+.app-shell.theme-dark .project-rail .project-canvas-more:focus-visible::before,
+.app-shell.theme-dark .project-rail .project-canvas-more[aria-expanded="true"]::before {
+  background: rgba(126, 232, 197, 0.14);
+}
   .workspace {
     position: relative;
   }
@@ -13689,14 +11924,6 @@ body.is-resizing-project-rail-sections * {
     pointer-events: auto !important;
   }
 
-  .app-shell.is-compact-layout .desktop-titlebar-shell .left-sidebar-fixed-toggle {
-    display: grid !important;
-    left: var(--rxnflow-titlebar-left-button-left, 19px) !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-  }
-
   .app-shell.is-compact-layout .inspector-panel {
     width: var(--rxnflow-inspector-width, 280px) !important;
     max-width: var(--rxnflow-inspector-width, 280px) !important;
@@ -13731,182 +11958,12 @@ body.is-resizing-project-rail-sections * {
   }
 }
 
-/* Canvas tabs use one fixed slot model in every workbench state. */
-.app-shell {
-  --canvas-tab-surface: var(--rxnflow-canvas-base);
-  --canvas-tab-strip-surface: rgba(228, 235, 242, 0.78);
-  --canvas-tab-text: #506579;
-  --canvas-tab-active-text: #183247;
-  --canvas-tab-hover: rgba(68, 87, 103, 0.09);
-}
-
-.app-shell.theme-dark {
-  --canvas-tab-strip-surface: var(--rxnflow-canvas-base);
-  --canvas-tab-text: #b8c9d6;
-  --canvas-tab-active-text: #f2f7fb;
-  --canvas-tab-hover: rgba(196, 215, 228, 0.12);
-}
-
-.canvas-tab-bar {
-  position: relative !important;
-  inset: auto !important;
-  display: flex !important;
-  flex: 1 1 auto;
-  min-width: 0;
-  width: 100% !important;
-  height: var(--rxnflow-titlebar-height) !important;
-  padding: 0 8px !important;
-  border: 0 !important;
-  background: transparent !important;
-  overflow: hidden !important;
-}
-
-.canvas-tab-list {
-  display: flex !important;
-  flex: 1 1 auto;
-  align-items: flex-end !important;
-  gap: 2px !important;
-  min-width: 0 !important;
-  height: var(--rxnflow-titlebar-height) !important;
-  padding: 0 !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-  scrollbar-width: none;
-}
-
-.canvas-tab-list::-webkit-scrollbar {
-  display: none;
-}
-
-.canvas-tab-shell {
-  position: relative;
-  display: flex;
-  flex: 0 1 174px;
-  align-items: center;
-  min-width: 96px;
-  max-width: 174px;
-  height: calc(var(--rxnflow-titlebar-height) - 4px);
-  margin-top: 4px;
-  border: 0;
-  border-radius: 9px 9px 0 0;
-  background: transparent;
-  color: var(--canvas-tab-text);
-  transition: background-color 120ms ease;
-}
-
-.canvas-tab-shell.is-active {
-  z-index: 1;
-  background: var(--canvas-tab-surface);
-  color: var(--canvas-tab-active-text);
-}
-
-.canvas-tab-shell:not(.is-active):hover,
-.canvas-tab-shell:not(.is-active):focus-within {
-  background: var(--canvas-tab-hover);
-}
-
-.canvas-tab-shell::before,
-.canvas-tab-shell::after,
-.canvas-tab-add::before {
-  content: none;
-}
-
-.canvas-tab-shell .canvas-tab {
-  display: block;
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  padding: 0 32px 0 14px;
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  color: inherit;
-  font-size: var(--rxn-font-body);
-  font-weight: 650;
-  line-height: calc(var(--rxnflow-titlebar-height) - 4px);
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.canvas-tab-shell .canvas-tab:focus-visible,
-.canvas-tab-close:focus-visible,
-.canvas-tab-add:focus-visible {
-  outline: 2px solid #188773;
-  outline-offset: -3px;
-}
-
-.canvas-tab-close {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  opacity: 0.7;
-}
-
-.canvas-tab-close:hover,
-.canvas-tab-close:focus-visible {
-  background: var(--canvas-tab-hover);
-  opacity: 1;
-}
-
-.canvas-tab-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: calc(100% - 34px);
-  height: 26px;
-  margin: 0 28px 0 6px;
-  padding: 0 6px;
-  border: 1px solid #188773;
-  border-radius: 5px;
-  background: var(--canvas-tab-surface);
-  color: var(--canvas-tab-active-text);
-  font: inherit;
-  font-size: var(--rxn-font-body);
-}
-
-.canvas-tab-add {
-  display: grid;
-  flex: 0 0 30px;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  margin: 0 0 2px 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--canvas-tab-text);
-}
-
-.canvas-tab-add:hover,
-.canvas-tab-add:focus-visible {
-  background: var(--canvas-tab-hover);
-}
-
 .app-shell.theme-dark .project-validation-notice li {
   color: #c7d7e3;
 }
 
 .project-validation-notice li span {
   overflow-wrap: anywhere;
-}
-
-.canvas-tab-shell,
-.canvas-tab-shell *,
-.canvas-tab-add {
-  -webkit-app-region: no-drag !important;
-  app-region: no-drag !important;
 }
 
 .inspector-panel {
@@ -14227,21 +12284,8 @@ body.is-resizing-project-rail-sections * {
   font-weight: 750 !important;
 }
 
-@media (max-width: 760px) {
-  .app-shell .desktop-titlebar-shell .desktop-titlebar-tabs,
-  .app-shell.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
-    left: 58px !important;
-    right: 116px !important;
-    padding: 0 2px !important;
-  }
-
-  .app-shell.is-macos-desktop .desktop-titlebar-shell .desktop-titlebar-tabs,
-  .app-shell.is-macos-desktop.is-left-collapsed .desktop-titlebar-shell .desktop-titlebar-tabs {
-    left: 150px !important;
-  }
-
-  .canvas-tab-shell {
-    flex-basis: 144px;
-    min-width: 90px;
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .reaction-node .node-connector::before {
+    transition: none !important;
   }
 }

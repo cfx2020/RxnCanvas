@@ -53,54 +53,6 @@ input:focus-visible,
     linear-gradient(135deg, #f8fbfd 0%, #eef7fa 44%, #f4f8f2 100%);
 }
 
-.window-bar {
-  height: 44px;
-  display: grid;
-  grid-template-columns: 220px 1fr 260px;
-  align-items: center;
-  padding: 0 18px;
-  border-bottom: 1px solid rgba(121, 147, 165, 0.2);
-  background: rgba(255, 255, 255, 0.54);
-  backdrop-filter: blur(24px);
-}
-
-.traffic-lights {
-  display: flex;
-  gap: var(--rxn-space-2);
-}
-
-.traffic {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(41, 55, 68, 0.1);
-}
-
-.traffic-red { background: #ff6b5f; }
-.traffic-yellow { background: #ffcb4f; }
-.traffic-green { background: #37c66a; }
-
-.window-title,
-.window-actions {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #243244;
-  font-size: var(--rxn-font-body);
-  font-weight: 700;
-}
-
-.window-title {
-  justify-self: center;
-}
-
-.window-actions {
-  justify-self: end;
-  color: #68798b;
-  font-size: var(--rxn-font-ui);
-  font-weight: 600;
-}
-
 .engine-status-pill {
   min-height: 26px;
   display: inline-flex;

@@ -3398,52 +3398,48 @@ export function App() {
         onChange={handleProjectInputChange}
         aria-label="Open project package"
       />
-      <div className="desktop-titlebar-shell" aria-label="Window titlebar">
-        <button
-          type="button"
-          className="window-icon-button left-sidebar-fixed-toggle"
-          aria-label={leftSidebarVisible ? "Collapse project sidebar" : "Expand project sidebar"}
-          title={leftSidebarVisible ? "Collapse project sidebar" : "Expand project sidebar"}
-          aria-pressed={leftSidebarVisible}
-          onClick={() => {
-            if (isCompactLayout) {
-              setCompactLeftRailOpen((current) => !current)
-            } else {
-              setLeftSidebarOpen((current) => !current)
-            }
-          }}
-        >
-          <PanelLeft size={16} />
-        </button>
-        <div className="workspace-topbar desktop-titlebar-tabs" aria-label="Canvas tabs titlebar">
-          <div className="workspace-topbar-left">
-            <CanvasTabBar
-              tabs={openCanvasTabs}
-              activeTabId={activeCanvasTabId}
-              onSelectTab={switchCanvasTab}
-              onCreateTab={createCanvasTab}
-              onRenameTab={renameCanvasTab}
-              onCloseTab={closeCanvasTab}
-            />
-          </div>
-        </div>
-        <div className="workspace-topbar-actions desktop-window-actions" aria-label="Window actions">
+      <header className="window-toolbar" aria-label="Window toolbar">
+        <div className="window-toolbar-leading">
           <button
             type="button"
-            className="theme-toggle-button"
+            className="window-toolbar-button"
+            aria-label={leftSidebarVisible ? "Collapse project sidebar" : "Expand project sidebar"}
+            title={leftSidebarVisible ? "Collapse project sidebar" : "Expand project sidebar"}
+            aria-pressed={leftSidebarVisible}
+            onClick={() => {
+              if (isCompactLayout) {
+                setCompactLeftRailOpen((current) => !current)
+              } else {
+                setLeftSidebarOpen((current) => !current)
+              }
+            }}
+          >
+            <PanelLeft size={16} />
+          </button>
+        </div>
+        <CanvasTabBar
+          tabs={openCanvasTabs}
+          activeTabId={activeCanvasTabId}
+          onSelectTab={switchCanvasTab}
+          onCreateTab={createCanvasTab}
+          onRenameTab={renameCanvasTab}
+          onCloseTab={closeCanvasTab}
+        />
+        <div className="window-toolbar-actions" aria-label="Window actions">
+          <button
+            type="button"
+            className="window-toolbar-button"
             aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             onClick={() => setAppearancePreference(theme === "dark" ? "light" : "dark")}
           >
             {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-            <span>{theme === "dark" ? "Light" : "Dark"}</span>
           </button>
-          <span className="window-action-drag-gap" aria-hidden="true" />
           <EngineStatusPill status={engineStatus} />
           <button
             ref={exportTriggerRef}
             type="button"
-            className="window-icon-button floating-export-trigger"
+            className="window-toolbar-button floating-export-trigger"
             aria-label="Export"
             title="Export"
             aria-pressed={inspectorMode === "export"}
@@ -3451,10 +3447,9 @@ export function App() {
           >
             <Download size={16} />
           </button>
-          <span className="window-action-drag-gap" aria-hidden="true" />
           <button
             type="button"
-            className="window-icon-button right-sidebar-fixed-toggle"
+            className="window-toolbar-button"
             aria-label={rightSidebarOpen ? "Collapse node sidebar" : "Expand node sidebar"}
             title={rightSidebarOpen ? "Collapse node sidebar" : "Expand node sidebar"}
             aria-pressed={rightSidebarOpen}
@@ -3463,7 +3458,7 @@ export function App() {
             <PanelRight size={16} />
           </button>
         </div>
-      </div>
+      </header>
 
       {settingsOpen ? (
         <SettingsPanel
@@ -3536,7 +3531,6 @@ export function App() {
         {renderProjectRail()}
 
         <section className={`workbench-shell view-canvas${tableDrawerOpen ? " has-table-drawer" : ""}`} aria-label="Reaction flow workspace">
-          <div className="workspace-topbar workspace-topbar-placeholder" aria-hidden="true" />
           <ProjectValidationNotice validation={projectValidation} />
 
           <div ref={canvasStageRef} className={`canvas-stage view-canvas${tableDrawerOpen ? " has-table-drawer" : ""}`}>
@@ -4144,11 +4138,17 @@ function CanvasTabBar({
     const list = tabListRef.current
     const active = list?.querySelector<HTMLElement>(".canvas-tab-shell.is-active")
     if (!list || !active) return
-    if (active.offsetLeft < list.scrollLeft) {
-      list.scrollLeft = active.offsetLeft
-    } else if (active.offsetLeft + active.offsetWidth > list.scrollLeft + list.clientWidth) {
-      list.scrollLeft = active.offsetLeft + active.offsetWidth - list.clientWidth
+    const revealActiveTab = () => {
+      if (active.offsetLeft < list.scrollLeft) {
+        list.scrollLeft = active.offsetLeft
+      } else if (active.offsetLeft + active.offsetWidth > list.scrollLeft + list.clientWidth) {
+        list.scrollLeft = active.offsetLeft + active.offsetWidth - list.clientWidth
+      }
     }
+    revealActiveTab()
+    const observer = new ResizeObserver(revealActiveTab)
+    observer.observe(list)
+    return () => observer.disconnect()
   }, [activeTabId, tabs.length])
 
   const beginRename = (tab: CanvasTabState) => {
@@ -4193,7 +4193,7 @@ function CanvasTabBar({
                   aria-selected={tab.id === activeTabId}
                   onClick={() => onSelectTab(tab.id)}
                   onDoubleClick={() => beginRename(tab)}
-                  title="Double-click to rename"
+                  title={`${tab.label} — Double-click to rename`}
                 >
                   {tab.label}
                 </button>
@@ -4215,10 +4215,10 @@ function CanvasTabBar({
             </span>
           )
         })}
-        <button type="button" className="canvas-tab-add" aria-label="New canvas" title="New canvas" onClick={() => onCreateTab()}>
-          <Plus size={15} />
-        </button>
       </div>
+      <button type="button" className="canvas-tab-add" aria-label="New canvas" title="New canvas" onClick={() => onCreateTab()}>
+        <Plus size={15} />
+      </button>
     </nav>
   )
 }

@@ -1,0 +1,276 @@
+.app-shell {
+  --rxnflow-titlebar-height: 40px !important;
+  --rxnflow-window-leading-inset: 12px;
+  padding-top: var(--rxnflow-titlebar-height) !important;
+}
+
+.app-shell > .workspace {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.window-toolbar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: var(--rxn-z-titlebar);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--rxnflow-titlebar-height);
+  padding: 0 12px 0 var(--rxnflow-window-leading-inset);
+  background: var(--rxn-bg);
+  -webkit-app-region: drag;
+}
+
+/* Electron keeps its native traffic lights visible in every macOS window state. */
+.app-shell.is-macos-desktop {
+  --rxnflow-window-leading-inset: 104px;
+}
+
+.window-toolbar-leading {
+  display: flex;
+  flex: 0 0 30px;
+}
+
+.app-shell:not(.is-left-collapsed):not(.is-compact-layout) .window-toolbar-leading {
+  flex-basis: max(30px, calc(var(--rxnflow-project-rail-width) - var(--rxnflow-window-leading-inset) - 8px));
+}
+
+.window-toolbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.window-toolbar-button {
+  display: grid;
+  flex: 0 0 30px;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--rxn-radius-control);
+  color: var(--rxn-ink-muted);
+  background: transparent;
+  -webkit-app-region: no-drag;
+}
+
+.window-toolbar-button * {
+  -webkit-app-region: no-drag;
+}
+
+.window-toolbar-button:hover {
+  color: var(--rxn-ink);
+  background: var(--rxn-surface-muted);
+}
+
+.window-toolbar-button:focus-visible {
+  outline: 2px solid var(--rxn-accent);
+  outline-offset: -2px;
+}
+
+.app-shell .workbench-shell {
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.workbench-shell > .project-validation-notice {
+  grid-row: 1;
+}
+
+.workbench-shell > .canvas-stage {
+  grid-row: 2;
+}
+
+.canvas-tab-bar {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.canvas-tab-bar::before {
+  content: "";
+  flex: 0 0 1px;
+  height: 22px;
+  margin-right: 2px;
+  background: var(--rxn-line);
+  pointer-events: none;
+}
+
+.canvas-tab-list {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.canvas-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.canvas-tab-shell {
+  position: relative;
+  display: flex;
+  flex: 0 1 240px;
+  width: 240px;
+  align-items: center;
+  min-width: 100px;
+  max-width: 240px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--rxn-surface-muted);
+  color: var(--rxn-ink-muted);
+  transition: background-color 120ms ease;
+}
+
+.canvas-tab-shell.is-active {
+  background: var(--rxn-surface-raised);
+  color: var(--rxn-ink-strong);
+  box-shadow: inset 0 0 0 1px var(--rxn-line);
+}
+
+.canvas-tab-shell:not(.is-active):hover {
+  background: var(--rxn-line);
+  color: var(--rxn-ink);
+}
+
+.canvas-tab {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 32px 0 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font-size: var(--rxn-font-body);
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.canvas-tab-close {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+}
+
+.canvas-tab-input {
+  min-width: 0;
+  width: calc(100% - 34px);
+  height: 26px;
+  margin: 0 28px 0 6px;
+  padding: 0 6px;
+  border: 1px solid var(--rxn-accent);
+  border-radius: 5px;
+  background: var(--rxn-surface-raised);
+  color: var(--rxn-ink-strong);
+  font: inherit;
+  font-size: var(--rxn-font-body);
+}
+
+.canvas-tab-add {
+  display: grid;
+  flex: 0 0 30px;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-right: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--rxn-radius-control);
+  background: transparent;
+  color: var(--rxn-ink-muted);
+}
+
+.canvas-tab-close:hover,
+.canvas-tab-add:hover {
+  background: var(--rxn-line);
+}
+
+.canvas-tab:focus-visible,
+.canvas-tab-close:focus-visible,
+.canvas-tab-add:focus-visible {
+  outline: 2px solid var(--rxn-accent);
+  outline-offset: -2px;
+}
+
+.canvas-tab-shell,
+.canvas-tab-shell *,
+.canvas-tab-add,
+.canvas-tab-add * {
+  -webkit-app-region: no-drag;
+}
+
+@media (max-width: 760px) {
+  .window-toolbar,
+  .window-toolbar-actions,
+  .canvas-tab-bar {
+    gap: 4px;
+  }
+
+  .canvas-tab-shell {
+    flex-basis: 180px;
+    min-width: 80px;
+  }
+
+  .canvas-tab-add {
+    margin-right: 0;
+  }
+}
+
+.workspace > .project-rail,
+.workspace:not(.is-left-collapsed) > .project-rail {
+  padding-top: 14px !important;
+}
+
+.workspace:not(.is-right-collapsed) > .inspector-panel {
+  top: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+}
+
+.export-float-panel,
+.theme-dark .export-float-panel {
+  top: calc(var(--rxnflow-titlebar-height) + 8px) !important;
+}
+
+@media (max-width: 1180px) {
+  .app-shell.is-compact-layout .workspace > .project-rail {
+    top: var(--rxnflow-titlebar-height) !important;
+    height: calc(100vh - var(--rxnflow-titlebar-height)) !important;
+    max-height: calc(100vh - var(--rxnflow-titlebar-height)) !important;
+    padding-top: 14px !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-shell.is-compact-layout .workspace:not(.is-right-collapsed) > .inspector-panel {
+    top: var(--rxnflow-titlebar-height) !important;
+    height: calc(100vh - var(--rxnflow-titlebar-height)) !important;
+    max-height: calc(100vh - var(--rxnflow-titlebar-height)) !important;
+  }
+}
