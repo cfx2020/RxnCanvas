@@ -437,8 +437,8 @@ export const CanvasSurface = memo(function CanvasSurface({
       >
         <svg className="edge-layer" width="1600" height="1000" viewBox="0 0 1600 1000">
           <defs>
-            <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-              <path d="M0,0 L8,4 L0,8 Z" fill="rgba(82, 103, 122, 0.55)" />
+            <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+              <path d="M2,2 L9,6 L2,10" fill="none" stroke="context-stroke" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </marker>
             <marker id="barrier-arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse">
               <path d="M0,0 L8,4 L0,8 Z" fill="rgba(217, 99, 82, 0.82)" />
