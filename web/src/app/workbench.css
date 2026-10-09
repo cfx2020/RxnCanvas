@@ -445,7 +445,6 @@
 .theme-dark .reaction-node,
 .theme-dark .project-validation-notice,
 .theme-dark .zoom-controls,
-.theme-dark .minimap,
 .theme-dark .workbench-energy-table-panel,
 .theme-dark .canvas-empty-state,
 .theme-dark .candidate-review-sheet,
@@ -592,8 +591,10 @@
 }
 
 .theme-dark .minimap {
+  border-color: rgba(145, 180, 199, 0.24);
   background-color: rgba(17, 29, 40, 0.52);
   background-image: radial-gradient(rgba(170, 207, 224, 0.15) 0.7px, transparent 0.7px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.16);
 }
 
 .theme-dark .source-open-button {

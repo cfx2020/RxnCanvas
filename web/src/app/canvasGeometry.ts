@@ -45,7 +45,7 @@ export const maxNodeHeight = 360
 export const canvasGridSize = 8
 export const minCanvasZoom = 0.16
 export const maxCanvasZoom = 1.65
-export const minimapSize: SurfaceSize = { width: 176, height: 104 }
+export const minimapSize: SurfaceSize = { width: 176, height: 88 }
 export const fallbackCanvasSize: SurfaceSize = { width: 900, height: 640 }
 
 const graphBounds = {
@@ -590,7 +590,8 @@ export function createMinimapGeometry(
   const maxY = Math.max(...nodes.map((node) => node.position.y + flowNodeSize(node).height), visible.bottom, graphBounds.maxY) + nodePadding
   const width = Math.max(1, maxX - minX)
   const height = Math.max(1, maxY - minY)
-  const padding = 14
+  // Reserve room for the minimum-size viewport window even when far from the graph.
+  const padding = 16
   const innerWidth = Math.max(1, size.width - padding * 2)
   const innerHeight = Math.max(1, size.height - padding * 2)
   const scale = Math.min(innerWidth / width, innerHeight / height)

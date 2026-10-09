@@ -1901,7 +1901,6 @@ export function MiniMap({
         onPointerUp={commitDrag}
         onPointerCancel={cancelDrag}
       >
-        <span className="minimap-bounds" aria-hidden="true" />
         {geometry.nodes.map((node) => (
           <span
             key={node.id}

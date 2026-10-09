@@ -179,6 +179,20 @@ describe("canvasGeometry", () => {
     expect(nodeContainedInSelectionRect(node, { x: 0, y: 0, width: 40, height: 40 })).toBe(false)
   })
 
+  it.each([{ x: -20000, y: 0 }, { x: 0, y: -10000 }])("keeps the minimap viewport visible after panning far away: %j", (position) => {
+    const { viewportWindow } = createMinimapGeometry(
+      [flowNode("a", 0, { x: 120, y: 160 })],
+      { ...position, zoom: 1 },
+      fallbackCanvasSize,
+      minimapSize,
+    )
+
+    expect(viewportWindow.left).toBeGreaterThanOrEqual(0)
+    expect(viewportWindow.top).toBeGreaterThanOrEqual(0)
+    expect(viewportWindow.left + viewportWindow.width).toBeLessThanOrEqual(minimapSize.width)
+    expect(viewportWindow.top + viewportWindow.height).toBeLessThanOrEqual(minimapSize.height)
+  })
+
   it("converts between viewport, world, and minimap geometry", () => {
     const viewport = { zoom: 1, x: 100, y: 80 }
     expect(visibleWorldRect(viewport, fallbackCanvasSize)).toEqual({

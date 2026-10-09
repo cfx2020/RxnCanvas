@@ -1094,15 +1094,16 @@
   right: 18px;
   bottom: 18px;
   width: 176px;
-  height: 104px;
+  height: 88px;
   display: block;
   overflow: hidden;
   padding: 0;
-  border-color: rgba(126, 152, 169, 0.14);
-  border-radius: 16px;
+  border: 1px solid rgba(126, 152, 169, 0.2);
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.42);
   background-image: radial-gradient(rgba(52, 96, 130, 0.11) 0.7px, transparent 0.7px);
   background-size: 12px 12px;
+  box-shadow: 0 3px 12px rgba(54, 74, 88, 0.08);
   backdrop-filter: blur(18px);
   cursor: crosshair;
   touch-action: none;
@@ -1111,19 +1112,12 @@
 
 .minimap:hover,
 .minimap:focus-visible {
-  outline: none;
-  box-shadow:
-    0 24px 80px rgba(54, 74, 88, 0.16),
-    0 0 0 4px rgba(72, 157, 209, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  border-color: rgba(72, 157, 209, 0.5);
 }
 
-.minimap-bounds {
-  position: absolute;
-  inset: 7px;
-  border: 1px solid rgba(72, 101, 121, 0.07);
-  border-radius: 11px;
-  pointer-events: none;
+.minimap:focus-visible {
+  outline: 2px solid rgba(72, 157, 209, 0.65);
+  outline-offset: 2px;
 }
 
 .minimap-node {
@@ -1145,12 +1139,9 @@
   position: absolute;
   min-width: 16px;
   min-height: 12px;
-  border: 1.5px solid rgba(226, 134, 74, 0.82);
-  border-radius: 8px;
+  border: 1px solid rgba(226, 134, 74, 0.82);
+  border-radius: 4px;
   background: rgba(226, 134, 74, 0.08);
-  box-shadow:
-    0 0 0 2px rgba(226, 134, 74, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
   pointer-events: none;
 }
 
@@ -1158,9 +1149,6 @@
   border-style: dashed;
   border-color: rgba(38, 139, 183, 0.86);
   background: rgba(38, 139, 183, 0.12);
-  box-shadow:
-    0 0 0 3px rgba(38, 139, 183, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .zoom-controls {

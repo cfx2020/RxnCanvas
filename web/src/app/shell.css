@@ -651,8 +651,7 @@ input:focus-visible,
 .reaction-node,
 .floating-toolbar,
 .project-validation-notice,
-.zoom-controls,
-.minimap {
+.zoom-controls {
   border: 1px solid rgba(126, 152, 169, 0.2);
   box-shadow:
     0 24px 80px rgba(54, 74, 88, 0.13),
