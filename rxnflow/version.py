@@ -1,3 +1,3 @@
 """RxnFlow release version shared by the Python engine."""
 
-__version__ = "0.1.1"
+__version__ = "0.1.3"
