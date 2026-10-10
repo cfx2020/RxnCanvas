@@ -1450,6 +1450,7 @@ select,
   position: relative;
   top: auto;
   left: auto;
+  right: auto;
   z-index: 2;
   width: auto;
   margin: 12px 18px 0;

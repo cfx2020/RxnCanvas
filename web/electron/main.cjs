@@ -1561,6 +1561,10 @@ ipcMain.handle("rxnflow:save-project-package", async (_event, payload) => {
     }
   }
 
+  // Imports can finish while the dialog is open, so commit this snapshot before waiting.
+  await saveProjectContent(exportProjectDirectory, content, {
+    previousProjectDirectory: exportProjectDirectory,
+  })
   const result = await dialog.showSaveDialog({
     title: "Export RxnFlow project archive",
     defaultPath,
@@ -1574,10 +1578,7 @@ ipcMain.handle("rxnflow:save-project-package", async (_event, payload) => {
     return { canceled: true }
   }
 
-  const archivedProject = await exportProjectWorkspaceArchive(exportProjectDirectory, result.filePath, {
-    content,
-    previousProjectDirectory: exportProjectDirectory,
-  })
+  const archivedProject = await exportProjectWorkspaceArchive(exportProjectDirectory, result.filePath)
   const savedContent = await readProjectContent(archivedProject.projectDirectory)
   activateProjectDirectory(savedContent, archivedProject.projectDirectory)
   await rememberRecentProject(archivedProject.projectDirectory)

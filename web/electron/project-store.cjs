@@ -104,6 +104,14 @@ async function saveProjectDirectory(projectPath, content, options = {}) {
 
 async function saveProjectDirectoryUnlocked(projectDirectory, content, options = {}) {
   const projectPackage = parseProjectPackageContent(content)
+  let previousFiles = []
+  try {
+    const statePath = await resolveProjectStatePath(projectDirectory)
+    const previousContent = await readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnFlow project state")
+    previousFiles = parseProjectPackageContent(previousContent).files
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error
+  }
 
   await fs.mkdir(projectDirectory, { recursive: true })
   await fs.mkdir(path.join(projectDirectory, projectMetadataDirectory), { recursive: true })
@@ -129,7 +137,7 @@ async function saveProjectDirectoryUnlocked(projectDirectory, content, options =
   await writeProjectManifest(projectDirectory, savedPackage)
   await ensureExportManifest(projectDirectory, savedPackage)
   await writeProjectFileAtomically(path.join(projectDirectory, projectStateFile), savedContent)
-  await pruneUnreferencedSourceFiles(projectDirectory, savedPackage.files)
+  await pruneRemovedSourceFiles(projectDirectory, previousFiles, savedPackage.files)
 
   return {
     filePath: projectDirectory,
@@ -671,13 +679,19 @@ function sourceStoredPathKey(storedPath) {
   return process.platform === "win32" || process.platform === "darwin" ? normalized.toLowerCase() : normalized
 }
 
-async function pruneUnreferencedSourceFiles(projectDirectory, files) {
+async function pruneRemovedSourceFiles(projectDirectory, previousFiles, files) {
   const referenced = new Set(
     (Array.isArray(files) ? files : [])
       .map((file) => file?.storedPath)
       .filter(isSafeStoredSourcePath)
       .map(sourceStoredPathKey),
   )
+  const removed = new Set(previousFiles
+    .map((file) => file?.storedPath)
+    .filter(isSafeStoredSourcePath)
+    .map(sourceStoredPathKey)
+    .filter((storedPath) => !referenced.has(storedPath)))
+  if (removed.size === 0) return
   const sourceRoot = path.join(projectDirectory, sourcesDirectory)
   let dirents
   try {
@@ -689,7 +703,8 @@ async function pruneUnreferencedSourceFiles(projectDirectory, files) {
   await Promise.all(dirents.map(async (dirent) => {
     if (!dirent.isFile()) return
     const storedPath = toProjectPath(path.join(sourcesDirectory, dirent.name))
-    if (referenced.has(sourceStoredPathKey(storedPath))) return
+    // A copied import may not have reached the renderer's first saved snapshot yet.
+    if (!removed.has(sourceStoredPathKey(storedPath))) return
     const sourcePath = path.join(sourceRoot, dirent.name)
     await fs.unlink(sourcePath).then(
       () => invalidateFileHash(sourcePath),
@@ -713,7 +728,7 @@ async function resolveSourcePath(projectDirectory, file, previousProjectDirector
       const stats = await fs.stat(candidate)
       if (stats.isFile()) return candidate
     } catch {
-      // Try the next candidate; preview text is still enough for a degraded copy.
+      // Try the next complete source file.
     }
   }
   return null

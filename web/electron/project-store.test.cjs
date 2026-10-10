@@ -117,6 +117,45 @@ test("source imports wait for an in-flight project save before mutating sources"
   assert.equal(fs.readFileSync(path.join(projectDirectory, result.storedPath), "utf8"), "new source")
 })
 
+test("a stale pending snapshot cannot prune a completed external import", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-import-stale-save-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "study")
+  await saveProjectContent(projectDirectory, projectContent(null))
+  const sourcePath = path.join(tempDirectory, "gas.log")
+  fs.writeFileSync(sourcePath, "complete gas calculation", "utf8")
+  const pendingFile = {
+    id: "gas",
+    name: "gas.log",
+    kind: "Gaussian",
+    size: fs.statSync(sourcePath).size,
+    status: "staged",
+    preview: "",
+    parse: { parsed: false, warnings: [{ code: "parse_deferred" }] },
+  }
+  const imported = await materializeImportSourceFile(projectDirectory, { ...pendingFile, sourcePath }, 0)
+  const storedSourcePath = path.join(projectDirectory, imported.storedPath)
+  assert.equal(fs.readFileSync(storedSourcePath, "utf8"), "complete gas calculation")
+
+  await saveProjectContent(projectDirectory, projectContent(pendingFile))
+  assert.equal(fs.existsSync(storedSourcePath), true, "a pending snapshot deleted the source before receiving its import result")
+
+  const { sourcePath: _sourcePath, ...completedFile } = imported
+  const saved = await saveProjectContent(projectDirectory, projectContent({
+    ...completedFile,
+    status: "parsed",
+    parse: { parsed: true, warnings: [] },
+    parseChecksum: imported.checksum,
+  }))
+  const savedFile = JSON.parse(saved.content).files[0]
+  assert.equal(savedFile.checksum, imported.checksum)
+  assert.equal(savedFile.parseChecksum, imported.checksum)
+  assert.equal(fs.readFileSync(storedSourcePath, "utf8"), "complete gas calculation")
+
+  await saveProjectContent(projectDirectory, projectContent(null))
+  assert.equal(fs.existsSync(storedSourcePath), false, "removing a saved source should still delete its project copy")
+})
+
 test("same-directory project snapshots commit in request order", async (t) => {
   const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-save-order-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))

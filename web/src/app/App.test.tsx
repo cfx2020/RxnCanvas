@@ -3154,6 +3154,137 @@ describe("App", () => {
     expect(screen.queryByRole("progressbar", { name: "Parsing race.log" })).not.toBeInTheDocument()
   })
 
+  it("saves completed bulk imports when their project becomes inactive during parsing", async () => {
+    const pending: PendingDesktopImportJob[] = []
+    const names = ["bulk-a.log", "bulk-b.log", "bulk-c.log"]
+    const chooseFiles = vi.fn().mockResolvedValue({
+      canceled: false,
+      files: names.map((name) => ({ name, size: 128, preview: "", sourcePath: `/external/${name}` })),
+    })
+    const autosaveProjectPackage = vi.fn(async (payload: { content: string }) => ({
+      canceled: false,
+      content: payload.content,
+      validation: null,
+    }))
+    const openSourceFile = vi.fn().mockResolvedValue({ ok: true })
+    installDesktopImportRuntime({
+      chooseFiles,
+      importSourceFiles: vi.fn((payload: any) => new Promise<any>((resolve) => pending.push({ payload, resolve }))),
+      autosaveProjectPackage,
+      openSourceFile,
+      getStartupProjectContent: vi.fn().mockResolvedValue({
+        canceled: false,
+        projectContents: ["b", "a"].map((id, index) => ({
+          content: crossProjectAutosavePackage(`project-${id}`, `Project ${id.toUpperCase()}`, `${id}.log`, `sources/${id}.log`),
+          projectDirectory: `/tmp/project-${id}`,
+          replaceProjects: index === 0,
+          source: "startup",
+          validation: null,
+        })),
+      }),
+    })
+
+    render(<App />)
+    expect(await screen.findByRole("button", { name: "Project A open" })).toHaveAttribute("aria-current", "true")
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+    await waitFor(() => expect(pending).toHaveLength(3))
+    const completeImport = (index: number) => pending[index].resolve(desktopImportResponse(pending[index], {
+      name: names[index],
+      size: 128,
+      storedPath: `sources/${names[index]}`,
+      checksum: `sha256:${String(index + 1).repeat(64)}`,
+      parse: parsedOrcaSource(names[index]),
+    }))
+    await act(async () => completeImport(0))
+    expect(await screen.findByRole("button", { name: fileButtonName(names[0], "ORCA") })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Project B open" }))
+
+    await act(async () => {
+      completeImport(1)
+      completeImport(2)
+    })
+    const savedImports = () => autosaveProjectPackage.mock.calls
+      .map(([payload]) => JSON.parse(payload.content))
+      .find((saved) => saved.project.id === "project-a" && saved.files.some((file: any) => file.name === names[2]))
+      ?.files.filter((file: any) => names.includes(file.name))
+    await waitFor(() => expect(savedImports()).toHaveLength(3), { timeout: 2500 })
+    expect(savedImports()).toEqual(names.map((name, index) => expect.objectContaining({
+      name,
+      storedPath: `sources/${name}`,
+      checksum: `sha256:${String(index + 1).repeat(64)}`,
+      parse: expect.objectContaining({ parsed: true }),
+    })))
+
+    fireEvent.click(screen.getByRole("button", { name: "Project A open" }))
+    fireEvent.click(screen.getByRole("button", { name: fileButtonName(names[2], "ORCA") }))
+    fireEvent.click(screen.getByRole("button", { name: "Open with external app" }))
+    expect(openSourceFile).toHaveBeenLastCalledWith(expect.objectContaining({ storedPath: `sources/${names[2]}` }))
+  })
+
+  it("does not replace a new parse with an older in-flight autosave result", async () => {
+    const firstAutosave = deferred<void>()
+    const laterAutosave = new Promise<never>(() => {})
+    let importCount = 0
+    const autosaveProjectPackage = vi.fn((payload: { content: string }) => (
+      autosaveProjectPackage.mock.calls.length === 1
+        ? firstAutosave.promise.then(() => ({ canceled: false, content: payload.content, validation: null }))
+        : laterAutosave
+    ))
+    installDesktopImportRuntime({
+      chooseFiles: vi.fn().mockResolvedValue({
+        canceled: false,
+        files: [{ name: "replacement.log", size: 128, preview: "", sourcePath: "/external/replacement.log" }],
+      }),
+      importSourceFiles: vi.fn(async (payload: DesktopImportSourceFilesPayload) => {
+        importCount += 1
+        return {
+          ok: true,
+          data: {
+            files: payload.files.map((file) => ({
+              id: file.id,
+              name: file.name,
+              size: 128,
+              preview: "",
+              storedPath: "sources/replacement.log",
+              checksum: `sha256:${String(importCount).repeat(64)}`,
+              parse: parsedGaussianStateSource(importCount === 1 ? "Before replacement" : "After replacement", 1, -importCount),
+            })),
+          },
+        }
+      }),
+      autosaveProjectPackage,
+    })
+
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+    await waitFor(() => expect(autosaveProjectPackage).toHaveBeenCalledTimes(1), { timeout: 2500 })
+    fireEvent.click(screen.getByRole("button", { name: "Import files" }))
+    const inspector = screen.getByRole("complementary", { name: "Inspector" })
+    await waitFor(() => expect(inspector).toHaveTextContent("After replacement"))
+
+    await act(async () => firstAutosave.resolve())
+    expect(inspector).toHaveTextContent("After replacement")
+    expect(inspector).not.toHaveTextContent("Before replacement")
+  })
+
+  it("shows a visible error when a source file cannot be opened", async () => {
+    installDesktopImportRuntime({
+      openSourceFile: vi.fn().mockResolvedValue({ ok: false, error: "Raw source file is not available in the project folder." }),
+      getStartupProjectContent: vi.fn().mockResolvedValue({
+        canceled: false,
+        content: crossProjectAutosavePackage("missing", "Missing source", "missing.log", "sources/missing.log"),
+        projectDirectory: "/tmp/missing-source",
+        replaceProjects: true,
+        source: "startup",
+        validation: null,
+      }),
+    })
+    render(<App />)
+    fireEvent.click(await screen.findByRole("button", { name: fileButtonName("missing.log", "Gaussian") }))
+    fireEvent.click(screen.getByRole("button", { name: "Open with external app" }))
+    expect(await screen.findByRole("alert", { name: "Project validation" })).toHaveTextContent("Raw source file is not available")
+  })
+
   it("routes delayed autosave metadata back to the project that started the request", async () => {
     const projectAAutosave = deferred<void>()
     const backgroundAutosave = new Promise<never>(() => {})

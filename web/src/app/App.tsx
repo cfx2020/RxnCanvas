@@ -1172,25 +1172,6 @@ export function App() {
     applyProjectTransitionState(appStateSetters, reconciledTransition, clearEditHistory)
   }, [appStateSetters, clearEditHistory, projects])
 
-  const saveProjectWorkspace = useCallback((projectId: string, snapshot: ProjectWorkspaceSnapshot) => {
-    const reconciledSnapshot = reconcileProjectWorkspaceSourceNodes(snapshot)
-    setProjectWorkspaces((current) => {
-      if (!Object.prototype.hasOwnProperty.call(current, projectId)) return current
-      const next = { ...current, [projectId]: reconciledSnapshot }
-      const latestState = projectRestoreStateRef.current
-      if (latestState) {
-        projectRestoreStateRef.current = {
-          ...latestState,
-          workspaces: next,
-          activeSnapshot: latestState.activeProjectId === projectId
-            ? reconciledSnapshot
-            : latestState.activeSnapshot,
-        }
-      }
-      return next
-    })
-  }, [])
-
   const applyDeferredProjectWorkspace = useCallback((
     projectId: string,
     prepared: PreparedProjectWorkspaceImport,
@@ -1200,10 +1181,17 @@ export function App() {
     const latestSnapshot = latestState?.activeProjectId === projectId
       ? latestState.activeSnapshot
       : latestState?.workspaces[projectId]
-    if (!latestSnapshot) return
+    if (!latestState || !latestSnapshot) return
     const rebasedPrepared = rebasePreparedProjectWorkspaceImport(prepared, latestSnapshot, options)
     if (activeProjectIdRef.current !== projectId) {
-      saveProjectWorkspace(projectId, rebasedPrepared.snapshot)
+      const snapshot = reconcileProjectWorkspaceSourceNodes(rebasedPrepared.snapshot)
+      projectRestoreStateRef.current = {
+        ...latestState,
+        workspaces: { ...latestState.workspaces, [projectId]: snapshot },
+      }
+      setProjectWorkspaces((current) => Object.prototype.hasOwnProperty.call(current, projectId)
+        ? { ...current, [projectId]: snapshot }
+        : current)
       return
     }
     const transition = projectWorkspaceImportApplyTransition(rebasedPrepared)
@@ -1222,7 +1210,7 @@ export function App() {
       snapshot: transition.snapshot,
       keyboardEdgeSourceId: transition.keyboardEdgeSourceId,
     })
-  }, [appStateSetters, pushEditHistory, saveProjectWorkspace])
+  }, [appStateSetters, pushEditHistory])
 
   const switchCanvasTab = useCallback((tabId: string) => {
     const currentSnapshot = currentCanvasTabSnapshot()
@@ -2702,8 +2690,22 @@ export function App() {
 
   const runAutosaveProject = useCallback(async (requestedInput?: ProjectAutosaveInput) => {
     const desktopApi = window.rxnflowDesktop
-    const input = requestedInput ?? autosaveInputRef.current
-    if (!desktopApi?.autosaveProjectPackage || !input) return
+    const requested = requestedInput ?? autosaveInputRef.current
+    if (!desktopApi?.autosaveProjectPackage || !requested) return
+
+    const latestState = projectRestoreStateRef.current
+    const project = latestState?.projects.find((item) => item.id === requested.project.id)
+    const snapshot = latestState?.activeProjectId === requested.project.id
+      ? latestState.activeSnapshot
+      : latestState?.workspaces[requested.project.id]
+    if (!project || !snapshot) return
+    const input: ProjectAutosaveInput = {
+      ...requested,
+      project,
+      files: snapshot.files,
+      canvases: snapshot.canvases,
+      activeCanvasId: snapshot.activeCanvasId,
+    }
 
     const autosaveKey = projectAutosaveKey(input)
     const lifecycleGeneration = input.lifecycleGeneration
@@ -2743,12 +2745,12 @@ export function App() {
         if (responseValidation !== undefined) setProjectValidation(responseValidation)
       }
       if (result?.content && activeProjectIdRef.current === input.project.id) {
-        setFiles((current) => sourceFilesWithAutosavedMetadata(current, result.content ?? ""))
+        setFiles((current) => sourceFilesWithAutosavedMetadata(current, result.content ?? "", input.files))
       } else if (result?.content) {
         setProjectWorkspaces((current) => {
           const workspace = current[input.project.id]
           if (!workspace) return current
-          const nextFiles = sourceFilesWithAutosavedMetadata(workspace.files, result.content ?? "")
+          const nextFiles = sourceFilesWithAutosavedMetadata(workspace.files, result.content ?? "", input.files)
           if (nextFiles === workspace.files) return current
           return {
             ...current,
@@ -2988,22 +2990,25 @@ export function App() {
   const openSourceFileInSystemApp = useCallback(async (fileId: string) => {
     const file = files.find((item) => item.id === fileId)
     if (!file) return
-    const result = await window.rxnflowDesktop?.openSourceFile?.({
-      projectId: activeProjectId,
-      storedPath: file.storedPath,
-      sourcePath: file.sourcePath,
-      name: file.name,
-      sourceKind: file.parse?.sourceKind ?? file.kind,
-      parserId: file.parse?.parserId,
-    })
-    if (result && !result.ok && !result.canceled) {
+    try {
+      const result = await window.rxnflowDesktop?.openSourceFile?.({
+        projectId: activeProjectId,
+        storedPath: file.storedPath,
+        sourcePath: file.sourcePath,
+        name: file.name,
+        sourceKind: file.parse?.sourceKind ?? file.kind,
+        parserId: file.parse?.parserId,
+      })
+      if (!result || result.ok || result.canceled) return
+      throw new Error(result.error || "Could not open the raw source file.")
+    } catch (error) {
       setProjectValidation({
-        valid: true,
+        valid: false,
         summary: {},
         issues: [{
-          severity: "warning",
+          severity: "error",
           code: "source_open_failed",
-          message: result.error || "Could not open the raw source file.",
+          message: `${file.name}: ${error instanceof Error ? error.message : "Could not open the raw source file."}`,
         }],
       })
     }
@@ -3969,70 +3974,29 @@ function desktopImportParseRejectionWarning(file: ImportSourceFile): { code: str
   return undefined
 }
 
-function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: string): SourceFile[] {
+function sourceFilesWithAutosavedMetadata(files: SourceFile[], savedContent: string, submittedFiles: SourceFile[]): SourceFile[] {
   const savedPackage = parseProjectPackage(savedContent)
   if (!savedPackage) return files
   const savedFiles = new Map(savedPackage.files.map((file) => [file.id, file]))
+  const submittedById = new Map(submittedFiles.map((file) => [file.id, file]))
   let changed = false
   const nextFiles = files.map((file) => {
     const savedFile = savedFiles.get(file.id)
-    if (!savedFile) return file
-    const parse = preferredAutosavedSourceParse(file, savedFile)
-    const status = parse === savedFile.parse && parse !== file.parse
-      ? savedFile.status
-      : file.status
-    const parseChecksum = parse === savedFile.parse && parse !== file.parse
-      ? savedFile.parseChecksum
-      : file.parseChecksum ?? file.checksum
+    const submittedFile = submittedById.get(file.id)
+    if (!savedFile || !submittedFile || !sourceFileMetadataMatches(file, submittedFile)) return file
     const nextFile: SourceFile = {
       ...file,
       size: savedFile.size,
-      status,
       preview: savedFile.preview,
       storedPath: savedFile.storedPath,
       checksum: savedFile.checksum,
-      parseChecksum,
+      parseChecksum: file.parseChecksum ?? savedFile.parseChecksum,
       sourcePath: savedFile.sourcePath,
-      parse,
     }
     if (!sourceFileMetadataMatches(file, nextFile)) changed = true
     return nextFile
   })
   return changed ? nextFiles : files
-}
-
-function preferredAutosavedSourceParse(
-  currentFile: SourceFile,
-  savedFile: SourceFile,
-): SourceParseResult | undefined {
-  const currentParse = currentFile.parse
-  const savedParse = savedFile.parse
-  if (!savedParse) return currentParse
-  if (!currentParse) return savedParse
-  if (savedFile.parseChecksum && savedFile.parseChecksum === savedFile.checksum
-    && currentFile.parseChecksum !== savedFile.checksum) {
-    return savedParse
-  }
-  const currentRank = sourceParseResolutionRank(currentParse)
-  const savedRank = sourceParseResolutionRank(savedParse)
-  return savedRank > currentRank ? savedParse : currentParse
-}
-
-function sourceParseResolutionRank(parse: SourceParseResult): number {
-  if (sourceParseHasPendingDesktopJob(parse)) return 1
-  if (!parse.parsed) return 2
-  const hasResolvedObjects = parse.objectCount > 0
-    || parse.candidates.length > 0
-    || Boolean(parse.coordinatePreview)
-  return hasResolvedObjects ? 4 : 3
-}
-
-function sourceParseHasPendingDesktopJob(parse: SourceParseResult): boolean {
-  return parse.warnings.some((warning) => (
-    warning.code === "parse_deferred"
-    || warning.code === "parse_queued"
-    || warning.code === "parse_running"
-  ))
 }
 
 function sourceFileMetadataMatches(left: SourceFile, right: SourceFile): boolean {

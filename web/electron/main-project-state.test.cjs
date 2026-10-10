@@ -1,9 +1,11 @@
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
+const os = require("node:os")
 const path = require("node:path")
 const test = require("node:test")
 
 const { recordRecentProjectState } = require("./recent-projects.cjs")
+const { exportProjectWorkspaceArchive, importProjectWorkspaceArchive, materializeImportSourceFile, readProjectContent, saveProjectContent } = require("./project-store.cjs")
 
 const mainPath = path.join(__dirname, "main.cjs")
 const mainSource = fs.readFileSync(mainPath, "utf8")
@@ -17,6 +19,75 @@ function handlerSource(channel, nextChannel) {
   assert.notEqual(end, -1, `${nextChannel} handler missing`)
   return mainSource.slice(start, end)
 }
+
+test("confirming archive export preserves imports completed while its dialog was open", async (t) => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-export-during-import-"))
+  t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
+  const projectDirectory = path.join(tempDirectory, "study")
+  const sourcePath = path.join(tempDirectory, "gas.log")
+  fs.writeFileSync(sourcePath, "complete calculation", "utf8")
+  const pendingFile = {
+    id: "gas",
+    name: "gas.log",
+    kind: "Gaussian",
+    status: "staged",
+    size: fs.statSync(sourcePath).size,
+    preview: "",
+    parse: { parsed: false, warnings: [{ code: "parse_deferred" }] },
+  }
+  const pendingPackage = {
+    schemaVersion: 2,
+    packageKind: "rxnflow-project",
+    project: { id: "study", label: "Study" },
+    files: [pendingFile],
+    canvases: [],
+    activeCanvasId: "canvas-1",
+  }
+  const pendingContent = JSON.stringify(pendingPackage)
+  await saveProjectContent(projectDirectory, pendingContent)
+  let confirmDialog
+  let dialogOpened
+  const opened = new Promise((resolve) => { dialogOpened = resolve })
+  const confirmation = new Promise((resolve) => { confirmDialog = resolve })
+  let exportHandler
+  const dependencies = {
+    ipcMain: { handle: (_channel, handler) => { exportHandler = handler } },
+    dialog: { showSaveDialog: () => { dialogOpened(); return confirmation } },
+    archiveDefaultPath: (name) => name,
+    projectIdentityFromContent: (content) => JSON.parse(content).project,
+    projectDirectoryForIdentity: () => projectDirectory,
+    saveProjectContent,
+    exportProjectWorkspaceArchive,
+    readProjectContent,
+    activateProjectDirectory: () => {},
+    rememberRecentProject: async () => {},
+    validateProjectPackageContent: async () => ({ valid: true, issues: [] }),
+  }
+  new Function(...Object.keys(dependencies), handlerSource(
+    "rxnflow:save-project-package",
+    "rxnflow:autosave-project-package",
+  ))(...Object.values(dependencies))
+
+  const exporting = exportHandler({}, { content: pendingContent, defaultName: "study.rxnflow.zip" })
+  await opened
+  const { sourcePath: _sourcePath, ...materialized } = await materializeImportSourceFile(projectDirectory, { ...pendingFile, sourcePath }, 0)
+  const completedContent = JSON.stringify({
+    ...pendingPackage,
+    files: [{ ...materialized, status: "parsed", parse: { parsed: true, warnings: [] }, parseChecksum: materialized.checksum }],
+  })
+  await saveProjectContent(projectDirectory, completedContent)
+  const archivePath = path.join(tempDirectory, "study.rxnflow.zip")
+  confirmDialog({ canceled: false, filePath: archivePath })
+  await exporting
+
+  const saved = JSON.parse(await readProjectContent(projectDirectory))
+  assert.equal(saved.files[0].parse.parsed, true, "export overwrote the completed import with its pre-dialog snapshot")
+  assert.equal(fs.readFileSync(path.join(projectDirectory, materialized.storedPath), "utf8"), "complete calculation")
+  const restored = await importProjectWorkspaceArchive(archivePath, path.join(tempDirectory, "restored"))
+  const archived = JSON.parse(await readProjectContent(restored.projectDirectory))
+  assert.equal(archived.files[0].parse.parsed, true)
+  assert.equal(fs.readFileSync(path.join(restored.projectDirectory, materialized.storedPath), "utf8"), "complete calculation")
+})
 
 test("autosave records its project without changing the active project", () => {
   const autosaveBody = handlerSource(
