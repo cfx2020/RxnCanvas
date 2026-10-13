@@ -4282,7 +4282,7 @@ select,
   background-image: none !important;
   backdrop-filter: blur(22px) !important;
   transform: var(--rxnflow-toolbar-transform, translateX(-50%)) !important;
-  justify-content: center !important;
+  justify-content: flex-start !important;
   flex-wrap: nowrap !important;
   overflow-x: auto !important;
   overflow-y: hidden !important;
@@ -4323,6 +4323,7 @@ select,
 
 .floating-toolbar.layout-horizontal {
   flex-direction: row !important;
+  scroll-padding-inline: 42px 8px;
 }
 
 .floating-toolbar.layout-vertical {
@@ -6601,7 +6602,8 @@ input:focus-visible,
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
 }
 
-.theme-dark .canvas-context-menu button {
+.theme-dark .canvas-context-menu button,
+.theme-dark .canvas-context-menu-field {
   color: #d8e8f4;
 }
 
@@ -7510,10 +7512,6 @@ input:focus-visible,
   box-shadow: 0 0 0 1px rgba(50, 79, 86, 0.08), 0 12px 32px rgba(47, 135, 116, 0.16) !important;
 }
 
-.reaction-node.node-transition.is-selected {
-  box-shadow: 0 0 0 1px rgba(111, 62, 56, 0.08), 0 12px 32px rgba(185, 91, 78, 0.2) !important;
-}
-
 .reaction-node .node-title-button,
 .reaction-node .node-title-input {
   max-width: calc(100% - 46px) !important;
@@ -7649,8 +7647,9 @@ input:focus-visible,
   align-items: center;
   gap: 12px;
   padding: 5px 10px;
-  color: var(--text-muted, #62747b);
+  color: #40566b;
   font-size: var(--rxn-font-ui);
+  font-weight: 820;
 }
 
 .canvas-context-menu-field input {
@@ -10354,10 +10353,10 @@ input:focus-visible,
   box-shadow: 0 0 0 2px rgba(49, 159, 134, 0.15), 0 12px 34px rgba(32, 85, 72, 0.14) !important;
 }
 
-.reaction-node.node-transition { --node-role: #c15c50; }
-.reaction-node.node-intermediate { --node-role: #5578a7; }
-.reaction-node.node-reactant { --node-role: #6c7f88; }
-.reaction-node.node-product { --node-role: #2c8a73; }
+.reaction-node.node-transition { --node-role: #607d9c; }
+.reaction-node.node-intermediate,
+.reaction-node.node-reactant,
+.reaction-node.node-product { --node-role: #718087; }
 
 .reaction-node .node-structure-preview,
 .reaction-node .node-structure-preview-shell,
@@ -10753,8 +10752,8 @@ input:focus-visible,
 .app-shell .reaction-node {
   --node-ink: #20343a;
   --node-muted: #64777d;
-  --node-accent: #279a80;
-  --node-shadow-rgb: 43, 132, 113;
+  --node-accent: var(--rxn-accent);
+  --node-shadow-rgb: 32, 56, 62;
   position: absolute;
   isolation: isolate;
   overflow: visible !important;
@@ -10772,10 +10771,6 @@ input:focus-visible,
     border-color 180ms ease,
     background 180ms ease,
     box-shadow 220ms cubic-bezier(.22, 1, .36, 1) !important;
-}
-
-.app-shell .reaction-node.node-transition {
-  --node-shadow-rgb: 184, 86, 72;
 }
 
 .app-shell .reaction-node::before {
@@ -10815,14 +10810,11 @@ input:focus-visible,
     inset 0 -1px 0 rgba(78, 105, 111, 0.07) !important;
 }
 
-.app-shell .reaction-node.is-selected,
-.app-shell .reaction-node.node-transition.is-selected {
-  border-color: rgba(71, 102, 108, 0.2) !important;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.8), rgba(236, 249, 246, 0.56)) !important;
+.app-shell .reaction-node.is-selected {
+  border-color: var(--node-accent) !important;
   box-shadow:
-    0 20px 52px rgba(var(--node-shadow-rgb), 0.2),
-    0 0 0 6px rgba(var(--node-shadow-rgb), 0.045),
+    0 0 0 2px var(--rxn-focus),
+    0 16px 40px rgba(var(--node-shadow-rgb), 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.98),
     inset 0 -1px 0 rgba(78, 105, 111, 0.07) !important;
 }
@@ -10879,13 +10871,18 @@ input:focus-visible,
   z-index: 6 !important;
 }
 
+.app-shell .reaction-node .node-header-main {
+  max-width: none !important;
+  padding-right: 0 !important;
+}
+
 .app-shell .reaction-node .node-title-button,
 .app-shell .reaction-node .node-title-input {
   max-width: 100% !important;
   color: var(--node-ink) !important;
   font-size: var(--rxn-font-body) !important;
   font-weight: 760 !important;
-  letter-spacing: -0.015em !important;
+  letter-spacing: 0 !important;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.72), 0 0 10px rgba(255, 255, 255, 0.72);
 }
 
@@ -11052,6 +11049,15 @@ input:focus-visible,
     inset 0 -1px 0 rgba(0, 0, 0, 0.16) !important;
 }
 
+.app-shell.theme-dark .reaction-node.is-selected {
+  border-color: var(--node-accent) !important;
+  box-shadow:
+    0 0 0 2px var(--rxn-focus),
+    0 16px 40px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.16) !important;
+}
+
 .app-shell.theme-dark .reaction-node::before {
   background:
     radial-gradient(ellipse at 22% 5%, rgba(255, 255, 255, 0.08), transparent 40%),
@@ -11066,11 +11072,41 @@ input:focus-visible,
   text-shadow: 0 1px 8px rgba(7, 16, 18, 0.72) !important;
 }
 
+.app-shell.theme-dark .reaction-node .node-structure-preview-art svg line {
+  stroke: var(--rxn-ink-muted);
+}
+
 .app-shell.theme-dark .reaction-node .node-structure-fullscreen,
 .app-shell.theme-dark .reaction-node .node-connector {
   border-color: rgba(176, 207, 203, 0.12) !important;
   background: rgba(29, 47, 49, 0.72) !important;
   color: #bed0d0 !important;
+}
+
+/* Node kinds use quiet surface tints so the graph reads by role without
+   adding labels or decorative edge markers. */
+.app-shell .reaction-node.node-transition {
+  --node-role: #607d9c;
+  background: linear-gradient(145deg, rgba(240, 246, 252, 0.97), rgba(218, 231, 244, 0.91)) !important;
+}
+
+.app-shell .reaction-node.node-intermediate,
+.app-shell .reaction-node.node-reactant,
+.app-shell .reaction-node.node-product {
+  --node-role: #718087;
+  background: linear-gradient(145deg, rgba(248, 250, 250, 0.97), rgba(228, 235, 237, 0.9)) !important;
+}
+
+.app-shell.theme-dark .reaction-node.node-transition {
+  --node-role: #abc2dc;
+  background: linear-gradient(145deg, rgba(42, 56, 73, 0.96), rgba(29, 41, 57, 0.92)) !important;
+}
+
+.app-shell.theme-dark .reaction-node.node-intermediate,
+.app-shell.theme-dark .reaction-node.node-reactant,
+.app-shell.theme-dark .reaction-node.node-product {
+  --node-role: #b5c2c5;
+  background: linear-gradient(145deg, rgba(47, 57, 61, 0.95), rgba(29, 38, 42, 0.91)) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -367,6 +367,26 @@ function errorTerminatedGaussianSource(
 }
 
 describe("App", () => {
+  it("keeps registered node kinds independent of filenames and selection", () => {
+    render(<App />)
+    const cases = [
+      ["Node TS1 (Endo)", "node-transition"],
+      ["Node 1,3-Butadiene", "node-reactant"],
+      ["Node Endo Adduct", "node-product"],
+    ]
+    for (const [name, kindClass] of cases) {
+      const node = screen.getByRole("button", { name })
+      expect(node).toHaveClass(kindClass)
+    }
+    const node = screen.getByRole("button", { name: "Node TS1 (Endo)" })
+    fireEvent.contextMenu(node, { clientX: 500, clientY: 320 })
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }))
+    const input = screen.getByRole("textbox", { name: "Rename TS1 (Endo)" })
+    fireEvent.change(input, { target: { value: "anonymous" } })
+    fireEvent.blur(input)
+    expect(screen.getByRole("button", { name: "Node anonymous" })).toHaveClass("node-transition")
+  })
+
   beforeEach(() => {
     vi.mocked(parseBrowserSourceFile).mockReset().mockImplementation(async (file) => {
       const label = file.name.replace(/\.[^.]+$/, "")
@@ -1794,18 +1814,6 @@ describe("App", () => {
     expect(within(tsNode).queryByRole("button", { name: "Show structure preview for TS1 (Endo)" })).not.toBeInTheDocument()
   })
 
-  it("opens source details from the node context menu", () => {
-    render(<App />)
-
-    const tsNode = screen.getByRole("button", { name: "Node TS1 (Endo)" })
-    fireEvent.contextMenu(tsNode, { clientX: 680, clientY: 240 })
-    fireEvent.click(screen.getByRole("menuitem", { name: "Source details" }))
-
-    const inspector = screen.getByRole("complementary", { name: "Inspector" })
-    expect(screen.getByRole("region", { name: "Source inspector" })).toHaveTextContent("gaussian.log")
-    expect(screen.getByRole("button", { name: "Open with external app" })).toBeInTheDocument()
-  })
-
   it("keeps reaction path semantics out of canvas context menus", () => {
     render(<App />)
 
@@ -1985,6 +1993,8 @@ describe("App", () => {
     const node = screen.getByRole("button", { name: "Node TS1 (Endo)" })
     expect(node).not.toHaveTextContent("1x")
     fireEvent.contextMenu(node, { clientX: 500, clientY: 320 })
+    const menu = screen.getByRole("menu", { name: "Node context menu" })
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Rename", "Set zero", "Delete"])
     const coefficientInput = screen.getByLabelText("Node coefficient")
     fireEvent.change(coefficientInput, { target: { value: "2" } })
     fireEvent.blur(coefficientInput)

@@ -86,6 +86,7 @@ describe("CanvasWorkspace", () => {
     )
 
     const open3D = screen.getByRole("button", { name: "Open 3D Structure for Preload node" })
+    expect(screen.getByRole("button", { name: "Node Preload node" })).toHaveClass("node-intermediate")
     fireEvent.mouseEnter(open3D)
     expect(heavyEditorPreloadMocks.preload3Dmol).toHaveBeenCalledTimes(1)
 

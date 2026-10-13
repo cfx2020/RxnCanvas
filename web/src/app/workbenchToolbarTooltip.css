@@ -1,0 +1,16 @@
+.workbench-toolbar-tooltip {
+  position: fixed;
+  z-index: var(--rxn-z-drag-tooltip);
+  max-width: min(240px, calc(100vw - 16px));
+  border: 1px solid var(--rxn-line-strong);
+  border-radius: var(--rxn-radius-control);
+  padding: 7px 10px;
+  background: var(--rxn-surface-solid);
+  color: var(--rxn-ink);
+  box-shadow: var(--rxn-shadow-sm);
+  font: var(--rxn-weight-medium) var(--rxn-font-ui)/1.4 var(--font-ui);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+}

@@ -3207,12 +3207,6 @@ export function App() {
     setCanvasContextMenu(null)
   }, [contextMenuNodeId, setRelativeEnergyZeroFromNode])
 
-  const showSourceFromContextMenuNode = useCallback(() => {
-    if (!contextMenuNodeId) return
-    showNodeSourceDetails(contextMenuNodeId)
-    setCanvasContextMenu(null)
-  }, [contextMenuNodeId, showNodeSourceDetails])
-
   const handleCanvasKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     handleCanvasKeyboardEvent(event, hasCanvasSelection, {
       undoEdit,
@@ -3519,7 +3513,6 @@ export function App() {
                 />
               </label>
               <button type="button" role="menuitem" onClick={setZeroFromContextMenuNode}>Set zero</button>
-              <button type="button" role="menuitem" onClick={showSourceFromContextMenuNode}>Source details</button>
               <span className="canvas-context-menu-divider" aria-hidden="true" />
             </>
           ) : null}

@@ -1,4 +1,4 @@
-import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type Ref } from "react"
+import { memo, useCallback, useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type Ref, type SyntheticEvent } from "react"
 import {
   GripVertical,
   Hand,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import type { EnergyDisplayOptions } from "./energyDisplay"
 import type { ToolbarPlacement } from "./toolbarPlacement"
+import { WorkbenchToolbarTooltip } from "./WorkbenchToolbarTooltip"
 
 type ViewMode = "canvas" | "table"
 type CanvasTool = "select" | "pan" | "text"
@@ -56,22 +57,38 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
 }) {
   const layout = placement.mode === "floating" ? "horizontal" : "vertical"
   const docked = placement.mode !== "floating"
+  const [tooltipTarget, setTooltipTarget] = useState<HTMLElement | null>(null)
+  const dismissTooltip = useCallback(() => setTooltipTarget(null), [])
+  const showTooltip = (event: SyntheticEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target.closest<HTMLElement>("button, select") : null
+    setTooltipTarget(target && event.currentTarget.contains(target) ? target : null)
+  }
+
+  useEffect(dismissTooltip, [dismissTooltip, tool, viewMode, placement.mode])
 
   return (
-    <div
-      ref={toolbarRef}
-      className={`floating-toolbar layout-${layout}${docked ? ` is-docked dock-${placement.mode}` : ""}`}
-      data-layout={layout}
-      data-placement={placement.mode}
-      style={style}
-      role="toolbar"
-      aria-label="Canvas commands"
-    >
+    <>
+      <div
+        ref={toolbarRef}
+        className={`floating-toolbar layout-${layout}${docked ? ` is-docked dock-${placement.mode}` : ""}`}
+        data-layout={layout}
+        data-placement={placement.mode}
+        style={style}
+        role="toolbar"
+        aria-label="Canvas commands"
+        onPointerOver={(event) => {
+          if (event.pointerType !== "touch") showTooltip(event)
+        }}
+        onPointerLeave={dismissTooltip}
+        onPointerDownCapture={dismissTooltip}
+        onClickCapture={dismissTooltip}
+        onFocusCapture={showTooltip}
+        onBlurCapture={dismissTooltip}
+      >
         <button
           type="button"
           className="toolbar-drag-handle"
           aria-label={docked ? "Drag toolbar away from edge" : "Move toolbar"}
-          title={docked ? "Drag away from edge" : "Move toolbar"}
           onPointerDown={onDragStart}
         >
           <GripVertical size={16} />
@@ -81,6 +98,7 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
             <span className="visually-hidden">Energy</span>
             <select
               aria-label="Energy"
+              data-tooltip={energyDisplayOptions.energySource === "gas" ? "Gas-phase electronic energy" : "Solution free energy"}
               value={energyDisplayOptions.energySource}
               onChange={(event) => onEnergyDisplayOptionsChange({
                 ...energyDisplayOptions,
@@ -98,7 +116,7 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
           className={viewMode === "table" ? "toolbar-table-toggle is-active" : "toolbar-table-toggle"}
           aria-pressed={viewMode === "table"}
           aria-label="Table view"
-          title={viewMode === "table" ? "Close Table (T)" : "Open Table (T)"}
+          data-tooltip={viewMode === "table" ? "Close energy table" : "Open energy table"}
           aria-keyshortcuts="T"
           onClick={() => onSetViewMode(viewMode === "table" ? "canvas" : "table")}
         >
@@ -110,7 +128,6 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
           className={tool === "select" ? "is-active" : ""}
           aria-pressed={tool === "select"}
           aria-label="Select tool"
-          title="Select Tool (V)"
           aria-keyshortcuts="V"
           onClick={() => onSetTool("select")}
         >
@@ -121,7 +138,6 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
           className={tool === "pan" ? "is-active" : ""}
           aria-pressed={tool === "pan"}
           aria-label="Pan tool"
-          title="Pan Tool (H)"
           aria-keyshortcuts="H"
           onClick={() => onSetTool("pan")}
         >
@@ -132,7 +148,6 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
           className={tool === "text" ? "is-active" : ""}
           aria-pressed={tool === "text"}
           aria-label="Text tool"
-          title="Text Tool (X)"
           aria-keyshortcuts="X"
           onClick={() => onSetTool("text")}
         >
@@ -141,25 +156,26 @@ export const WorkbenchToolbar = memo(function WorkbenchToolbar({
         <button
           type="button"
           aria-label="Insert image"
-          title="Insert Image (I)"
           aria-keyshortcuts="I"
           onClick={onInsertImage}
         >
           <ImagePlus size={18} />
         </button>
         <div className="toolbar-divider" />
-        <button type="button" aria-label="Undo canvas edit" title="Undo (⌘Z)" aria-keyshortcuts="Meta+Z Control+Z" onClick={onUndo} disabled={!canUndo}>
+        <button type="button" aria-label="Undo canvas edit" aria-keyshortcuts="Meta+Z Control+Z" onClick={onUndo} disabled={!canUndo}>
           <Undo2 size={18} />
         </button>
-        <button type="button" aria-label="Redo canvas edit" title="Redo (⇧⌘Z)" aria-keyshortcuts="Meta+Shift+Z Control+Y" onClick={onRedo} disabled={!canRedo}>
+        <button type="button" aria-label="Redo canvas edit" aria-keyshortcuts="Meta+Shift+Z Control+Y" onClick={onRedo} disabled={!canRedo}>
           <Redo2 size={18} />
         </button>
-        <button type="button" aria-label="Auto layout" title="Auto Layout (A)" aria-keyshortcuts="A" onClick={onAutoLayout}>
+        <button type="button" aria-label="Auto layout" aria-keyshortcuts="A" onClick={onAutoLayout}>
           <LayoutDashboard size={18} />
         </button>
-        <button type="button" aria-label="Fit view" title="Fit View (F)" aria-keyshortcuts="F" onClick={onFitView}>
+        <button type="button" aria-label="Fit view" aria-keyshortcuts="F" onClick={onFitView}>
           <Maximize2 size={18} />
         </button>
-    </div>
+      </div>
+      {tooltipTarget ? <WorkbenchToolbarTooltip target={tooltipTarget} placement={placement.mode} onDismiss={dismissTooltip} /> : null}
+    </>
   )
 })
