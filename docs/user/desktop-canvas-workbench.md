@@ -7,9 +7,9 @@ tags: [desktop, canvas, local-first]
 last_reviewed: 2026-10-02
 ---
 
-# 使用 RxnFlow 工作台
+# 使用 RxnCanvas 工作台
 
-RxnFlow 用于把已有计算输出整理成反应图谱和报告。
+RxnCanvas 用于把已有计算输出整理成反应图谱和报告。
 
 ## 项目与文件
 
@@ -41,9 +41,9 @@ Settings 可指定 Gaussian 文件与其他文本 source 的外部打开应用�
 
 ## 保存、分享与报告
 
-桌面工作区包含 `.rxnflow/project.json`、`.rxnflow/manifest.json`、`sources/` 和 `exports/`。项目状态、来源和导出物随工作区保存。
+桌面工作区包含 `.rxncanvas/project.json`、`.rxncanvas/manifest.json`、`sources/` 和 `exports/`。项目状态、来源和导出物随工作区保存。
 
-导出项目 ZIP 可用于分享或换机；打开 `.rxnflow.zip` 会在压缩包旁创建新的工作区并恢复内容。导入前后可核对文件、画布和能量；遇到缺失文件或校验警告时先检查来源。
+导出项目 ZIP 可用于分享或换机；打开 `.rxncanvas.zip` 会在压缩包旁创建新的工作区并恢复内容。导入前后可核对文件、画布和能量；遇到缺失文件或校验警告时先检查来源。
 
 报告支持 PNG、CDXML 和 XLSX。PNG/CDXML 表达反应能量图；XLSX 包含绝对/相对能量表、导入文件和元数据。桌面项目导出会记录保存位置和 exports 清单，CDXML 可在 ChemDraw 中继续编辑。
 

@@ -25,7 +25,7 @@ describe("workbench layout preferences", () => {
   })
 
   it("falls back safely for malformed state", () => {
-    window.localStorage.setItem("rxnflow-workbench-layout-v1", "not-json")
+    window.localStorage.setItem("rxncanvas-workbench-layout-v1", "not-json")
     expect(loadWorkbenchLayoutPreference()).toEqual(defaultWorkbenchLayoutPreference)
   })
 })

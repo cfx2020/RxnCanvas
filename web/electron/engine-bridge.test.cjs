@@ -7,8 +7,8 @@ const test = require("node:test")
 const { materializeEngineExecutable, runEngineRequest, shutdownEngineWorkers } = require("./engine-bridge.cjs")
 
 test("materialized packaged engine remains stable when its source is replaced", (t) => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-engine-materialized-"))
-  const sourcePath = path.join(tempDir, "source", "rxnflow-engine")
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-engine-materialized-"))
+  const sourcePath = path.join(tempDir, "source", "rxncanvas-engine")
   const runtimeDirectory = path.join(tempDir, "runtime")
   fs.mkdirSync(path.dirname(sourcePath), { recursive: true })
   fs.writeFileSync(sourcePath, "engine-before-rebuild", "utf8")
@@ -24,9 +24,9 @@ test("materialized packaged engine remains stable when its source is replaced", 
 })
 
 test("engine worker pool reuses processes, recovers, and shuts down", async (t) => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-engine-pool-"))
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-engine-pool-"))
   const fakeEnginePath = path.join(tempDir, "fake-engine.cjs")
-  const previousCommand = process.env.RXNFLOW_ENGINE_COMMAND
+  const previousCommand = process.env.RXNCANVAS_ENGINE_COMMAND
   fs.writeFileSync(fakeEnginePath, `
 const fs = require("node:fs")
 const readline = require("node:readline")
@@ -44,14 +44,14 @@ input.on("line", (line) => {
   setTimeout(respond, request.delayMs || 0)
 })
 `, "utf8")
-  process.env.RXNFLOW_ENGINE_COMMAND = `${process.execPath} ${fakeEnginePath}`
+  process.env.RXNCANVAS_ENGINE_COMMAND = `${process.execPath} ${fakeEnginePath}`
 
   t.after(async () => {
     await shutdownEngineWorkers()
     if (previousCommand === undefined) {
-      delete process.env.RXNFLOW_ENGINE_COMMAND
+      delete process.env.RXNCANVAS_ENGINE_COMMAND
     } else {
-      process.env.RXNFLOW_ENGINE_COMMAND = previousCommand
+      process.env.RXNCANVAS_ENGINE_COMMAND = previousCommand
     }
     fs.rmSync(tempDir, { recursive: true, force: true })
   })
@@ -113,14 +113,14 @@ input.on("line", (line) => {
 })
 
 test("engine worker pool preserves engine_unavailable", async (t) => {
-  const previousCommand = process.env.RXNFLOW_ENGINE_COMMAND
-  process.env.RXNFLOW_ENGINE_COMMAND = path.join(os.tmpdir(), `rxnflow-missing-engine-${process.pid}`)
+  const previousCommand = process.env.RXNCANVAS_ENGINE_COMMAND
+  process.env.RXNCANVAS_ENGINE_COMMAND = path.join(os.tmpdir(), `rxncanvas-missing-engine-${process.pid}`)
   t.after(async () => {
     await shutdownEngineWorkers()
     if (previousCommand === undefined) {
-      delete process.env.RXNFLOW_ENGINE_COMMAND
+      delete process.env.RXNCANVAS_ENGINE_COMMAND
     } else {
-      process.env.RXNFLOW_ENGINE_COMMAND = previousCommand
+      process.env.RXNCANVAS_ENGINE_COMMAND = previousCommand
     }
   })
 

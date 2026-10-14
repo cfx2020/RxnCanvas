@@ -6,7 +6,7 @@ const { execFileSync } = require("node:child_process")
 const projectRoot = path.join(__dirname, "..")
 const packageJsonPath = path.join(projectRoot, "package.json")
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"))
-const pythonVersionPath = path.join(projectRoot, "..", "rxnflow", "version.py")
+const pythonVersionPath = path.join(projectRoot, "..", "rxncanvas", "version.py")
 
 function main() {
   verifyPackageMetadata()
@@ -25,12 +25,12 @@ function main() {
   verifyWindowsUnpackedApp()
   verifyWindowsDistributionArtifacts()
 
-  console.log("RxnFlow release configuration ready")
-  console.log("RxnFlow packaged renderer asset paths ready")
-  console.log("RxnFlow bundled Python engine configuration ready")
-  console.log("RxnFlow desktop icon assets ready")
-  console.log("RxnFlow desktop runtime smoke ready")
-  console.log("RxnFlow Windows installer smoke ready")
+  console.log("RxnCanvas release configuration ready")
+  console.log("RxnCanvas packaged renderer asset paths ready")
+  console.log("RxnCanvas bundled Python engine configuration ready")
+  console.log("RxnCanvas desktop icon assets ready")
+  console.log("RxnCanvas desktop runtime smoke ready")
+  console.log("RxnCanvas Windows installer smoke ready")
   console.log("macOS unpacked app structure checked when present")
   console.log("Windows x64 artifacts checked when present")
 }
@@ -54,7 +54,7 @@ function verifyBundledEngineConfiguration() {
   assert(buildScript.includes("--with-requirements"), "uv engine build must use the locked dependency graph")
   assert(buildScript.includes("--require-hashes"), "pip engine build must enforce locked dependency hashes")
   assert(bridgeSource.includes("isPackagedAppRuntime"), "packaged app must require the bundled engine executable")
-  assert(bridgeSource.includes("rxnflow.engine_ipc"), "engine bridge must keep the development Python IPC entry")
+  assert(bridgeSource.includes("rxncanvas.engine_ipc"), "engine bridge must keep the development Python IPC entry")
   assert(!bridgeSource.includes("runEmbeddedEngineRequest"), "engine bridge must not call embedded engine fallback")
   assert(!bridgeSource.includes("shouldFallbackToEmbedded"), "engine bridge must not keep embedded fallback routing")
 }
@@ -76,8 +76,8 @@ function verifyPackageMetadata() {
   const pythonVersion = pythonVersionSource.match(/__version__\s*=\s*["']([^"']+)["']/)?.[1]
   assert(pythonVersion === packageJson.version, "Python engine and desktop package versions must match")
   assert(packageJson.main === "electron/main.cjs", "package main must point at Electron main")
-  assert(packageJson.build?.appId === "com.rxnflow.app", "build.appId must be stable")
-  assert(packageJson.build?.productName === "RxnFlow", "build.productName must be RxnFlow")
+  assert(packageJson.build?.appId === "com.rxncanvas.app", "build.appId must be stable")
+  assert(packageJson.build?.productName === "RxnCanvas", "build.productName must be RxnCanvas")
   assert(packageJson.build?.asar === true, "build.asar must be enabled")
 }
 
@@ -163,7 +163,7 @@ function verifyReleaseScripts() {
   assert(scripts["desktop:dist:mac"]?.includes("npm run desktop:engine"), "desktop:dist:mac must build the bundled Python engine")
   assert(scripts["desktop:dist:mac"]?.includes("electron-builder --mac"), "desktop:dist:mac missing")
   assert(scripts["desktop:dist:mac"]?.includes("--publish never"), "desktop:dist:mac must not publish local artifacts")
-  assert(scripts["desktop:dist:mac:unsigned"]?.includes("RXNFLOW_MAC_ADHOC_SIGN=1"), "desktop:dist:mac:unsigned must ad-hoc sign the macOS beta app")
+  assert(scripts["desktop:dist:mac:unsigned"]?.includes("RXNCANVAS_MAC_ADHOC_SIGN=1"), "desktop:dist:mac:unsigned must ad-hoc sign the macOS beta app")
   assert(scripts["desktop:dist:mac:unsigned"]?.includes("--config.mac.identity=null"), "desktop:dist:mac:unsigned must skip Developer ID signing")
   assert(scripts["desktop:notarize:mac"] === "node scripts/notarize-mac.cjs", "desktop:notarize:mac missing")
   assert(scripts["desktop:runtime:smoke"] === "node electron/runtime-smoke.cjs", "desktop:runtime:smoke missing")
@@ -184,29 +184,29 @@ function verifyReleaseManifestScript() {
   assert(source.includes("sha256"), "release manifest must record SHA-256 digests")
   assert(source.includes("SHA256SUMS.txt"), "release manifest generator must write SHA256SUMS.txt")
   assert(source.includes("release-manifest.json"), "release manifest generator must write release-manifest.json")
-  assert(source.includes("RXNFLOW_RELEASE_VERSION"), "release manifest generator must record the tagged release version")
-  assert(source.includes("RXNFLOW_RELEASE_TAG"), "release manifest generator must record the release tag")
+  assert(source.includes("RXNCANVAS_RELEASE_VERSION"), "release manifest generator must record the tagged release version")
+  assert(source.includes("RXNCANVAS_RELEASE_TAG"), "release manifest generator must record the release tag")
   assert(source.includes("releaseVersion"), "release manifest must distinguish the release version from the app version")
   assert(source.includes("releaseTag"), "release manifest must include its source tag")
   assert(source.includes("GITHUB_SHA"), "release manifest must accept the CI source revision")
   assert(source.includes("entry.name.includes(appVersion)"), "release manifest must exclude artifacts from other app versions")
 
-  const releaseDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-release-manifest-"))
+  const releaseDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-release-manifest-"))
   const releaseVersion = `${packageJson.version}-beta.999`
   const releaseTag = `v${releaseVersion}`
   const sourceRevision = "0123456789abcdef0123456789abcdef01234567"
   try {
-    fs.writeFileSync(path.join(releaseDir, `RxnFlow-${packageJson.version}-arm64.dmg`), "mac artifact")
-    fs.writeFileSync(path.join(releaseDir, `RxnFlow-${packageJson.version}-windows-x64-setup.exe`), "windows setup artifact")
-    fs.writeFileSync(path.join(releaseDir, `RxnFlow-${packageJson.version}-windows-x64-portable.exe`), "windows portable artifact")
+    fs.writeFileSync(path.join(releaseDir, `RxnCanvas-${packageJson.version}-arm64.dmg`), "mac artifact")
+    fs.writeFileSync(path.join(releaseDir, `RxnCanvas-${packageJson.version}-windows-x64-setup.exe`), "windows setup artifact")
+    fs.writeFileSync(path.join(releaseDir, `RxnCanvas-${packageJson.version}-windows-x64-portable.exe`), "windows portable artifact")
     execFileSync(process.execPath, [manifestScriptPath], {
       cwd: projectRoot,
       env: {
         ...process.env,
         GITHUB_SHA: sourceRevision,
-        RXNFLOW_RELEASE_DIR: releaseDir,
-        RXNFLOW_RELEASE_VERSION: releaseVersion,
-        RXNFLOW_RELEASE_TAG: releaseTag,
+        RXNCANVAS_RELEASE_DIR: releaseDir,
+        RXNCANVAS_RELEASE_VERSION: releaseVersion,
+        RXNCANVAS_RELEASE_TAG: releaseTag,
       },
       stdio: "ignore",
     })
@@ -219,16 +219,16 @@ function verifyReleaseManifestScript() {
     assert(manifest.artifacts.every((artifact) => !artifact.name.endsWith(".blockmap")), "release manifest fixture must exclude blockmaps")
     assert(manifest.artifacts.every((artifact) => !/\s/.test(artifact.name)), "tagged release artifact names must survive GitHub upload unchanged")
 
-    fs.writeFileSync(path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe`), "unsafe Windows artifact name")
+    fs.writeFileSync(path.join(releaseDir, `RxnCanvas Setup ${packageJson.version}.exe`), "unsafe Windows artifact name")
     let rejectedUnsafeName = false
     try {
       execFileSync(process.execPath, [manifestScriptPath], {
         cwd: projectRoot,
         env: {
           ...process.env,
-          RXNFLOW_RELEASE_DIR: releaseDir,
-          RXNFLOW_RELEASE_VERSION: releaseVersion,
-          RXNFLOW_RELEASE_TAG: releaseTag,
+          RXNCANVAS_RELEASE_DIR: releaseDir,
+          RXNCANVAS_RELEASE_VERSION: releaseVersion,
+          RXNCANVAS_RELEASE_TAG: releaseTag,
         },
         stdio: "ignore",
       })
@@ -248,8 +248,8 @@ function verifyWindowsInstallerSmokeScript() {
   assert(source.includes("packageJson.version"), "Windows installer smoke must derive the NSIS artifact version from package.json")
   assert(source.includes("/S"), "Windows installer smoke must use silent NSIS install/uninstall")
   assert(source.includes("/D="), "Windows installer smoke must install into an isolated temp directory")
-  assert(source.includes("--rxnflow-smoke-exit"), "Windows installer smoke must launch the installed app with runtime smoke flag")
-  assert(source.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK"), "Windows installer smoke must verify the runtime smoke marker")
+  assert(source.includes("--rxncanvas-smoke-exit"), "Windows installer smoke must launch the installed app with runtime smoke flag")
+  assert(source.includes("RXNCANVAS_DESKTOP_RUNTIME_SMOKE_OK"), "Windows installer smoke must verify the runtime smoke marker")
   assert(source.includes('"180000"'), "Windows installer smoke must allow hosted-runner antivirus scanning during install and uninstall")
   assert(source.includes("45000"), "Windows installer smoke must allow a bounded first-run engine startup budget")
   assert(source.includes("maxRetries"), "Windows installer smoke cleanup must retry transient Windows file locks")
@@ -268,8 +268,8 @@ function verifyRuntimeSmokeScript() {
   const workbenchCss = fs.readFileSync(workbenchCssPath, "utf8")
   const smokeSource = fs.readFileSync(runtimeSmokePath, "utf8")
   const indexHtml = fs.readFileSync(indexHtmlPath, "utf8")
-  assert(mainSource.includes("--rxnflow-smoke-exit"), "Electron main must support --rxnflow-smoke-exit")
-  assert(mainSource.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK"), "Electron main must emit runtime smoke success marker")
+  assert(mainSource.includes("--rxncanvas-smoke-exit"), "Electron main must support --rxncanvas-smoke-exit")
+  assert(mainSource.includes("RXNCANVAS_DESKTOP_RUNTIME_SMOKE_OK"), "Electron main must emit runtime smoke success marker")
   assert(mainSource.includes("desktop packaged runtime must use bundled Python engine with cclib"), "runtime smoke must verify bundled Python+cclib")
   assert(mainSource.includes("forbiddenRuntimeUiTerms"), "Electron runtime smoke must guard inactive UI terms")
   assert(mainSource.includes("node inspector and floating export trigger"), "Electron runtime smoke must verify active node inspector/export trigger")
@@ -288,7 +288,7 @@ function verifyRuntimeSmokeScript() {
   assert(!appSource.includes("macos-traffic-light-ghosts"), "renderer must not draw fake macOS traffic-light dots")
   assert(!workbenchCss.includes(".macos-traffic-light-ghosts"), "workbench CSS must not draw fake macOS traffic-light dots")
   assert(!workbenchCss.includes(".app-shell.is-macos-desktop::before"), "workbench CSS must not draw a custom macOS traffic-light backing layer")
-  assert(smokeSource.includes("--rxnflow-smoke-exit"), "runtime smoke script must launch packaged app with smoke flag")
+  assert(smokeSource.includes("--rxncanvas-smoke-exit"), "runtime smoke script must launch packaged app with smoke flag")
 }
 
 function verifyMacSigningConfiguration() {
@@ -308,7 +308,7 @@ function verifyMacSigningConfiguration() {
   assert(notarizeScript.includes("notarytool"), "notarization script must submit with notarytool")
   assert(notarizeScript.includes("stapler"), "notarization script must staple accepted artifacts")
   const afterPackScript = fs.readFileSync(afterPackScriptPath, "utf8")
-  assert(afterPackScript.includes("RXNFLOW_MAC_ADHOC_SIGN"), "after-pack hook must gate ad-hoc beta signing behind an explicit environment flag")
+  assert(afterPackScript.includes("RXNCANVAS_MAC_ADHOC_SIGN"), "after-pack hook must gate ad-hoc beta signing behind an explicit environment flag")
   assert(afterPackScript.includes('"--sign"') && afterPackScript.includes('"-"'), "after-pack hook must use an ad-hoc signing identity")
   assert(afterPackScript.includes('"--options"') && afterPackScript.includes('"runtime"'), "ad-hoc macOS beta must keep hardened runtime enabled")
   assert(afterPackScript.includes('"--verify"') && afterPackScript.includes('"--strict"'), "after-pack hook must verify the ad-hoc signature")
@@ -318,7 +318,7 @@ function verifyUnsignedMacBetaGuide() {
   const guidePath = path.join(projectRoot, "..", "docs", "user", "macos-unsigned-beta.md")
   assert(fs.existsSync(guidePath), "missing docs/user/macos-unsigned-beta.md")
   const guide = fs.readFileSync(guidePath, "utf8")
-  assert(guide.includes("xattr -dr com.apple.quarantine /Applications/RxnFlow.app"), "unsigned macOS beta guide must remove only the RxnFlow quarantine attribute")
+  assert(guide.includes("xattr -dr com.apple.quarantine /Applications/RxnCanvas.app"), "unsigned macOS beta guide must remove only the RxnCanvas quarantine attribute")
   assert(guide.includes("不要使用 `sudo spctl --master-disable`"), "unsigned macOS beta guide must reject disabling Gatekeeper globally")
   assert(guide.includes("不是正式公开发行版"), "unsigned macOS beta guide must clearly label the artifact as non-production")
 }
@@ -339,7 +339,7 @@ function verifyReleaseWorkflow() {
     "npm run desktop:installer:smoke:win",
     "unsigned_macos_beta",
     "npm run desktop:dist:mac:unsigned",
-    "rxnflow-macos-unsigned-beta",
+    "rxncanvas-macos-unsigned-beta",
     "docs/user/macos-unsigned-beta.md",
     "npm run desktop:notarize:mac",
     "npm run desktop:release:manifest",
@@ -349,9 +349,9 @@ function verifyReleaseWorkflow() {
     "prepare-beta-release",
     "publish-beta-release",
     "gh release download",
-    "RXNFLOW_RELEASE_VERSION",
-    "RXNFLOW_RELEASE_TAG",
-    "RXNFLOW_APP_VERSION",
+    "RXNCANVAS_RELEASE_VERSION",
+    "RXNCANVAS_RELEASE_TAG",
+    "RXNCANVAS_APP_VERSION",
     "windows-x64-setup.exe",
     "windows-x64-portable.exe",
     "contents: write",
@@ -382,16 +382,16 @@ function verifyCurrentPlatformUnpackedApp() {
   if (!appPath) return
 
   const infoPlistPath = path.join(appPath, "Contents", "Info.plist")
-  const executablePath = path.join(appPath, "Contents", "MacOS", "RxnFlow")
+  const executablePath = path.join(appPath, "Contents", "MacOS", "RxnCanvas")
   const asarPath = path.join(appPath, "Contents", "Resources", "app.asar")
   const resourcesIconPath = path.join(appPath, "Contents", "Resources", "icon.icns")
-  const enginePath = path.join(appPath, "Contents", "Resources", "engine", "rxnflow-engine")
+  const enginePath = path.join(appPath, "Contents", "Resources", "engine", "rxncanvas-engine")
 
   assert(fs.existsSync(infoPlistPath), "mac unpacked app missing Info.plist")
   assert(fs.existsSync(executablePath), "mac unpacked app missing executable")
   assert(fs.statSync(executablePath).mode & 0o111, "mac executable is not executable")
   const infoPlist = fs.readFileSync(infoPlistPath, "utf8")
-  assert(infoPlist.includes("com.rxnflow.app"), "Info.plist missing bundle id")
+  assert(infoPlist.includes("com.rxncanvas.app"), "Info.plist missing bundle id")
   assert(readPlistValue(infoPlistPath, "CFBundleShortVersionString") === packageJson.version, "Info.plist version must match package.json")
   assert(readPlistValue(infoPlistPath, "NSAppTransportSecurity.NSAllowsArbitraryLoads") === "false", "mac app must disable arbitrary network loads")
   for (const privacyKey of [
@@ -410,13 +410,13 @@ function verifyCurrentPlatformUnpackedApp() {
 
   const hasCurrentIcon = fs.existsSync(resourcesIconPath) || infoPlist.includes("icon.icns")
   if (!hasCurrentIcon) {
-    console.warn("Existing mac unpacked app predates RxnFlow icon config; rebuild with npm run desktop:pack to refresh it.")
+    console.warn("Existing mac unpacked app predates RxnCanvas icon config; rebuild with npm run desktop:pack to refresh it.")
     return
   }
   assert(fs.existsSync(resourcesIconPath), "mac unpacked app missing icon.icns")
   assert(infoPlist.includes("icon.icns"), "Info.plist missing app icon reference")
-  assert(fs.existsSync(enginePath), "mac unpacked app missing bundled rxnflow-engine")
-  assert(fs.statSync(enginePath).mode & 0o111, "bundled rxnflow-engine is not executable")
+  assert(fs.existsSync(enginePath), "mac unpacked app missing bundled rxncanvas-engine")
+  assert(fs.statSync(enginePath).mode & 0o111, "bundled rxncanvas-engine is not executable")
   verifyCurrentMacElectronLocales(appPath, asarPath)
   verifyCurrentAsarBuildResources(asarPath)
 }
@@ -482,9 +482,9 @@ function verifyWindowsUnpackedApp() {
   const appPath = path.join(projectRoot, "release", "win-unpacked")
   if (!fs.existsSync(appPath)) return
 
-  const executablePath = path.join(appPath, "RxnFlow.exe")
+  const executablePath = path.join(appPath, "RxnCanvas.exe")
   const asarPath = path.join(appPath, "resources", "app.asar")
-  const enginePath = path.join(appPath, "resources", "engine", "rxnflow-engine.exe")
+  const enginePath = path.join(appPath, "resources", "engine", "rxncanvas-engine.exe")
   if (!fs.existsSync(enginePath) && process.platform !== "win32") {
     console.warn("Existing Windows unpacked app predates bundled engine config; rebuild on Windows to refresh it.")
     return
@@ -504,32 +504,32 @@ function verifyWindowsUnpackedApp() {
   for (const filePath of requiredFiles) {
     assert(fs.existsSync(filePath), `Windows unpacked app missing ${path.relative(appPath, filePath)}`)
   }
-  assert(fs.statSync(executablePath).size > 50 * 1024 * 1024, "RxnFlow.exe is unexpectedly small")
+  assert(fs.statSync(executablePath).size > 50 * 1024 * 1024, "RxnCanvas.exe is unexpectedly small")
   assert(fs.statSync(asarPath).size > 1024 * 1024, "Windows app.asar is unexpectedly small")
-  assert(fs.statSync(enginePath).size > 1024 * 1024, "Windows bundled rxnflow-engine.exe is unexpectedly small")
+  assert(fs.statSync(enginePath).size > 1024 * 1024, "Windows bundled rxncanvas-engine.exe is unexpectedly small")
   assertWindowsX64Executable(executablePath)
-  assertWindowsExecutable(enginePath, "Windows bundled rxnflow-engine.exe")
+  assertWindowsExecutable(enginePath, "Windows bundled rxncanvas-engine.exe")
 }
 
 function assertWindowsX64Executable(executablePath) {
   const header = fs.readFileSync(executablePath)
-  assert(header.subarray(0, 2).toString("ascii") === "MZ", "RxnFlow.exe missing MZ header")
+  assert(header.subarray(0, 2).toString("ascii") === "MZ", "RxnCanvas.exe missing MZ header")
   const peOffset = header.readUInt32LE(0x3c)
-  assert(header.subarray(peOffset, peOffset + 4).toString("ascii") === "PE\u0000\u0000", "RxnFlow.exe missing PE header")
+  assert(header.subarray(peOffset, peOffset + 4).toString("ascii") === "PE\u0000\u0000", "RxnCanvas.exe missing PE header")
   const machine = header.readUInt16LE(peOffset + 4)
-  assert(machine === 0x8664, "RxnFlow.exe must be Windows x64")
+  assert(machine === 0x8664, "RxnCanvas.exe must be Windows x64")
   const characteristics = header.readUInt16LE(peOffset + 22)
-  assert((characteristics & 0x0002) !== 0, "RxnFlow.exe must be executable")
+  assert((characteristics & 0x0002) !== 0, "RxnCanvas.exe must be executable")
 }
 
 function verifyWindowsDistributionArtifacts() {
   const releaseDir = path.join(projectRoot, "release")
   if (!fs.existsSync(releaseDir)) return
 
-  const installerPath = path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe`)
-  const portablePath = path.join(releaseDir, `RxnFlow ${packageJson.version}.exe`)
-  const blockMapPath = path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe.blockmap`)
-  const anyWindowsDistExists = fs.readdirSync(releaseDir).some((name) => /^RxnFlow(?: Setup)? .+\.exe(?:\.blockmap)?$/.test(name))
+  const installerPath = path.join(releaseDir, `RxnCanvas Setup ${packageJson.version}.exe`)
+  const portablePath = path.join(releaseDir, `RxnCanvas ${packageJson.version}.exe`)
+  const blockMapPath = path.join(releaseDir, `RxnCanvas Setup ${packageJson.version}.exe.blockmap`)
+  const anyWindowsDistExists = fs.readdirSync(releaseDir).some((name) => /^RxnCanvas(?: Setup)? .+\.exe(?:\.blockmap)?$/.test(name))
   if (!anyWindowsDistExists) return
 
   if (![installerPath, portablePath, blockMapPath].some((filePath) => fs.existsSync(filePath))) {
@@ -563,7 +563,7 @@ function findMacApp(releaseDir) {
   const entries = fs.readdirSync(releaseDir, { withFileTypes: true })
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
-    const candidate = path.join(releaseDir, entry.name, "RxnFlow.app")
+    const candidate = path.join(releaseDir, entry.name, "RxnCanvas.app")
     if (fs.existsSync(candidate)) return candidate
   }
   return null

@@ -1,9 +1,9 @@
-RxnFlow Proprietary License Notice
+RxnCanvas Proprietary License Notice
 
-Copyright (c) 2026 RxnFlow. All rights reserved.
+Copyright (c) 2026 RxnCanvas. All rights reserved.
 
 No permission is granted to copy, modify, distribute, sublicense, sell, or
-create derivative works from RxnFlow except under a separate written agreement
+create derivative works from RxnCanvas except under a separate written agreement
 from the copyright holder. Third-party components retain their own licenses.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

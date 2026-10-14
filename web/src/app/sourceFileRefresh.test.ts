@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import type { SourceFile } from "../domain/projectPackages"
 import type { SourceParseResult } from "../domain/sourceParseTypes"
-import type { RxnflowDesktopApi } from "./appRuntimeEffects"
+import type { RxnCanvasDesktopApi } from "./appRuntimeEffects"
 import {
   mergeRefreshedProjectSourceFiles,
   projectWorkspaceWithRefreshedSourceFiles,
@@ -166,7 +166,7 @@ describe("refreshProjectSourceFiles", () => {
         ok: true,
         data: { parse: nextParse, size: 120, checksum: "sha256:new", parseChecksum: "sha256:new" },
       })),
-    } as unknown as RxnflowDesktopApi
+    } as unknown as RxnCanvasDesktopApi
 
     const result = await refreshProjectSourceFiles({ desktopApi, projectId: "p1", files: [source()] })
 
@@ -191,7 +191,7 @@ describe("refreshProjectSourceFiles", () => {
         data: { files: [{ id: current.id, storedPath: current.storedPath!, size: current.size, checksum: current.checksum! }] },
       })),
       parseSourcePreview,
-    } as unknown as RxnflowDesktopApi
+    } as unknown as RxnCanvasDesktopApi
 
     const result = await refreshProjectSourceFiles({
       desktopApi,
@@ -212,7 +212,7 @@ describe("refreshProjectSourceFiles", () => {
         data: { files: [{ id: current.id, storedPath: current.storedPath!, size: current.size, checksum: current.checksum! }] },
       })),
       parseSourcePreview: vi.fn(async () => ({ ok: false, error: { code: "parse_failed", message: "failed" } })),
-    } as unknown as RxnflowDesktopApi
+    } as unknown as RxnCanvasDesktopApi
 
     const result = await refreshProjectSourceFiles({
       desktopApi,
@@ -232,7 +232,7 @@ describe("refreshProjectSourceFiles", () => {
         data: { files: [{ id: "solution", storedPath: "sources/solution_sol.log", size: 120, checksum: "sha256:new" }] },
       })),
       parseSourcePreview: vi.fn(async () => ({ ok: false, error: { code: "parse_failed", message: "failed" } })),
-    } as unknown as RxnflowDesktopApi
+    } as unknown as RxnCanvasDesktopApi
 
     const result = await refreshProjectSourceFiles({ desktopApi, projectId: "p1", files: [source()] })
 

@@ -2,7 +2,7 @@ const { spawn } = require("node:child_process")
 const { setTimeout: delay } = require("node:timers/promises")
 const { chromium } = require("playwright")
 
-const port = Number(process.env.RXNFLOW_PERF_E2E_PORT || 5175)
+const port = Number(process.env.RXNCANVAS_PERF_E2E_PORT || 5175)
 const baseUrl = `http://127.0.0.1:${port}/`
 const budgets = {
   maxRafP95Ms: 50,
@@ -96,7 +96,7 @@ async function main() {
 
 function startFrameMeasurement() {
   const state = { frame: null, lastRaf: null, intervals: [] }
-  window.__rxnflowPerf = state
+  window.__rxncanvasPerf = state
   // Input events may be sparse even while the browser keeps rendering frames.
   function sample(timestamp) {
     if (state.lastRaf !== null) state.intervals.push(timestamp - state.lastRaf)
@@ -107,7 +107,7 @@ function startFrameMeasurement() {
 }
 
 function stopFrameMeasurement() {
-  const state = window.__rxnflowPerf
+  const state = window.__rxncanvasPerf
   window.cancelAnimationFrame(state.frame)
   const ordered = state.intervals.slice().sort((a, b) => a - b)
   const p95Index = Math.min(ordered.length - 1, Math.ceil(ordered.length * 0.95) - 1)

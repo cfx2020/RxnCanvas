@@ -6,8 +6,8 @@ web/dist/
 web/release/
 web/release-fixed-*/
 web/.engine-build/
-web/engine/rxnflow-engine
-web/engine/rxnflow-engine.exe
+web/engine/*-engine
+web/engine/*-engine.exe
 web/.vite/
 web/playwright-report/
 web/test-results/
@@ -18,6 +18,6 @@ output/
 .codestable/history/
 .codestable/
 *.tsbuildinfo
-*.rxnflow.zip
+*.rxn*.zip
 /Ni-fxc/
 /Ir/

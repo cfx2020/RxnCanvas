@@ -1,5 +1,5 @@
 import { normalizeSourceFileForPersistence, type SourceFile } from "../domain/projectPackages"
-import type { RxnflowDesktopApi } from "./appRuntimeEffects"
+import type { RxnCanvasDesktopApi } from "./appRuntimeEffects"
 import { sourceFileDisplayGroupKey } from "./fileDisplay"
 import { reconcileProjectWorkspaceSourceNodes } from "./importWorkspace"
 import { projectWorkspaceSnapshot, type ProjectWorkspaceSnapshot } from "./projectWorkspace"
@@ -54,7 +54,7 @@ export async function refreshProjectSourceFiles({
   files,
   forceFileIds = new Set(),
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   projectId: string
   projectDirectory?: string | null
   files: SourceFile[]

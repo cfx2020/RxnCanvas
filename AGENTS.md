@@ -4,7 +4,7 @@
 
 ## 项目定位
 
-- RxnFlow 是面向计算化学结果的反应路径登记、图谱组装与可视化报告生成应用。
+- RxnCanvas 是面向计算化学结果的反应路径登记、图谱组装与可视化报告生成应用。
 - 核心产品形态是计算化学领域的图谱编辑器，不是量化计算任务调度器。
 - 原始计算输出由外部程序生成；本项目负责导入、解析、登记、编辑、计算路径能量、可视化和导出。
 
@@ -36,7 +36,7 @@
 
 ## 禁止事项
 
-- 不要把外部量化计算软件的任务调度当作 RxnFlow 初始范围来实现。
+- 不要把外部量化计算软件的任务调度当作 RxnCanvas 初始范围来实现。
 - 不要在没有用户确认的情况下删除、移动或重写已有文档和规格文件。
 - 不要为了演示 UI 而把领域数据模型写死在组件内部。
 - 不要在未明确范围时一次性实现完整大系统；先拆 roadmap，再逐条 feature 推进。
@@ -62,7 +62,7 @@
 ## 当前实现与文档入口
 
 - 工作台：React + TypeScript + Vite + npm；macOS/Windows：Electron；解析：Python+cclib。浏览器开发服务与桌面端使用同一 Python 引擎。
-- 项目主格式：工作区文件夹内 `.rxnflow/project.json`、`.rxnflow/manifest.json`、`sources/`、`exports/`；支持 `.rxnflow.zip` 导入导出。
+- 项目主格式：工作区文件夹内 `.rxncanvas/project.json`、`.rxncanvas/manifest.json`、`sources/`、`exports/`；支持 `.rxncanvas.zip` 导入导出。
 - 导出：renderer 生成 PNG/CDXML/XLSX，CDXML 包含 Ketcher 结构片段和项目组合逻辑。
 - 支持格式与可信边界：`docs/user/supported-import-formats.md`。
 - 架构：`.codestable/architecture/ARCHITECTURE.md`；发布验证：`docs/dev/desktop-rebuild-verification.md`。

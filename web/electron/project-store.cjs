@@ -6,8 +6,8 @@ const { pipeline } = require("node:stream/promises")
 const archiver = require("archiver")
 const yauzl = require("yauzl")
 
-const projectDirectoryExtension = ".rxnflow"
-const projectMetadataDirectory = ".rxnflow"
+const projectDirectoryExtension = ".rxncanvas"
+const projectMetadataDirectory = ".rxncanvas"
 const legacyProjectStateFile = "project.json"
 const legacyProjectManifestFile = "manifest.json"
 const projectStateFile = path.join(projectMetadataDirectory, "project.json")
@@ -49,12 +49,12 @@ async function readProjectContent(projectPath) {
     const projectDirectory = normalizeProjectDirectoryPath(projectPath)
     return withProjectSaveLock(projectDirectory, async () => {
       const statePath = await resolveProjectStatePath(projectDirectory)
-      return readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnFlow project state")
+      return readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnCanvas project state")
     })
   }
   const projectFilePath = path.resolve(projectPath)
   return withProjectSaveLock(projectFilePath, () => (
-    readUtf8FileWithLimit(projectFilePath, maxProjectStateBytes, "RxnFlow project package")
+    readUtf8FileWithLimit(projectFilePath, maxProjectStateBytes, "RxnCanvas project package")
   ))
 }
 
@@ -107,7 +107,7 @@ async function saveProjectDirectoryUnlocked(projectDirectory, content, options =
   let previousFiles = []
   try {
     const statePath = await resolveProjectStatePath(projectDirectory)
-    const previousContent = await readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnFlow project state")
+    const previousContent = await readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnCanvas project state")
     previousFiles = parseProjectPackageContent(previousContent).files
   } catch (error) {
     if (error.code !== "ENOENT") throw error
@@ -179,7 +179,7 @@ async function writeProjectFileAtomically(targetPath, content) {
   const targetDirectory = path.dirname(targetPath)
   const temporaryPath = path.join(
     targetDirectory,
-    `.${path.basename(targetPath)}.rxnflow-write-${process.pid}-${crypto.randomUUID()}.tmp`,
+    `.${path.basename(targetPath)}.rxncanvas-write-${process.pid}-${crypto.randomUUID()}.tmp`,
   )
   await fs.mkdir(targetDirectory, { recursive: true })
   try {
@@ -196,7 +196,7 @@ async function saveProjectReportArtifact(projectDirectory, payload) {
 }
 
 async function saveProjectReportArtifactUnlocked(projectDirectory, payload) {
-  const fileName = safeFileName(payload?.defaultName || "rxnflow-export")
+  const fileName = safeFileName(payload?.defaultName || "rxncanvas-export")
   const encoding = payload?.encoding === "base64" ? "base64" : "utf8"
   const content = typeof payload?.content === "string" ? payload.content : ""
   const buffer = encoding === "base64" ? Buffer.from(content, "base64") : Buffer.from(content, "utf8")
@@ -245,9 +245,9 @@ async function exportProjectWorkspaceArchive(projectDirectory, targetArchivePath
 async function importProjectWorkspaceArchive(sourceArchivePath, targetProjectDirectory) {
   const archivePath = path.resolve(sourceArchivePath)
   const archiveStats = await fs.stat(archivePath)
-  if (!archiveStats.isFile()) throw new Error(`RxnFlow project archive is not a file: ${archivePath}`)
+  if (!archiveStats.isFile()) throw new Error(`RxnCanvas project archive is not a file: ${archivePath}`)
   if (archiveStats.size > maxProjectArchiveBytes) {
-    throw new Error(`RxnFlow project archive is too large (${archiveStats.size} bytes; maximum ${maxProjectArchiveBytes} bytes).`)
+    throw new Error(`RxnCanvas project archive is too large (${archiveStats.size} bytes; maximum ${maxProjectArchiveBytes} bytes).`)
   }
 
   const projectDirectory = normalizeProjectDirectoryPath(targetProjectDirectory)
@@ -259,7 +259,7 @@ async function importProjectWorkspaceArchive(sourceArchivePath, targetProjectDir
     await extractProjectWorkspaceArchive(archivePath, temporaryDirectory)
 
     const statePath = await resolveProjectStatePath(temporaryDirectory)
-    await readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnFlow imported project state")
+    await readUtf8FileWithLimit(statePath, maxProjectStateBytes, "RxnCanvas imported project state")
     await fs.mkdir(path.dirname(projectDirectory), { recursive: true })
     await fs.rename(temporaryDirectory, projectDirectory)
     return {
@@ -287,22 +287,22 @@ async function extractProjectWorkspaceArchive(archivePath, destinationDirectory)
     entryCount += 1
     const entryBytes = Number(entry.uncompressedSize) || 0
     expandedBytes += entryBytes
-    if (entryCount > maxArchiveEntries) throw new Error(`RxnFlow project archive has too many entries (maximum ${maxArchiveEntries}).`)
-    if (entryBytes > maxArchiveEntryBytes) throw new Error(`RxnFlow project archive entry is too large: ${entry.fileName}`)
-    if (expandedBytes > maxArchiveExpandedBytes) throw new Error(`RxnFlow project archive expands beyond ${maxArchiveExpandedBytes} bytes.`)
+    if (entryCount > maxArchiveEntries) throw new Error(`RxnCanvas project archive has too many entries (maximum ${maxArchiveEntries}).`)
+    if (entryBytes > maxArchiveEntryBytes) throw new Error(`RxnCanvas project archive entry is too large: ${entry.fileName}`)
+    if (expandedBytes > maxArchiveExpandedBytes) throw new Error(`RxnCanvas project archive expands beyond ${maxArchiveExpandedBytes} bytes.`)
 
     const directory = entry.fileName.endsWith("/")
     assertSupportedArchiveEntryType(entry, directory)
     const targetPath = archiveEntryTargetPath(destinationDirectory, entry.fileName)
     const targetKey = archiveEntryPathKey(targetPath)
-    if (extractedPaths.has(targetKey)) throw new Error(`RxnFlow project archive contains a duplicate path: ${entry.fileName}`)
+    if (extractedPaths.has(targetKey)) throw new Error(`RxnCanvas project archive contains a duplicate path: ${entry.fileName}`)
     extractedPaths.add(targetKey)
 
     if (directory) {
       await fs.mkdir(targetPath, { recursive: true })
       continue
     }
-    if (!entry.canDecodeFileData()) throw new Error(`RxnFlow project archive uses an unsupported or encrypted entry: ${entry.fileName}`)
+    if (!entry.canDecodeFileData()) throw new Error(`RxnCanvas project archive uses an unsupported or encrypted entry: ${entry.fileName}`)
     await fs.mkdir(path.dirname(targetPath), { recursive: true })
     const readStream = await zipFile.openReadStreamPromise(entry)
     const writeStream = fsSync.createWriteStream(targetPath, { flags: "wx", mode: 0o600 })
@@ -318,18 +318,18 @@ function assertSupportedArchiveEntryType(entry, directory) {
   if (fileType === 0) return
   const expectedType = directory ? unixDirectoryType : unixRegularFileType
   if (fileType !== expectedType) {
-    throw new Error(`RxnFlow project archive contains a symbolic link or unsupported file type: ${entry.fileName}`)
+    throw new Error(`RxnCanvas project archive contains a symbolic link or unsupported file type: ${entry.fileName}`)
   }
 }
 
 function archiveEntryTargetPath(destinationDirectory, entryName) {
   if (typeof entryName !== "string" || !entryName || entryName.includes("\0")) {
-    throw new Error("RxnFlow project archive contains an invalid entry path.")
+    throw new Error("RxnCanvas project archive contains an invalid entry path.")
   }
   const destinationRoot = path.resolve(destinationDirectory)
   const targetPath = path.resolve(destinationRoot, ...entryName.split("/"))
   if (targetPath === destinationRoot || !targetPath.startsWith(`${destinationRoot}${path.sep}`)) {
-    throw new Error(`RxnFlow project archive entry escapes the destination directory: ${entryName}`)
+    throw new Error(`RxnCanvas project archive entry escapes the destination directory: ${entryName}`)
   }
   return targetPath
 }
@@ -349,7 +349,7 @@ function normalizeProjectDirectoryPath(projectPath) {
 
 function normalizeProjectArchivePath(archivePath) {
   const resolved = path.resolve(archivePath)
-  return resolved.toLowerCase().endsWith(".zip") ? resolved : `${resolved}.rxnflow.zip`
+  return resolved.toLowerCase().endsWith(".zip") ? resolved : `${resolved}.rxncanvas.zip`
 }
 
 function parseProjectPackageContent(content) {
@@ -357,14 +357,14 @@ function parseProjectPackageContent(content) {
   try {
     value = JSON.parse(content)
   } catch (error) {
-    throw new Error(`Invalid RxnFlow project JSON: ${error instanceof Error ? error.message : String(error)}`)
+    throw new Error(`Invalid RxnCanvas project JSON: ${error instanceof Error ? error.message : String(error)}`)
   }
 
-  if ((value?.schemaVersion !== 1 && value?.schemaVersion !== 2) || value?.packageKind !== "rxnflow-project") {
-    throw new Error("Invalid RxnFlow project package envelope")
+  if ((value?.schemaVersion !== 1 && value?.schemaVersion !== 2) || value?.packageKind !== "rxncanvas-project") {
+    throw new Error("Invalid RxnCanvas project package envelope")
   }
   if (!value.project || !Array.isArray(value.files) || (!Array.isArray(value.canvases) && (!Array.isArray(value.nodes) || !Array.isArray(value.edges)))) {
-    throw new Error("Invalid RxnFlow project package content")
+    throw new Error("Invalid RxnCanvas project package content")
   }
   return value
 }
@@ -449,7 +449,7 @@ async function materializeImportSourceFileUnlocked(projectDirectory, file, index
       if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
         const temporaryPath = path.join(
           path.dirname(targetPath),
-          `.rxnflow-import-${crypto.randomUUID()}${path.extname(targetPath) || ".tmp"}`,
+          `.rxncanvas-import-${crypto.randomUUID()}${path.extname(targetPath) || ".tmp"}`,
         )
         try {
           await fs.copyFile(sourcePath, temporaryPath)
@@ -803,7 +803,7 @@ function stripSessionSourcePaths(projectPackage) {
 async function writeProjectManifest(projectDirectory, projectPackage) {
   const manifest = {
     schemaVersion: 1,
-    packageKind: "rxnflow-project-workspace",
+    packageKind: "rxncanvas-project-workspace",
     project: projectPackage.project,
     savedAt: projectPackage.savedAt,
     stateFile: projectStateFile,
@@ -829,7 +829,7 @@ async function ensureExportManifest(projectDirectory, projectPackage) {
   const existingArtifacts = await readExportArtifactRecords(projectDirectory)
   const manifest = {
     schemaVersion: 1,
-    packageKind: "rxnflow-export-artifacts",
+    packageKind: "rxncanvas-export-artifacts",
     project: projectPackage.project,
     artifacts: existingArtifacts,
   }
@@ -846,7 +846,7 @@ async function upsertExportArtifactRecord(projectDirectory, record) {
   ]
   const manifest = {
     schemaVersion: 1,
-    packageKind: "rxnflow-export-artifacts",
+    packageKind: "rxncanvas-export-artifacts",
     artifacts: nextArtifacts,
   }
   await fs.mkdir(path.dirname(manifestPath), { recursive: true })
@@ -873,7 +873,7 @@ async function writeProjectWorkspaceArchiveAtomicallyUnlocked(projectDirectory, 
   const targetDirectory = path.dirname(archivePath)
   const temporaryPath = path.join(
     targetDirectory,
-    `.${path.basename(archivePath)}.rxnflow-write-${process.pid}-${crypto.randomUUID()}.tmp`,
+    `.${path.basename(archivePath)}.rxncanvas-write-${process.pid}-${crypto.randomUUID()}.tmp`,
   )
   await fs.mkdir(targetDirectory, { recursive: true })
   try {
@@ -935,7 +935,7 @@ function withFileNameSuffix(fileName, suffix) {
 
 function safeFileName(fileName) {
   const extension = safeExtension(path.extname(fileName))
-  const baseName = safeStem(path.basename(fileName, path.extname(fileName))) || "rxnflow-export"
+  const baseName = safeStem(path.basename(fileName, path.extname(fileName))) || "rxncanvas-export"
   return `${baseName}${extension}`
 }
 

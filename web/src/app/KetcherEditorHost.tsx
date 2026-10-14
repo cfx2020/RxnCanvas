@@ -7,13 +7,13 @@ let ketcherStylesheetPromise: Promise<void> | null = null
 
 function ensureKetcherStylesheet(): Promise<void> {
   if (typeof document === "undefined") return Promise.resolve()
-  if (document.querySelector(`link[data-rxnflow-ketcher-style="true"]`)) return Promise.resolve()
+  if (document.querySelector(`link[data-rxncanvas-ketcher-style="true"]`)) return Promise.resolve()
   if (ketcherStylesheetPromise) return ketcherStylesheetPromise
   ketcherStylesheetPromise = new Promise<void>((resolve, reject) => {
     const link = document.createElement("link")
     link.rel = "stylesheet"
     link.href = ketcherStylesheetHref
-    link.dataset.rxnflowKetcherStyle = "true"
+    link.dataset.rxncanvasKetcherStyle = "true"
     link.onload = () => resolve()
     link.onerror = () => reject(new Error("Ketcher stylesheet failed to load."))
     document.head.appendChild(link)
@@ -42,7 +42,7 @@ export function KetcherEditorHost({ initialStructure, onReady, onError }: Ketche
         if (!canceled) setStylesReady(true)
       })
       .catch((error: unknown) => {
-        console.error("RxnFlow Ketcher stylesheet failed", error)
+        console.error("RxnCanvas Ketcher stylesheet failed", error)
         if (!canceled) {
           setStylesReady(true)
           onError("Ketcher styles could not load; the editor may look incomplete.")
@@ -68,7 +68,7 @@ export function KetcherEditorHost({ initialStructure, onReady, onError }: Ketche
         ready
           .then(onReady)
           .catch((error: unknown) => {
-            console.error("RxnFlow Ketcher initial structure failed", error)
+            console.error("RxnCanvas Ketcher initial structure failed", error)
             onError("Ketcher loaded, but the initial structure could not be opened.")
             onReady(ketcher)
           })

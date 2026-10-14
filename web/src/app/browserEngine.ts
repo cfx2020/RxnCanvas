@@ -30,7 +30,7 @@ async function engineRequest<T>(url: string, init: RequestInit = {}): Promise<
   try {
     const response = await fetch(url, {
       ...init,
-      headers: { ...init.headers, "x-rxnflow-request": "1" },
+      headers: { ...init.headers, "x-rxncanvas-request": "1" },
       signal: AbortSignal.timeout(130000),
     })
     const result = await response.json()

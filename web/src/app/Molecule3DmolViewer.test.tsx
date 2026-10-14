@@ -193,7 +193,7 @@ describe("Molecule3DmolViewer", () => {
             frequencyCm1: -220,
             kind: "imaginary",
             displacements: atoms.map((_atom, atomIndex) => ({ atomIndex, dx: 0.01 * (atomIndex + 1), dy: 0.02, dz: 0.03 })),
-            source: "rxnflow-text",
+            source: "rxncanvas-text",
           }}
           vibrationPlaying
         />,
@@ -228,7 +228,7 @@ describe("Molecule3DmolViewer", () => {
           frequencyCm1: -220,
           kind: "imaginary",
           displacements: atoms.map((_atom, atomIndex) => ({ atomIndex, dx: 0.01, dy: 0, dz: 0 })),
-          source: "rxnflow-text",
+          source: "rxncanvas-text",
         }}
         vibrationPlaying={false}
       />,

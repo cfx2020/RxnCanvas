@@ -154,7 +154,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
                 "ok": False,
                 "error": {
                     "code": "project_invalid",
-                    "message": "RxnFlow project content did not pass validation.",
+                    "message": "RxnCanvas project content did not pass validation.",
                 },
                 "data": saved,
             }

@@ -65,7 +65,7 @@ export const InspectorPanel = memo(function InspectorPanel({
       onResizeStep(maxWidth)
     }
   }
-  const panelStyle = width ? ({ "--rxnflow-inspector-width": `${width}px` } as CSSProperties) : undefined
+  const panelStyle = width ? ({ "--rxncanvas-inspector-width": `${width}px` } as CSSProperties) : undefined
   return (
     <aside
       className={`inspector-panel${collapsed ? " is-collapsed" : ""}`}

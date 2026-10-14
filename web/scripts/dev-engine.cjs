@@ -9,15 +9,15 @@ const venv = path.join(webRoot, ".engine-build", "dev-venv")
 const venvPython = process.platform === "win32" ? path.join(venv, "Scripts", "python.exe") : path.join(venv, "bin", "python")
 
 function prepareDevEngine() {
-  if (process.env.RXNFLOW_ENGINE_COMMAND) return
-  if (process.env.RXNFLOW_PYTHON) {
-    checkPython(process.env.RXNFLOW_PYTHON)
+  if (process.env.RXNCANVAS_ENGINE_COMMAND) return
+  if (process.env.RXNCANVAS_PYTHON) {
+    checkPython(process.env.RXNCANVAS_PYTHON)
     return
   }
   const lockHash = require("node:crypto").createHash("sha256").update(fs.readFileSync(requirements)).digest("hex")
-  const marker = path.join(venv, ".rxnflow-lock")
+  const marker = path.join(venv, ".rxncanvas-lock")
   if (!fs.existsSync(venvPython) || !fs.existsSync(marker) || fs.readFileSync(marker, "utf8") !== lockHash) {
-    console.log("Preparing the RxnFlow Python + cclib development engine...")
+    console.log("Preparing the RxnCanvas Python + cclib development engine...")
     const hasUv = spawnSync("uv", ["--version"], { stdio: "ignore" }).status === 0
     if (!fs.existsSync(venvPython)) {
       if (hasUv) run("uv", ["venv", venv])
@@ -30,7 +30,7 @@ function prepareDevEngine() {
   } else {
     checkPython(venvPython)
   }
-  process.env.RXNFLOW_PYTHON = venvPython
+  process.env.RXNCANVAS_PYTHON = venvPython
 }
 
 function checkPython(python) {

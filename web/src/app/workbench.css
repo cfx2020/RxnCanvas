@@ -2784,7 +2784,7 @@ select,
 .structure-preview-scrim {
   --structure-left-rail: 0px;
   --structure-right-rail: 0px;
-  --structure-top-chrome: var(--rxnflow-titlebar-height, 48px);
+  --structure-top-chrome: var(--rxncanvas-titlebar-height, 48px);
   position: fixed;
   inset: 0;
   z-index: 60;
@@ -2795,7 +2795,7 @@ select,
 }
 
 .structure-preview-scrim.has-left-sidebar {
-  --structure-left-rail: var(--rxnflow-project-rail-width, 212px);
+  --structure-left-rail: var(--rxncanvas-project-rail-width, 212px);
 }
 
 .structure-preview-scrim.has-right-sidebar {
@@ -4195,15 +4195,15 @@ select,
   color: #06221c !important;
 }
 .app-shell {
-  --rxnflow-canvas-surface: rgba(247, 252, 253, 0.96);
-  --rxnflow-titlebar-surface: rgba(242, 248, 250, 0.62);
-  --rxnflow-tab-muted: rgba(68, 87, 103, 0.035);
+  --rxncanvas-canvas-surface: rgba(247, 252, 253, 0.96);
+  --rxncanvas-titlebar-surface: rgba(242, 248, 250, 0.62);
+  --rxncanvas-tab-muted: rgba(68, 87, 103, 0.035);
 }
 
 .theme-dark {
-  --rxnflow-canvas-surface: rgba(14, 28, 39, 0.96);
-  --rxnflow-titlebar-surface: rgba(13, 26, 36, 0.62);
-  --rxnflow-tab-muted: rgba(196, 215, 228, 0.055);
+  --rxncanvas-canvas-surface: rgba(14, 28, 39, 0.96);
+  --rxncanvas-titlebar-surface: rgba(13, 26, 36, 0.62);
+  --rxncanvas-tab-muted: rgba(196, 215, 228, 0.055);
 }
 
 .workbench-shell {
@@ -4212,7 +4212,7 @@ select,
 
 .canvas-stage,
 .canvas-view-pane {
-  background: var(--rxnflow-canvas-surface) !important;
+  background: var(--rxncanvas-canvas-surface) !important;
 }
 
 .project-rail,
@@ -4224,34 +4224,34 @@ select,
    active tab / floating toolbar / canvas share one surface instead of three
    disconnected color blocks. */
 .app-shell {
-  --rxnflow-canvas-base: rgb(247, 252, 253);
-  --rxnflow-canvas-base-alpha: rgba(247, 252, 253, 0.94);
-  --rxnflow-canvas-top-glow: rgba(194, 241, 231, 0.42);
-  --rxnflow-canvas-side-glow: rgba(211, 235, 244, 0.32);
-  --rxnflow-canvas-dot: rgba(95, 127, 146, 0.22);
-  --rxnflow-toolbar-border: rgba(126, 152, 169, 0.14);
+  --rxncanvas-canvas-base: rgb(247, 252, 253);
+  --rxncanvas-canvas-base-alpha: rgba(247, 252, 253, 0.94);
+  --rxncanvas-canvas-top-glow: rgba(194, 241, 231, 0.42);
+  --rxncanvas-canvas-side-glow: rgba(211, 235, 244, 0.32);
+  --rxncanvas-canvas-dot: rgba(95, 127, 146, 0.22);
+  --rxncanvas-toolbar-border: rgba(126, 152, 169, 0.14);
 }
 
 .theme-dark {
-  --rxnflow-canvas-base: rgb(14, 28, 39);
-  --rxnflow-canvas-base-alpha: rgba(14, 28, 39, 0.9);
-  --rxnflow-canvas-top-glow: rgba(39, 109, 96, 0.28);
-  --rxnflow-canvas-side-glow: rgba(42, 69, 86, 0.28);
-  --rxnflow-canvas-dot: rgba(170, 207, 224, 0.16);
-  --rxnflow-toolbar-border: rgba(145, 180, 199, 0.14);
+  --rxncanvas-canvas-base: rgb(14, 28, 39);
+  --rxncanvas-canvas-base-alpha: rgba(14, 28, 39, 0.9);
+  --rxncanvas-canvas-top-glow: rgba(39, 109, 96, 0.28);
+  --rxncanvas-canvas-side-glow: rgba(42, 69, 86, 0.28);
+  --rxncanvas-canvas-dot: rgba(170, 207, 224, 0.16);
+  --rxncanvas-toolbar-border: rgba(145, 180, 199, 0.14);
 }
 
 .canvas-stage {
-  background-color: var(--rxnflow-canvas-base) !important;
+  background-color: var(--rxncanvas-canvas-base) !important;
   background-image:
-    radial-gradient(circle at 48% -12%, var(--rxnflow-canvas-top-glow), transparent 38%),
-    radial-gradient(circle at 105% 10%, var(--rxnflow-canvas-side-glow), transparent 34%),
-    linear-gradient(180deg, var(--rxnflow-canvas-base), var(--rxnflow-canvas-base)) !important;
+    radial-gradient(circle at 48% -12%, var(--rxncanvas-canvas-top-glow), transparent 38%),
+    radial-gradient(circle at 105% 10%, var(--rxncanvas-canvas-side-glow), transparent 34%),
+    linear-gradient(180deg, var(--rxncanvas-canvas-base), var(--rxncanvas-canvas-base)) !important;
 }
 
 .canvas-stage::before {
   z-index: 0 !important;
-  background-image: radial-gradient(var(--rxnflow-canvas-dot) 1px, transparent 1px) !important;
+  background-image: radial-gradient(var(--rxncanvas-canvas-dot) 1px, transparent 1px) !important;
   background-size: 22px 22px !important;
   opacity: 1 !important;
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.92), rgba(0, 0, 0, 0.7)) !important;
@@ -4266,9 +4266,9 @@ select,
 
 .floating-toolbar {
   position: absolute !important;
-  top: var(--rxnflow-toolbar-top, 10px) !important;
-  left: var(--rxnflow-toolbar-left, 50%) !important;
-  right: var(--rxnflow-toolbar-right, auto) !important;
+  top: var(--rxncanvas-toolbar-top, 10px) !important;
+  left: var(--rxncanvas-toolbar-left, 50%) !important;
+  right: var(--rxncanvas-toolbar-right, auto) !important;
   z-index: 6 !important;
   width: max-content !important;
   max-width: calc(100% - 72px) !important;
@@ -4277,11 +4277,11 @@ select,
   padding: 5px 7px !important;
   border-width: 1px !important;
   border-radius: 22px !important;
-  border-color: var(--rxnflow-toolbar-border) !important;
-  background-color: var(--rxnflow-canvas-base) !important;
+  border-color: var(--rxncanvas-toolbar-border) !important;
+  background-color: var(--rxncanvas-canvas-base) !important;
   background-image: none !important;
   backdrop-filter: blur(22px) !important;
-  transform: var(--rxnflow-toolbar-transform, translateX(-50%)) !important;
+  transform: var(--rxncanvas-toolbar-transform, translateX(-50%)) !important;
   justify-content: flex-start !important;
   flex-wrap: nowrap !important;
   overflow-x: auto !important;
@@ -4297,8 +4297,8 @@ select,
 }
 
 .theme-dark .floating-toolbar {
-  border-color: var(--rxnflow-toolbar-border) !important;
-  background-color: var(--rxnflow-canvas-base) !important;
+  border-color: var(--rxncanvas-toolbar-border) !important;
+  background-color: var(--rxncanvas-canvas-base) !important;
   background-image: none !important;
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
 }
@@ -4372,7 +4372,7 @@ select,
   position: sticky !important;
   left: 0 !important;
   z-index: 2 !important;
-  background: color-mix(in srgb, var(--rxnflow-canvas-base) 82%, transparent) !important;
+  background: color-mix(in srgb, var(--rxncanvas-canvas-base) 82%, transparent) !important;
   backdrop-filter: blur(16px) !important;
 }
 
@@ -4392,7 +4392,7 @@ select,
   top: 0 !important;
   z-index: 2 !important;
   margin-bottom: 2px !important;
-  background: color-mix(in srgb, var(--rxnflow-canvas-base) 82%, transparent) !important;
+  background: color-mix(in srgb, var(--rxncanvas-canvas-base) 82%, transparent) !important;
   backdrop-filter: blur(16px) !important;
 }
 
@@ -4455,19 +4455,19 @@ select,
   color: #f2f7fb !important;
 }
 .app-shell {
-  --rxnflow-titlebar-control-top: 8px;
+  --rxncanvas-titlebar-control-top: 8px;
 }
 .app-shell {
-  --rxnflow-titlebar-control-top: 5px;
+  --rxncanvas-titlebar-control-top: 5px;
 }
 
 .workbench-shell {
-  grid-template-rows: var(--rxnflow-titlebar-height) auto auto minmax(0, 1fr) !important;
+  grid-template-rows: var(--rxncanvas-titlebar-height) auto auto minmax(0, 1fr) !important;
 }
 
 .project-rail,
 .inspector-panel {
-  padding-top: var(--rxnflow-titlebar-height) !important;
+  padding-top: var(--rxncanvas-titlebar-height) !important;
   -webkit-app-region: drag !important;
   app-region: drag !important;
 }
@@ -4725,7 +4725,7 @@ select,
   }
 }
 
-/* Shared RxnFlow design tokens. Keep this pilot layer small while older
+/* Shared RxnCanvas design tokens. Keep this pilot layer small while older
    component rules are migrated into the token vocabulary. */
 .app-shell {
   background: var(--rxn-bg);
@@ -4941,7 +4941,7 @@ input:focus-visible,
   color: var(--rxn-accent-strong) !important;
 }
 .app-shell {
-  --rxnflow-titlebar-control-top: 10px;
+  --rxncanvas-titlebar-control-top: 10px;
 }
 
 .workspace {
@@ -4949,12 +4949,12 @@ input:focus-visible,
 }
 
 .workbench-shell {
-  grid-template-rows: var(--rxnflow-titlebar-height) auto auto minmax(0, 1fr) !important;
+  grid-template-rows: var(--rxncanvas-titlebar-height) auto auto minmax(0, 1fr) !important;
 }
 
 .project-rail,
 .inspector-panel {
-  padding-top: var(--rxnflow-titlebar-height) !important;
+  padding-top: var(--rxncanvas-titlebar-height) !important;
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
 }
@@ -5140,7 +5140,7 @@ input:focus-visible,
 }
 .app-shell {
   position: relative !important;
-  --rxnflow-project-rail-width: 212px;
+  --rxncanvas-project-rail-width: 212px;
 }
 
 /* 2026-06-26 toolbar energy selector flattening: the Energy/Unit controls were
@@ -5233,11 +5233,11 @@ input:focus-visible,
 
 .export-float-panel {
   position: fixed !important;
-  top: calc(var(--rxnflow-titlebar-control-top, 10px) + 36px) !important;
+  top: calc(var(--rxncanvas-titlebar-control-top, 10px) + 36px) !important;
   right: 55px !important;
   z-index: 1180 !important;
   width: min(348px, calc(100vw - 24px)) !important;
-  max-height: min(760px, calc(100vh - var(--rxnflow-titlebar-height, 48px) - 14px)) !important;
+  max-height: min(760px, calc(100vh - var(--rxncanvas-titlebar-height, 48px) - 14px)) !important;
   display: grid !important;
   gap: 12px !important;
   overflow: auto !important;
@@ -5584,7 +5584,7 @@ input:focus-visible,
 
 @media (max-width: 720px) {
   .export-float-panel {
-    top: calc(var(--rxnflow-titlebar-height, 48px) + 6px) !important;
+    top: calc(var(--rxncanvas-titlebar-height, 48px) + 6px) !important;
     left: 12px !important;
     right: 12px !important;
     width: auto !important;
@@ -5601,9 +5601,9 @@ input:focus-visible,
 }
 
 .project-rail {
-  width: var(--rxnflow-project-rail-width, 248px) !important;
-  min-width: var(--rxnflow-project-rail-width, 248px) !important;
-  max-width: var(--rxnflow-project-rail-width, 248px) !important;
+  width: var(--rxncanvas-project-rail-width, 248px) !important;
+  min-width: var(--rxncanvas-project-rail-width, 248px) !important;
+  max-width: var(--rxncanvas-project-rail-width, 248px) !important;
   transform: none !important;
   transition: transform 190ms cubic-bezier(0.2, 0.72, 0.25, 1), opacity 150ms ease !important;
   will-change: auto !important;
@@ -5644,7 +5644,7 @@ input:focus-visible,
 }
 
 .workspace.is-left-collapsed .project-rail {
-  transform: translateX(calc(-1 * var(--rxnflow-project-rail-width, 248px))) !important;
+  transform: translateX(calc(-1 * var(--rxncanvas-project-rail-width, 248px))) !important;
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -5659,12 +5659,12 @@ input:focus-visible,
 }
 
 .project-rail {
-  background: var(--rxnflow-titlebar-surface) !important;
+  background: var(--rxncanvas-titlebar-surface) !important;
 }
 
 .theme-dark .project-rail {
-  --rail-dark-surface: var(--rxnflow-titlebar-surface) !important;
-  background: var(--rxnflow-titlebar-surface) !important;
+  --rail-dark-surface: var(--rxncanvas-titlebar-surface) !important;
+  background: var(--rxncanvas-titlebar-surface) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -5678,25 +5678,25 @@ input:focus-visible,
    The tab strip is also tightened so the selected tab reads like a compact
    native titlebar tab instead of a tall toolbar row. */
 .app-shell {
-  --rxnflow-titlebar-control-top: 7px !important;
-  --rxnflow-sidebar-divider: rgba(126, 152, 169, 0.18);
-  --rxnflow-inspector-surface: rgb(247, 252, 253);
-  --rxnflow-inspector-divider: rgba(118, 144, 160, 0.22);
+  --rxncanvas-titlebar-control-top: 7px !important;
+  --rxncanvas-sidebar-divider: rgba(126, 152, 169, 0.18);
+  --rxncanvas-inspector-surface: rgb(247, 252, 253);
+  --rxncanvas-inspector-divider: rgba(118, 144, 160, 0.22);
 }
 
 .theme-dark {
-  --rxnflow-sidebar-divider: rgba(145, 180, 199, 0.14);
-  --rxnflow-inspector-surface: rgb(14, 28, 39);
-  --rxnflow-inspector-divider: rgba(145, 180, 199, 0.16);
+  --rxncanvas-sidebar-divider: rgba(145, 180, 199, 0.14);
+  --rxncanvas-inspector-surface: rgb(14, 28, 39);
+  --rxncanvas-inspector-divider: rgba(145, 180, 199, 0.16);
 }
 
 .workbench-shell {
-  grid-template-rows: var(--rxnflow-titlebar-height) auto auto minmax(0, 1fr) !important;
+  grid-template-rows: var(--rxncanvas-titlebar-height) auto auto minmax(0, 1fr) !important;
 }
 
 .project-rail,
 .theme-dark .project-rail {
-  border-right: 1px solid var(--rxnflow-sidebar-divider) !important;
+  border-right: 1px solid var(--rxncanvas-sidebar-divider) !important;
 }
 
 .inspector-panel,
@@ -5707,10 +5707,10 @@ input:focus-visible,
 
 .project-rail,
 .inspector-panel {
-  padding-top: var(--rxnflow-titlebar-height) !important;
+  padding-top: var(--rxncanvas-titlebar-height) !important;
 }
 .app-shell {
-  --rxnflow-titlebar-control-top: 10px !important;
+  --rxncanvas-titlebar-control-top: 10px !important;
 }
 
 /* 2026-06-26 continuous rail divider: keep the sidebar/canvas separator attached
@@ -5723,7 +5723,7 @@ input:focus-visible,
   bottom: 0 !important;
   right: 0 !important;
   width: 1px !important;
-  background: var(--rxnflow-sidebar-divider) !important;
+  background: var(--rxncanvas-sidebar-divider) !important;
   pointer-events: none !important;
   z-index: 2 !important;
   opacity: 1 !important;
@@ -5735,7 +5735,7 @@ input:focus-visible,
 }
 
 .canvas-stage {
-  background-color: var(--rxnflow-canvas-base) !important;
+  background-color: var(--rxncanvas-canvas-base) !important;
   background-image: none !important;
 }
 
@@ -5754,7 +5754,7 @@ input:focus-visible,
 
 .export-float-panel,
 .theme-dark .export-float-panel {
-  top: calc(var(--rxnflow-titlebar-control-top, 10px) + 34px) !important;
+  top: calc(var(--rxncanvas-titlebar-control-top, 10px) + 34px) !important;
   right: 46px !important;
   width: 206px !important;
   max-height: none !important;
@@ -5904,7 +5904,7 @@ input:focus-visible,
 @media (max-width: 720px) {
   .export-float-panel,
   .theme-dark .export-float-panel {
-    top: calc(var(--rxnflow-titlebar-height, 48px) + 6px) !important;
+    top: calc(var(--rxncanvas-titlebar-height, 48px) + 6px) !important;
     right: 12px !important;
     left: auto !important;
     width: min(206px, calc(100vw - 24px)) !important;
@@ -5918,7 +5918,7 @@ input:focus-visible,
 }
 
 .workspace:not(.is-left-collapsed) .project-rail {
-  background: var(--rxnflow-titlebar-surface) !important;
+  background: var(--rxncanvas-titlebar-surface) !important;
 }
 
 .workspace:not(.is-right-collapsed) .inspector-panel {
@@ -5926,17 +5926,17 @@ input:focus-visible,
 }
 
 .theme-dark .workspace:not(.is-left-collapsed) .project-rail {
-  background: var(--rxnflow-titlebar-surface) !important;
+  background: var(--rxncanvas-titlebar-surface) !important;
 }
 
 .theme-dark .workspace:not(.is-right-collapsed) .inspector-panel {
   background: rgba(12, 24, 34, 0.78) !important;
 }
 .app-shell {
-  --rxnflow-titlebar-control-top: 3px !important;
+  --rxncanvas-titlebar-control-top: 3px !important;
 }
 .app-shell.is-macos-desktop {
-  --rxnflow-titlebar-control-top: 3px !important;
+  --rxncanvas-titlebar-control-top: 3px !important;
 }
 
 /* 2026-06-26 right inspector drawer origin: the node inspector should emerge
@@ -5945,9 +5945,9 @@ input:focus-visible,
    start the inspector surface at the same y as the canvas. */
 .workspace:not(.is-right-collapsed) .inspector-panel {
   align-self: start !important;
-  top: var(--rxnflow-titlebar-height) !important;
-  height: calc(100% - var(--rxnflow-titlebar-height)) !important;
-  max-height: calc(100% - var(--rxnflow-titlebar-height)) !important;
+  top: var(--rxncanvas-titlebar-height) !important;
+  height: calc(100% - var(--rxncanvas-titlebar-height)) !important;
+  max-height: calc(100% - var(--rxncanvas-titlebar-height)) !important;
   min-height: 0 !important;
   padding: 14px !important;
   border-top-left-radius: 26px !important;
@@ -6042,19 +6042,19 @@ input:focus-visible,
    canvas more room, and let its left edge meet the canvas cleanly instead of
    showing a rounded "extra skin" at the upper-left corner. */
 .app-shell {
-  --rxnflow-inspector-width: 288px !important;
+  --rxncanvas-inspector-width: 288px !important;
 }
 
 .workspace {
-  grid-template-columns: var(--rxnflow-project-rail-width, 248px) minmax(0, 1fr) var(--rxnflow-inspector-width) !important;
+  grid-template-columns: var(--rxncanvas-project-rail-width, 248px) minmax(0, 1fr) var(--rxncanvas-inspector-width) !important;
 }
 
 .workspace.is-left-collapsed {
-  grid-template-columns: 0 minmax(0, 1fr) var(--rxnflow-inspector-width) !important;
+  grid-template-columns: 0 minmax(0, 1fr) var(--rxncanvas-inspector-width) !important;
 }
 
 .workspace.is-right-collapsed {
-  grid-template-columns: var(--rxnflow-project-rail-width, 248px) minmax(0, 1fr) 0 !important;
+  grid-template-columns: var(--rxncanvas-project-rail-width, 248px) minmax(0, 1fr) 0 !important;
 }
 
 .workspace.is-left-collapsed.is-right-collapsed {
@@ -6062,9 +6062,9 @@ input:focus-visible,
 }
 
 .workspace:not(.is-right-collapsed) .inspector-panel {
-  width: var(--rxnflow-inspector-width) !important;
+  width: var(--rxncanvas-inspector-width) !important;
   border-top-left-radius: 0 !important;
-  background: var(--rxnflow-inspector-surface) !important;
+  background: var(--rxncanvas-inspector-surface) !important;
 }
 
 .workspace:not(.is-right-collapsed) .inspector-panel::before {
@@ -6074,12 +6074,12 @@ input:focus-visible,
   bottom: 0 !important;
   left: 0 !important;
   width: 1px !important;
-  background: var(--rxnflow-inspector-divider) !important;
+  background: var(--rxncanvas-inspector-divider) !important;
   pointer-events: none !important;
 }
 
 .theme-dark .workspace:not(.is-right-collapsed) .inspector-panel {
-  background: var(--rxnflow-inspector-surface) !important;
+  background: var(--rxncanvas-inspector-surface) !important;
 }
 
 .node-summary-grid div,
@@ -6304,7 +6304,7 @@ input:focus-visible,
 }
 
 .structure-preview-scrim.has-right-sidebar {
-  --structure-right-rail: var(--rxnflow-inspector-width, 288px) !important;
+  --structure-right-rail: var(--rxncanvas-inspector-width, 288px) !important;
 }
 
 @media (max-width: 1180px) {
@@ -6745,10 +6745,10 @@ input:focus-visible,
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .theme-dark {
-  --rxnflow-titlebar-surface: rgb(10, 23, 33);
+  --rxncanvas-titlebar-surface: rgb(10, 23, 33);
 }
 .app-shell.theme-dark {
-  --rxnflow-titlebar-surface: rgb(10, 23, 33);
+  --rxncanvas-titlebar-surface: rgb(10, 23, 33);
 }
 
 .project-rail,
@@ -7258,24 +7258,24 @@ input:focus-visible,
    right inspector as an overlay on narrow screens. */
 @media (max-width: 1180px) {
   .app-shell {
-    --rxnflow-responsive-rail-width: 72px;
-    --rxnflow-responsive-inspector-width: clamp(248px, 28vw, 272px);
+    --rxncanvas-responsive-rail-width: 72px;
+    --rxncanvas-responsive-inspector-width: clamp(248px, 28vw, 272px);
   }
 
   .workspace {
     min-width: 0 !important;
     grid-template-columns:
-      var(--rxnflow-responsive-rail-width)
+      var(--rxncanvas-responsive-rail-width)
       minmax(0, 1fr)
-      var(--rxnflow-responsive-inspector-width) !important;
+      var(--rxncanvas-responsive-inspector-width) !important;
   }
 
   .workspace.is-left-collapsed {
-    grid-template-columns: 0 minmax(0, 1fr) var(--rxnflow-responsive-inspector-width) !important;
+    grid-template-columns: 0 minmax(0, 1fr) var(--rxncanvas-responsive-inspector-width) !important;
   }
 
   .workspace.is-right-collapsed {
-    grid-template-columns: var(--rxnflow-responsive-rail-width) minmax(0, 1fr) 0 !important;
+    grid-template-columns: var(--rxncanvas-responsive-rail-width) minmax(0, 1fr) 0 !important;
   }
 
   .workspace.is-left-collapsed.is-right-collapsed {
@@ -7283,9 +7283,9 @@ input:focus-visible,
   }
 
   .workspace:not(.is-left-collapsed) .project-rail {
-    width: var(--rxnflow-responsive-rail-width) !important;
-    min-width: var(--rxnflow-responsive-rail-width) !important;
-    max-width: var(--rxnflow-responsive-rail-width) !important;
+    width: var(--rxncanvas-responsive-rail-width) !important;
+    min-width: var(--rxncanvas-responsive-rail-width) !important;
+    max-width: var(--rxncanvas-responsive-rail-width) !important;
     align-items: center !important;
     gap: 12px !important;
     padding-inline: 8px !important;
@@ -7354,7 +7354,7 @@ input:focus-visible,
   }
 
   .workspace:not(.is-right-collapsed) .inspector-panel {
-    width: var(--rxnflow-responsive-inspector-width) !important;
+    width: var(--rxncanvas-responsive-inspector-width) !important;
     min-width: 0 !important;
   }
 
@@ -7434,7 +7434,7 @@ input:focus-visible,
   .app-shell {
     min-width: 0 !important;
     min-height: 0 !important;
-    --rxnflow-responsive-rail-width: 64px;
+    --rxncanvas-responsive-rail-width: 64px;
   }
 
   .workspace {
@@ -7442,7 +7442,7 @@ input:focus-visible,
     min-height: 0 !important;
     min-width: 0 !important;
     grid-template-rows: minmax(0, 1fr) !important;
-    grid-template-columns: var(--rxnflow-responsive-rail-width) minmax(0, 1fr) 0 !important;
+    grid-template-columns: var(--rxncanvas-responsive-rail-width) minmax(0, 1fr) 0 !important;
   }
 
   .workspace.is-left-collapsed {
@@ -7453,21 +7453,21 @@ input:focus-visible,
     grid-row: 1 !important;
     top: auto !important;
     height: 100vh !important;
-    width: var(--rxnflow-responsive-rail-width) !important;
-    min-width: var(--rxnflow-responsive-rail-width) !important;
-    max-width: var(--rxnflow-responsive-rail-width) !important;
+    width: var(--rxncanvas-responsive-rail-width) !important;
+    min-width: var(--rxncanvas-responsive-rail-width) !important;
+    max-width: var(--rxncanvas-responsive-rail-width) !important;
     padding-inline: 7px !important;
   }
 
   .workspace:not(.is-right-collapsed) .inspector-panel {
     position: fixed !important;
-    top: var(--rxnflow-titlebar-height, 36px) !important;
+    top: var(--rxncanvas-titlebar-height, 36px) !important;
     right: 0 !important;
     bottom: 0 !important;
     left: auto !important;
     z-index: 45 !important;
-    width: min(310px, calc(100vw - var(--rxnflow-responsive-rail-width) - 10px)) !important;
-    height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    width: min(310px, calc(100vw - var(--rxncanvas-responsive-rail-width) - 10px)) !important;
+    height: calc(100vh - var(--rxncanvas-titlebar-height, 36px)) !important;
     border-left: 1px solid rgba(118, 144, 160, 0.22) !important;
     box-shadow: -22px 0 70px rgba(22, 40, 55, 0.18) !important;
   }
@@ -7679,7 +7679,7 @@ input:focus-visible,
   }
 
   .workspace:not(.is-right-collapsed) .inspector-panel {
-    top: var(--rxnflow-titlebar-height, 36px) !important;
+    top: var(--rxncanvas-titlebar-height, 36px) !important;
   }
 
   .project-rail .project-rail-item,
@@ -7899,17 +7899,17 @@ input:focus-visible,
   color: #f4fbff !important;
 }
 
-.molecule-editor-host button[data-rxnflow-tooltip],
-.molecule-editor-host [role="button"][data-rxnflow-tooltip] {
+.molecule-editor-host button[data-rxncanvas-tooltip],
+.molecule-editor-host [role="button"][data-rxncanvas-tooltip] {
   position: relative !important;
   overflow: visible !important;
 }
 
-.molecule-editor-host button[data-rxnflow-tooltip]:hover::after,
-.molecule-editor-host button[data-rxnflow-tooltip]:focus-visible::after,
-.molecule-editor-host [role="button"][data-rxnflow-tooltip]:hover::after,
-.molecule-editor-host [role="button"][data-rxnflow-tooltip]:focus-visible::after {
-  content: attr(data-rxnflow-tooltip);
+.molecule-editor-host button[data-rxncanvas-tooltip]:hover::after,
+.molecule-editor-host button[data-rxncanvas-tooltip]:focus-visible::after,
+.molecule-editor-host [role="button"][data-rxncanvas-tooltip]:hover::after,
+.molecule-editor-host [role="button"][data-rxncanvas-tooltip]:focus-visible::after {
+  content: attr(data-rxncanvas-tooltip);
   position: absolute;
   z-index: var(--rxn-z-drag-tooltip);
   top: calc(100% + 7px);
@@ -7932,7 +7932,7 @@ input:focus-visible,
   grid-template-columns:
     0
     minmax(0, 1fr)
-    var(--rxnflow-inspector-width) !important;
+    var(--rxncanvas-inspector-width) !important;
 }
 
 .workspace.is-left-collapsed.is-right-collapsed {
@@ -7997,8 +7997,8 @@ input:focus-visible,
    hover or keyboard focus. */
 @media (max-width: 1180px) {
   .app-shell {
-    --rxnflow-narrow-rail-peek: 16px;
-    --rxnflow-narrow-rail-panel: min(286px, calc(100vw - 28px));
+    --rxncanvas-narrow-rail-peek: 16px;
+    --rxncanvas-narrow-rail-panel: min(286px, calc(100vw - 28px));
   }
 
   .workspace,
@@ -8007,7 +8007,7 @@ input:focus-visible,
     grid-template-columns:
       0
       minmax(0, 1fr)
-      var(--rxnflow-responsive-inspector-width, var(--rxnflow-inspector-width, 288px)) !important;
+      var(--rxncanvas-responsive-inspector-width, var(--rxncanvas-inspector-width, 288px)) !important;
   }
 
   .workspace.is-right-collapsed,
@@ -8021,15 +8021,15 @@ input:focus-visible,
 
   .workspace:not(.is-left-collapsed) > .project-rail {
     position: fixed !important;
-    top: var(--rxnflow-titlebar-height, 48px) !important;
+    top: var(--rxncanvas-titlebar-height, 48px) !important;
     bottom: 0 !important;
     left: 0 !important;
     z-index: var(--rxn-z-rail) !important;
-    width: var(--rxnflow-narrow-rail-panel) !important;
-    min-width: var(--rxnflow-narrow-rail-panel) !important;
-    max-width: var(--rxnflow-narrow-rail-panel) !important;
-    height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
-    max-height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
+    width: var(--rxncanvas-narrow-rail-panel) !important;
+    min-width: var(--rxncanvas-narrow-rail-panel) !important;
+    max-width: var(--rxncanvas-narrow-rail-panel) !important;
+    height: calc(100vh - var(--rxncanvas-titlebar-height, 48px)) !important;
+    max-height: calc(100vh - var(--rxncanvas-titlebar-height, 48px)) !important;
     align-items: stretch !important;
     gap: 14px !important;
     padding: 14px 12px 18px !important;
@@ -8037,7 +8037,7 @@ input:focus-visible,
     border-right: 1px solid rgba(118, 144, 160, 0.22) !important;
     border-radius: 0 18px 18px 0 !important;
     box-shadow: 24px 0 70px rgba(24, 43, 55, 0.18) !important;
-    transform: translateX(calc(-1 * (var(--rxnflow-narrow-rail-panel) - var(--rxnflow-narrow-rail-peek)))) !important;
+    transform: translateX(calc(-1 * (var(--rxncanvas-narrow-rail-panel) - var(--rxncanvas-narrow-rail-peek)))) !important;
     transition:
       transform 180ms ease,
       box-shadow 180ms ease !important;
@@ -8051,7 +8051,7 @@ input:focus-visible,
     top: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
-    width: var(--rxnflow-narrow-rail-peek) !important;
+    width: var(--rxncanvas-narrow-rail-peek) !important;
     border-left: 1px solid rgba(118, 144, 160, 0.18) !important;
     background:
       linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(227, 241, 246, 0.72)),
@@ -8529,10 +8529,10 @@ input:focus-visible,
 }
 
 .reaction-node .node-status-light-corner.status-light-missing {
-  --rxnflow-node-status-light-inset: 12px;
+  --rxncanvas-node-status-light-inset: 12px;
   position: absolute !important;
-  top: var(--rxnflow-node-status-light-inset) !important;
-  right: var(--rxnflow-node-status-light-inset) !important;
+  top: var(--rxncanvas-node-status-light-inset) !important;
+  right: var(--rxncanvas-node-status-light-inset) !important;
   z-index: 4 !important;
   width: 8px !important;
   min-width: 8px !important;
@@ -8650,10 +8650,10 @@ input:focus-visible,
   border: 3px solid rgba(77, 178, 153, 0.2);
   border-top-color: #28a889;
   border-radius: 999px;
-  animation: rxnflow-startup-spin 820ms linear infinite;
+  animation: rxncanvas-startup-spin 820ms linear infinite;
 }
 
-@keyframes rxnflow-startup-spin {
+@keyframes rxncanvas-startup-spin {
   to {
     transform: rotate(360deg);
   }
@@ -9680,9 +9680,9 @@ input:focus-visible,
   --rail-control-hover: rgba(209, 239, 233, 0.92);
   --rail-text: #263847;
   --rail-muted: #647887;
-  width: var(--rxnflow-project-rail-width, 248px) !important;
-  min-width: var(--rxnflow-project-rail-width, 248px) !important;
-  max-width: var(--rxnflow-project-rail-width, 248px) !important;
+  width: var(--rxncanvas-project-rail-width, 248px) !important;
+  min-width: var(--rxncanvas-project-rail-width, 248px) !important;
+  max-width: var(--rxncanvas-project-rail-width, 248px) !important;
   gap: 16px !important;
   padding: 50px 14px 18px !important;
   background:
@@ -10643,11 +10643,11 @@ input:focus-visible,
 
   .workspace:not(.is-left-collapsed) > .project-rail {
     position: fixed !important;
-    top: var(--rxnflow-titlebar-height, 48px) !important;
+    top: var(--rxncanvas-titlebar-height, 48px) !important;
     left: 0 !important;
     bottom: 0 !important;
     z-index: 44 !important;
-    height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
+    height: calc(100vh - var(--rxncanvas-titlebar-height, 48px)) !important;
     box-shadow: 18px 0 52px rgba(22, 40, 55, 0.16) !important;
   }
 }
@@ -10660,22 +10660,22 @@ input:focus-visible,
   .workspace > .project-rail,
   .workspace.is-left-collapsed > .project-rail,
   .workspace:not(.is-left-collapsed) > .project-rail {
-    --rxnflow-narrow-rail-edge-target: 12px;
+    --rxncanvas-narrow-rail-edge-target: 12px;
     position: fixed !important;
-    top: var(--rxnflow-titlebar-height, 36px) !important;
+    top: var(--rxncanvas-titlebar-height, 36px) !important;
     right: auto !important;
     bottom: 0 !important;
     left: 0 !important;
     z-index: var(--rxn-z-rail) !important;
-    width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
-    min-width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
-    max-width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
-    height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
-    max-height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    width: var(--rxncanvas-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    min-width: var(--rxncanvas-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    max-width: var(--rxncanvas-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    height: calc(100vh - var(--rxncanvas-titlebar-height, 36px)) !important;
+    max-height: calc(100vh - var(--rxncanvas-titlebar-height, 36px)) !important;
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
-    transform: translateX(calc(-100% + var(--rxnflow-narrow-rail-edge-target))) !important;
+    transform: translateX(calc(-100% + var(--rxncanvas-narrow-rail-edge-target))) !important;
     transition:
       transform 190ms cubic-bezier(.22, 1, .36, 1),
       box-shadow 190ms ease !important;
@@ -10690,7 +10690,7 @@ input:focus-visible,
     top: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
-    width: var(--rxnflow-narrow-rail-edge-target) !important;
+    width: var(--rxncanvas-narrow-rail-edge-target) !important;
     border-left: 1px solid rgba(89, 123, 133, 0.12) !important;
     background:
       linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(204, 232, 230, 0.4)),
@@ -11329,7 +11329,7 @@ input:focus-visible,
     grid-template-columns:
       0
       minmax(0, 1fr)
-      var(--rxnflow-responsive-inspector-width, var(--rxnflow-inspector-width, 288px)) !important;
+      var(--rxncanvas-responsive-inspector-width, var(--rxncanvas-inspector-width, 288px)) !important;
   }
 
   .workspace.is-right-collapsed:not(.is-left-collapsed),
@@ -11339,16 +11339,16 @@ input:focus-visible,
 
   .workspace:not(.is-left-collapsed) > .project-rail {
     position: fixed !important;
-    top: var(--rxnflow-titlebar-height, 36px) !important;
+    top: var(--rxncanvas-titlebar-height, 36px) !important;
     right: auto !important;
     bottom: 0 !important;
     left: 0 !important;
     z-index: var(--rxn-z-rail) !important;
-    width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
-    min-width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
-    max-width: var(--rxnflow-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
-    height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
-    max-height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    width: var(--rxncanvas-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    min-width: var(--rxncanvas-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    max-width: var(--rxncanvas-narrow-rail-panel, min(286px, calc(100vw - 28px))) !important;
+    height: calc(100vh - var(--rxncanvas-titlebar-height, 36px)) !important;
+    max-height: calc(100vh - var(--rxncanvas-titlebar-height, 36px)) !important;
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
@@ -11373,14 +11373,14 @@ input:focus-visible,
 
   .workspace:not(.is-right-collapsed) > .inspector-panel {
     position: fixed !important;
-    top: var(--rxnflow-titlebar-height, 36px) !important;
+    top: var(--rxncanvas-titlebar-height, 36px) !important;
     right: 0 !important;
     bottom: 0 !important;
     left: auto !important;
     z-index: var(--rxn-z-inspector) !important;
     width: min(310px, calc(100vw - 20px)) !important;
-    height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
-    max-height: calc(100vh - var(--rxnflow-titlebar-height, 36px)) !important;
+    height: calc(100vh - var(--rxncanvas-titlebar-height, 36px)) !important;
+    max-height: calc(100vh - var(--rxncanvas-titlebar-height, 36px)) !important;
   }
 }
 
@@ -11390,12 +11390,12 @@ input:focus-visible,
 @media (max-width: 1180px) {
   .workspace:not(.is-left-collapsed) > .project-rail,
   .workspace.is-left-collapsed > .project-rail {
-    --rxnflow-narrow-rail-edge-target: 12px;
+    --rxncanvas-narrow-rail-edge-target: 12px;
     top: 0 !important;
     z-index: var(--rxn-z-rail-overlay) !important;
-    width: var(--rxnflow-project-rail-width, 212px) !important;
-    min-width: var(--rxnflow-project-rail-width, 212px) !important;
-    max-width: var(--rxnflow-project-rail-width, 212px) !important;
+    width: var(--rxncanvas-project-rail-width, 212px) !important;
+    min-width: var(--rxncanvas-project-rail-width, 212px) !important;
+    max-width: var(--rxncanvas-project-rail-width, 212px) !important;
     height: 100vh !important;
     max-height: 100vh !important;
     padding: 50px 14px 18px !important;
@@ -11405,7 +11405,7 @@ input:focus-visible,
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
-    transform: translateX(calc(-100% + var(--rxnflow-narrow-rail-edge-target))) !important;
+    transform: translateX(calc(-100% + var(--rxncanvas-narrow-rail-edge-target))) !important;
   }
 
   .workspace > .project-rail .brand-block,
@@ -11422,7 +11422,7 @@ input:focus-visible,
 
   .workspace:not(.is-left-collapsed) > .project-rail .project-rail-scroll,
   .workspace.is-left-collapsed > .project-rail .project-rail-scroll {
-    width: calc(var(--rxnflow-project-rail-width, 212px) - 20px) !important;
+    width: calc(var(--rxncanvas-project-rail-width, 212px) - 20px) !important;
   }
 
   .workspace > .project-rail .rail-heading {
@@ -11627,7 +11627,7 @@ input:focus-visible,
 }
 
 .project-rail-region-projects {
-  flex: 0 0 var(--rxnflow-project-region-share, 35%) !important;
+  flex: 0 0 var(--rxncanvas-project-region-share, 35%) !important;
   min-height: 74px !important;
   max-height: none !important;
 }
@@ -11747,18 +11747,18 @@ body.is-resizing-project-rail-sections * {
   }
 
   .workspace.is-left-collapsed > .project-rail {
-    transform: translate3d(calc(-1 * var(--rxnflow-project-rail-width, 248px)), 0, 0) !important;
+    transform: translate3d(calc(-1 * var(--rxncanvas-project-rail-width, 248px)), 0, 0) !important;
   }
 
   .workspace > .inspector-panel {
     position: absolute !important;
-    top: var(--rxnflow-titlebar-height, 36px) !important;
+    top: var(--rxncanvas-titlebar-height, 36px) !important;
     right: 0 !important;
     bottom: 0 !important;
     left: auto !important;
-    width: var(--rxnflow-inspector-width, 288px) !important;
-    min-width: var(--rxnflow-inspector-width, 288px) !important;
-    max-width: var(--rxnflow-inspector-width, 288px) !important;
+    width: var(--rxncanvas-inspector-width, 288px) !important;
+    min-width: var(--rxncanvas-inspector-width, 288px) !important;
+    max-width: var(--rxncanvas-inspector-width, 288px) !important;
     height: auto !important;
     max-height: none !important;
     transform: translate3d(0, 0, 0);
@@ -11796,7 +11796,7 @@ body.is-resizing-project-rail-sections * {
    windows. It is hidden off-canvas and opens from the left edge or the
    titlebar button; there is no icon-only placeholder column. */
 .app-shell {
-  --rxnflow-inspector-width: var(--rxnflow-inspector-live-width, 280px) !important;
+  --rxncanvas-inspector-width: var(--rxncanvas-inspector-live-width, 280px) !important;
 }
 
 .inspector-panel {
@@ -11839,8 +11839,8 @@ body.is-resizing-project-rail-sections * {
 }
 
 .workspace:not(.is-right-collapsed) .inspector-panel {
-  width: var(--rxnflow-inspector-width, 280px) !important;
-  max-width: var(--rxnflow-inspector-width, 280px) !important;
+  width: var(--rxncanvas-inspector-width, 280px) !important;
+  max-width: var(--rxncanvas-inspector-width, 280px) !important;
   overflow-x: visible !important;
   clip-path: none !important;
 }
@@ -11858,7 +11858,7 @@ body.is-resizing-project-rail-sections * {
 
 @media (max-width: 1180px) {
   .app-shell.is-compact-layout .workspace {
-    grid-template-columns: 0 minmax(0, 1fr) var(--rxnflow-inspector-width, 280px) !important;
+    grid-template-columns: 0 minmax(0, 1fr) var(--rxncanvas-inspector-width, 280px) !important;
     min-width: 0 !important;
   }
 
@@ -11873,9 +11873,9 @@ body.is-resizing-project-rail-sections * {
     bottom: 0 !important;
     left: 0 !important;
     z-index: var(--rxn-z-rail-overlay) !important;
-    width: var(--rxnflow-project-rail-width, 212px) !important;
-    min-width: var(--rxnflow-project-rail-width, 212px) !important;
-    max-width: var(--rxnflow-project-rail-width, 212px) !important;
+    width: var(--rxncanvas-project-rail-width, 212px) !important;
+    min-width: var(--rxncanvas-project-rail-width, 212px) !important;
+    max-width: var(--rxncanvas-project-rail-width, 212px) !important;
     height: 100vh !important;
     max-height: 100vh !important;
     padding: 50px 14px 18px !important;
@@ -11963,8 +11963,8 @@ body.is-resizing-project-rail-sections * {
   }
 
   .app-shell.is-compact-layout .inspector-panel {
-    width: var(--rxnflow-inspector-width, 280px) !important;
-    max-width: var(--rxnflow-inspector-width, 280px) !important;
+    width: var(--rxncanvas-inspector-width, 280px) !important;
+    max-width: var(--rxncanvas-inspector-width, 280px) !important;
   }
 }
 
@@ -11976,16 +11976,16 @@ body.is-resizing-project-rail-sections * {
 
   .app-shell.is-compact-layout .workspace:not(.is-right-collapsed) > .inspector-panel {
     position: fixed !important;
-    top: var(--rxnflow-titlebar-height, 48px) !important;
+    top: var(--rxncanvas-titlebar-height, 48px) !important;
     right: 0 !important;
     bottom: 0 !important;
     left: auto !important;
     z-index: var(--rxn-z-inspector) !important;
-    width: min(var(--rxnflow-inspector-width, 280px), calc(100vw - 20px)) !important;
+    width: min(var(--rxncanvas-inspector-width, 280px), calc(100vw - 20px)) !important;
     min-width: 0 !important;
     max-width: calc(100vw - 20px) !important;
-    height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
-    max-height: calc(100vh - var(--rxnflow-titlebar-height, 48px)) !important;
+    height: calc(100vh - var(--rxncanvas-titlebar-height, 48px)) !important;
+    max-height: calc(100vh - var(--rxncanvas-titlebar-height, 48px)) !important;
   }
 }
 

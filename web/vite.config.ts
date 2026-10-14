@@ -10,7 +10,7 @@ function browserEngine(): Plugin {
   const { prepareDevEngine } = require("./scripts/dev-engine.cjs")
   const { shutdownEngineWorkers } = require("./electron/engine-bridge.cjs")
   return {
-    name: "rxnflow-python-engine",
+    name: "rxncanvas-python-engine",
     configureServer(server) {
       prepareDevEngine()
       server.middlewares.use(createBrowserEngineMiddleware())

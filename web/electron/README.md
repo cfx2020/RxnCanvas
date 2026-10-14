@@ -1,4 +1,4 @@
-# RxnFlow Electron shell
+# RxnCanvas Electron shell
 
 The desktop shell hosts the React/Vite workbench and provides native file dialogs,
 workspace persistence, preferences, external source openers and a Python engine
@@ -29,11 +29,11 @@ pool. Run the following commands from `web/`.
 ## Runtime and data
 
 `engine-bridge.cjs` reuses up to three Python subprocesses. Development executes
-Python source using the prepared environment or RXNFLOW_PYTHON; packaged apps
+Python source using the prepared environment or RXNCANVAS_PYTHON; packaged apps
 use their bundled executable. Packaged binaries are copied to a process-specific
 temporary path so rebuilding the installed source cannot corrupt a running engine.
 
-`project-store.cjs` stores project state under `.rxnflow/`, full source copies
+`project-store.cjs` stores project state under `.rxncanvas/`, full source copies
 under `sources/`, and reports plus their manifest under `exports/`. Mutations are
 serialized per workspace, file replacement is atomic, and archives use a separate
 destination lock. ZIP import validates paths and resource limits before placing

@@ -1,13 +1,13 @@
 ---
 doc_type: design-system
-slug: rxnflow-workbench-design-system
+slug: rxncanvas-workbench-design-system
 status: current
-summary: Visual tokens, component rules and incremental CSS boundaries for the RxnFlow desktop workbench.
+summary: Visual tokens, component rules and incremental CSS boundaries for the RxnCanvas desktop workbench.
 ---
 
-# RxnFlow Workbench Design System
+# RxnCanvas Workbench Design System
 
-RxnFlow is a desktop reaction-graph editor. Keep the canvas prominent, source navigation dense and inspector facts easy to scan. Narrow layouts serve resized desktop windows; the browser is a development preview, not a separate product. Use cool neutral surfaces, blue-grey text, restrained teal selection and amber attention states.
+RxnCanvas is a desktop reaction-graph editor. Keep the canvas prominent, source navigation dense and inspector facts easy to scan. Narrow layouts serve resized desktop windows; the browser is a development preview, not a separate product. Use cool neutral surfaces, blue-grey text, restrained teal selection and amber attention states.
 
 ## Tokens
 

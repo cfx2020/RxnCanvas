@@ -8,7 +8,7 @@ import {
   createAndSaveReportArtifacts,
   saveReportArtifactToDestination,
 } from "./reportExportWorkflow"
-import type { RxnflowDesktopApi } from "./appRuntimeEffects"
+import type { RxnCanvasDesktopApi } from "./appRuntimeEffects"
 
 export async function exportSelectedReportFormats({
   exportOptions,
@@ -29,7 +29,7 @@ export async function exportSelectedReportFormats({
   edges: FlowEdge[]
   files: SourceFile[]
   rows: EnergyTableRow[]
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   setExportBusy: (busy: boolean) => void
   setExportStatus: (status: string) => void
   setExportArtifacts: (artifacts: ExportedReportArtifact[]) => void

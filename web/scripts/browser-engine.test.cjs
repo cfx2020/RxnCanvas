@@ -23,7 +23,7 @@ function upload(base, content, { name = "calculation.log", headers = {} } = {}) 
       headers: {
         "content-type": "application/octet-stream",
         "content-length": Buffer.byteLength(content),
-        "x-rxnflow-request": "1",
+        "x-rxncanvas-request": "1",
         origin: base,
         ...headers,
       },
@@ -41,7 +41,7 @@ function upload(base, content, { name = "calculation.log", headers = {} } = {}) 
 test("browser import sends the complete bytes to the Python command and removes the temporary source", async (t) => {
   const content = `${"head\n".repeat(15000)}SCF Done: E(RB3LYP) = -76.431 A.U.\n${"tail\n".repeat(120000)}`
   let uploadedPath
-  const parse = { parsed: true, parserId: "gaussian-log-cclib+rxnflow-text-full-file", energyGas: -76.431 }
+  const parse = { parsed: true, parserId: "gaussian-log-cclib+rxncanvas-text-full-file", energyGas: -76.431 }
   const base = await startServer(t, async (request) => {
     assert.equal(request.command, "import.preview")
     assert.equal(request.files.length, 1)
@@ -61,13 +61,13 @@ test("browser import rejects cross-site requests, paths, and oversized files wit
   assert.equal((await upload(base, "data", { headers: { origin: "https://untrusted.example" } })).status, 403)
   assert.equal((await upload(base, "data", { headers: { host: "untrusted.example" } })).status, 403)
   assert.equal((await upload(base, "data", { headers: { "sec-fetch-site": "same-site" } })).status, 403)
-  assert.equal((await upload(base, "data", { headers: { "x-rxnflow-request": "" } })).status, 403)
+  assert.equal((await upload(base, "data", { headers: { "x-rxncanvas-request": "" } })).status, 403)
   assert.equal((await upload(base, "data", { name: "../private.log" })).status, 400)
   assert.equal((await upload(base, "data", { name: "C:\\private.log" })).status, 400)
   assert.equal((await upload(base, "x".repeat(33))).status, 413)
   const response = await fetch(`${base}/api/import/preview?name=a.log&sourcePath=/etc/passwd`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-rxnflow-request": "1", origin: base },
+    headers: { "content-type": "application/json", "x-rxncanvas-request": "1", origin: base },
     body: JSON.stringify({ sourcePath: "/etc/passwd" }),
   })
   assert.equal(response.status, 400)

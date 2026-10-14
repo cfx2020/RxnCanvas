@@ -18,7 +18,7 @@ import {
 
 const FILE_CONTEXT_MENU_WIDTH = 212
 const FILE_CONTEXT_MENU_HEIGHT = 68
-const PROJECT_REGION_SHARE_STORAGE_KEY = "rxnflow-project-rail-project-share"
+const PROJECT_REGION_SHARE_STORAGE_KEY = "rxncanvas-project-rail-project-share"
 const DEFAULT_PROJECT_REGION_SHARE = 0.35
 const MIN_PROJECT_REGION_SHARE = 0.18
 const MAX_PROJECT_REGION_SHARE = 0.72
@@ -130,7 +130,7 @@ export const ProjectRail = memo(function ProjectRail({
     .filter((group) => group.files.some((file) => selectedFileSet.has(file.id)))
     .flatMap((group) => group.files), [fileGroups, selectedFileSet])
   const railStyle = useMemo(() => ({
-    "--rxnflow-project-region-share": `${Math.round(projectRegionShare * 100)}%`,
+    "--rxncanvas-project-region-share": `${Math.round(projectRegionShare * 100)}%`,
   } as CSSProperties), [projectRegionShare])
 
   useEffect(() => {
@@ -812,7 +812,7 @@ function ProjectRailItem({
           <p>
             Removes this project, its canvases, and imported log registrations from the current sidebar.
           </p>
-          <small>Original source files and saved .rxnflow folders on disk are not deleted.</small>
+          <small>Original source files and saved .rxncanvas folders on disk are not deleted.</small>
           <div className="project-delete-confirm-actions">
             <button ref={cancelDeleteButtonRef} type="button" className="is-secondary" onClick={cancelDelete}>Cancel</button>
             <button ref={confirmDeleteButtonRef} type="button" className="is-danger" onClick={onConfirmDelete}>Remove from sidebar</button>

@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/desktop-release.yml"
-      - "rxnflow/**"
+      - "rxncanvas/**"
       - "tests/**"
       - "web/**"
   push:
@@ -14,7 +14,7 @@ on:
       - "v*-beta.*"
     paths:
       - ".github/workflows/desktop-release.yml"
-      - "rxnflow/**"
+      - "rxncanvas/**"
       - "tests/**"
       - "web/**"
   workflow_dispatch:
@@ -51,7 +51,7 @@ jobs:
         run: |
           if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
-              --title "RxnFlow ${GITHUB_REF_NAME#v}" --notes "Release build in progress." --draft --prerelease
+              --title "RxnCanvas ${GITHUB_REF_NAME#v}" --notes "Release build in progress." --draft --prerelease
           fi
 
   core-and-renderer:
@@ -180,7 +180,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: rxnflow-windows-artifacts
+          name: rxncanvas-windows-artifacts
           retention-days: 3
           path: |
             web/release/*.exe
@@ -196,12 +196,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $appVersion = node -p "require('./package.json').version"
-          $installer = Get-ChildItem release -Filter "RxnFlow Setup $appVersion.exe" | Select-Object -First 1
-          $portable = Get-ChildItem release -Filter "RxnFlow $appVersion.exe" | Select-Object -First 1
+          $installer = Get-ChildItem release -Filter "RxnCanvas Setup $appVersion.exe" | Select-Object -First 1
+          $portable = Get-ChildItem release -Filter "RxnCanvas $appVersion.exe" | Select-Object -First 1
           if (-not $installer -or -not $portable) { throw "Windows release artifacts are missing" }
           New-Item -ItemType Directory -Force release-publish | Out-Null
-          $setupTarget = "release-publish/RxnFlow-$appVersion-windows-x64-setup.exe"
-          $portableTarget = "release-publish/RxnFlow-$appVersion-windows-x64-portable.exe"
+          $setupTarget = "release-publish/RxnCanvas-$appVersion-windows-x64-setup.exe"
+          $portableTarget = "release-publish/RxnCanvas-$appVersion-windows-x64-portable.exe"
           Copy-Item $installer.FullName $setupTarget
           Copy-Item $portable.FullName $portableTarget
           gh release upload $env:GITHUB_REF_NAME $setupTarget $portableTarget --repo $env:GITHUB_REPOSITORY --clobber
@@ -247,7 +247,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: rxnflow-macos-unsigned-beta
+          name: rxncanvas-macos-unsigned-beta
           retention-days: 3
           path: |
             web/release/*.dmg
@@ -265,8 +265,8 @@ jobs:
         run: |
           app_version="$(node -p "require('./package.json').version")"
           mkdir -p release-publish
-          cp "release/RxnFlow-${app_version}-arm64.dmg" release-publish/
-          cp "release/RxnFlow-${app_version}-arm64-mac.zip" release-publish/
+          cp "release/RxnCanvas-${app_version}-arm64.dmg" release-publish/
+          cp "release/RxnCanvas-${app_version}-arm64-mac.zip" release-publish/
           gh release upload "$GITHUB_REF_NAME" release-publish/* --repo "$GITHUB_REPOSITORY" --clobber
 
   publish-beta-release:
@@ -293,16 +293,16 @@ jobs:
           base_version="${tag_version%%-*}"
           [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
           test "$base_version" = "$app_version"
-          echo "RXNFLOW_APP_VERSION=$app_version" >> "$GITHUB_ENV"
-          echo "RXNFLOW_RELEASE_VERSION=$tag_version" >> "$GITHUB_ENV"
-          echo "RXNFLOW_RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          echo "RXNCANVAS_APP_VERSION=$app_version" >> "$GITHUB_ENV"
+          echo "RXNCANVAS_RELEASE_VERSION=$tag_version" >> "$GITHUB_ENV"
+          echo "RXNCANVAS_RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
       - name: Download user-facing release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p web/release-publish
           gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-            --dir web/release-publish --pattern "RxnFlow-${RXNFLOW_APP_VERSION}-*"
+            --dir web/release-publish --pattern "RxnCanvas-${RXNCANVAS_APP_VERSION}-*"
           test "$(find web/release-publish -maxdepth 1 -type f -name '*.exe' | wc -l)" -eq 2
           test "$(find web/release-publish -maxdepth 1 -type f -name '*.dmg' | wc -l)" -eq 1
           test "$(find web/release-publish -maxdepth 1 -type f -name '*-mac.zip' | wc -l)" -eq 1
@@ -310,19 +310,19 @@ jobs:
       - name: Generate unified checksums and release manifest
         working-directory: web
         env:
-          RXNFLOW_RELEASE_DIR: release-publish
+          RXNCANVAS_RELEASE_DIR: release-publish
         run: npm run desktop:release:manifest
       - name: Verify publish payload
         working-directory: web/release-publish
         run: |
           sha256sum -c SHA256SUMS.txt
-          node -e "const m=require('./release-manifest.json'); if(m.releaseTag!==process.env.GITHUB_REF_NAME||m.releaseVersion!==process.env.RXNFLOW_RELEASE_VERSION||m.artifacts.some((a)=>a.name.endsWith('.blockmap'))) process.exit(1)"
+          node -e "const m=require('./release-manifest.json'); if(m.releaseTag!==process.env.GITHUB_REF_NAME||m.releaseVersion!==process.env.RXNCANVAS_RELEASE_VERSION||m.artifacts.some((a)=>a.name.endsWith('.blockmap'))) process.exit(1)"
       - name: Create or update GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           node web/scripts/generate-release-notes.cjs > "$RUNNER_TEMP/release-notes.md"
-          title="RxnFlow ${RXNFLOW_RELEASE_VERSION}"
+          title="RxnCanvas ${RXNCANVAS_RELEASE_VERSION}"
           gh release upload "$GITHUB_REF_NAME" \
             web/release-publish/SHA256SUMS.txt web/release-publish/release-manifest.json \
             --repo "$GITHUB_REPOSITORY" --clobber
@@ -377,7 +377,7 @@ jobs:
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rxnflow-macos-artifacts
+          name: rxncanvas-macos-artifacts
           path: |
             web/release/*.dmg
             web/release/*.zip

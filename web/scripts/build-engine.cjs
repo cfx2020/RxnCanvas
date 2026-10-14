@@ -8,7 +8,7 @@ const engineDir = path.join(webRoot, "engine")
 const buildRoot = path.join(webRoot, ".engine-build")
 const entryPath = path.join(webRoot, "scripts", "engine-entry.py")
 const requirementsLockPath = path.join(webRoot, "engine-requirements.lock")
-const executableBaseName = "rxnflow-engine"
+const executableBaseName = "rxncanvas-engine"
 const executableName = process.platform === "win32" ? `${executableBaseName}.exe` : executableBaseName
 const executablePath = path.join(engineDir, executableName)
 
@@ -16,7 +16,7 @@ function main() {
   fs.mkdirSync(engineDir, { recursive: true })
   fs.mkdirSync(buildRoot, { recursive: true })
   assert(fs.existsSync(requirementsLockPath), `Missing locked engine dependencies: ${requirementsLockPath}`)
-  for (const staleName of ["rxnflow-engine", "rxnflow-engine.exe"]) {
+  for (const staleName of ["rxncanvas-engine", "rxncanvas-engine.exe"]) {
     fs.rmSync(path.join(engineDir, staleName), { force: true })
   }
 
@@ -48,7 +48,7 @@ function main() {
     fs.chmodSync(executablePath, 0o755)
   }
   verifyEngineExecutable()
-  console.log(`RxnFlow bundled Python engine ready: ${path.relative(webRoot, executablePath)}`)
+  console.log(`RxnCanvas bundled Python engine ready: ${path.relative(webRoot, executablePath)}`)
 }
 
 function pyinstallerArgs() {

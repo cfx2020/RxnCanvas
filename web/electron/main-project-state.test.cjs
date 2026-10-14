@@ -21,7 +21,7 @@ function handlerSource(channel, nextChannel) {
 }
 
 test("confirming archive export preserves imports completed while its dialog was open", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-export-during-import-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-export-during-import-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
   const projectDirectory = path.join(tempDirectory, "study")
   const sourcePath = path.join(tempDirectory, "gas.log")
@@ -37,7 +37,7 @@ test("confirming archive export preserves imports completed while its dialog was
   }
   const pendingPackage = {
     schemaVersion: 2,
-    packageKind: "rxnflow-project",
+    packageKind: "rxncanvas-project",
     project: { id: "study", label: "Study" },
     files: [pendingFile],
     canvases: [],
@@ -64,11 +64,11 @@ test("confirming archive export preserves imports completed while its dialog was
     validateProjectPackageContent: async () => ({ valid: true, issues: [] }),
   }
   new Function(...Object.keys(dependencies), handlerSource(
-    "rxnflow:save-project-package",
-    "rxnflow:autosave-project-package",
+    "rxncanvas:save-project-package",
+    "rxncanvas:autosave-project-package",
   ))(...Object.values(dependencies))
 
-  const exporting = exportHandler({}, { content: pendingContent, defaultName: "study.rxnflow.zip" })
+  const exporting = exportHandler({}, { content: pendingContent, defaultName: "study.rxncanvas.zip" })
   await opened
   const { sourcePath: _sourcePath, ...materialized } = await materializeImportSourceFile(projectDirectory, { ...pendingFile, sourcePath }, 0)
   const completedContent = JSON.stringify({
@@ -76,7 +76,7 @@ test("confirming archive export preserves imports completed while its dialog was
     files: [{ ...materialized, status: "parsed", parse: { parsed: true, warnings: [] }, parseChecksum: materialized.checksum }],
   })
   await saveProjectContent(projectDirectory, completedContent)
-  const archivePath = path.join(tempDirectory, "study.rxnflow.zip")
+  const archivePath = path.join(tempDirectory, "study.rxncanvas.zip")
   confirmDialog({ canceled: false, filePath: archivePath })
   await exporting
 
@@ -91,8 +91,8 @@ test("confirming archive export preserves imports completed while its dialog was
 
 test("autosave records its project without changing the active project", () => {
   const autosaveBody = handlerSource(
-    "rxnflow:autosave-project-package",
-    "rxnflow:set-active-project",
+    "rxncanvas:autosave-project-package",
+    "rxncanvas:set-active-project",
   )
 
   assert.doesNotMatch(autosaveBody, /activateProjectDirectory\(/)
@@ -103,8 +103,8 @@ test("autosave records its project without changing the active project", () => {
 })
 
 test("inactive autosave keeps the selected recent project active", () => {
-  const projectA = "/projects/A.rxnflow"
-  const projectB = "/projects/B.rxnflow"
+  const projectA = "/projects/A.rxncanvas"
+  const projectB = "/projects/B.rxncanvas"
   const state = recordRecentProjectState({
     projectPaths: [projectB],
     activeProjectPath: projectB,
@@ -121,7 +121,7 @@ test("main recent-project wrapper forwards active-state options", () => {
 })
 
 test("forget invalidates autosaves before checking the project directory", () => {
-  const forgetBody = handlerSource("rxnflow:forget-project", "rxnflow:get-preferences")
+  const forgetBody = handlerSource("rxncanvas:forget-project", "rxncanvas:get-preferences")
   const invalidateIndex = forgetBody.indexOf("invalidateProjectLifecycle(projectId)")
   const directoryIndex = forgetBody.indexOf("projectDirectoriesById.get(projectId)")
   const persistIndex = forgetBody.indexOf("await forgetRecentProject(projectDirectory)")
@@ -159,8 +159,8 @@ test("project lifecycle generations invalidate only the deleted project", () => 
 
 test("project source inspection returns project-owned file metadata", () => {
   const inspectionBody = handlerSource(
-    "rxnflow:inspect-project-source-files",
-    "rxnflow:save-json-snapshot",
+    "rxncanvas:inspect-project-source-files",
+    "rxncanvas:save-json-snapshot",
   )
 
   assert.match(inspectionBody, /projectDirectoriesById\.get\(projectId\)/)
@@ -171,8 +171,8 @@ test("project source inspection returns project-owned file metadata", () => {
 
 test("source preview parsing prefers the project copy and returns its checksum", () => {
   const previewBody = handlerSource(
-    "rxnflow:parse-source-preview",
-    "rxnflow:inspect-project-source-files",
+    "rxncanvas:parse-source-preview",
+    "rxncanvas:inspect-project-source-files",
   )
   const storedPathIndex = previewBody.indexOf("candidates.push(path.join(projectDirectory, storedPath))")
   const sourcePathIndex = previewBody.indexOf("candidates.push(sourcePath)")
@@ -187,6 +187,6 @@ test("source preview parsing prefers the project copy and returns its checksum",
 test("preload exposes project source inspection to the renderer", () => {
   assert.match(
     preloadSource,
-    /inspectProjectSourceFiles: \(payload\) => ipcRenderer\.invoke\("rxnflow:inspect-project-source-files", payload\)/,
+    /inspectProjectSourceFiles: \(payload\) => ipcRenderer\.invoke\("rxncanvas:inspect-project-source-files", payload\)/,
   )
 })

@@ -1,7 +1,7 @@
 const fs = require("node:fs/promises")
 const path = require("node:path")
 
-const preferencesFileName = "rxnflow-preferences.json"
+const preferencesFileName = "rxncanvas-preferences.json"
 
 const defaultPreferences = {
   schemaVersion: 1,

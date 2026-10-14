@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/assets/readme-hero.svg" alt="RxnFlow — 计算化学反应路径工作台" width="100%">
+  <img src="docs/assets/readme-hero.svg" alt="RxnCanvas — 计算化学反应路径工作台" width="100%">
 </h1>
 
 <p align="center">
@@ -7,18 +7,18 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cfx2020/rxnflow/releases"><img src="https://img.shields.io/badge/Release-Beta-377AD5?style=flat-square&amp;labelColor=25354A" alt="Beta 测试版"></a>
+  <a href="https://github.com/cfx2020/rxncanvas/releases"><img src="https://img.shields.io/badge/Release-Beta-377AD5?style=flat-square&amp;labelColor=25354A" alt="Beta 测试版"></a>
   <a href="#下载与安装"><img src="https://img.shields.io/badge/macOS-Apple_Silicon-377AD5?style=flat-square&amp;labelColor=25354A&amp;logo=apple&amp;logoColor=white" alt="macOS · Apple Silicon"></a>
   <a href="#下载与安装"><img src="https://img.shields.io/badge/Windows-x64-258985?style=flat-square&amp;labelColor=25354A&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTF2MTFIMHpNMTMgMGgxMXYxMUgxM3pNMCAxM2gxMXYxMUgwek0xMyAxM2gxMXYxMUgxM3oiLz48L3N2Zz4%3D" alt="Windows · x64"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/cfx2020/rxnflow/releases"><strong>下载测试版</strong></a> &nbsp;·&nbsp;
+  <a href="https://github.com/cfx2020/rxncanvas/releases"><strong>下载测试版</strong></a> &nbsp;·&nbsp;
   <a href="docs/user/desktop-canvas-workbench.md">使用指南</a> &nbsp;·&nbsp;
   <a href="docs/user/supported-import-formats.md">支持的导入格式</a>
 </p>
 
-RxnFlow 是面向计算化学研究者的本地桌面工作台。导入已有计算输出后，你可以检查分子结构与能量、组装反应路径、比较相对能量和能垒，再导出用于汇报、制图或进一步分析的文件。
+RxnCanvas 是面向计算化学研究者的本地桌面工作台。导入已有计算输出后，你可以检查分子结构与能量、组装反应路径、比较相对能量和能垒，再导出用于汇报、制图或进一步分析的文件。
 
 ## 视频介绍
 
@@ -32,15 +32,15 @@ https://github.com/user-attachments/assets/30eb06b1-1f22-454d-92c2-dc5c0d223a08
 - **检查分子结构**：查看与编辑 2D 结构，旋转查看 3D 坐标，量测键长、键角和二面角；有位移数据时可播放默认振动模式。
 - **导出图表与数据**：生成 PNG 图片、可在 ChemDraw 中继续编辑的 CDXML，以及包含能量表和来源信息的 XLSX。
 
-使用前需要准备由 Gaussian 等外部软件生成的计算结果。RxnFlow 负责结果整理与可视化，不运行量化计算任务。
+使用前需要准备由 Gaussian 等外部软件生成的计算结果。RxnCanvas 负责结果整理与可视化，不运行量化计算任务。
 
 ## 下载与安装
 
-目前提供 **Beta 测试版**，尚未发布正式版。前往 [Releases](https://github.com/cfx2020/rxnflow/releases)，查看对应版本说明并选择与你的电脑匹配的安装包。私有测试阶段需要仓库访问权限。
+目前提供 **Beta 测试版**，尚未发布正式版。前往 [Releases](https://github.com/cfx2020/rxncanvas/releases)，查看对应版本说明并选择与你的电脑匹配的安装包。私有测试阶段需要仓库访问权限。
 
 | 平台 | 安装包 | 安装方式 |
 | --- | --- | --- |
-| macOS · Apple Silicon（arm64） | `.dmg` 或 `.zip` | 打开 DMG 或解压 ZIP，将 `RxnFlow.app` 拖入「应用程序」 |
+| macOS · Apple Silicon（arm64） | `.dmg` 或 `.zip` | 打开 DMG 或解压 ZIP，将 `RxnCanvas.app` 拖入「应用程序」 |
 | Windows · x64 | `setup.exe` 或 `portable.exe` | 运行安装程序，或直接启动便携版 |
 
 桌面安装包已包含解析引擎，**无需另行安装 Python 或 Node.js**。正常导入、编辑和导出可在本机离线完成。
@@ -99,17 +99,17 @@ macOS Beta 尚未经过 Apple 公证，首次启动可能被系统拦截。请�
 桌面端会将编辑内容**自动保存到你选择的项目文件夹**，导入的原始计算文件副本保存在其中的 `sources/`，导出结果保存在 `exports/`。
 
 - **继续编辑**：从最近项目或 **Use existing folder** 重新打开项目。
-- **备份或换机**：备份整个项目文件夹，或导出 `.rxnflow.zip` 项目包。
-- **分享项目**：发送 `.rxnflow.zip`；打开项目包时，应用会在压缩包旁创建新的工作区并恢复内容。
+- **备份或换机**：备份整个项目文件夹，或导出 `.rxncanvas.zip` 项目包。
+- **分享项目**：发送 `.rxncanvas.zip`；打开项目包时，应用会在压缩包旁创建新的工作区并恢复内容。
 - **整理侧栏**：**Remove from sidebar** 只移除列表中的引用，不删除磁盘上的项目文件夹。
 
 项目包可包含原始计算文件，分享前请确认其中的数据适合提供给接收者。
 
 ## 隐私与许可
 
-RxnFlow 当前无需账号，不提供云同步，也不收集遥测或自动上传计算数据。文件位置和网络行为详见[隐私说明](PRIVACY.md)。
+RxnCanvas 当前无需账号，不提供云同步，也不收集遥测或自动上传计算数据。文件位置和网络行为详见[隐私说明](PRIVACY.md)。
 
-RxnFlow 当前保留所有权利，未授予开源许可；所包含的第三方组件遵循各自许可证。详见 [LICENSE](LICENSE) 和[第三方声明](web/legal/THIRD_PARTY_NOTICES.md)。
+RxnCanvas 当前保留所有权利，未授予开源许可；所包含的第三方组件遵循各自许可证。详见 [LICENSE](LICENSE) 和[第三方声明](web/legal/THIRD_PARTY_NOTICES.md)。
 
 ## 开发资料
 

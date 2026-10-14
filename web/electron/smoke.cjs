@@ -52,11 +52,11 @@ async function main() {
 
   const status = await getEngineStatus({ timeoutMs: 5000 })
   if (!status.ok || status.data?.status !== "ready") {
-    throw new Error(`RxnFlow local engine smoke failed: ${JSON.stringify(status)}`)
+    throw new Error(`RxnCanvas local engine smoke failed: ${JSON.stringify(status)}`)
   }
   for (const capability of ["import.preview", "import.register_selection", "import.register_all", "project.validate", "project.open", "project.save"]) {
     if (!status.data.capabilities?.includes(capability)) {
-      throw new Error(`RxnFlow local engine missing ${capability}: ${JSON.stringify(status)}`)
+      throw new Error(`RxnCanvas local engine missing ${capability}: ${JSON.stringify(status)}`)
     }
   }
 
@@ -73,13 +73,13 @@ async function main() {
   if (
     !preview.ok
     || smokeParse?.sourceKind !== "Gaussian"
-    || smokeParse?.parserId !== "gaussian-log-cclib+rxnflow-text-full-file"
+    || smokeParse?.parserId !== "gaussian-log-cclib+rxncanvas-text-full-file"
     || smokeParse?.parseScope !== "full-file"
     || smokeParse?.objectCount !== 1
     || !Array.isArray(smokeParse?.candidates)
     || smokeParse.candidates.length !== 1
   ) {
-    throw new Error(`RxnFlow import.preview smoke failed: ${JSON.stringify(preview)}`)
+    throw new Error(`RxnCanvas import.preview smoke failed: ${JSON.stringify(preview)}`)
   }
   const sourceWithParse = {
     ...previewFile,
@@ -98,7 +98,7 @@ async function main() {
     || registeredSelection.data?.registeredObjects?.length !== 1
     || registeredSelection.data.registeredObjects[0]?.sourceCandidateId !== smokeParse.candidates[0].candidateId
   ) {
-    throw new Error(`RxnFlow import.register_selection smoke failed: ${JSON.stringify(registeredSelection)}`)
+    throw new Error(`RxnCanvas import.register_selection smoke failed: ${JSON.stringify(registeredSelection)}`)
   }
   const registeredAll = await runEngineRequest({
     command: "import.register_all",
@@ -109,19 +109,19 @@ async function main() {
     || registeredAll.data?.registeredObjects?.length !== smokeParse.objectCount
     || registeredAll.data.files?.[0]?.registeredObjectIds?.length !== smokeParse.objectCount
   ) {
-    throw new Error(`RxnFlow import.register_all smoke failed: ${JSON.stringify(registeredAll)}`)
+    throw new Error(`RxnCanvas import.register_all smoke failed: ${JSON.stringify(registeredAll)}`)
   }
   await verifyEngineProjectCommands()
 
   console.log("Electron desktop smoke files present")
   console.log("Electron recent projects store ready")
   console.log("Electron project directory store ready")
-  console.log("RxnFlow local engine failure path ready")
-  console.log("RxnFlow local parser coverage ready")
-  console.log("RxnFlow project engine commands ready")
-  console.log("RxnFlow import.preview ready")
-  console.log("RxnFlow import.register ready")
-  console.log(`RxnFlow local engine ready: ${status.data.engineVersion}`)
+  console.log("RxnCanvas local engine failure path ready")
+  console.log("RxnCanvas local parser coverage ready")
+  console.log("RxnCanvas project engine commands ready")
+  console.log("RxnCanvas import.preview ready")
+  console.log("RxnCanvas import.register ready")
+  console.log(`RxnCanvas local engine ready: ${status.data.engineVersion}`)
 }
 
 function verifyVibrationPayloadSlimming() {
@@ -149,29 +149,29 @@ function verifyVibrationPayloadSlimming() {
   for (const slimmedPreview of previews) {
     const modes = slimmedPreview?.vibrationModes ?? []
     if (JSON.stringify(modes[0]?.displacements) !== JSON.stringify(firstDisplacements)) {
-      throw new Error("RxnFlow project persistence did not retain the first vibration mode")
+      throw new Error("RxnCanvas project persistence did not retain the first vibration mode")
     }
     if (!Array.isArray(modes[1]?.displacements) || modes[1].displacements.length !== 0) {
-      throw new Error("RxnFlow project persistence retained non-primary vibration displacements")
+      throw new Error("RxnCanvas project persistence retained non-primary vibration displacements")
     }
   }
 }
 
 async function verifyLocalEngineFailureMode() {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-engine-unavailable-"))
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-engine-unavailable-"))
   const enginePath = path.join(tempDir, "missing-engine")
-  const previousCommand = process.env.RXNFLOW_ENGINE_COMMAND
+  const previousCommand = process.env.RXNCANVAS_ENGINE_COMMAND
   try {
-    process.env.RXNFLOW_ENGINE_COMMAND = enginePath
+    process.env.RXNCANVAS_ENGINE_COMMAND = enginePath
     const response = await runEngineRequest({ command: "engine.status" }, { timeoutMs: 1000 })
     if (response.ok || response.error?.code !== "engine_unavailable") {
-      throw new Error(`RxnFlow local engine unavailable smoke failed: ${JSON.stringify(response)}`)
+      throw new Error(`RxnCanvas local engine unavailable smoke failed: ${JSON.stringify(response)}`)
     }
   } finally {
     if (previousCommand === undefined) {
-      delete process.env.RXNFLOW_ENGINE_COMMAND
+      delete process.env.RXNCANVAS_ENGINE_COMMAND
     } else {
-      process.env.RXNFLOW_ENGINE_COMMAND = previousCommand
+      process.env.RXNCANVAS_ENGINE_COMMAND = previousCommand
     }
     fs.rmSync(tempDir, { recursive: true, force: true })
   }
@@ -223,15 +223,15 @@ async function verifyLocalEngineParserCoverage() {
     command: "project.validate",
     content: badProjectReferenceContent(),
   }, { timeoutMs: 5000 })
-  assertProjectReferenceValidation(invalidProject, "RxnFlow local project reference validation smoke failed")
+  assertProjectReferenceValidation(invalidProject, "RxnCanvas local project reference validation smoke failed")
 }
 
 async function verifyRecentProjectsStore() {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-recent-"))
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-recent-"))
   try {
     const storePath = path.join(tempDir, "recent-projects.json")
-    const firstProject = path.join(tempDir, "alpha-study.rxnflow.json")
-    const secondProject = path.join(tempDir, "beta-study.rxnflow.json")
+    const firstProject = path.join(tempDir, "alpha-study.rxncanvas.json")
+    const secondProject = path.join(tempDir, "beta-study.rxncanvas.json")
     let projectPaths = recordRecentProject([], firstProject)
     projectPaths = recordRecentProject(projectPaths, secondProject)
     projectPaths = recordRecentProject(projectPaths, firstProject)
@@ -272,8 +272,8 @@ async function verifyRecentProjectsStore() {
     if (recentProjectLabel(firstProject) !== "alpha study") {
       throw new Error(`Recent project label failed: ${recentProjectLabel(firstProject)}`)
     }
-    if (recentProjectLabel(path.join(tempDir, "gamma-study.rxnflow")) !== "gamma study") {
-      throw new Error("Recent .rxnflow project label failed")
+    if (recentProjectLabel(path.join(tempDir, "gamma-study.rxncanvas")) !== "gamma study") {
+      throw new Error("Recent .rxncanvas project label failed")
     }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })
@@ -281,14 +281,14 @@ async function verifyRecentProjectsStore() {
 }
 
 async function verifyProjectDirectoryStore() {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-store-"))
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-store-"))
   try {
     const rawFilePath = path.join(tempDir, "gaussian.log")
     fs.writeFileSync(rawFilePath, "SCF Done: E(RwB97XD) = -100.0", "utf8")
     const projectPath = path.join(tempDir, "Alpha Study")
     const projectContent = JSON.stringify({
       schemaVersion: 2,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "alpha-study", label: "Alpha Study", meta: "open" },
       files: [{
         id: "gaussian-log",
@@ -314,7 +314,7 @@ async function verifyProjectDirectoryStore() {
       savedAt: "2026-06-14T00:00:00.000Z",
     })
 
-    const legacyJsonPath = path.join(tempDir, "alpha-study.rxnflow.json")
+    const legacyJsonPath = path.join(tempDir, "alpha-study.rxncanvas.json")
     const legacyProject = await saveProjectContent(legacyJsonPath, projectContent)
     if (JSON.parse(legacyProject.content).files?.[0]?.sourcePath) {
       throw new Error("Legacy JSON project save leaked sourcePath")
@@ -429,7 +429,7 @@ async function verifyProjectDirectoryStore() {
         kind: "Gaussian",
         size: 900100,
         status: "parsed",
-        preview: "head\n[... RxnFlow preview skipped 900000 bytes ...]\ntail",
+        preview: "head\n[... RxnCanvas preview skipped 900000 bytes ...]\ntail",
         parse: { parsed: true },
       }],
     }
@@ -510,7 +510,7 @@ async function verifyProjectDirectoryStore() {
 
     const artifactContent = Buffer.from("png-bytes")
     const artifactResult = await saveProjectReportArtifact(projectPath, {
-      defaultName: "rxnflow-profile.png",
+      defaultName: "rxncanvas-profile.png",
       mimeType: "image/png",
       encoding: "base64",
       content: artifactContent.toString("base64"),
@@ -519,14 +519,14 @@ async function verifyProjectDirectoryStore() {
       throw new Error(`Project artifact was not written: ${JSON.stringify(artifactResult)}`)
     }
     const exportManifest = JSON.parse(fs.readFileSync(path.join(projectPath, exportManifestFile), "utf8"))
-    if (exportManifest.artifacts?.[0]?.path !== "exports/rxnflow-profile.png") {
+    if (exportManifest.artifacts?.[0]?.path !== "exports/rxncanvas-profile.png") {
       throw new Error(`Project export manifest was not updated: ${JSON.stringify(exportManifest)}`)
     }
 
-    const archivePath = path.join(tempDir, "alpha-study.rxnflow.zip")
+    const archivePath = path.join(tempDir, "alpha-study.rxncanvas.zip")
     await exportProjectWorkspaceArchive(projectPath, archivePath)
     const archiveBytes = fs.readFileSync(archivePath)
-    for (const entryName of [".rxnflow/project.json", ".rxnflow/manifest.json", "sources/gaussian.log", "exports/manifest.json"]) {
+    for (const entryName of [".rxncanvas/project.json", ".rxncanvas/manifest.json", "sources/gaussian.log", "exports/manifest.json"]) {
       if (!archiveBytes.includes(Buffer.from(entryName))) {
         throw new Error(`Project archive is missing ${entryName}`)
       }
@@ -542,7 +542,7 @@ async function verifyProjectDirectoryStore() {
       throw new Error("Imported project archive did not restore source files")
     }
 
-    const symlinkArchivePath = path.join(tempDir, "symlink-escape.rxnflow.zip")
+    const symlinkArchivePath = path.join(tempDir, "symlink-escape.rxncanvas.zip")
     await writeSymlinkArchive(symlinkArchivePath, projectContent)
     const symlinkImportPath = path.join(tempDir, "Symlink Escape")
     const escapedFilePath = path.join(tempDir, "outside-project.log")
@@ -586,12 +586,12 @@ function writeSymlinkArchive(archivePath, projectContent) {
 }
 
 async function verifyEngineProjectCommands() {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-engine-project-"))
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-engine-project-"))
   try {
     const projectPath = path.join(tempDir, "Engine Study")
     const projectContent = JSON.stringify({
       schemaVersion: 2,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "engine-study", label: "Engine Study", meta: "open" },
       files: [{
         id: "file-1",
@@ -661,14 +661,14 @@ async function verifyEngineProjectCommands() {
       || validation.data.summary?.nodeCount !== 1
       || validation.data.summary?.importLedgerEntryCount !== 1
     ) {
-      throw new Error(`RxnFlow project.validate smoke failed: ${JSON.stringify(validation)}`)
+      throw new Error(`RxnCanvas project.validate smoke failed: ${JSON.stringify(validation)}`)
     }
 
     const invalidProject = await runEngineRequest({
       command: "project.validate",
       content: badProjectReferenceContent(),
     }, { timeoutMs: 5000 })
-    assertProjectReferenceValidation(invalidProject, "RxnFlow project reference validation smoke failed")
+    assertProjectReferenceValidation(invalidProject, "RxnCanvas project reference validation smoke failed")
 
     fs.mkdirSync(path.join(projectPath, "sources"), { recursive: true })
     fs.writeFileSync(path.join(projectPath, "sources", "01-file-1-engine.log"), "complete engine source", "utf8")
@@ -678,18 +678,18 @@ async function verifyEngineProjectCommands() {
       content: projectContent,
     }, { timeoutMs: 5000 })
     if (!saved.ok || !fs.existsSync(path.join(projectPath, projectStateFile))) {
-      throw new Error(`RxnFlow project.save smoke failed: ${JSON.stringify(saved)}`)
+      throw new Error(`RxnCanvas project.save smoke failed: ${JSON.stringify(saved)}`)
     }
     if (saved.data.content.includes("sourcePath")) {
-      throw new Error("RxnFlow project.save leaked session sourcePath")
+      throw new Error("RxnCanvas project.save leaked session sourcePath")
     }
     const savedPackage = JSON.parse(saved.data.content)
     const storedPath = savedPackage.files?.[0]?.storedPath
     if (!storedPath || !savedPackage.files?.[0]?.checksum?.startsWith("sha256:")) {
-      throw new Error(`RxnFlow project.save did not persist source checksum: ${saved.data.content}`)
+      throw new Error(`RxnCanvas project.save did not persist source checksum: ${saved.data.content}`)
     }
     if (savedPackage.importLedger?.entries?.[0]?.registeredNodeIds?.[0] !== "node-1") {
-      throw new Error(`RxnFlow project.save did not persist import ledger: ${saved.data.content}`)
+      throw new Error(`RxnCanvas project.save did not persist import ledger: ${saved.data.content}`)
     }
 
     const opened = await runEngineRequest({
@@ -697,7 +697,7 @@ async function verifyEngineProjectCommands() {
       projectPath,
     }, { timeoutMs: 5000 })
     if (!opened.ok || !opened.data?.validation?.valid || opened.data.validation.summary?.projectId !== "engine-study") {
-      throw new Error(`RxnFlow project.open smoke failed: ${JSON.stringify(opened)}`)
+      throw new Error(`RxnCanvas project.open smoke failed: ${JSON.stringify(opened)}`)
     }
 
     fs.writeFileSync(path.join(projectPath, storedPath), "changed", "utf8")
@@ -707,18 +707,18 @@ async function verifyEngineProjectCommands() {
     }, { timeoutMs: 5000 })
     const changedSourceCodes = new Set(changedSource.data?.validation?.issues?.map((issue) => issue.code) || [])
     if (!changedSource.ok || !changedSourceCodes.has("source_checksum_mismatch")) {
-      throw new Error(`RxnFlow source checksum validation smoke failed: ${JSON.stringify(changedSource)}`)
+      throw new Error(`RxnCanvas source checksum validation smoke failed: ${JSON.stringify(changedSource)}`)
     }
 
-    const exportArtifactPath = path.join(projectPath, "exports", "rxnflow-profile.png")
+    const exportArtifactPath = path.join(projectPath, "exports", "rxncanvas-profile.png")
     fs.writeFileSync(exportArtifactPath, "png-bytes", "utf8")
     fs.writeFileSync(path.join(projectPath, "exports", "manifest.json"), `${JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-export-artifacts",
+      packageKind: "rxncanvas-export-artifacts",
       artifacts: [{
-        id: "artifact-rxnflow-profile",
-        fileName: "rxnflow-profile.png",
-        path: "exports/rxnflow-profile.png",
+        id: "artifact-rxncanvas-profile",
+        fileName: "rxncanvas-profile.png",
+        path: "exports/rxncanvas-profile.png",
         mimeType: "image/png",
         size: 9,
         checksum: `sha256:${"0".repeat(64)}`,
@@ -730,7 +730,7 @@ async function verifyEngineProjectCommands() {
     }, { timeoutMs: 5000 })
     const changedExportCodes = new Set(changedExport.data?.validation?.issues?.map((issue) => issue.code) || [])
     if (!changedExport.ok || !changedExportCodes.has("artifact_checksum_mismatch")) {
-      throw new Error(`RxnFlow export checksum validation smoke failed: ${JSON.stringify(changedExport)}`)
+      throw new Error(`RxnCanvas export checksum validation smoke failed: ${JSON.stringify(changedExport)}`)
     }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })
@@ -740,7 +740,7 @@ async function verifyEngineProjectCommands() {
 function badProjectReferenceContent() {
   return JSON.stringify({
     schemaVersion: 2,
-    packageKind: "rxnflow-project",
+    packageKind: "rxncanvas-project",
     project: { id: "bad-project", label: "Bad Project", meta: "open" },
     files: [
       {

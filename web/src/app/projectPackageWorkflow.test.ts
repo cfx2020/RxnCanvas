@@ -38,9 +38,9 @@ function canvases() {
 
 describe("projectPackageWorkflow", () => {
   it("builds runtime-specific project package names and runtime transitions", () => {
-    expect(projectPackageDefaultName(project.label, "desktop")).toBe("ni-screen.rxnflow")
-    expect(projectPackageDefaultName(project.label, "browser")).toBe("ni-screen.rxnflow.json")
-    expect(projectPackageArchiveDefaultName(project.label)).toBe("ni-screen.rxnflow.zip")
+    expect(projectPackageDefaultName(project.label, "desktop")).toBe("ni-screen.rxncanvas")
+    expect(projectPackageDefaultName(project.label, "browser")).toBe("ni-screen.rxncanvas.json")
+    expect(projectPackageArchiveDefaultName(project.label)).toBe("ni-screen.rxncanvas.zip")
     expect(projectPackageOpenRuntimeTransition(true)).toEqual({ shouldOpenDesktop: true, shouldOpenBrowserPicker: false })
     expect(projectPackageOpenRuntimeTransition(false)).toEqual({ shouldOpenDesktop: false, shouldOpenBrowserPicker: true })
     expect(projectPackageSaveRuntimeTransition(true)).toEqual({ runtime: "desktop", shouldSaveDesktop: true, shouldDownloadBrowser: false })
@@ -55,10 +55,10 @@ describe("projectPackageWorkflow", () => {
       activeCanvasId: "canvas-1",
     }, "desktop")
 
-    expect(serialized.defaultName).toBe("ni-screen.rxnflow")
+    expect(serialized.defaultName).toBe("ni-screen.rxncanvas")
     expect(JSON.parse(serialized.content)).toMatchObject({
       schemaVersion: 2,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project,
       canvases: [{
         id: "canvas-1",

@@ -97,7 +97,7 @@ const viewport: CanvasViewport = {
 }
 
 describe("project packages", () => {
-  it("builds the current RxnFlow project package envelope", () => {
+  it("builds the current RxnCanvas project package envelope", () => {
     const projectPackage = buildProjectPackage(project, files, [{
       id: "canvas-1",
       label: "画布 1",
@@ -116,7 +116,7 @@ describe("project packages", () => {
 
     expect(projectPackage).toMatchObject({
       schemaVersion: 2,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project,
       files,
       canvases: [{
@@ -156,7 +156,7 @@ describe("project packages", () => {
   it("parses and normalizes valid package content", () => {
     const content = JSON.stringify({
       schemaVersion: 2,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project,
       files,
       canvases: [{
@@ -178,7 +178,7 @@ describe("project packages", () => {
           manualStructureKet: "  custom ket  ",
           manualStructureMolfile: "  custom molfile  ",
           manualStructureCdxml: "  custom cdxml  ",
-          manualStructureSvg: "<svg><image href=\"invalid://rxnflow\" onerror=\"window.pwned=true\"/></svg>",
+          manualStructureSvg: "<svg><image href=\"invalid://rxncanvas\" onerror=\"window.pwned=true\"/></svg>",
           position: { x: 12, y: 24 },
         }],
         edges,
@@ -307,7 +307,7 @@ describe("project packages", () => {
   it("normalizes reaction path semantics on nodes and edges", () => {
     const content = JSON.stringify({
       schemaVersion: 2,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project,
       files,
       canvases: [{
@@ -401,7 +401,7 @@ describe("project packages", () => {
             modeIndex: 0,
             frequencyCm1: -42,
             kind: "imaginary",
-            source: "rxnflow-text",
+            source: "rxncanvas-text",
             displacements: [
               { atomIndex: 0, dx: 0.1, dy: 0, dz: 0 },
               { atomIndex: 1, dx: -0.1, dy: 0, dz: 0 },
@@ -411,7 +411,7 @@ describe("project packages", () => {
             modeIndex: 1,
             frequencyCm1: 10,
             kind: "real",
-            source: "rxnflow-text",
+            source: "rxncanvas-text",
             displacements: [
               { atomIndex: 0, dx: 0, dy: 0.1, dz: 0 },
               { atomIndex: 1, dx: 0, dy: -0.1, dz: 0 },
@@ -421,7 +421,7 @@ describe("project packages", () => {
             modeIndex: 2,
             frequencyCm1: 20,
             kind: "real",
-            source: "rxnflow-text",
+            source: "rxncanvas-text",
             displacements: [{ atomIndex: 0, dx: 0, dy: 0, dz: 0 }],
           }],
           previewKind: "text",
@@ -433,7 +433,7 @@ describe("project packages", () => {
     }
     const parsed = parseProjectPackage(JSON.stringify({
       schemaVersion: 2,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project,
       files: [{ ...files[0], storedPath: hasStoredSource ? files[0].storedPath : undefined, parse: parseWithVibration }],
       canvases: [{
@@ -478,7 +478,7 @@ describe("project packages", () => {
   it("backfills import ledger entries for older lightweight packages", () => {
     const parsed = parseProjectPackage(JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project,
       files,
       nodes,
@@ -500,7 +500,7 @@ describe("project packages", () => {
     expect(parseProjectPackage(JSON.stringify({ schemaVersion: 1, project, files, nodes, edges, viewport }))).toBeNull()
     expect(parseProjectPackage(JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project,
       files,
       nodes,
@@ -512,6 +512,6 @@ describe("project packages", () => {
 
   it("creates safe project file stems", () => {
     expect(safeProjectFileStem("Diels-Alder Study")).toBe("diels-alder-study")
-    expect(safeProjectFileStem("   ")).toBe("rxnflow-project")
+    expect(safeProjectFileStem("   ")).toBe("rxncanvas-project")
   })
 })

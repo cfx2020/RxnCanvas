@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import type { SourceParseResult } from "../domain/sourceParseTypes"
-import type { RxnflowDesktopApi } from "./appRuntimeEffects"
+import type { RxnCanvasDesktopApi } from "./appRuntimeEffects"
 import {
   accumulatedDesktopImportFiles,
   createAnimationFrameBatcher,
@@ -40,7 +40,7 @@ function parseResult(label: string): SourceParseResult {
     energySolution: null,
     energyUnit: "hartree",
     parsed: true,
-    parserId: "gaussian-output-cclib+rxnflow-text-full-file",
+    parserId: "gaussian-output-cclib+rxncanvas-text-full-file",
     parserVersion: "1",
     objectCount: 1,
     warnings: [],
@@ -247,15 +247,15 @@ describe("importParseJobs", () => {
 
   it("runs desktop parser imports as bounded per-file jobs", async () => {
     const pending: Array<{
-      payload: Parameters<NonNullable<RxnflowDesktopApi["importSourceFiles"]>>[0]
-      resolve: (value: Awaited<ReturnType<NonNullable<RxnflowDesktopApi["importSourceFiles"]>>>) => void
+      payload: Parameters<NonNullable<RxnCanvasDesktopApi["importSourceFiles"]>>[0]
+      resolve: (value: Awaited<ReturnType<NonNullable<RxnCanvasDesktopApi["importSourceFiles"]>>>) => void
     }> = []
     let inFlight = 0
     let maxInFlight = 0
-    const importSourceFiles = vi.fn((payload: Parameters<NonNullable<RxnflowDesktopApi["importSourceFiles"]>>[0]) => {
+    const importSourceFiles = vi.fn((payload: Parameters<NonNullable<RxnCanvasDesktopApi["importSourceFiles"]>>[0]) => {
       inFlight += 1
       maxInFlight = Math.max(maxInFlight, inFlight)
-      return new Promise<Awaited<ReturnType<NonNullable<RxnflowDesktopApi["importSourceFiles"]>>>>((resolve) => {
+      return new Promise<Awaited<ReturnType<NonNullable<RxnCanvasDesktopApi["importSourceFiles"]>>>>((resolve) => {
         pending.push({
           payload,
           resolve: (value) => {
@@ -269,9 +269,9 @@ describe("importParseJobs", () => {
     const importedFiles = ["a", "b", "c", "d"].map(importSourceFile)
 
     const job = parsedImportSourceFiles({
-      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnCanvasDesktopApi,
       projectId: "p1",
-      projectDirectory: "/tmp/p1.rxnflow",
+      projectDirectory: "/tmp/p1.rxncanvas",
       importedFiles,
       concurrency: 2,
       referencedStoredPaths: ["sources/existing.log"],
@@ -286,8 +286,8 @@ describe("importParseJobs", () => {
       [expect.objectContaining({ id: "b", preview: "" })],
     ])
     expect(pending.map((entry) => entry.payload.projectDirectory)).toEqual([
-      "/tmp/p1.rxnflow",
-      "/tmp/p1.rxnflow",
+      "/tmp/p1.rxncanvas",
+      "/tmp/p1.rxncanvas",
     ])
     expect(pending.map((entry) => entry.payload.referencedStoredPaths)).toEqual([
       ["sources/existing.log"],
@@ -310,8 +310,8 @@ describe("importParseJobs", () => {
       [expect.objectContaining({ id: "d", preview: "" })],
     ])
     expect(pending.map((entry) => entry.payload.projectDirectory)).toEqual([
-      "/tmp/p1.rxnflow",
-      "/tmp/p1.rxnflow",
+      "/tmp/p1.rxncanvas",
+      "/tmp/p1.rxncanvas",
     ])
 
     pending.shift()?.resolve({
@@ -347,7 +347,7 @@ describe("importParseJobs", () => {
     }))
 
     const [parsedFile] = await parsedImportSourceFiles({
-      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnCanvasDesktopApi,
       projectId: "p1",
       importedFiles: [source],
     })
@@ -372,7 +372,7 @@ describe("importParseJobs", () => {
     }))
 
     const [parsedFile] = await parsedImportSourceFiles({
-      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnCanvasDesktopApi,
       projectId: "p1",
       projectDirectory: "/tmp/study",
       importedFiles: [source],
@@ -414,7 +414,7 @@ describe("importParseJobs", () => {
     }))
 
     const [parsedFile] = await parsedImportSourceFiles({
-      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnCanvasDesktopApi,
       projectId: "p1",
       importedFiles: [source],
     })
@@ -469,7 +469,7 @@ describe("importParseJobs", () => {
     }))
 
     const [parsedFile] = await parsedImportSourceFiles({
-      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnCanvasDesktopApi,
       projectId: "p1",
       importedFiles: [source],
     })
@@ -518,7 +518,7 @@ describe("importParseJobs", () => {
     }))
 
     const [parsedFile] = await parsedImportSourceFiles({
-      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnflowDesktopApi,
+      desktopApi: { platform: "darwin", importSourceFiles } as unknown as RxnCanvasDesktopApi,
       projectId: "p1",
       importedFiles: [source],
     })

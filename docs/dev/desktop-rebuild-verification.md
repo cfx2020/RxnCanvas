@@ -74,7 +74,7 @@ npm run desktop:smoke
 
 当前 workflow 包含 Python/renderer/Electron 回归测试、parser/bundle/browser 性能检查、Electron smoke、macOS runtime、Windows runtime/installer。CI 和本地均用 `npm audit` 检查完整依赖树，包括 devDependencies：Electron、React、Ketcher 等实际随应用分发的组件列在其中，不能用 `--omit=dev` 排除。Python lock 审计按 workflow 的 pip-audit 命令执行。
 
-2026-09-19（北京时间）发布的 [beta.12 CI](https://github.com/cfx2020/rxnflow/actions/runs/35374384687) 已通过 Windows 安装/启动/卸载及 macOS Beta 运行，Apple 签名公证 job 当次跳过。该 run 基于 `5cc635e`，不能证明后续提交或后来新增的 CI 步骤已通过。
+2026-09-19（北京时间）发布的 [beta.12 CI](https://github.com/cfx2020/rxncanvas/actions/runs/35374384687) 已通过 Windows 安装/启动/卸载及 macOS Beta 运行，Apple 签名公证 job 当次跳过。该 run 基于 `5cc635e`，不能证明后续提交或后来新增的 CI 步骤已通过。
 
 Beta tag 工作流合并两端 EXE/DMG/ZIP，生成 SHA-256 与 release manifest，发布 GitHub Pre-release。手动 `notarize_macos` job 使用 Apple 凭证构建、notarize、staple 并检查 Gatekeeper；自动正式版 tag 发布尚未配置。详见[发布范围](release-scope-boundary.md)与[macOS Beta 安装](../user/macos-unsigned-beta.md)。
 

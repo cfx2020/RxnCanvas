@@ -5,10 +5,10 @@ const path = require("node:path")
 const projectRoot = path.join(__dirname, "..")
 const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"))
 const appVersion = packageJson.version
-const releaseVersion = process.env.RXNFLOW_RELEASE_VERSION || appVersion
-const releaseTag = process.env.RXNFLOW_RELEASE_TAG || null
-const releaseDir = process.env.RXNFLOW_RELEASE_DIR
-  ? path.resolve(process.env.RXNFLOW_RELEASE_DIR)
+const releaseVersion = process.env.RXNCANVAS_RELEASE_VERSION || appVersion
+const releaseTag = process.env.RXNCANVAS_RELEASE_TAG || null
+const releaseDir = process.env.RXNCANVAS_RELEASE_DIR
+  ? path.resolve(process.env.RXNCANVAS_RELEASE_DIR)
   : path.join(projectRoot, "release")
 const artifactPattern = /\.(?:dmg|zip|exe|blockmap)$/i
 
@@ -42,7 +42,7 @@ const artifacts = fs.readdirSync(releaseDir, { withFileTypes: true })
   .sort((left, right) => left.name.localeCompare(right.name))
 
 if (artifacts.length === 0) {
-  throw new Error(`No RxnFlow ${appVersion} release artifacts found in ${releaseDir}`)
+  throw new Error(`No RxnCanvas ${appVersion} release artifacts found in ${releaseDir}`)
 }
 
 if (releaseTag) {
@@ -54,12 +54,12 @@ if (releaseTag) {
 
 const manifest = {
   schemaVersion: 1,
-  product: "RxnFlow",
+  product: "RxnCanvas",
   version: appVersion,
   releaseVersion,
   releaseTag,
   generatedAt: new Date().toISOString(),
-  sourceRevision: process.env.GITHUB_SHA || process.env.RXNFLOW_SOURCE_REVISION || null,
+  sourceRevision: process.env.GITHUB_SHA || process.env.RXNCANVAS_SOURCE_REVISION || null,
   artifacts,
   dependencyInventories: [
     "legal/node-third-party-licenses.json",

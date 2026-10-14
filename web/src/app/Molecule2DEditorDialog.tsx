@@ -89,7 +89,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
       showClipboardToast(`Pasted ${candidate.label} structure.`)
       return true
     } catch (error) {
-      console.warn("RxnFlow Ketcher paste failed", candidate.label, error)
+      console.warn("RxnCanvas Ketcher paste failed", candidate.label, error)
       setStatus("ready")
       showClipboardToast("Ketcher could not read the pasted structure.", "error", 4200)
       return false
@@ -97,7 +97,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
   }, [showClipboardToast])
 
   const pasteFromDesktopClipboard = useCallback(async () => {
-    const result = await window.rxnflowDesktop?.readChemicalClipboard?.()
+    const result = await window.rxncanvasDesktop?.readChemicalClipboard?.()
     if (!result?.ok) {
       setStatus("ready")
       showClipboardToast(result?.error ? `Could not read clipboard: ${result.error}` : "Could not read the system clipboard.", "error", 4200)
@@ -106,7 +106,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
     const candidate = structureCandidateFromDesktopClipboard(result)
     if (!candidate) {
       setStatus("ready")
-      console.warn("RxnFlow Ketcher paste found no supported chemical clipboard payload", {
+      console.warn("RxnCanvas Ketcher paste found no supported chemical clipboard payload", {
         formats: result.formats,
         payloadFormats: result.payloads?.map((payload) => payload.format) ?? [],
       })
@@ -124,7 +124,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
       void pasteStructureIntoKetcher(candidate)
       return
     }
-    if (window.rxnflowDesktop?.readChemicalClipboard) {
+    if (window.rxncanvasDesktop?.readChemicalClipboard) {
       event.preventDefault()
       event.stopPropagation()
       void pasteFromDesktopClipboard()
@@ -148,7 +148,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
         showClipboardToast("There is no structure to copy.", "error", 3200)
         return false
       }
-      const result = await window.rxnflowDesktop?.writeChemicalClipboard?.({
+      const result = await window.rxncanvasDesktop?.writeChemicalClipboard?.({
         cdxml,
         cdx,
         molfile,
@@ -160,11 +160,11 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
         showClipboardToast(result?.error ? `Copied plain text only: ${result.error}` : "Copied plain text only.", "error", 4200)
         return false
       }
-      console.info("RxnFlow wrote chemical clipboard formats", result.formats)
+      console.info("RxnCanvas wrote chemical clipboard formats", result.formats)
       showClipboardToast("Copied structure for ChemDraw.")
       return true
     } catch (error) {
-      console.error("RxnFlow Ketcher native copy failed", error)
+      console.error("RxnCanvas Ketcher native copy failed", error)
       showClipboardToast("Ketcher could not copy the current structure.", "error", 4200)
       return false
     }
@@ -172,7 +172,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
 
   const enrichKetcherClipboardForDesktop = useCallback(async () => {
     const ketcher = ketcherRef.current
-    const desktop = window.rxnflowDesktop
+    const desktop = window.rxncanvasDesktop
     if (!ketcher || !desktop?.readChemicalClipboard || !desktop.writeChemicalClipboard) return
     const result = await desktop.readChemicalClipboard()
     const candidate = structureCandidateFromDesktopClipboard(result)
@@ -188,12 +188,12 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
       if (!text.trim()) return
       await desktop.writeChemicalClipboard({ ket, molfile, cdxml, cdx, text })
     } catch (error) {
-      console.warn("RxnFlow could not enrich the Ketcher clipboard for ChemDraw", error)
+      console.warn("RxnCanvas could not enrich the Ketcher clipboard for ChemDraw", error)
     }
   }, [])
 
   const handleKetcherRuntimeError = useCallback((nextMessage: string) => {
-    console.warn("RxnFlow Ketcher runtime error", nextMessage)
+    console.warn("RxnCanvas Ketcher runtime error", nextMessage)
     if (!ketcherRef.current) {
       setStatus("error")
       setMessage(ketcherEditorStartupMessage(nextMessage))
@@ -228,7 +228,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
       || isTargetInsideElement(document.activeElement, hostRef.current)
     if (isEditableTarget(event.target) && !(key === "v" && isKetcherClipboardTarget(event.target))) return
     if (key === "c" && ketcherOwnsShortcut) return
-    if (key === "v" && window.rxnflowDesktop?.readChemicalClipboard) {
+    if (key === "v" && window.rxncanvasDesktop?.readChemicalClipboard) {
       event.preventDefault()
       event.stopPropagation()
       void pasteFromDesktopClipboard()
@@ -298,7 +298,7 @@ export function Molecule2DEditorDialog({ node, atoms, onClose, onSave, returnFoc
       onSave(node.id, { ket, molfile, cdxml })
       onClose()
     } catch (error) {
-      console.error("RxnFlow Ketcher save failed", error)
+      console.error("RxnCanvas Ketcher save failed", error)
       setStatus("error")
       setMessage("Ketcher could not export the current structure.")
     }
@@ -430,7 +430,7 @@ class MoleculeEditorErrorBoundary extends Component<{
 
   componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
     const message = editorErrorMessage(error)
-    console.error("RxnFlow Ketcher editor crashed", error, errorInfo)
+    console.error("RxnCanvas Ketcher editor crashed", error, errorInfo)
     this.props.onError(message)
   }
 
@@ -448,7 +448,7 @@ class MoleculeEditorErrorBoundary extends Component<{
 
 function editorErrorMessage(error: unknown): string {
   const detail = error instanceof Error && error.message ? ` (${error.message})` : ""
-  return `Ketcher editor could not load. The rest of RxnFlow is still available.${detail}`
+  return `Ketcher editor could not load. The rest of RxnCanvas is still available.${detail}`
 }
 
 function ketcherEditorStartupMessage(message: string): string {
@@ -595,7 +595,7 @@ function decorateKetcherTooltips(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>("button[title], [role='button'][title]").forEach((element) => {
     const title = element.getAttribute("title")?.trim()
     if (!title) return
-    element.dataset.rxnflowTooltip = title
+    element.dataset.rxncanvasTooltip = title
     if (!element.getAttribute("aria-label")) element.setAttribute("aria-label", title)
   })
 }

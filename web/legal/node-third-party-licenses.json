@@ -3718,10 +3718,10 @@
     "url": "http://bost.ocks.org/mike",
     "licenseFile": "node_modules/rw/LICENSE"
   },
-  "rxnflow-web@0.1.0": {
+  "rxncanvas-web@0.1.0": {
     "licenses": "UNLICENSED",
     "private": true,
-    "publisher": "RxnFlow"
+    "publisher": "RxnCanvas"
   },
   "safe-buffer@5.1.2": {
     "licenses": "MIT",

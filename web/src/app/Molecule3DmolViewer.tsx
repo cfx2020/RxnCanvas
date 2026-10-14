@@ -96,7 +96,7 @@ export function Molecule3DmolViewer({
         viewer.resize?.()
         setStatus("ready")
       } catch (error) {
-        console.error("RxnFlow 3Dmol viewer failed", error)
+        console.error("RxnCanvas 3Dmol viewer failed", error)
         if (!disposed) setStatus("error")
       }
     }

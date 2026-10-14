@@ -99,7 +99,7 @@ const encoder = new TextEncoder()
 
 export const defaultReportExportOptions: ReportExportOptions = {
   formats: ["png", "cdxml", "xlsx"],
-  basename: "rxnflow-report",
+  basename: "rxncanvas-report",
   title: "Reaction path report",
 }
 
@@ -588,7 +588,7 @@ export function buildXlsxWorkbook(context: ReportExportContext): Uint8Array {
         ["nodes", context.nodes.length],
         ["edges", context.edges.length],
         ["source_files", context.files.length],
-        ["writer", "rxnflow-renderer-xlsx-v1"],
+        ["writer", "rxncanvas-renderer-xlsx-v1"],
       ],
     },
   ]
@@ -835,7 +835,7 @@ function workbookRelationshipsXml(sheets: { path: string }[]): string {
 function appPropertiesXml(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-  <Application>RxnFlow</Application>
+  <Application>RxnCanvas</Application>
 </Properties>`
 }
 
@@ -843,7 +843,7 @@ function corePropertiesXml(context: ReportExportContext): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <dc:title>${xmlEscape(context.title)}</dc:title>
-  <dc:creator>RxnFlow</dc:creator>
+  <dc:creator>RxnCanvas</dc:creator>
 </cp:coreProperties>`
 }
 
@@ -1038,7 +1038,7 @@ function shortText(value: string, maxLength: number): string {
 
 function safeBasename(value: string): string {
   const basename = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
-  return basename || "rxnflow-export"
+  return basename || "rxncanvas-export"
 }
 
 function round(value: number): string {

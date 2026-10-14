@@ -35,7 +35,7 @@ async function saveRecentProjectsState(storePath, state) {
   const storeDirectory = path.dirname(storePath)
   const temporaryPath = path.join(
     storeDirectory,
-    `.${path.basename(storePath)}.rxnflow-write-${process.pid}-${crypto.randomUUID()}.tmp`,
+    `.${path.basename(storePath)}.rxncanvas-write-${process.pid}-${crypto.randomUUID()}.tmp`,
   )
   const content = `${JSON.stringify({
     version: recentProjectsVersion,
@@ -85,8 +85,8 @@ function removeRecentProjectState(state, filePath) {
 function recentProjectLabel(filePath) {
   const basename = path.basename(filePath)
   return basename
-    .replace(/\.rxnflow$/i, "")
-    .replace(/\.rxnflow\.json$/i, "")
+    .replace(/\.rxncanvas$/i, "")
+    .replace(/\.rxncanvas\.json$/i, "")
     .replace(/\.json$/i, "")
     .replace(/[-_]+/g, " ")
     .trim() || basename

@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from rxnflow.engine import parse_source_preview
+from rxncanvas.engine import parse_source_preview
 
 
 def large_orca_text(iterations: int) -> str:

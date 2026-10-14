@@ -168,7 +168,7 @@ function crossProjectAutosavePackage(
 ) {
   return JSON.stringify({
     schemaVersion: 1,
-    packageKind: "rxnflow-project",
+    packageKind: "rxncanvas-project",
     project: { id: projectId, label: projectLabel, meta: "saved" },
     files: [{
       id: "shared-file",
@@ -187,7 +187,7 @@ function crossProjectAutosavePackage(
 }
 
 function installDesktopImportRuntime(overrides: Record<string, unknown>) {
-  Object.defineProperty(window, "rxnflowDesktop", {
+  Object.defineProperty(window, "rxncanvasDesktop", {
     configurable: true,
     value: {
       platform: "darwin",
@@ -196,7 +196,7 @@ function installDesktopImportRuntime(overrides: Record<string, unknown>) {
         ok: true,
         data: {
           status: "ready",
-          engineVersion: "rxnflow-smoke-engine-v1",
+          engineVersion: "rxncanvas-smoke-engine-v1",
           capabilities: ["engine.status", "import.preview"],
         },
       }),
@@ -243,7 +243,7 @@ function parsedOrcaSource(label: string): SourceParseResult {
     energySolution: -42.5,
     energyUnit: "hartree",
     parsed: true,
-    parserId: "orca-output-cclib+rxnflow-text-full-file",
+    parserId: "orca-output-cclib+rxncanvas-text-full-file",
     parserVersion: "0.2.1",
     objectCount: 1,
     warnings: [],
@@ -278,7 +278,7 @@ function parsedGaussianSource(label: string): SourceParseResult {
     ...parsedOrcaSource(label),
     sourceKind: "Gaussian",
     method: "wB97X-D",
-    parserId: "gaussian-output-cclib+rxnflow-text-full-file",
+    parserId: "gaussian-output-cclib+rxncanvas-text-full-file",
     candidates: parsedOrcaSource(label).candidates.map((candidate) => ({
       ...candidate,
       method: "wB97X-D",
@@ -401,7 +401,7 @@ describe("App", () => {
   })
 
   afterEach(() => {
-    Reflect.deleteProperty(window, "rxnflowDesktop")
+    Reflect.deleteProperty(window, "rxncanvasDesktop")
   })
 
   it("renders the desktop canvas workbench", async () => {
@@ -436,7 +436,7 @@ describe("App", () => {
   })
 
   it("uses only native macOS traffic lights in the desktop shell", () => {
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -524,7 +524,7 @@ describe("App", () => {
 
     const packageContent = JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "browser-open-study", label: "Browser Open Study", meta: "saved" },
       files: [{
         id: "browser-open-file",
@@ -558,7 +558,7 @@ describe("App", () => {
     await act(async () => {
       fireEvent.change(screen.getByLabelText("Open project package"), {
         target: {
-          files: [new File([packageContent], "browser-open-study.rxnflow", { type: "application/json" })],
+          files: [new File([packageContent], "browser-open-study.rxncanvas", { type: "application/json" })],
         },
       })
       await Promise.resolve()
@@ -913,7 +913,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
     let dialog = screen.getByRole("alertdialog", { name: "Remove Diels-Alder Study from sidebar" })
     expect(dialog).toHaveTextContent("Diels-Alder Study")
-    expect(dialog).toHaveTextContent("Original source files and saved .rxnflow folders on disk are not deleted")
+    expect(dialog).toHaveTextContent("Original source files and saved .rxncanvas folders on disk are not deleted")
     const cancelButton = within(dialog).getByRole("button", { name: "Cancel" })
     const removeButton = within(dialog).getByRole("button", { name: "Remove from sidebar" })
     expect(cancelButton).toHaveFocus()
@@ -952,15 +952,15 @@ describe("App", () => {
         projectContents: [
           {
             content: crossProjectAutosavePackage("project-b", "Project B", "B.log", "sources/b.log"),
-            filePath: "/tmp/project-b.rxnflow",
-            projectDirectory: "/tmp/project-b.rxnflow",
+            filePath: "/tmp/project-b.rxncanvas",
+            projectDirectory: "/tmp/project-b.rxncanvas",
             source: "startup",
             validation: null,
           },
           {
             content: crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a.log"),
-            filePath: "/tmp/project-a.rxnflow",
-            projectDirectory: "/tmp/project-a.rxnflow",
+            filePath: "/tmp/project-a.rxncanvas",
+            projectDirectory: "/tmp/project-a.rxncanvas",
             replaceProjects: false,
             source: "startup",
             validation: null,
@@ -985,14 +985,14 @@ describe("App", () => {
       expect(forgetProject).toHaveBeenCalledTimes(3)
       expect(forgetProject).toHaveBeenLastCalledWith({
         projectId: "project-a",
-        projectDirectory: "/tmp/project-a.rxnflow",
+        projectDirectory: "/tmp/project-a.rxncanvas",
       })
       expect(screen.getByRole("button", { name: "Project A open" })).toHaveAttribute("aria-current", "true")
       expect(screen.getByRole("alert", { name: "Project validation" })).toHaveTextContent(
-        "Project A was not removed because RxnFlow could not update Recent Projects",
+        "Project A was not removed because RxnCanvas could not update Recent Projects",
       )
 
-      forgetProject.mockResolvedValue({ ok: true, projectDirectory: "/tmp/project-a.rxnflow" })
+      forgetProject.mockResolvedValue({ ok: true, projectDirectory: "/tmp/project-a.rxncanvas" })
       fireEvent.click(screen.getByRole("button", { name: "Project actions for Project A" }))
       fireEvent.click(screen.getByRole("menuitem", { name: "Remove from sidebar" }))
       fireEvent.click(within(screen.getByRole("alertdialog", { name: "Remove Project A from sidebar" })).getByRole("button", { name: "Remove from sidebar" }))
@@ -1140,7 +1140,7 @@ describe("App", () => {
   it("does not inline file bytes for Electron file-list drops when native paths are unavailable", async () => {
     const importJob = deferred<any>()
     const importSourceFiles = vi.fn(() => importJob.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -1151,7 +1151,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -1212,7 +1212,7 @@ describe("App", () => {
       resolve: (value: any) => void
     }> = []
     const importSourceFiles = vi.fn((payload: any) => new Promise<any>((resolve) => pending.push({ payload, resolve })))
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -1223,7 +1223,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -1327,7 +1327,7 @@ describe("App", () => {
       resolve: (value: any) => void
     }> = []
     const importSourceFiles = vi.fn((payload: any) => new Promise<any>((resolve) => pending.push({ payload, resolve })))
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -1338,7 +1338,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -1422,7 +1422,7 @@ describe("App", () => {
   it("removes unsupported Electron sol placeholders when no gas file exists yet", async () => {
     const importJob = deferred<any>()
     const importSourceFiles = vi.fn(() => importJob.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -1433,7 +1433,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -1487,7 +1487,7 @@ describe("App", () => {
     const importJob = deferred<any>()
     const startupPackageContent = JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "finder-study", label: "Finder Study", meta: "saved" },
       files: [],
       nodes: [],
@@ -1496,7 +1496,7 @@ describe("App", () => {
       savedAt: "2026-06-28T00:00:00.000Z",
     })
     const importSourceFiles = vi.fn(() => importJob.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -1506,7 +1506,7 @@ describe("App", () => {
         getStartupProjectContent: vi.fn().mockResolvedValue({
           canceled: false,
           content: startupPackageContent,
-          projectDirectory: "/tmp/finder-study.rxnflow",
+          projectDirectory: "/tmp/finder-study.rxncanvas",
           replaceProjects: true,
           source: "startup",
           validation: null,
@@ -1515,13 +1515,13 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "project.restore", "import.preview"],
           },
         }),
         saveReportArtifact: vi.fn(),
         saveProjectPackage: vi.fn(),
-        setActiveProject: vi.fn().mockResolvedValue({ ok: true, projectDirectory: "/tmp/finder-study.rxnflow" }),
+        setActiveProject: vi.fn().mockResolvedValue({ ok: true, projectDirectory: "/tmp/finder-study.rxncanvas" }),
         onMenuImportFiles: vi.fn(() => vi.fn()),
         onMenuOpenProject: vi.fn(() => vi.fn()),
         onMenuSaveProject: vi.fn(() => vi.fn()),
@@ -1540,7 +1540,7 @@ describe("App", () => {
     expect(importSourceFiles).toHaveBeenCalledTimes(1)
     const payload = ((importSourceFiles.mock.calls as any[][])[0]?.[0] ?? {}) as any
     expect(payload.projectId).toBe("finder-study")
-    expect(payload.projectDirectory).toBe("/tmp/finder-study.rxnflow")
+    expect(payload.projectDirectory).toBe("/tmp/finder-study.rxncanvas")
     expect(payload.files[0]).toMatchObject({
       name: "finder-drop.log",
       preview: "",
@@ -1595,7 +1595,7 @@ describe("App", () => {
     fireEvent.pointerDown(row, { button: 0 })
     expect(row).toHaveAttribute("draggable", "true")
     fireEvent.dragStart(row, { dataTransfer })
-    const payload = JSON.parse(dataTransfer.getData("application/x-rxnflow-raw-file"))
+    const payload = JSON.parse(dataTransfer.getData("application/x-rxncanvas-raw-file"))
 
     expect(payload.kind).toBe("project-files")
     expect(payload.files).toHaveLength(2)
@@ -1635,7 +1635,7 @@ describe("App", () => {
 
     const dataTransfer = new TestDataTransfer()
     fireEvent.dragStart(secondRow, { dataTransfer })
-    const payload = JSON.parse(dataTransfer.getData("application/x-rxnflow-raw-file"))
+    const payload = JSON.parse(dataTransfer.getData("application/x-rxncanvas-raw-file"))
 
     expect(payload.kind).toBe("project-files")
     expect(payload.files).toHaveLength(4)
@@ -2317,7 +2317,7 @@ describe("App", () => {
     const batchDrag = new TestDataTransfer()
     fireEvent.dragStart(orcaRow, { dataTransfer: batchDrag })
     expect(batchDrag.effectAllowed).toBe("copy")
-    expect(JSON.parse(batchDrag.getData("application/x-rxnflow-raw-file"))).toEqual({
+    expect(JSON.parse(batchDrag.getData("application/x-rxncanvas-raw-file"))).toEqual({
       kind: "project-files",
       files: [
         { projectFileId: "gaussian-log", path: "inputs/raw/gaussian-log-gaussian.log" },
@@ -2359,7 +2359,7 @@ describe("App", () => {
     const expectedX = Math.round((clientX - translate.x) / scale)
     const expectedY = Math.round((clientY - translate.y) / scale)
     const dataTransfer = new TestDataTransfer()
-    dataTransfer.setData("application/x-rxnflow-raw-file", JSON.stringify({
+    dataTransfer.setData("application/x-rxncanvas-raw-file", JSON.stringify({
       kind: "project-file",
       projectFileId: "orca-out",
       path: "inputs/raw/orca-out-orca.out",
@@ -2390,7 +2390,7 @@ describe("App", () => {
     const newSingletSolutionParse = parsedGaussianStateSource("Ni-ts-sol", 1, -100.4)
     const projectPackage = {
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "ni-project", label: "Ni", meta: "saved" },
       files: [
         {
@@ -2461,7 +2461,7 @@ describe("App", () => {
       getStartupProjectContent: vi.fn().mockResolvedValue({
         canceled: false,
         content: JSON.stringify(projectPackage),
-        filePath: "/Users/linsay/Documents/chemistry/Ni/.rxnflow/project.json",
+        filePath: "/Users/linsay/Documents/chemistry/Ni/.rxncanvas/project.json",
         projectDirectory: "/Users/linsay/Documents/chemistry/Ni",
         replaceProjects: true,
         source: "startup",
@@ -2763,7 +2763,7 @@ describe("App", () => {
         }],
       },
     }))
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -2772,7 +2772,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview", "import.register_selection", "import.register_all"],
           },
         }),
@@ -2996,7 +2996,7 @@ describe("App", () => {
       }],
     })
     const importSourceFiles = vi.fn(() => importJob.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -3006,7 +3006,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -3098,7 +3098,7 @@ describe("App", () => {
         validation: null,
       }))
     })
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -3108,7 +3108,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -3310,7 +3310,7 @@ describe("App", () => {
       }))
       return projectAAutosave.promise.then(() => ({
         canceled: false,
-        projectDirectory: "/tmp/project-a.rxnflow",
+        projectDirectory: "/tmp/project-a.rxncanvas",
         content: JSON.stringify(projectPackage),
         validation: {
           valid: false,
@@ -3329,15 +3329,15 @@ describe("App", () => {
         projectContents: [
           {
             content: crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a-original.log"),
-            filePath: "/tmp/project-a.rxnflow",
-            projectDirectory: "/tmp/project-a.rxnflow",
+            filePath: "/tmp/project-a.rxncanvas",
+            projectDirectory: "/tmp/project-a.rxncanvas",
             source: "startup",
             validation: null,
           },
           {
             content: crossProjectAutosavePackage("project-b", "Project B", "B.log", "sources/b-original.log"),
-            filePath: "/tmp/project-b.rxnflow",
-            projectDirectory: "/tmp/project-b.rxnflow",
+            filePath: "/tmp/project-b.rxncanvas",
+            projectDirectory: "/tmp/project-b.rxncanvas",
             replaceProjects: false,
             source: "startup",
             validation: null,
@@ -3402,15 +3402,15 @@ describe("App", () => {
         projectContents: [
           {
             content: crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a-original.log"),
-            filePath: "/tmp/project-a.rxnflow",
-            projectDirectory: "/tmp/project-a.rxnflow",
+            filePath: "/tmp/project-a.rxncanvas",
+            projectDirectory: "/tmp/project-a.rxncanvas",
             source: "startup",
             validation: null,
           },
           {
             content: crossProjectAutosavePackage("project-b", "Project B", "B.log", "sources/b-original.log"),
-            filePath: "/tmp/project-b.rxnflow",
-            projectDirectory: "/tmp/project-b.rxnflow",
+            filePath: "/tmp/project-b.rxncanvas",
+            projectDirectory: "/tmp/project-b.rxncanvas",
             replaceProjects: false,
             source: "startup",
             validation: null,
@@ -3489,23 +3489,23 @@ describe("App", () => {
         projectContents: [
           {
             content: crossProjectAutosavePackage("project-a", "Project A", "A.log", "sources/a.log"),
-            filePath: "/tmp/project-a.rxnflow",
-            projectDirectory: "/tmp/project-a.rxnflow",
+            filePath: "/tmp/project-a.rxncanvas",
+            projectDirectory: "/tmp/project-a.rxncanvas",
             source: "startup",
             validation: null,
           },
           {
             content: JSON.stringify(projectBPackage),
-            filePath: "/tmp/project-b.rxnflow",
-            projectDirectory: "/tmp/project-b.rxnflow",
+            filePath: "/tmp/project-b.rxncanvas",
+            projectDirectory: "/tmp/project-b.rxncanvas",
             replaceProjects: false,
             source: "startup",
             validation: null,
           },
           {
             content: JSON.stringify(projectCPackage),
-            filePath: "/tmp/project-c.rxnflow",
-            projectDirectory: "/tmp/project-c.rxnflow",
+            filePath: "/tmp/project-c.rxncanvas",
+            projectDirectory: "/tmp/project-c.rxncanvas",
             replaceProjects: false,
             source: "startup",
             validation: null,
@@ -3541,7 +3541,7 @@ describe("App", () => {
       await act(async () => {
         jobs.get("project-a")?.resolve({
           canceled: false,
-          projectDirectory: "/tmp/project-a.rxnflow",
+          projectDirectory: "/tmp/project-a.rxncanvas",
           content: contents.get("project-a"),
           validation: null,
         })
@@ -3556,7 +3556,7 @@ describe("App", () => {
       await act(async () => {
         jobs.get("project-b")?.resolve({
           canceled: false,
-          projectDirectory: "/tmp/project-b.rxnflow",
+          projectDirectory: "/tmp/project-b.rxncanvas",
           content: contents.get("project-b"),
           validation: null,
         })
@@ -3567,7 +3567,7 @@ describe("App", () => {
       await act(async () => {
         jobs.get("project-c")?.resolve({
           canceled: false,
-          projectDirectory: "/tmp/project-c.rxnflow",
+          projectDirectory: "/tmp/project-c.rxncanvas",
           content: contents.get("project-c"),
           validation: null,
         })
@@ -3600,8 +3600,8 @@ describe("App", () => {
         canceled: false,
         projectContents: [{
           content: JSON.stringify(projectPackage),
-          filePath: "/tmp/project-a.rxnflow",
-          projectDirectory: "/tmp/project-a.rxnflow",
+          filePath: "/tmp/project-a.rxncanvas",
+          projectDirectory: "/tmp/project-a.rxncanvas",
           source: "startup",
           validation: null,
         }],
@@ -3633,7 +3633,7 @@ describe("App", () => {
       await act(async () => {
         autosaveJob.resolve({
           canceled: false,
-          projectDirectory: "/tmp/project-a.rxnflow",
+          projectDirectory: "/tmp/project-a.rxncanvas",
           content: autosaveProjectPackage.mock.calls[0][0].content,
           validation: null,
         })
@@ -3647,13 +3647,13 @@ describe("App", () => {
 
   it("ignores an in-flight autosave after its project is deleted", async () => {
     const autosaveJob = deferred<any>()
-    const forgetProject = vi.fn().mockResolvedValue({ ok: true, projectDirectory: "/tmp/project-a.rxnflow" })
+    const forgetProject = vi.fn().mockResolvedValue({ ok: true, projectDirectory: "/tmp/project-a.rxncanvas" })
     const autosaveProjectPackage = vi.fn((payload: { content: string }) => {
       const projectId = JSON.parse(payload.content).project.id
       if (projectId === "project-a") return autosaveJob.promise
       return Promise.resolve({
         canceled: false,
-        projectDirectory: "/tmp/project-b.rxnflow",
+        projectDirectory: "/tmp/project-b.rxncanvas",
         content: payload.content,
         validation: null,
       })
@@ -3678,15 +3678,15 @@ describe("App", () => {
         projectContents: [
           {
             content: crossProjectAutosavePackage("project-b", "Project B", "B.log", "sources/b.log"),
-            filePath: "/tmp/project-b.rxnflow",
-            projectDirectory: "/tmp/project-b.rxnflow",
+            filePath: "/tmp/project-b.rxncanvas",
+            projectDirectory: "/tmp/project-b.rxncanvas",
             source: "startup",
             validation: null,
           },
           {
             content: JSON.stringify(projectAPackage),
-            filePath: "/tmp/project-a.rxnflow",
-            projectDirectory: "/tmp/project-a.rxnflow",
+            filePath: "/tmp/project-a.rxncanvas",
+            projectDirectory: "/tmp/project-a.rxncanvas",
             replaceProjects: false,
             source: "startup",
             validation: null,
@@ -3716,7 +3716,7 @@ describe("App", () => {
 
       expect(forgetProject).toHaveBeenCalledWith({
         projectId: "project-a",
-        projectDirectory: "/tmp/project-a.rxnflow",
+        projectDirectory: "/tmp/project-a.rxncanvas",
       })
       expect(screen.queryByRole("button", { name: "Project A open" })).not.toBeInTheDocument()
       expect(screen.getByRole("button", { name: "Project B open" })).toHaveAttribute("aria-current", "true")
@@ -3727,7 +3727,7 @@ describe("App", () => {
       await act(async () => {
         autosaveJob.resolve({
           canceled: false,
-          projectDirectory: "/tmp/project-a.rxnflow",
+          projectDirectory: "/tmp/project-a.rxncanvas",
           content: JSON.stringify(savedContent),
           validation: {
             valid: false,
@@ -3765,7 +3765,7 @@ describe("App", () => {
       }],
     })
     const importSourceFiles = vi.fn(() => importJob.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -3775,7 +3775,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -3834,7 +3834,7 @@ describe("App", () => {
       }],
     })
     const importSourceFiles = vi.fn(() => importJob.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -3844,7 +3844,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -3926,7 +3926,7 @@ describe("App", () => {
       }],
     })
     const importSourceFiles = vi.fn(() => importJob.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -3937,7 +3937,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -4048,7 +4048,7 @@ describe("App", () => {
   it("stages Electron canvas drops before creating parsed nodes at the drop point", async () => {
     const importJob = deferred<any>()
     const importSourceFiles = vi.fn(() => importJob.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -4059,7 +4059,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -4122,7 +4122,7 @@ describe("App", () => {
   it("does not inline canvas-dropped file bytes when Electron cannot provide a native file path", async () => {
     const importJob = deferred<any>()
     const importSourceFiles = vi.fn(() => importJob.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -4133,7 +4133,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -4214,16 +4214,16 @@ describe("App", () => {
       canceled: false,
       filePath: `/tmp/${payload.defaultName}`,
     }))
-    const saveProjectPackage = vi.fn().mockResolvedValue({ canceled: false, filePath: "/tmp/diels-alder-study.rxnflow.zip" })
+    const saveProjectPackage = vi.fn().mockResolvedValue({ canceled: false, filePath: "/tmp/diels-alder-study.rxncanvas.zip" })
     const getEngineStatus = vi.fn().mockResolvedValue({
       ok: true,
       data: {
         status: "ready",
-        engineVersion: "rxnflow-smoke-engine-v1",
+        engineVersion: "rxncanvas-smoke-engine-v1",
         capabilities: ["engine.status", "flow.demo"],
       },
     })
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -4309,12 +4309,12 @@ describe("App", () => {
       })
       return {
         canceled: false,
-        projectDirectory: "/Users/linsay/Documents/RxnFlow/Diels-Alder Study",
+        projectDirectory: "/Users/linsay/Documents/RxnCanvas/Diels-Alder Study",
         content: JSON.stringify(projectPackage),
         validation: null,
       }
     })
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -4335,7 +4335,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "import.preview"],
           },
         }),
@@ -4384,7 +4384,7 @@ describe("App", () => {
 
   it("keeps canceled Electron report exports out of the export summary", async () => {
     const saveReportArtifact = vi.fn().mockResolvedValue({ canceled: true })
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -4393,7 +4393,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "flow.demo"],
           },
         }),
@@ -4429,7 +4429,7 @@ describe("App", () => {
         issues: Array<{ severity: "error" | "warning"; code: string; message: string }>
       } | null
     }) => void) | undefined
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -4438,7 +4438,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "flow.demo"],
           },
         }),
@@ -4459,7 +4459,7 @@ describe("App", () => {
 
     const packageContent = JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "recent-study", label: "Recent Study", meta: "saved" },
       files: [{
         id: "recent-file",
@@ -4492,8 +4492,8 @@ describe("App", () => {
     act(() => {
       openProjectContentCallback?.({
         content: packageContent,
-        filePath: "/tmp/recent-study.rxnflow.json",
-        projectDirectory: "/tmp/recent-study.rxnflow",
+        filePath: "/tmp/recent-study.rxncanvas.json",
+        projectDirectory: "/tmp/recent-study.rxncanvas",
         replaceProjects: true,
         source: "recent",
         validation: {
@@ -4531,7 +4531,7 @@ describe("App", () => {
         issues: Array<{ severity: "error" | "warning"; code: string; message: string }>
       } | null
     }) => void) | undefined
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -4540,7 +4540,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "flow.demo"],
           },
         }),
@@ -4561,7 +4561,7 @@ describe("App", () => {
 
     const irPackageContent = JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "ir-workspace", label: "Ir", meta: "saved" },
       files: [{
         id: "ir-file",
@@ -4591,7 +4591,7 @@ describe("App", () => {
     })
     const niPackageContent = JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "ni-workspace", label: "Ni", meta: "saved" },
       files: [{
         id: "ni-file",
@@ -4624,8 +4624,8 @@ describe("App", () => {
     act(() => {
       openProjectContentCallback?.({
         content: irPackageContent,
-        filePath: "/tmp/Ir.rxnflow",
-        projectDirectory: "/tmp/Ir.rxnflow",
+        filePath: "/tmp/Ir.rxncanvas",
+        projectDirectory: "/tmp/Ir.rxncanvas",
         replaceProjects: true,
         source: "recent",
         validation: null,
@@ -4637,8 +4637,8 @@ describe("App", () => {
     act(() => {
       openProjectContentCallback?.({
         content: niPackageContent,
-        filePath: "/tmp/Ni.rxnflow",
-        projectDirectory: "/tmp/Ni.rxnflow",
+        filePath: "/tmp/Ni.rxncanvas",
+        projectDirectory: "/tmp/Ni.rxncanvas",
         replaceProjects: true,
         source: "recent",
         validation: null,
@@ -4665,7 +4665,7 @@ describe("App", () => {
     }>()
     const startupPackageContent = JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "ir-workspace", label: "Ir", meta: "saved" },
       files: [{
         id: "ir-file",
@@ -4695,7 +4695,7 @@ describe("App", () => {
       savedAt: "2026-06-17T00:00:00.000Z",
     })
     const getStartupProjectContent = vi.fn(() => startupRestore.promise)
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -4704,7 +4704,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "project.restore"],
           },
         }),
@@ -4730,8 +4730,8 @@ describe("App", () => {
       startupRestore.resolve({
         canceled: false,
         content: startupPackageContent,
-        filePath: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
-        projectDirectory: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
+        filePath: "/Users/linsay/Documents/RxnCanvas/Ir.rxncanvas",
+        projectDirectory: "/Users/linsay/Documents/RxnCanvas/Ir.rxncanvas",
         replaceProjects: true,
         source: "startup",
         validation: null,
@@ -4763,7 +4763,7 @@ describe("App", () => {
     }>()
     const projectContent = (id: string, label: string) => JSON.stringify({
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id, label, meta: "saved" },
       files: [{
         id: `${id}-file`,
@@ -4792,7 +4792,7 @@ describe("App", () => {
       savedAt: "2026-07-03T00:00:00.000Z",
     })
     const setActiveProject = vi.fn().mockResolvedValue({ ok: true })
-    Object.defineProperty(window, "rxnflowDesktop", {
+    Object.defineProperty(window, "rxncanvasDesktop", {
       configurable: true,
       value: {
         platform: "darwin",
@@ -4801,7 +4801,7 @@ describe("App", () => {
           ok: true,
           data: {
             status: "ready",
-            engineVersion: "rxnflow-smoke-engine-v1",
+            engineVersion: "rxncanvas-smoke-engine-v1",
             capabilities: ["engine.status", "project.restore"],
           },
         }),
@@ -4824,15 +4824,15 @@ describe("App", () => {
         projectContents: [
           {
             content: projectContent("ir-workspace", "Ir"),
-            filePath: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
-            projectDirectory: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
+            filePath: "/Users/linsay/Documents/RxnCanvas/Ir.rxncanvas",
+            projectDirectory: "/Users/linsay/Documents/RxnCanvas/Ir.rxncanvas",
             source: "startup",
             validation: null,
           },
           {
             content: projectContent("ni-workspace", "Ni"),
-            filePath: "/Users/linsay/Documents/RxnFlow/Ni.rxnflow",
-            projectDirectory: "/Users/linsay/Documents/RxnFlow/Ni.rxnflow",
+            filePath: "/Users/linsay/Documents/RxnCanvas/Ni.rxncanvas",
+            projectDirectory: "/Users/linsay/Documents/RxnCanvas/Ni.rxncanvas",
             replaceProjects: false,
             source: "startup",
             validation: null,
@@ -4852,7 +4852,7 @@ describe("App", () => {
     await waitFor(() => expect(setActiveProject).toHaveBeenCalledTimes(1))
     expect(setActiveProject).toHaveBeenLastCalledWith({
       projectId: "ni-workspace",
-      projectDirectory: "/Users/linsay/Documents/RxnFlow/Ni.rxnflow",
+      projectDirectory: "/Users/linsay/Documents/RxnCanvas/Ni.rxncanvas",
     })
 
     fireEvent.click(screen.getByRole("button", { name: "Ir open" }))
@@ -4860,7 +4860,7 @@ describe("App", () => {
     await waitFor(() => expect(setActiveProject).toHaveBeenCalledTimes(2))
     expect(setActiveProject).toHaveBeenLastCalledWith({
       projectId: "ir-workspace",
-      projectDirectory: "/Users/linsay/Documents/RxnFlow/Ir.rxnflow",
+      projectDirectory: "/Users/linsay/Documents/RxnCanvas/Ir.rxncanvas",
     })
   })
 })

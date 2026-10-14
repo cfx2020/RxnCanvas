@@ -50,7 +50,7 @@ async function main() {
   fs.writeFileSync(icoPath, createIco(icoSizes.map((size) => rendered.get(size))))
   generateIcns()
 
-  console.log("RxnFlow desktop icons generated")
+  console.log("RxnCanvas desktop icons generated")
 }
 
 function uniqueSizes(sizes) {

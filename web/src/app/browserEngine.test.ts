@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe("browser Python engine", () => {
   it("uploads the original complete File, including data beyond the old preview limit", async () => {
     const file = new File(["x".repeat(700_000), "\nfinal coordinates\n"], "TS 1.log")
-    const parse = { parsed: true, parseScope: "full-file", parserId: "gaussian-log-cclib+rxnflow-text-full-file" }
+    const parse = { parsed: true, parseScope: "full-file", parserId: "gaussian-log-cclib+rxncanvas-text-full-file" }
     const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { parse } }) })
     vi.stubGlobal("fetch", fetch)
 
@@ -14,7 +14,7 @@ describe("browser Python engine", () => {
     expect(fetch).toHaveBeenCalledWith("/api/import/preview?name=TS+1.log", expect.objectContaining({
       method: "POST",
       body: file,
-      headers: { "content-type": "application/octet-stream", "x-rxnflow-request": "1" },
+      headers: { "content-type": "application/octet-stream", "x-rxncanvas-request": "1" },
     }))
   })
 

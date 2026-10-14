@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173/>. On first startup, RxnFlow creates
+Open <http://127.0.0.1:5173/>. On first startup, RxnCanvas creates
 `web/.engine-build/dev-venv` and installs the pinned engine dependencies from
 `web/engine-requirements.lock`. It uses `uv` when available, otherwise Python 3
 with `venv` and `pip`. First-time dependency installation needs network access.
@@ -41,8 +41,8 @@ Serving `dist/` as static files alone does not provide a Python parser.
 ## Runtime Selection
 
 Development runs Python source, never a previously built engine binary.
-`RXNFLOW_PYTHON` selects an existing Python environment with cclib 1.8.1;
-`RXNFLOW_ENGINE_COMMAND` overrides the complete engine command. Packaged apps
+`RXNCANVAS_PYTHON` selects an existing Python environment with cclib 1.8.1;
+`RXNCANVAS_ENGINE_COMMAND` overrides the complete engine command. Packaged apps
 continue using their bundled engine and do not require a user-installed Python.
 
 ## Import Boundary

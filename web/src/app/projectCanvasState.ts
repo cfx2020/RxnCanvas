@@ -1,4 +1,4 @@
-import type { CanvasAnnotation, CanvasViewport, FlowBarrier, FlowEdge, FlowNode, RxnFlowProjectCanvas } from "../domain/projectPackages"
+import type { CanvasAnnotation, CanvasViewport, FlowBarrier, FlowEdge, FlowNode, RxnCanvasProjectCanvas } from "../domain/projectPackages"
 
 export type CanvasTabSnapshot = {
   nodes: FlowNode[]
@@ -177,7 +177,7 @@ export function deleteCanvasTabState({
   }
 }
 
-export function canvasTabsFromProjectCanvases(canvases: RxnFlowProjectCanvas[]): CanvasTabState[] {
+export function canvasTabsFromProjectCanvases(canvases: RxnCanvasProjectCanvas[]): CanvasTabState[] {
   return canvases.map((canvas) => ({
     id: canvas.id,
     label: canvas.label,
@@ -202,7 +202,7 @@ export function projectCanvasesFromCanvasTabs({
   tabs: CanvasTabState[]
   activeTabId: string
   activeSnapshot: CanvasTabSnapshot
-}): RxnFlowProjectCanvas[] {
+}): RxnCanvasProjectCanvas[] {
   return tabs.map((tab, index) => {
     const snapshot = tab.id === activeTabId ? activeSnapshot : (tab.snapshot ?? activeSnapshot)
     return {

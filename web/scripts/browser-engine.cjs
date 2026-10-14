@@ -51,7 +51,7 @@ function createBrowserEngineMiddleware({
     let directory
     let result
     try {
-      directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "rxnflow-import-"))
+      directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "rxncanvas-import-"))
       const sourcePath = path.join(directory, `source${path.extname(name)}`)
       let size = 0
       const limit = new Transform({
@@ -91,7 +91,7 @@ function assertLocalRequest(request) {
   const host = request.headers.host
   if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(request.socket.remoteAddress)
     || typeof host !== "string" || !/^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(host)
-    || request.headers["x-rxnflow-request"] !== "1"
+    || request.headers["x-rxncanvas-request"] !== "1"
     || (request.headers["sec-fetch-site"] && !["same-origin", "none"].includes(request.headers["sec-fetch-site"]))) {
     throw requestError(403, "forbidden", "Only same-origin local requests are allowed.")
   }

@@ -52,11 +52,11 @@ const desktopImportRejectedWarningCodes = new Set([
 const latestSourceImportGenerationByKey = new Map()
 let sourceImportGeneration = 0
 
-const devServerUrl = process.env.RXNFLOW_DESKTOP_DEV_SERVER
-const runtimeSmokeExit = process.argv.includes("--rxnflow-smoke-exit")
-const runtimeStartupRestoreSmoke = process.env.RXNFLOW_DESKTOP_SMOKE_STARTUP_RESTORE === "1"
-const runtimeSmokeTimeoutMs = Number.parseInt(process.env.RXNFLOW_DESKTOP_SMOKE_TIMEOUT_MS || "12000", 10)
-const userDataDirectoryOverride = process.env.RXNFLOW_DESKTOP_USER_DATA_DIR
+const devServerUrl = process.env.RXNCANVAS_DESKTOP_DEV_SERVER
+const runtimeSmokeExit = process.argv.includes("--rxncanvas-smoke-exit")
+const runtimeStartupRestoreSmoke = process.env.RXNCANVAS_DESKTOP_SMOKE_STARTUP_RESTORE === "1"
+const runtimeSmokeTimeoutMs = Number.parseInt(process.env.RXNCANVAS_DESKTOP_SMOKE_TIMEOUT_MS || "12000", 10)
+const userDataDirectoryOverride = process.env.RXNCANVAS_DESKTOP_USER_DATA_DIR
 const macTrafficLightPosition = { x: 18, y: 12 }
 let recentProjectPaths = []
 let activeProjectPath = null
@@ -78,7 +78,7 @@ function createMainWindow() {
     backgroundColor: "#eef6f8",
     icon: desktopWindowIconPath(),
     show: false,
-    title: "RxnFlow",
+    title: "RxnCanvas",
     titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
     ...(process.platform === "darwin" ? { trafficLightPosition: macTrafficLightPosition } : {}),
     webPreferences: {
@@ -141,7 +141,7 @@ function windowStatePayload(window) {
 
 function sendWindowState(window) {
   if (window.isDestroyed() || window.webContents.isDestroyed()) return
-  window.webContents.send("rxnflow:window-state-changed", windowStatePayload(window))
+  window.webContents.send("rxncanvas:window-state-changed", windowStatePayload(window))
 }
 
 function installWindowStateBridge(window) {
@@ -217,7 +217,7 @@ async function restoreRecentProjectPayloads() {
     } catch (error) {
       state = removeRecentProjectState(state, filePath)
       removedInvalidRecentProject = true
-      console.warn(`Could not restore recent RxnFlow project ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
+      console.warn(`Could not restore recent RxnCanvas project ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
   if (payloads.length === 0 && !removedInvalidRecentProject) return []
@@ -285,7 +285,7 @@ async function updatePreferences(patch) {
 
 function broadcastPreferencesChanged(preferences) {
   BrowserWindow.getAllWindows().forEach((window) => {
-    if (!window.isDestroyed()) window.webContents.send("rxnflow:preferences-changed", preferences)
+    if (!window.isDestroyed()) window.webContents.send("rxncanvas:preferences-changed", preferences)
   })
 }
 
@@ -506,7 +506,7 @@ function cdxBufferFromClipboardText(value) {
 function installRuntimeSmokeExit(window) {
   const deadline = Date.now() + runtimeSmokeTimeoutMs
   const timeout = setTimeout(() => {
-    console.error(`RXNFLOW_DESKTOP_RUNTIME_SMOKE_FAILED: runtime smoke did not complete within ${runtimeSmokeTimeoutMs}ms`)
+    console.error(`RXNCANVAS_DESKTOP_RUNTIME_SMOKE_FAILED: runtime smoke did not complete within ${runtimeSmokeTimeoutMs}ms`)
     app.exit(1)
   }, runtimeSmokeTimeoutMs)
 
@@ -520,12 +520,12 @@ function installRuntimeSmokeExit(window) {
   }
 
   window.webContents.once("did-fail-load", (_event, errorCode, errorDescription, validatedUrl) => {
-    finish(1, `RXNFLOW_DESKTOP_RUNTIME_SMOKE_FAILED: ${errorCode} ${errorDescription} ${validatedUrl}`)
+    finish(1, `RXNCANVAS_DESKTOP_RUNTIME_SMOKE_FAILED: ${errorCode} ${errorDescription} ${validatedUrl}`)
   })
 
   window.webContents.once("did-finish-load", async () => {
     try {
-      const directory = await fs.mkdtemp(path.join(app.getPath("temp"), "rxnflow-runtime-source-"))
+      const directory = await fs.mkdtemp(path.join(app.getPath("temp"), "rxncanvas-runtime-source-"))
       let sourceParse
       try {
         const sourcePath = path.join(directory, "runtime-smoke.xyz")
@@ -612,7 +612,7 @@ function installRuntimeSmokeExit(window) {
                   reject(new Error("desktop renderer exposed inactive export formats: " + inactiveExportFormats.join(", ")))
                   return
                 }
-                const desktop = window.rxnflowDesktop
+                const desktop = window.rxncanvasDesktop
                 if (!desktop?.getEngineStatus || !desktop?.registerImportCandidates || !desktop?.createProjectFolder || !desktop?.autosaveProjectPackage) {
                   reject(new Error("desktop preload engine API is unavailable"))
                   return
@@ -641,10 +641,10 @@ function installRuntimeSmokeExit(window) {
                   return
                 }
                 const autosaved = await desktop.autosaveProjectPackage({
-                  defaultName: "runtime-smoke.rxnflow",
+                  defaultName: "runtime-smoke.rxncanvas",
                   content: JSON.stringify({
                     schemaVersion: 2,
-                    packageKind: "rxnflow-project",
+                    packageKind: "rxncanvas-project",
                     project: { id: "runtime-smoke", label: "Runtime Smoke", meta: "open" },
                     files: [{
                       id: "runtime-smoke-log",
@@ -693,7 +693,7 @@ function installRuntimeSmokeExit(window) {
                 "rootHtml=" + (root?.innerHTML || "").slice(0, 240).replace(/\\s+/g, " "),
                 "bodyText=" + text.slice(0, 240).replace(/\\s+/g, " "),
               ].join("; ")
-              reject(new Error("renderer loaded without the RxnFlow workbench (" + diagnostic + ")"))
+              reject(new Error("renderer loaded without the RxnCanvas workbench (" + diagnostic + ")"))
               return
             }
             window.setTimeout(poll, 100)
@@ -701,9 +701,9 @@ function installRuntimeSmokeExit(window) {
           poll()
         })
       `)
-      finish(0, `RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK ${result.engineVersion} ${result.runtime} cclib=${result.cclibVersion}`)
+      finish(0, `RXNCANVAS_DESKTOP_RUNTIME_SMOKE_OK ${result.engineVersion} ${result.runtime} cclib=${result.cclibVersion}`)
     } catch (error) {
-      finish(1, `RXNFLOW_DESKTOP_RUNTIME_SMOKE_FAILED: ${error instanceof Error ? error.message : String(error)}`)
+      finish(1, `RXNCANVAS_DESKTOP_RUNTIME_SMOKE_FAILED: ${error instanceof Error ? error.message : String(error)}`)
     }
   })
 }
@@ -736,14 +736,14 @@ function installApplicationMenu() {
           label: "Import Files",
           accelerator: "CmdOrCtrl+O",
           click: (item, focusedWindow) => {
-            if (focusedWindow) focusedWindow.webContents.send("rxnflow:menu-import-files")
+            if (focusedWindow) focusedWindow.webContents.send("rxncanvas:menu-import-files")
           },
         },
         {
-          label: "Open RxnFlow Project Folder",
+          label: "Open RxnCanvas Project Folder",
           accelerator: "CmdOrCtrl+Shift+O",
           click: (item, focusedWindow) => {
-            if (focusedWindow) focusedWindow.webContents.send("rxnflow:menu-open-project")
+            if (focusedWindow) focusedWindow.webContents.send("rxncanvas:menu-open-project")
           },
         },
         {
@@ -751,10 +751,10 @@ function installApplicationMenu() {
           submenu: recentProjectsMenuItems(),
         },
         {
-          label: "Export RxnFlow Project Zip",
+          label: "Export RxnCanvas Project Zip",
           accelerator: "CmdOrCtrl+S",
           click: (item, focusedWindow) => {
-            if (focusedWindow) focusedWindow.webContents.send("rxnflow:menu-save-project")
+            if (focusedWindow) focusedWindow.webContents.send("rxncanvas:menu-save-project")
           },
         },
         { type: "separator" },
@@ -794,12 +794,12 @@ function installApplicationMenu() {
       label: "Help",
       submenu: [
         {
-          label: "About RxnFlow",
+          label: "About RxnCanvas",
           click: () => {
             void dialog.showMessageBox({
               type: "info",
-              title: "About RxnFlow",
-              message: `RxnFlow ${app.getVersion()}`,
+              title: "About RxnCanvas",
+              message: `RxnCanvas ${app.getVersion()}`,
               detail: [
                 "Local-first reaction pathway workbench for computational chemistry results.",
                 "Project data stays in the workspace folders you choose.",
@@ -898,7 +898,7 @@ async function openRecentProject(filePath, focusedWindow) {
     activateProjectDirectory(projectPackage.content, projectPackage.projectDirectory)
     const targetWindow = focusedWindow ?? BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
     if (targetWindow) {
-      targetWindow.webContents.send("rxnflow:open-project-content", {
+      targetWindow.webContents.send("rxncanvas:open-project-content", {
         filePath,
         projectDirectory: projectPackage.projectDirectory,
         content: projectPackage.content,
@@ -911,18 +911,18 @@ async function openRecentProject(filePath, focusedWindow) {
     await forgetRecentProject(filePath)
     await dialog.showMessageBox({
       type: "error",
-      message: "Could not open recent RxnFlow project",
+      message: "Could not open recent RxnCanvas project",
       detail: error instanceof Error ? error.message : String(error),
     })
   }
 }
 
-ipcMain.handle("rxnflow:get-window-state", async (event) => {
+ipcMain.handle("rxncanvas:get-window-state", async (event) => {
   const window = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
   return window ? windowStatePayload(window) : { isFullScreen: false, isMaximized: false }
 })
 
-ipcMain.handle("rxnflow:choose-files", async () => {
+ipcMain.handle("rxncanvas:choose-files", async () => {
   const result = await dialog.showOpenDialog({
     title: "Import calculation files",
     properties: ["openFile", "multiSelections"],
@@ -943,7 +943,7 @@ ipcMain.handle("rxnflow:choose-files", async () => {
   }
 })
 
-ipcMain.handle("rxnflow:show-import-issues", async (event, payload) => {
+ipcMain.handle("rxncanvas:show-import-issues", async (event, payload) => {
   const issue = importIssueMessagePayload(payload)
   if (issue.entries.length === 0) return { ok: true, shown: false }
   const window = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow()
@@ -964,7 +964,7 @@ ipcMain.handle("rxnflow:show-import-issues", async (event, payload) => {
   return { ok: true, shown: true }
 })
 
-ipcMain.handle("rxnflow:import-source-files", async (_event, payload) => {
+ipcMain.handle("rxncanvas:import-source-files", async (_event, payload) => {
   let files = Array.isArray(payload?.files)
     ? payload.files.map(importSourceFilePayload).filter(Boolean)
     : []
@@ -1187,7 +1187,7 @@ function importReferencedStoredPaths(payload) {
     : []
 }
 
-ipcMain.handle("rxnflow:register-import-candidates", async (_event, payload) => {
+ipcMain.handle("rxncanvas:register-import-candidates", async (_event, payload) => {
   const mode = payload?.mode === "all" ? "all" : "selected"
   const files = Array.isArray(payload?.files)
     ? payload.files.map(registerFilePayload).filter(Boolean)
@@ -1213,7 +1213,7 @@ ipcMain.handle("rxnflow:register-import-candidates", async (_event, payload) => 
   return runEngineRequest(request)
 })
 
-ipcMain.handle("rxnflow:parse-source-preview", async (_event, payload) => {
+ipcMain.handle("rxncanvas:parse-source-preview", async (_event, payload) => {
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
   const projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
   const candidates = []
@@ -1247,7 +1247,7 @@ ipcMain.handle("rxnflow:parse-source-preview", async (_event, payload) => {
   }
 })
 
-ipcMain.handle("rxnflow:inspect-project-source-files", async (_event, payload) => {
+ipcMain.handle("rxncanvas:inspect-project-source-files", async (_event, payload) => {
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
   let projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
   if (!projectDirectory && projectId) {
@@ -1414,11 +1414,11 @@ function reportArtifactFilterName(extension) {
   }
 }
 
-ipcMain.handle("rxnflow:save-json-snapshot", async (_event, payload) => {
-  const defaultPath = payload?.defaultName || "rxnflow-flow.json"
+ipcMain.handle("rxncanvas:save-json-snapshot", async (_event, payload) => {
+  const defaultPath = payload?.defaultName || "rxncanvas-flow.json"
   const content = typeof payload?.content === "string" ? payload.content : "{}"
   const result = await dialog.showSaveDialog({
-    title: "Export RxnFlow snapshot",
+    title: "Export RxnCanvas snapshot",
     defaultPath,
     filters: [
       { name: "JSON", extensions: ["json"] },
@@ -1434,10 +1434,10 @@ ipcMain.handle("rxnflow:save-json-snapshot", async (_event, payload) => {
   return { canceled: false, filePath: result.filePath }
 })
 
-ipcMain.handle("rxnflow:save-report-artifact", async (_event, payload) => {
+ipcMain.handle("rxncanvas:save-report-artifact", async (_event, payload) => {
   const requestedDefaultName = typeof payload?.defaultName === "string" && payload.defaultName.trim()
     ? payload.defaultName
-    : "rxnflow-export"
+    : "rxncanvas-export"
   const defaultName = path.basename(requestedDefaultName)
   const encoding = payload?.encoding === "base64" ? "base64" : "utf8"
   const content = typeof payload?.content === "string" ? payload.content : ""
@@ -1445,7 +1445,7 @@ ipcMain.handle("rxnflow:save-report-artifact", async (_event, payload) => {
   const defaultPath = path.join(app.getPath("documents"), defaultName)
 
   const result = await dialog.showSaveDialog({
-    title: "Export RxnFlow file",
+    title: "Export RxnCanvas file",
     buttonLabel: "Export",
     defaultPath,
     filters: [
@@ -1466,14 +1466,14 @@ ipcMain.handle("rxnflow:save-report-artifact", async (_event, payload) => {
   return { canceled: false, filePath: result.filePath }
 })
 
-ipcMain.handle("rxnflow:open-project-package", async () => {
+ipcMain.handle("rxncanvas:open-project-package", async () => {
   const result = await dialog.showOpenDialog({
-    title: "Open RxnFlow project folder or archive",
+    title: "Open RxnCanvas project folder or archive",
     buttonLabel: "Open Project",
     defaultPath: app.getPath("documents"),
     properties: ["openFile", "openDirectory"],
     filters: [
-      { name: "RxnFlow projects", extensions: ["zip", "json", "rxnflow"] },
+      { name: "RxnCanvas projects", extensions: ["zip", "json", "rxncanvas"] },
       { name: "All files", extensions: ["*"] },
     ],
   })
@@ -1504,7 +1504,7 @@ ipcMain.handle("rxnflow:open-project-package", async () => {
   }
 })
 
-ipcMain.handle("rxnflow:get-startup-project-content", async () => {
+ipcMain.handle("rxncanvas:get-startup-project-content", async () => {
   if (startupProjectRestoreConsumed) return { canceled: true }
   if (!startupProjectRestorePromise) return { canceled: true }
   startupProjectRestoreConsumed = true
@@ -1516,12 +1516,12 @@ ipcMain.handle("rxnflow:get-startup-project-content", async () => {
   }
 })
 
-ipcMain.handle("rxnflow:create-project-folder", async (_event, payload) => {
+ipcMain.handle("rxncanvas:create-project-folder", async (_event, payload) => {
   const content = typeof payload?.content === "string" ? payload.content : "{}"
   const identity = projectIdentityFromContent(content)
-  const folderName = safeWorkspaceFolderName(payload?.projectLabel || identity?.label || "RxnFlow Project")
+  const folderName = safeWorkspaceFolderName(payload?.projectLabel || identity?.label || "RxnCanvas Project")
   const result = await dialog.showOpenDialog({
-    title: "Choose where to create the RxnFlow project folder",
+    title: "Choose where to create the RxnCanvas project folder",
     buttonLabel: "Create Project Folder Here",
     defaultPath: app.getPath("documents"),
     properties: ["openDirectory", "createDirectory"],
@@ -1547,8 +1547,8 @@ ipcMain.handle("rxnflow:create-project-folder", async (_event, payload) => {
   }
 })
 
-ipcMain.handle("rxnflow:save-project-package", async (_event, payload) => {
-  const defaultPath = archiveDefaultPath(payload?.defaultName || "rxnflow-project.rxnflow.zip")
+ipcMain.handle("rxncanvas:save-project-package", async (_event, payload) => {
+  const defaultPath = archiveDefaultPath(payload?.defaultName || "rxncanvas-project.rxncanvas.zip")
   const content = typeof payload?.content === "string" ? payload.content : "{}"
   const identity = projectIdentityFromContent(content)
   const exportProjectDirectory = projectDirectoryForIdentity(identity)
@@ -1566,10 +1566,10 @@ ipcMain.handle("rxnflow:save-project-package", async (_event, payload) => {
     previousProjectDirectory: exportProjectDirectory,
   })
   const result = await dialog.showSaveDialog({
-    title: "Export RxnFlow project archive",
+    title: "Export RxnCanvas project archive",
     defaultPath,
     filters: [
-      { name: "RxnFlow project archive", extensions: ["zip"] },
+      { name: "RxnCanvas project archive", extensions: ["zip"] },
       { name: "All files", extensions: ["*"] },
     ],
   })
@@ -1592,8 +1592,8 @@ ipcMain.handle("rxnflow:save-project-package", async (_event, payload) => {
   }
 })
 
-ipcMain.handle("rxnflow:autosave-project-package", async (_event, payload) => {
-  const defaultPath = payload?.defaultName || "rxnflow-project.rxnflow"
+ipcMain.handle("rxncanvas:autosave-project-package", async (_event, payload) => {
+  const defaultPath = payload?.defaultName || "rxncanvas-project.rxncanvas"
   const content = typeof payload?.content === "string" ? payload.content : "{}"
   const identity = projectIdentityFromContent(content)
   const lifecycleGeneration = identity?.id ? projectLifecycleGeneration(identity.id) : null
@@ -1632,7 +1632,7 @@ ipcMain.handle("rxnflow:autosave-project-package", async (_event, payload) => {
   }
 })
 
-ipcMain.handle("rxnflow:set-active-project", async (_event, payload) => {
+ipcMain.handle("rxncanvas:set-active-project", async (_event, payload) => {
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
   if (!projectId) return { ok: false }
   let projectDirectory = projectDirectoriesById.get(projectId)
@@ -1647,7 +1647,7 @@ ipcMain.handle("rxnflow:set-active-project", async (_event, payload) => {
   return { ok: true, projectDirectory }
 })
 
-ipcMain.handle("rxnflow:forget-project", async (_event, payload) => {
+ipcMain.handle("rxncanvas:forget-project", async (_event, payload) => {
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
   if (!projectId) return { ok: false }
   invalidateProjectLifecycle(projectId)
@@ -1672,18 +1672,18 @@ ipcMain.handle("rxnflow:forget-project", async (_event, payload) => {
   return { ok: true, projectDirectory }
 })
 
-ipcMain.handle("rxnflow:get-preferences", async () => {
+ipcMain.handle("rxncanvas:get-preferences", async () => {
   const preferences = await loadPreferences(userDataDirectory())
   nativeTheme.themeSource = preferences.appearance
   return { ok: true, preferences }
 })
 
-ipcMain.handle("rxnflow:set-preferences", async (_event, patch) => {
+ipcMain.handle("rxncanvas:set-preferences", async (_event, patch) => {
   const preferences = await updatePreferences(patch && typeof patch === "object" ? patch : {})
   return { ok: true, preferences }
 })
 
-ipcMain.handle("rxnflow:choose-external-app", async (_event, payload) => {
+ipcMain.handle("rxncanvas:choose-external-app", async (_event, payload) => {
   const profile = payload?.profile === "gaussian" ? "gaussian" : "text"
   const selected = await chooseExternalApplication(profile)
   if (!selected) return { canceled: true }
@@ -1695,7 +1695,7 @@ ipcMain.handle("rxnflow:choose-external-app", async (_event, payload) => {
   return { canceled: false, ...selected, preferences }
 })
 
-ipcMain.handle("rxnflow:read-chemical-clipboard", async () => {
+ipcMain.handle("rxncanvas:read-chemical-clipboard", async () => {
   try {
     const formats = clipboard.availableFormats("clipboard")
     const text = clipboard.readText("clipboard")
@@ -1724,7 +1724,7 @@ ipcMain.handle("rxnflow:read-chemical-clipboard", async () => {
   }
 })
 
-ipcMain.handle("rxnflow:write-chemical-clipboard", async (_event, payload) => {
+ipcMain.handle("rxncanvas:write-chemical-clipboard", async (_event, payload) => {
   try {
     const formats = writeChemicalClipboardPayload(payload && typeof payload === "object" ? payload : {})
     return {
@@ -1740,7 +1740,7 @@ ipcMain.handle("rxnflow:write-chemical-clipboard", async (_event, payload) => {
   }
 })
 
-ipcMain.handle("rxnflow:open-source-file", async (_event, payload) => {
+ipcMain.handle("rxncanvas:open-source-file", async (_event, payload) => {
   const candidates = []
   const projectId = typeof payload?.projectId === "string" ? payload.projectId : null
   const projectDirectory = projectId ? projectDirectoriesById.get(projectId) : currentProjectDirectory
@@ -1775,7 +1775,7 @@ ipcMain.handle("rxnflow:open-source-file", async (_event, payload) => {
   return { ok: false, error: "Raw source file is not available in the project folder." }
 })
 
-ipcMain.handle("rxnflow:engine-status", async () => getEngineStatus(runtimeSmokeExit ? { timeoutMs: runtimeSmokeTimeoutMs } : {}))
+ipcMain.handle("rxncanvas:engine-status", async () => getEngineStatus(runtimeSmokeExit ? { timeoutMs: runtimeSmokeTimeoutMs } : {}))
 
 async function readProjectPackageWithValidation(filePath) {
   const rawContent = await readProjectContent(filePath)
@@ -1989,7 +1989,7 @@ async function projectDirectoryForOpenedPath(openedPath) {
 
   const stateFileName = path.basename(openedPath)
   const metadataDirectory = path.basename(path.dirname(openedPath))
-  if (stateFileName === "project.json" && metadataDirectory === ".rxnflow") {
+  if (stateFileName === "project.json" && metadataDirectory === ".rxncanvas") {
     return path.dirname(path.dirname(openedPath))
   }
   return null
@@ -2014,16 +2014,16 @@ function projectFolderRequiredValidation(message) {
 }
 
 function archiveDefaultPath(defaultName) {
-  const stem = String(defaultName || "rxnflow-project")
-    .replace(/\.rxnflow\.zip$/i, "")
-    .replace(/\.rxnflow$/i, "")
+  const stem = String(defaultName || "rxncanvas-project")
+    .replace(/\.rxncanvas\.zip$/i, "")
+    .replace(/\.rxncanvas$/i, "")
     .replace(/\.json$/i, "")
-  return `${safeProjectPathStem(stem) || "rxnflow-project"}.rxnflow.zip`
+  return `${safeProjectPathStem(stem) || "rxncanvas-project"}.rxncanvas.zip`
 }
 
 function importedArchiveFolderName(archivePath) {
   const stem = path.basename(archivePath)
-    .replace(/\.rxnflow\.zip$/i, "")
+    .replace(/\.rxncanvas\.zip$/i, "")
     .replace(/\.zip$/i, "")
   return safeWorkspaceFolderName(stem)
 }
@@ -2103,11 +2103,11 @@ function safeWorkspaceFolderName(value) {
     .replace(/^\.+|\.+$/g, "")
     .slice(0, 96)
     .trim()
-  return cleaned || "RxnFlow Project"
+  return cleaned || "RxnCanvas Project"
 }
 
 app.whenReady().then(async () => {
-  app.setName("RxnFlow")
+  app.setName("RxnCanvas")
   recentProjectsStorePath = path.join(userDataDirectory(), "recent-projects.json")
   const [preferences, recentProjectState] = await Promise.all([
     loadPreferences(userDataDirectory()),

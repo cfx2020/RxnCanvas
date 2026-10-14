@@ -1,6 +1,6 @@
 import type {
   ProjectSummary,
-  RxnFlowProjectCanvas,
+  RxnCanvasProjectCanvas,
   SourceFile,
 } from "../domain/projectPackages"
 import type { SourceParseResult } from "../domain/sourceParseTypes"
@@ -29,7 +29,7 @@ import {
   type ProjectValidationPayload,
 } from "./projectPackageWorkflow"
 
-export type RxnflowDesktopApi = {
+export type RxnCanvasDesktopApi = {
   platform: string
   chooseFiles: () => Promise<{ canceled: boolean; files: DesktopSourceFile[] }>
   getEngineStatus: () => Promise<DesktopEngineStatus>
@@ -148,7 +148,7 @@ export type RxnflowDesktopApi = {
 
 declare global {
   interface Window {
-    rxnflowDesktop?: RxnflowDesktopApi
+    rxncanvasDesktop?: RxnCanvasDesktopApi
   }
 }
 
@@ -196,12 +196,12 @@ export type RestoreStartupProjectPackagesHandler = (
 ) => void
 
 const pendingStartupProjectRequests = new WeakMap<
-  RxnflowDesktopApi,
+  RxnCanvasDesktopApi,
   Promise<ProjectPackageOpenResult>
 >()
 
 function startupProjectRequest(
-  desktopApi: RxnflowDesktopApi,
+  desktopApi: RxnCanvasDesktopApi,
 ): Promise<ProjectPackageOpenResult> {
   const pendingRequest = pendingStartupProjectRequests.get(desktopApi)
   if (pendingRequest) return pendingRequest
@@ -222,7 +222,7 @@ export async function openProjectPackageFromRuntime({
   projectInput,
   restoreProjectPackage,
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   projectInput: HTMLInputElement | null
   restoreProjectPackage: RestoreProjectPackageHandler
 }): Promise<void> {
@@ -247,10 +247,10 @@ export async function saveProjectPackageToRuntime({
   activeCanvasId,
   setProjectValidation,
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   project: ProjectSummary
   files: SourceFile[]
-  canvases: RxnFlowProjectCanvas[]
+  canvases: RxnCanvasProjectCanvas[]
   activeCanvasId: string
   setProjectValidation: (validation: ProjectValidationPayload | null) => void
 }): Promise<ProjectPackageSaveResult | null> {
@@ -282,10 +282,10 @@ export async function autosaveProjectPackageToRuntime({
   activeCanvasId,
   setProjectValidation,
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   project: ProjectSummary
   files: SourceFile[]
-  canvases: RxnFlowProjectCanvas[]
+  canvases: RxnCanvasProjectCanvas[]
   activeCanvasId: string
   setProjectValidation: (validation: ProjectValidationPayload | null) => void
 }): Promise<ProjectPackageSaveResult | null> {
@@ -307,7 +307,7 @@ export function subscribeProjectPackageRuntimeMenus({
   saveProjectPackage,
   restoreProjectPackage,
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   openProjectPackage: () => void
   saveProjectPackage: () => void
   restoreProjectPackage: RestoreProjectPackageHandler
@@ -332,7 +332,7 @@ export function restoreStartupProjectFromRuntime({
   restoreProjectPackages,
   onSettled,
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   restoreProjectPackages: RestoreStartupProjectPackagesHandler
   onSettled?: () => void
 }): () => void {
@@ -368,7 +368,7 @@ export function setActiveProjectInRuntime({
   projectId,
   projectDirectory,
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   projectId: string
   projectDirectory?: string | null
 }): void {
@@ -384,7 +384,7 @@ export async function forgetProjectInRuntime({
   projectDirectory,
   retryDelaysMs = [120, 300],
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   projectId: string
   projectDirectory?: string | null
   retryDelaysMs?: number[]
@@ -408,7 +408,7 @@ export function watchDesktopEngineStatus({
   desktopApi,
   setEngineStatus,
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   setEngineStatus: (status: DesktopEngineStatus | null) => void
 }): () => void {
   let canceled = false

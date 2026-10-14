@@ -4,7 +4,7 @@ import {
   parseProjectPackage,
   safeProjectFileStem,
   type ProjectSummary,
-  type RxnFlowProjectCanvas,
+  type RxnCanvasProjectCanvas,
   type SourceFile,
 } from "../domain/projectPackages"
 import {
@@ -31,7 +31,7 @@ export type ProjectPackageRuntime = "desktop" | "browser"
 export type ProjectPackageSerializationInput = {
   project: ProjectSummary
   files: SourceFile[]
-  canvases: RxnFlowProjectCanvas[]
+  canvases: RxnCanvasProjectCanvas[]
   activeCanvasId: string
 }
 
@@ -97,11 +97,11 @@ export function projectPackageFilesForPersistence(files: SourceFile[]): SourceFi
 }
 
 export function projectPackageDefaultName(projectLabel: string, runtime: ProjectPackageRuntime): string {
-  return `${safeProjectFileStem(projectLabel)}${runtime === "desktop" ? ".rxnflow" : ".rxnflow.json"}`
+  return `${safeProjectFileStem(projectLabel)}${runtime === "desktop" ? ".rxncanvas" : ".rxncanvas.json"}`
 }
 
 export function projectPackageArchiveDefaultName(projectLabel: string): string {
-  return `${safeProjectFileStem(projectLabel)}.rxnflow.zip`
+  return `${safeProjectFileStem(projectLabel)}.rxncanvas.zip`
 }
 
 export function projectPackageOpenRuntimeTransition(hasDesktopOpen: boolean): ProjectPackageOpenRuntimeTransition {
@@ -210,7 +210,7 @@ export function invalidProjectPackageValidation(): ProjectValidationPayload {
     issues: [{
       severity: "error",
       code: "invalid_project_package",
-      message: "The selected file is not a readable RxnFlow project package.",
+      message: "The selected file is not a readable RxnCanvas project package.",
     }],
   }
 }

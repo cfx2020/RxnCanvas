@@ -1,6 +1,6 @@
 import type { SourceParseResult } from "../domain/sourceParseTypes"
 import type { SourceFile } from "../domain/projectPackages"
-import type { RxnflowDesktopApi } from "./appRuntimeEffects"
+import type { RxnCanvasDesktopApi } from "./appRuntimeEffects"
 import type { ImportSourceFile } from "./importRegistration"
 import { BrowserEngineError, parseBrowserSourceFile } from "./browserEngine"
 
@@ -211,7 +211,7 @@ export async function parsedImportSourceFiles({
   referencedStoredPaths = [],
   onFileParsed,
 }: {
-  desktopApi: RxnflowDesktopApi | undefined
+  desktopApi: RxnCanvasDesktopApi | undefined
   projectId: string
   projectDirectory?: string | null
   importedFiles: ImportSourceFile[]
@@ -271,7 +271,7 @@ export async function parsedImportSourceFiles({
 }
 
 export function desktopSourceFilePathForRawFile(
-  desktopApi: Pick<RxnflowDesktopApi, "filePathForFile"> | undefined,
+  desktopApi: Pick<RxnCanvasDesktopApi, "filePathForFile"> | undefined,
   rawFile: File | undefined,
 ): string {
   if (!desktopApi || !rawFile) return ""
@@ -290,8 +290,8 @@ async function desktopParsedImportSourceFile({
   source,
   rawFile,
 }: {
-  desktopApi: RxnflowDesktopApi
-  importSourceFiles: NonNullable<RxnflowDesktopApi["importSourceFiles"]>
+  desktopApi: RxnCanvasDesktopApi
+  importSourceFiles: NonNullable<RxnCanvasDesktopApi["importSourceFiles"]>
   projectId: string
   projectDirectory?: string | null
   referencedStoredPaths: string[]
@@ -370,7 +370,7 @@ function normalizedImportConcurrency(concurrency: number): number {
 }
 
 async function desktopImportPayloadFile(
-  desktopApi: RxnflowDesktopApi,
+  desktopApi: RxnCanvasDesktopApi,
   source: ImportSourceFile,
   rawFile: File | undefined,
 ) {

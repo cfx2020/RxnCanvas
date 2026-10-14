@@ -81,8 +81,8 @@ export function molfileFromAtoms(atoms: CoordinateAtom[]): string {
     return displayFrom === undefined || displayTo === undefined ? [] : [[displayFrom, displayTo] as [number, number]]
   })
   return [
-    "RxnFlow 2D depiction",
-    "  RxnFlow",
+    "RxnCanvas 2D depiction",
+    "  RxnCanvas",
     "",
     `${countField(displayAtoms.length)}${countField(displayBonds.length)}  0  0  0  0            999 V2000`,
     ...displayAtoms.map((atom) => `${coordinateField(atom.x)}${coordinateField(atom.y)}${coordinateField(0)} ${atom.element.padEnd(3, " ")} 0  0  0  0  0  0  0  0  0  0  0  0`),

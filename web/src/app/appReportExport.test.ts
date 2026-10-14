@@ -194,7 +194,7 @@ describe("appReportExport", () => {
 
     const context = createAndSaveReportArtifactsMock.mock.calls[0][1]
     expect(ketcherMocks.convert).toHaveBeenCalledWith({
-      struct: expect.stringContaining("RxnFlow 2D depiction"),
+      struct: expect.stringContaining("RxnCanvas 2D depiction"),
       input_format: "chemical/x-mdl-molfile",
       output_format: "chemical/x-cdxml",
     })
@@ -220,7 +220,7 @@ describe("appReportExport", () => {
         energyGas: -1,
         energySolution: null,
         energyUnit: "hartree" as const,
-        manualStructureMolfile: "RxnFlow\n  test\n\n  0  0  0  0  0  0  0  0  0  0999 V2000\nM  END",
+        manualStructureMolfile: "RxnCanvas\n  test\n\n  0  0  0  0  0  0  0  0  0  0999 V2000\nM  END",
         position: { x: 0, y: 0 },
       }],
       edges: [],

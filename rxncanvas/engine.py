@@ -85,9 +85,9 @@ MAPLE_XYZ_COMMENT_PATTERN = re.compile(
     r"^\s*(?:(?:Iter|Iteration)\s+\d+\s+)?(?:Image|Frame)\s+\d+\s+Energy\s*=|^\s*Iteration\s+\d+\s+Energy\s*=",
     re.IGNORECASE,
 )
-PROJECT_PACKAGE_KIND = "rxnflow-project"
-PROJECT_DIRECTORY_EXTENSION = ".rxnflow"
-PROJECT_METADATA_DIRECTORY = ".rxnflow"
+PROJECT_PACKAGE_KIND = "rxncanvas-project"
+PROJECT_DIRECTORY_EXTENSION = ".rxncanvas"
+PROJECT_METADATA_DIRECTORY = ".rxncanvas"
 LEGACY_PROJECT_STATE_FILE = "project.json"
 PROJECT_STATE_FILE = Path(PROJECT_METADATA_DIRECTORY) / "project.json"
 PROJECT_MANIFEST_FILE = Path(PROJECT_METADATA_DIRECTORY) / "manifest.json"
@@ -269,7 +269,7 @@ class VibrationalMode:
     forceConstant: float | None = None
     irIntensityKmMol: float | None = None
     ramanActivity: float | None = None
-    source: Literal["cclib", "rxnflow-text"] = "rxnflow-text"
+    source: Literal["cclib", "rxncanvas-text"] = "rxncanvas-text"
 
 
 @dataclass(frozen=True)
@@ -497,7 +497,7 @@ def normalized_cclib_source_path(source_path: str) -> str:
         mode="w",
         encoding="utf8",
         suffix=source.suffix or ".log",
-        prefix="rxnflow-cclib-",
+        prefix="rxncanvas-cclib-",
         delete=False,
     ) as handle:
         handle.write("".join(normalized_lines))
@@ -537,7 +537,7 @@ def parse_cclib_full_file(
     """Parse a complete computational output with cclib when available.
 
     cclib is intentionally used behind the Python engine boundary. The renderer
-    still receives structured fields only; RxnFlow text parsing is used for
+    still receives structured fields only; RxnCanvas text parsing is used for
     app-specific metadata, not to fill cclib-owned standard fields.
     """
 
@@ -573,7 +573,7 @@ def parse_cclib_full_file(
         vibration_source: str | GaussianVibrationIndex = full_text
         if source_kind == "Gaussian" and text_context.gaussianVibrationIndex is not None:
             vibration_source = text_context.gaussianVibrationIndex
-        text_vibration_modes, text_vibration_warnings = gaussian_vibrational_modes_from_text(vibration_source, len(atoms), name, "rxnflow-text")
+        text_vibration_modes, text_vibration_warnings = gaussian_vibrational_modes_from_text(vibration_source, len(atoms), name, "rxncanvas-text")
         vibration_modes = text_vibration_modes
         vibration_warnings = (*vibration_warnings, *text_vibration_warnings)
     formula = formula_from_atoms(atoms) if atoms else text_result.formula
@@ -635,10 +635,10 @@ def parse_cclib_full_file(
 
 
 def merge_cclib_text_result(cclib_result: SourceParseResult, text_result: SourceParseResult) -> SourceParseResult:
-    """Merge cclib standard fields with RxnFlow-specific text fields.
+    """Merge cclib standard fields with RxnCanvas-specific text fields.
 
     cclib is the only source for cclib-owned standard fields such as package
-    kind, energies, free energies, basis counts, and coordinates. The RxnFlow text parser
+    kind, energies, free energies, basis counts, and coordinates. The RxnCanvas text parser
     contributes app-specific metadata such as solvent, role hints, labels, and
     termination diagnostics.
     """
@@ -673,7 +673,7 @@ def merge_cclib_text_result(cclib_result: SourceParseResult, text_result: Source
         kind=merged_kind,
         solvent=text_result.solvent,
         parser_id=parser_id_for_scope(
-            f"{cclib_parser_base(cclib_result.sourceKind)}+rxnflow-text",
+            f"{cclib_parser_base(cclib_result.sourceKind)}+rxncanvas-text",
             "full-file",
         ),
         parser_version=PARSER_VERSION,
@@ -740,7 +740,7 @@ def gaussian_vibrational_modes_from_text(
     source_text: str | GaussianVibrationIndex,
     atom_count: int,
     target: str,
-    source: Literal["rxnflow-text"] = "rxnflow-text",
+    source: Literal["rxncanvas-text"] = "rxncanvas-text",
 ) -> tuple[tuple[VibrationalMode, ...], tuple[ParseWarning, ...]]:
     if atom_count <= 0:
         return (), ()
@@ -1240,8 +1240,8 @@ def vibrational_modes_from_payload(payload: Any, atom_count: int, target: str) -
         if kind not in {"imaginary", "real", "unknown"}:
             kind = "imaginary" if frequency < 0 else "real"
         source = raw_mode.get("source")
-        if source not in {"cclib", "rxnflow-text"}:
-            source = "rxnflow-text"
+        if source not in {"cclib", "rxncanvas-text"}:
+            source = "rxncanvas-text"
         modes.append(VibrationalMode(
             modeId=string_or_default(raw_mode.get("modeId"), vibration_mode_id(mode_index, frequency)),
             modeIndex=mode_index,
@@ -1391,9 +1391,9 @@ def open_project(project_path: str) -> dict[str, Any]:
     path = Path(project_path).expanduser()
     content_path = resolve_project_state_path(path) if path.is_dir() else path
     if not content_path.exists():
-        raise FileNotFoundError(f"RxnFlow project not found: {content_path}")
+        raise FileNotFoundError(f"RxnCanvas project not found: {content_path}")
     if content_path.stat().st_size > MAX_PROJECT_CONTENT_CHARACTERS:
-        raise ValueError(f"RxnFlow project state exceeds {MAX_PROJECT_CONTENT_CHARACTERS} bytes: {content_path}")
+        raise ValueError(f"RxnCanvas project state exceeds {MAX_PROJECT_CONTENT_CHARACTERS} bytes: {content_path}")
 
     content = content_path.read_text(encoding="utf8")
     project_root = project_root_for_content(path, content_path)
@@ -1468,7 +1468,7 @@ def project_root_for_content(requested_path: Path, content_path: Path) -> Path |
 def validate_project_package(package: dict[str, Any], project_root: Path | None = None) -> list[ProjectValidationIssue]:
     issues: list[ProjectValidationIssue] = []
     if package.get("schemaVersion") not in {1, 2} or package.get("packageKind") != PROJECT_PACKAGE_KIND:
-        issues.append(ProjectValidationIssue("error", "invalid_envelope", "Expected schemaVersion 1 or 2 and packageKind rxnflow-project."))
+        issues.append(ProjectValidationIssue("error", "invalid_envelope", "Expected schemaVersion 1 or 2 and packageKind rxncanvas-project."))
 
     project = package.get("project")
     if not isinstance(project, dict):
@@ -1886,7 +1886,7 @@ def write_project_manifest(project_directory: Path, package: dict[str, Any]) -> 
     files = package.get("files") if isinstance(package.get("files"), list) else []
     manifest = {
         "schemaVersion": 1,
-        "packageKind": "rxnflow-project-directory",
+        "packageKind": "rxncanvas-project-directory",
         "project": package.get("project"),
         "savedAt": package.get("savedAt"),
         "stateFile": str(PROJECT_STATE_FILE),
@@ -1916,7 +1916,7 @@ def ensure_export_manifest(project_directory: Path, package: dict[str, Any]) -> 
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest = {
         "schemaVersion": 1,
-        "packageKind": "rxnflow-export-artifacts",
+        "packageKind": "rxncanvas-export-artifacts",
         "project": package.get("project"),
         "artifacts": [],
     }
@@ -2181,7 +2181,7 @@ def _parse_source_text_context(
         energy_gas, energy_solution, method = gaussian
         atoms = gaussian_atoms_from_text(gaussian_snapshot)
         vibration_index = gaussian_vibration_index(preview)
-        vibration_modes, vibration_warnings = gaussian_vibrational_modes_from_text(vibration_index, len(atoms), name, "rxnflow-text")
+        vibration_modes, vibration_warnings = gaussian_vibrational_modes_from_text(vibration_index, len(atoms), name, "rxncanvas-text")
         kind = gaussian_computation_kind_from_snapshot(name, gaussian_snapshot, vibration_modes)
         formula = gaussian_snapshot.formula or (formula_from_atoms(atoms) if atoms else "pending")
         charge, spin = gaussian_charge_multiplicity(gaussian_snapshot)

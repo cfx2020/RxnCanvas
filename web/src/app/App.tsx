@@ -312,9 +312,9 @@ type NodeResizePreviewCache = NodeDragPreviewCache & {
   originSize: SurfaceSize
 }
 
-const energyUnitStorageKey = "rxnflow-energy-output-unit"
-const projectRailWidthStorageKey = "rxnflow-project-rail-width"
-const inspectorWidthStorageKey = "rxnflow-inspector-width"
+const energyUnitStorageKey = "rxncanvas-energy-output-unit"
+const projectRailWidthStorageKey = "rxncanvas-project-rail-width"
+const inspectorWidthStorageKey = "rxncanvas-inspector-width"
 const projectRailMinWidth = 212
 const projectRailMaxWidth = 360
 const inspectorMinWidth = 248
@@ -368,7 +368,7 @@ function initialDesktopPreferences(): DesktopPreferences {
   if (typeof window === "undefined" || typeof window.localStorage?.getItem !== "function") {
     return defaultDesktopPreferences
   }
-  const legacyTheme = window.localStorage.getItem("rxnflow-theme")
+  const legacyTheme = window.localStorage.getItem("rxncanvas-theme")
   const storedUnit = window.localStorage.getItem(energyUnitStorageKey)
   return normalizeDesktopPreferences({
     ...defaultDesktopPreferences,
@@ -417,7 +417,7 @@ function initialToolbarPlacement(): ToolbarPlacement {
     return { mode: "floating", x: 0, y: 10 }
   }
   try {
-    const raw = window.localStorage.getItem("rxnflow-toolbar-placement")
+    const raw = window.localStorage.getItem("rxncanvas-toolbar-placement")
     if (!raw) return { mode: "floating", x: 0, y: 10 }
     const parsed = JSON.parse(raw) as Partial<ToolbarPlacement>
     if (parsed.mode === "left" || parsed.mode === "right") {
@@ -533,7 +533,7 @@ export function App() {
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null)
   const [toolbarPlacement, setToolbarPlacement] = useState<ToolbarPlacement>(() => initialToolbarPlacement())
   const [toolbarMetrics, setToolbarMetrics] = useState<ToolbarMetrics | null>(null)
-  const [startupRestorePending, setStartupRestorePending] = useState(() => Boolean(window.rxnflowDesktop?.getStartupProjectContent))
+  const [startupRestorePending, setStartupRestorePending] = useState(() => Boolean(window.rxncanvasDesktop?.getStartupProjectContent))
 
   const beginAutosaveImportGate = useCallback((projectId: string) => {
     autosaveImportDepthRef.current.set(
@@ -657,13 +657,13 @@ export function App() {
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const activeProjectLabel = activeProject?.label ?? "Untitled Study"
   const activeCanvasLabel = canvasTabs.find((tab) => tab.id === activeCanvasTabId)?.label ?? activeProjectLabel
-  const isMacDesktop = window.rxnflowDesktop?.platform === "darwin"
+  const isMacDesktop = window.rxncanvasDesktop?.platform === "darwin"
   const isMacCopyDragPlatform = isMacDesktop || /Mac|iPhone|iPad|iPod/.test(window.navigator.platform)
   const theme = effectiveThemeFromAppearance(desktopPreferences.appearance, systemPrefersDark)
   const [desktopWindowState, setDesktopWindowState] = useState({ isFullScreen: false, isMaximized: false })
   const appShellStyle = useMemo(() => ({
-    "--rxnflow-project-rail-width": `${projectRailWidth}px`,
-    "--rxnflow-inspector-live-width": `${inspectorWidth}px`,
+    "--rxncanvas-project-rail-width": `${projectRailWidth}px`,
+    "--rxncanvas-inspector-live-width": `${inspectorWidth}px`,
   } as CSSProperties), [inspectorWidth, projectRailWidth])
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes])
   const energyRowsSignature = useMemo(
@@ -921,7 +921,7 @@ export function App() {
 
   useEffect(() => {
     if (typeof window.localStorage?.setItem !== "function") return
-    window.localStorage.setItem("rxnflow-toolbar-placement", JSON.stringify(toolbarPlacement))
+    window.localStorage.setItem("rxncanvas-toolbar-placement", JSON.stringify(toolbarPlacement))
   }, [toolbarPlacement])
 
   useEffect(() => {
@@ -1036,25 +1036,25 @@ export function App() {
     if (!toolbarMetrics) return undefined
     if (toolbarPlacement.mode === "floating") {
       return {
-        "--rxnflow-toolbar-left": `${toolbarPlacement.x}px`,
-        "--rxnflow-toolbar-top": `${toolbarPlacement.y}px`,
-        "--rxnflow-toolbar-right": "auto",
-        "--rxnflow-toolbar-transform": "none",
+        "--rxncanvas-toolbar-left": `${toolbarPlacement.x}px`,
+        "--rxncanvas-toolbar-top": `${toolbarPlacement.y}px`,
+        "--rxncanvas-toolbar-right": "auto",
+        "--rxncanvas-toolbar-transform": "none",
       } as CSSProperties
     }
     if (toolbarPlacement.mode === "right") {
       return {
-        "--rxnflow-toolbar-left": "auto",
-        "--rxnflow-toolbar-right": "10px",
-        "--rxnflow-toolbar-top": `${toolbarPlacement.y}px`,
-        "--rxnflow-toolbar-transform": "none",
+        "--rxncanvas-toolbar-left": "auto",
+        "--rxncanvas-toolbar-right": "10px",
+        "--rxncanvas-toolbar-top": `${toolbarPlacement.y}px`,
+        "--rxncanvas-toolbar-transform": "none",
       } as CSSProperties
     }
     return {
-      "--rxnflow-toolbar-left": "10px",
-      "--rxnflow-toolbar-right": "auto",
-      "--rxnflow-toolbar-top": `${toolbarPlacement.y}px`,
-      "--rxnflow-toolbar-transform": "none",
+      "--rxncanvas-toolbar-left": "10px",
+      "--rxncanvas-toolbar-right": "auto",
+      "--rxncanvas-toolbar-top": `${toolbarPlacement.y}px`,
+      "--rxncanvas-toolbar-transform": "none",
     } as CSSProperties
   }, [toolbarMetrics, toolbarPlacement])
 
@@ -1414,8 +1414,8 @@ export function App() {
         isMaximized: Boolean(state.isMaximized),
       })
     }
-    void window.rxnflowDesktop?.getWindowState?.().then(apply)
-    const dispose = window.rxnflowDesktop?.onWindowStateChanged?.(apply)
+    void window.rxncanvasDesktop?.getWindowState?.().then(apply)
+    const dispose = window.rxncanvasDesktop?.onWindowStateChanged?.(apply)
     return () => {
       disposed = true
       dispose?.()
@@ -1441,11 +1441,11 @@ export function App() {
         ]),
       ))
     }
-    void window.rxnflowDesktop?.getPreferences?.().then((result) => {
+    void window.rxncanvasDesktop?.getPreferences?.().then((result) => {
       if (disposed || !result?.preferences) return
       apply(result.preferences)
     })
-    const dispose = window.rxnflowDesktop?.onPreferencesChanged?.((preferences) => {
+    const dispose = window.rxncanvasDesktop?.onPreferencesChanged?.((preferences) => {
       if (!disposed) apply(preferences)
     })
     return () => {
@@ -1456,8 +1456,8 @@ export function App() {
 
   useEffect(() => {
     if (typeof window.localStorage?.setItem === "function") {
-      window.localStorage.setItem("rxnflow-theme", theme)
-      window.localStorage.setItem("rxnflow-appearance", desktopPreferences.appearance)
+      window.localStorage.setItem("rxncanvas-theme", theme)
+      window.localStorage.setItem("rxncanvas-appearance", desktopPreferences.appearance)
     }
   }, [desktopPreferences.appearance, theme])
 
@@ -1845,7 +1845,7 @@ export function App() {
       projectLabel,
       now: Date.now(),
     })
-    const desktopApi = window.rxnflowDesktop
+    const desktopApi = window.rxncanvasDesktop
     if (!desktopApi?.createProjectFolder) {
       applyProjectTransition(transition)
       return true
@@ -1943,13 +1943,13 @@ export function App() {
         setProjectValidation(null)
       }
     }
-    if (!window.rxnflowDesktop?.forgetProject) {
+    if (!window.rxncanvasDesktop?.forgetProject) {
       applyRemoval()
       return
     }
     projectForgetInFlightRef.current.add(projectId)
     void forgetProjectInRuntime({
-      desktopApi: window.rxnflowDesktop,
+      desktopApi: window.rxncanvasDesktop,
       projectId,
       projectDirectory,
     }).then((forgotten) => {
@@ -1977,7 +1977,7 @@ export function App() {
       viewport,
       currentSnapshot,
       viewMode,
-      registerImportCandidates: window.rxnflowDesktop?.registerImportCandidates,
+      registerImportCandidates: window.rxncanvasDesktop?.registerImportCandidates,
       appStateSetters,
       pushEditHistory: snapshotOverride
         ? () => pushEditHistory(canvasEditSnapshot(
@@ -2015,7 +2015,7 @@ export function App() {
       currentSnapshot: latestState.activeSnapshot,
       emptyViewport: defaultCanvasViewport(canvasRef.current),
       canvas: canvasRef.current,
-      registerImportCandidates: window.rxnflowDesktop?.registerImportCandidates,
+      registerImportCandidates: window.rxncanvasDesktop?.registerImportCandidates,
       stageCurrentProjectSourceFiles: stageSourceFiles,
       applyProjectTransition,
       applyDeferredProjectWorkspace,
@@ -2042,7 +2042,7 @@ export function App() {
     const projectId = initialState.activeProjectId
     const initialSnapshot = initialState.activeSnapshot
     const refreshed = await refreshProjectSourceFiles({
-      desktopApi: window.rxnflowDesktop,
+      desktopApi: window.rxncanvasDesktop,
       projectId,
       projectDirectory: projectDirectoriesRef.current[projectId] ?? null,
       files: initialSnapshot.files,
@@ -2063,7 +2063,7 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (startupRestorePending || !window.rxnflowDesktop?.inspectProjectSourceFiles) return
+    if (startupRestorePending || !window.rxncanvasDesktop?.inspectProjectSourceFiles) return
     let disposed = false
     const refresh = () => {
       void refreshActiveProjectSourceSnapshot().then((result) => {
@@ -2140,7 +2140,7 @@ export function App() {
     rawFiles: File[] = [],
     releaseAutosaveImportGate?: () => void,
   ) => {
-    const desktopApi = window.rxnflowDesktop
+    const desktopApi = window.rxncanvasDesktop
     if (importedFiles.length === 0) return
     const releaseGate = releaseAutosaveImportGate ?? beginAutosaveImportGate(projectId)
     const autoRegister = options.autoRegister === true
@@ -2312,7 +2312,7 @@ export function App() {
       mode,
       candidateReview,
       candidateRegisterBusy,
-      registerImportCandidates: window.rxnflowDesktop?.registerImportCandidates,
+      registerImportCandidates: window.rxncanvasDesktop?.registerImportCandidates,
       currentSnapshot: currentProjectWorkspaceSnapshot(),
       appStateSetters,
       pushEditHistory,
@@ -2322,7 +2322,7 @@ export function App() {
 
   const importFiles = useCallback(async (fileList: FileList | File[], projectId = activeProjectId) => {
     const rawFiles = Array.from(fileList)
-    const desktopApi = window.rxnflowDesktop
+    const desktopApi = window.rxncanvasDesktop
     const projectFiles = projectId === activeProjectId
       ? currentProjectWorkspaceSnapshot().files
       : projectWorkspaces[projectId]?.files ?? []
@@ -2402,7 +2402,7 @@ export function App() {
       if (sourceFiles.length === 0) return
       const transition = canvasRawFileDropImportTransition({ ...drop, files: sourceFiles }, files)
       if (!transition || transition.kind !== "external-files") return
-      const desktopApi = window.rxnflowDesktop
+      const desktopApi = window.rxncanvasDesktop
       const importedFiles = browserImportSourceFilesFromFiles(transition.files, transition.idPrefix, {
         prepareFile: (file) => {
           const sourcePath = desktopSourceFilePathForRawFile(desktopApi, file)
@@ -2518,7 +2518,7 @@ export function App() {
     try {
       const importedFiles = await importDesktopFilesAction({
         projectId,
-        chooseFiles: window.rxnflowDesktop?.chooseFiles,
+        chooseFiles: window.rxncanvasDesktop?.chooseFiles,
         stageSourceFilesForProject,
         prepareImportedFiles: (files) => desktopImportFilesWithProjectTargets(files, projectFiles, projectDirectory).files,
         stageOptions: {
@@ -2540,7 +2540,7 @@ export function App() {
   const openImportPicker = useCallback((projectId = activeProjectId) => {
     openImportPickerAction({
       projectId,
-      hasDesktopRuntime: Boolean(window.rxnflowDesktop),
+      hasDesktopRuntime: Boolean(window.rxncanvasDesktop),
       setPendingImportProjectId: (pendingProjectId) => {
         pendingImportProjectIdRef.current = pendingProjectId
       },
@@ -2550,13 +2550,13 @@ export function App() {
   }, [activeProjectId, importDesktopFiles])
 
   useEffect(() => {
-    return window.rxnflowDesktop?.onMenuImportFiles(openImportPicker)
+    return window.rxncanvasDesktop?.onMenuImportFiles(openImportPicker)
   }, [openImportPicker])
 
   useEffect(() => {
     if (startupRestorePending) return
     setActiveProjectInRuntime({
-      desktopApi: window.rxnflowDesktop,
+      desktopApi: window.rxncanvasDesktop,
       projectId: activeProjectId,
       projectDirectory: projectDirectoriesRef.current[activeProjectId] ?? null,
     })
@@ -2594,7 +2594,7 @@ export function App() {
       activeSnapshot: transition.activeSnapshot,
     }
     setActiveProjectInRuntime({
-      desktopApi: window.rxnflowDesktop,
+      desktopApi: window.rxncanvasDesktop,
       projectId: transition.activeProjectId,
       projectDirectory: options?.projectDirectory,
     })
@@ -2670,7 +2670,7 @@ export function App() {
 
   const openProjectPackage = useCallback(async () => {
     await openProjectPackageFromRuntime({
-      desktopApi: window.rxnflowDesktop,
+      desktopApi: window.rxncanvasDesktop,
       projectInput: projectInputRef.current,
       restoreProjectPackage,
     })
@@ -2678,7 +2678,7 @@ export function App() {
 
   const saveProjectPackage = useCallback(async () => {
     const result = await saveProjectPackageToRuntime({
-      desktopApi: window.rxnflowDesktop,
+      desktopApi: window.rxncanvasDesktop,
       project: activeProject,
       files,
       canvases: projectCanvases,
@@ -2689,7 +2689,7 @@ export function App() {
   }, [activeCanvasTabId, activeProject, files, projectCanvases, rememberProjectDirectory])
 
   const runAutosaveProject = useCallback(async (requestedInput?: ProjectAutosaveInput) => {
-    const desktopApi = window.rxnflowDesktop
+    const desktopApi = window.rxncanvasDesktop
     const requested = requestedInput ?? autosaveInputRef.current
     if (!desktopApi?.autosaveProjectPackage || !requested) return
 
@@ -2798,7 +2798,7 @@ export function App() {
   }, [autosaveInput, runAutosaveProject])
 
   useEffect(() => {
-    if (!window.rxnflowDesktop?.autosaveProjectPackage) return
+    if (!window.rxncanvasDesktop?.autosaveProjectPackage) return
     if (startupRestorePending) return
 
     if (!autosaveHydratedRef.current) {
@@ -2815,14 +2815,14 @@ export function App() {
   }, [autosaveInput, dragState, runAutosaveProject, startupRestorePending])
 
   useEffect(() => subscribeProjectPackageRuntimeMenus({
-    desktopApi: window.rxnflowDesktop,
+    desktopApi: window.rxncanvasDesktop,
     openProjectPackage,
     saveProjectPackage,
     restoreProjectPackage,
   }), [openProjectPackage, restoreProjectPackage, saveProjectPackage])
 
   useEffect(() => restoreStartupProjectFromRuntime({
-    desktopApi: window.rxnflowDesktop,
+    desktopApi: window.rxncanvasDesktop,
     restoreProjectPackages: (payloads) => {
       restoreStartupProjectPackagesRef.current?.(payloads)
     },
@@ -2830,7 +2830,7 @@ export function App() {
   }), [])
 
   useEffect(() => watchDesktopEngineStatus({
-    desktopApi: window.rxnflowDesktop,
+    desktopApi: window.rxncanvasDesktop,
     setEngineStatus,
   }), [])
 
@@ -2980,7 +2980,7 @@ export function App() {
       edges,
       files,
       rows: energyRows,
-      desktopApi: window.rxnflowDesktop,
+      desktopApi: window.rxncanvasDesktop,
       setExportBusy,
       setExportStatus,
       setExportArtifacts,
@@ -2991,7 +2991,7 @@ export function App() {
     const file = files.find((item) => item.id === fileId)
     if (!file) return
     try {
-      const result = await window.rxnflowDesktop?.openSourceFile?.({
+      const result = await window.rxncanvasDesktop?.openSourceFile?.({
         projectId: activeProjectId,
         storedPath: file.storedPath,
         sourcePath: file.sourcePath,
@@ -3016,7 +3016,7 @@ export function App() {
 
 
   const hydrateSourceParseForStructure = useCallback(async (file: SourceFile): Promise<SourceParseResult | null> => {
-    const desktopParser = window.rxnflowDesktop?.parseSourcePreview
+    const desktopParser = window.rxncanvasDesktop?.parseSourcePreview
     if (desktopParser) {
       try {
         const result = await desktopParser({
@@ -3052,7 +3052,7 @@ export function App() {
 
   const setEnergyOutputUnit = useCallback((unit: EnergyDisplayOptions["outputUnit"]) => {
     setDesktopPreferences((current) => normalizeDesktopPreferences({ ...current, energyOutputUnit: unit }))
-    void window.rxnflowDesktop?.setPreferences?.({ energyOutputUnit: unit })
+    void window.rxncanvasDesktop?.setPreferences?.({ energyOutputUnit: unit })
     setEnergyDisplayOptions((current) => ({ ...current, outputUnit: unit }))
     setProjectWorkspaces((current) => Object.fromEntries(
       Object.entries(current).map(([projectId, workspace]) => [
@@ -3070,11 +3070,11 @@ export function App() {
 
   const setAppearancePreference = useCallback((appearance: AppearancePreference) => {
     setDesktopPreferences((current) => normalizeDesktopPreferences({ ...current, appearance }))
-    void window.rxnflowDesktop?.setPreferences?.({ appearance })
+    void window.rxncanvasDesktop?.setPreferences?.({ appearance })
   }, [])
 
   const chooseSourceOpener = useCallback((profile: SourceOpenerProfile) => {
-    void window.rxnflowDesktop?.chooseExternalApp?.({ profile }).then((result) => {
+    void window.rxncanvasDesktop?.chooseExternalApp?.({ profile }).then((result) => {
       if (result?.preferences) setDesktopPreferences(normalizeDesktopPreferences(result.preferences))
     })
   }, [])
@@ -3085,7 +3085,7 @@ export function App() {
       [profile]: { appPath: null, label: null },
     }
     setDesktopPreferences((current) => normalizeDesktopPreferences({ ...current, sourceOpeners }))
-    void window.rxnflowDesktop?.setPreferences?.({ sourceOpeners })
+    void window.rxncanvasDesktop?.setPreferences?.({ sourceOpeners })
   }, [desktopPreferences.sourceOpeners])
 
   const clearCanvasSelection = useCallback(() => {
@@ -3365,7 +3365,7 @@ export function App() {
         <div className="startup-restore-view" role="status" aria-live="polite">
           <span className="startup-restore-spinner" aria-hidden="true" />
           <strong>Opening workspace</strong>
-          <span>Loading your recent RxnFlow project...</span>
+          <span>Loading your recent RxnCanvas project...</span>
         </div>
       </div>
     )
@@ -3397,7 +3397,7 @@ export function App() {
         ref={projectInputRef}
         className="visually-hidden"
         type="file"
-        accept=".rxnflow,.json,.rxnflow.json,application/json"
+        accept=".rxncanvas,.json,.rxncanvas.json,application/json"
         onChange={handleProjectInputChange}
         aria-label="Open project package"
       />
@@ -3466,7 +3466,7 @@ export function App() {
       {settingsOpen ? (
         <SettingsPanel
           preferences={desktopPreferences}
-          desktopAvailable={Boolean(window.rxnflowDesktop?.getPreferences)}
+          desktopAvailable={Boolean(window.rxncanvasDesktop?.getPreferences)}
           onAppearanceChange={setAppearancePreference}
           onEnergyUnitChange={setEnergyOutputUnit}
           onChooseOpener={chooseSourceOpener}
@@ -4071,7 +4071,7 @@ function projectForgetFailureValidation(projectLabel: string): ProjectValidation
     issues: [{
       severity: "error",
       code: "project_forget_failed",
-      message: `${projectLabel} was not removed because RxnFlow could not update Recent Projects. Try removing it again.`,
+      message: `${projectLabel} was not removed because RxnCanvas could not update Recent Projects. Try removing it again.`,
     }],
   }
 }

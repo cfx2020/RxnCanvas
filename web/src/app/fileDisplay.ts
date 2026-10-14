@@ -1,6 +1,6 @@
 import type { FlowNode, SourceFile } from "../domain/projectPackages"
 
-export const projectFileDragMimeType = "application/x-rxnflow-raw-file"
+export const projectFileDragMimeType = "application/x-rxncanvas-raw-file"
 
 export type SourceFilePairStatus = "ready" | "parsing" | "missing-pair" | "parse-error"
 

@@ -147,7 +147,7 @@ export type ImportLedger = {
   entries: ImportLedgerEntry[]
 }
 
-export type RxnFlowProjectCanvas = {
+export type RxnCanvasProjectCanvas = {
   id: string
   label: string
   nodes: FlowNode[]
@@ -160,12 +160,12 @@ export type RxnFlowProjectCanvas = {
   selectedBarrierIds: string[]
 }
 
-export type RxnFlowProjectPackage = {
+export type RxnCanvasProjectPackage = {
   schemaVersion: 1 | 2
-  packageKind: "rxnflow-project"
+  packageKind: "rxncanvas-project"
   project: ProjectSummary
   files: SourceFile[]
-  canvases?: RxnFlowProjectCanvas[]
+  canvases?: RxnCanvasProjectCanvas[]
   activeCanvasId?: string
   nodes?: FlowNode[]
   edges?: FlowEdge[]
@@ -194,23 +194,23 @@ export function buildProjectPackage(
   edges: FlowEdge[],
   viewport: CanvasViewport,
   options?: string | BuildProjectPackageLegacyOptions,
-): RxnFlowProjectPackage
+): RxnCanvasProjectPackage
 
 export function buildProjectPackage(
   project: ProjectSummary,
   files: SourceFile[],
-  canvases: RxnFlowProjectCanvas[],
+  canvases: RxnCanvasProjectCanvas[],
   options?: string | BuildProjectPackageCanvasOptions,
-): RxnFlowProjectPackage
+): RxnCanvasProjectPackage
 
 export function buildProjectPackage(
   project: ProjectSummary,
   files: SourceFile[],
-  nodesOrCanvases: FlowNode[] | RxnFlowProjectCanvas[],
+  nodesOrCanvases: FlowNode[] | RxnCanvasProjectCanvas[],
   edgesOrOptions: FlowEdge[] | string | BuildProjectPackageOptions = new Date().toISOString(),
   viewportOrOptions?: CanvasViewport | string | BuildProjectPackageOptions,
   maybeOptions?: string | BuildProjectPackageOptions,
-): RxnFlowProjectPackage {
+): RxnCanvasProjectPackage {
   const legacyMode = Array.isArray(edgesOrOptions)
   const resolvedOptions: string | BuildProjectPackageOptions = legacyMode
     ? ((maybeOptions as string | BuildProjectPackageOptions | undefined) ?? new Date().toISOString())
@@ -231,7 +231,7 @@ export function buildProjectPackage(
         selectedEdgeIds: [],
         selectedBarrierIds: [],
       }]
-    : (nodesOrCanvases as RxnFlowProjectCanvas[]).map(normalizeProjectCanvas)
+    : (nodesOrCanvases as RxnCanvasProjectCanvas[]).map(normalizeProjectCanvas)
   const activeCanvasId = legacyMode
     ? "canvas-1"
     : typeof resolvedOptions === "string"
@@ -243,7 +243,7 @@ export function buildProjectPackage(
   const persistedFiles = normalizeProjectFilesForPersistence(files)
   return {
     schemaVersion: 2,
-    packageKind: "rxnflow-project",
+    packageKind: "rxncanvas-project",
     project,
     files: persistedFiles,
     canvases: normalizedCanvases,
@@ -266,11 +266,11 @@ export function normalizeSourceFileForPersistence(file: SourceFile): SourceFile 
   return normalizeProjectFile(file, 0)
 }
 
-export function parseProjectPackage(content: string): RxnFlowProjectPackage | null {
+export function parseProjectPackage(content: string): RxnCanvasProjectPackage | null {
   try {
     const value = JSON.parse(content) as Record<string, unknown>
     if (value.schemaVersion !== 1 && value.schemaVersion !== 2) return null
-    if (value.packageKind !== "rxnflow-project") return null
+    if (value.packageKind !== "rxncanvas-project") return null
     if (!isObject(value.project) || !Array.isArray(value.files)) {
       return null
     }
@@ -283,7 +283,7 @@ export function parseProjectPackage(content: string): RxnFlowProjectPackage | nu
 
     return {
       schemaVersion: 2,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: normalizeProject(value.project),
       files,
       canvases,
@@ -306,7 +306,7 @@ export function safeProjectFileStem(label: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-  return stem || "rxnflow-project"
+  return stem || "rxncanvas-project"
 }
 
 export function buildImportLedger(files: SourceFile[], nodes: FlowNode[]): ImportLedger {
@@ -388,8 +388,8 @@ function warningCodesFromFile(file: SourceFile): string[] {
 
 function normalizeProject(project: Partial<ProjectSummary>): ProjectSummary {
   return {
-    id: stringOrFallback(project.id, "rxnflow-project"),
-    label: stringOrFallback(project.label, "RxnFlow Project"),
+    id: stringOrFallback(project.id, "rxncanvas-project"),
+    label: stringOrFallback(project.label, "RxnCanvas Project"),
     meta: stringOrFallback(project.meta, "open"),
   }
 }
@@ -494,9 +494,9 @@ function normalizeCanvasAnnotation(annotation: CanvasAnnotation | Partial<Canvas
 }
 
 function normalizeProjectCanvas(
-  canvas: RxnFlowProjectCanvas | Partial<RxnFlowProjectCanvas>,
+  canvas: RxnCanvasProjectCanvas | Partial<RxnCanvasProjectCanvas>,
   index = 0,
-): RxnFlowProjectCanvas {
+): RxnCanvasProjectCanvas {
   const nodes = Array.isArray(canvas.nodes) ? canvas.nodes.map(normalizeProjectNode) : []
   const edges = Array.isArray(canvas.edges) ? canvas.edges.map(normalizeProjectEdge) : []
   const barriers = Array.isArray(canvas.barriers) ? canvas.barriers.map(normalizeProjectBarrier) : []
@@ -521,10 +521,10 @@ function normalizeProjectCanvas(
   }
 }
 
-function normalizeProjectCanvases(value: Record<string, unknown>): RxnFlowProjectCanvas[] {
+function normalizeProjectCanvases(value: Record<string, unknown>): RxnCanvasProjectCanvas[] {
   if (value.schemaVersion === 2 && Array.isArray(value.canvases)) {
     const canvases = value.canvases.map((canvas, index) =>
-      isObject(canvas) ? normalizeProjectCanvas(canvas as Partial<RxnFlowProjectCanvas>, index) : normalizeProjectCanvas({}, index),
+      isObject(canvas) ? normalizeProjectCanvas(canvas as Partial<RxnCanvasProjectCanvas>, index) : normalizeProjectCanvas({}, index),
     )
     return canvases.length > 0 ? canvases : [defaultProjectCanvas()]
   }
@@ -548,7 +548,7 @@ function normalizeProjectCanvases(value: Record<string, unknown>): RxnFlowProjec
   }]
 }
 
-function defaultProjectCanvas(): RxnFlowProjectCanvas {
+function defaultProjectCanvas(): RxnCanvasProjectCanvas {
   return {
     id: "canvas-1",
     label: "画布 1",
@@ -563,7 +563,7 @@ function defaultProjectCanvas(): RxnFlowProjectCanvas {
   }
 }
 
-function resolveActiveCanvasId(value: unknown, canvases: RxnFlowProjectCanvas[]): string {
+function resolveActiveCanvasId(value: unknown, canvases: RxnCanvasProjectCanvas[]): string {
   if (typeof value === "string" && canvases.some((canvas) => canvas.id === value)) return value
   return canvases[0]?.id ?? "canvas-1"
 }

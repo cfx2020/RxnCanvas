@@ -1,9 +1,9 @@
 {
-  "name": "rxnflow-web",
+  "name": "rxncanvas-web",
   "private": true,
   "version": "0.1.3",
-  "description": "Local-first reaction canvas workbench for RxnFlow.",
-  "author": "RxnFlow",
+  "description": "Local-first reaction canvas workbench for RxnCanvas.",
+  "author": "RxnCanvas",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -21,7 +21,7 @@
     "desktop:pack": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --mac dir --publish never --config.mac.identity=null",
     "desktop:pack:win": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --win --x64 --dir --publish never",
     "desktop:dist:mac": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --mac --publish never",
-    "desktop:dist:mac:unsigned": "npm run desktop:icons && npm run desktop:engine && npm run build && RXNFLOW_MAC_ADHOC_SIGN=1 electron-builder --mac --publish never --config.mac.identity=null",
+    "desktop:dist:mac:unsigned": "npm run desktop:icons && npm run desktop:engine && npm run build && RXNCANVAS_MAC_ADHOC_SIGN=1 electron-builder --mac --publish never --config.mac.identity=null",
     "desktop:notarize:mac": "node scripts/notarize-mac.cjs",
     "desktop:dist:win": "npm run desktop:icons && npm run desktop:engine && npm run build && electron-builder --win --x64 --publish never",
     "desktop:release:manifest": "node scripts/generate-release-manifest.cjs",
@@ -58,8 +58,8 @@
     }
   },
   "build": {
-    "appId": "com.rxnflow.app",
-    "productName": "RxnFlow",
+    "appId": "com.rxncanvas.app",
+    "productName": "RxnCanvas",
     "asar": true,
     "afterPack": "scripts/after-pack.cjs",
     "electronLanguages": [

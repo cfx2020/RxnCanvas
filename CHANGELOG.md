@@ -38,7 +38,7 @@ This records the development baseline, not a stable release.
 ### Fixed
 
 - Text and image canvas annotations now survive save, autosave, archive export and project restore.
-- `.rxnflow.zip` archives can be imported into a new workspace.
+- `.rxncanvas.zip` archives can be imported into a new workspace.
 - Release version and artifact lookup no longer use `0.0.0` hard-coded paths.
 
 ### Packaging

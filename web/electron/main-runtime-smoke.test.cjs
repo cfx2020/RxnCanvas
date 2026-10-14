@@ -77,7 +77,7 @@ test("runtime smoke accepts a cold engine that responds within the startup budge
   })
   assert.deepEqual(result.exits, [0])
   assert.equal(result.rendererChecks, 1)
-  assert.match(result.messages[0], /RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK/)
+  assert.match(result.messages[0], /RXNCANVAS_DESKTOP_RUNTIME_SMOKE_OK/)
 })
 
 test("runtime smoke reports engine failures without retrying", async (t) => {

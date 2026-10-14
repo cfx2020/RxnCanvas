@@ -5,35 +5,35 @@ const path = require("node:path")
 
 const projectRoot = path.join(__dirname, "..")
 const releaseDir = path.join(projectRoot, "release")
-const timeoutMs = Number.parseInt(process.env.RXNFLOW_DESKTOP_RUNTIME_SMOKE_TIMEOUT_MS || "45000", 10)
+const timeoutMs = Number.parseInt(process.env.RXNCANVAS_DESKTOP_RUNTIME_SMOKE_TIMEOUT_MS || "45000", 10)
 const appTimeoutMs = Math.max(15000, Math.min(30000, timeoutMs - 5000))
 
 async function main() {
   const executablePath = findPackagedExecutable()
   if (!executablePath) {
-    throw new Error("No packaged RxnFlow app was found. Run desktop:pack or desktop:pack:win first.")
+    throw new Error("No packaged RxnCanvas app was found. Run desktop:pack or desktop:pack:win first.")
   }
 
   const marker = await runPackagedApp(executablePath)
   const startupMarker = await runStartupRestoreSmoke(executablePath)
-  console.log(`RxnFlow packaged runtime smoke passed: ${path.relative(projectRoot, executablePath)} (${marker}; ${startupMarker})`)
+  console.log(`RxnCanvas packaged runtime smoke passed: ${path.relative(projectRoot, executablePath)} (${marker}; ${startupMarker})`)
 }
 
 function findPackagedExecutable() {
   if (!fs.existsSync(releaseDir)) return null
 
   if (process.platform === "win32") {
-    return existingPath(path.join(releaseDir, "win-unpacked", "RxnFlow.exe"))
+    return existingPath(path.join(releaseDir, "win-unpacked", "RxnCanvas.exe"))
   }
 
   if (process.platform === "darwin") {
     const candidateDirs = fs.readdirSync(releaseDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
-      .map((entry) => path.join(releaseDir, entry.name, "RxnFlow.app", "Contents", "MacOS", "RxnFlow"))
+      .map((entry) => path.join(releaseDir, entry.name, "RxnCanvas.app", "Contents", "MacOS", "RxnCanvas"))
     return candidateDirs.find((candidate) => fs.existsSync(candidate)) ?? null
   }
 
-  return existingPath(path.join(releaseDir, "linux-unpacked", "rxnflow"))
+  return existingPath(path.join(releaseDir, "linux-unpacked", "rxncanvas"))
 }
 
 function existingPath(filePath) {
@@ -45,11 +45,11 @@ function runPackagedApp(executablePath, options = {}) {
     let settled = false
     let stdout = ""
     let stderr = ""
-    const child = spawn(executablePath, ["--rxnflow-smoke-exit"], {
+    const child = spawn(executablePath, ["--rxncanvas-smoke-exit"], {
       cwd: projectRoot,
       env: {
         ...process.env,
-        RXNFLOW_DESKTOP_SMOKE_TIMEOUT_MS: String(appTimeoutMs),
+        RXNCANVAS_DESKTOP_SMOKE_TIMEOUT_MS: String(appTimeoutMs),
         ...(options.env || {}),
       },
       windowsHide: true,
@@ -67,7 +67,7 @@ function runPackagedApp(executablePath, options = {}) {
       if (error) {
         reject(error)
       } else {
-        resolve(stdout.split(/\r?\n/).find((line) => line.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK"))?.trim() || "RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK")
+        resolve(stdout.split(/\r?\n/).find((line) => line.includes("RXNCANVAS_DESKTOP_RUNTIME_SMOKE_OK"))?.trim() || "RXNCANVAS_DESKTOP_RUNTIME_SMOKE_OK")
       }
     }
 
@@ -79,7 +79,7 @@ function runPackagedApp(executablePath, options = {}) {
     })
     child.on("error", finish)
     child.on("close", (code) => {
-      if (code !== 0 || !stdout.includes("RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK")) {
+      if (code !== 0 || !stdout.includes("RXNCANVAS_DESKTOP_RUNTIME_SMOKE_OK")) {
         finish(new Error(`Packaged app runtime smoke failed with exit code ${code}.\nstdout:\n${stdout}\nstderr:\n${stderr}`))
         return
       }
@@ -89,11 +89,11 @@ function runPackagedApp(executablePath, options = {}) {
 }
 
 async function runStartupRestoreSmoke(executablePath) {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-startup-restore-"))
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-startup-restore-"))
   try {
     const userDataDir = path.join(tempRoot, "user-data")
     const projectDirectory = writeSmokeProjectDirectory(tempRoot, {
-      directoryName: "Startup Restore Smoke.rxnflow",
+      directoryName: "Startup Restore Smoke.rxncanvas",
       projectId: "startup-restore-smoke",
       projectLabel: "Startup Restore Smoke",
       fileId: "startup-restore-log",
@@ -103,7 +103,7 @@ async function runStartupRestoreSmoke(executablePath) {
       energy: -321,
     })
     const olderProjectDirectory = writeSmokeProjectDirectory(tempRoot, {
-      directoryName: "Older Restore Smoke.rxnflow",
+      directoryName: "Older Restore Smoke.rxncanvas",
       projectId: "older-restore-smoke",
       projectLabel: "Older Restore Smoke",
       fileId: "older-restore-log",
@@ -121,8 +121,8 @@ async function runStartupRestoreSmoke(executablePath) {
 
     return await runPackagedApp(executablePath, {
       env: {
-        RXNFLOW_DESKTOP_USER_DATA_DIR: userDataDir,
-        RXNFLOW_DESKTOP_SMOKE_STARTUP_RESTORE: "1",
+        RXNCANVAS_DESKTOP_USER_DATA_DIR: userDataDir,
+        RXNCANVAS_DESKTOP_SMOKE_STARTUP_RESTORE: "1",
       },
     })
   } finally {
@@ -132,7 +132,7 @@ async function runStartupRestoreSmoke(executablePath) {
 
 function writeSmokeProjectDirectory(tempRoot, options) {
   const projectDirectory = path.join(tempRoot, options.directoryName)
-  const metadataDirectory = path.join(projectDirectory, ".rxnflow")
+  const metadataDirectory = path.join(projectDirectory, ".rxncanvas")
   const sourcesDirectory = path.join(projectDirectory, "sources")
   fs.mkdirSync(metadataDirectory, { recursive: true })
   fs.mkdirSync(sourcesDirectory, { recursive: true })
@@ -140,7 +140,7 @@ function writeSmokeProjectDirectory(tempRoot, options) {
   fs.writeFileSync(path.join(sourcesDirectory, storedFileName), `SCF Done: E(RwB97XD) = ${options.energy}.0\n`, "utf8")
   fs.writeFileSync(path.join(metadataDirectory, "project.json"), `${JSON.stringify({
     schemaVersion: 2,
-    packageKind: "rxnflow-project",
+    packageKind: "rxncanvas-project",
     project: { id: options.projectId, label: options.projectLabel, meta: "open" },
     files: [{
       id: options.fileId,

@@ -46,7 +46,7 @@ export function normalizeVibrationalModes(
       forceConstant: finiteNumber(mode.forceConstant),
       irIntensityKmMol: finiteNumber(mode.irIntensityKmMol),
       ramanActivity: finiteNumber(mode.ramanActivity),
-      source: mode.source === "cclib" ? "cclib" : "rxnflow-text",
+      source: mode.source === "cclib" ? "cclib" : "rxncanvas-text",
     })
   })
   return { modes, warnings }

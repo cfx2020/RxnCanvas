@@ -76,7 +76,7 @@ async function main() {
   const stamp = compactTimestamp(new Date())
   const backupPath = path.join(
     path.dirname(projectDirectory),
-    `${path.basename(projectDirectory)}-before-source-normalize-${stamp}.rxnflow.zip`,
+    `${path.basename(projectDirectory)}-before-source-normalize-${stamp}.rxncanvas.zip`,
   )
   const stateBackupPath = `${statePath}.before-source-normalize-${stamp}.bak`
   await exportProjectWorkspaceArchive(projectDirectory, backupPath)
@@ -85,7 +85,7 @@ async function main() {
   const staged = []
   try {
     for (const [changeIndex, record] of changes.entries()) {
-      const temporaryPath = path.join(sourceRoot, `.rxnflow-normalize-${stamp}-${changeIndex}`)
+      const temporaryPath = path.join(sourceRoot, `.rxncanvas-normalize-${stamp}-${changeIndex}`)
       await fs.rename(record.sourcePath, temporaryPath)
       staged.push({ ...record, temporaryPath, movedToDesired: false })
     }

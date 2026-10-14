@@ -320,7 +320,7 @@ describe("report exports", () => {
     expect(decoded).not.toContain("Formula")
     expect(decoded).not.toContain("*627.5095")
     expect(decoded).toContain("Reactant &lt;A&gt;")
-    expect(decoded).toContain("rxnflow-renderer-xlsx-v1")
+    expect(decoded).toContain("rxncanvas-renderer-xlsx-v1")
   })
 
   it("builds report SVG and PNG artifacts", async () => {

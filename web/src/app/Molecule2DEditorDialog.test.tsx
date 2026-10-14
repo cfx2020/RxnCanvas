@@ -88,7 +88,7 @@ describe("Molecule2DEditorDialog", () => {
     consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
     consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined)
     consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
-    originalDesktop = window.rxnflowDesktop
+    originalDesktop = window.rxncanvasDesktop
     ketcherMocks.fail = false
     ketcherMocks.setMolecule.mockReset()
     ketcherMocks.addFragment.mockReset()
@@ -112,7 +112,7 @@ describe("Molecule2DEditorDialog", () => {
     consoleError.mockRestore()
     consoleInfo.mockRestore()
     consoleWarn.mockRestore()
-    window.rxnflowDesktop = originalDesktop as typeof window.rxnflowDesktop
+    window.rxncanvasDesktop = originalDesktop as typeof window.rxncanvasDesktop
   })
 
   it("contains editor focus and restores the supplied structure opener", async () => {
@@ -210,13 +210,13 @@ describe("Molecule2DEditorDialog", () => {
   })
 
   it("routes the Ketcher paste button through the native chemical clipboard", async () => {
-    window.rxnflowDesktop = {
+    window.rxncanvasDesktop = {
       readChemicalClipboard: vi.fn(async () => ({
         ok: true,
         formats: ["com.cambridgesoft.cdxml"],
         payloads: [{ format: "com.cambridgesoft.cdxml", text: "<CDXML><page><fragment id=\"1\"/></page></CDXML>" }],
       })),
-    } as unknown as typeof window.rxnflowDesktop
+    } as unknown as typeof window.rxncanvasDesktop
 
     render(
       <Molecule2DEditorDialog
@@ -236,13 +236,13 @@ describe("Molecule2DEditorDialog", () => {
 
   it("accepts ChemDraw binary CDX clipboard aliases from native paste", async () => {
     const cdxBase64 = "VmpDRDAxMDBzeW50aGV0aWMtY2R4LXBheWxvYWQtZm9yLXRlc3Q="
-    window.rxnflowDesktop = {
+    window.rxncanvasDesktop = {
       readChemicalClipboard: vi.fn(async () => ({
         ok: true,
         formats: ["CDIF"],
         payloads: [{ format: "CDIF", text: cdxBase64 }],
       })),
-    } as unknown as typeof window.rxnflowDesktop
+    } as unknown as typeof window.rxncanvasDesktop
 
     render(
       <Molecule2DEditorDialog
@@ -261,13 +261,13 @@ describe("Molecule2DEditorDialog", () => {
   })
 
   it("accepts ChemDraw AppleScript SMILES bridge payloads when the pasteboard only exposes an image", async () => {
-    window.rxnflowDesktop = {
+    window.rxncanvasDesktop = {
       readChemicalClipboard: vi.fn(async () => ({
         ok: true,
         formats: ["image/png", "chemical/x-daylight-smiles"],
         payloads: [{ format: "chemical/x-daylight-smiles", text: "CCO" }],
       })),
-    } as unknown as typeof window.rxnflowDesktop
+    } as unknown as typeof window.rxncanvasDesktop
 
     render(
       <Molecule2DEditorDialog
@@ -311,9 +311,9 @@ describe("Molecule2DEditorDialog", () => {
       ok: true,
       formats: ["text/plain", "chemical/x-cdxml", "chemical/x-cdx"],
     }))
-    window.rxnflowDesktop = {
+    window.rxncanvasDesktop = {
       writeChemicalClipboard,
-    } as unknown as typeof window.rxnflowDesktop
+    } as unknown as typeof window.rxncanvasDesktop
 
     const { container } = render(
       <Molecule2DEditorDialog
@@ -345,9 +345,9 @@ describe("Molecule2DEditorDialog", () => {
       ok: true,
       formats: ["text/plain", "CDIF"],
     }))
-    window.rxnflowDesktop = {
+    window.rxncanvasDesktop = {
       writeChemicalClipboard,
-    } as unknown as typeof window.rxnflowDesktop
+    } as unknown as typeof window.rxncanvasDesktop
 
     render(
       <Molecule2DEditorDialog
@@ -364,13 +364,13 @@ describe("Molecule2DEditorDialog", () => {
   })
 
   it("routes Ketcher editor paste shortcuts through native chemical paste as a fragment", async () => {
-    window.rxnflowDesktop = {
+    window.rxncanvasDesktop = {
       readChemicalClipboard: vi.fn(async () => ({
         ok: true,
         formats: ["chemical/x-indigo-ket", "text/plain"],
         payloads: [{ format: "chemical/x-indigo-ket", text: "{\"root\":{\"nodes\":[]}}" }],
       })),
-    } as unknown as typeof window.rxnflowDesktop
+    } as unknown as typeof window.rxncanvasDesktop
 
     render(
       <Molecule2DEditorDialog
@@ -393,9 +393,9 @@ describe("Molecule2DEditorDialog", () => {
       ok: true,
       formats: ["text/plain", "CDIF"],
     }))
-    window.rxnflowDesktop = {
+    window.rxncanvasDesktop = {
       writeChemicalClipboard,
-    } as unknown as typeof window.rxnflowDesktop
+    } as unknown as typeof window.rxncanvasDesktop
 
     render(
       <Molecule2DEditorDialog
@@ -421,10 +421,10 @@ describe("Molecule2DEditorDialog", () => {
       ok: true,
       formats: ["text/plain", "chemical/x-cdxml", "chemical/x-cdx"],
     }))
-    window.rxnflowDesktop = {
+    window.rxncanvasDesktop = {
       readChemicalClipboard,
       writeChemicalClipboard,
-    } as unknown as typeof window.rxnflowDesktop
+    } as unknown as typeof window.rxncanvasDesktop
 
     render(
       <Molecule2DEditorDialog

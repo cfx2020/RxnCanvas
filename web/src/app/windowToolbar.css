@@ -1,7 +1,7 @@
 .app-shell {
-  --rxnflow-titlebar-height: 40px !important;
-  --rxnflow-window-leading-inset: 12px;
-  padding-top: var(--rxnflow-titlebar-height) !important;
+  --rxncanvas-titlebar-height: 40px !important;
+  --rxncanvas-window-leading-inset: 12px;
+  padding-top: var(--rxncanvas-titlebar-height) !important;
 }
 
 .app-shell > .workspace {
@@ -16,15 +16,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: var(--rxnflow-titlebar-height);
-  padding: 0 12px 0 var(--rxnflow-window-leading-inset);
+  height: var(--rxncanvas-titlebar-height);
+  padding: 0 12px 0 var(--rxncanvas-window-leading-inset);
   background: var(--rxn-bg);
   -webkit-app-region: drag;
 }
 
 /* Electron keeps its native traffic lights visible in every macOS window state. */
 .app-shell.is-macos-desktop {
-  --rxnflow-window-leading-inset: 104px;
+  --rxncanvas-window-leading-inset: 104px;
 }
 
 .window-toolbar-leading {
@@ -33,7 +33,7 @@
 }
 
 .app-shell:not(.is-left-collapsed):not(.is-compact-layout) .window-toolbar-leading {
-  flex-basis: max(30px, calc(var(--rxnflow-project-rail-width) - var(--rxnflow-window-leading-inset) - 8px));
+  flex-basis: max(30px, calc(var(--rxncanvas-project-rail-width) - var(--rxncanvas-window-leading-inset) - 8px));
 }
 
 .window-toolbar-actions {
@@ -256,22 +256,22 @@
 
 .export-float-panel,
 .theme-dark .export-float-panel {
-  top: calc(var(--rxnflow-titlebar-height) + 8px) !important;
+  top: calc(var(--rxncanvas-titlebar-height) + 8px) !important;
 }
 
 @media (max-width: 1180px) {
   .app-shell.is-compact-layout .workspace > .project-rail {
-    top: var(--rxnflow-titlebar-height) !important;
-    height: calc(100vh - var(--rxnflow-titlebar-height)) !important;
-    max-height: calc(100vh - var(--rxnflow-titlebar-height)) !important;
+    top: var(--rxncanvas-titlebar-height) !important;
+    height: calc(100vh - var(--rxncanvas-titlebar-height)) !important;
+    max-height: calc(100vh - var(--rxncanvas-titlebar-height)) !important;
     padding-top: 14px !important;
   }
 }
 
 @media (max-width: 960px) {
   .app-shell.is-compact-layout .workspace:not(.is-right-collapsed) > .inspector-panel {
-    top: var(--rxnflow-titlebar-height) !important;
-    height: calc(100vh - var(--rxnflow-titlebar-height)) !important;
-    max-height: calc(100vh - var(--rxnflow-titlebar-height)) !important;
+    top: var(--rxncanvas-titlebar-height) !important;
+    height: calc(100vh - var(--rxncanvas-titlebar-height)) !important;
+    max-height: calc(100vh - var(--rxncanvas-titlebar-height)) !important;
   }
 }

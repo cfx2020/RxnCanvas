@@ -1,4 +1,4 @@
-"""RxnFlow desktop-canvas rebuild smoke core."""
+"""RxnCanvas desktop-canvas rebuild smoke core."""
 
 from .engine import demo_flow, export_flow_json
 

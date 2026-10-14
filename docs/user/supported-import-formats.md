@@ -12,7 +12,7 @@ last_reviewed: 2026-10-02
 
 ## 功能简介
 
-桌面与浏览器开发预览均通过 Python 引擎从完整文件中提取结构、能量和计算元数据，用于登记反应图谱节点。Gaussian/ORCA 标准字段由 cclib 提供。RxnFlow 不负责运行 Gaussian、ORCA 或其他量化计算任务。
+桌面与浏览器开发预览均通过 Python 引擎从完整文件中提取结构、能量和计算元数据，用于登记反应图谱节点。Gaussian/ORCA 标准字段由 cclib 提供。RxnCanvas 不负责运行 Gaussian、ORCA 或其他量化计算任务。
 
 ## 当前支持边界
 
@@ -41,7 +41,7 @@ last_reviewed: 2026-10-02
 - 浏览器上传完整文件，服务端以流写入临时文件，解析完成后删除；缺失原文件或解析失败不会回退到头尾样本。
 - 浏览器项目 package 上限为 64MB。
 - 单张画布图片上限为 10MB。
-- `.rxnflow.zip` 压缩包上限为 2GB；解压后总量上限为 4GB，单条目上限为 1GB。
+- `.rxncanvas.zip` 压缩包上限为 2GB；解压后总量上限为 4GB，单条目上限为 1GB。
 
 ## 常见问题
 

@@ -5,8 +5,8 @@ import type {
   FlowEdge,
   FlowNode,
   ProjectSummary,
-  RxnFlowProjectCanvas,
-  RxnFlowProjectPackage,
+  RxnCanvasProjectCanvas,
+  RxnCanvasProjectPackage,
   SourceFile,
 } from "../domain/projectPackages"
 import { reconcileEdgeDerivedPathRoles } from "../domain/reactionGraphRoles"
@@ -25,7 +25,7 @@ export type CanvasEditSnapshot = {
   selectedBarrierIds: string[]
 }
 
-export type ProjectCanvasSnapshot = RxnFlowProjectCanvas
+export type ProjectCanvasSnapshot = RxnCanvasProjectCanvas
 
 export type ProjectWorkspaceSnapshot = {
   files: SourceFile[]
@@ -730,7 +730,7 @@ export function projectWorkspaceWithActiveCanvas(
 }
 
 
-export function projectWorkspaceFromPackage(projectPackage: RxnFlowProjectPackage): ProjectWorkspaceSnapshot {
+export function projectWorkspaceFromPackage(projectPackage: RxnCanvasProjectPackage): ProjectWorkspaceSnapshot {
   const canvases = projectPackage.canvases ?? [{
     id: "canvas-1",
     label: "画布 1",

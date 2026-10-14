@@ -1,6 +1,6 @@
-# RxnFlow Third-Party Notices
+# RxnCanvas Third-Party Notices
 
-RxnFlow includes or bundles third-party software. Each component remains subject to its own license; the RxnFlow proprietary notice does not replace those terms.
+RxnCanvas includes or bundles third-party software. Each component remains subject to its own license; the RxnCanvas proprietary notice does not replace those terms.
 
 Principal components include:
 

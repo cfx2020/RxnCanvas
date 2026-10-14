@@ -4,7 +4,7 @@ export type WorkbenchLayoutPreference = {
   rightSidebarOpen: boolean
 }
 
-const storageKey = "rxnflow-workbench-layout-v1"
+const storageKey = "rxncanvas-workbench-layout-v1"
 
 export const defaultWorkbenchLayoutPreference: WorkbenchLayoutPreference = {
   schemaVersion: 1,

@@ -21,7 +21,7 @@ module.exports = async function afterPack(context) {
   setPlistBoolean(infoPlistPath, "NSAppTransportSecurity:NSAllowsArbitraryLoads", false)
   setPlistBoolean(infoPlistPath, "NSAppTransportSecurity:NSAllowsLocalNetworking", false)
 
-  if (process.env.RXNFLOW_MAC_ADHOC_SIGN === "1") {
+  if (process.env.RXNCANVAS_MAC_ADHOC_SIGN === "1") {
     const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
     const entitlementsPath = path.join(context.packager.projectDir, "build", "entitlements.mac.plist")
     execFileSync("/usr/bin/codesign", [

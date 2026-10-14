@@ -44,7 +44,7 @@ test.after(() => {
 test("project saves run in request order per directory and continue after failure", async () => {
   const firstRelease = deferred()
   const events = []
-  const projectDirectory = "/tmp/serialized-project-save.rxnflow"
+  const projectDirectory = "/tmp/serialized-project-save.rxncanvas"
   const first = withProjectSaveLock(projectDirectory, async () => {
     events.push("first-start")
     await firstRelease.promise
@@ -69,12 +69,12 @@ test("project saves run in request order per directory and continue after failur
 test("different project directories can save concurrently", async () => {
   const release = deferred()
   const events = []
-  const first = withProjectSaveLock("/tmp/project-a.rxnflow", async () => {
+  const first = withProjectSaveLock("/tmp/project-a.rxncanvas", async () => {
     events.push("a-start")
     await release.promise
     events.push("a-complete")
   })
-  const second = withProjectSaveLock("/tmp/project-b.rxnflow", async () => {
+  const second = withProjectSaveLock("/tmp/project-b.rxncanvas", async () => {
     events.push("b-start")
     await release.promise
     events.push("b-complete")
@@ -87,9 +87,9 @@ test("different project directories can save concurrently", async () => {
 })
 
 test("source imports wait for an in-flight project save before mutating sources", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-save-import-lock-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-save-import-lock-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
-  const projectDirectory = path.join(tempDirectory, "locked-project.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "locked-project.rxncanvas")
   const sourcePath = path.join(tempDirectory, "new.log")
   fs.writeFileSync(sourcePath, "new source", "utf8")
   const releaseSave = deferred()
@@ -118,7 +118,7 @@ test("source imports wait for an in-flight project save before mutating sources"
 })
 
 test("a stale pending snapshot cannot prune a completed external import", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-import-stale-save-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-import-stale-save-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
   const projectDirectory = path.join(tempDirectory, "study")
   await saveProjectContent(projectDirectory, projectContent(null))
@@ -157,9 +157,9 @@ test("a stale pending snapshot cannot prune a completed external import", async 
 })
 
 test("same-directory project snapshots commit in request order", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-save-order-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-save-order-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
-  const projectDirectory = path.join(tempDirectory, "ordered-project.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "ordered-project.rxncanvas")
   const releaseBlocker = deferred()
   const blocker = withProjectSaveLock(projectDirectory, async () => {
     await releaseBlocker.promise
@@ -181,9 +181,9 @@ test("same-directory project snapshots commit in request order", async (t) => {
 })
 
 test("project reads wait for the active directory mutation", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-read-lock-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-read-lock-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
-  const projectDirectory = path.join(tempDirectory, "read-locked-project.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "read-locked-project.rxncanvas")
   await saveProjectContent(projectDirectory, projectContent(null))
   const releaseMutation = deferred()
   const updatedPackage = JSON.parse(projectContent(null))
@@ -191,7 +191,7 @@ test("project reads wait for the active directory mutation", async (t) => {
   const mutation = withProjectSaveLock(projectDirectory, async () => {
     await releaseMutation.promise
     await writeProjectFileAtomically(
-      path.join(projectDirectory, ".rxnflow", "project.json"),
+      path.join(projectDirectory, ".rxncanvas", "project.json"),
       `${JSON.stringify(updatedPackage)}\n`,
     )
   })
@@ -212,26 +212,26 @@ test("project reads wait for the active directory mutation", async (t) => {
 })
 
 test("atomic project file writes replace complete files and clean failed temporaries", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-atomic-write-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-atomic-write-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
   const targetPath = path.join(tempDirectory, "project.json")
   fs.writeFileSync(targetPath, "old", "utf8")
 
   await writeProjectFileAtomically(targetPath, "new")
   assert.equal(fs.readFileSync(targetPath, "utf8"), "new")
-  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxncanvas-write-")), [])
 
   const directoryTarget = path.join(tempDirectory, "directory-target")
   fs.mkdirSync(directoryTarget)
   await assert.rejects(() => writeProjectFileAtomically(directoryTarget, "cannot replace a directory"))
   assert.equal(fs.statSync(directoryTarget).isDirectory(), true)
-  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxncanvas-write-")), [])
 })
 
 test("report artifacts and their manifest commit inside the project mutation lock", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-artifact-lock-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-artifact-lock-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
-  const projectDirectory = path.join(tempDirectory, "artifact-project.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "artifact-project.rxncanvas")
   await saveProjectContent(projectDirectory, projectContent(null))
   const releaseMutation = deferred()
   const mutation = withProjectSaveLock(projectDirectory, async () => {
@@ -261,10 +261,10 @@ test("report artifacts and their manifest commit inside the project mutation loc
 })
 
 test("archive export waits for project mutations and atomically replaces its target", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-archive-lock-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-archive-lock-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
-  const projectDirectory = path.join(tempDirectory, "archive-project.rxnflow")
-  const archivePath = path.join(tempDirectory, "archive-project.rxnflow.zip")
+  const projectDirectory = path.join(tempDirectory, "archive-project.rxncanvas")
+  const archivePath = path.join(tempDirectory, "archive-project.rxncanvas.zip")
   await saveProjectContent(projectDirectory, projectContent(null))
   const releaseMutation = deferred()
   const mutation = withProjectSaveLock(projectDirectory, async () => {
@@ -286,21 +286,21 @@ test("archive export waits for project mutations and atomically replaces its tar
   const result = await archive
   assert.equal(result.filePath, archivePath)
   assert.ok(fs.statSync(archivePath).size > 0)
-  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxncanvas-write-")), [])
 
   const directoryTarget = path.join(tempDirectory, "archive-directory-target")
   fs.mkdirSync(directoryTarget)
   await assert.rejects(() => writeProjectWorkspaceArchiveAtomically(projectDirectory, directoryTarget))
   assert.equal(fs.statSync(directoryTarget).isDirectory(), true)
-  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxncanvas-write-")), [])
 
 })
 
 test("archive destination requests commit in order across different projects", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-archive-destination-order-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-archive-destination-order-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
-  const projectA = path.join(tempDirectory, "project-a.rxnflow")
-  const projectB = path.join(tempDirectory, "project-b.rxnflow")
+  const projectA = path.join(tempDirectory, "project-a.rxncanvas")
+  const projectB = path.join(tempDirectory, "project-b.rxncanvas")
   const packageA = JSON.parse(projectContent(null))
   packageA.project = { id: "project-a", label: "Project A", meta: "open" }
   const packageB = JSON.parse(projectContent(null))
@@ -310,7 +310,7 @@ test("archive destination requests commit in order across different projects", a
     saveProjectContent(projectB, JSON.stringify(packageB)),
   ])
   const archiveBasePath = path.join(tempDirectory, "shared-export")
-  const archivePath = `${archiveBasePath}.rxnflow.zip`
+  const archivePath = `${archiveBasePath}.rxncanvas.zip`
   const releaseDestination = deferred()
   const blocker = withArchiveDestinationLock(archivePath, async () => {
     await releaseDestination.promise
@@ -328,11 +328,11 @@ test("archive destination requests commit in order across different projects", a
   assert.equal(firstResult.filePath, archivePath)
   assert.equal(secondResult.filePath, archivePath)
 
-  const extractedDirectory = path.join(tempDirectory, "extracted.rxnflow")
+  const extractedDirectory = path.join(tempDirectory, "extracted.rxncanvas")
   await importProjectWorkspaceArchive(archivePath, extractedDirectory)
   const finalPackage = JSON.parse(await readProjectContent(extractedDirectory))
   assert.equal(finalPackage.project.id, "project-b")
-  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxnflow-write-")), [])
+  assert.deepEqual(fs.readdirSync(tempDirectory).filter((name) => name.includes(".rxncanvas-write-")), [])
 })
 
 test("archive destination failures release only their target lock", async () => {
@@ -392,9 +392,9 @@ test("keeps normal hyphenated and underscored solution log filenames without add
 })
 
 test("materializes an underscored solution log without adding a hash", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-underscore-sol-name-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-underscore-sol-name-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
-  const projectDirectory = path.join(tempDirectory, "underscore-sol.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "underscore-sol.rxncanvas")
   const sourcePath = path.join(tempDirectory, "7a-1fix-ts_sol.log")
   fs.mkdirSync(projectDirectory, { recursive: true })
   fs.writeFileSync(sourcePath, "solution source", "utf8")
@@ -410,9 +410,9 @@ test("materializes an underscored solution log without adding a hash", async (t)
 })
 
 test("materializes a project-internal source in place without creating a suffixed copy", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-source-reparse-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-source-reparse-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
-  const projectDirectory = path.join(tempDirectory, "study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "study.rxncanvas")
   const sourcePath = path.join(projectDirectory, "sources", "scan.log")
   fs.mkdirSync(path.dirname(sourcePath), { recursive: true })
   fs.writeFileSync(sourcePath, "project source", "utf8")
@@ -430,9 +430,9 @@ test("materializes a project-internal source in place without creating a suffixe
 })
 
 test("concurrent project-internal reparses survive interleaved project saves", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-source-batch-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-source-batch-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
-  const projectDirectory = path.join(tempDirectory, "study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "study.rxncanvas")
   const names = ["a.log", "b.log", "c.log", "d.log"]
   fs.mkdirSync(path.join(projectDirectory, "sources"), { recursive: true })
   names.forEach((name) => fs.writeFileSync(path.join(projectDirectory, "sources", name), `source ${name}`, "utf8"))
@@ -471,7 +471,7 @@ test("concurrent project-internal reparses survive interleaved project saves", a
 })
 
 test("same-name imports replace the project source in request order", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-import-collision-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-import-collision-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
   const firstSourceDirectory = path.join(tempDirectory, "first")
@@ -488,7 +488,7 @@ test("same-name imports replace the project source in request order", async (t) 
     ["across independent batches", [new Set(), new Set()]],
   ]) {
     await t.test(scenario, async () => {
-      const projectDirectory = path.join(tempDirectory, `${scenario.replaceAll(" ", "-")}.rxnflow`)
+      const projectDirectory = path.join(tempDirectory, `${scenario.replaceAll(" ", "-")}.rxncanvas`)
       const firstUsedStoredPaths = usedStoredPathSets[0]
       const secondUsedStoredPaths = usedStoredPathSets[1] || firstUsedStoredPaths
       const [first, second] = await Promise.all([
@@ -515,7 +515,7 @@ test("same-name imports replace the project source in request order", async (t) 
   }
 
   await t.test("after staggered independent imports", async () => {
-    const projectDirectory = path.join(tempDirectory, "staggered-independent-imports.rxnflow")
+    const projectDirectory = path.join(tempDirectory, "staggered-independent-imports.rxncanvas")
     const first = await materializeImportSourceFile(projectDirectory, {
       id: "first",
       name: "shared.log",
@@ -535,10 +535,10 @@ test("same-name imports replace the project source in request order", async (t) 
 })
 
 test("failed source materialization releases its stored-path lock", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-import-reservation-release-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-import-reservation-release-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
-  const projectDirectory = path.join(tempDirectory, "release-study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "release-study.rxncanvas")
   const missingSourcePath = path.join(tempDirectory, "missing", "shared.log")
   await assert.rejects(() => materializeImportSourceFile(projectDirectory, {
     id: "missing",
@@ -559,10 +559,10 @@ test("failed source materialization releases its stored-path lock", async (t) =>
 })
 
 test("superseded or failed replacement keeps the previous project source bytes", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-import-replacement-failure-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-import-replacement-failure-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
-  const projectDirectory = path.join(tempDirectory, "replacement-study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "replacement-study.rxncanvas")
   const targetPath = path.join(projectDirectory, "sources", "shared.log")
   fs.mkdirSync(path.dirname(targetPath), { recursive: true })
   fs.writeFileSync(targetPath, "previous source", "utf8")
@@ -590,10 +590,10 @@ test("superseded or failed replacement keeps the previous project source bytes",
 })
 
 test("different source names that sanitize alike keep separate stored paths", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-import-sanitized-collision-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-import-sanitized-collision-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
-  const projectDirectory = path.join(tempDirectory, "sanitized-collision.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "sanitized-collision.rxncanvas")
   const firstPath = path.join(tempDirectory, "first.log")
   const secondPath = path.join(tempDirectory, "second.log")
   fs.writeFileSync(firstPath, "first", "utf8")
@@ -617,13 +617,13 @@ test("different source names that sanitize alike keep separate stored paths", as
 })
 
 test("project save never materializes preview text as source content", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-preview-source-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-preview-source-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
-  const projectDirectory = path.join(tempDirectory, "preview-study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "preview-study.rxncanvas")
   const preview = [
     "head of calculation",
-    "[... RxnFlow preview skipped 900000 bytes ...]",
+    "[... RxnCanvas preview skipped 900000 bytes ...]",
     "tail of calculation",
   ].join("\n")
   const saved = await saveProjectContent(projectDirectory, projectContent({
@@ -645,10 +645,10 @@ test("project save never materializes preview text as source content", async (t)
 })
 
 test("pending preview-only imports stay pending without a fake stored path", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-pending-preview-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-pending-preview-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
-  const projectDirectory = path.join(tempDirectory, "pending-preview-study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "pending-preview-study.rxncanvas")
   const saved = await saveProjectContent(projectDirectory, projectContent({
     id: "pending-preview",
     name: "pending.log",
@@ -670,10 +670,10 @@ test("pending preview-only imports stay pending without a fake stored path", asy
 })
 
 test("failed parsed imports do not create a source file", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-failed-parse-source-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-failed-parse-source-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
-  const projectDirectory = path.join(tempDirectory, "failed-parse-study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "failed-parse-study.rxncanvas")
   const saved = await saveProjectContent(projectDirectory, projectContent({
     id: "failed-parse",
     name: "Bfix8-ts.log",
@@ -696,10 +696,10 @@ test("failed parsed imports do not create a source file", async (t) => {
 })
 
 test("project save preserves an existing full source instead of replacing it with preview", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-existing-source-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-existing-source-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
-  const projectDirectory = path.join(tempDirectory, "existing-source-study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "existing-source-study.rxncanvas")
   const storedPath = "sources/full.log"
   const storedSourcePath = path.join(projectDirectory, storedPath)
   fs.mkdirSync(path.dirname(storedSourcePath), { recursive: true })
@@ -723,10 +723,10 @@ test("project save preserves an existing full source instead of replacing it wit
 })
 
 test("project save keeps the stored project source ahead of a stale external source path", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-stored-source-authority-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-stored-source-authority-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
-  const projectDirectory = path.join(tempDirectory, "stored-source-study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "stored-source-study.rxncanvas")
   const storedPath = "sources/solution.log"
   const storedSourcePath = path.join(projectDirectory, storedPath)
   const staleExternalPath = path.join(tempDirectory, "solution.log")
@@ -757,10 +757,10 @@ test("project save keeps the stored project source ahead of a stale external sou
 })
 
 test("project source hashes use a shared bounded fingerprint cache with safe invalidation", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-project-hash-cache-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-project-hash-cache-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
 
-  const projectDirectory = path.join(tempDirectory, "cache-study.rxnflow")
+  const projectDirectory = path.join(tempDirectory, "cache-study.rxncanvas")
   const externalSourcePath = path.join(tempDirectory, "source.log")
   fs.mkdirSync(path.join(projectDirectory, "sources"), { recursive: true })
   fs.writeFileSync(externalSourcePath, "AAAA", "utf8")
@@ -855,7 +855,7 @@ test("project source hashes use a shared bounded fingerprint cache with safe inv
 })
 
 test("source file disk metadata returns the current size and checksum", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-source-metadata-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-source-metadata-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
   const sourcePath = path.join(tempDirectory, "source.log")
   fs.writeFileSync(sourcePath, "singlet source", "utf8")
@@ -882,7 +882,7 @@ function projectContent(file) {
 function projectContentForFiles(files) {
   return JSON.stringify({
     schemaVersion: 2,
-    packageKind: "rxnflow-project",
+    packageKind: "rxncanvas-project",
     project: { id: "cache-study", label: "Cache Study", meta: "open" },
     files,
     canvases: [{

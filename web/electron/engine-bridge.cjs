@@ -30,7 +30,7 @@ function runPythonEngineRequest(request, options = {}) {
 
   return new Promise((resolve) => {
     if (shutdownPromise) {
-      resolve(engineUnavailableResponse("RxnFlow local engine is shutting down."))
+      resolve(engineUnavailableResponse("RxnCanvas local engine is shutting down."))
       return
     }
     pendingRequests.push({ config, payload, resolve, timeoutMs, timer: null, worker: null })
@@ -146,7 +146,7 @@ function assignRequest(worker, request) {
       ok: false,
       error: {
         code: "engine_timeout",
-        message: `RxnFlow local engine did not respond within ${request.timeoutMs}ms.`,
+        message: `RxnCanvas local engine did not respond within ${request.timeoutMs}ms.`,
       },
     })
     retireWorker(worker)
@@ -228,7 +228,7 @@ function badResponse(stderr) {
     ok: false,
     error: {
       code: "engine_bad_response",
-      message: stderr.trim() || "RxnFlow local engine returned an unreadable response.",
+      message: stderr.trim() || "RxnCanvas local engine returned an unreadable response.",
     },
   }
 }
@@ -242,7 +242,7 @@ function engineUnavailableResponse(message) {
 
 function shutdownEngineWorkers() {
   if (shutdownPromise) return shutdownPromise
-  const response = engineUnavailableResponse("RxnFlow local engine is shutting down.")
+  const response = engineUnavailableResponse("RxnCanvas local engine is shutting down.")
   for (const request of pendingRequests.splice(0)) request.resolve(response)
 
   const activeWorkers = [...workers]
@@ -276,8 +276,8 @@ function parseEngineResponse(output) {
 }
 
 function resolveEngineCommand() {
-  if (process.env.RXNFLOW_ENGINE_COMMAND) {
-    const parts = process.env.RXNFLOW_ENGINE_COMMAND.split(" ").filter(Boolean)
+  if (process.env.RXNCANVAS_ENGINE_COMMAND) {
+    const parts = process.env.RXNCANVAS_ENGINE_COMMAND.split(" ").filter(Boolean)
     return [parts[0], parts.slice(1)]
   }
   const executableName = engineExecutableName()
@@ -286,13 +286,13 @@ function resolveEngineCommand() {
   }
   const venv = path.join(defaultRepoRoot, "web", ".engine-build", "dev-venv")
   const venvPython = process.platform === "win32" ? path.join(venv, "Scripts", "python.exe") : path.join(venv, "bin", "python")
-  const python = process.env.RXNFLOW_PYTHON
+  const python = process.env.RXNCANVAS_PYTHON
     || (fs.existsSync(venvPython) ? venvPython : process.platform === "win32" ? "python" : "python3")
-  return [python, ["-m", "rxnflow.engine_ipc"]]
+  return [python, ["-m", "rxncanvas.engine_ipc"]]
 }
 
 function engineExecutableName() {
-  return process.platform === "win32" ? "rxnflow-engine.exe" : "rxnflow-engine"
+  return process.platform === "win32" ? "rxncanvas-engine.exe" : "rxncanvas-engine"
 }
 
 function isPackagedAppRuntime() {
@@ -303,7 +303,7 @@ function resolveMaterializedPackagedEngine(sourcePath) {
   if (materializedPackagedEngine?.sourcePath === sourcePath && fs.existsSync(materializedPackagedEngine.executablePath)) {
     return materializedPackagedEngine.executablePath
   }
-  const runtimeDirectory = path.join(os.tmpdir(), "rxnflow-engine-runtime", String(process.pid))
+  const runtimeDirectory = path.join(os.tmpdir(), "rxncanvas-engine-runtime", String(process.pid))
   const executablePath = materializeEngineExecutable(sourcePath, runtimeDirectory)
   materializedPackagedEngine = { executablePath, runtimeDirectory, sourcePath }
   if (!materializedCleanupRegistered) {

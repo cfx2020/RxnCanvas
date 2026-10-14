@@ -9,8 +9,8 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.j
 function main() {
   assert(process.platform === "darwin", "macOS notarization must run on macOS.")
   const appPath = findMacApp()
-  const dmgPath = findArtifact(new RegExp(`^RxnFlow-${escapeRegExp(packageJson.version)}-.+\\.dmg$`))
-  assert(appPath, "No RxnFlow.app found under web/release. Run npm run desktop:dist:mac first.")
+  const dmgPath = findArtifact(new RegExp(`^RxnCanvas-${escapeRegExp(packageJson.version)}-.+\\.dmg$`))
+  assert(appPath, "No RxnCanvas.app found under web/release. Run npm run desktop:dist:mac first.")
   assert(dmgPath, "No macOS DMG found under web/release. Run npm run desktop:dist:mac first.")
 
   const appleId = requireEnv("APPLE_ID")
@@ -34,14 +34,14 @@ function main() {
   run("xcrun", ["stapler", "staple", dmgPath])
   run("spctl", ["--assess", "--type", "execute", "--verbose=2", appPath])
 
-  console.log(`RxnFlow macOS notarization passed: ${path.relative(projectRoot, dmgPath)}`)
+  console.log(`RxnCanvas macOS notarization passed: ${path.relative(projectRoot, dmgPath)}`)
 }
 
 function findMacApp() {
   if (!fs.existsSync(releaseDir)) return null
   const candidates = fs.readdirSync(releaseDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(releaseDir, entry.name, "RxnFlow.app"))
+    .map((entry) => path.join(releaseDir, entry.name, "RxnCanvas.app"))
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null
 }
 

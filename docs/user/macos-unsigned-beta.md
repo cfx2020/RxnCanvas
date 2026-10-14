@@ -2,23 +2,23 @@
 doc_type: user-guide
 slug: macos-unsigned-beta
 status: beta
-summary: 在没有 Apple Developer 凭证时安装 RxnFlow 私有 macOS 测试版
+summary: 在没有 Apple Developer 凭证时安装 RxnCanvas 私有 macOS 测试版
 tags: [macos, beta, gatekeeper, install]
 ---
 
 # macOS 未公证测试版
 
-这个版本面向 RxnFlow 私有测试者。它使用 ad-hoc 签名，但没有 Apple Developer ID 签名和 notarization，因此 macOS 可能会拦截首次启动。它不是正式公开发行版。
+这个版本面向 RxnCanvas 私有测试者。它使用 ad-hoc 签名，但没有 Apple Developer ID 签名和 notarization，因此 macOS 可能会拦截首次启动。它不是正式公开发行版。
 
 ## 安装
 
 1. 从私有仓库对应 Beta tag 的 GitHub Pre-release 下载与机器架构匹配的 `.dmg` 或 `.zip`。
-2. 解压或打开 DMG，把 `RxnFlow.app` 拖到 `Applications`。
-3. 第一次启动时，优先使用 Control-click `RxnFlow.app`，选择 **Open**。如果系统仍拦截，到 **System Settings > Privacy & Security**，在安全提示旁选择 **Open Anyway**。
+2. 解压或打开 DMG，把 `RxnCanvas.app` 拖到 `Applications`。
+3. 第一次启动时，优先使用 Control-click `RxnCanvas.app`，选择 **Open**。如果系统仍拦截，到 **System Settings > Privacy & Security**，在安全提示旁选择 **Open Anyway**。
 4. 如果应用仍被 quarantine 属性拦截，并且你确认文件来源可信，在 Terminal 执行：
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/RxnFlow.app
+xattr -dr com.apple.quarantine /Applications/RxnCanvas.app
 ```
 
 然后再次打开应用。这个命令只移除该应用的 quarantine 属性，不要使用 `sudo spctl --master-disable` 关闭整台 Mac 的 Gatekeeper。

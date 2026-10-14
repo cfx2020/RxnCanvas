@@ -12,10 +12,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from rxnflow import demo_flow, export_flow_json
-from rxnflow.engine import MAX_SOURCE_FILE_BYTES, parse_source_file, parse_source_preview, validate_project_content
-from rxnflow import engine
-from rxnflow.engine_ipc import ENGINE_VERSION, handle_request
+from rxncanvas import demo_flow, export_flow_json
+from rxncanvas.engine import MAX_SOURCE_FILE_BYTES, parse_source_file, parse_source_preview, validate_project_content
+from rxncanvas import engine
+from rxncanvas.engine_ipc import ENGINE_VERSION, handle_request
 
 
 FAKE_CCLIB_HARTREE_TO_EV = 27.21138505
@@ -231,7 +231,7 @@ class EngineSmokeTest(unittest.TestCase):
 
     def test_engine_ipc_processes_multiple_requests_after_errors(self) -> None:
         completed = subprocess.run(
-            [sys.executable, "-m", "rxnflow.engine_ipc"],
+            [sys.executable, "-m", "rxncanvas.engine_ipc"],
             input="\n".join([
                 "not-json",
                 json.dumps({"command": "missing"}),
@@ -261,7 +261,7 @@ class EngineSmokeTest(unittest.TestCase):
         for payload, expected_returncode, expected_error in cases:
             with self.subTest(payload=payload):
                 completed = subprocess.run(
-                    [sys.executable, "-m", "rxnflow.engine_ipc"],
+                    [sys.executable, "-m", "rxncanvas.engine_ipc"],
                     input=payload,
                     text=True,
                     capture_output=True,
@@ -387,7 +387,7 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertTrue(parse["parsed"])
         self.assertEqual(parse["parseScope"], "full-file")
         self.assertEqual(parse["confidence"], "high")
-        self.assertEqual(parse["parserId"], "gaussian-log-cclib+rxnflow-text-full-file")
+        self.assertEqual(parse["parserId"], "gaussian-log-cclib+rxncanvas-text-full-file")
         self.assertAlmostEqual(parse["energyGas"], -76.431)
         self.assertEqual(parse["energyTable"]["gasBasisFunctions"], 42)
         self.assertAlmostEqual(parse["energyTable"]["ggasHartree"], -76.4)
@@ -492,7 +492,7 @@ class EngineSmokeTest(unittest.TestCase):
         modes = parsed.coordinatePreview.vibrationModes if parsed.coordinatePreview else ()
         self.assertEqual(len(modes), 3)
         self.assertEqual(modes[0].kind, "imaginary")
-        self.assertEqual(modes[0].source, "rxnflow-text")
+        self.assertEqual(modes[0].source, "rxncanvas-text")
         self.assertAlmostEqual(modes[0].frequencyCm1, -423.12)
         self.assertEqual(len(modes[0].displacements), 3)
         self.assertEqual(modes[0].displacements[0].atomIndex, 0)
@@ -623,7 +623,7 @@ class EngineSmokeTest(unittest.TestCase):
                     sys.modules["cclib"] = previous
 
         self.assertTrue(parsed.parsed)
-        self.assertEqual(parsed.parserId, "gaussian-log-cclib+rxnflow-text-full-file")
+        self.assertEqual(parsed.parserId, "gaussian-log-cclib+rxncanvas-text-full-file")
         self.assertEqual(parsed.sourceKind, "Gaussian")
         self.assertEqual(parsed.kind, "transition")
         self.assertEqual(parsed.candidates[0].roleHint, "transition")
@@ -714,7 +714,7 @@ class EngineSmokeTest(unittest.TestCase):
 
         modes = parsed.coordinatePreview.vibrationModes if parsed.coordinatePreview else ()
         self.assertEqual(len(modes), 1)
-        self.assertEqual(modes[0].source, "rxnflow-text")
+        self.assertEqual(modes[0].source, "rxncanvas-text")
         self.assertAlmostEqual(modes[0].frequencyCm1, -123.4)
 
     def test_cclib_full_file_reuses_one_gaussian_context_for_text_vibration_fallback(self) -> None:
@@ -762,7 +762,7 @@ class EngineSmokeTest(unittest.TestCase):
         modes = parsed.coordinatePreview.vibrationModes if parsed.coordinatePreview else ()
         self.assertEqual(len(modes), 1)
         self.assertEqual(len(modes[0].displacements), 3)
-        self.assertEqual(modes[0].source, "rxnflow-text")
+        self.assertEqual(modes[0].source, "rxncanvas-text")
         self.assertEqual(parsed.terminationStatus, "normal")
         self.assertEqual(parsed.jobCpuTime, "0d 0h 1m 2.3s")
         self.assertEqual(parsed.elapsedTime, "0d 0h 1m 3.4s")
@@ -1105,7 +1105,7 @@ class EngineSmokeTest(unittest.TestCase):
         self.assertEqual(orca.energyTable.gasBasisFunctions if orca.energyTable else None, 42)
 
     def test_engine_import_preview_characterizes_large_orca_result(self) -> None:
-        with patch("rxnflow.engine.orca_text_snapshot", wraps=engine.orca_text_snapshot) as build_snapshot:
+        with patch("rxncanvas.engine.orca_text_snapshot", wraps=engine.orca_text_snapshot) as build_snapshot:
             parsed = parse_source_preview(
                 "orca-large-characterization.out",
                 large_orca_characterization_text(),
@@ -1293,7 +1293,7 @@ class EngineSmokeTest(unittest.TestCase):
             "forceConstant": 0.4,
             "irIntensityKmMol": 10.0,
             "ramanActivity": 4.0,
-            "source": "rxnflow-text",
+            "source": "rxncanvas-text",
         })
 
     def test_engine_import_preview_builds_one_gaussian_snapshot(self) -> None:
@@ -1818,7 +1818,7 @@ class EngineSmokeTest(unittest.TestCase):
             (project_root / "exports").mkdir()
             (project_root / "exports" / "manifest.json").write_text(json.dumps({
                 "schemaVersion": 1,
-                "packageKind": "rxnflow-export-artifacts",
+                "packageKind": "rxncanvas-export-artifacts",
                 "artifacts": [],
             }), encoding="utf8")
 
@@ -1863,7 +1863,7 @@ class EngineSmokeTest(unittest.TestCase):
             (project_root / "exports" / "manifest.json").write_text(json.dumps({"artifacts": []}), encoding="utf8")
             engine._invalidate_sha256_file_cache(source_path)
 
-            with patch("rxnflow.engine._compute_sha256_file", wraps=engine._compute_sha256_file) as compute_digest:
+            with patch("rxncanvas.engine._compute_sha256_file", wraps=engine._compute_sha256_file) as compute_digest:
                 first = validate_project_content(json.dumps(project), project_root)
                 second = validate_project_content(json.dumps(project), project_root)
                 self.assertEqual([], first["issues"])
@@ -1896,16 +1896,16 @@ class EngineSmokeTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "Alpha Study"
-            export_path = project_root / "exports" / "rxnflow-profile.png"
+            export_path = project_root / "exports" / "rxncanvas-profile.png"
             export_path.parent.mkdir(parents=True)
             export_path.write_bytes(artifact_bytes)
             (project_root / "exports" / "manifest.json").write_text(json.dumps({
                 "schemaVersion": 1,
-                "packageKind": "rxnflow-export-artifacts",
+                "packageKind": "rxncanvas-export-artifacts",
                 "artifacts": [{
-                    "id": "artifact-rxnflow-profile",
-                    "fileName": "rxnflow-profile.png",
-                    "path": "exports/rxnflow-profile.png",
+                    "id": "artifact-rxncanvas-profile",
+                    "fileName": "rxncanvas-profile.png",
+                    "path": "exports/rxncanvas-profile.png",
                     "mimeType": "image/png",
                     "size": len(artifact_bytes),
                     "checksum": f"sha256:{'0' * 64}",
@@ -1922,19 +1922,19 @@ class EngineSmokeTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "Alpha Study"
-            export_path = project_root / "exports" / "rxnflow-profile.png"
+            export_path = project_root / "exports" / "rxncanvas-profile.png"
             export_path.parent.mkdir(parents=True)
             export_path.write_bytes(artifact_bytes)
             (project_root / "exports" / "manifest.json").write_text(json.dumps({
                 "artifacts": [{
-                    "path": "exports/rxnflow-profile.png",
+                    "path": "exports/rxncanvas-profile.png",
                     "size": len(artifact_bytes),
                     "checksum": f"sha256:{hashlib.sha256(artifact_bytes).hexdigest()}",
                 }],
             }), encoding="utf8")
             engine._invalidate_sha256_file_cache(export_path)
 
-            with patch("rxnflow.engine._compute_sha256_file", wraps=engine._compute_sha256_file) as compute_digest:
+            with patch("rxncanvas.engine._compute_sha256_file", wraps=engine._compute_sha256_file) as compute_digest:
                 first = validate_project_content(json.dumps(project), project_root)
                 second = validate_project_content(json.dumps(project), project_root)
                 self.assertNotIn("artifact_checksum_mismatch", {issue["code"] for issue in first["issues"]})
@@ -2025,7 +2025,7 @@ class EngineSmokeTest(unittest.TestCase):
             self.assertTrue(saved["ok"])
             self.assertEqual(saved["data"]["projectPath"], project_path)
             self.assertTrue(Path(saved["data"]["contentPath"]).exists())
-            self.assertTrue((Path(project_path) / ".rxnflow" / "manifest.json").exists())
+            self.assertTrue((Path(project_path) / ".rxncanvas" / "manifest.json").exists())
             self.assertTrue((Path(project_path) / "exports" / "manifest.json").exists())
             self.assertNotIn("sourcePath", saved["data"]["content"])
             saved_package = json.loads(saved["data"]["content"])
@@ -2058,7 +2058,7 @@ class EngineSmokeTest(unittest.TestCase):
                     "kind": "Gaussian",
                     "size": 900_100,
                     "status": "parsed",
-                    "preview": "head\n[... RxnFlow preview skipped 900000 bytes ...]\ntail",
+                    "preview": "head\n[... RxnCanvas preview skipped 900000 bytes ...]\ntail",
                     "storedPath": stored_path,
                     "parse": {"parsed": True},
                 }],
@@ -2120,7 +2120,7 @@ class EngineSmokeTest(unittest.TestCase):
 def sample_project_content(overrides: dict[str, object] | None = None) -> dict[str, object]:
     project = {
         "schemaVersion": 1,
-        "packageKind": "rxnflow-project",
+        "packageKind": "rxncanvas-project",
         "project": {
             "id": "alpha-study",
             "label": "Alpha Study",

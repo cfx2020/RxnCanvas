@@ -6,7 +6,7 @@ const path = require("node:path")
 const projectRoot = path.join(__dirname, "..")
 const packageJson = require(path.join(projectRoot, "package.json"))
 const releaseDir = path.join(projectRoot, "release")
-const timeoutMs = Number.parseInt(process.env.RXNFLOW_WINDOWS_INSTALLER_SMOKE_TIMEOUT_MS || "180000", 10)
+const timeoutMs = Number.parseInt(process.env.RXNCANVAS_WINDOWS_INSTALLER_SMOKE_TIMEOUT_MS || "180000", 10)
 const appTimeoutMs = Math.max(20000, Math.min(45000, timeoutMs - 10000))
 
 async function main() {
@@ -15,13 +15,13 @@ async function main() {
     return
   }
 
-  const installerPath = path.join(releaseDir, `RxnFlow Setup ${packageJson.version}.exe`)
+  const installerPath = path.join(releaseDir, `RxnCanvas Setup ${packageJson.version}.exe`)
   if (!fs.existsSync(installerPath)) {
     throw new Error("Windows NSIS installer not found. Run npm run desktop:dist:win first.")
   }
 
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-install-"))
-  const installDir = path.join(tempRoot, "RxnFlow")
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-install-"))
+  const installDir = path.join(tempRoot, "RxnCanvas")
   try {
     await runProcess(installerPath, ["/S", `/D=${installDir}`], {
       timeoutLabel: "Windows installer",
@@ -30,21 +30,21 @@ async function main() {
 
     const executablePath = findInstalledExecutable(installDir)
     if (!executablePath) {
-      throw new Error(`Installed RxnFlow.exe was not found under ${installDir}`)
+      throw new Error(`Installed RxnCanvas.exe was not found under ${installDir}`)
     }
 
     const marker = await runInstalledApp(executablePath)
-    console.log(`RxnFlow Windows installer smoke launched installed app: ${marker}`)
+    console.log(`RxnCanvas Windows installer smoke launched installed app: ${marker}`)
 
     const uninstallerPath = findUninstaller(path.dirname(executablePath))
     if (!uninstallerPath) {
-      throw new Error(`Installed RxnFlow uninstaller was not found under ${path.dirname(executablePath)}`)
+      throw new Error(`Installed RxnCanvas uninstaller was not found under ${path.dirname(executablePath)}`)
     }
     await runProcess(uninstallerPath, ["/S"], {
       timeoutLabel: "Windows uninstaller",
       timeoutMs,
     })
-    console.log(`RxnFlow Windows installer smoke passed: ${path.relative(projectRoot, installerPath)}`)
+    console.log(`RxnCanvas Windows installer smoke passed: ${path.relative(projectRoot, installerPath)}`)
   } finally {
     cleanupTempRoot(tempRoot)
   }
@@ -69,28 +69,28 @@ function cleanupTempRoot(tempRoot) {
 
 function findInstalledExecutable(installDir) {
   const candidates = [
-    path.join(installDir, "RxnFlow.exe"),
-    path.join(process.env.LOCALAPPDATA || "", "Programs", "RxnFlow", "RxnFlow.exe"),
+    path.join(installDir, "RxnCanvas.exe"),
+    path.join(process.env.LOCALAPPDATA || "", "Programs", "RxnCanvas", "RxnCanvas.exe"),
   ]
   return candidates.find((candidate) => candidate && fs.existsSync(candidate)) ?? null
 }
 
 function findUninstaller(appDir) {
   const candidates = [
-    path.join(appDir, "Uninstall RxnFlow.exe"),
+    path.join(appDir, "Uninstall RxnCanvas.exe"),
     path.join(appDir, "Uninstall.exe"),
   ]
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null
 }
 
 function runInstalledApp(executablePath) {
-  return runProcess(executablePath, ["--rxnflow-smoke-exit"], {
-    timeoutLabel: "Installed RxnFlow runtime smoke",
+  return runProcess(executablePath, ["--rxncanvas-smoke-exit"], {
+    timeoutLabel: "Installed RxnCanvas runtime smoke",
     timeoutMs,
-    marker: "RXNFLOW_DESKTOP_RUNTIME_SMOKE_OK",
+    marker: "RXNCANVAS_DESKTOP_RUNTIME_SMOKE_OK",
     env: {
       ...process.env,
-      RXNFLOW_DESKTOP_SMOKE_TIMEOUT_MS: String(appTimeoutMs),
+      RXNCANVAS_DESKTOP_SMOKE_TIMEOUT_MS: String(appTimeoutMs),
     },
   })
 }

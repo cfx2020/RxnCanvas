@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { FlowBarrier, FlowEdge, FlowNode, RxnFlowProjectPackage, SourceFile } from "../domain/projectPackages"
+import type { FlowBarrier, FlowEdge, FlowNode, RxnCanvasProjectPackage, SourceFile } from "../domain/projectPackages"
 import type { SourceParseResult } from "../domain/sourceParseTypes"
 import { defaultEnergyDisplayOptions } from "./energyDisplay"
 import {
@@ -457,9 +457,9 @@ describe("projectWorkspace", () => {
   })
 
   it("restores project package content into an active canvas workspace", () => {
-    const projectPackage: RxnFlowProjectPackage = {
+    const projectPackage: RxnCanvasProjectPackage = {
       schemaVersion: 1,
-      packageKind: "rxnflow-project",
+      packageKind: "rxncanvas-project",
       project: { id: "saved", label: "Saved", meta: "saved" },
       files,
       nodes,

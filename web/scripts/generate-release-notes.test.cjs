@@ -7,7 +7,7 @@ const test = require("node:test")
 const { generateReleaseNotes } = require("./generate-release-notes.cjs")
 
 function repository(t) {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-release-notes-"))
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-release-notes-"))
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }))
   const git = (...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim()
   git("init", "--quiet", "--initial-branch=main")
@@ -19,7 +19,7 @@ function repository(t) {
     return git("rev-parse", "HEAD")
   }
   const notes = (releases) => generateReleaseNotes({
-    cwd, repository: "cfx2020/rxnflow", tag: "v0.1.1-beta.1", releases,
+    cwd, repository: "cfx2020/rxncanvas", tag: "v0.1.1-beta.1", releases,
   })
   return { git, commit, notes }
 }
@@ -37,7 +37,7 @@ test("release notes include every change since the last published release, ignor
     { tag_name: "v0.1.0-beta.13", draft: true },
     { tag_name: "v0.1.0-beta.12", draft: false, published_at: "2026-09-18T00:00:00Z" },
   ])
-  assert.ok(body.includes(`preserve imported sources ([${fix.slice(0, 7)}](https://github.com/cfx2020/rxnflow/commit/${fix}))`))
+  assert.ok(body.includes(`preserve imported sources ([${fix.slice(0, 7)}](https://github.com/cfx2020/rxncanvas/commit/${fix}))`))
   assert.ok(body.includes(`/commit/${feature}`))
   assert.ok(body.indexOf(fix) < body.indexOf(feature))
   assert.ok(body.includes("/compare/v0.1.0-beta.12...v0.1.1-beta.1"))

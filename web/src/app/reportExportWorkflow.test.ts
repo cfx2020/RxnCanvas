@@ -10,7 +10,7 @@ import {
 const cdxmlArtifact: ReportExportArtifact = {
   id: "cdxml-1",
   format: "cdxml",
-  fileName: "rxnflow-report.cdxml",
+  fileName: "rxncanvas-report.cdxml",
   mimeType: "chemical/x-cdxml",
   byteLength: 14,
   data: "<CDXML></CDXML>",
@@ -19,7 +19,7 @@ const cdxmlArtifact: ReportExportArtifact = {
 const xlsxArtifact: ReportExportArtifact = {
   id: "xlsx-1",
   format: "xlsx",
-  fileName: "rxnflow-report.xlsx",
+  fileName: "rxncanvas-report.xlsx",
   mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   byteLength: 3,
   data: new Uint8Array([65, 66, 67]),
@@ -42,7 +42,7 @@ describe("reportExportWorkflow", () => {
     expect(result.status).toBe("Exported 1 file. 1 canceled.")
     expect(result.artifacts).toEqual([{
       ...cdxmlArtifact,
-      destination: "exports/rxnflow-report.cdxml",
+      destination: "exports/rxncanvas-report.cdxml",
     }])
   })
 
@@ -115,17 +115,17 @@ describe("reportExportWorkflow", () => {
     const xlsxResult = await saveReportArtifactToDestination(xlsxArtifact, bridge)
 
     expect(bridge.saveReportArtifact.mock.calls[0][0]).toMatchObject({
-      defaultName: "rxnflow-report.cdxml",
+      defaultName: "rxncanvas-report.cdxml",
       mimeType: "chemical/x-cdxml",
       encoding: "utf8",
       content: "<CDXML></CDXML>",
     })
     expect(bridge.saveReportArtifact.mock.calls[1][0]).toMatchObject({
-      defaultName: "rxnflow-report.xlsx",
+      defaultName: "rxncanvas-report.xlsx",
       encoding: "base64",
       content: "QUJD",
     })
-    expect(cdxmlResult.destination).toBe("/tmp/rxnflow-report.cdxml")
-    expect(xlsxResult.destination).toBe("/tmp/rxnflow-report.xlsx")
+    expect(cdxmlResult.destination).toBe("/tmp/rxncanvas-report.cdxml")
+    expect(xlsxResult.destination).toBe("/tmp/rxncanvas-report.xlsx")
   })
 })

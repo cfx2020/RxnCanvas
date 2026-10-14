@@ -11,18 +11,18 @@ const {
 } = require("./recent-projects.cjs")
 
 function temporaryWriteFiles(directory) {
-  return fs.readdirSync(directory).filter((name) => name.includes(".rxnflow-write-"))
+  return fs.readdirSync(directory).filter((name) => name.includes(".rxncanvas-write-"))
 }
 
 test("recent project state saves through an atomic replacement", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-recent-projects-atomic-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-recent-projects-atomic-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
   const storePath = path.join(tempDirectory, "recent-projects.json")
-  fs.writeFileSync(storePath, '{"projectPaths":["/projects/old.rxnflow"]}\n', "utf8")
+  fs.writeFileSync(storePath, '{"projectPaths":["/projects/old.rxncanvas"]}\n', "utf8")
 
   const expectedState = await saveRecentProjectsState(storePath, {
-    activeProjectPath: "/projects/new.rxnflow",
-    projectPaths: ["/projects/new.rxnflow", "/projects/old.rxnflow"],
+    activeProjectPath: "/projects/new.rxncanvas",
+    projectPaths: ["/projects/new.rxncanvas", "/projects/old.rxncanvas"],
   })
 
   assert.deepEqual(await loadRecentProjectsState(storePath), expectedState)
@@ -31,10 +31,10 @@ test("recent project state saves through an atomic replacement", async (t) => {
 })
 
 test("a failed recent project replacement preserves the previous store", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-recent-projects-failed-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-recent-projects-failed-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
   const storePath = path.join(tempDirectory, "recent-projects.json")
-  const previousContent = '{"activeProjectPath":"/projects/old.rxnflow","projectPaths":["/projects/old.rxnflow"]}\n'
+  const previousContent = '{"activeProjectPath":"/projects/old.rxncanvas","projectPaths":["/projects/old.rxncanvas"]}\n'
   fs.writeFileSync(storePath, previousContent, "utf8")
   const originalRename = fsPromises.rename
   fsPromises.rename = async () => {
@@ -48,8 +48,8 @@ test("a failed recent project replacement preserves the previous store", async (
 
   await assert.rejects(
     () => saveRecentProjectsState(storePath, {
-      activeProjectPath: "/projects/new.rxnflow",
-      projectPaths: ["/projects/new.rxnflow"],
+      activeProjectPath: "/projects/new.rxncanvas",
+      projectPaths: ["/projects/new.rxncanvas"],
     }),
     /simulated rename failure/,
   )
@@ -59,13 +59,13 @@ test("a failed recent project replacement preserves the previous store", async (
 })
 
 test("atomic recent project persistence creates a missing store directory", async (t) => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxnflow-recent-projects-create-"))
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rxncanvas-recent-projects-create-"))
   t.after(() => fs.rmSync(tempDirectory, { recursive: true, force: true }))
   const storePath = path.join(tempDirectory, "nested", "recent-projects.json")
 
   const expectedState = await saveRecentProjectsState(storePath, {
-    activeProjectPath: "/projects/created.rxnflow",
-    projectPaths: ["/projects/created.rxnflow"],
+    activeProjectPath: "/projects/created.rxncanvas",
+    projectPaths: ["/projects/created.rxncanvas"],
   })
 
   assert.deepEqual(await loadRecentProjectsState(storePath), expectedState)

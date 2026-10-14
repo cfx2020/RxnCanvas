@@ -9,7 +9,7 @@ last_reviewed: 2026-10-02
 
 # 当前功能与发布范围
 
-RxnFlow 是本地优先的计算化学反应图谱编辑器。当前实现是 React/TypeScript/Vite + Electron + Python/cclib，版本为 `0.1.0`。本文列出现有能力，不作为新功能待办。
+RxnCanvas 是本地优先的计算化学反应图谱编辑器。当前实现是 React/TypeScript/Vite + Electron + Python/cclib，版本为 `0.1.0`。本文列出现有能力，不作为新功能待办。
 
 ## 已有能力
 
@@ -24,7 +24,7 @@ RxnFlow 是本地优先的计算化学反应图谱编辑器。当前实现是 Re
 | 报告 | PNG、CDXML、XLSX；浏览器下载或桌面保存到项目 exports，并记录清单 |
 | 桌面偏好 | 系统/浅色/深色外观、能量单位、Gaussian/Text 外部打开应用、侧栏与工具条布局 |
 
-代码入口：`web/src/app/App.tsx`、`ProjectRail.tsx`、`CanvasWorkspace.tsx`、`energyDisplay.ts`、`web/src/domain/projectPackages.ts`、`reportExports.ts`、`web/electron/main.cjs`、`project-store.cjs`、`rxnflow/engine.py`。
+代码入口：`web/src/app/App.tsx`、`ProjectRail.tsx`、`CanvasWorkspace.tsx`、`energyDisplay.ts`、`web/src/domain/projectPackages.ts`、`reportExports.ts`、`web/electron/main.cjs`、`project-store.cjs`、`rxncanvas/engine.py`。
 
 ## 运行环境
 
@@ -35,7 +35,7 @@ RxnFlow 是本地优先的计算化学反应图谱编辑器。当前实现是 Re
 
 ## 发布状态
 
-截至 2026-10-02，最近已发布版本为私有仓库的 [v0.1.0-beta.12](https://github.com/cfx2020/rxnflow/releases/tag/v0.1.0-beta.12)。其 [CI run](https://github.com/cfx2020/rxnflow/actions/runs/35374384687) 验证了 macOS 打包运行和 Windows NSIS 安装、启动、卸载；下载提供 macOS arm64 DMG/ZIP、Windows x64 setup/portable、统一 SHA-256 与 manifest。
+截至 2026-10-02，最近已发布版本为私有仓库的 [v0.1.0-beta.12](https://github.com/cfx2020/rxncanvas/releases/tag/v0.1.0-beta.12)。其 [CI run](https://github.com/cfx2020/rxncanvas/actions/runs/35374384687) 验证了 macOS 打包运行和 Windows NSIS 安装、启动、卸载；下载提供 macOS arm64 DMG/ZIP、Windows x64 setup/portable、统一 SHA-256 与 manifest。
 
 该 macOS Beta 使用 ad-hoc 签名，未取得 Developer ID 公证证据。工作流支持手动签名/公证构建，自动发布入口处理 `v*-beta.*` tag。这些是当前发布渠道的事实，不能推断为任意新提交已经完成打包验收。
 

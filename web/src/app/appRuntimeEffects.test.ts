@@ -8,13 +8,13 @@ import {
   setActiveProjectInRuntime,
   subscribeProjectPackageRuntimeMenus,
   watchDesktopEngineStatus,
-  type RxnflowDesktopApi,
+  type RxnCanvasDesktopApi,
   type ProjectPackageOpenPayload,
   type ProjectPackageOpenResult,
 } from "./appRuntimeEffects"
 import type { DesktopEngineStatus } from "./desktopRuntime"
 
-function desktopApi(overrides: Partial<RxnflowDesktopApi> = {}): RxnflowDesktopApi {
+function desktopApi(overrides: Partial<RxnCanvasDesktopApi> = {}): RxnCanvasDesktopApi {
   return {
     platform: "darwin",
     chooseFiles: vi.fn(),
@@ -72,7 +72,7 @@ describe("appRuntimeEffects", () => {
       openProjectPackage: vi.fn(async () => ({
         canceled: false,
         content: "{}",
-        projectDirectory: "/tmp/ir.rxnflow",
+        projectDirectory: "/tmp/ir.rxncanvas",
         validation: null,
       })),
     })
@@ -80,7 +80,7 @@ describe("appRuntimeEffects", () => {
     await openProjectPackageFromRuntime({ desktopApi: api, projectInput: null, restoreProjectPackage })
     expect(restoreProjectPackage).toHaveBeenCalledWith("{}", null, {
       replaceProjects: true,
-      projectDirectory: "/tmp/ir.rxnflow",
+      projectDirectory: "/tmp/ir.rxncanvas",
     })
   })
 
@@ -96,15 +96,15 @@ describe("appRuntimeEffects", () => {
       setProjectValidation,
     })
     expect(api.saveProjectPackage).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(api.saveProjectPackage).mock.calls[0]?.[0].defaultName).toBe("project.rxnflow.zip")
+    expect(vi.mocked(api.saveProjectPackage).mock.calls[0]?.[0].defaultName).toBe("project.rxncanvas.zip")
     expect(setProjectValidation).toHaveBeenCalledWith(null)
   })
 
   it("autosaves a desktop project package without a save dialog", async () => {
-    const autosaveProjectPackage: RxnflowDesktopApi["autosaveProjectPackage"] = vi.fn(async () => ({
+    const autosaveProjectPackage: RxnCanvasDesktopApi["autosaveProjectPackage"] = vi.fn(async () => ({
       canceled: false,
       content: "{}",
-      projectDirectory: "/tmp/project.rxnflow",
+      projectDirectory: "/tmp/project.rxncanvas",
       validation: null,
     }))
     const api = desktopApi({ autosaveProjectPackage })
@@ -118,8 +118,8 @@ describe("appRuntimeEffects", () => {
       setProjectValidation,
     })
     expect(autosaveProjectPackage).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(autosaveProjectPackage).mock.calls[0]?.[0].defaultName).toBe("project.rxnflow")
-    expect(result?.projectDirectory).toBe("/tmp/project.rxnflow")
+    expect(vi.mocked(autosaveProjectPackage).mock.calls[0]?.[0].defaultName).toBe("project.rxncanvas")
+    expect(result?.projectDirectory).toBe("/tmp/project.rxncanvas")
     expect(setProjectValidation).toHaveBeenCalledWith(null)
   })
 
@@ -163,23 +163,23 @@ describe("appRuntimeEffects", () => {
     expect(openProjectContent).not.toBeNull()
     const emitOpenProjectContent = openProjectContent as unknown as (payload: ProjectPackageOpenPayload) => void
     emitOpenProjectContent({
-      content: "{\"packageKind\":\"rxnflow-project\"}",
-      projectDirectory: "/tmp/recent.rxnflow",
+      content: "{\"packageKind\":\"rxncanvas-project\"}",
+      projectDirectory: "/tmp/recent.rxncanvas",
       validation: null,
       replaceProjects: true,
     })
 
-    expect(restoreProjectPackage).toHaveBeenCalledWith("{\"packageKind\":\"rxnflow-project\"}", null, {
+    expect(restoreProjectPackage).toHaveBeenCalledWith("{\"packageKind\":\"rxncanvas-project\"}", null, {
       replaceProjects: true,
-      projectDirectory: "/tmp/recent.rxnflow",
+      projectDirectory: "/tmp/recent.rxncanvas",
     })
   })
 
   it("restores startup project content from the desktop runtime once available", async () => {
     const getStartupProjectContent = vi.fn(async () => ({
       canceled: false,
-      content: "{\"packageKind\":\"rxnflow-project\"}",
-      projectDirectory: "/tmp/ir.rxnflow",
+      content: "{\"packageKind\":\"rxncanvas-project\"}",
+      projectDirectory: "/tmp/ir.rxncanvas",
       validation: null,
       replaceProjects: true,
       source: "startup",
@@ -192,8 +192,8 @@ describe("appRuntimeEffects", () => {
     expect(restoreProjectPackages).toHaveBeenCalledTimes(1)
     expect(restoreProjectPackages).toHaveBeenCalledWith([{
       canceled: false,
-      content: "{\"packageKind\":\"rxnflow-project\"}",
-      projectDirectory: "/tmp/ir.rxnflow",
+      content: "{\"packageKind\":\"rxncanvas-project\"}",
+      projectDirectory: "/tmp/ir.rxncanvas",
       validation: null,
       replaceProjects: true,
       source: "startup",
@@ -205,8 +205,8 @@ describe("appRuntimeEffects", () => {
     const getStartupProjectContent = vi.fn(async () => ({
       canceled: false,
       projectContents: [
-        { content: "{\"id\":\"older\"}", projectDirectory: "/tmp/older.rxnflow", validation: null, replaceProjects: true, source: "startup" },
-        { content: "{\"id\":\"newer\"}", projectDirectory: "/tmp/newer.rxnflow", validation: null, replaceProjects: true, source: "startup" },
+        { content: "{\"id\":\"older\"}", projectDirectory: "/tmp/older.rxncanvas", validation: null, replaceProjects: true, source: "startup" },
+        { content: "{\"id\":\"newer\"}", projectDirectory: "/tmp/newer.rxncanvas", validation: null, replaceProjects: true, source: "startup" },
       ],
     }))
     const api = desktopApi({ getStartupProjectContent })
@@ -215,8 +215,8 @@ describe("appRuntimeEffects", () => {
     await Promise.resolve()
     expect(restoreProjectPackages).toHaveBeenCalledTimes(1)
     expect(restoreProjectPackages.mock.calls[0][0]).toEqual([
-      { content: "{\"id\":\"older\"}", projectDirectory: "/tmp/older.rxnflow", validation: null, replaceProjects: true, source: "startup" },
-      { content: "{\"id\":\"newer\"}", projectDirectory: "/tmp/newer.rxnflow", validation: null, replaceProjects: true, source: "startup" },
+      { content: "{\"id\":\"older\"}", projectDirectory: "/tmp/older.rxncanvas", validation: null, replaceProjects: true, source: "startup" },
+      { content: "{\"id\":\"newer\"}", projectDirectory: "/tmp/newer.rxncanvas", validation: null, replaceProjects: true, source: "startup" },
     ])
   })
 
@@ -249,7 +249,7 @@ describe("appRuntimeEffects", () => {
     resolveStartup({
       canceled: false,
       content: "{\"id\":\"restored\"}",
-      projectDirectory: "/tmp/restored.rxnflow",
+      projectDirectory: "/tmp/restored.rxncanvas",
       validation: null,
       source: "startup",
     })
@@ -261,7 +261,7 @@ describe("appRuntimeEffects", () => {
     expect(secondRestore).toHaveBeenCalledWith([{
       canceled: false,
       content: "{\"id\":\"restored\"}",
-      projectDirectory: "/tmp/restored.rxnflow",
+      projectDirectory: "/tmp/restored.rxncanvas",
       validation: null,
       source: "startup",
     }])
@@ -307,47 +307,47 @@ describe("appRuntimeEffects", () => {
   })
 
   it("persists the active desktop project when the renderer switches workspaces", async () => {
-    const setActiveProject = vi.fn(async () => ({ ok: true, projectDirectory: "/tmp/ir.rxnflow" }))
+    const setActiveProject = vi.fn(async () => ({ ok: true, projectDirectory: "/tmp/ir.rxncanvas" }))
     setActiveProjectInRuntime({
       desktopApi: desktopApi({ setActiveProject }),
       projectId: "ir-workspace",
-      projectDirectory: "/tmp/ir.rxnflow",
+      projectDirectory: "/tmp/ir.rxncanvas",
     })
     await Promise.resolve()
     expect(setActiveProject).toHaveBeenCalledWith({
       projectId: "ir-workspace",
-      projectDirectory: "/tmp/ir.rxnflow",
+      projectDirectory: "/tmp/ir.rxncanvas",
     })
   })
 
   it("forgets a desktop project when removed from the sidebar", async () => {
-    const forgetProject = vi.fn(async () => ({ ok: true, projectDirectory: "/tmp/ir.rxnflow" }))
+    const forgetProject = vi.fn(async () => ({ ok: true, projectDirectory: "/tmp/ir.rxncanvas" }))
     await expect(forgetProjectInRuntime({
       desktopApi: desktopApi({ forgetProject }),
       projectId: "ir-workspace",
-      projectDirectory: "/tmp/ir.rxnflow",
+      projectDirectory: "/tmp/ir.rxncanvas",
     })).resolves.toBe(true)
     expect(forgetProject).toHaveBeenCalledWith({
       projectId: "ir-workspace",
-      projectDirectory: "/tmp/ir.rxnflow",
+      projectDirectory: "/tmp/ir.rxncanvas",
     })
   })
 
   it("retries a rejected project forget and preserves its directory payload", async () => {
     const forgetProject = vi.fn()
       .mockRejectedValueOnce(new Error("recent store busy"))
-      .mockResolvedValueOnce({ ok: true, projectDirectory: "/tmp/ir.rxnflow" })
+      .mockResolvedValueOnce({ ok: true, projectDirectory: "/tmp/ir.rxncanvas" })
 
     await expect(forgetProjectInRuntime({
       desktopApi: desktopApi({ forgetProject }),
       projectId: "ir-workspace",
-      projectDirectory: "/tmp/ir.rxnflow",
+      projectDirectory: "/tmp/ir.rxncanvas",
       retryDelaysMs: [0],
     })).resolves.toBe(true)
     expect(forgetProject).toHaveBeenCalledTimes(2)
     expect(forgetProject).toHaveBeenLastCalledWith({
       projectId: "ir-workspace",
-      projectDirectory: "/tmp/ir.rxnflow",
+      projectDirectory: "/tmp/ir.rxncanvas",
     })
   })
 
@@ -357,7 +357,7 @@ describe("appRuntimeEffects", () => {
     await expect(forgetProjectInRuntime({
       desktopApi: desktopApi({ forgetProject }),
       projectId: "ir-workspace",
-      projectDirectory: "/tmp/ir.rxnflow",
+      projectDirectory: "/tmp/ir.rxncanvas",
       retryDelaysMs: [0, 0],
     })).resolves.toBe(false)
     expect(forgetProject).toHaveBeenCalledTimes(3)

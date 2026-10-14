@@ -18,7 +18,7 @@ async function main() {
   const port = server.httpServer.address().port
   const electron = spawn(electronExecutable, ["electron/main.cjs", ...process.argv.slice(2)], {
     cwd: path.resolve(__dirname, ".."),
-    env: { ...process.env, RXNFLOW_DESKTOP_DEV_SERVER: `http://127.0.0.1:${port}` },
+    env: { ...process.env, RXNCANVAS_DESKTOP_DEV_SERVER: `http://127.0.0.1:${port}` },
     stdio: "inherit",
   })
   let closing = false

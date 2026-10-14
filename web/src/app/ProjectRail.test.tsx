@@ -28,7 +28,7 @@ function parsedSource(label: string): SourceParseResult {
     energySolution: null,
     energyUnit: "hartree",
     parsed: true,
-    parserId: "gaussian-output-cclib+rxnflow-text-full-file",
+    parserId: "gaussian-output-cclib+rxncanvas-text-full-file",
     parserVersion: "1",
     objectCount: 1,
     warnings: [],
@@ -250,12 +250,12 @@ describe("ProjectRail", () => {
     const separator = screen.getByRole("separator", { name: "Resize Projects and Files panels" })
 
     expect(separator).toHaveAttribute("aria-valuenow", "35")
-    expect(rail.style.getPropertyValue("--rxnflow-project-region-share")).toBe("35%")
+    expect(rail.style.getPropertyValue("--rxncanvas-project-region-share")).toBe("35%")
 
     fireEvent.keyDown(separator, { key: "ArrowDown" })
     expect(separator).toHaveAttribute("aria-valuenow", "39")
-    expect(rail.style.getPropertyValue("--rxnflow-project-region-share")).toBe("39%")
-    expect(window.localStorage.getItem("rxnflow-project-rail-project-share")).toBe("0.39")
+    expect(rail.style.getPropertyValue("--rxncanvas-project-region-share")).toBe("39%")
+    expect(window.localStorage.getItem("rxncanvas-project-rail-project-share")).toBe("0.39")
 
     fireEvent.keyDown(separator, { key: "Home" })
     expect(separator).toHaveAttribute("aria-valuenow", "18")
