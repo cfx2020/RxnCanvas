@@ -22,7 +22,9 @@ RxnCanvas 是面向计算化学研究者的本地桌面工作台。导入已有�
 
 ## 视频介绍
 
-https://github.com/user-attachments/assets/30eb06b1-1f22-454d-92c2-dc5c0d223a08
+<video controls preload="metadata" poster="https://raw.githubusercontent.com/cfx2020/RxnCanvas/main/docs/assets/rxncanvas-promo-cover.jpg" width="100%">
+  <source src="https://raw.githubusercontent.com/cfx2020/RxnCanvas/main/docs/assets/rxncanvas-promo.mp4" type="video/mp4">
+</video>
 
 ## 你可以用它做什么
 
