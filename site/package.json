@@ -1,0 +1,16 @@
+{
+  "name": "rxncanvas-site",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Product site for RxnCanvas.",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev --host 127.0.0.1",
+    "build": "vitepress build",
+    "preview": "vitepress preview --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "@lucide/vue": "^1.61.0",
+    "vitepress": "^1.6.4"
+  }
+}
